@@ -25,6 +25,15 @@ must preserve the analytics-facing DTO boundary.
 - Account activity: balances and transfer activity.
 - Trend view: month-over-month totals.
 
+## Data Trust Display
+
+- Any report period that includes the current, still-accumulating calendar
+  month must carry a visible provisional/month-to-date label at the point of
+  display — not just a documented caveat.
+- Account and balance views must reflect each account's coverage status from
+  analytics; a `partial` or `no_data` account must never render as if its
+  balance or totals are complete.
+
 ## Non-Responsibilities
 
 - Importing or editing raw bank data.

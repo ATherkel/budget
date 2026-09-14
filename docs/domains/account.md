@@ -17,5 +17,8 @@ never exposed in reports or logs. An account can have several source-specific
 identifiers, which belong in source metadata rather than the Gold consumer
 contract.
 
-An account marked `household` is eligible for internal-transfer matching. A
-counterparty outside this set cannot be presumed to be a transfer.
+An account within the household reporting boundary — ownership scope
+`household` or `person` — is eligible for internal-transfer matching. A
+counterparty with ownership scope `external` cannot be presumed to be a
+transfer; a transfer between a shared and an individually-owned account is
+still internal.
