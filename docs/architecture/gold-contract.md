@@ -31,7 +31,8 @@ out is negative.
 | `currency` | ISO 4217 string | Yes | Currency, initially `DKK`. |
 | `description` | string | Yes | Normalized human-readable transaction text. |
 | `transaction_type` | enum | Yes | `income`, `expense`, `transfer`, `adjustment`, or `unknown`. |
-| `category_id` | UUID/string/null | Conditional | Required for classified income/expense; null is permitted for transfer, adjustment, and unknown. |
+| `category_id` | UUID/string/null | Conditional | Required for classified income/expense, and for an adjustment that nets a refund against the category it reverses; null permitted for transfer, unknown, and adjustments with no originating category. |
+| `balance` | `Decimal`/null | No | Bank-stated account balance immediately after this transaction. Drives balance-chain reconciliation and coverage; null when the source omitted it, which is a discrepancy, not an assumed zero. |
 | `counterparty` | string/null | No | Normalized merchant, person, or organisation when known. |
 | `transfer_group_id` | UUID/string/null | No | Groups two or more internal transfer legs when confidently matched. |
 | `classification_source` | enum | Yes | `rule`, `manual`, `imported`, or `unclassified`. |
@@ -53,6 +54,16 @@ out is negative.
    Bronze provenance.
 6. Classification is never silently destructive: a materialized Gold version
    records how it was derived and can be rebuilt.
+7. `booking_date` is used exactly as supplied by the source; no timezone
+   conversion is applied at any layer.
+8. Only source rows in a completed/settled booking status are materialized as
+   `GoldTransaction`. Pending or unsettled rows remain in Bronze/Silver only.
+9. For two chronologically adjacent transactions on the same account,
+   `balance == previous_balance + amount` when both are present; the
+   account's first transaction is trusted as its opening balance. A break in
+   this chain, or a missing `balance`, is never corrected or hidden — it is
+   surfaced as reduced coverage (see `analytics-layer.md`), not silently
+   assumed.
 
 ## Consumer Interface
 

@@ -21,6 +21,8 @@ agent authority outside its boundary.
   layer document when there is a conflict.
 - `decisions/` records accepted architectural decisions. Changes require a new
   ADR; do not silently revise a decision to fit an implementation.
+- [`../CONTEXT.md`](../CONTEXT.md) is the household finance glossary: tight,
+  opinionated term definitions. It is vocabulary only, never a spec.
 
 ## Conventions
 

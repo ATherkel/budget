@@ -14,9 +14,18 @@ Transaction(
     amount: Decimal,
     currency: str,
     description: str,
-    source_system: str
+    source_system: str,
+    balance: Decimal | None,
+    source_status: str,
 )
 ```
+
+`balance` is the bank-stated account balance immediately after this
+transaction, carried through verbatim; `source_status` is the source's own
+booking status (e.g. completed vs. pending), also carried through verbatim.
+Silver retains both as technical metadata — it does not interpret, reconcile,
+or filter on them. Gold decides which rows are settled enough to materialize
+and how the balance evidence is used.
 
 ## Responsibilities
 
