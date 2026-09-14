@@ -34,7 +34,7 @@ Exit criteria:
 
 ## Phase 2 — Analytics
 
-**Goal:** derive household reports exclusively from Gold transactions.
+**Goal:** derive household reports exclusively from Gold facts and dimensions.
 
 Deliverables:
 
@@ -44,7 +44,7 @@ Deliverables:
 
 Exit criteria:
 
-- Analytics tests use only Gold fixtures or the Gold repository interface.
+- Analytics tests use only Gold fixtures or the `GoldRepository` interface.
 
 ## Phase 3 — Presentation
 

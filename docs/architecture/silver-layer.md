@@ -27,6 +27,16 @@ Silver retains both as technical metadata — it does not interpret, reconcile,
 or filter on them. Gold decides which rows are settled enough to materialize
 and how the balance evidence is used.
 
+## Downstream Requirements
+
+Gold relies on two guarantees that Silver must provide. [Issue #5](https://github.com/ATherkel/budget/issues/5)
+defines how Silver provides them:
+
+- a stable canonical identity for each transaction, from which Gold derives a
+  `transaction_id` that survives rebuilds;
+- a deterministic order of each account's transactions, including those
+  sharing a booking date, so Gold can evaluate the balance chain.
+
 ## Responsibilities
 
 - schema normalization

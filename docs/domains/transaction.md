@@ -13,14 +13,20 @@ the household must never see a pending amount presented as booked.
 
 - **Income:** positive money received that contributes to household income.
 - **Expense:** negative money spent that contributes to household spending.
+- **Refund:** positive money returned against a prior purchase. It carries
+  the same `category_id` as the purchase it reverses and nets against that
+  category's spending rather than counting as income or disappearing from the
+  report.
 - **Transfer:** movement between accounts within the household reporting
   boundary; not spending or income.
-- **Adjustment:** a correction, fee reversal, or exceptional entry that needs
-  explicit policy treatment. A refund against a prior purchase is an
-  Adjustment that carries the same `category_id` as the purchase it reverses,
-  netting against that category's spending rather than counting as income or
-  disappearing from the report.
+- **Adjustment:** a correction, fee reversal, or exceptional entry with no
+  originating purchase to net against. It needs explicit policy treatment,
+  carries no category, and is excluded from income and expense totals.
 - **Unknown:** valid imported record awaiting classification.
+
+A transaction is classified as a whole: it has exactly one type and at most
+one category, and it is never split across categories
+([ADR-008](../decisions/ADR-008-single-category-per-transaction.md)).
 
 ## Lifecycle
 
