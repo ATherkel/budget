@@ -63,7 +63,11 @@ out is negative.
    account's first transaction is trusted as its opening balance. A break in
    this chain, or a missing `balance`, is never corrected or hidden — it is
    surfaced as reduced coverage (see `analytics-layer.md`), not silently
-   assumed.
+   assumed. For balance-stating sources, an export with a missing balance or
+   an internal break is quarantined before Silver (ADR-008), so `balance` is
+   null only for sources that state no balances.
+10. `silver_transaction_id` is stable across re-imports and rebuilds
+    (ADR-007), so classifications and manual decisions keep their targets.
 
 ## Consumer Interface
 

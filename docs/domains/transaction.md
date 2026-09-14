@@ -24,8 +24,8 @@ the household must never see a pending amount presented as booked.
 
 ## Lifecycle
 
-`source payload → Bronze record → Silver canonical transaction → Gold business
-transaction`
+`raw payload → Bronze source record → Silver canonical transaction → Gold
+business transaction`
 
 No step mutates the record in the preceding layer. A corrected classification
 creates a new materialized Gold version or override history, not a rewrite of
@@ -34,6 +34,17 @@ the bank payload.
 ## Identity and Deduplication
 
 The importer must retain the bank/source identifier where supplied. When one
-is absent, Silver may generate a deterministic content fingerprint, including
-source account, booking date, amount, description, and source-record position.
-It must not deduplicate only by date and amount.
+is absent, identity follows ADR-007:
+
+- The identifier is built from the account, booking date, amount,
+  whitespace-normalized text, and an occurrence number among visibly identical
+  transactions.
+- When exports overlap, each group of identical transactions counts the
+  highest number shown by any single export.
+- Silver verifies the merge with the bank-stated balances.
+
+A **duplicate** is the same transaction seen in more than one source record and
+collapses to one. A **repeated transaction** is a distinct transaction that
+merely looks identical to another and is always kept. Identity never depends
+on row position across exports. Silver never deduplicates only by date and
+amount, or by content alone.
