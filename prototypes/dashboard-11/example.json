@@ -1,0 +1,1548 @@
+{
+  "schemaVersion": "prototype-11/v1",
+  "kind": "synthetic",
+  "label": "Synthetic example · fictional money and accounts",
+  "notice": "Entirely fictional data. Account trust states are stipulated examples, not the output of a coverage engine.",
+  "defaultMonth": "2026-09",
+  "reports": [
+    {
+      "period": {
+        "id": "2026-09",
+        "label": "September 2026",
+        "start": "2026-09-01",
+        "end": "2026-09-30",
+        "provisional": true,
+        "detail": "September is still accumulating. The example is frozen as of 15 September 2026.",
+        "statusLabel": "Month to date · provisional"
+      },
+      "coverage": {
+        "status": "partial",
+        "label": "Incomplete picture · My account partial; Shared account missing",
+        "shortLabel": "Incomplete",
+        "detail": "My account: data only through 14 September. Shared account: no data for September. Totals can change.",
+        "incompleteAccountIds": [
+          "mine",
+          "common"
+        ]
+      },
+      "measureNote": "Incomplete",
+      "measures": {
+        "income": "36000.00",
+        "expenses": "15110.00",
+        "netCashFlow": "20890.00",
+        "savings": "20890.00",
+        "savingsRate": "58.03",
+        "coverage": {
+          "status": "partial",
+          "label": "Incomplete picture · My account partial; Shared account missing",
+          "shortLabel": "Incomplete",
+          "detail": "My account: data only through 14 September. Shared account: no data for September. Totals can change.",
+          "incompleteAccountIds": [
+            "mine",
+            "common"
+          ]
+        }
+      },
+      "incomeTransactions": [
+        {
+          "id": "example-027",
+          "accountId": "mine",
+          "accountName": "My account",
+          "date": "2026-09-01",
+          "amount": "36000.00",
+          "kind": "income",
+          "category": null,
+          "description": "Salary",
+          "kindLabel": "Income"
+        }
+      ],
+      "categories": [
+        {
+          "id": "category-4",
+          "name": "Housing",
+          "netSpending": "9800.00",
+          "purchases": "9800.00",
+          "refunds": "0.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-028",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-02",
+              "amount": "-9800.00",
+              "kind": "expense",
+              "category": "Housing",
+              "description": "Rent",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "partial",
+            "label": "Incomplete picture · My account partial; Shared account missing",
+            "shortLabel": "Incomplete",
+            "detail": "My account: data only through 14 September. Shared account: no data for September. Totals can change.",
+            "incompleteAccountIds": [
+              "mine",
+              "common"
+            ]
+          },
+          "barPercent": 100.0
+        },
+        {
+          "id": "category-3",
+          "name": "Home & furniture",
+          "netSpending": "1900.00",
+          "purchases": "2200.00",
+          "refunds": "300.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-033",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-10",
+              "amount": "300.00",
+              "kind": "refund",
+              "category": "Home & furniture",
+              "description": "Returned lamp",
+              "kindLabel": "Refund"
+            },
+            {
+              "id": "example-032",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-06",
+              "amount": "-2200.00",
+              "kind": "expense",
+              "category": "Home & furniture",
+              "description": "Desk & chair",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "partial",
+            "label": "Incomplete picture · My account partial; Shared account missing",
+            "shortLabel": "Incomplete",
+            "detail": "My account: data only through 14 September. Shared account: no data for September. Totals can change.",
+            "incompleteAccountIds": [
+              "mine",
+              "common"
+            ]
+          },
+          "barPercent": 19.387755102040817
+        },
+        {
+          "id": "category-2",
+          "name": "Groceries",
+          "netSpending": "1570.00",
+          "purchases": "1570.00",
+          "refunds": "0.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-030",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-11",
+              "amount": "-680.00",
+              "kind": "expense",
+              "category": "Groceries",
+              "description": "Supermarket",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-029",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-03",
+              "amount": "-890.00",
+              "kind": "expense",
+              "category": "Groceries",
+              "description": "Supermarket",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "partial",
+            "label": "Incomplete picture · My account partial; Shared account missing",
+            "shortLabel": "Incomplete",
+            "detail": "My account: data only through 14 September. Shared account: no data for September. Totals can change.",
+            "incompleteAccountIds": [
+              "mine",
+              "common"
+            ]
+          },
+          "barPercent": 16.020408163265305
+        },
+        {
+          "id": "category-0",
+          "name": "Bills",
+          "netSpending": "1100.00",
+          "purchases": "1100.00",
+          "refunds": "0.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-035",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-05",
+              "amount": "-1100.00",
+              "kind": "expense",
+              "category": "Bills",
+              "description": "Electricity & internet",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "partial",
+            "label": "Incomplete picture · My account partial; Shared account missing",
+            "shortLabel": "Incomplete",
+            "detail": "My account: data only through 14 September. Shared account: no data for September. Totals can change.",
+            "incompleteAccountIds": [
+              "mine",
+              "common"
+            ]
+          },
+          "barPercent": 11.224489795918368
+        },
+        {
+          "id": "category-5",
+          "name": "Transport",
+          "netSpending": "460.00",
+          "purchases": "460.00",
+          "refunds": "0.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-031",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-04",
+              "amount": "-460.00",
+              "kind": "expense",
+              "category": "Transport",
+              "description": "Travel pass",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "partial",
+            "label": "Incomplete picture · My account partial; Shared account missing",
+            "shortLabel": "Incomplete",
+            "detail": "My account: data only through 14 September. Shared account: no data for September. Totals can change.",
+            "incompleteAccountIds": [
+              "mine",
+              "common"
+            ]
+          },
+          "barPercent": 4.6938775510204085
+        },
+        {
+          "id": "category-1",
+          "name": "Eating out",
+          "netSpending": "280.00",
+          "purchases": "280.00",
+          "refunds": "0.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-034",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-08",
+              "amount": "-280.00",
+              "kind": "expense",
+              "category": "Eating out",
+              "description": "Lunch",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "partial",
+            "label": "Incomplete picture · My account partial; Shared account missing",
+            "shortLabel": "Incomplete",
+            "detail": "My account: data only through 14 September. Shared account: no data for September. Totals can change.",
+            "incompleteAccountIds": [
+              "mine",
+              "common"
+            ]
+          },
+          "barPercent": 2.857142857142857
+        }
+      ],
+      "unclassified": {
+        "moneyIn": "600.00",
+        "moneyOut": "-600.00",
+        "count": 2,
+        "transactions": [
+          {
+            "id": "example-037",
+            "accountId": "mine",
+            "accountName": "My account",
+            "date": "2026-09-13",
+            "amount": "-600.00",
+            "kind": "unknown",
+            "category": null,
+            "description": "Unidentified money out",
+            "kindLabel": "Needs a category"
+          },
+          {
+            "id": "example-036",
+            "accountId": "mine",
+            "accountName": "My account",
+            "date": "2026-09-12",
+            "amount": "600.00",
+            "kind": "unknown",
+            "category": null,
+            "description": "Unidentified money in",
+            "kindLabel": "Needs a category"
+          }
+        ],
+        "detail": "Not included in income, expenses or money left. These entries may be purchases, income or transfers; the fixture does not decide."
+      },
+      "adjustments": {
+        "moneyIn": "100.00",
+        "moneyOut": "-25.00",
+        "count": 2,
+        "transactions": [
+          {
+            "id": "example-039",
+            "accountId": "mine",
+            "accountName": "My account",
+            "date": "2026-09-14",
+            "amount": "-25.00",
+            "kind": "adjustment",
+            "category": null,
+            "description": "Uncategorized correction paid",
+            "kindLabel": "Other correction"
+          },
+          {
+            "id": "example-038",
+            "accountId": "mine",
+            "accountName": "My account",
+            "date": "2026-09-14",
+            "amount": "100.00",
+            "kind": "adjustment",
+            "category": null,
+            "description": "Uncategorized correction received",
+            "kindLabel": "Other correction"
+          }
+        ],
+        "detail": "Corrections without a category are shown separately and excluded from income and expenses."
+      },
+      "transfers": {
+        "moneyIn": "0.00",
+        "moneyOut": "0.00",
+        "count": 0,
+        "transactions": [],
+        "detail": "Each side of a move is shown. Neither side counts as income or spending.",
+        "label": "No confirmed internal transfers in this frozen sample."
+      },
+      "accounts": [
+        {
+          "id": "mine",
+          "name": "My account",
+          "ownerLabel": "Mine",
+          "coverage": {
+            "status": "partial",
+            "label": "Partial month",
+            "shortLabel": "Incomplete",
+            "detail": "Data only through 14 September. Later activity is not included.",
+            "incompleteAccountIds": [
+              "mine"
+            ]
+          },
+          "balance": {
+            "amount": "69345.00",
+            "asOf": "2026-09-14"
+          },
+          "quietConfirmed": false,
+          "activityNote": "Only entries in the frozen report are shown; missing activity is possible.",
+          "transactions": [
+            {
+              "id": "example-039",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-14",
+              "amount": "-25.00",
+              "kind": "adjustment",
+              "category": null,
+              "description": "Uncategorized correction paid",
+              "kindLabel": "Other correction"
+            },
+            {
+              "id": "example-038",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-14",
+              "amount": "100.00",
+              "kind": "adjustment",
+              "category": null,
+              "description": "Uncategorized correction received",
+              "kindLabel": "Other correction"
+            },
+            {
+              "id": "example-037",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-13",
+              "amount": "-600.00",
+              "kind": "unknown",
+              "category": null,
+              "description": "Unidentified money out",
+              "kindLabel": "Needs a category"
+            },
+            {
+              "id": "example-036",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-12",
+              "amount": "600.00",
+              "kind": "unknown",
+              "category": null,
+              "description": "Unidentified money in",
+              "kindLabel": "Needs a category"
+            },
+            {
+              "id": "example-030",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-11",
+              "amount": "-680.00",
+              "kind": "expense",
+              "category": "Groceries",
+              "description": "Supermarket",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-033",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-10",
+              "amount": "300.00",
+              "kind": "refund",
+              "category": "Home & furniture",
+              "description": "Returned lamp",
+              "kindLabel": "Refund"
+            },
+            {
+              "id": "example-034",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-08",
+              "amount": "-280.00",
+              "kind": "expense",
+              "category": "Eating out",
+              "description": "Lunch",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-032",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-06",
+              "amount": "-2200.00",
+              "kind": "expense",
+              "category": "Home & furniture",
+              "description": "Desk & chair",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-035",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-05",
+              "amount": "-1100.00",
+              "kind": "expense",
+              "category": "Bills",
+              "description": "Electricity & internet",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-031",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-04",
+              "amount": "-460.00",
+              "kind": "expense",
+              "category": "Transport",
+              "description": "Travel pass",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-029",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-03",
+              "amount": "-890.00",
+              "kind": "expense",
+              "category": "Groceries",
+              "description": "Supermarket",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-028",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-02",
+              "amount": "-9800.00",
+              "kind": "expense",
+              "category": "Housing",
+              "description": "Rent",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-027",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-09-01",
+              "amount": "36000.00",
+              "kind": "income",
+              "category": null,
+              "description": "Salary",
+              "kindLabel": "Income"
+            }
+          ],
+          "openingBalance": "48380.00"
+        },
+        {
+          "id": "common",
+          "name": "Shared account",
+          "ownerLabel": "Common",
+          "coverage": {
+            "status": "no_data",
+            "label": "No data for September",
+            "shortLabel": "Incomplete",
+            "detail": "This month is missing; no activity and no balance can be confirmed.",
+            "incompleteAccountIds": [
+              "common"
+            ]
+          },
+          "balance": {
+            "amount": null,
+            "asOf": null
+          },
+          "quietConfirmed": false,
+          "activityNote": "Only entries in the frozen report are shown; missing activity is possible.",
+          "transactions": [],
+          "openingBalance": null
+        }
+      ]
+    },
+    {
+      "period": {
+        "id": "2026-08",
+        "label": "August 2026",
+        "start": "2026-08-01",
+        "end": "2026-08-31",
+        "provisional": false,
+        "detail": "Month ended; the illustrative admitted export is more than seven days after month-end.",
+        "statusLabel": "Month ended"
+      },
+      "coverage": {
+        "status": "complete",
+        "label": "Account data complete · both accounts",
+        "shortLabel": "Account data complete",
+        "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+        "incompleteAccountIds": []
+      },
+      "measureNote": "Categorized entries",
+      "measures": {
+        "income": "36000.00",
+        "expenses": "24630.00",
+        "netCashFlow": "11370.00",
+        "savings": "11370.00",
+        "savingsRate": "31.58",
+        "coverage": {
+          "status": "complete",
+          "label": "Account data complete · both accounts",
+          "shortLabel": "Account data complete",
+          "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+          "incompleteAccountIds": []
+        }
+      },
+      "incomeTransactions": [
+        {
+          "id": "example-012",
+          "accountId": "mine",
+          "accountName": "My account",
+          "date": "2026-08-01",
+          "amount": "36000.00",
+          "kind": "income",
+          "category": null,
+          "description": "Salary",
+          "kindLabel": "Income"
+        }
+      ],
+      "categories": [
+        {
+          "id": "category-5",
+          "name": "Housing",
+          "netSpending": "9800.00",
+          "purchases": "9800.00",
+          "refunds": "0.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-013",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-02",
+              "amount": "-9800.00",
+              "kind": "expense",
+              "category": "Housing",
+              "description": "Rent",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "complete",
+            "label": "Account data complete · both accounts",
+            "shortLabel": "Account data complete",
+            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "incompleteAccountIds": []
+          },
+          "barPercent": 100.0
+        },
+        {
+          "id": "category-4",
+          "name": "Home & furniture",
+          "netSpending": "8700.00",
+          "purchases": "9500.00",
+          "refunds": "800.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-023",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-19",
+              "amount": "800.00",
+              "kind": "refund",
+              "category": "Home & furniture",
+              "description": "Washing machine price adjustment",
+              "kindLabel": "Refund"
+            },
+            {
+              "id": "example-022",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-12",
+              "amount": "-9200.00",
+              "kind": "expense",
+              "category": "Home & furniture",
+              "description": "Replacement washing machine",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-021",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-08",
+              "amount": "-300.00",
+              "kind": "expense",
+              "category": "Home & furniture",
+              "description": "Kitchen shelves",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "complete",
+            "label": "Account data complete · both accounts",
+            "shortLabel": "Account data complete",
+            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "incompleteAccountIds": []
+          },
+          "barPercent": 88.77551020408163
+        },
+        {
+          "id": "category-3",
+          "name": "Groceries",
+          "netSpending": "3600.00",
+          "purchases": "3600.00",
+          "refunds": "0.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-016",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-25",
+              "amount": "-1030.00",
+              "kind": "expense",
+              "category": "Groceries",
+              "description": "Supermarket",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-015",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-13",
+              "amount": "-1220.00",
+              "kind": "expense",
+              "category": "Groceries",
+              "description": "Supermarket",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-014",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-03",
+              "amount": "-1350.00",
+              "kind": "expense",
+              "category": "Groceries",
+              "description": "Supermarket",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "complete",
+            "label": "Account data complete · both accounts",
+            "shortLabel": "Account data complete",
+            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "incompleteAccountIds": []
+          },
+          "barPercent": 36.734693877551024
+        },
+        {
+          "id": "category-0",
+          "name": "Bills",
+          "netSpending": "1250.00",
+          "purchases": "1250.00",
+          "refunds": "0.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-017",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-04",
+              "amount": "-1250.00",
+              "kind": "expense",
+              "category": "Bills",
+              "description": "Electricity & internet",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "complete",
+            "label": "Account data complete · both accounts",
+            "shortLabel": "Account data complete",
+            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "incompleteAccountIds": []
+          },
+          "barPercent": 12.755102040816327
+        },
+        {
+          "id": "category-2",
+          "name": "Eating out",
+          "netSpending": "1070.00",
+          "purchases": "1070.00",
+          "refunds": "0.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-020",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-20",
+              "amount": "-650.00",
+              "kind": "expense",
+              "category": "Eating out",
+              "description": "Dinner",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-019",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-10",
+              "amount": "-420.00",
+              "kind": "expense",
+              "category": "Eating out",
+              "description": "Lunch",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "complete",
+            "label": "Account data complete · both accounts",
+            "shortLabel": "Account data complete",
+            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "incompleteAccountIds": []
+          },
+          "barPercent": 10.918367346938776
+        },
+        {
+          "id": "category-6",
+          "name": "Transport",
+          "netSpending": "810.00",
+          "purchases": "810.00",
+          "refunds": "0.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-018",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-05",
+              "amount": "-810.00",
+              "kind": "expense",
+              "category": "Transport",
+              "description": "Travel pass",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "complete",
+            "label": "Account data complete · both accounts",
+            "shortLabel": "Account data complete",
+            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "incompleteAccountIds": []
+          },
+          "barPercent": 8.26530612244898
+        },
+        {
+          "id": "category-1",
+          "name": "Clothes",
+          "netSpending": "-600.00",
+          "purchases": "0.00",
+          "refunds": "600.00",
+          "netRefund": true,
+          "transactions": [
+            {
+              "id": "example-024",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-22",
+              "amount": "600.00",
+              "kind": "refund",
+              "category": "Clothes",
+              "description": "Return of a July purchase",
+              "kindLabel": "Refund"
+            }
+          ],
+          "coverage": {
+            "status": "complete",
+            "label": "Account data complete · both accounts",
+            "shortLabel": "Account data complete",
+            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "incompleteAccountIds": []
+          },
+          "barPercent": 0.0
+        }
+      ],
+      "unclassified": {
+        "moneyIn": "450.00",
+        "moneyOut": "-450.00",
+        "count": 2,
+        "transactions": [
+          {
+            "id": "example-026",
+            "accountId": "mine",
+            "accountName": "My account",
+            "date": "2026-08-24",
+            "amount": "-450.00",
+            "kind": "unknown",
+            "category": null,
+            "description": "Unidentified money out",
+            "kindLabel": "Needs a category"
+          },
+          {
+            "id": "example-025",
+            "accountId": "mine",
+            "accountName": "My account",
+            "date": "2026-08-23",
+            "amount": "450.00",
+            "kind": "unknown",
+            "category": null,
+            "description": "Unidentified money in",
+            "kindLabel": "Needs a category"
+          }
+        ],
+        "detail": "Not included in income, expenses or money left. These entries may be purchases, income or transfers; the fixture does not decide."
+      },
+      "adjustments": {
+        "moneyIn": "0.00",
+        "moneyOut": "0.00",
+        "count": 0,
+        "transactions": [],
+        "detail": "Corrections without a category are shown separately and excluded from income and expenses."
+      },
+      "transfers": {
+        "moneyIn": "0.00",
+        "moneyOut": "0.00",
+        "count": 0,
+        "transactions": [],
+        "detail": "Each side of a move is shown. Neither side counts as income or spending.",
+        "label": "No confirmed internal transfers in this frozen sample."
+      },
+      "accounts": [
+        {
+          "id": "mine",
+          "name": "My account",
+          "ownerLabel": "Mine",
+          "coverage": {
+            "status": "complete",
+            "label": "Account data complete",
+            "shortLabel": "Account data complete",
+            "detail": "Evidence covers the whole month, including its boundaries.",
+            "incompleteAccountIds": []
+          },
+          "balance": {
+            "amount": "48380.00",
+            "asOf": "2026-08-25"
+          },
+          "quietConfirmed": false,
+          "activityNote": "Only entries in the frozen report are shown; missing activity is possible.",
+          "transactions": [
+            {
+              "id": "example-016",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-25",
+              "amount": "-1030.00",
+              "kind": "expense",
+              "category": "Groceries",
+              "description": "Supermarket",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-026",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-24",
+              "amount": "-450.00",
+              "kind": "unknown",
+              "category": null,
+              "description": "Unidentified money out",
+              "kindLabel": "Needs a category"
+            },
+            {
+              "id": "example-025",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-23",
+              "amount": "450.00",
+              "kind": "unknown",
+              "category": null,
+              "description": "Unidentified money in",
+              "kindLabel": "Needs a category"
+            },
+            {
+              "id": "example-024",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-22",
+              "amount": "600.00",
+              "kind": "refund",
+              "category": "Clothes",
+              "description": "Return of a July purchase",
+              "kindLabel": "Refund"
+            },
+            {
+              "id": "example-020",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-20",
+              "amount": "-650.00",
+              "kind": "expense",
+              "category": "Eating out",
+              "description": "Dinner",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-023",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-19",
+              "amount": "800.00",
+              "kind": "refund",
+              "category": "Home & furniture",
+              "description": "Washing machine price adjustment",
+              "kindLabel": "Refund"
+            },
+            {
+              "id": "example-015",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-13",
+              "amount": "-1220.00",
+              "kind": "expense",
+              "category": "Groceries",
+              "description": "Supermarket",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-022",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-12",
+              "amount": "-9200.00",
+              "kind": "expense",
+              "category": "Home & furniture",
+              "description": "Replacement washing machine",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-019",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-10",
+              "amount": "-420.00",
+              "kind": "expense",
+              "category": "Eating out",
+              "description": "Lunch",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-021",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-08",
+              "amount": "-300.00",
+              "kind": "expense",
+              "category": "Home & furniture",
+              "description": "Kitchen shelves",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-018",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-05",
+              "amount": "-810.00",
+              "kind": "expense",
+              "category": "Transport",
+              "description": "Travel pass",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-017",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-04",
+              "amount": "-1250.00",
+              "kind": "expense",
+              "category": "Bills",
+              "description": "Electricity & internet",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-014",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-03",
+              "amount": "-1350.00",
+              "kind": "expense",
+              "category": "Groceries",
+              "description": "Supermarket",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-013",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-02",
+              "amount": "-9800.00",
+              "kind": "expense",
+              "category": "Housing",
+              "description": "Rent",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-012",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-08-01",
+              "amount": "36000.00",
+              "kind": "income",
+              "category": null,
+              "description": "Salary",
+              "kindLabel": "Income"
+            }
+          ],
+          "openingBalance": "37010.00"
+        },
+        {
+          "id": "common",
+          "name": "Shared account",
+          "ownerLabel": "Common",
+          "coverage": {
+            "status": "complete",
+            "label": "Account data complete",
+            "shortLabel": "Account data complete",
+            "detail": "Evidence covers the whole month, including its boundaries.",
+            "incompleteAccountIds": []
+          },
+          "balance": {
+            "amount": "23000.00",
+            "asOf": "2026-07-15"
+          },
+          "quietConfirmed": true,
+          "activityNote": "Only entries in the frozen report are shown; missing activity is possible.",
+          "transactions": [],
+          "openingBalance": "23000.00"
+        }
+      ]
+    },
+    {
+      "period": {
+        "id": "2026-07",
+        "label": "July 2026",
+        "start": "2026-07-01",
+        "end": "2026-07-31",
+        "provisional": false,
+        "detail": "Month ended; the illustrative admitted export is more than seven days after month-end.",
+        "statusLabel": "Month ended"
+      },
+      "coverage": {
+        "status": "complete",
+        "label": "Account data complete · both accounts",
+        "shortLabel": "Account data complete",
+        "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+        "incompleteAccountIds": []
+      },
+      "measureNote": "Categorized entries",
+      "measures": {
+        "income": "36000.00",
+        "expenses": "15990.00",
+        "netCashFlow": "20010.00",
+        "savings": "20010.00",
+        "savingsRate": "55.58",
+        "coverage": {
+          "status": "complete",
+          "label": "Account data complete · both accounts",
+          "shortLabel": "Account data complete",
+          "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+          "incompleteAccountIds": []
+        }
+      },
+      "incomeTransactions": [
+        {
+          "id": "example-001",
+          "accountId": "mine",
+          "accountName": "My account",
+          "date": "2026-07-01",
+          "amount": "36000.00",
+          "kind": "income",
+          "category": null,
+          "description": "Salary",
+          "kindLabel": "Income"
+        }
+      ],
+      "categories": [
+        {
+          "id": "category-4",
+          "name": "Housing",
+          "netSpending": "9800.00",
+          "purchases": "9800.00",
+          "refunds": "0.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-002",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-02",
+              "amount": "-9800.00",
+              "kind": "expense",
+              "category": "Housing",
+              "description": "Rent",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "complete",
+            "label": "Account data complete · both accounts",
+            "shortLabel": "Account data complete",
+            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "incompleteAccountIds": []
+          },
+          "barPercent": 100.0
+        },
+        {
+          "id": "category-3",
+          "name": "Groceries",
+          "netSpending": "3250.00",
+          "purchases": "3250.00",
+          "refunds": "0.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-005",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-24",
+              "amount": "-950.00",
+              "kind": "expense",
+              "category": "Groceries",
+              "description": "Supermarket",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-004",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-12",
+              "amount": "-1100.00",
+              "kind": "expense",
+              "category": "Groceries",
+              "description": "Supermarket",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-003",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-03",
+              "amount": "-1200.00",
+              "kind": "expense",
+              "category": "Groceries",
+              "description": "Supermarket",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "complete",
+            "label": "Account data complete · both accounts",
+            "shortLabel": "Account data complete",
+            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "incompleteAccountIds": []
+          },
+          "barPercent": 33.16326530612245
+        },
+        {
+          "id": "category-0",
+          "name": "Bills",
+          "netSpending": "1100.00",
+          "purchases": "1100.00",
+          "refunds": "0.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-006",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-04",
+              "amount": "-1100.00",
+              "kind": "expense",
+              "category": "Bills",
+              "description": "Electricity & internet",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "complete",
+            "label": "Account data complete · both accounts",
+            "shortLabel": "Account data complete",
+            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "incompleteAccountIds": []
+          },
+          "barPercent": 11.224489795918368
+        },
+        {
+          "id": "category-5",
+          "name": "Transport",
+          "netSpending": "740.00",
+          "purchases": "740.00",
+          "refunds": "0.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-007",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-05",
+              "amount": "-740.00",
+              "kind": "expense",
+              "category": "Transport",
+              "description": "Travel pass",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "complete",
+            "label": "Account data complete · both accounts",
+            "shortLabel": "Account data complete",
+            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "incompleteAccountIds": []
+          },
+          "barPercent": 7.551020408163265
+        },
+        {
+          "id": "category-2",
+          "name": "Eating out",
+          "netSpending": "650.00",
+          "purchases": "650.00",
+          "refunds": "0.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-008",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-09",
+              "amount": "-650.00",
+              "kind": "expense",
+              "category": "Eating out",
+              "description": "Dinner",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "complete",
+            "label": "Account data complete · both accounts",
+            "shortLabel": "Account data complete",
+            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "incompleteAccountIds": []
+          },
+          "barPercent": 6.63265306122449
+        },
+        {
+          "id": "category-1",
+          "name": "Clothes",
+          "netSpending": "450.00",
+          "purchases": "450.00",
+          "refunds": "0.00",
+          "netRefund": false,
+          "transactions": [
+            {
+              "id": "example-009",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-10",
+              "amount": "-450.00",
+              "kind": "expense",
+              "category": "Clothes",
+              "description": "Clothes",
+              "kindLabel": "Purchase / payment"
+            }
+          ],
+          "coverage": {
+            "status": "complete",
+            "label": "Account data complete · both accounts",
+            "shortLabel": "Account data complete",
+            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "incompleteAccountIds": []
+          },
+          "barPercent": 4.591836734693878
+        }
+      ],
+      "unclassified": {
+        "moneyIn": "0.00",
+        "moneyOut": "0.00",
+        "count": 0,
+        "transactions": [],
+        "detail": "Not included in income, expenses or money left. These entries may be purchases, income or transfers; the fixture does not decide."
+      },
+      "adjustments": {
+        "moneyIn": "0.00",
+        "moneyOut": "0.00",
+        "count": 0,
+        "transactions": [],
+        "detail": "Corrections without a category are shown separately and excluded from income and expenses."
+      },
+      "transfers": {
+        "moneyIn": "5000.00",
+        "moneyOut": "-5000.00",
+        "count": 2,
+        "transactions": [
+          {
+            "id": "example-011",
+            "accountId": "common",
+            "accountName": "Shared account",
+            "date": "2026-07-15",
+            "amount": "5000.00",
+            "kind": "transfer",
+            "category": null,
+            "description": "Move from My account",
+            "kindLabel": "Between our accounts"
+          },
+          {
+            "id": "example-010",
+            "accountId": "mine",
+            "accountName": "My account",
+            "date": "2026-07-15",
+            "amount": "-5000.00",
+            "kind": "transfer",
+            "category": null,
+            "description": "Move to Shared account",
+            "kindLabel": "Between our accounts"
+          }
+        ],
+        "detail": "Each side of a move is shown. Neither side counts as income or spending.",
+        "label": "2 account entries for moves between these accounts."
+      },
+      "accounts": [
+        {
+          "id": "mine",
+          "name": "My account",
+          "ownerLabel": "Mine",
+          "coverage": {
+            "status": "complete",
+            "label": "Account data complete",
+            "shortLabel": "Account data complete",
+            "detail": "Evidence covers the whole month, including its boundaries.",
+            "incompleteAccountIds": []
+          },
+          "balance": {
+            "amount": "37010.00",
+            "asOf": "2026-07-24"
+          },
+          "quietConfirmed": false,
+          "activityNote": "Only entries in the frozen report are shown; missing activity is possible.",
+          "transactions": [
+            {
+              "id": "example-005",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-24",
+              "amount": "-950.00",
+              "kind": "expense",
+              "category": "Groceries",
+              "description": "Supermarket",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-010",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-15",
+              "amount": "-5000.00",
+              "kind": "transfer",
+              "category": null,
+              "description": "Move to Shared account",
+              "kindLabel": "Between our accounts"
+            },
+            {
+              "id": "example-004",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-12",
+              "amount": "-1100.00",
+              "kind": "expense",
+              "category": "Groceries",
+              "description": "Supermarket",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-009",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-10",
+              "amount": "-450.00",
+              "kind": "expense",
+              "category": "Clothes",
+              "description": "Clothes",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-008",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-09",
+              "amount": "-650.00",
+              "kind": "expense",
+              "category": "Eating out",
+              "description": "Dinner",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-007",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-05",
+              "amount": "-740.00",
+              "kind": "expense",
+              "category": "Transport",
+              "description": "Travel pass",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-006",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-04",
+              "amount": "-1100.00",
+              "kind": "expense",
+              "category": "Bills",
+              "description": "Electricity & internet",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-003",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-03",
+              "amount": "-1200.00",
+              "kind": "expense",
+              "category": "Groceries",
+              "description": "Supermarket",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-002",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-02",
+              "amount": "-9800.00",
+              "kind": "expense",
+              "category": "Housing",
+              "description": "Rent",
+              "kindLabel": "Purchase / payment"
+            },
+            {
+              "id": "example-001",
+              "accountId": "mine",
+              "accountName": "My account",
+              "date": "2026-07-01",
+              "amount": "36000.00",
+              "kind": "income",
+              "category": null,
+              "description": "Salary",
+              "kindLabel": "Income"
+            }
+          ],
+          "openingBalance": "22000.00"
+        },
+        {
+          "id": "common",
+          "name": "Shared account",
+          "ownerLabel": "Common",
+          "coverage": {
+            "status": "complete",
+            "label": "Account data complete",
+            "shortLabel": "Account data complete",
+            "detail": "Evidence covers the whole month, including its boundaries.",
+            "incompleteAccountIds": []
+          },
+          "balance": {
+            "amount": "23000.00",
+            "asOf": "2026-07-15"
+          },
+          "quietConfirmed": false,
+          "activityNote": "Only entries in the frozen report are shown; missing activity is possible.",
+          "transactions": [
+            {
+              "id": "example-011",
+              "accountId": "common",
+              "accountName": "Shared account",
+              "date": "2026-07-15",
+              "amount": "5000.00",
+              "kind": "transfer",
+              "category": null,
+              "description": "Move from My account",
+              "kindLabel": "Between our accounts"
+            }
+          ],
+          "openingBalance": "18000.00"
+        }
+      ]
+    }
+  ]
+}

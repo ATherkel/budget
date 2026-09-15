@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Our month · Dashboard prototype</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="prototype"><div><strong>Throwaway prototype</strong> <span id="source-label">Loading frozen reports…</span></div><label>Data <select id="dataset"><option value="local">Local sample</option><option value="example">Synthetic example</option></select></label></div>
+  <main>
+    <header class="page-header"><div><div class="eyebrow">HOUSEHOLD / TWO ACCOUNTS</div><h1>Our month</h1><p>A little clarity about where it all went.</p></div><div class="month-control"><label for="month">Choose a month</label><select id="month"></select></div></header>
+    <div id="content" aria-live="polite" aria-atomic="false"><p>Loading the dashboard…</p></div>
+    <footer>Read-only experiment · DKK · Frozen as of 15 September 2026<br>Only the two shown accounts are included.</footer>
+  </main>
+  <dialog id="detail" aria-labelledby="detail-title"><div class="dialog-top"><span class="eyebrow">A CLOSER LOOK</span><button id="close-detail" class="close" aria-label="Close details">Close ×</button></div><div id="detail-content"></div></dialog>
+</body>
+</html>
