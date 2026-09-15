@@ -26,6 +26,8 @@ ImportRun(
     declared_account_id: str,
     source_format: str,
     original_filename: str,   # private provenance only; never in reports or logs
+    exported_on: date,        # the date the export reaches
+    exported_on_source: Literal["filename", "declared"],
     started_at: datetime,     # UTC
     outcome: Literal["stored", "repeat", "refused"],
 )
@@ -63,6 +65,11 @@ touches the payload.
   manual decision.
 - **Currency.** The account's currency comes from account configuration, never
   from the payload.
+- **Export date.** The export date is how far the export reaches, used for
+  coverage and provisional periods. It is read from the date suffix of a
+  Danske-style filename (`…-YYYYMMDD.csv`); without one, the operator must
+  declare it. No other part of the filename is interpreted. The import summary
+  shows it for the operator to check.
 
 ## Danske CSV Format (`danske-csv-v1`)
 
@@ -70,7 +77,10 @@ touches the payload.
   and no final line break.
 - The header is exactly `Dato`, `Kategori`, `Underkategori`, `Tekst`, `Beløb`,
   `Saldo`, `Status`, `Afstemt`.
-- Rows are ordered oldest first.
+- Rows are ordered oldest first by `Dato`, the transaction date (purchase
+  date). A transaction the bank books days later appears at its `Dato` in later
+  exports, and `Saldo` is the running balance recalculated in that order at
+  export time.
 - `Kategori` and `Underkategori` are space-padded. The padding is preserved
   in source records.
 - The file contains no account, currency, or transaction identifier.

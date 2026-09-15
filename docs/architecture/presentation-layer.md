@@ -27,9 +27,11 @@ must preserve the analytics-facing DTO boundary.
 
 ## Data Trust Display
 
-- Any report period that includes the current, still-accumulating calendar
-  month must carry a visible provisional/month-to-date label at the point of
-  display — not just a documented caveat.
+- Any provisional report period must carry a visible provisional label at the
+  point of display — not just a documented caveat. A period is provisional
+  while it includes today, and until every account in the report has an
+  admitted export dated at least 7 days after the period ends, because
+  late-booked transactions land on their transaction date.
 - Account and balance views must reflect each account's coverage status from
   analytics; a `partial` or `no_data` account must never render as if its
   balance or totals are complete.

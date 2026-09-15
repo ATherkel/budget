@@ -21,9 +21,9 @@ One record per booked transaction, after duplicates are collapsed.
 
 ```python
 Transaction(
-    transaction_id: str,        # ADR-007 identity hash
+    transaction_id: str,        # ADR-009 identity hash
     account_id: str,
-    booking_date: date,
+    transaction_date: date,     # the source's transaction date (Danske: purchase date)
     amount: Decimal,
     currency: str,              # from account configuration
     description: str,           # source text exactly as delivered
@@ -31,7 +31,7 @@ Transaction(
     balance: Decimal | None,
     source_status: str,
     occurrence: int,            # k among visibly identical transactions
-    day_sequence: int,          # order within booking_date
+    day_sequence: int,          # order within transaction_date
     identity_version: str,
     bank_category: str | None,  # provenance only; trimmed
     bank_subcategory: str | None,
@@ -40,9 +40,10 @@ Transaction(
 
 `balance` is the bank-stated account balance immediately after this
 transaction. `source_status` is the source's own status value, carried
-verbatim. For each date, `balance` and `day_sequence` come from one export,
-chosen as ADR-007 describes. `balance` is null only for sources that state no
-balances (ADR-008).
+verbatim. For each date, `balance` and `day_sequence` come from the latest
+admitted export covering that date (ADR-009). They can therefore change when a
+later export adds a late-booked transaction; `transaction_id` never does.
+`balance` is null only for sources that state no balances (ADR-010).
 
 ## Other Outputs
 
@@ -59,7 +60,7 @@ UnbookedRecord(                 # retained provenance; never a transaction
     record_ordinal: int,
     import_run_id: str,
     account_id: str,
-    source_date: date,
+    transaction_date: date,
     amount: Decimal,
     source_status: str,
 )
@@ -69,12 +70,13 @@ BalanceObservation(             # bank-stated end-of-day balance per export
     balance_date: date,
     end_of_day_balance: Decimal,
     payload_id: str,
-    is_final_date: bool,        # the export's last date may be incomplete
 )
 
 ImportRunResult(
     import_run_id: str,
     status: Literal["accepted", "quarantined"],
+    covered_from: date,         # first transaction date in the export
+    covered_to: date,           # the import run's export date (Bronze)
     errors: Sequence[ValidationError],
     review_item_ids: Sequence[str],
 )
@@ -115,20 +117,22 @@ ReviewItem(
   - an unparseable date or decimal;
   - an unknown status;
   - a booked row without a balance, or a balance-chain break within the
-    export (ADR-008).
+    export (ADR-010).
 
 **Identity and merging**
-- Per ADR-007: content plus occurrence identity, and the highest count per
+- Per ADR-009: content plus occurrence identity, and the highest count per
   export when exports overlap.
 
 **Merge verification**
-- Import runs are admitted in `started_at` order. Each is admitted only if its
-  balance observations agree with those of the runs already admitted, apart
-  from final dates.
-- A disagreement quarantines the later run and raises an `export-disagreement`
-  review item.
-- Fewer repeated transactions on a non-final date raises a `fewer-repeats`
-  review item.
+- Import runs are admitted in `started_at` order.
+- A run is admitted only if it still shows every transaction already admitted
+  for the dates it covers, and its end-of-day balances differ from those
+  already admitted by exactly the cumulative amounts of the transactions it
+  adds (*explained growth*, ADR-009). Late bookings on earlier dates, and
+  later bookings on an export's final date, are both explained growth.
+- An unexplained difference quarantines the later run and raises an
+  `export-disagreement` review item.
+- Fewer repeated transactions on any date raises a `fewer-repeats` review item.
 - Silver uses balances only to verify its own merge. Coverage and
   reconciliation for reporting belong to Gold and analytics (ADR-006).
 

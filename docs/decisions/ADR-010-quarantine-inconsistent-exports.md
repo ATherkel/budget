@@ -1,4 +1,4 @@
-# ADR-008: Quarantine Exports Whose Stated Balances Are Inconsistent
+# ADR-010: Quarantine Exports Whose Stated Balances Are Inconsistent
 
 **Status:** Accepted. Supersedes part of ADR-006.
 

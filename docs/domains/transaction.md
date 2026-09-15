@@ -9,6 +9,12 @@ completed/settled. A row still pending or unsettled is retained in Bronze and
 Silver as provenance but does not become a Gold transaction until it settles;
 the household must never see a pending amount presented as booked.
 
+A transaction's date is its **transaction date**, the date the source assigns
+to it. For Danske this is the purchase date, which can precede booking by
+days. A late-booked transaction therefore lands in a period that may already
+look finished, which is why periods stay provisional for a while after they
+end.
+
 ## Types
 
 - **Income:** positive money received that contributes to household income.
@@ -34,9 +40,9 @@ the bank payload.
 ## Identity and Deduplication
 
 The importer must retain the bank/source identifier where supplied. When one
-is absent, identity follows ADR-007:
+is absent, identity follows ADR-009:
 
-- The identifier is built from the account, booking date, amount,
+- The identifier is built from the account, transaction date, amount,
   whitespace-normalized text, and an occurrence number among visibly identical
   transactions.
 - When exports overlap, each group of identical transactions counts the

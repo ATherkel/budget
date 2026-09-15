@@ -26,25 +26,25 @@ out is negative.
 | `gold_transaction_id` | UUID/string | Yes | Stable identifier for this Gold record/version. |
 | `silver_transaction_id` | UUID/string | Yes | Traceable parent Silver record. |
 | `account_id` | UUID/string | Yes | Stable household account identifier. |
-| `booking_date` | `date` | Yes | Bank booking date; reporting period derives from it. |
+| `transaction_date` | `date` | Yes | Date the source assigns to the transaction (for Danske, the purchase date, which can precede booking by days); reporting period derives from it. |
 | `amount` | `Decimal` | Yes | Signed monetary amount. |
 | `currency` | ISO 4217 string | Yes | Currency, initially `DKK`. |
 | `description` | string | Yes | Normalized human-readable transaction text. |
 | `transaction_type` | enum | Yes | `income`, `expense`, `transfer`, `adjustment`, or `unknown`. |
 | `category_id` | UUID/string/null | Conditional | Required for classified income/expense, and for an adjustment that nets a refund against the category it reverses; null permitted for transfer, unknown, and adjustments with no originating category. |
-| `balance` | `Decimal`/null | No | Bank-stated account balance immediately after this transaction. Drives balance-chain reconciliation and coverage; null when the source omitted it, which is a discrepancy, not an assumed zero. |
+| `balance` | `Decimal`/null | No | Bank-stated account balance immediately after this transaction, as stated by the latest export covering its date; a late booking can change it. Drives balance-chain reconciliation and coverage; null when the source omitted it, which is a discrepancy, not an assumed zero. |
 | `counterparty` | string/null | No | Normalized merchant, person, or organisation when known. |
 | `transfer_group_id` | UUID/string/null | No | Groups two or more internal transfer legs when confidently matched. |
 | `classification_source` | enum | Yes | `rule`, `manual`, `imported`, or `unclassified`. |
 | `classification_version` | string | Yes | Rule-set or manual-policy version that produced the classification. |
-| `reporting_month` | `YYYY-MM` | Yes | Derived solely from `booking_date`. |
+| `reporting_month` | `YYYY-MM` | Yes | Derived solely from `transaction_date`. |
 | `created_at` | UTC datetime | Yes | Time this Gold version was materialized. |
 
 ## Invariants
 
 1. `amount` is represented with fixed decimal precision; no float enters the
    contract.
-2. `reporting_month == booking_date.strftime("%Y-%m")`.
+2. `reporting_month == transaction_date.strftime("%Y-%m")`.
 3. `transaction_type=expense` has a negative amount; `income` has a positive
    amount. Corrections that do not obey this convention use `adjustment` and
    need an explanation.
@@ -54,7 +54,7 @@ out is negative.
    Bronze provenance.
 6. Classification is never silently destructive: a materialized Gold version
    records how it was derived and can be rebuilt.
-7. `booking_date` is used exactly as supplied by the source; no timezone
+7. `transaction_date` is used exactly as supplied by the source; no timezone
    conversion is applied at any layer.
 8. Only source rows in a completed/settled booking status are materialized as
    `GoldTransaction`. Pending or unsettled rows remain in Bronze/Silver only.
@@ -64,10 +64,10 @@ out is negative.
    this chain, or a missing `balance`, is never corrected or hidden — it is
    surfaced as reduced coverage (see `analytics-layer.md`), not silently
    assumed. For balance-stating sources, an export with a missing balance or
-   an internal break is quarantined before Silver (ADR-008), so `balance` is
+   an internal break is quarantined before Silver (ADR-010), so `balance` is
    null only for sources that state no balances.
 10. `silver_transaction_id` is stable across re-imports and rebuilds
-    (ADR-007), so classifications and manual decisions keep their targets.
+    (ADR-009), so classifications and manual decisions keep their targets.
 
 ## Consumer Interface
 

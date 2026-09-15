@@ -55,15 +55,26 @@ period, shown alongside Income/Expenses/Savings so an unclassified amount is a
 verified claim, not an artifact of silent exclusion.
 
 **Provisional period**:
-A reporting period that includes the current, still-accumulating calendar
-month. Must be visibly labeled wherever it's displayed, not just documented.
+A reporting period whose figures may still change: it includes today, or some
+account's latest export is dated less than 7 days after the period ends.
+Must be visibly labeled wherever it's displayed, not just documented.
 
 ### Imports and identity
 
 **Export**:
-A file the bank produces for one account covering a date range. Overlapping
-exports of the same account are normal.
+A file the bank produces for one account, reaching up to its export date.
+Overlapping exports of the same account are normal.
 _Avoid_: statement, dump
+
+**Transaction date**:
+The date the source assigns to a transaction; for Danske, the purchase date.
+It determines the reporting period.
+_Avoid_: booking date, value date
+
+**Late booking**:
+A transaction the bank books days after its transaction date, so it first
+appears in a later export on a date an earlier export already covered.
+_Avoid_: back-dated transaction, missing transaction
 
 **Raw payload**:
 The exact bytes received from a source, such as an export file or an API

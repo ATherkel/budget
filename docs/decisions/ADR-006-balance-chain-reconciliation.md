@@ -1,7 +1,7 @@
 # ADR-006: Reconcile Account Balances via Bank-Stated Balance Chains
 
 **Status:** Accepted. Partly superseded by
-[ADR-008](ADR-008-quarantine-inconsistent-exports.md): for balance-stating
+[ADR-010](ADR-010-quarantine-inconsistent-exports.md): for balance-stating
 sources, a missing balance or a within-export chain break quarantines the
 export.
 

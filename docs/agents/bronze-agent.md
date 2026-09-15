@@ -39,4 +39,6 @@ first. The only values observed in `Status` are `Udført` and `Slettet`, and
   earlier import run is voided.
 - A UTF-8 file, a byte undefined in Windows-1252, or an unexpected header
   yields a `FormatFailure` and no source records.
+- The export date comes from a `…-YYYYMMDD.csv` filename suffix, or else must be
+  declared; no other part of the filename is interpreted.
 - Bronze has no dependency on Silver, Gold, analytics, or UI modules.
