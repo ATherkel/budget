@@ -2,7 +2,7 @@
 
 ## Status
 
-Version `0.2`, proposed for the CSV MVP. It replaces version `0.1` entirely;
+Version `0.2`, proposed for the CSV MVP. The dimensional model amends the still-proposed 0.2 contract in place, retaining the accepted reporting evidence from issue #4;
 see [Changes from 0.1](#changes-from-01). Changes are backward-incompatible
 unless a new contract version is introduced and downstream consumers migrate.
 The contract stays proposed until the readiness review (issue #12) approves it.

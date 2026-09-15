@@ -25,4 +25,4 @@ signals but are not authoritative. They are retained as provenance in Silver;
 Gold categories are assigned by rules or manual decisions.
 
 Transfers, adjustments, and unclassified transactions do not carry a category.
-A refund carries the expense category of the purchase it reverses.
+A refund carries the category of the movement it reverses, including returned income.
