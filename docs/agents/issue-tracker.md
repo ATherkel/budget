@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
+Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations, and run every command, reads included, through the App wrapper's `-Mode Gh` described in `docs/agents/github-app.md`.
 
 ## Conventions
 
@@ -11,7 +11,7 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 
-Infer the repository from `git remote -v`; `gh` does this automatically when run inside a clone.
+The repository is `ATherkel/budget`. Pass `--repo ATherkel/budget` to `gh issue` and `gh pr` commands, because the clone has two remotes (`origin` and the owner's `me`).
 
 ## Pull requests as a triage surface
 
