@@ -28,20 +28,17 @@ still transfer-eligible)
 The span of reporting months in which an account is part of the household's
 history: from the month of its first Booked transaction until the month it
 closes, or the latest reported month if it is still open. A month outside it
-is not a gap; a month inside it with no transactions is `no_data`.
+is outside the reported history; a quiet month inside it is judged by Coverage.
 _Avoid_: Active period, account lifetime (the bank account may predate the
 household's data)
 
 ### Transactions and classification
 
 **Booked transaction**:
-A transaction whose source marked it completed/settled. A pending or
-unsettled source row is retained in Bronze and Silver as provenance but never
-becomes a Gold transaction. A booked transaction is classified as a whole: it
-carries at most one category and is never split across categories.
-_Avoid_: Transaction, in Bronze/Silver context (too broad — those layers may
-hold unsettled rows that aren't Transactions yet); split, allocation (not a
-concept this release has)
+A transaction whose source row Silver maps to `booking_status=booked`.
+Pending and cancelled rows remain provenance. A booked transaction carries
+at most one category and is never split across categories.
+_Avoid_: Transaction in Bronze/Silver (too broad); split, allocation
 
 **Classification**:
 A booked transaction's household interpretation: its type and, for income,
@@ -74,14 +71,13 @@ outside the counterpart's Managed period.
 _Avoid_: Internal transfer (redundant), movement
 
 **Refund**:
-Money returned against a prior purchase. Nets against the originating category's
-expense total rather than counting as income or vanishing from spending.
-_Avoid_: Reversal (see Adjustment), chargeback (not yet a distinct concept)
+Money returned against an earlier categorized movement. It nets against that
+category in the originating measure, including a reversed fee or returned income.
+_Avoid_: Reversal (ambiguous with Adjustment), chargeback (not distinct yet)
 
 **Adjustment**:
-A correction, fee reversal, or exceptional entry with no originating purchase to
-net against; excluded from income and expense totals. A Refund is not an
-Adjustment even though both break the expense-is-negative sign convention.
+An uncategorized correction, excluded from income and expense totals and
+reported separately. A Refund carries a category and is not an Adjustment.
 
 **Category group**:
 The fixed top level of the two-level category hierarchy. It gathers related
@@ -89,10 +85,10 @@ categories of one direction for reporting and is never assigned to a
 transaction directly.
 _Avoid_: Parent category, super-category
 
-**Unclassified total**:
-An explicit reporting measure summing `unknown`-classified transactions for a
-period, shown alongside Income/Expenses/Savings so an unclassified amount is a
-verified claim, not an artifact of silent exclusion.
+**Unclassified money**:
+Money on `unknown` transactions, reported as money in, money out, and a count,
+so opposite amounts can't cancel to zero and read as "nothing unclassified".
+_Avoid_: Unclassified total (a single sum hides offsetting amounts)
 
 ### Balances and trust
 
@@ -106,14 +102,14 @@ reflected in Coverage, never silently corrected.
 
 **Coverage**:
 A per-account, per-reporting-period status (`complete` / `partial` / `no_data`)
-stating whether that account's data is trustworthy enough to report on for that
-period. `complete` requires an unbroken balance chain across every row in the
-period _and_ that the period is not the first month of the account's Managed
-period; a first, partial-month import is always `partial`. A chain break makes
-every month from the last trusted balance through the break `partial`, because
-the missing movement could lie anywhere in that span. Tracked at the account
-grain, not the whole household, so a gap points at the account that needs
-attention.
+saying whether the balance evidence shows that the whole period is covered.
+The rules are in [`gold-layer.md`](docs/architecture/gold-layer.md#coverage).
+A quiet month can be complete; absent evidence cannot be read as zero.
+
+**Evidence through**:
+The last date an account's admitted exports are known to cover: the day
+before its latest admitted export date.
+_Avoid_: last import date
 
 **Monthly balance snapshot**:
 One account's balance position for one reporting month of its Managed period:
@@ -124,10 +120,65 @@ _Avoid_: Statement (a bank document), balance on its own (ambiguous with the
 bank-stated balance after one transaction)
 
 **Provisional period**:
-A reporting period that includes the current, still-accumulating calendar
-month. Must be visibly labeled wherever it's displayed, not just documented.
+A reporting period that includes the current calendar month or still awaits
+exports covering the late-booking window. How it must be labeled is in
+[`docs/architecture/presentation-layer.md`](docs/architecture/presentation-layer.md#data-trust-display).
+
+### Imports and identity
+
+**Export**:
+A file the bank produces for one account, reaching up to its export date.
+Overlapping exports of the same account are normal.
+_Avoid_: statement, dump
+
+**Transaction date**:
+The date the source assigns to a transaction; for Danske, the purchase date.
+It determines the reporting period.
+_Avoid_: booking date, value date
+
+**Late booking**:
+A transaction the bank books days after its transaction date, so it first
+appears in a later export on a date an earlier export already covered.
+_Avoid_: back-dated transaction, missing transaction
+
+**Raw payload**:
+The exact bytes received from a source, such as an export file or an API
+response. It is never altered.
+_Avoid_: raw data, original file
+
+**Import run**:
+One presentation of a raw payload to the platform, together with the account
+the operator declared it belongs to.
+_Avoid_: import, load, upload
+
+**Source record**:
+One record exactly as the source presented it, such as an export row, still
+uninterpreted.
+_Avoid_: raw row, line
+
+**Unbooked record**:
+A source record the source marks as not booked, such as pending or deleted
+before booking. It is retained as provenance but never becomes a booked
+transaction.
+_Avoid_: pending transaction, deleted transaction, cancelled transaction
+
+**Duplicate**:
+The same booked transaction appearing in more than one source record,
+typically in overlapping exports. Duplicates collapse to one booked
+transaction.
+_Avoid_: repeat, copy
+
+**Repeated transaction**:
+One of several distinct booked transactions that look identical: same account,
+date, amount, and text. Each one is kept.
+_Avoid_: duplicate
 
 ### Review
+
+**Quarantine**:
+The state of an import run whose raw payload is retained but which contributes
+nothing downstream, because it failed validation or awaits review.
+_Avoid_: rejected, held, failed import
 
 **Review item**:
 An ambiguity the platform cannot settle by rule and a person must decide, such
@@ -140,3 +191,9 @@ A recorded human ruling: it classifies a transaction, settles a Review item,
 or voids an import run. It targets transactions by their identity and never
 edits source data.
 _Avoid_: Override, fix, edit
+
+**Voided import run**:
+An import run a person has declared mistaken, for example because it was
+declared against the wrong account. Its raw payload is retained but it
+contributes nothing downstream.
+_Avoid_: deleted import, undone import

@@ -10,7 +10,8 @@ agent authority outside its boundary.
    [architecture](02-architecture.md).
 2. Read [the roadmap](03-roadmap.md) to identify the current phase.
 3. For implementation work, read the relevant layer contract and domain
-   documents, then the matching agent brief.
+   documents, then the matching agent brief. For behavior-changing application
+   work, also follow the [test-driven development workflow](agents/tdd.md).
 
 ## Normative Documents
 
@@ -21,8 +22,12 @@ agent authority outside its boundary.
   layer document when there is a conflict.
 - `decisions/` records accepted architectural decisions. Changes require a new
   ADR; do not silently revise a decision to fit an implementation.
-- [`../CONTEXT.md`](../CONTEXT.md) is the household finance glossary: tight,
-  opinionated term definitions. It is vocabulary only, never a spec.
+
+## Vocabulary
+
+[`../CONTEXT.md`](../CONTEXT.md) is the household finance glossary: tight,
+opinionated term definitions. It defines terms only and links to the governing
+document for each rule; where they seem to differ, the governing document wins.
 
 ## Conventions
 

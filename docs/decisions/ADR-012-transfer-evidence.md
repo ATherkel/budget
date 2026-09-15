@@ -1,4 +1,4 @@
-# ADR-010: Pair Transfers Only on Strong Evidence; Otherwise Leave Legs Unknown
+# ADR-012: Pair Transfers Only on Strong Evidence; Otherwise Leave Legs Unknown
 
 **Status:** Proposed
 
@@ -43,7 +43,7 @@ legs.
 - **A transfer claim without a pair** leaves the leg `unknown`, with a review
   item.
 - **A one-sided transfer** comes only from a manual decision. The decision names
-  the counterpart Gold account, and the booking date must fall outside that
+  the counterpart Gold account, and the transaction date must fall outside that
   account's managed period.
 - **Confidence is a named evidence basis in lineage**, not a score:
   `same_day`, `date_gap`, `repeated_legs`, `manual_pair`, or `one_sided`.

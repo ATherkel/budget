@@ -1,6 +1,6 @@
 # ADR-007: Model Gold Dimensionally, with Balance Snapshots and Coverage Published by Gold
 
-**Status:** Proposed
+**Status:** Proposed. If accepted, supersedes ADR-006 only for coverage placement and the Gold interface; ADR-010 still governs quarantine.
 
 ## Context
 
@@ -10,7 +10,7 @@ balances and per-account, per-month coverage ([ADR-006](ADR-006-balance-chain-re
 category rollups, and a boundary that keeps source lineage away from report
 consumers. Balances are semi-additive, so they cannot simply be summed out of a
 transaction list. Evaluating the balance chain needs a deterministic order of
-transactions within a booking date, which only the upstream layers know.
+transactions within a transaction date, which only the upstream layers know.
 [Issue #6](https://github.com/ATherkel/budget/issues/6) asked which processes,
 grains, facts, dimensions, keys, and balance representation form the
 first-release Gold model.
@@ -61,13 +61,13 @@ it.
 - The Gold contract becomes version 0.2 (still proposed) and replaces 0.1
   entirely; `docs/architecture/gold-layer.md` describes the model and is no
   longer a competing schema.
-- Coverage placement moves from analytics to Gold. The coverage *semantics*
-  agreed in issue #4 are unchanged except for one refinement: a chain break
-  demotes every month from the last trusted balance through the break.
+- Coverage placement moves from analytics to Gold. ADR-006's whole-period
+  evidence rules remain: verified quiet months are complete, and every month
+  crossed by a broken link is partial.
 - ADR-006's `balance` field is renamed `balance_after`; the decision itself
   is unchanged.
 - Silver must supply a stable canonical identity and a deterministic per-account
-  order for booked transactions, including within a booking date. Issue #5
-  defines how.
+  order for booked transactions, including within a transaction date. ADR-009
+  defines how, using the latest admitted export for each date.
 - Introducing Type 2 dimensions, category allocations, a counterparty
   dimension, or daily snapshots later is a contract version change.

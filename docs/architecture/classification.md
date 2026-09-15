@@ -7,8 +7,8 @@ Classification gives every Gold transaction its household interpretation: a
 `transfer_group_id` for a matched transfer. This document is the policy Gold
 applies. The fields it produces are defined in the
 [Gold contract](gold-contract.md), and the decisions behind it are
-[ADR-009](../decisions/ADR-009-classification-precedence.md) and
-[ADR-010](../decisions/ADR-010-transfer-evidence.md).
+[ADR-011](../decisions/ADR-011-classification-precedence.md) and
+[ADR-012](../decisions/ADR-012-transfer-evidence.md).
 
 Status: proposed with Gold contract 0.2.
 
@@ -16,7 +16,7 @@ Two principles run through every rule below:
 
 - **A visible unknown beats a silent guess.** When the evidence is weak,
   conflicting, or ambiguous, the transaction stays `unknown`. It then counts
-  toward the unclassified total and raises a review item, instead of quietly
+  toward the unclassified money and raises a review item, instead of quietly
   moving money between income, expense, and transfer totals.
 - **Classification is a pure function of its inputs.** The same inputs give the
   same result, whatever the import order and whatever an earlier publication
@@ -90,7 +90,7 @@ step that relates transactions to each other.
 - the description text: contains, starts with, or a regular expression,
   always case-insensitive
 - the amount: sign, or an inclusive range
-- the booking date: an inclusive range, for rules that apply only to a period
+- the transaction date: an inclusive range, for rules that apply only to a period
 - the bank's category labels, where the source supplies them
 
 Bank category labels are provenance. A rule may test them like any other
@@ -111,7 +111,8 @@ A rule assigns exactly one of:
   | `expense` | negative | `expense` |
   | `expense` | positive | `refund` |
   | `income` | positive | `income` |
-  | `income` | negative or zero | none: `sign-mismatch` |
+  | `income` | negative | `refund` |
+  | `income` | zero | none: `sign-mismatch` |
   | `expense` | zero | none: `sign-mismatch` |
 
   A reimbursed outlay or returned purchase that matches an expense-category
@@ -150,7 +151,7 @@ Two booked transactions are transfer candidates when all of these hold:
 - they are on different Gold accounts;
 - their amounts cancel exactly: one is negative, the other its positive
   counterpart;
-- their booking dates are at most 3 days apart;
+- their transaction dates are at most 3 days apart;
 - neither is targeted by a manual decision;
 - if the dates differ, at least one leg carries a transfer claim from its rule
   result. A same-day candidate needs no claim.
@@ -158,7 +159,7 @@ Two booked transactions are transfer candidates when all of these hold:
 ### Stages
 
 Matching runs in stages by date gap: stage *n* considers only candidates whose
-booking dates are exactly *n* days apart, for *n* = 0, 1, 2, 3 in that order.
+transaction dates are exactly *n* days apart, for *n* = 0, 1, 2, 3 in that order.
 Each stage skips legs already paired or held for review. Within a stage, Gold
 groups the candidates into connected sets, and settles each set as follows:
 
@@ -183,14 +184,14 @@ A transaction whose rule result is a transfer claim but which is not paired is
 reason:
 
 - `counterpart-may-not-be-imported`: some other Gold account has no booked
-  transaction on or after the leg's last candidate date (booking date plus 3
+  transaction on or after the leg's last candidate date (transaction date plus 3
   days). The other leg may arrive with the next import. This is a hint, and a
   quiet account also triggers it.
 - `no-candidate`: otherwise.
 
 A **one-sided transfer**, a transfer whose other leg can never be in Gold,
 comes only from a manual decision. It names the counterpart Gold account, and
-the booking date must fall outside that account's managed period. A typical
+the transaction date must fall outside that account's managed period. A typical
 case is a transfer into a savings account from before its history was
 imported.
 
@@ -209,7 +210,7 @@ A manual decision is a recorded human ruling. Classification uses three kinds:
 | --- | --- | --- | --- |
 | `classify` | one transaction | a category, with the type derived as for rules, or `adjustment` | the target is missing, or the derived type cannot fit the amount's sign |
 | `pair` | two transactions | both `transfer`, sharing one group | a target is missing, the amounts do not cancel, or both are on one account |
-| `one-sided-transfer` | one transaction and a counterpart account | `transfer` with no group | the target is missing, or the booking date falls inside the counterpart's managed period |
+| `one-sided-transfer` | one transaction and a counterpart account | `transfer` with no group | the target is missing, or the transaction date falls inside the counterpart's managed period |
 
 - A decision targets `transaction_id`s. Transaction identity
   ([issue #5](https://github.com/ATherkel/budget/issues/5)) survives
@@ -287,10 +288,10 @@ imports (issue #5) are separate.
 
 After each Gold build, the CLI review workflow (issue #10) shows:
 
-- a summary: transactions by classification source, the unclassified total per
+- a summary: transactions by classification source, unclassified money in, money out, and count per
   account and month, and open review items by kind;
 - each open review item, with what a person needs to decide it: the
-  transactions (account, booking date, amount, description, and bank category
+  transactions (account, transaction date, amount, description, and bank category
   label), the rules or candidate legs involved, and the decision kinds that
   would settle it;
 - every transfer pair formed on a date gap, and every pair where a leg's own
@@ -354,7 +355,7 @@ household does not import, so it is outside the reporting boundary.
 | 3 | A bank label used through a rule | `joint-current` 2026-02-14 −310.00 `FOETEX 88`, bank label `Groceries` | `expense`, `groceries` | rule `r-bank-groceries`, the only match |
 | 4 | Equal-priority rules disagree | `joint-current` 2026-02-20 −85.00 `MOBILEPAY NETTO` | `unknown` | `rule-conflict`: `r-mobilepay` says `eating-out`, `r-netto` says `groceries` |
 | 5 | The conflict settled by priority | Scenario 4 after adding `r-mobilepay-netto` (priority 10, text contains `MOBILEPAY NETTO`, assigns `groceries`) | `expense`, `groceries` | rule `r-mobilepay-netto`. The conflict item disappears. |
-| 6 | A category that cannot fit the sign | `joint-savings` 2026-03-31 −3.50 `INTEREST ADJ` | `unknown` | `sign-mismatch`: `r-interest` gives an income category to a negative amount |
+| 6 | Returned income preserves signed netting | `joint-savings` 2026-03-31 −3.50 `INTEREST ADJ` | `refund`, `interest` | rule `r-interest`; income falls by 3.50 |
 | 7 | A manual decision beats a rule | `joint-current` 2026-02-07 −2,400.00 `IKEA 551` | `expense`, `gifts` | decision `d-0001`. Lineage also records `r-home` as the rule that matched. |
 | 8 | Same-day transfer | `joint-current` 2026-01-20 −3,000.00 `TO SAVINGS`; `joint-savings` 2026-01-20 +3,000.00 `FROM CURRENT` | `transfer` ×2, one group | `same_day` |
 | 9 | Transfer across a month boundary | `joint-current` Fri 2026-01-30 −5,000.00 `TO SAVINGS`; `joint-savings` Mon 2026-02-02 +5,000.00 `FROM CURRENT` | `transfer` ×2, one group | `date_gap` of 3 days, with the claim from `r-savings-transfer`. January shows the outgoing leg and February the incoming one. Neither month's income or expenses change. |
@@ -368,6 +369,9 @@ household does not import, so it is outside the reporting boundary.
 | 17 | A decision whose target disappeared | The bank withdraws the transaction `d-0004` targets, and Silver records *withdrawn*. | no transaction | `decision-not-applicable`, reason `target-missing`. The decision is never moved to a similar transaction. |
 | 18 | Invalid configuration | A decision assigns `food-out`, which does not exist. | Nothing is published | The build fails, and the error names the decision. |
 | 19 | A new account turns income into transfers | Bo's account is later imported as a `person` account. Its −4,000.00 `BUDGET` leg on 2026-02-01 matches scenario 15. | `transfer` ×2 | `same_day`. The pair beats `r-contribution-bo`, and every report restates. Before Bo's managed period starts, `FROM BO` stays `contribution`. |
+
+A zero-amount `INTEREST ADJ` matched by `r-interest` remains `unknown`
+with a `sign-mismatch` review item; it fits neither income nor refund.
 
 ### Taxonomy changes
 
@@ -387,7 +391,3 @@ household does not import, so it is outside the reporting boundary.
 - **Issue #12:** whether money moved to savings, investment, or loan accounts
   that are not imported should count differently in the savings measure. It is
   an expense today.
-- **Issue #12:** the unclassified total from issue #4 sums signed amounts, so
-  the two `unknown` legs of an unpaired transfer in one month cancel to 0.00.
-  Showing unclassified money in and out separately would keep them visible.
-  The review items show them either way.

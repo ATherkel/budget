@@ -1,4 +1,4 @@
-# ADR-009: Classify by Manual Decision, Then Transfer Pairing, Then Rules
+# ADR-011: Classify by Manual Decision, Then Transfer Pairing, Then Rules
 
 **Status:** Proposed
 
@@ -22,7 +22,7 @@ decisions are identified and reviewed.
 ## Decision
 
 - **Precedence.** For each transaction, an applicable manual decision wins.
-  Otherwise a transfer pair ([ADR-010](ADR-010-transfer-evidence.md)) wins.
+  Otherwise a transfer pair ([ADR-012](ADR-012-transfer-evidence.md)) wins.
   Otherwise the highest-priority classification rule result applies.
   Otherwise the transaction is `unknown`.
 - **Rules look at one transaction only**: its account, description text,
@@ -31,7 +31,8 @@ decisions are identified and reviewed.
   reason.** For a category, the type follows from the category's direction and
   the amount's sign: an expense category gives `expense` for a negative amount
   and `refund` for a positive one, and an income category gives `income` for a
-  positive amount. Any other combination is a sign mismatch, and the
+  positive amount and `refund` for a negative one, preserving returned-income
+  netting from issue #4. A zero amount is a sign mismatch, and the
   transaction stays `unknown`.
 - **Priority, not file order.** Every rule has an integer priority, 0 by
   default. The highest-priority matching rules decide. If they disagree, the

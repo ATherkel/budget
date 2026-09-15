@@ -38,13 +38,13 @@ Bank-provided categories in the current CSV exports are useful classification
 signals but are not authoritative. They are retained as provenance in Silver. A
 classification rule may test them like any other source text, but they are
 never copied into Gold and never used as a fallback
-([ADR-009](../decisions/ADR-009-classification-precedence.md)). Gold categories
+([ADR-011](../decisions/ADR-011-classification-precedence.md)). Gold categories
 are assigned by classification rules or manual decisions.
 
 ## Assignment
 
 Transfers, adjustments, and unclassified transactions do not carry a category.
-A refund carries the expense category of the purchase it reverses. When a rule
+A refund carries the category of the movement it reverses. When a rule
 or manual decision assigns a category, the type follows from the category's
 direction and the amount's sign, so a positive amount in an expense category
-is a refund.
+is a refund, as is a negative amount returned from an income category.
