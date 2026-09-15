@@ -6,6 +6,8 @@ Version `0.2`, proposed for the CSV MVP. The dimensional model amends the still-
 see [Changes from 0.1](#changes-from-01). Changes are backward-incompatible
 unless a new contract version is introduced and downstream consumers migrate.
 The contract stays proposed until the readiness review (issue #12) approves it.
+While it is proposed, issue #7 amended it in place: transfer invariants,
+classification lineage, and classification review items.
 
 ## Purpose
 
@@ -16,7 +18,9 @@ storage.
 
 Gold is derived from Silver, the household account and category registries,
 and classification inputs. It is not the original bank record, and it can be
-rebuilt when classification logic changes.
+rebuilt when classification logic changes. How classification inputs produce
+`transaction_type`, `category_id`, and `transfer_group_id` is the policy in
+[`classification.md`](classification.md).
 
 The dimensional model behind this contract (processes, grains, the bus
 matrix, balance-chain evaluation, and a worked synthetic example) is described
@@ -61,8 +65,8 @@ current household interpretation.
 
 One row per assignable category. The two-level hierarchy is flattened onto the
 category: every category belongs to exactly one category group, and groups are
-never assigned to transactions. Type 1: renaming or regrouping a category
-restates all history.
+never assigned to transactions. All categories in a group share one direction.
+Type 1: renaming or regrouping a category restates all history.
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
@@ -95,7 +99,7 @@ into the account is positive and money out is negative.
 | `description` | string | Yes | Normalized human-readable transaction text. |
 | `transaction_type` | `TransactionType` | Yes | Household interpretation. |
 | `category_id` | string/null | Conditional | References `GoldCategory`. Required for `income`, `expense`, and `refund`; null for `transfer`, `adjustment`, and `unknown`. |
-| `transfer_group_id` | string/null | No | Groups the legs of one internal transfer when confidently matched (policy: issue #7). |
+| `transfer_group_id` | string/null | No | Shared by the two legs of a paired transfer and derived from their `transaction_id`s, so it is stable across rebuilds while the same legs pair. Null for a one-sided transfer and for every other type. Policy: [`classification.md`](classification.md). |
 | `balance_after` | `Decimal`/null | No | Bank-stated balance from the latest admitted export covering this date (ADR-009). Null only for sources that state no balances; inconsistent balance-stating exports are quarantined under ADR-010. |
 | `balance_check` | `BalanceCheck` | Yes | Result of the balance-chain check for this transaction (see `gold-layer.md`). |
 
@@ -150,6 +154,16 @@ month, never across months. `coverage` is non-additive.
 12. A consumer reads exactly one Gold publication at a time. Which publication
     is selected, and identity across materializations, are defined by issue
     #8.
+13. `transfer_group_id` is non-null only on `transfer` transactions. Each
+    non-null value appears on exactly two transactions, which are on different
+    accounts and whose amounts sum to zero.
+14. A `transfer` with a null `transfer_group_id` is a one-sided transfer from a
+    manual decision. Its lineage names a counterpart Gold account whose managed
+    period does not include the transaction date.
+15. All categories in a category group share one direction.
+16. Every classification traces through lineage to its source: a manual
+    decision, a transfer match, or a rule. `unknown` traces to none, and every
+    `unknown` transaction has at least one open classification review item.
 
 ## Consumer Interface
 
@@ -197,16 +211,48 @@ class GoldLineageRepository(Protocol):
     def transaction_lineage(
         self, transaction_ids: Collection[str]
     ) -> Sequence[GoldTransactionLineage]: ...
+
+    def classification_review_items(self) -> Sequence[ClassificationReviewItem]: ...
 ```
+
+#### `GoldTransactionLineage`
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
 | `transaction_id` | string | Yes | The Gold transaction explained. |
-| `silver_transaction_id` | string | Yes | Traceable parent Silver record, and through it the retained Bronze provenance. |
-| `classification_source` | enum | Yes | `rule`, `manual`, `imported`, or `unclassified`. |
-| `classification_version` | string | Yes | Rule-set or manual-policy version that produced the classification. |
+| `silver_transaction_id` | string | Yes | Traceable parent Silver record, and through it the retained Bronze provenance, including the bank's category labels. |
+| `classification_source` | enum | Yes | `manual`, `transfer_match`, `rule`, or `unclassified`. |
+| `rule_ids` | list of string | Yes | The highest-priority matching rules, whether or not they decided. They decided only when `classification_source` is `rule`. Several when they agree or conflict; empty when no rule matched. |
+| `decision_id` | string/null | Conditional | The manual decision that decided. Required when `classification_source` is `manual`, otherwise null. |
+| `classification_version` | string | Yes | Version of the classification inputs (taxonomy, rules, manual decisions, and matching policy) that produced this classification. Issue #8 defines what a version is. |
+| `transfer_evidence` | `TransferEvidence`/null | Conditional | Required on every `transfer`, otherwise null. |
+| `review_item_ids` | list of string | Yes | Open classification review items involving this transaction. Often empty. |
 
-Transfer-match evidence and confidence are added to lineage by issue #7.
+#### `TransferEvidence`
+
+Confidence is a named evidence basis, not a score.
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `basis` | enum | Yes | `same_day`, `date_gap`, `repeated_legs`, `manual_pair`, or `one_sided`. |
+| `counterpart_account_id` | string | Yes | The other leg's Gold account. |
+| `counterpart_transaction_id` | string/null | Conditional | The other leg. Null only for `one_sided`. |
+| `date_gap_days` | int/null | Conditional | Days between the two transaction dates. Null only for `one_sided`. |
+| `claim_rule_ids` | list of string | Yes | Rules that claim either leg as a transfer. Non-empty for `date_gap`. |
+
+#### `ClassificationReviewItem`
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `review_item_id` | string | Yes | Derived from the kind and the transaction or decision identifiers involved, so the same situation keeps its identifier across rebuilds. |
+| `kind` | enum | Yes | `unclassified`, `rule-conflict`, `sign-mismatch`, `ambiguous-transfer`, `unmatched-transfer`, or `decision-not-applicable`. |
+| `transaction_ids` | list of string | Yes | Transactions involved. Empty only when a decision's target is missing. |
+| `rule_ids` | list of string | Yes | Rules involved, such as the conflicting rules. |
+| `decision_id` | string/null | Conditional | The decision, for `decision-not-applicable`. |
+| `reason` | string/null | No | Detail, such as `counterpart-may-not-be-imported`, `no-candidate`, or `target-missing`. |
+
+Gold derives review items afresh on every build, so an item exists exactly
+while its cause does. Silver's import review items (issue #5) are separate.
 Publication and materialization metadata (such as when a version was built)
 are added by issue #8.
 
@@ -215,10 +261,18 @@ are added by issue #8.
 Before analytics or UI work begins, provide synthetic fixtures covering:
 income; expense; refund netting against its category; adjustment without a
 category; paired transfer; unmatched transfer candidate; unknown transaction;
-manually overridden category (visible through lineage); missing balance; chain
+manual classification decision (visible through lineage); missing balance; chain
 break that demotes the previous month; first managed month (`partial`);
 complete quiet month; partial quiet month crossed by a broken link; `no_data` month beyond evidence; closed account; and two categories
 sharing a group. The worked example in `gold-layer.md` covers most of these.
+
+Classification fixtures reproduce the synthetic scenarios in
+[`classification.md`](classification.md) exactly. They include a refund
+derived from an expense-category rule, a rule conflict, a sign mismatch, a
+transfer pair across a month boundary, repeated same-amount legs, an ambiguous
+transfer, a leg waiting for its next import, a one-sided transfer, a
+contribution from an account that is not imported, a decision whose target
+disappeared, and each taxonomy change.
 
 ## Changes from 0.1
 
@@ -230,18 +284,22 @@ sharing a group. The worked example in `gold-layer.md` covers most of these.
 | `balance` | `balance_after` plus `balance_check`, `account_sequence` | Name the point in time. Publish the chain result and the order it was checked in. |
 | `currency` on each transaction | `GoldAccount.currency` | Every amount is in its account's currency. |
 | `reporting_month`, `created_at` on the fact | Removed | Month derives from `transaction_date`; build time is publication metadata (issue #8). |
-| `counterparty` | Removed | No first-release source or measure uses it. It can return as a dimension through issue #7. |
+| `counterparty` | Removed | Classification rules match description text instead; a counterparty dimension would be a later contract version. |
 | Refund = `adjustment` with a category | `refund` transaction type | Makes categorized reversals explicit, preserving signed netting for both category directions. `category_id` becomes required or null per type, with no conditional. |
 | Coverage derived by analytics | Published by Gold on `MonthlyBalanceSnapshot` | Needs source-derived ordering and managed-period knowledge (ADR-007). |
+| `classification_source` value `imported` | Removed; `transfer_match` added | Bank categories never classify on their own (ADR-011). |
+| No transfer evidence or review items | `TransferEvidence`, `rule_ids`, `decision_id`, and `classification_review_items` in lineage | Transfers need auditable evidence, and the CLI review workflow needs a stable source (ADR-011, ADR-012). |
 
 Silver identity and within-date order are defined by ADR-009. Coverage uses
 the admitted export evidence from ADR-006, including verified quiet months.
 
 ## Open Decisions
 
-- Whether bank-provided categories are retained as a separate Gold attribution
-  or only as Silver provenance (issue #7).
-- Transfer matching confidence, evidence in lineage, and the review workflow
-  (issue #7).
+- Versioning of classification inputs and as-of reports (issue #8).
+- File formats for rules and manual decisions, and the CLI review commands
+  (issue #10).
+- Whether money moved to savings, investment, or loan accounts that are not
+  imported should count differently in the savings measure; it is an expense
+  today (issue #12).
 - Publication selection, identity across materializations, and whether any
   dimension needs historical (Type 2) interpretation (issue #8).

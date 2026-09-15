@@ -27,7 +27,8 @@ Deliverables:
   source-record parsing.
 - Canonical Silver records, validation and quarantine, and duplicate
   resolution verified by bank-stated balances.
-- Gold classification with an auditable manual override mechanism.
+- Gold classification: classification rules, transfer matching, and auditable
+  manual decisions.
 
 Exit criteria:
 
