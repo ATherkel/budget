@@ -92,3 +92,13 @@ missing or partial data read as a confirmed zero.
 Analytics returns typed report DTOs or API-neutral dictionaries. It does not
 persist report values as a new source of truth; results are recalculated from
 Gold when requested or cached with explicit invalidation.
+
+Every household-level measure in a report carries the coverage of the accounts
+contributing to it for that period:
+
+- `complete` when every contributing account is `complete`;
+- `no_data` when every contributing account is `no_data`;
+- otherwise `partial`, listing each account that is not `complete` together
+  with its status.
+
+A report that shows per-account figures carries each account's own status.
