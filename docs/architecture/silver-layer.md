@@ -2,53 +2,176 @@
 
 ## Purpose
 
-Convert source-specific data into a canonical model.
+Convert source records into validated, source-neutral canonical records, and
+resolve which source records show the same booked transaction.
+
+## Inputs
+
+- Bronze import runs with outcome `stored` that have not been voided, with
+  their source records or format failures.
+- Account configuration: each account's currency.
+- Manual decisions that affect identity. Their file format belongs to issue #10.
+  - *void import run*
+  - *same transaction*: a source record shows an existing transaction.
+  - *withdrawn*: the bank removed a transaction.
 
 ## Canonical Transaction
 
+One record per booked transaction, after duplicates are collapsed.
+
 ```python
 Transaction(
-    transaction_id: str,
+    transaction_id: str,        # ADR-009 identity hash
     account_id: str,
-    booking_date: date,
+    transaction_date: date,     # the source's transaction date (Danske: purchase date)
     amount: Decimal,
-    currency: str,
-    description: str,
-    source_system: str,
+    currency: str,              # from account configuration
+    description: str,           # source text exactly as delivered
+    source_system: str,         # source format, e.g. "danske-csv-v1"
     balance: Decimal | None,
     source_status: str,
+    booking_status: Literal["booked", "pending", "cancelled"],
+    occurrence: int,            # k among visibly identical transactions
+    day_sequence: int,          # order within transaction_date
+    identity_version: str,
+    bank_category: str | None,  # provenance only; trimmed
+    bank_subcategory: str | None,
 )
 ```
 
 `balance` is the bank-stated account balance immediately after this
-transaction, carried through verbatim; `source_status` is the source's own
-booking status (e.g. completed vs. pending), also carried through verbatim.
-Silver retains both as technical metadata — it does not interpret, reconcile,
-or filter on them. Gold decides which rows are settled enough to materialize
-and how the balance evidence is used.
+transaction. `source_status` is the source's own status value, carried
+verbatim. For each date, `balance` and `day_sequence` come from the latest
+admitted export covering that date (ADR-009). They can therefore change when a
+later export adds a late-booked transaction; `transaction_id` never does.
+`balance` is null only for sources that state no balances (ADR-010).
+
+Silver passes forward each account's latest admitted export date from Bronze
+import-run metadata. Gold derives `GoldAccount.evidence_through` from it.
+Within a date, `day_sequence` preserves the bank's row order in the selected
+export; it is never sorted by amount or text.
+
+## Other Outputs
+
+```python
+TransactionEvidence(            # lineage: every source record showing a transaction
+    transaction_id: str,
+    payload_id: str,
+    record_ordinal: int,
+    import_run_id: str,
+)
+
+UnbookedRecord(                 # retained provenance; never a transaction
+    payload_id: str,
+    record_ordinal: int,
+    import_run_id: str,
+    account_id: str,
+    transaction_date: date,
+    amount: Decimal,
+    source_status: str,
+    booking_status: Literal["booked", "pending", "cancelled"],
+)
+
+BalanceObservation(             # bank-stated end-of-day balance per export
+    account_id: str,
+    balance_date: date,
+    end_of_day_balance: Decimal,
+    payload_id: str,
+)
+
+ImportRunResult(
+    import_run_id: str,
+    status: Literal["accepted", "quarantined"],
+    covered_from: date,         # first transaction date in the export
+    covered_to: date,           # the import run's export date (Bronze)
+    errors: Sequence[ValidationError],
+    review_item_ids: Sequence[str],
+)
+
+ValidationError(
+    payload_id: str,
+    record_ordinal: int | None, # None for payload-level problems
+    code: str,
+    message: str,
+)
+
+ReviewItem(
+    review_item_id: str,        # deterministic
+    kind: Literal["export-disagreement", "fewer-repeats"],
+    account_id: str,
+    date_from: date,
+    date_to: date,
+    payload_ids: Sequence[str],
+    resolved_by: str | None,    # manual decision id
+)
+```
+
+## Rules
+
+**Booking state**
+- Each source format maps its status values to `booking_status`: `booked`,
+  `pending`, or `cancelled`. For `danske-csv-v1`, `Udført` is `booked` and
+  `Slettet` is `cancelled`. Only booked rows enter the canonical transaction
+  output; pending and cancelled rows remain `UnbookedRecord` provenance.
+- An unknown status value is a validation error. Gold never sees a source
+  status vocabulary.
+- `Afstemt` is retained in Bronze only and is not interpreted.
+
+**Validation**
+- An import run is admitted whole or quarantined whole, with every error
+  listed against its source record. Nothing is partially imported.
+- Errors include:
+  - a format failure;
+  - a wrong field count;
+  - an unparseable date or decimal;
+  - an unknown status;
+  - a booked row without a balance, or a balance-chain break within the
+    export (ADR-010).
+
+**Identity and merging**
+- Per ADR-009: content plus occurrence identity, and the highest count per
+  export when exports overlap.
+
+**Merge verification**
+- Import runs are admitted in `started_at` order.
+- A run is admitted only if it still shows every transaction already admitted
+  for the dates it covers, and its end-of-day balances differ from those
+  already admitted by exactly the cumulative amounts of the transactions it
+  adds (*explained growth*, ADR-009). Late bookings on earlier dates, and
+  later bookings on an export's final date, are both explained growth.
+- An unexplained difference quarantines the later run and raises an
+  `export-disagreement` review item.
+- Fewer repeated transactions on any date raises a `fewer-repeats` review item.
+- Silver uses balances only to verify its own merge. Coverage and
+  reconciliation for reporting belong to Gold and analytics (ADR-006).
+
+**Reproducibility**
+- Rebuilding from the same Bronze inputs, account configuration, and manual
+  decisions yields identical output, including identifiers.
 
 ## Downstream Requirements
 
-Gold relies on two guarantees that Silver must provide. [Issue #5](https://github.com/ATherkel/budget/issues/5)
-defines how Silver provides them:
+Gold relies on two guarantees that Silver provides under
+[ADR-009](../decisions/ADR-009-transaction-identity.md):
 
 - a stable canonical identity for each transaction, from which Gold derives a
   `transaction_id` that survives rebuilds;
 - a deterministic order of each account's transactions, including those
-  sharing a booking date, so Gold can evaluate the balance chain.
+  sharing a transaction date, so Gold can evaluate the balance chain.
 
 ## Responsibilities
 
-- schema normalization
-- validation
-- deduplication
-- enrichment of technical metadata
+- source-status mapping
+- schema normalization and typing
+- validation and quarantine
+- duplicate resolution and merge verification
+- lineage from every transaction to its source records
 
 ## Non-Responsibilities
 
 - categorization
 - budgeting
-- reporting
+- reporting and coverage
 
 ## Ownership
 

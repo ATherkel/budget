@@ -20,27 +20,38 @@ Produce reproducible reporting datasets from the Gold contract.
 
 ## Initial Measures
 
-For a selected reporting period:
+For a selected reporting period, a `refund` nets into the measure of its
+category's `GoldCategory.direction`. Every sum below uses signed `amount`s.
 
-- **Income:** sum of `income` amounts.
-- **Expenses:** absolute sum of `expense` amounts, less `refund` amounts. A
-  refund reduces spending, so category spending adds up to Expenses.
-- **Net cash flow:** all included income plus expense and refund amounts.
-- **Savings:** income minus expenses; document later treatment of investments
-  and debt repayment rather than assuming they are savings.
-- **Savings rate:** `savings / income`, null when income is zero.
-- **Category spending:** absolute `expense` total by `category_id`, less
-  same-category `refund` amounts (refunds reduce the category they reverse
-  rather than disappearing or counting as income). Category-group spending
-  sums its categories through `GoldCategory.group_id`.
-- **Unclassified total:** sum of amounts on `unknown` transactions for the
-  period, reported explicitly rather than silently excluded.
-- **Account balance:** `closing_balance` from `MonthlyBalanceSnapshot`. A
-  household balance for a month sums closing balances across accounts for
-  that month only; balances are never summed across months.
+- **Income:** Σ `income` + Σ refunds with direction `income`.
+- **Expenses:** −(Σ `expense` + Σ refunds with direction `expense`). A
+  refunded purchase therefore reduces Expenses as well as its category.
+- **Net cash flow:** Income − Expenses.
+- **Savings:** Income − Expenses, equal to net cash flow in this release;
+  document later treatment of investments and debt repayment rather than
+  assuming they are savings.
+- **Savings rate:** `savings / income`, null when income is not positive.
+- **Category spending:** for each expense-direction category, −(Σ `expense` +
+  Σ refunds) in that category. When refunds exceed purchases in the period,
+  the category shows negative spending (a net refund). It is reported signed:
+  never clamped to zero and never moved to the purchase's period. Category
+  spending therefore always adds up to Expenses. Styling belongs to issue #11.
+- **Unclassified:** for `unknown` transactions, money in (Σ positive amounts),
+  money out (Σ negative amounts), and a count.
+- **Uncategorized adjustments:** the same three figures for adjustments
+  without a `category_id`.
 
-Transfers and `adjustment` transactions are excluded from all spending and
-income measures. Account activity reports may include them separately.
+Money in and out are never netted against each other on these last two lines,
+and neither line counts toward Income or Expenses. Every transaction in the
+period is counted in exactly one of: Income/Expenses, transfers, Unclassified,
+or Uncategorized adjustments.
+
+Category-group spending sums categories through `GoldCategory.group_id`.
+Account balance is the snapshot's `closing_balance`, summed across accounts
+for one month only; balances are never summed across months.
+
+Transfers are excluded from all spending and income measures. Account activity
+reports may include them separately.
 
 ## Coverage
 
@@ -55,6 +66,11 @@ requested month beyond the latest published month has no data. Coverage is
 tracked per account, not as one household-wide flag, so a report can point at
 the specific account that needs attention. Reports must never let missing or
 partial data read as a confirmed zero.
+
+Every household-level measure carries combined coverage: `complete` only
+when every contributing account-month is complete, `no_data` when none has
+evidence, and `partial` otherwise. A partial measure names its incomplete
+accounts. An account without transactions still contributes a coverage status.
 
 ## Outputs
 

@@ -37,7 +37,7 @@ the bus matrix only to check that the dimensions will conform later.
 
 | Process | Date | Account | Category |
 | --- | --- | --- | --- |
-| Booked transactions | ✓ (booking date) | ✓ | ✓ (when classified) |
+| Booked transactions | ✓ (transaction date) | ✓ | ✓ (when classified) |
 | Monthly balance snapshots | ✓ (month) | ✓ | — |
 | *Future: budget targets* | ✓ (month) | — | ✓ |
 
@@ -73,8 +73,8 @@ canonical transaction identity (issue #5), so rebuilds keep it stable.
 ## Balance Chain Evaluation
 
 For each account, walk its transactions in `account_sequence` order. The
-sequence follows `booking_date`, then Silver's deterministic order within a
-booking date. Gold keeps an anchor, the last known bank-stated balance, and
+sequence follows `transaction_date`, then Silver's deterministic order within a
+transaction date. Gold keeps an anchor, the last known bank-stated balance, and
 the sum of amounts booked since that anchor.
 
 | Condition for transaction *t* | `balance_check` | Anchor afterwards |
@@ -89,19 +89,29 @@ missing value.
 
 ## Coverage
 
-For each account and each month of its managed period:
+Gold applies ADR-006's whole-period evidence rules. A link joins consecutive
+booked transactions in `(transaction_date, day_sequence)` order. It is verified
+when both balances exist and the later balance equals the earlier balance plus
+the later amount. Otherwise it is broken. Its span includes both transaction
+dates. Bridging a missing balance for `balance_check` does not make either
+adjacent link verified.
 
-- **`no_data`**: the account has no transactions in the month.
-- **`partial`**: any one of the following holds:
-  - the month is the first month of the managed period;
-  - a transaction in the month has a check other than `consistent`;
-  - the month lies within a break's span: every month with transactions, from
-    the month of the anchor before the break through the break's month.
-- **`complete`**: otherwise.
+For each account and month of its managed period:
 
-The break span is needed because a missing movement between the last trusted
-balance and the break could be on either side of a month boundary. A
-`no_data` month inside a break span stays `no_data`.
+- **`complete`**: `coverage_start` is before the month's first day,
+  `evidence_through` reaches its last day, and every link whose span overlaps
+  the month is verified, including links into and out of the month.
+- **`no_data`**: the account's admitted export evidence does not reach into
+  the month at all.
+- **`partial`**: otherwise. This includes the first managed month, evidence
+  ending inside a month, and every month overlapped by a broken link.
+
+A quiet month inside verified evidence is `complete` with zero activity; carry
+the last bank-stated balance into its opening and closing snapshot fields.
+For a quiet month with partial or absent evidence, both balances are null.
+GoldAccount retains `coverage_start` and `evidence_through`, so consumers can
+report an account with no transactions as `no_data` even before it has a
+managed period. No account may disappear merely because it has no transactions.
 
 ## Worked Example (synthetic)
 
@@ -109,16 +119,16 @@ Two open DKK household accounts: `joint-current` (current) and
 `joint-savings` (savings). Categories: `salary` and `interest` (group
 `income`, direction `income`), `rent` and `utilities` (group `housing`),
 `groceries` (group `food`), all three with direction `expense`. The latest
-published month is 2026-04.
+published month is 2026-04. Both accounts have admitted exports dated 2026-05-08, so evidence reaches through 2026-05-07 and April is past the provisional window.
 
 `joint-current` transactions:
 
-| seq | booking_date | amount | type | category | transfer | balance_after | check |
+| seq | transaction_date | amount | type | category | transfer | balance_after | check |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | 2026-01-14 | 25,000.00 | income | salary | | 25,400.00 | opening |
 | 2 | 2026-01-20 | -3,000.00 | transfer | | T1 | 22,400.00 | consistent |
-| 3 | 2026-01-28 | -842.50 | expense | groceries | | null | missing_balance |
-| 4 | 2026-02-02 | -8,500.00 | expense | rent | | 13,057.50 | consistent (22,400.00 − 842.50 − 8,500.00) |
+| 3 | 2026-01-28 | -842.50 | expense | groceries | | 21,557.50 | consistent |
+| 4 | 2026-02-02 | -8,500.00 | expense | rent | | 13,057.50 | consistent (21,557.50 − 8,500.00) |
 | 5 | 2026-02-02 | -640.00 | expense | groceries | | 12,417.50 | consistent |
 | 6 | 2026-02-12 | 120.00 | refund | groceries | | 12,537.50 | consistent |
 | 7 | 2026-02-25 | 25,000.00 | income | salary | | 37,537.50 | consistent |
@@ -129,7 +139,7 @@ published month is 2026-04.
 
 `joint-savings` transactions:
 
-| seq | booking_date | amount | type | category | transfer | balance_after | check |
+| seq | transaction_date | amount | type | category | transfer | balance_after | check |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | 2026-01-20 | 3,000.00 | transfer | | T1 | 53,000.00 | opening |
 | 2 | 2026-04-30 | 12.40 | income | interest | | 53,012.40 | consistent |
@@ -138,13 +148,13 @@ Monthly balance snapshots:
 
 | account | month | opening | closing | coverage | why |
 | --- | --- | --- | --- | --- | --- |
-| joint-current | 2026-01 | 400.00 | null | partial | First managed month; seq 3 has no balance, so there is no stated closing. |
+| joint-current | 2026-01 | 400.00 | 21,557.50 | partial | First managed month. |
 | joint-current | 2026-02 | 21,557.50 | 37,537.50 | partial | Every check is consistent, but the March break's span starts at seq 7. |
 | joint-current | 2026-03 | 37,037.50 | 35,587.50 | partial | Break at seq 8. The opening is 500.00 below February's closing, which shows the gap. |
 | joint-current | 2026-04 | 35,587.50 | 52,087.50 | complete | 35,587.50 − 8,500.00 + 25,000.00 = 52,087.50. |
 | joint-savings | 2026-01 | 50,000.00 | 53,000.00 | partial | First managed month. |
-| joint-savings | 2026-02 | null | null | no_data | No transactions. |
-| joint-savings | 2026-03 | null | null | no_data | No transactions. |
+| joint-savings | 2026-02 | 53,000.00 | 53,000.00 | complete | Quiet month inside verified export evidence. |
+| joint-savings | 2026-03 | 53,000.00 | 53,000.00 | complete | Quiet month inside verified export evidence. |
 | joint-savings | 2026-04 | 53,000.00 | 53,012.40 | complete | Consistent with the January anchor. |
 
 What consumers can and cannot derive:
@@ -153,16 +163,21 @@ What consumers can and cannot derive:
   summed across accounts for the same month, and both rows are `complete`.
 - Summing `joint-current` closing balances over February–April is
   meaningless: balances are never summed across months.
-- February (analytics): income 25,000.00; expenses 9,140.00; `groceries`
+- February (analytics): income 25,000.00; expenses 9,020.00; `groceries`
   spending 640.00 − 120.00 = 520.00; `housing` group 8,500.00. The report
-  must show `joint-current` as `partial` and `joint-savings` as `no_data`.
-- March: the unclassified total is −450.00.
+  must show `joint-current` as `partial` and `joint-savings` as `complete`.
+- March: unclassified money in is 0.00, money out is −450.00, and count is 1.
 - January: transfer T1 is excluded from income and expenses, and both legs
   stay visible in account activity.
-- `joint-savings` February and March are `no_data` even though the April
-  chain shows no movement was missed. Import coverage windows could one day
-  prove quiet months; that is an open follow-up, and the coverage semantics
-  are not changed here.
+- `joint-savings` February and March are verified quiet months. A requested
+  June beyond the publication has no data and must not be read as zero.
+- The DKK 500.00 break is between admitted exports, so ADR-010 does not
+  quarantine either internally consistent export. It still makes February
+  and March partial under ADR-006.
+- Missing balances remain a separate fixture for a source that states no
+  balances: its transactions have `missing_balance` and its covered months
+  are partial. A balance-stating export with a missing balance is quarantined
+  under ADR-010 and never reaches this Gold example.
 
 ## Not in the First Release
 

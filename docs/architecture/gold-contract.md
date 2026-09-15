@@ -54,6 +54,8 @@ current household interpretation.
 | `ownership_scope` | `OwnershipScope` | Yes | `household` or `person`. |
 | `currency` | ISO 4217 string | Yes | Currency of every amount and balance on this account. `DKK` in the first release. |
 | `closed_on` | `date`/null | No | Date the account closed; null while open. Ends the account's managed period. |
+| `coverage_start` | `date`/null | No | First booked transaction date; null for an account with no transactions. |
+| `evidence_through` | `date`/null | No | Day before the latest admitted export date (ADR-006, ADR-009); null without admitted exports. |
 
 ### `GoldCategory`
 
@@ -87,14 +89,14 @@ into the account is positive and money out is negative.
 | --- | --- | --- | --- |
 | `transaction_id` | string | Yes | Stable identifier, derived deterministically from the Silver canonical transaction identity, so a rebuild yields the same value. |
 | `account_id` | string | Yes | References `GoldAccount`. |
-| `booking_date` | `date` | Yes | Bank booking date exactly as supplied; the reporting month derives from it. |
-| `account_sequence` | int | Yes | Position in the account's booked history, starting at 1. Used only for ordering; it is not an identity and may shift when earlier transactions are imported. |
+| `transaction_date` | `date` | Yes | Source transaction date (Danske: purchase date), exactly as supplied; the reporting month derives from it (ADR-009). |
+| `account_sequence` | int | Yes | Position in the account's booked history, starting at 1, following `(transaction_date, day_sequence)` from Silver (ADR-009). Used only for ordering; it is not an identity and may shift when earlier transactions are imported. |
 | `amount` | `Decimal` | Yes | Signed amount in the account's currency. |
 | `description` | string | Yes | Normalized human-readable transaction text. |
 | `transaction_type` | `TransactionType` | Yes | Household interpretation. |
 | `category_id` | string/null | Conditional | References `GoldCategory`. Required for `income`, `expense`, and `refund`; null for `transfer`, `adjustment`, and `unknown`. |
 | `transfer_group_id` | string/null | No | Groups the legs of one internal transfer when confidently matched (policy: issue #7). |
-| `balance_after` | `Decimal`/null | No | Bank-stated account balance immediately after this transaction. Null when the source omitted it; that is a discrepancy, never an assumed zero. |
+| `balance_after` | `Decimal`/null | No | Bank-stated balance from the latest admitted export covering this date (ADR-009). Null only for sources that state no balances; inconsistent balance-stating exports are quarantined under ADR-010. |
 | `balance_check` | `BalanceCheck` | Yes | Result of the balance-chain check for this transaction (see `gold-layer.md`). |
 
 ### `MonthlyBalanceSnapshot`
@@ -109,8 +111,8 @@ month in that range, including months with no transactions.
 | --- | --- | --- | --- |
 | `account_id` | string | Yes | References `GoldAccount`. |
 | `month` | `ReportingMonth` | Yes | The reporting month. |
-| `opening_balance` | `Decimal`/null | No | Balance immediately before the month's first transaction: that transaction's `balance_after` minus its `amount`. Null when that balance is missing or the month is `no_data`. |
-| `closing_balance` | `Decimal`/null | No | `balance_after` of the month's last transaction by `account_sequence`, bank-stated only. Null when that balance is missing or the month is `no_data`. |
+| `opening_balance` | `Decimal`/null | No | Balance immediately before the month's first transaction: that transaction's `balance_after` minus its `amount`. For a complete quiet month, carry the last bank-stated balance into both opening and closing. Null when the required balance is missing or the month is `no_data`. |
+| `closing_balance` | `Decimal`/null | No | `balance_after` of the month's last transaction by `account_sequence`, bank-stated only. For a complete quiet month, carry the last bank-stated balance into both opening and closing. Null when the required balance is missing or the month is `no_data`. |
 | `coverage` | `Coverage` | Yes | Trust status for this account and month (see `gold-layer.md`). |
 
 Additivity: `amount` is additive across every dimension within one currency.
@@ -122,19 +124,21 @@ month, never across months. `coverage` is non-additive.
 1. Every `account_id` and `category_id` on a fact references a published
    dimension row. Every `GoldAccount` is inside the reporting boundary.
 2. Each booked Silver transaction on a Gold account yields exactly one
-   `GoldTransaction`. Rows that are not completed/settled never do.
-3. Sign convention: `expense` amounts are negative. `income` and `refund`
-   amounts are positive. `adjustment` may take either sign. A correction that
-   does not obey the income/expense/refund convention is an `adjustment` and
-   needs an explanation.
+   `GoldTransaction`. Only `booking_status=booked` rows qualify; pending and cancelled records remain provenance.
+3. Sign convention: `expense` amounts are negative; `income` amounts are
+   positive. A `refund` reverses its category's direction: positive for an
+   expense category, negative for an income category. `adjustment` may take
+   either sign and needs an explanation.
 4. Category direction matches the type: `income` → an `income` category,
-   `expense` and `refund` → an `expense` category.
+   `expense` → an `expense` category; a `refund` retains the category of
+   the movement it reverses.
+
 5. A `transfer` is excluded from income, expense, savings-rate, and category
    spending totals. It remains visible in account activity.
-6. `booking_date` is used exactly as supplied by the source. No timezone
+6. `transaction_date` is used exactly as supplied by the source. No timezone
    conversion is applied at any layer.
 7. Per account, `account_sequence` runs 1, 2, 3, … without gaps, and
-   `booking_date` never decreases as `account_sequence` increases.
+   `transaction_date` never decreases as `account_sequence` increases.
 8. `balance_check` follows the balance-chain rules in `gold-layer.md`. A
    break or missing balance is never corrected or hidden.
 9. `MonthlyBalanceSnapshot` has exactly one row per account per month of the
@@ -142,7 +146,7 @@ month, never across months. `coverage` is non-additive.
    `opening_balance + sum(amounts in the month) == closing_balance`.
 10. All first-release accounts use `DKK`. Consumers must never aggregate
     amounts or balances across different currencies.
-11. No `booking_date` falls after its account's `closed_on`.
+11. No `transaction_date` falls after its account's `closed_on`.
 12. A consumer reads exactly one Gold publication at a time. Which publication
     is selected, and identity across materializations, are defined by issue
     #8.
@@ -213,7 +217,7 @@ income; expense; refund netting against its category; adjustment without a
 category; paired transfer; unmatched transfer candidate; unknown transaction;
 manually overridden category (visible through lineage); missing balance; chain
 break that demotes the previous month; first managed month (`partial`);
-`no_data` month inside the managed period; closed account; and two categories
+complete quiet month; partial quiet month crossed by a broken link; `no_data` month beyond evidence; closed account; and two categories
 sharing a group. The worked example in `gold-layer.md` covers most of these.
 
 ## Changes from 0.1
@@ -225,10 +229,13 @@ sharing a group. The worked example in `gold-layer.md` covers most of these.
 | `silver_transaction_id`, `classification_source`, `classification_version` on the fact | Moved to `GoldTransactionLineage` | Keep lineage away from report consumers. |
 | `balance` | `balance_after` plus `balance_check`, `account_sequence` | Name the point in time. Publish the chain result and the order it was checked in. |
 | `currency` on each transaction | `GoldAccount.currency` | Every amount is in its account's currency. |
-| `reporting_month`, `created_at` on the fact | Removed | Month derives from `booking_date`; build time is publication metadata (issue #8). |
+| `reporting_month`, `created_at` on the fact | Removed | Month derives from `transaction_date`; build time is publication metadata (issue #8). |
 | `counterparty` | Removed | No first-release source or measure uses it. It can return as a dimension through issue #7. |
-| Refund = `adjustment` with a category | `refund` transaction type | Matches the glossary, where a Refund is not an Adjustment. `category_id` becomes required or null per type, with no conditional. |
+| Refund = `adjustment` with a category | `refund` transaction type | Makes categorized reversals explicit, preserving signed netting for both category directions. `category_id` becomes required or null per type, with no conditional. |
 | Coverage derived by analytics | Published by Gold on `MonthlyBalanceSnapshot` | Needs source-derived ordering and managed-period knowledge (ADR-007). |
+
+Silver identity and within-date order are defined by ADR-009. Coverage uses
+the admitted export evidence from ADR-006, including verified quiet months.
 
 ## Open Decisions
 
@@ -236,10 +243,5 @@ sharing a group. The worked example in `gold-layer.md` covers most of these.
   or only as Silver provenance (issue #7).
 - Transfer matching confidence, evidence in lineage, and the review workflow
   (issue #7).
-- Silver canonical identity and deterministic within-date ordering that
-  `transaction_id` and `account_sequence` rely on (issue #5).
 - Publication selection, identity across materializations, and whether any
   dimension needs historical (Type 2) interpretation (issue #8).
-- Whether import coverage windows can prove a quiet month and so upgrade
-  `no_data` (follow-up for issues #5 and #12; coverage semantics unchanged
-  here).

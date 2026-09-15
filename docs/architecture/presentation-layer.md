@@ -29,10 +29,18 @@ must preserve the analytics-facing DTO boundary.
 
 - Any report period that includes the current, still-accumulating calendar
   month must carry a visible provisional/month-to-date label at the point of
-  display — not just a documented caveat.
+  display — not just a documented caveat. Which month is current is decided
+  from today's date in Europe/Copenhagen; `transaction_date` itself is never
+  converted. The label remains until every account in the report has an
+  admitted export dated at least 7 days after the period ends, because late
+  bookings land on their transaction date.
 - Account and balance views must reflect each account's coverage status from
   analytics; a `partial` or `no_data` account must never render as if its
   balance or totals are complete.
+- Every screen that shows a household-level measure (overview, category, and
+  trend views) must display the coverage the report carries for it. A
+  `partial` total names the accounts that are not complete. How coverage is
+  rendered belongs to issue #11.
 
 ## Non-Responsibilities
 
