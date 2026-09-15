@@ -10,7 +10,8 @@ agent authority outside its boundary.
    [architecture](02-architecture.md).
 2. Read [the roadmap](03-roadmap.md) to identify the current phase.
 3. For implementation work, read the relevant layer contract and domain
-   documents, then the matching agent brief.
+   documents, then the matching agent brief. For behavior-changing application
+   work, also follow the [test-driven development workflow](agents/tdd.md).
 
 ## Normative Documents
 
