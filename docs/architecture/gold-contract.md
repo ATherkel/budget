@@ -2,8 +2,14 @@
 
 ## Status
 
-Version `0.1` — proposed for the CSV MVP. Changes are backward-incompatible
+Version `0.2` — proposed for the CSV MVP. Changes are backward-incompatible
 unless a new contract version is introduced and downstream consumers migrate.
+
+- `0.2`: adds `balance`, `day_sequence`, and `category_direction` to
+  `GoldTransaction`; adds `GoldAccount`, `list_accounts()`, and
+  `boundary_transactions()`; orders `list_transactions` results; adds
+  invariants 7–9; materializes only `booked` rows (ADR-006).
+- `0.1`: initial CSV MVP contract.
 
 ## Purpose
 

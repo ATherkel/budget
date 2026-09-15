@@ -14,8 +14,8 @@ _Avoid_: Reversal, chargeback (not yet a distinct concept)
 
 **Adjustment**:
 A transaction that breaks the income/expense sign convention. With a
-`category_id` it is a Refund; without one it is a correction, kept out of
-Income and Expenses and reported on its own line.
+`category_id` it is a Refund; without one it is a correction. How each is
+treated is in [`docs/domains/transaction.md`](docs/domains/transaction.md#types).
 
 **Transfer-eligible account**:
 An account inside the household reporting boundary — `ownership_scope` of
@@ -61,4 +61,5 @@ _Avoid_: Unclassified total (a single sum hides offsetting amounts)
 
 **Provisional period**:
 A reporting period that includes the current, still-accumulating calendar
-month. Must be visibly labeled wherever it's displayed, not just documented.
+month. How it must be labeled is in
+[`docs/architecture/presentation-layer.md`](docs/architecture/presentation-layer.md#data-trust-display).
