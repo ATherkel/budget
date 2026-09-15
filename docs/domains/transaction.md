@@ -14,22 +14,32 @@ source's status to `booked`, `pending`, or `cancelled`:
   becomes a transaction. It is retained in Bronze and Silver as provenance
   and excluded from Gold and from the balance chain.
 
+A transaction's date is its **transaction date**, the date the source assigns
+to it. For Danske this is the purchase date, which can precede booking by
+days. A late-booked transaction therefore lands in a period that may already
+look finished, which is why periods stay provisional for a while after they
+end.
+
 ## Types
 
 - **Income:** positive money received that contributes to household income.
 - **Expense:** negative money spent that contributes to household spending.
+- **Refund:** money returned against an earlier categorized movement. It
+  carries that movement's category and nets against its measure: positive
+  for an expense category (including reversed fees), negative for returned
+  income in an income category.
+
 - **Transfer:** movement between accounts within the household reporting
   boundary; not spending or income.
-- **Adjustment:** an entry that breaks the income/expense sign convention.
-  The definition is structural:
-  - An adjustment with a `category_id` is a **refund**. It nets against that
-    category (spending for an expense category, income for an income
-    category) rather than counting as income or disappearing from the
-    report. A reversed bank fee is a refund against the bank-fees category.
-  - An adjustment without a `category_id` is a correction. It is excluded
-    from income and expenses and reported on its own line
-    (`analytics-layer.md`).
+- **Adjustment:** an uncategorized correction that needs an explanation. It
+  carries no category, is excluded from income and expenses, and is reported
+  separately.
+
 - **Unknown:** valid imported record awaiting classification.
+
+A transaction is classified as a whole: it has exactly one type and at most
+one category, and it is never split across categories
+([ADR-008](../decisions/ADR-008-single-category-per-transaction.md)).
 
 ## Lifecycle
 

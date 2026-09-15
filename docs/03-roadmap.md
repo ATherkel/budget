@@ -23,8 +23,10 @@ Exit criteria:
 Deliverables:
 
 - Python project tooling and database migrations.
-- Bronze import-run and raw-record persistence.
-- Danske CSV parser, canonical Silver records, validation, and deduplication.
+- Bronze raw-payload and import-run persistence, plus Danske CSV
+  source-record parsing.
+- Canonical Silver records, validation and quarantine, and duplicate
+  resolution verified by bank-stated balances.
 - Gold classification with an auditable manual override mechanism.
 
 Exit criteria:
@@ -34,7 +36,7 @@ Exit criteria:
 
 ## Phase 2 — Analytics
 
-**Goal:** derive household reports exclusively from Gold transactions.
+**Goal:** derive household reports exclusively from Gold facts and dimensions.
 
 Deliverables:
 
@@ -44,7 +46,7 @@ Deliverables:
 
 Exit criteria:
 
-- Analytics tests use only Gold fixtures or the Gold repository interface.
+- Analytics tests use only Gold fixtures or the `GoldRepository` interface.
 
 ## Phase 3 — Presentation
 

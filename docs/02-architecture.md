@@ -27,23 +27,23 @@ Manual Imports
 
 ### Bronze
 
-Store imported data exactly as received.
+Store imported data exactly as received and split it into source records.
 
 No business logic.
 
 No categorization.
 
-No transformation.
+No interpretation: no typing, normalization, status mapping, or deduplication.
 
 ### Silver
 
-Normalize transaction formats.
+Normalize transaction formats and map source statuses to booked or unbooked.
 
 Create canonical transaction structure.
 
-Perform validation.
+Perform validation and quarantine.
 
-Detect duplicates.
+Resolve duplicates and verify the merge against bank-stated balances.
 
 ### Gold
 
@@ -59,9 +59,14 @@ Apply:
 
 - categories
 - account relationships
-- budget mappings
+- budget mappings (future)
 
-Gold becomes the stable business layer.
+Publish:
+
+- account balance snapshots and coverage
+
+Gold becomes the stable business layer: a small dimensional model described
+in `architecture/gold-layer.md`.
 
 ### Analytics
 
