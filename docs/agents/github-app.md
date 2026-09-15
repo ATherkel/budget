@@ -33,8 +33,16 @@ is exposed.
 ## Agent commands
 
 The wrapper mints a fresh installation token for each command and passes it
-through process environment variables. It does not change `gh`'s saved
-`ATherkel` login or put a token in the Git remote URL.
+through process environment variables, so no token ends up in the Git remote
+URL.
+
+The App is the only GitHub login in agent sessions. The owner's `gh` is signed
+out, git stores no github.com credential, and the owner pushes over SSH
+through a `me` remote (`remote.pushDefault`) whose key needs their passphrase.
+Run every `gh` command through `-Mode Gh`, reads included, and push with
+`-Mode Push`. `git fetch origin` needs no login because the repository is
+public. A plain `git push` goes to `me` and fails without the passphrase, and
+Claude Code sessions also deny `git push`, `gh pr review`, and `gh pr merge`.
 
 ```powershell
 & .\scripts\gh-app\Invoke-BudgetAgent.ps1 -Mode Check
@@ -42,7 +50,7 @@ through process environment variables. It does not change `gh`'s saved
 & .\scripts\gh-app\Invoke-BudgetAgent.ps1 -Mode Push -BranchName docs/example
 ```
 
-Use `-Mode Gh` for GitHub writes such as `gh issue create`, `gh issue comment`,
+Writes through `-Mode Gh` include `gh issue create`, `gh issue comment`,
 `gh pr create`, and `gh pr review --comment`. On a PR opened by `ATherkel`, an
 agent can also submit `gh pr review --request-changes` through the App when it
 finds blocking problems. A bot cannot submit a blocking review on a PR it
@@ -80,12 +88,11 @@ For a change under `.github/workflows/`:
 
    ```bash
    git -C <worktree> log -p origin/main..HEAD
-   git -C <worktree> push origin HEAD:refs/heads/<branch>
+   git -C <worktree> push me HEAD:refs/heads/<branch>
    ```
 
-   A plain `git push` from an agent would run under the owner's saved login and
-   skip this review, so every agent push goes through `-Mode Push`, and the
-   owner makes the workflow pushes.
+   `me` is the owner's SSH remote. Its key needs the owner's passphrase, and
+   that's what makes this push the owner's review.
 3. After the owner confirms, open the PR with `-Mode Gh` and follow its checks
    with `gh pr checks`. Later commits that touch `.github/workflows/` repeat
    step 2. Commits that don't touch it go through `-Mode Push`.
