@@ -18,19 +18,32 @@ Produce reproducible reporting datasets from the Gold contract.
 
 ## Initial Measures
 
-For a selected reporting period:
+For a selected reporting period. A **refund** is an `adjustment` with a
+`category_id`; it nets into the measure of its `category_direction`. Every sum
+below is of signed `amount`s.
 
-- **Income:** sum of `income` amounts.
-- **Expenses:** absolute sum of `expense` amounts.
-- **Net cash flow:** all included income plus expense amounts.
-- **Savings:** income minus expenses; document later treatment of investments
-  and debt repayment rather than assuming they are savings.
-- **Savings rate:** `savings / income`, null when income is zero.
-- **Category spending:** absolute expense total by `category_id`, net of any
-  same-category `adjustment` amounts (refunds reduce the category they
-  reverse rather than disappearing or counting as income).
-- **Unclassified total:** sum of amounts on `unknown` transactions for the
-  period, reported explicitly rather than silently excluded.
+- **Income:** Σ `income` + Σ refunds with direction `income`.
+- **Expenses:** −(Σ `expense` + Σ refunds with direction `expense`). A
+  refunded purchase therefore reduces Expenses as well as its category.
+- **Net cash flow:** Income − Expenses.
+- **Savings:** Income − Expenses, equal to net cash flow in this release;
+  document later treatment of investments and debt repayment rather than
+  assuming they are savings.
+- **Savings rate:** `savings / income`, null when income is not positive.
+- **Category spending:** for each expense-direction category, −(Σ `expense` +
+  Σ refunds) in that category. When refunds exceed purchases in the period,
+  the category shows negative spending (a net refund). It is reported signed:
+  never clamped to zero and never moved to the purchase's period. Category
+  spending therefore always adds up to Expenses. Styling belongs to issue #11.
+- **Unclassified:** for `unknown` transactions, money in (Σ positive amounts),
+  money out (Σ negative amounts), and a count.
+- **Uncategorized adjustments:** the same three figures for adjustments
+  without a `category_id`.
+
+Money in and out are never netted against each other on these last two lines,
+and neither line counts toward Income or Expenses. Every transaction in the
+period is counted in exactly one of: Income/Expenses, transfers, Unclassified,
+or Uncategorized adjustments.
 
 Transfers are excluded from all spending and income measures. Account activity
 reports may include them separately.

@@ -32,7 +32,8 @@ out is negative.
 | `currency` | ISO 4217 string | Yes | Currency, initially `DKK`. |
 | `description` | string | Yes | Normalized human-readable transaction text. |
 | `transaction_type` | enum | Yes | `income`, `expense`, `transfer`, `adjustment`, or `unknown`. |
-| `category_id` | UUID/string/null | Conditional | Required for classified income/expense, and for an adjustment that nets a refund against the category it reverses; null permitted for transfer, unknown, and adjustments with no originating category. |
+| `category_id` | UUID/string/null | Conditional | Required for classified income/expense. An adjustment with a `category_id` is a refund and nets against that category; an adjustment without one is an uncategorized correction. Null for transfer and unknown. |
+| `category_direction` | enum/null | Conditional | `income` or `expense`: the direction of the `category_id` category, so consumers can net refunds without a category lookup. Null exactly when `category_id` is null. |
 | `balance` | `Decimal`/null | No | Bank-stated account balance immediately after this transaction. Drives balance-chain reconciliation and coverage; null when the source omitted it, which is a discrepancy, not an assumed zero. |
 | `counterparty` | string/null | No | Normalized merchant, person, or organisation when known. |
 | `transfer_group_id` | UUID/string/null | No | Groups two or more internal transfer legs when confidently matched. |
@@ -119,7 +120,8 @@ assume a database table name, source-system identifier, or raw CSV column.
 
 Before analytics or UI work begins, provide fixtures covering: income,
 expense, paired transfer, unmatched transfer candidate, unclassified record,
-a manually overridden category, several transactions on one day, a
+a manually overridden category, a refund, an uncategorized adjustment,
+several transactions on one day, a
 balance-chain break, and an account with no transactions. Fixtures contain
 synthetic data only.
 

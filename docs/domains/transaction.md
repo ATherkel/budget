@@ -15,11 +15,15 @@ the household must never see a pending amount presented as booked.
 - **Expense:** negative money spent that contributes to household spending.
 - **Transfer:** movement between accounts within the household reporting
   boundary; not spending or income.
-- **Adjustment:** a correction, fee reversal, or exceptional entry that needs
-  explicit policy treatment. A refund against a prior purchase is an
-  Adjustment that carries the same `category_id` as the purchase it reverses,
-  netting against that category's spending rather than counting as income or
-  disappearing from the report.
+- **Adjustment:** an entry that breaks the income/expense sign convention.
+  The definition is structural:
+  - An adjustment with a `category_id` is a **refund**. It nets against that
+    category (spending for an expense category, income for an income
+    category) rather than counting as income or disappearing from the
+    report. A reversed bank fee is a refund against the bank-fees category.
+  - An adjustment without a `category_id` is a correction. It is excluded
+    from income and expenses and reported on its own line
+    (`analytics-layer.md`).
 - **Unknown:** valid imported record awaiting classification.
 
 ## Lifecycle

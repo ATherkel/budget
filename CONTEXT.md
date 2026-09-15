@@ -7,14 +7,15 @@ analytics and a dashboard.
 ## Language
 
 **Refund**:
-Money returned against a prior purchase. Nets against the originating category's
-expense total rather than counting as income or vanishing from spending.
-_Avoid_: Reversal (see Adjustment), chargeback (not yet a distinct concept)
+An Adjustment that carries a `category_id`. It nets against that category
+instead of counting as income or vanishing from spending. A reversed fee is a
+Refund against the fee's category.
+_Avoid_: Reversal, chargeback (not yet a distinct concept)
 
 **Adjustment**:
-A correction, fee reversal, or exceptional entry with no originating purchase to
-net against; excluded from income and expense totals. A Refund is not an
-Adjustment even though both break the expense-is-negative sign convention.
+A transaction that breaks the income/expense sign convention. With a
+`category_id` it is a Refund; without one it is a correction, kept out of
+Income and Expenses and reported on its own line.
 
 **Transfer-eligible account**:
 An account inside the household reporting boundary — `ownership_scope` of
@@ -53,10 +54,10 @@ becomes a Gold transaction.
 _Avoid_: Transaction, in Bronze/Silver context (too broad — those layers may
 hold unsettled rows that aren't Transactions yet)
 
-**Unclassified total**:
-An explicit reporting measure summing `unknown`-classified transactions for a
-period, shown alongside Income/Expenses/Savings so an unclassified amount is a
-verified claim, not an artifact of silent exclusion.
+**Unclassified money**:
+Money on `unknown` transactions, reported as money in, money out, and a count,
+so opposite amounts can't cancel to zero and read as "nothing unclassified".
+_Avoid_: Unclassified total (a single sum hides offsetting amounts)
 
 **Provisional period**:
 A reporting period that includes the current, still-accumulating calendar
