@@ -59,9 +59,14 @@ Apply:
 
 - categories
 - account relationships
-- budget mappings
+- budget mappings (future)
 
-Gold becomes the stable business layer.
+Publish:
+
+- account balance snapshots and coverage
+
+Gold becomes the stable business layer: a small dimensional model described
+in `architecture/gold-layer.md`.
 
 ### Analytics
 
