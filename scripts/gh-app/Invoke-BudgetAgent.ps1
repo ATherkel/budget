@@ -12,6 +12,8 @@ $ErrorActionPreference = 'Stop'
 $repoName = 'ATherkel/budget'
 $apiBase = 'https://api.github.com'
 $configPath = Join-Path $env:USERPROFILE '.config\budget\agent-app.env'
+$botName = 'atherkel-budget-agent[bot]'
+$botEmail = '329499554+atherkel-budget-agent[bot]@users.noreply.github.com'
 
 function ConvertTo-Base64Url([byte[]] $Bytes) {
     [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
@@ -73,7 +75,42 @@ function Get-InstallationToken($Config) {
     return $result
 }
 
+function Get-ForeignCommits([string] $RepoPath) {
+    # Commits on HEAD that no origin ref has yet, where the bot is not both author and committer.
+    $lines = & git -C $RepoPath log --format='%H%x09%ae%x09%ce%x09%s' HEAD --not --remotes=origin
+    if ($LASTEXITCODE -ne 0) { throw 'git log failed while checking commit identities.' }
+    @($lines | Where-Object { $_ } | ForEach-Object {
+        $hash, $author, $committer, $subject = $_ -split "`t", 4
+        if ($author -ne $botEmail -or $committer -ne $botEmail) {
+            [pscustomobject]@{ Hash = $hash; Author = $author; Committer = $committer; Subject = $subject }
+        }
+    })
+}
+
 if ($Mode -eq 'SelfTest') {
+    $identityVariables = @('GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL')
+    $savedIdentity = @{}
+    foreach ($name in $identityVariables) { $savedIdentity[$name] = [Environment]::GetEnvironmentVariable($name) }
+    $testRepo = Join-Path ([IO.Path]::GetTempPath()) "budget-agent-selftest-$([Guid]::NewGuid().ToString('N'))"
+    try {
+        & git init -q $testRepo
+        foreach ($commit in @(@('bot', $botName, $botEmail), @('owner', 'Owner', 'owner@example.com'))) {
+            $env:GIT_AUTHOR_NAME = $commit[1]; $env:GIT_AUTHOR_EMAIL = $commit[2]
+            $env:GIT_COMMITTER_NAME = $commit[1]; $env:GIT_COMMITTER_EMAIL = $commit[2]
+            & git -C $testRepo commit -q --allow-empty -m $commit[0]
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create a self-test commit.' }
+        }
+        $foreign = @(Get-ForeignCommits $testRepo)
+        if ($foreign.Count -ne 1 -or $foreign[0].Subject -ne 'owner') {
+            throw 'Commit identity check did not flag exactly the non-bot commit.'
+        }
+        Write-Output 'Commit identity self-test passed.'
+    }
+    finally {
+        foreach ($name in $identityVariables) { [Environment]::SetEnvironmentVariable($name, $savedIdentity[$name]) }
+        Remove-Item -LiteralPath $testRepo -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
     $rsa = [Security.Cryptography.RSA]::Create(2048)
     try {
         $jwt = New-AppJwt '12345' ($rsa.ExportRSAPrivateKeyPem())
@@ -99,6 +136,16 @@ if ($Mode -eq 'SelfTest') {
 
 if ($Mode -eq 'Push' -and ($BranchName -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*$' -or $BranchName -eq 'main' -or $BranchName.Contains('..') -or $BranchName.Contains('//') -or $BranchName.EndsWith('/') -or $BranchName.EndsWith('.'))) {
     throw 'Pass a valid feature branch name; main is not allowed.'
+}
+if ($Mode -eq 'Push') {
+    $foreign = @(Get-ForeignCommits (Get-Location).Path)
+    if ($foreign.Count -gt 0) {
+        $list = ($foreign | ForEach-Object { "  $($_.Hash.Substring(0, 7)) author=$($_.Author) committer=$($_.Committer) $($_.Subject)" }) -join "`n"
+        $oldest = $foreign[-1].Hash.Substring(0, 7)
+        throw ("Refusing to push commits that $($botName) did not both author and commit:`n$list`n" +
+            "Rewrite them with:`n  git -c user.name=`"$botName`" -c user.email=`"$botEmail`" rebase --rebase-merges --exec `"git commit --amend --no-edit --reset-author`" $oldest~1`n" +
+            'If a listed commit is already on GitHub, run git fetch origin and push again.')
+    }
 }
 if ($Mode -eq 'Gh') {
     if (-not $ToolArgs -or $ToolArgs.Count -eq 0) { throw 'Pass a gh command after -Mode Gh.' }

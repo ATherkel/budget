@@ -11,6 +11,9 @@ or `gh pr merge --body`.
   - Claude Code: `Co-Authored-By: Claude <model> <noreply@anthropic.com>`
   - Codex: `Co-Authored-By: Codex <model> <noreply@openai.com>`
   - GitHub Copilot: `Co-Authored-By: GitHub Copilot <model> <noreply@github.com>`
+
+  Commit as the agent App's bot user, never as the owner. See "Commit
+  identity" in `docs/agents/github-app.md`.
 - **GitHub text** (PR descriptions, issue bodies, comments, reviews): end with
   a footer line `🤖 Generated with <agent> (<model>)`. Claude Code's default
   `🤖 Generated with [Claude Code](...)` footer satisfies this.

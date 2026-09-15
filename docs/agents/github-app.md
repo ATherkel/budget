@@ -64,6 +64,38 @@ An App installation is not a human `@me` identity, so that command may need a
 separate owner assignment or label-based claim. Test it after installation
 before depending on it for automated triage.
 
+## Commit identity
+
+GitHub shows a commit's avatar by its author and committer email, not by who
+pushed it. Agent commits therefore use the App's bot user as both author and
+committer, so the owner's account is never credited with agent work:
+
+```text
+atherkel-budget-agent[bot] <329499554+atherkel-budget-agent[bot]@users.noreply.github.com>
+```
+
+`329499554` is the bot user's ID (`gh api users/atherkel-budget-agent%5Bbot%5D`).
+Each agent sets `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, and
+`GIT_COMMITTER_EMAIL` for its shell commands from a tracked config file:
+
+| Agent | File | Setting |
+| --- | --- | --- |
+| Claude Code | `.claude/settings.json` | `env` |
+| Codex | `.codex/config.toml` | `[shell_environment_policy.set]`; loaded only for a trusted project, and worktrees inherit the main checkout's trust |
+| GitHub Copilot in VS Code | `.vscode/settings.json` | `env` of `chat.tools.terminal.terminalProfile.windows`; ignored in an untrusted workspace |
+
+These take effect only when the checked-out branch contains them. On any other
+branch, or in an agent without such a setting, pass the identity on each
+commit: `git -c user.name="<name>" -c user.email="<email>" commit ...`.
+Commits you make yourself in an ordinary terminal keep your own identity.
+Copilot's cloud agent runs on GitHub and commits as Copilot, so none of this
+applies to it.
+
+`-Mode Push` enforces the identity. It refuses to push any commit that no
+`origin` ref has yet unless the bot is both its author and its committer, and
+prints a `git rebase --exec` command that rewrites those commits. Keep the
+`Co-Authored-By` trailer from `AGENTS.md`: it still names the agent and model.
+
 `main` has an active repository ruleset requiring one code-owner approval,
 dismissal of stale approvals after pushes, approval of the latest push by
 someone other than its pusher, resolution of review threads, and no listed
@@ -87,12 +119,14 @@ For a change under `.github/workflows/`:
    and these two commands, then wait for them to confirm the push.
 
    ```bash
-   git -C <worktree> log -p origin/main..HEAD
+   git -C <worktree> log -p --format=fuller origin/main..HEAD
    git -C <worktree> push me HEAD:refs/heads/<branch>
    ```
 
    `me` is the owner's SSH remote. Its key needs the owner's passphrase, and
-   that's what makes this push the owner's review.
+   that's what makes this push the owner's review. This push skips the
+   wrapper's identity check, so the owner also confirms that each `Author` and
+   `Commit` line names the bot.
 3. After the owner confirms, open the PR with `-Mode Gh` and follow its checks
    with `gh pr checks`. Later commits that touch `.github/workflows/` repeat
    step 2. Commits that don't touch it go through `-Mode Push`.
