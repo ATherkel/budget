@@ -2,9 +2,10 @@
 
 ## Status
 
-Den danske prototype er klar til afprøvning. Der er endnu ingen observationer
-fra deltagernes løsning af de tre opgaver. Der er ikke givet godkendelse af
-designet eller dokumenteret, at opgaverne kan løses uden hjælp.
+Den danske prototype er under afprøvning. Brugeren har påpeget, at positive
+og negative beløb er for svære at skelne i detaljevisningen. En ændring er
+lavet og afventer ny afprøvning. Der er ikke givet godkendelse af hele designet
+eller dokumenteret, at de tre opgaver kan løses uden hjælp.
 
 ## Brugerens input og ændringerne
 
@@ -21,6 +22,15 @@ designet eller dokumenteret, at opgaverne kan løses uden hjælp.
   Beløb, datoernes betydning, statuskoder og rapporternes struktur er uændrede.
 - Sprogønsket er konkret feedback og er håndteret. Det bekræfter et sprogkrav,
   men siger endnu ikke, om tallene eller forklaringerne er forståelige.
+- Browserkommentar 1: Brugeren pegede på tilbagebetalingen på 300,00 kr.
+  i septemberudgifterne i det opdigtede eksempel og efterlyste tydeligere
+  visuel forskel på positive og negative beløb. Det er en konkret observation
+  fra detaljevisningen; den dokumenterer ikke i sig selv en løst opgave.
+- Ændring: Alle posteringer viser nu et udtrykkeligt plus eller minus,
+  en grøn eller rød beløbsbaggrund og teksten Penge ind eller Penge ud.
+  Nulbeløb er neutrale. Forskellen afhænger dermed ikke alene af farve.
+  Beløb, kategorisummer og øvrige rapporttal er uændrede. Brugerens vurdering
+  af denne løsning afventes.
 
 ## Agentens kontroller
 
@@ -47,8 +57,13 @@ designet eller dokumenteret, at opgaverne kan løses uden hjælp.
   mobilvisninger og ingen advarsler eller fejl i browserens log.
 - Private rapporter ignoreres af Git. Serveren udstiller kun de valgte faste
   rapporter og skærmfiler på denne computer.
+- Efter browserkommentar 1: Tilbagebetalingen på 300,00 kr. viser nu
+  +300,00 kr. og Penge ind; de øvrige septemberudgifter viser minus og
+  Penge ud. Kontrolleret visuelt på computer og ved 390×844 uden vandret
+  overfyldning i detaljevinduet. Begge sider af en overførsel får korrekt
+  fortegn og tekst. Regnestykkerne består fortsat for alle 17 måneder.
 
-## Afprøvning med jer — afventer observationer
+## Afprøvning med jer — afventer næste observationer
 
 1. Find ud af, hvor pengene blev af denne måned.
 2. Undersøg og forklar et overraskende kategoribeløb.
@@ -62,6 +77,8 @@ misforståelse, og gentag den relevante opgave.
 ## Udtrykkeligt bekræftet
 
 - Dansk er påkrævet i hele brugeroplevelsen.
+- Positive og negative posteringer skal være lettere at skelne. Den konkrete
+  løsning med fortegn, farve og tekst er endnu ikke bekræftet som tilstrækkelig.
 - De beskrevne afgrænsninger og brug af lokale data er aftalt.
 - Intet layout eller nogen forklaring af økonomiske tal er endnu valideret
   gennem deltagernes løsning af opgaverne.
@@ -69,6 +86,7 @@ misforståelse, og gentag den relevante opgave.
 ## Uafprøvede antagelser og åbne spørgsmål
 
 - Er de danske navne og kategorier forståelige for begge deltagere?
+- Er ind- og udbetalinger nu lette at skelne i den kommenterede detaljevisning?
 - Bliver markeringerne af ufuldstændige tal set og forstået?
 - Forstås Tilbage efter udgifter som indtægter minus udgifter, særskilt fra
   ændringer i saldo og penge uden kategori?

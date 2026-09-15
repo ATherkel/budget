@@ -32,6 +32,11 @@ TransactionDisplay
   udgifts- og kategorisummer er positive ved forbrug og kan blive negative,
   når tilbagebetalinger er større end køb. Andelen tilbage er null, hvis
   indtægterne ikke er positive. Browseren beregner ikke økonomiske nøgletal.
+- Observeret behov: Fortegnet på hver postering skal være tydeligt. Det
+  eksisterende signerede `amount` er nok til visning med plus/minus og
+  Penge ind/Penge ud; intet ekstra beregnet rapportfelt er nødvendigt.
+  Fortegnet må ikke udledes af posteringens type. Kategorisummer har en anden
+  fortegnskonvention og skal ikke mærkes som ind- eller udbetalinger.
 - Hvert husstandstal skal bære oplysninger om kontodækning. Én fælles reference
   i rapporten er tilstrækkelig, hvis alle tal omfatter samme konti, og detaljerne
   altid viser oplysningerne. Foreløbig periode, manglende kontodata og

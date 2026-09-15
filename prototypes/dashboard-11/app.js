@@ -36,10 +36,18 @@ function render() {
     </aside></div>`;
 }
 function transactions(rows) {
-  return rows.length ? rows.map(t => `<article class="transaction"><div class="row"><span class="row-title">${esc(t.description)}</span><span class="row-amount ${t.kind==='refund'?'refund':''}">${money(t.amount)}</span></div><small>${date(t.date)} · ${esc(t.accountName)} · ${esc(t.kindLabel)}</small></article>`).join('') : '<p class="empty">Ingen posteringer i denne visning.</p>';
+  return rows.length ? rows.map(t => `<article class="transaction"><div class="row"><span class="row-title">${esc(t.description)}</span>${transactionAmount(t.amount)}</div><small>${date(t.date)} · ${esc(t.accountName)} · ${esc(t.kindLabel)}</small></article>`).join('') : '<p class="empty">Ingen posteringer i denne visning.</p>';
+}
+function transactionAmount(value) {
+  // Fortegn er visning af den enkelte postering, ikke beregning af rapporttal.
+  const amount = Number(value);
+  const direction = amount > 0 ? 'money-in' : amount < 0 ? 'money-out' : 'money-zero';
+  const label = amount > 0 ? 'Penge ind' : amount < 0 ? 'Penge ud' : 'Ingen bevægelse';
+  const formatted = new Intl.NumberFormat('da-DK', {minimumFractionDigits:2,maximumFractionDigits:2,signDisplay:'exceptZero'}).format(amount).replace('-', '−');
+  return `<span class="transaction-amount ${direction}"><strong class="row-amount">${formatted} kr.</strong><span class="direction-label">${label}</span></span>`;
 }
 function showDetail({title,amount,summary,rows,coverage=report.coverage}) {
-  el('detail-content').innerHTML = `<h2 id="detail-title">${esc(title)}</h2><p class="section-intro">${esc(report.period.label)} · ${esc(report.period.statusLabel)}</p>${amount===undefined?'':`<div class="detail-value">${money(amount)}</div>`}${coverageNote(coverage)}<div class="detail-summary">${summary}</div><p class="footnote">Posteringer med minus er penge ud. Positive beløb er penge ind.</p>${transactions(rows)}`;
+  el('detail-content').innerHTML = `<h2 id="detail-title">${esc(title)}</h2><p class="section-intro">${esc(report.period.label)} · ${esc(report.period.statusLabel)}</p>${amount===undefined?'':`<div class="detail-value">${money(amount)}</div>`}${coverageNote(coverage)}<div class="detail-summary">${summary}</div><p class="footnote">På hver postering betyder + penge ind og − penge ud.</p>${transactions(rows)}`;
   el('detail').showModal();
   el('detail').scrollTop = 0;
 }
