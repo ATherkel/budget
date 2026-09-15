@@ -58,8 +58,9 @@ out is negative.
    records how it was derived and can be rebuilt.
 7. `booking_date` is used exactly as supplied by the source; no timezone
    conversion is applied at any layer.
-8. Only source rows in a completed/settled booking status are materialized as
-   `GoldTransaction`. Pending or unsettled rows remain in Bronze/Silver only.
+8. Only Silver transactions with `booking_status=booked` are materialized as
+   `GoldTransaction`. `pending` and `cancelled` rows remain in Bronze/Silver
+   only and take no part in the balance chain.
 9. Gold carries `balance` exactly as the source states it and never corrects,
    fills, or reconciles it. `(account_id, booking_date, day_sequence)` is
    unique, so each account's transactions have one total order. Whether

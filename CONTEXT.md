@@ -48,11 +48,11 @@ _Avoid_: last import date (the export date, not the import date, bounds the
 evidence)
 
 **Booked transaction**:
-A transaction whose source marked it completed/settled. A pending or
-unsettled source row is retained in Bronze and Silver as provenance but never
-becomes a Gold transaction.
+A transaction whose source row Silver maps to `booking_status=booked`. A
+`pending` or `cancelled` source row is retained in Bronze and Silver as
+provenance but never becomes a Gold transaction.
 _Avoid_: Transaction, in Bronze/Silver context (too broad — those layers may
-hold unsettled rows that aren't Transactions yet)
+hold pending or cancelled rows that aren't Transactions)
 
 **Unclassified money**:
 Money on `unknown` transactions, reported as money in, money out, and a count,

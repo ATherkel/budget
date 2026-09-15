@@ -4,10 +4,15 @@ A transaction is a booked monetary movement on an account. The source record
 may contain more fields and different terminology; Gold expresses the stable
 household interpretation.
 
-A source row only becomes a transaction once its source marks it
-completed/settled. A row still pending or unsettled is retained in Bronze and
-Silver as provenance but does not become a Gold transaction until it settles;
-the household must never see a pending amount presented as booked.
+A source row only becomes a transaction once it is booked. Silver maps each
+source's status to `booked`, `pending`, or `cancelled`:
+
+- A **pending** row is retained in Bronze and Silver as provenance but is not
+  a transaction; if a later export shows it booked, the booked row becomes
+  one. The household must never see a pending amount presented as booked.
+- A **cancelled** row (Danske `Slettet`, which carries no balance) never
+  becomes a transaction. It is retained in Bronze and Silver as provenance
+  and excluded from Gold and from the balance chain.
 
 ## Types
 

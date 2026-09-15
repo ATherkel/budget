@@ -42,16 +42,18 @@ and `evidence_through` through `list_accounts()`, so an account with no
 transactions in a period is still reported.
 
 A break in the chain, or a missing balance value, is never silently corrected
-or hidden. Only source rows in a completed/settled booking status are
-materialized as Gold transactions; the bank's own back-office reconciliation
-flag (`Afstemt` in the Danske export) is not used for anything.
+or hidden. Silver maps each source's status to `booking_status` (`booked`,
+`pending`, or `cancelled`), and only `booked` rows are materialized as Gold
+transactions or take part in the chain. The bank's own back-office
+reconciliation flag (`Afstemt` in the Danske export) is not used for anything.
 
 ## Consequences
 
 - `GoldTransaction` gains `balance` and `day_sequence`; Silver's canonical
-  transaction gains `balance`, `day_sequence`, and `source_status` to carry
-  the evidence forward from Bronze without interpreting it. Bronze records
-  each import run's export date.
+  transaction gains `balance`, `day_sequence`, and `booking_status`. Bronze
+  records each import run's export date.
+- A new connector adds only a Silver status mapping; Gold never sees a bank's
+  status vocabulary.
 - The Gold contract gains `GoldAccount`, `list_accounts()`, and
   `boundary_transactions()`.
 - Coverage (`complete` / `partial` / `no_data`) becomes a real, per-account,

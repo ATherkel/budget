@@ -17,16 +17,20 @@ Transaction(
     description: str,
     source_system: str,
     balance: Decimal | None,
-    source_status: str,
+    booking_status: Literal["booked", "pending", "cancelled"],
 )
 ```
 
 `balance` is the bank-stated account balance immediately after this
-transaction, carried through verbatim; `source_status` is the source's own
-booking status (e.g. completed vs. pending), also carried through verbatim.
-Silver retains both as technical metadata — it does not interpret, reconcile,
-or filter on them. Gold decides which rows are settled enough to materialize
-and how the balance evidence is used.
+transaction, carried through verbatim. Silver does not reconcile it; how the
+balance evidence is used is decided downstream (ADR-006).
+
+`booking_status` is Silver's normalization of the source's own status. Each
+source format maps its status values to `booked`, `pending`, or `cancelled`;
+for Danske, `Udført` is `booked` and `Slettet` is `cancelled`. An unmapped
+status value is a validation error, and the original value stays in Bronze.
+Gold therefore never needs a bank's status vocabulary: it materializes `booked`
+rows only.
 
 `day_sequence` orders an account's transactions within one `booking_date`,
 following the bank's own row order; the balance check depends on it, because
