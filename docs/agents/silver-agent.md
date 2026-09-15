@@ -25,6 +25,8 @@ duplicates without assigning household financial meaning.
 
 - `Dato` parses to a date and `Beløb`/`Saldo` parse to `Decimal` for valid
   current Danske rows.
+- `Status` maps to `booking_status` (`Udført` → `booked`, `Slettet` →
+  `cancelled`); an unmapped value is a validation error.
 - Text is normalized only in a documented, non-destructive way; source text
   remains traceable to Bronze.
 - Reprocessing the same Bronze inputs produces the same Silver results.

@@ -5,7 +5,7 @@ How engineering skills should consume this repository's domain documentation whe
 ## Before exploring, read these
 
 - **`CONTEXT.md`** at the repository root.
-- **`docs/adr/`**: read ADRs that touch the area you're about to work in.
+- **`docs/decisions/`**: read ADRs that touch the area you're about to work in.
 
 If these files don't exist, **proceed silently**. Don't flag their absence or suggest creating them upfront. The `/domain-modeling` skill creates them lazily when terms or decisions are resolved.
 
@@ -16,7 +16,7 @@ This is a single-context repository:
 ```
 /
 ├── CONTEXT.md
-├── docs/adr/
+├── docs/decisions/
 └── src/
 ```
 
