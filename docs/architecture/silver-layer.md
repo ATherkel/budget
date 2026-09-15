@@ -11,6 +11,7 @@ Transaction(
     transaction_id: str,
     account_id: str,
     booking_date: date,
+    day_sequence: int,
     amount: Decimal,
     currency: str,
     description: str,
@@ -26,6 +27,14 @@ booking status (e.g. completed vs. pending), also carried through verbatim.
 Silver retains both as technical metadata — it does not interpret, reconcile,
 or filter on them. Gold decides which rows are settled enough to materialize
 and how the balance evidence is used.
+
+`day_sequence` orders an account's transactions within one `booking_date`,
+following the bank's own row order; the balance check depends on it, because
+one day can hold many rows. When exports overlap, Silver merges their rows into
+one order while deduplicating. It never reorders rows the bank listed.
+
+Silver also passes forward each account's latest export date from Bronze
+import-run metadata. Gold derives `GoldAccount.evidence_through` from it.
 
 ## Responsibilities
 

@@ -27,6 +27,7 @@ out is negative.
 | `silver_transaction_id` | UUID/string | Yes | Traceable parent Silver record. |
 | `account_id` | UUID/string | Yes | Stable household account identifier. |
 | `booking_date` | `date` | Yes | Bank booking date; reporting period derives from it. |
+| `day_sequence` | int | Yes | Position among the account's transactions on the same `booking_date`, ascending in the bank's own row order. Values ascend but need not be consecutive. |
 | `amount` | `Decimal` | Yes | Signed monetary amount. |
 | `currency` | ISO 4217 string | Yes | Currency, initially `DKK`. |
 | `description` | string | Yes | Normalized human-readable transaction text. |
@@ -58,12 +59,23 @@ out is negative.
    conversion is applied at any layer.
 8. Only source rows in a completed/settled booking status are materialized as
    `GoldTransaction`. Pending or unsettled rows remain in Bronze/Silver only.
-9. For two chronologically adjacent transactions on the same account,
-   `balance == previous_balance + amount` when both are present; the
-   account's first transaction is trusted as its opening balance. A break in
-   this chain, or a missing `balance`, is never corrected or hidden — it is
-   surfaced as reduced coverage (see `analytics-layer.md`), not silently
-   assumed.
+9. Gold carries `balance` exactly as the source states it and never corrects,
+   fills, or reconciles it. `(account_id, booking_date, day_sequence)` is
+   unique, so each account's transactions have one total order. Whether
+   consecutive balances chain is evaluated by analytics (`analytics-layer.md`,
+   Coverage); Gold does not guarantee that the chain holds.
+
+## `GoldAccount`
+
+One record per registered household account, whether or not it has
+transactions yet. Account taxonomy and ownership attributes belong to issue #6.
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `account_id` | UUID/string | Yes | Matches `GoldTransaction.account_id`. |
+| `active` | bool | Yes | Whether the account is currently in use. |
+| `coverage_start` | `date`/null | No | `booking_date` of the account's first transaction, whose balance is trusted as the opening balance. Null when the account has no transactions. |
+| `evidence_through` | `date`/null | No | Last date the account's imported exports are known to cover: the day before its latest export date, because the export day itself may still be booking. Null when no export of the account has been imported. |
 
 ## Consumer Interface
 
@@ -79,7 +91,26 @@ class GoldTransactionRepository(Protocol):
         end_date: date,
         account_ids: Sequence[str] | None = None,
     ) -> Sequence[GoldTransaction]: ...
+
+    def boundary_transactions(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+        account_ids: Sequence[str] | None = None,
+    ) -> Sequence[GoldTransaction]: ...
+
+    def list_accounts(self) -> Sequence[GoldAccount]: ...
 ```
+
+- `list_transactions` returns records ordered by `account_id`, `booking_date`,
+  `day_sequence`.
+- `boundary_transactions` returns, for each account, its last transaction
+  before `start_date` and its first transaction after `end_date`, where they
+  exist. Analytics needs them to check the balance links into and out of a
+  period.
+- `list_accounts` returns every registered account, including accounts with no
+  transactions.
 
 Consumers may filter the returned records and aggregate them. They may not
 assume a database table name, source-system identifier, or raw CSV column.
@@ -88,7 +119,9 @@ assume a database table name, source-system identifier, or raw CSV column.
 
 Before analytics or UI work begins, provide fixtures covering: income,
 expense, paired transfer, unmatched transfer candidate, unclassified record,
-and a manually overridden category. Fixtures contain synthetic data only.
+a manually overridden category, several transactions on one day, a
+balance-chain break, and an account with no transactions. Fixtures contain
+synthetic data only.
 
 ## Open Decisions
 
