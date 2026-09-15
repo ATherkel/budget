@@ -30,6 +30,7 @@ Transaction(
     source_system: str,         # source format, e.g. "danske-csv-v1"
     balance: Decimal | None,
     source_status: str,
+    booking_status: Literal["booked", "pending", "cancelled"],
     occurrence: int,            # k among visibly identical transactions
     day_sequence: int,          # order within transaction_date
     identity_version: str,
@@ -44,6 +45,11 @@ verbatim. For each date, `balance` and `day_sequence` come from the latest
 admitted export covering that date (ADR-009). They can therefore change when a
 later export adds a late-booked transaction; `transaction_id` never does.
 `balance` is null only for sources that state no balances (ADR-010).
+
+Silver passes forward each account's latest admitted export date from Bronze
+import-run metadata. Gold derives `GoldAccount.evidence_through` from it.
+Within a date, `day_sequence` preserves the bank's row order in the selected
+export; it is never sorted by amount or text.
 
 ## Other Outputs
 
@@ -63,6 +69,7 @@ UnbookedRecord(                 # retained provenance; never a transaction
     transaction_date: date,
     amount: Decimal,
     source_status: str,
+    booking_status: Literal["booked", "pending", "cancelled"],
 )
 
 BalanceObservation(             # bank-stated end-of-day balance per export
@@ -102,8 +109,10 @@ ReviewItem(
 ## Rules
 
 **Booking state**
-- Each source format maps its status values to booked or unbooked. For
-  `danske-csv-v1`, `Udført` is booked and `Slettet` is unbooked.
+- Each source format maps its status values to `booking_status`: `booked`,
+  `pending`, or `cancelled`. For `danske-csv-v1`, `Udført` is `booked` and
+  `Slettet` is `cancelled`. Only booked rows enter the canonical transaction
+  output; pending and cancelled rows remain `UnbookedRecord` provenance.
 - An unknown status value is a validation error. Gold never sees a source
   status vocabulary.
 - `Afstemt` is retained in Bronze only and is not interpreted.

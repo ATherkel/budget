@@ -50,6 +50,11 @@ and `FormatFailure`s are derived deterministically from the payload and its
 source format. They can be regenerated at any time, so a parser fix never
 touches the payload.
 
+Import-run metadata, including the export date: the date the export was
+produced, read from the source filename (Danske: the `-YYYYMMDD` suffix, e.g.
+`-20260914`) or declared by the operator at import. It bounds how far the
+export's evidence reaches.
+
 ## Rules
 
 - **No interpretation.** Splitting a payload into source records is allowed.

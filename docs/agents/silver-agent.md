@@ -30,6 +30,8 @@ resolve duplicates without assigning household financial meaning.
 
 - `Dato` parses to a date and `Beløb`/`Saldo` parse to `Decimal` for valid
   `danske-csv-v1` rows.
+- `Status` maps to `booking_status` (`Udført` → `booked`, `Slettet` →
+  `cancelled`); an unmapped value is a validation error.
 - `description` is the source text as delivered. The identity text is derived
   only by trimming and collapsing whitespace, as ADR-009 documents.
 - Identical, overlapping, reordered, and reverse-order imports produce the

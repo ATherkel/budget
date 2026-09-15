@@ -9,14 +9,15 @@ analytics and a dashboard.
 ### Reporting
 
 **Refund**:
-Money returned against a prior purchase. Nets against the originating category's
-expense total rather than counting as income or vanishing from spending.
-_Avoid_: Reversal (see Adjustment), chargeback (not yet a distinct concept)
+An Adjustment that carries a `category_id`. It nets against that category
+instead of counting as income or vanishing from spending. A reversed fee is a
+Refund against the fee's category.
+_Avoid_: Reversal, chargeback (not yet a distinct concept)
 
 **Adjustment**:
-A correction, fee reversal, or exceptional entry with no originating purchase to
-net against; excluded from income and expense totals. A Refund is not an
-Adjustment even though both break the expense-is-negative sign convention.
+A transaction that breaks the income/expense sign convention. With a
+`category_id` it is a Refund; without one it is a correction. How each is
+treated is in [`docs/domains/transaction.md`](docs/domains/transaction.md#types).
 
 **Transfer-eligible account**:
 An account inside the household reporting boundary — `ownership_scope` of
@@ -28,36 +29,42 @@ still transfer-eligible)
 
 **Coverage**:
 A per-account, per-reporting-period status (`complete` / `partial` / `no_data`)
-stating whether that account's data is trustworthy enough to report on for that
-period. `complete` requires an unbroken balance chain across every row in the
-period _and_ that the account was already under management before the period
-began; a first, partial-month import is always `partial`. Tracked at the
-account grain, not the whole household, so a gap points at the account that
-needs attention.
+saying whether that account's balance evidence shows the period's data is
+whole. It is judged over the whole period, not only the rows inside it; the
+rules are in
+[`docs/architecture/analytics-layer.md`](docs/architecture/analytics-layer.md#coverage).
+Tracked per account, not for the whole household, so a gap points at the
+account that needs attention.
 
 **Balance chain**:
 The reconciliation evidence for an account: each transaction carries the
-bank-stated balance immediately after it, which must equal the previous
-transaction's balance plus its amount. The account's first transaction is
-trusted as its opening balance. A break, or a missing balance, is a
-discrepancy that is never silently corrected.
+bank-stated balance immediately after it, and each link between consecutive
+transactions checks that the later balance equals the earlier one plus the
+later amount. A broken link, or a missing balance, is a discrepancy, never
+silently corrected.
+
+**Evidence through**:
+The last date an account's imported exports are known to cover: the day
+before its latest export date.
+_Avoid_: last import date (the export date, not the import date, bounds the
+evidence)
 
 **Booked transaction**:
-A transaction whose source marked it completed/settled. A pending or
-unsettled source row is retained in Bronze and Silver as provenance but never
-becomes a Gold transaction.
+A transaction whose source row Silver maps to `booking_status=booked`. A
+`pending` or `cancelled` source row is retained in Bronze and Silver as
+provenance but never becomes a Gold transaction.
 _Avoid_: Transaction, in Bronze/Silver context (too broad — those layers may
-hold unsettled rows that aren't Transactions yet)
+hold pending or cancelled rows that aren't Transactions)
 
-**Unclassified total**:
-An explicit reporting measure summing `unknown`-classified transactions for a
-period, shown alongside Income/Expenses/Savings so an unclassified amount is a
-verified claim, not an artifact of silent exclusion.
+**Unclassified money**:
+Money on `unknown` transactions, reported as money in, money out, and a count,
+so opposite amounts can't cancel to zero and read as "nothing unclassified".
+_Avoid_: Unclassified total (a single sum hides offsetting amounts)
 
 **Provisional period**:
-A reporting period whose figures may still change: it includes today, or some
-account's latest export is dated less than 7 days after the period ends.
-Must be visibly labeled wherever it's displayed, not just documented.
+A reporting period that includes the current calendar month or still awaits
+exports covering the late-booking window. How it must be labeled is in
+[`docs/architecture/presentation-layer.md`](docs/architecture/presentation-layer.md#data-trust-display).
 
 ### Imports and identity
 
