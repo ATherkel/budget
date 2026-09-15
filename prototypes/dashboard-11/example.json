@@ -1,31 +1,31 @@
 {
   "schemaVersion": "prototype-11/v1",
   "kind": "synthetic",
-  "label": "Synthetic example · fictional money and accounts",
-  "notice": "Entirely fictional data. Account trust states are stipulated examples, not the output of a coverage engine.",
+  "label": "Opdigtet eksempel · fiktive beløb og konti",
+  "notice": "Alle oplysninger er opdigtede. Markeringerne af manglende kontodata er fastlagt til denne afprøvning.",
   "defaultMonth": "2026-09",
   "reports": [
     {
       "period": {
         "id": "2026-09",
-        "label": "September 2026",
+        "label": "september 2026",
         "start": "2026-09-01",
         "end": "2026-09-30",
         "provisional": true,
-        "detail": "September is still accumulating. The example is frozen as of 15 September 2026.",
-        "statusLabel": "Month to date · provisional"
+        "detail": "September er stadig i gang. Eksemplet viser et fast øjebliksbillede pr. 15. september 2026.",
+        "statusLabel": "Måneden indtil nu · foreløbige tal"
       },
       "coverage": {
         "status": "partial",
-        "label": "Incomplete picture · My account partial; Shared account missing",
-        "shortLabel": "Incomplete",
-        "detail": "My account: data only through 14 September. Shared account: no data for September. Totals can change.",
+        "label": "Ufuldstændige tal · Min konto er delvis med; Fælleskonto mangler",
+        "shortLabel": "Ufuldstændige tal",
+        "detail": "Min konto: Kun oplysninger til og med 14. september. Fælleskonto: Ingen oplysninger for september. Tallene kan ændre sig.",
         "incompleteAccountIds": [
           "mine",
           "common"
         ]
       },
-      "measureNote": "Incomplete",
+      "measureNote": "Ufuldstændige tal",
       "measures": {
         "income": "36000.00",
         "expenses": "15110.00",
@@ -34,9 +34,9 @@
         "savingsRate": "58.03",
         "coverage": {
           "status": "partial",
-          "label": "Incomplete picture · My account partial; Shared account missing",
-          "shortLabel": "Incomplete",
-          "detail": "My account: data only through 14 September. Shared account: no data for September. Totals can change.",
+          "label": "Ufuldstændige tal · Min konto er delvis med; Fælleskonto mangler",
+          "shortLabel": "Ufuldstændige tal",
+          "detail": "Min konto: Kun oplysninger til og med 14. september. Fælleskonto: Ingen oplysninger for september. Tallene kan ændre sig.",
           "incompleteAccountIds": [
             "mine",
             "common"
@@ -47,19 +47,19 @@
         {
           "id": "example-027",
           "accountId": "mine",
-          "accountName": "My account",
+          "accountName": "Min konto",
           "date": "2026-09-01",
           "amount": "36000.00",
           "kind": "income",
           "category": null,
-          "description": "Salary",
-          "kindLabel": "Income"
+          "description": "Løn",
+          "kindLabel": "Indtægter"
         }
       ],
       "categories": [
         {
           "id": "category-4",
-          "name": "Housing",
+          "name": "Bolig",
           "netSpending": "9800.00",
           "purchases": "9800.00",
           "refunds": "0.00",
@@ -68,20 +68,20 @@
             {
               "id": "example-028",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-02",
               "amount": "-9800.00",
               "kind": "expense",
-              "category": "Housing",
-              "description": "Rent",
-              "kindLabel": "Purchase / payment"
+              "category": "Bolig",
+              "description": "Husleje",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "partial",
-            "label": "Incomplete picture · My account partial; Shared account missing",
-            "shortLabel": "Incomplete",
-            "detail": "My account: data only through 14 September. Shared account: no data for September. Totals can change.",
+            "label": "Ufuldstændige tal · Min konto er delvis med; Fælleskonto mangler",
+            "shortLabel": "Ufuldstændige tal",
+            "detail": "Min konto: Kun oplysninger til og med 14. september. Fælleskonto: Ingen oplysninger for september. Tallene kan ændre sig.",
             "incompleteAccountIds": [
               "mine",
               "common"
@@ -91,7 +91,7 @@
         },
         {
           "id": "category-3",
-          "name": "Home & furniture",
+          "name": "Boligudstyr og møbler",
           "netSpending": "1900.00",
           "purchases": "2200.00",
           "refunds": "300.00",
@@ -100,31 +100,31 @@
             {
               "id": "example-033",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-10",
               "amount": "300.00",
               "kind": "refund",
-              "category": "Home & furniture",
-              "description": "Returned lamp",
-              "kindLabel": "Refund"
+              "category": "Boligudstyr og møbler",
+              "description": "Returneret lampe",
+              "kindLabel": "Penge tilbage"
             },
             {
               "id": "example-032",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-06",
               "amount": "-2200.00",
               "kind": "expense",
-              "category": "Home & furniture",
-              "description": "Desk & chair",
-              "kindLabel": "Purchase / payment"
+              "category": "Boligudstyr og møbler",
+              "description": "Skrivebord og stol",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "partial",
-            "label": "Incomplete picture · My account partial; Shared account missing",
-            "shortLabel": "Incomplete",
-            "detail": "My account: data only through 14 September. Shared account: no data for September. Totals can change.",
+            "label": "Ufuldstændige tal · Min konto er delvis med; Fælleskonto mangler",
+            "shortLabel": "Ufuldstændige tal",
+            "detail": "Min konto: Kun oplysninger til og med 14. september. Fælleskonto: Ingen oplysninger for september. Tallene kan ændre sig.",
             "incompleteAccountIds": [
               "mine",
               "common"
@@ -134,7 +134,7 @@
         },
         {
           "id": "category-2",
-          "name": "Groceries",
+          "name": "Dagligvarer",
           "netSpending": "1570.00",
           "purchases": "1570.00",
           "refunds": "0.00",
@@ -143,31 +143,31 @@
             {
               "id": "example-030",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-11",
               "amount": "-680.00",
               "kind": "expense",
-              "category": "Groceries",
-              "description": "Supermarket",
-              "kindLabel": "Purchase / payment"
+              "category": "Dagligvarer",
+              "description": "Supermarked",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-029",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-03",
               "amount": "-890.00",
               "kind": "expense",
-              "category": "Groceries",
-              "description": "Supermarket",
-              "kindLabel": "Purchase / payment"
+              "category": "Dagligvarer",
+              "description": "Supermarked",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "partial",
-            "label": "Incomplete picture · My account partial; Shared account missing",
-            "shortLabel": "Incomplete",
-            "detail": "My account: data only through 14 September. Shared account: no data for September. Totals can change.",
+            "label": "Ufuldstændige tal · Min konto er delvis med; Fælleskonto mangler",
+            "shortLabel": "Ufuldstændige tal",
+            "detail": "Min konto: Kun oplysninger til og med 14. september. Fælleskonto: Ingen oplysninger for september. Tallene kan ændre sig.",
             "incompleteAccountIds": [
               "mine",
               "common"
@@ -177,7 +177,7 @@
         },
         {
           "id": "category-0",
-          "name": "Bills",
+          "name": "Faste regninger",
           "netSpending": "1100.00",
           "purchases": "1100.00",
           "refunds": "0.00",
@@ -186,20 +186,20 @@
             {
               "id": "example-035",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-05",
               "amount": "-1100.00",
               "kind": "expense",
-              "category": "Bills",
-              "description": "Electricity & internet",
-              "kindLabel": "Purchase / payment"
+              "category": "Faste regninger",
+              "description": "El og internet",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "partial",
-            "label": "Incomplete picture · My account partial; Shared account missing",
-            "shortLabel": "Incomplete",
-            "detail": "My account: data only through 14 September. Shared account: no data for September. Totals can change.",
+            "label": "Ufuldstændige tal · Min konto er delvis med; Fælleskonto mangler",
+            "shortLabel": "Ufuldstændige tal",
+            "detail": "Min konto: Kun oplysninger til og med 14. september. Fælleskonto: Ingen oplysninger for september. Tallene kan ændre sig.",
             "incompleteAccountIds": [
               "mine",
               "common"
@@ -218,20 +218,20 @@
             {
               "id": "example-031",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-04",
               "amount": "-460.00",
               "kind": "expense",
               "category": "Transport",
-              "description": "Travel pass",
-              "kindLabel": "Purchase / payment"
+              "description": "Periodekort",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "partial",
-            "label": "Incomplete picture · My account partial; Shared account missing",
-            "shortLabel": "Incomplete",
-            "detail": "My account: data only through 14 September. Shared account: no data for September. Totals can change.",
+            "label": "Ufuldstændige tal · Min konto er delvis med; Fælleskonto mangler",
+            "shortLabel": "Ufuldstændige tal",
+            "detail": "Min konto: Kun oplysninger til og med 14. september. Fælleskonto: Ingen oplysninger for september. Tallene kan ændre sig.",
             "incompleteAccountIds": [
               "mine",
               "common"
@@ -241,7 +241,7 @@
         },
         {
           "id": "category-1",
-          "name": "Eating out",
+          "name": "Café og restaurant",
           "netSpending": "280.00",
           "purchases": "280.00",
           "refunds": "0.00",
@@ -250,20 +250,20 @@
             {
               "id": "example-034",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-08",
               "amount": "-280.00",
               "kind": "expense",
-              "category": "Eating out",
-              "description": "Lunch",
-              "kindLabel": "Purchase / payment"
+              "category": "Café og restaurant",
+              "description": "Frokost",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "partial",
-            "label": "Incomplete picture · My account partial; Shared account missing",
-            "shortLabel": "Incomplete",
-            "detail": "My account: data only through 14 September. Shared account: no data for September. Totals can change.",
+            "label": "Ufuldstændige tal · Min konto er delvis med; Fælleskonto mangler",
+            "shortLabel": "Ufuldstændige tal",
+            "detail": "Min konto: Kun oplysninger til og med 14. september. Fælleskonto: Ingen oplysninger for september. Tallene kan ændre sig.",
             "incompleteAccountIds": [
               "mine",
               "common"
@@ -280,27 +280,27 @@
           {
             "id": "example-037",
             "accountId": "mine",
-            "accountName": "My account",
+            "accountName": "Min konto",
             "date": "2026-09-13",
             "amount": "-600.00",
             "kind": "unknown",
             "category": null,
-            "description": "Unidentified money out",
-            "kindLabel": "Needs a category"
+            "description": "Ukendt udbetaling",
+            "kindLabel": "Mangler en kategori"
           },
           {
             "id": "example-036",
             "accountId": "mine",
-            "accountName": "My account",
+            "accountName": "Min konto",
             "date": "2026-09-12",
             "amount": "600.00",
             "kind": "unknown",
             "category": null,
-            "description": "Unidentified money in",
-            "kindLabel": "Needs a category"
+            "description": "Ukendt indbetaling",
+            "kindLabel": "Mangler en kategori"
           }
         ],
-        "detail": "Not included in income, expenses or money left. These entries may be purchases, income or transfers; the fixture does not decide."
+        "detail": "Ikke med i indtægter, udgifter eller beløbet tilbage. Posteringerne kan være køb, indtægter eller overførsler. Det er ikke afgjort i dette eksempel."
       },
       "adjustments": {
         "moneyIn": "100.00",
@@ -310,46 +310,46 @@
           {
             "id": "example-039",
             "accountId": "mine",
-            "accountName": "My account",
+            "accountName": "Min konto",
             "date": "2026-09-14",
             "amount": "-25.00",
             "kind": "adjustment",
             "category": null,
-            "description": "Uncategorized correction paid",
-            "kindLabel": "Other correction"
+            "description": "Rettelse uden kategori — penge ud",
+            "kindLabel": "Anden rettelse"
           },
           {
             "id": "example-038",
             "accountId": "mine",
-            "accountName": "My account",
+            "accountName": "Min konto",
             "date": "2026-09-14",
             "amount": "100.00",
             "kind": "adjustment",
             "category": null,
-            "description": "Uncategorized correction received",
-            "kindLabel": "Other correction"
+            "description": "Rettelse uden kategori — penge ind",
+            "kindLabel": "Anden rettelse"
           }
         ],
-        "detail": "Corrections without a category are shown separately and excluded from income and expenses."
+        "detail": "Rettelser uden kategori vises særskilt og er ikke med i indtægter og udgifter."
       },
       "transfers": {
         "moneyIn": "0.00",
         "moneyOut": "0.00",
         "count": 0,
         "transactions": [],
-        "detail": "Each side of a move is shown. Neither side counts as income or spending.",
-        "label": "No confirmed internal transfers in this frozen sample."
+        "detail": "Begge sider af en overførsel vises. Ingen af dem tæller som indtægt eller udgift.",
+        "label": "Ingen bekræftede overførsler mellem de to konti i dette eksempel."
       },
       "accounts": [
         {
           "id": "mine",
-          "name": "My account",
-          "ownerLabel": "Mine",
+          "name": "Min konto",
+          "ownerLabel": "Min",
           "coverage": {
             "status": "partial",
-            "label": "Partial month",
-            "shortLabel": "Incomplete",
-            "detail": "Data only through 14 September. Later activity is not included.",
+            "label": "Kun en del af måneden",
+            "shortLabel": "Ufuldstændige tal",
+            "detail": "Kun oplysninger til og med 14. september. Senere bevægelser er ikke med.",
             "incompleteAccountIds": [
               "mine"
             ]
@@ -359,163 +359,163 @@
             "asOf": "2026-09-14"
           },
           "quietConfirmed": false,
-          "activityNote": "Only entries in the frozen report are shown; missing activity is possible.",
+          "activityNote": "Kun posteringerne i dette faste eksempel vises. Der kan mangle bevægelser.",
           "transactions": [
             {
               "id": "example-039",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-14",
               "amount": "-25.00",
               "kind": "adjustment",
               "category": null,
-              "description": "Uncategorized correction paid",
-              "kindLabel": "Other correction"
+              "description": "Rettelse uden kategori — penge ud",
+              "kindLabel": "Anden rettelse"
             },
             {
               "id": "example-038",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-14",
               "amount": "100.00",
               "kind": "adjustment",
               "category": null,
-              "description": "Uncategorized correction received",
-              "kindLabel": "Other correction"
+              "description": "Rettelse uden kategori — penge ind",
+              "kindLabel": "Anden rettelse"
             },
             {
               "id": "example-037",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-13",
               "amount": "-600.00",
               "kind": "unknown",
               "category": null,
-              "description": "Unidentified money out",
-              "kindLabel": "Needs a category"
+              "description": "Ukendt udbetaling",
+              "kindLabel": "Mangler en kategori"
             },
             {
               "id": "example-036",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-12",
               "amount": "600.00",
               "kind": "unknown",
               "category": null,
-              "description": "Unidentified money in",
-              "kindLabel": "Needs a category"
+              "description": "Ukendt indbetaling",
+              "kindLabel": "Mangler en kategori"
             },
             {
               "id": "example-030",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-11",
               "amount": "-680.00",
               "kind": "expense",
-              "category": "Groceries",
-              "description": "Supermarket",
-              "kindLabel": "Purchase / payment"
+              "category": "Dagligvarer",
+              "description": "Supermarked",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-033",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-10",
               "amount": "300.00",
               "kind": "refund",
-              "category": "Home & furniture",
-              "description": "Returned lamp",
-              "kindLabel": "Refund"
+              "category": "Boligudstyr og møbler",
+              "description": "Returneret lampe",
+              "kindLabel": "Penge tilbage"
             },
             {
               "id": "example-034",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-08",
               "amount": "-280.00",
               "kind": "expense",
-              "category": "Eating out",
-              "description": "Lunch",
-              "kindLabel": "Purchase / payment"
+              "category": "Café og restaurant",
+              "description": "Frokost",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-032",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-06",
               "amount": "-2200.00",
               "kind": "expense",
-              "category": "Home & furniture",
-              "description": "Desk & chair",
-              "kindLabel": "Purchase / payment"
+              "category": "Boligudstyr og møbler",
+              "description": "Skrivebord og stol",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-035",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-05",
               "amount": "-1100.00",
               "kind": "expense",
-              "category": "Bills",
-              "description": "Electricity & internet",
-              "kindLabel": "Purchase / payment"
+              "category": "Faste regninger",
+              "description": "El og internet",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-031",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-04",
               "amount": "-460.00",
               "kind": "expense",
               "category": "Transport",
-              "description": "Travel pass",
-              "kindLabel": "Purchase / payment"
+              "description": "Periodekort",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-029",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-03",
               "amount": "-890.00",
               "kind": "expense",
-              "category": "Groceries",
-              "description": "Supermarket",
-              "kindLabel": "Purchase / payment"
+              "category": "Dagligvarer",
+              "description": "Supermarked",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-028",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-02",
               "amount": "-9800.00",
               "kind": "expense",
-              "category": "Housing",
-              "description": "Rent",
-              "kindLabel": "Purchase / payment"
+              "category": "Bolig",
+              "description": "Husleje",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-027",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-09-01",
               "amount": "36000.00",
               "kind": "income",
               "category": null,
-              "description": "Salary",
-              "kindLabel": "Income"
+              "description": "Løn",
+              "kindLabel": "Indtægter"
             }
           ],
           "openingBalance": "48380.00"
         },
         {
           "id": "common",
-          "name": "Shared account",
-          "ownerLabel": "Common",
+          "name": "Fælleskonto",
+          "ownerLabel": "Fælles",
           "coverage": {
             "status": "no_data",
-            "label": "No data for September",
-            "shortLabel": "Incomplete",
-            "detail": "This month is missing; no activity and no balance can be confirmed.",
+            "label": "Ingen oplysninger for september",
+            "shortLabel": "Ufuldstændige tal",
+            "detail": "Oplysninger for denne måned mangler. Hverken bevægelser eller saldo kan bekræftes.",
             "incompleteAccountIds": [
               "common"
             ]
@@ -525,7 +525,7 @@
             "asOf": null
           },
           "quietConfirmed": false,
-          "activityNote": "Only entries in the frozen report are shown; missing activity is possible.",
+          "activityNote": "Kun posteringerne i dette faste eksempel vises. Der kan mangle bevægelser.",
           "transactions": [],
           "openingBalance": null
         }
@@ -534,21 +534,21 @@
     {
       "period": {
         "id": "2026-08",
-        "label": "August 2026",
+        "label": "august 2026",
         "start": "2026-08-01",
         "end": "2026-08-31",
         "provisional": false,
-        "detail": "Month ended; the illustrative admitted export is more than seven days after month-end.",
-        "statusLabel": "Month ended"
+        "detail": "Måneden er afsluttet. I dette eksempel er kontoudtoget godkendt og dateret mere end syv dage efter månedens afslutning.",
+        "statusLabel": "Måneden er afsluttet"
       },
       "coverage": {
         "status": "complete",
-        "label": "Account data complete · both accounts",
-        "shortLabel": "Account data complete",
-        "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+        "label": "Alle kontodata er med · begge konti",
+        "shortLabel": "Alle kontodata er med",
+        "detail": "Oplysningerne dækker hele måneden for begge konti. Posteringer uden kategori er stadig ikke med i indtægter og udgifter.",
         "incompleteAccountIds": []
       },
-      "measureNote": "Categorized entries",
+      "measureNote": "Posteringer med kategori",
       "measures": {
         "income": "36000.00",
         "expenses": "24630.00",
@@ -557,9 +557,9 @@
         "savingsRate": "31.58",
         "coverage": {
           "status": "complete",
-          "label": "Account data complete · both accounts",
-          "shortLabel": "Account data complete",
-          "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+          "label": "Alle kontodata er med · begge konti",
+          "shortLabel": "Alle kontodata er med",
+          "detail": "Oplysningerne dækker hele måneden for begge konti. Posteringer uden kategori er stadig ikke med i indtægter og udgifter.",
           "incompleteAccountIds": []
         }
       },
@@ -567,19 +567,19 @@
         {
           "id": "example-012",
           "accountId": "mine",
-          "accountName": "My account",
+          "accountName": "Min konto",
           "date": "2026-08-01",
           "amount": "36000.00",
           "kind": "income",
           "category": null,
-          "description": "Salary",
-          "kindLabel": "Income"
+          "description": "Løn",
+          "kindLabel": "Indtægter"
         }
       ],
       "categories": [
         {
           "id": "category-5",
-          "name": "Housing",
+          "name": "Bolig",
           "netSpending": "9800.00",
           "purchases": "9800.00",
           "refunds": "0.00",
@@ -588,27 +588,27 @@
             {
               "id": "example-013",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-02",
               "amount": "-9800.00",
               "kind": "expense",
-              "category": "Housing",
-              "description": "Rent",
-              "kindLabel": "Purchase / payment"
+              "category": "Bolig",
+              "description": "Husleje",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "complete",
-            "label": "Account data complete · both accounts",
-            "shortLabel": "Account data complete",
-            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "label": "Alle kontodata er med · begge konti",
+            "shortLabel": "Alle kontodata er med",
+            "detail": "Oplysningerne dækker hele måneden for begge konti. Posteringer uden kategori er stadig ikke med i indtægter og udgifter.",
             "incompleteAccountIds": []
           },
           "barPercent": 100.0
         },
         {
           "id": "category-4",
-          "name": "Home & furniture",
+          "name": "Boligudstyr og møbler",
           "netSpending": "8700.00",
           "purchases": "9500.00",
           "refunds": "800.00",
@@ -617,49 +617,49 @@
             {
               "id": "example-023",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-19",
               "amount": "800.00",
               "kind": "refund",
-              "category": "Home & furniture",
-              "description": "Washing machine price adjustment",
-              "kindLabel": "Refund"
+              "category": "Boligudstyr og møbler",
+              "description": "Prisafslag på vaskemaskine",
+              "kindLabel": "Penge tilbage"
             },
             {
               "id": "example-022",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-12",
               "amount": "-9200.00",
               "kind": "expense",
-              "category": "Home & furniture",
-              "description": "Replacement washing machine",
-              "kindLabel": "Purchase / payment"
+              "category": "Boligudstyr og møbler",
+              "description": "Ny vaskemaskine",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-021",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-08",
               "amount": "-300.00",
               "kind": "expense",
-              "category": "Home & furniture",
-              "description": "Kitchen shelves",
-              "kindLabel": "Purchase / payment"
+              "category": "Boligudstyr og møbler",
+              "description": "Køkkenhylder",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "complete",
-            "label": "Account data complete · both accounts",
-            "shortLabel": "Account data complete",
-            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "label": "Alle kontodata er med · begge konti",
+            "shortLabel": "Alle kontodata er med",
+            "detail": "Oplysningerne dækker hele måneden for begge konti. Posteringer uden kategori er stadig ikke med i indtægter og udgifter.",
             "incompleteAccountIds": []
           },
           "barPercent": 88.77551020408163
         },
         {
           "id": "category-3",
-          "name": "Groceries",
+          "name": "Dagligvarer",
           "netSpending": "3600.00",
           "purchases": "3600.00",
           "refunds": "0.00",
@@ -668,49 +668,49 @@
             {
               "id": "example-016",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-25",
               "amount": "-1030.00",
               "kind": "expense",
-              "category": "Groceries",
-              "description": "Supermarket",
-              "kindLabel": "Purchase / payment"
+              "category": "Dagligvarer",
+              "description": "Supermarked",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-015",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-13",
               "amount": "-1220.00",
               "kind": "expense",
-              "category": "Groceries",
-              "description": "Supermarket",
-              "kindLabel": "Purchase / payment"
+              "category": "Dagligvarer",
+              "description": "Supermarked",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-014",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-03",
               "amount": "-1350.00",
               "kind": "expense",
-              "category": "Groceries",
-              "description": "Supermarket",
-              "kindLabel": "Purchase / payment"
+              "category": "Dagligvarer",
+              "description": "Supermarked",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "complete",
-            "label": "Account data complete · both accounts",
-            "shortLabel": "Account data complete",
-            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "label": "Alle kontodata er med · begge konti",
+            "shortLabel": "Alle kontodata er med",
+            "detail": "Oplysningerne dækker hele måneden for begge konti. Posteringer uden kategori er stadig ikke med i indtægter og udgifter.",
             "incompleteAccountIds": []
           },
           "barPercent": 36.734693877551024
         },
         {
           "id": "category-0",
-          "name": "Bills",
+          "name": "Faste regninger",
           "netSpending": "1250.00",
           "purchases": "1250.00",
           "refunds": "0.00",
@@ -719,27 +719,27 @@
             {
               "id": "example-017",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-04",
               "amount": "-1250.00",
               "kind": "expense",
-              "category": "Bills",
-              "description": "Electricity & internet",
-              "kindLabel": "Purchase / payment"
+              "category": "Faste regninger",
+              "description": "El og internet",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "complete",
-            "label": "Account data complete · both accounts",
-            "shortLabel": "Account data complete",
-            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "label": "Alle kontodata er med · begge konti",
+            "shortLabel": "Alle kontodata er med",
+            "detail": "Oplysningerne dækker hele måneden for begge konti. Posteringer uden kategori er stadig ikke med i indtægter og udgifter.",
             "incompleteAccountIds": []
           },
           "barPercent": 12.755102040816327
         },
         {
           "id": "category-2",
-          "name": "Eating out",
+          "name": "Café og restaurant",
           "netSpending": "1070.00",
           "purchases": "1070.00",
           "refunds": "0.00",
@@ -748,31 +748,31 @@
             {
               "id": "example-020",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-20",
               "amount": "-650.00",
               "kind": "expense",
-              "category": "Eating out",
-              "description": "Dinner",
-              "kindLabel": "Purchase / payment"
+              "category": "Café og restaurant",
+              "description": "Middag",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-019",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-10",
               "amount": "-420.00",
               "kind": "expense",
-              "category": "Eating out",
-              "description": "Lunch",
-              "kindLabel": "Purchase / payment"
+              "category": "Café og restaurant",
+              "description": "Frokost",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "complete",
-            "label": "Account data complete · both accounts",
-            "shortLabel": "Account data complete",
-            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "label": "Alle kontodata er med · begge konti",
+            "shortLabel": "Alle kontodata er med",
+            "detail": "Oplysningerne dækker hele måneden for begge konti. Posteringer uden kategori er stadig ikke med i indtægter og udgifter.",
             "incompleteAccountIds": []
           },
           "barPercent": 10.918367346938776
@@ -788,27 +788,27 @@
             {
               "id": "example-018",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-05",
               "amount": "-810.00",
               "kind": "expense",
               "category": "Transport",
-              "description": "Travel pass",
-              "kindLabel": "Purchase / payment"
+              "description": "Periodekort",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "complete",
-            "label": "Account data complete · both accounts",
-            "shortLabel": "Account data complete",
-            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "label": "Alle kontodata er med · begge konti",
+            "shortLabel": "Alle kontodata er med",
+            "detail": "Oplysningerne dækker hele måneden for begge konti. Posteringer uden kategori er stadig ikke med i indtægter og udgifter.",
             "incompleteAccountIds": []
           },
           "barPercent": 8.26530612244898
         },
         {
           "id": "category-1",
-          "name": "Clothes",
+          "name": "Tøj",
           "netSpending": "-600.00",
           "purchases": "0.00",
           "refunds": "600.00",
@@ -817,20 +817,20 @@
             {
               "id": "example-024",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-22",
               "amount": "600.00",
               "kind": "refund",
-              "category": "Clothes",
-              "description": "Return of a July purchase",
-              "kindLabel": "Refund"
+              "category": "Tøj",
+              "description": "Returnering af et køb fra juli",
+              "kindLabel": "Penge tilbage"
             }
           ],
           "coverage": {
             "status": "complete",
-            "label": "Account data complete · both accounts",
-            "shortLabel": "Account data complete",
-            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "label": "Alle kontodata er med · begge konti",
+            "shortLabel": "Alle kontodata er med",
+            "detail": "Oplysningerne dækker hele måneden for begge konti. Posteringer uden kategori er stadig ikke med i indtægter og udgifter.",
             "incompleteAccountIds": []
           },
           "barPercent": 0.0
@@ -844,53 +844,53 @@
           {
             "id": "example-026",
             "accountId": "mine",
-            "accountName": "My account",
+            "accountName": "Min konto",
             "date": "2026-08-24",
             "amount": "-450.00",
             "kind": "unknown",
             "category": null,
-            "description": "Unidentified money out",
-            "kindLabel": "Needs a category"
+            "description": "Ukendt udbetaling",
+            "kindLabel": "Mangler en kategori"
           },
           {
             "id": "example-025",
             "accountId": "mine",
-            "accountName": "My account",
+            "accountName": "Min konto",
             "date": "2026-08-23",
             "amount": "450.00",
             "kind": "unknown",
             "category": null,
-            "description": "Unidentified money in",
-            "kindLabel": "Needs a category"
+            "description": "Ukendt indbetaling",
+            "kindLabel": "Mangler en kategori"
           }
         ],
-        "detail": "Not included in income, expenses or money left. These entries may be purchases, income or transfers; the fixture does not decide."
+        "detail": "Ikke med i indtægter, udgifter eller beløbet tilbage. Posteringerne kan være køb, indtægter eller overførsler. Det er ikke afgjort i dette eksempel."
       },
       "adjustments": {
         "moneyIn": "0.00",
         "moneyOut": "0.00",
         "count": 0,
         "transactions": [],
-        "detail": "Corrections without a category are shown separately and excluded from income and expenses."
+        "detail": "Rettelser uden kategori vises særskilt og er ikke med i indtægter og udgifter."
       },
       "transfers": {
         "moneyIn": "0.00",
         "moneyOut": "0.00",
         "count": 0,
         "transactions": [],
-        "detail": "Each side of a move is shown. Neither side counts as income or spending.",
-        "label": "No confirmed internal transfers in this frozen sample."
+        "detail": "Begge sider af en overførsel vises. Ingen af dem tæller som indtægt eller udgift.",
+        "label": "Ingen bekræftede overførsler mellem de to konti i dette eksempel."
       },
       "accounts": [
         {
           "id": "mine",
-          "name": "My account",
-          "ownerLabel": "Mine",
+          "name": "Min konto",
+          "ownerLabel": "Min",
           "coverage": {
             "status": "complete",
-            "label": "Account data complete",
-            "shortLabel": "Account data complete",
-            "detail": "Evidence covers the whole month, including its boundaries.",
+            "label": "Alle kontodata er med",
+            "shortLabel": "Alle kontodata er med",
+            "detail": "Oplysningerne bekræfter, at hele måneden er med, fra start til slut.",
             "incompleteAccountIds": []
           },
           "balance": {
@@ -898,185 +898,185 @@
             "asOf": "2026-08-25"
           },
           "quietConfirmed": false,
-          "activityNote": "Only entries in the frozen report are shown; missing activity is possible.",
+          "activityNote": "Kun posteringerne i dette faste eksempel vises. Der kan mangle bevægelser.",
           "transactions": [
             {
               "id": "example-016",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-25",
               "amount": "-1030.00",
               "kind": "expense",
-              "category": "Groceries",
-              "description": "Supermarket",
-              "kindLabel": "Purchase / payment"
+              "category": "Dagligvarer",
+              "description": "Supermarked",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-026",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-24",
               "amount": "-450.00",
               "kind": "unknown",
               "category": null,
-              "description": "Unidentified money out",
-              "kindLabel": "Needs a category"
+              "description": "Ukendt udbetaling",
+              "kindLabel": "Mangler en kategori"
             },
             {
               "id": "example-025",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-23",
               "amount": "450.00",
               "kind": "unknown",
               "category": null,
-              "description": "Unidentified money in",
-              "kindLabel": "Needs a category"
+              "description": "Ukendt indbetaling",
+              "kindLabel": "Mangler en kategori"
             },
             {
               "id": "example-024",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-22",
               "amount": "600.00",
               "kind": "refund",
-              "category": "Clothes",
-              "description": "Return of a July purchase",
-              "kindLabel": "Refund"
+              "category": "Tøj",
+              "description": "Returnering af et køb fra juli",
+              "kindLabel": "Penge tilbage"
             },
             {
               "id": "example-020",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-20",
               "amount": "-650.00",
               "kind": "expense",
-              "category": "Eating out",
-              "description": "Dinner",
-              "kindLabel": "Purchase / payment"
+              "category": "Café og restaurant",
+              "description": "Middag",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-023",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-19",
               "amount": "800.00",
               "kind": "refund",
-              "category": "Home & furniture",
-              "description": "Washing machine price adjustment",
-              "kindLabel": "Refund"
+              "category": "Boligudstyr og møbler",
+              "description": "Prisafslag på vaskemaskine",
+              "kindLabel": "Penge tilbage"
             },
             {
               "id": "example-015",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-13",
               "amount": "-1220.00",
               "kind": "expense",
-              "category": "Groceries",
-              "description": "Supermarket",
-              "kindLabel": "Purchase / payment"
+              "category": "Dagligvarer",
+              "description": "Supermarked",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-022",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-12",
               "amount": "-9200.00",
               "kind": "expense",
-              "category": "Home & furniture",
-              "description": "Replacement washing machine",
-              "kindLabel": "Purchase / payment"
+              "category": "Boligudstyr og møbler",
+              "description": "Ny vaskemaskine",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-019",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-10",
               "amount": "-420.00",
               "kind": "expense",
-              "category": "Eating out",
-              "description": "Lunch",
-              "kindLabel": "Purchase / payment"
+              "category": "Café og restaurant",
+              "description": "Frokost",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-021",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-08",
               "amount": "-300.00",
               "kind": "expense",
-              "category": "Home & furniture",
-              "description": "Kitchen shelves",
-              "kindLabel": "Purchase / payment"
+              "category": "Boligudstyr og møbler",
+              "description": "Køkkenhylder",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-018",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-05",
               "amount": "-810.00",
               "kind": "expense",
               "category": "Transport",
-              "description": "Travel pass",
-              "kindLabel": "Purchase / payment"
+              "description": "Periodekort",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-017",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-04",
               "amount": "-1250.00",
               "kind": "expense",
-              "category": "Bills",
-              "description": "Electricity & internet",
-              "kindLabel": "Purchase / payment"
+              "category": "Faste regninger",
+              "description": "El og internet",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-014",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-03",
               "amount": "-1350.00",
               "kind": "expense",
-              "category": "Groceries",
-              "description": "Supermarket",
-              "kindLabel": "Purchase / payment"
+              "category": "Dagligvarer",
+              "description": "Supermarked",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-013",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-02",
               "amount": "-9800.00",
               "kind": "expense",
-              "category": "Housing",
-              "description": "Rent",
-              "kindLabel": "Purchase / payment"
+              "category": "Bolig",
+              "description": "Husleje",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-012",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-08-01",
               "amount": "36000.00",
               "kind": "income",
               "category": null,
-              "description": "Salary",
-              "kindLabel": "Income"
+              "description": "Løn",
+              "kindLabel": "Indtægter"
             }
           ],
           "openingBalance": "37010.00"
         },
         {
           "id": "common",
-          "name": "Shared account",
-          "ownerLabel": "Common",
+          "name": "Fælleskonto",
+          "ownerLabel": "Fælles",
           "coverage": {
             "status": "complete",
-            "label": "Account data complete",
-            "shortLabel": "Account data complete",
-            "detail": "Evidence covers the whole month, including its boundaries.",
+            "label": "Alle kontodata er med",
+            "shortLabel": "Alle kontodata er med",
+            "detail": "Oplysningerne bekræfter, at hele måneden er med, fra start til slut.",
             "incompleteAccountIds": []
           },
           "balance": {
@@ -1084,7 +1084,7 @@
             "asOf": "2026-07-15"
           },
           "quietConfirmed": true,
-          "activityNote": "Only entries in the frozen report are shown; missing activity is possible.",
+          "activityNote": "Kun posteringerne i dette faste eksempel vises. Der kan mangle bevægelser.",
           "transactions": [],
           "openingBalance": "23000.00"
         }
@@ -1093,21 +1093,21 @@
     {
       "period": {
         "id": "2026-07",
-        "label": "July 2026",
+        "label": "juli 2026",
         "start": "2026-07-01",
         "end": "2026-07-31",
         "provisional": false,
-        "detail": "Month ended; the illustrative admitted export is more than seven days after month-end.",
-        "statusLabel": "Month ended"
+        "detail": "Måneden er afsluttet. I dette eksempel er kontoudtoget godkendt og dateret mere end syv dage efter månedens afslutning.",
+        "statusLabel": "Måneden er afsluttet"
       },
       "coverage": {
         "status": "complete",
-        "label": "Account data complete · both accounts",
-        "shortLabel": "Account data complete",
-        "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+        "label": "Alle kontodata er med · begge konti",
+        "shortLabel": "Alle kontodata er med",
+        "detail": "Oplysningerne dækker hele måneden for begge konti. Posteringer uden kategori er stadig ikke med i indtægter og udgifter.",
         "incompleteAccountIds": []
       },
-      "measureNote": "Categorized entries",
+      "measureNote": "Posteringer med kategori",
       "measures": {
         "income": "36000.00",
         "expenses": "15990.00",
@@ -1116,9 +1116,9 @@
         "savingsRate": "55.58",
         "coverage": {
           "status": "complete",
-          "label": "Account data complete · both accounts",
-          "shortLabel": "Account data complete",
-          "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+          "label": "Alle kontodata er med · begge konti",
+          "shortLabel": "Alle kontodata er med",
+          "detail": "Oplysningerne dækker hele måneden for begge konti. Posteringer uden kategori er stadig ikke med i indtægter og udgifter.",
           "incompleteAccountIds": []
         }
       },
@@ -1126,19 +1126,19 @@
         {
           "id": "example-001",
           "accountId": "mine",
-          "accountName": "My account",
+          "accountName": "Min konto",
           "date": "2026-07-01",
           "amount": "36000.00",
           "kind": "income",
           "category": null,
-          "description": "Salary",
-          "kindLabel": "Income"
+          "description": "Løn",
+          "kindLabel": "Indtægter"
         }
       ],
       "categories": [
         {
           "id": "category-4",
-          "name": "Housing",
+          "name": "Bolig",
           "netSpending": "9800.00",
           "purchases": "9800.00",
           "refunds": "0.00",
@@ -1147,27 +1147,27 @@
             {
               "id": "example-002",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-02",
               "amount": "-9800.00",
               "kind": "expense",
-              "category": "Housing",
-              "description": "Rent",
-              "kindLabel": "Purchase / payment"
+              "category": "Bolig",
+              "description": "Husleje",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "complete",
-            "label": "Account data complete · both accounts",
-            "shortLabel": "Account data complete",
-            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "label": "Alle kontodata er med · begge konti",
+            "shortLabel": "Alle kontodata er med",
+            "detail": "Oplysningerne dækker hele måneden for begge konti. Posteringer uden kategori er stadig ikke med i indtægter og udgifter.",
             "incompleteAccountIds": []
           },
           "barPercent": 100.0
         },
         {
           "id": "category-3",
-          "name": "Groceries",
+          "name": "Dagligvarer",
           "netSpending": "3250.00",
           "purchases": "3250.00",
           "refunds": "0.00",
@@ -1176,49 +1176,49 @@
             {
               "id": "example-005",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-24",
               "amount": "-950.00",
               "kind": "expense",
-              "category": "Groceries",
-              "description": "Supermarket",
-              "kindLabel": "Purchase / payment"
+              "category": "Dagligvarer",
+              "description": "Supermarked",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-004",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-12",
               "amount": "-1100.00",
               "kind": "expense",
-              "category": "Groceries",
-              "description": "Supermarket",
-              "kindLabel": "Purchase / payment"
+              "category": "Dagligvarer",
+              "description": "Supermarked",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-003",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-03",
               "amount": "-1200.00",
               "kind": "expense",
-              "category": "Groceries",
-              "description": "Supermarket",
-              "kindLabel": "Purchase / payment"
+              "category": "Dagligvarer",
+              "description": "Supermarked",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "complete",
-            "label": "Account data complete · both accounts",
-            "shortLabel": "Account data complete",
-            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "label": "Alle kontodata er med · begge konti",
+            "shortLabel": "Alle kontodata er med",
+            "detail": "Oplysningerne dækker hele måneden for begge konti. Posteringer uden kategori er stadig ikke med i indtægter og udgifter.",
             "incompleteAccountIds": []
           },
           "barPercent": 33.16326530612245
         },
         {
           "id": "category-0",
-          "name": "Bills",
+          "name": "Faste regninger",
           "netSpending": "1100.00",
           "purchases": "1100.00",
           "refunds": "0.00",
@@ -1227,20 +1227,20 @@
             {
               "id": "example-006",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-04",
               "amount": "-1100.00",
               "kind": "expense",
-              "category": "Bills",
-              "description": "Electricity & internet",
-              "kindLabel": "Purchase / payment"
+              "category": "Faste regninger",
+              "description": "El og internet",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "complete",
-            "label": "Account data complete · both accounts",
-            "shortLabel": "Account data complete",
-            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "label": "Alle kontodata er med · begge konti",
+            "shortLabel": "Alle kontodata er med",
+            "detail": "Oplysningerne dækker hele måneden for begge konti. Posteringer uden kategori er stadig ikke med i indtægter og udgifter.",
             "incompleteAccountIds": []
           },
           "barPercent": 11.224489795918368
@@ -1256,27 +1256,27 @@
             {
               "id": "example-007",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-05",
               "amount": "-740.00",
               "kind": "expense",
               "category": "Transport",
-              "description": "Travel pass",
-              "kindLabel": "Purchase / payment"
+              "description": "Periodekort",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "complete",
-            "label": "Account data complete · both accounts",
-            "shortLabel": "Account data complete",
-            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "label": "Alle kontodata er med · begge konti",
+            "shortLabel": "Alle kontodata er med",
+            "detail": "Oplysningerne dækker hele måneden for begge konti. Posteringer uden kategori er stadig ikke med i indtægter og udgifter.",
             "incompleteAccountIds": []
           },
           "barPercent": 7.551020408163265
         },
         {
           "id": "category-2",
-          "name": "Eating out",
+          "name": "Café og restaurant",
           "netSpending": "650.00",
           "purchases": "650.00",
           "refunds": "0.00",
@@ -1285,27 +1285,27 @@
             {
               "id": "example-008",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-09",
               "amount": "-650.00",
               "kind": "expense",
-              "category": "Eating out",
-              "description": "Dinner",
-              "kindLabel": "Purchase / payment"
+              "category": "Café og restaurant",
+              "description": "Middag",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "complete",
-            "label": "Account data complete · both accounts",
-            "shortLabel": "Account data complete",
-            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "label": "Alle kontodata er med · begge konti",
+            "shortLabel": "Alle kontodata er med",
+            "detail": "Oplysningerne dækker hele måneden for begge konti. Posteringer uden kategori er stadig ikke med i indtægter og udgifter.",
             "incompleteAccountIds": []
           },
           "barPercent": 6.63265306122449
         },
         {
           "id": "category-1",
-          "name": "Clothes",
+          "name": "Tøj",
           "netSpending": "450.00",
           "purchases": "450.00",
           "refunds": "0.00",
@@ -1314,20 +1314,20 @@
             {
               "id": "example-009",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-10",
               "amount": "-450.00",
               "kind": "expense",
-              "category": "Clothes",
-              "description": "Clothes",
-              "kindLabel": "Purchase / payment"
+              "category": "Tøj",
+              "description": "Tøj",
+              "kindLabel": "Køb eller betaling"
             }
           ],
           "coverage": {
             "status": "complete",
-            "label": "Account data complete · both accounts",
-            "shortLabel": "Account data complete",
-            "detail": "Both shown accounts have complete evidence for this month. Unclassified entries, if present, are still outside income and expenses.",
+            "label": "Alle kontodata er med · begge konti",
+            "shortLabel": "Alle kontodata er med",
+            "detail": "Oplysningerne dækker hele måneden for begge konti. Posteringer uden kategori er stadig ikke med i indtægter og udgifter.",
             "incompleteAccountIds": []
           },
           "barPercent": 4.591836734693878
@@ -1338,14 +1338,14 @@
         "moneyOut": "0.00",
         "count": 0,
         "transactions": [],
-        "detail": "Not included in income, expenses or money left. These entries may be purchases, income or transfers; the fixture does not decide."
+        "detail": "Ikke med i indtægter, udgifter eller beløbet tilbage. Posteringerne kan være køb, indtægter eller overførsler. Det er ikke afgjort i dette eksempel."
       },
       "adjustments": {
         "moneyIn": "0.00",
         "moneyOut": "0.00",
         "count": 0,
         "transactions": [],
-        "detail": "Corrections without a category are shown separately and excluded from income and expenses."
+        "detail": "Rettelser uden kategori vises særskilt og er ikke med i indtægter og udgifter."
       },
       "transfers": {
         "moneyIn": "5000.00",
@@ -1355,39 +1355,39 @@
           {
             "id": "example-011",
             "accountId": "common",
-            "accountName": "Shared account",
+            "accountName": "Fælleskonto",
             "date": "2026-07-15",
             "amount": "5000.00",
             "kind": "transfer",
             "category": null,
-            "description": "Move from My account",
-            "kindLabel": "Between our accounts"
+            "description": "Overførsel fra Min konto",
+            "kindLabel": "Mellem vores konti"
           },
           {
             "id": "example-010",
             "accountId": "mine",
-            "accountName": "My account",
+            "accountName": "Min konto",
             "date": "2026-07-15",
             "amount": "-5000.00",
             "kind": "transfer",
             "category": null,
-            "description": "Move to Shared account",
-            "kindLabel": "Between our accounts"
+            "description": "Overførsel til Fælleskonto",
+            "kindLabel": "Mellem vores konti"
           }
         ],
-        "detail": "Each side of a move is shown. Neither side counts as income or spending.",
-        "label": "2 account entries for moves between these accounts."
+        "detail": "Begge sider af en overførsel vises. Ingen af dem tæller som indtægt eller udgift.",
+        "label": "2 posteringer for overførsler mellem de to konti."
       },
       "accounts": [
         {
           "id": "mine",
-          "name": "My account",
-          "ownerLabel": "Mine",
+          "name": "Min konto",
+          "ownerLabel": "Min",
           "coverage": {
             "status": "complete",
-            "label": "Account data complete",
-            "shortLabel": "Account data complete",
-            "detail": "Evidence covers the whole month, including its boundaries.",
+            "label": "Alle kontodata er med",
+            "shortLabel": "Alle kontodata er med",
+            "detail": "Oplysningerne bekræfter, at hele måneden er med, fra start til slut.",
             "incompleteAccountIds": []
           },
           "balance": {
@@ -1395,130 +1395,130 @@
             "asOf": "2026-07-24"
           },
           "quietConfirmed": false,
-          "activityNote": "Only entries in the frozen report are shown; missing activity is possible.",
+          "activityNote": "Kun posteringerne i dette faste eksempel vises. Der kan mangle bevægelser.",
           "transactions": [
             {
               "id": "example-005",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-24",
               "amount": "-950.00",
               "kind": "expense",
-              "category": "Groceries",
-              "description": "Supermarket",
-              "kindLabel": "Purchase / payment"
+              "category": "Dagligvarer",
+              "description": "Supermarked",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-010",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-15",
               "amount": "-5000.00",
               "kind": "transfer",
               "category": null,
-              "description": "Move to Shared account",
-              "kindLabel": "Between our accounts"
+              "description": "Overførsel til Fælleskonto",
+              "kindLabel": "Mellem vores konti"
             },
             {
               "id": "example-004",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-12",
               "amount": "-1100.00",
               "kind": "expense",
-              "category": "Groceries",
-              "description": "Supermarket",
-              "kindLabel": "Purchase / payment"
+              "category": "Dagligvarer",
+              "description": "Supermarked",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-009",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-10",
               "amount": "-450.00",
               "kind": "expense",
-              "category": "Clothes",
-              "description": "Clothes",
-              "kindLabel": "Purchase / payment"
+              "category": "Tøj",
+              "description": "Tøj",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-008",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-09",
               "amount": "-650.00",
               "kind": "expense",
-              "category": "Eating out",
-              "description": "Dinner",
-              "kindLabel": "Purchase / payment"
+              "category": "Café og restaurant",
+              "description": "Middag",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-007",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-05",
               "amount": "-740.00",
               "kind": "expense",
               "category": "Transport",
-              "description": "Travel pass",
-              "kindLabel": "Purchase / payment"
+              "description": "Periodekort",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-006",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-04",
               "amount": "-1100.00",
               "kind": "expense",
-              "category": "Bills",
-              "description": "Electricity & internet",
-              "kindLabel": "Purchase / payment"
+              "category": "Faste regninger",
+              "description": "El og internet",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-003",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-03",
               "amount": "-1200.00",
               "kind": "expense",
-              "category": "Groceries",
-              "description": "Supermarket",
-              "kindLabel": "Purchase / payment"
+              "category": "Dagligvarer",
+              "description": "Supermarked",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-002",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-02",
               "amount": "-9800.00",
               "kind": "expense",
-              "category": "Housing",
-              "description": "Rent",
-              "kindLabel": "Purchase / payment"
+              "category": "Bolig",
+              "description": "Husleje",
+              "kindLabel": "Køb eller betaling"
             },
             {
               "id": "example-001",
               "accountId": "mine",
-              "accountName": "My account",
+              "accountName": "Min konto",
               "date": "2026-07-01",
               "amount": "36000.00",
               "kind": "income",
               "category": null,
-              "description": "Salary",
-              "kindLabel": "Income"
+              "description": "Løn",
+              "kindLabel": "Indtægter"
             }
           ],
           "openingBalance": "22000.00"
         },
         {
           "id": "common",
-          "name": "Shared account",
-          "ownerLabel": "Common",
+          "name": "Fælleskonto",
+          "ownerLabel": "Fælles",
           "coverage": {
             "status": "complete",
-            "label": "Account data complete",
-            "shortLabel": "Account data complete",
-            "detail": "Evidence covers the whole month, including its boundaries.",
+            "label": "Alle kontodata er med",
+            "shortLabel": "Alle kontodata er med",
+            "detail": "Oplysningerne bekræfter, at hele måneden er med, fra start til slut.",
             "incompleteAccountIds": []
           },
           "balance": {
@@ -1526,18 +1526,18 @@
             "asOf": "2026-07-15"
           },
           "quietConfirmed": false,
-          "activityNote": "Only entries in the frozen report are shown; missing activity is possible.",
+          "activityNote": "Kun posteringerne i dette faste eksempel vises. Der kan mangle bevægelser.",
           "transactions": [
             {
               "id": "example-011",
               "accountId": "common",
-              "accountName": "Shared account",
+              "accountName": "Fælleskonto",
               "date": "2026-07-15",
               "amount": "5000.00",
               "kind": "transfer",
               "category": null,
-              "description": "Move from My account",
-              "kindLabel": "Between our accounts"
+              "description": "Overførsel fra Min konto",
+              "kindLabel": "Mellem vores konti"
             }
           ],
           "openingBalance": "18000.00"

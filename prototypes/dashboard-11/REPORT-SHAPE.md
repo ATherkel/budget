@@ -1,8 +1,12 @@
-# Minimal proposed monthly report
+# Forslag til det mindste nødvendige månedsrapportformat
 
-**Proposal from screen needs, not human-validated and not a Gold contract.**
-The renderer consumes a report produced by analytics. A production implementation
-must obtain it through analytics rather than copying the private fixture process.
+**Forslag ud fra skærmens behov. Endnu ikke valideret af jer og ikke en
+Gold-kontrakt.** Skærmen modtager en rapport fra analyselaget. I den rigtige
+applikation skal rapporten komme gennem dette lag; den private forberedelse
+af eksempler skal ikke kopieres til produktionskode.
+
+De tekniske feltnavne er bevaret på engelsk. Alle tekster, der vises for
+brugeren, skal være danske. Dette sprogkrav er udtrykkeligt bekræftet.
 
 ```text
 MonthlyReport
@@ -24,35 +28,36 @@ TransactionDisplay
   id, accountId, accountName, date, description, amount, kind, kindLabel
 ```
 
-- All monetary fields are exact Decimal strings in one stated currency.
-  Money out is negative; expense/category summaries use spending-positive
-  convention and may be negative after net refunds. Savings rate is nullable
-  when income is not positive. No financial calculations occur in the browser.
-- Coverage is mandatory on every household measure. It can be included once
-  as an explicit shared reference for a report with the same account scope,
-  as long as every drill-down carries and displays it. Period provisionality,
-  account coverage, and unresolved classifications are separate facts.
-- Balance date belongs next to the balance. A missing balance is null, not
-  zero. Zero activity is only confirmed with complete evidence. A last stated
-  balance must not imply a complete month. No aggregate balance is needed yet.
-- Category drill-down needs purchases/refunds/net supplied independently of
-  presentation. A refund retains its own date; it is not moved back to the
-  purchase month. Details repeat period and account coverage.
-- Unknown in/out/count must survive even when the amounts cancel. Corrections
-  without categories stay separate. Transfers are excluded from income,
-  spending and savings. Each transaction belongs to exactly one report bucket.
-- Owner labels are presentation metadata, not matching eligibility or account
-  types. Do not encode Mine/Hers/Common/children as five financial account types.
-- Transaction IDs are display/report IDs; no bank account number, CSV filename,
-  source row ID, credentials, or raw payload is needed by the screen.
-- Prototype-only fields (`barPercent`, friendly copy, `openingBalance` audit
-  fixtures, dataset metadata) are not required production contract fields.
-- Eager transaction arrays are sufficient here. Pagination or a separate detail
-  report is an implementation choice for later. YTD/trend/report filtering is
-  outside this first version.
+- Beløb er præcise decimalstrenge i én angivet valuta. Penge ud er negative;
+  udgifts- og kategorisummer er positive ved forbrug og kan blive negative,
+  når tilbagebetalinger er større end køb. Andelen tilbage er null, hvis
+  indtægterne ikke er positive. Browseren beregner ikke økonomiske nøgletal.
+- Hvert husstandstal skal bære oplysninger om kontodækning. Én fælles reference
+  i rapporten er tilstrækkelig, hvis alle tal omfatter samme konti, og detaljerne
+  altid viser oplysningerne. Foreløbig periode, manglende kontodata og
+  posteringer uden kategori er tre forskellige forhold.
+- Datoen for saldoen skal stå ved beløbet. Ukendt saldo er null, ikke nul.
+  Ingen bevægelser kan kun bekræftes med fuldstændige oplysninger. En senest
+  oplyst saldo må ikke give indtryk af en fuldstændig måned. Der er endnu
+  ikke behov for en samlet saldo på tværs af konti.
+- Kategoridetaljer kræver køb, tilbagebetalinger og nettobeløb fra analyselaget.
+  En tilbagebetaling beholder sin egen dato og flyttes ikke til købsmåneden.
+  Detaljerne gentager periode og oplysninger om manglende kontodata.
+- Ukendte beløbs ind/ud/antal skal vises, også når de netto er nul. Rettelser
+  uden kategori vises særskilt. Interne overførsler er uden for indtægter,
+  udgifter og opsparing. Hver postering tilhører præcis én rapportgruppe.
+- Ejerskab er en visningsegenskab, ikke en kontotype eller en regel for
+  overførselsmatchning. Min/Hendes/Fælles/børn skal ikke være fem kontotyper.
+- Posteringernes id'er er rapport-id'er. Skærmen behøver ikke bankkontonumre,
+  CSV-filnavne, kilderækkenumre, adgangsoplysninger eller rå kildeindhold.
+- `barPercent`, hjælpetekster, `openingBalance` til kontrol og oplysninger om
+  eksempeldatasæt er prototypefelter, ikke nødvendige produktionsfelter.
+- Lister med alle posteringer er nok her. Opdeling i sider eller en særskilt
+  detaljerapport kan afgøres senere. År-til-dato, udvikling over tid og
+  yderligere filtre ligger uden for denne første version.
 
-Open: do these labels make sense to both participants; is income minus expenses
-the preferred headline; which account groups should be shown; is a category
-subtotal plus contributing entries enough to explain a surprise; how much
-coverage detail belongs above the fold; what should a production classification
-workflow supply? No proposed ADR has been accepted through this screen.
+Åbent: Forstår begge deltagere navnene? Er indtægter minus udgifter det bedste
+hovedtal? Hvilke kontogrupper skal vises? Forklarer en kategorisum og dens
+posteringer en overraskelse? Hvor meget skal vises om manglende kontodata uden
+at rulle? Hvad skal den fremtidige kategorisering levere? Ingen foreslåede
+ADR'er er accepteret gennem prototypen.

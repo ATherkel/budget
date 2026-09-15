@@ -35,5 +35,5 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print("Throwaway dashboard: http://127.0.0.1:8011 — Ctrl+C to stop", flush=True)
+    print("Prototype til afprøvning: http://127.0.0.1:8011 — stop med Ctrl+C", flush=True)
     ThreadingHTTPServer(("127.0.0.1", 8011), Handler).serve_forever()

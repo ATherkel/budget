@@ -64,7 +64,8 @@ def audit(path):
             assert -(D(baseline["expense"]) + D(baseline["refund"])) == expenses
             for kind in ("unknown", "adjustment", "transfer"):
                 assert D(baseline[kind]) == total([t for t in all_entries if t["kind"] == kind])
-    print(f"PASS: {data['kind']} fixture, {len(data['reports'])} months. Arithmetic, unique buckets, account drill-downs and stated edge cases checked.")
+    source_label = "opdigtet eksempel" if data["kind"] == "synthetic" else "privat lokalt eksempel"
+    print(f"OK: {source_label}, {len(data['reports'])} måneder. Regnestykker, entydige rapportgrupper, kontodetaljer og særlige tilfælde kontrolleret.")
 
 
 audit(HERE / "example.json")
