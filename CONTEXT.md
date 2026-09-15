@@ -6,6 +6,8 @@ analytics and a dashboard.
 
 ## Language
 
+### Reporting
+
 **Refund**:
 An Adjustment that carries a `category_id`. It nets against that category
 instead of counting as income or vanishing from spending. A reversed fee is a
@@ -60,6 +62,79 @@ so opposite amounts can't cancel to zero and read as "nothing unclassified".
 _Avoid_: Unclassified total (a single sum hides offsetting amounts)
 
 **Provisional period**:
-A reporting period that includes the current, still-accumulating calendar
-month. How it must be labeled is in
+A reporting period that includes the current calendar month or still awaits
+exports covering the late-booking window. How it must be labeled is in
 [`docs/architecture/presentation-layer.md`](docs/architecture/presentation-layer.md#data-trust-display).
+
+### Imports and identity
+
+**Export**:
+A file the bank produces for one account, reaching up to its export date.
+Overlapping exports of the same account are normal.
+_Avoid_: statement, dump
+
+**Transaction date**:
+The date the source assigns to a transaction; for Danske, the purchase date.
+It determines the reporting period.
+_Avoid_: booking date, value date
+
+**Late booking**:
+A transaction the bank books days after its transaction date, so it first
+appears in a later export on a date an earlier export already covered.
+_Avoid_: back-dated transaction, missing transaction
+
+**Raw payload**:
+The exact bytes received from a source, such as an export file or an API
+response. It is never altered.
+_Avoid_: raw data, original file
+
+**Import run**:
+One presentation of a raw payload to the platform, together with the account
+the operator declared it belongs to.
+_Avoid_: import, load, upload
+
+**Source record**:
+One record exactly as the source presented it, such as an export row, still
+uninterpreted.
+_Avoid_: raw row, line
+
+**Unbooked record**:
+A source record the source marks as not booked, such as pending or deleted
+before booking. It is retained as provenance but never becomes a booked
+transaction.
+_Avoid_: pending transaction, deleted transaction, cancelled transaction
+
+**Duplicate**:
+The same booked transaction appearing in more than one source record,
+typically in overlapping exports. Duplicates collapse to one booked
+transaction.
+_Avoid_: repeat, copy
+
+**Repeated transaction**:
+One of several distinct booked transactions that look identical: same account,
+date, amount, and text. Each one is kept.
+_Avoid_: duplicate
+
+### Review
+
+**Quarantine**:
+The state of an import run whose raw payload is retained but which contributes
+nothing downstream, because it failed validation or awaits review.
+_Avoid_: rejected, held, failed import
+
+**Review item**:
+An ambiguity the platform cannot settle by rule and a person must decide, such
+as overlapping exports that disagree or a later export showing fewer repeated
+transactions.
+_Avoid_: error, warning, conflict
+
+**Manual decision**:
+A recorded human ruling that settles a review item or voids an import run. It
+never edits source data.
+_Avoid_: override, fix, edit
+
+**Voided import run**:
+An import run a person has declared mistaken, for example because it was
+declared against the wrong account. Its raw payload is retained but it
+contributes nothing downstream.
+_Avoid_: deleted import, undone import

@@ -1,6 +1,9 @@
 # ADR-006: Reconcile Account Balances via Bank-Stated Balance Chains
 
-**Status:** Accepted
+**Status:** Accepted. Partly superseded by
+[ADR-010](ADR-010-quarantine-inconsistent-exports.md): for balance-stating
+sources, a missing balance or a within-export chain break quarantines the
+export.
 
 ## Context
 
@@ -20,7 +23,7 @@ rows; it says nothing about the days after the last imported row.
 ## Decision
 
 Persist the bank-stated balance on every Silver and Gold transaction, exactly
-as stated. Order each account's transactions by `(booking_date,
+as stated. Order each account's transactions by `(transaction_date,
 day_sequence)`; Silver assigns `day_sequence` from the bank's row order and
 merges overlapping exports into one order.
 

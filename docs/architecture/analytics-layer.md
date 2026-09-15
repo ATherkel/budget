@@ -55,10 +55,10 @@ from Gold's balance evidence. Analytics evaluates the evidence; Gold only
 carries it (`gold-contract.md` invariant 9).
 
 A **link** joins two consecutive transactions on an account, in
-`(booking_date, day_sequence)` order. It is **verified** when both carry a
+`(transaction_date, day_sequence)` order. It is **verified** when both carry a
 `balance` and the later balance equals the earlier balance plus the later
 amount; otherwise it is **broken**. A link spans the dates from the earlier
-transaction's `booking_date` to the later one's. A period is judged by every
+transaction's `transaction_date` to the later one's. A period is judged by every
 link whose span overlaps it, including the links into and out of the period,
 so analytics also reads the period's `boundary_transactions`.
 

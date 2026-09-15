@@ -14,6 +14,12 @@ source's status to `booked`, `pending`, or `cancelled`:
   becomes a transaction. It is retained in Bronze and Silver as provenance
   and excluded from Gold and from the balance chain.
 
+A transaction's date is its **transaction date**, the date the source assigns
+to it. For Danske this is the purchase date, which can precede booking by
+days. A late-booked transaction therefore lands in a period that may already
+look finished, which is why periods stay provisional for a while after they
+end.
+
 ## Types
 
 - **Income:** positive money received that contributes to household income.
