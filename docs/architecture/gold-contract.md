@@ -294,6 +294,9 @@ disappeared, and each taxonomy change.
 - Whether money moved to savings, investment, or loan accounts that are not
   imported should count differently in the savings measure; it is an expense
   today (issue #12).
+- Whether the unclassified total should show money in and out separately,
+  because two `unknown` legs of an unpaired transfer cancel in a signed sum
+  (issue #12).
 - Silver canonical identity and deterministic within-date ordering that
   `transaction_id` and `account_sequence` rely on (issue #5).
 - Publication selection, identity across materializations, and whether any

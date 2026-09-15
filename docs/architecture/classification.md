@@ -15,9 +15,9 @@ Status: proposed with Gold contract 0.2.
 Two principles run through every rule below:
 
 - **A visible unknown beats a silent guess.** When the evidence is weak,
-  conflicting, or ambiguous, the transaction stays `unknown`. It then shows in
-  the unclassified total and raises a review item, instead of quietly moving
-  money between income, expense, and transfer totals.
+  conflicting, or ambiguous, the transaction stays `unknown`. It then counts
+  toward the unclassified total and raises a review item, instead of quietly
+  moving money between income, expense, and transfer totals.
 - **Classification is a pure function of its inputs.** The same inputs give the
   same result, whatever the import order and whatever an earlier publication
   said.
@@ -387,3 +387,7 @@ household does not import, so it is outside the reporting boundary.
 - **Issue #12:** whether money moved to savings, investment, or loan accounts
   that are not imported should count differently in the savings measure. It is
   an expense today.
+- **Issue #12:** the unclassified total from issue #4 sums signed amounts, so
+  the two `unknown` legs of an unpaired transfer in one month cancel to 0.00.
+  Showing unclassified money in and out separately would keep them visible.
+  The review items show them either way.

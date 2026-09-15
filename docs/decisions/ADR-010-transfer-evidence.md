@@ -5,9 +5,10 @@
 ## Context
 
 A transfer is excluded from income and expenses. A false transfer therefore
-hides one income and one expense of the same size: savings look right, and no
-unclassified amount reveals the mistake. A missed transfer that stays `unknown`
-is less harmful, because it shows in the unclassified total.
+hides one income and one expense of the same size: savings look right, and
+nothing reveals the mistake. A missed transfer that stays `unknown` is less
+harmful, because each leg is unclassified and raises a review item that a
+person sees.
 
 The exports carry no identifier for the other account, so the only evidence
 is amount, date, and text. In the private samples:

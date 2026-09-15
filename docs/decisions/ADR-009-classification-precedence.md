@@ -14,8 +14,8 @@ file transfers under the bank's income and expense groups and returned goods
 under income, and they leave roughly one row in ten uncategorised.
 
 A plausible but wrong classification is worse than a visible unknown. It
-silently moves money between totals, while an `unknown` shows in the
-unclassified total. [Issue #7](https://github.com/ATherkel/budget/issues/7)
+silently moves money between totals, while an `unknown` counts as unclassified
+and raises a review item. [Issue #7](https://github.com/ATherkel/budget/issues/7)
 asked for rule precedence, the role of bank categories, and how manual
 decisions are identified and reviewed.
 
