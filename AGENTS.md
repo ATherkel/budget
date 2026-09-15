@@ -27,8 +27,8 @@ Issues and specs are tracked in GitHub Issues. See `docs/agents/issue-tracker.md
 
 ### Agent GitHub App
 
-For App setup or agent GitHub writes after installation, read
-`docs/agents/github-app.md` and use its bot credential wrapper.
+For App setup, agent GitHub writes, or any change under `.github/workflows/`,
+read `docs/agents/github-app.md` and use its bot credential wrapper.
 
 ### Triage labels
 

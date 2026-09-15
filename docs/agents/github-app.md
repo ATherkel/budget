@@ -16,7 +16,8 @@ The wizard opens GitHub's App registration and installation pages, then asks
 for the numeric App ID and the path to the downloaded private key. Register the
 App under `ATherkel`, disable webhooks and user OAuth, and select these
 repository permissions: Contents, Pull requests, and Issues = Read & write.
-Install it on **only** `ATherkel/budget`. Keep the PEM outside this repository;
+Leave Workflows at No access; [Workflow changes](#workflow-changes) explains
+why. Install it on **only** `ATherkel/budget`. Keep the PEM outside this repository;
 the wizard stores only IDs and the PEM path in
 `%USERPROFILE%\.config\budget\agent-app.env`.
 
@@ -55,13 +56,45 @@ An App installation is not a human `@me` identity, so that command may need a
 separate owner assignment or label-based claim. Test it after installation
 before depending on it for automated triage.
 
-`main` has an active repository ruleset requiring one approval, dismissal of
-stale approvals after pushes, approval of the latest push by someone else,
-resolution of review threads, and no listed bypass actors. It does not require
-a code-owner review, so the rule does not guarantee that `ATherkel` personally
-approved every agent PR. Once the existing `ATherkel`-authored PRs are handled,
-requiring `ATherkel` as code owner would make his approval mandatory for
-agent-authored PRs, while blocking PRs he authors himself.
+`main` has an active repository ruleset requiring one code-owner approval,
+dismissal of stale approvals after pushes, approval of the latest push by
+someone other than its pusher, resolution of review threads, and no listed
+bypass actors. `.github/CODEOWNERS` names `ATherkel` and `ATherkel-review`, so
+`ATherkel` approves a PR whose latest push came from the App, and
+`ATherkel-review` approves one whose latest push came from `ATherkel`.
+
+## Workflow changes
+
+The App has no Workflows permission, so GitHub rejects any App push that
+creates or changes a file under `.github/workflows/` ("refusing to allow a
+GitHub App to create or update workflow ... without `workflows` permission").
+This is the review gate for CI: a pushed workflow runs on its branch with the
+repository's secrets before anyone reviews the PR, so the owner reviews and
+pushes those commits themselves.
+
+For a change under `.github/workflows/`:
+
+1. Commit it in your worktree as usual.
+2. Hand the push to the owner: give them the worktree path, the branch name,
+   and these two commands, then wait for them to confirm the push.
+
+   ```bash
+   git -C <worktree> log -p origin/main..HEAD
+   git -C <worktree> push origin HEAD:refs/heads/<branch>
+   ```
+
+   A plain `git push` from an agent would run under the owner's saved login and
+   skip this review, so every agent push goes through `-Mode Push`, and the
+   owner makes the workflow pushes.
+3. After the owner confirms, open the PR with `-Mode Gh` and follow its checks
+   with `gh pr checks`. Later commits that touch `.github/workflows/` repeat
+   step 2. Commits that don't touch it go through `-Mode Push`.
+
+The gate covers only `.github/workflows/`. A build or test workflow also runs
+scripts, manifests, and tests that the App can push freely, so those
+workflows use the default read-only `GITHUB_TOKEN` and no secrets.
+`CLAUDE_CODE_OAUTH_TOKEN` belongs only to the Claude workflows (`claude.yml`
+and `claude-code-review.yml`).
 
 Official references: [register an App](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app),
 [App permissions](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/choosing-permissions-for-a-github-app),
