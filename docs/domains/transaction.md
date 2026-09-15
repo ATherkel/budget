@@ -17,16 +17,23 @@ the household must never see a pending amount presented as booked.
   the same `category_id` as the purchase it reverses and nets against that
   category's spending rather than counting as income or disappearing from the
   report.
-- **Transfer:** movement between accounts within the household reporting
-  boundary; not spending or income.
+- **Transfer:** movement between two accounts within the household reporting
+  boundary; not spending or income. It needs matching evidence or a manual
+  decision ([ADR-010](../decisions/ADR-010-transfer-evidence.md)). Money to or
+  from an account the household does not import is income or expense.
 - **Adjustment:** a correction, fee reversal, or exceptional entry with no
   originating purchase to net against. It needs explicit policy treatment,
   carries no category, and is excluded from income and expense totals.
-- **Unknown:** valid imported record awaiting classification.
+- **Unknown:** valid imported record awaiting classification: nothing
+  classified it, or its evidence conflicts or is ambiguous. Every unknown
+  transaction has an open review item.
 
 A transaction is classified as a whole: it has exactly one type and at most
 one category, and it is never split across categories
 ([ADR-008](../decisions/ADR-008-single-category-per-transaction.md)).
+Classification comes from a manual decision, then a transfer match, then
+classification rules ([ADR-009](../decisions/ADR-009-classification-precedence.md));
+the policy is in [`classification.md`](../architecture/classification.md).
 
 ## Lifecycle
 
@@ -34,8 +41,9 @@ one category, and it is never split across categories
 transaction`
 
 No step mutates the record in the preceding layer. A corrected classification
-creates a new materialized Gold version or override history, not a rewrite of
-the bank payload.
+is a new manual decision or rule change that Gold applies on the next build,
+never a rewrite of the bank payload. How versions are kept is issue #8's
+concern.
 
 ## Identity and Deduplication
 

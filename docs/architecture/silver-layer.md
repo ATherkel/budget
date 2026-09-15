@@ -29,13 +29,16 @@ and how the balance evidence is used.
 
 ## Downstream Requirements
 
-Gold relies on two guarantees that Silver must provide. [Issue #5](https://github.com/ATherkel/budget/issues/5)
+Gold relies on three guarantees that Silver must provide. [Issue #5](https://github.com/ATherkel/budget/issues/5)
 defines how Silver provides them:
 
 - a stable canonical identity for each transaction, from which Gold derives a
   `transaction_id` that survives rebuilds;
 - a deterministic order of each account's transactions, including those
-  sharing a booking date, so Gold can evaluate the balance chain.
+  sharing a booking date, so Gold can evaluate the balance chain;
+- the source's own category labels, carried verbatim as provenance, which
+  Gold's classification rules may test
+  ([`classification.md`](classification.md)).
 
 ## Responsibilities
 

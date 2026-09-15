@@ -16,7 +16,10 @@ contract. See [ADR-007](../decisions/ADR-007-dimensional-gold-model.md) and
 
 - Publish the account and category dimensions from the household registries.
 - Materialize one Gold transaction per booked Silver transaction and classify
-  it (rules and overrides: issue #7).
+  it: manual decisions, then transfer matching, then classification rules
+  ([`classification.md`](classification.md)).
+- Publish classification lineage and classification review items for review
+  tooling.
 - Evaluate each account's balance chain and publish a balance check per
   transaction.
 - Publish a monthly balance snapshot with coverage for every month of each
@@ -158,7 +161,8 @@ What consumers can and cannot derive:
   must show `joint-current` as `partial` and `joint-savings` as `no_data`.
 - March: the unclassified total is −450.00.
 - January: transfer T1 is excluded from income and expenses, and both legs
-  stay visible in account activity.
+  stay visible in account activity. It is a `same_day` pair under the
+  classification policy.
 - `joint-savings` February and March are `no_data` even though the April
   chain shows no movement was missed. Import coverage windows could one day
   prove quiet months; that is an open follow-up, and the coverage semantics

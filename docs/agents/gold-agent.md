@@ -12,7 +12,8 @@ and the model in [gold-layer.md](../architecture/gold-layer.md).
   per-account order.
 - Household account registry.
 - Household category taxonomy (category groups and categories).
-- Versioned categorization rules and auditable manual overrides.
+- Classification rules, manual decisions, and the transfer matching policy
+  in [`classification.md`](../architecture/classification.md).
 
 ## Outputs
 
@@ -22,7 +23,9 @@ and the model in [gold-layer.md](../architecture/gold-layer.md).
 - Monthly balance snapshots with coverage for every month of each account's
   managed period.
 - Lineage through `GoldLineageRepository`: parent Silver record,
-  classification provenance, rule/manual version, and transfer-match evidence.
+  classification source, rule or manual decision, classification version, and
+  transfer evidence.
+- Classification review items through `GoldLineageRepository`.
 - Synthetic contract fixtures for downstream consumers.
 
 ## Prohibited Work
@@ -30,13 +33,18 @@ and the model in [gold-layer.md](../architecture/gold-layer.md).
 - Reading raw CSV files directly.
 - Exposing bank-specific columns or source identifiers through
   `GoldRepository`; they belong only in lineage.
+- Using a bank category as a Gold category without a household
+  classification rule.
+- Guessing between competing transfer candidates.
 - Making analytics or UI changes.
 
 ## Acceptance Criteria
 
 - A source-system replacement requires no Gold schema change.
-- Paired household transfers are marked `transfer` when matching evidence
-  meets the documented confidence policy.
+- Paired household transfers are marked `transfer` exactly when the evidence
+  policy in `classification.md` accepts them.
+- The synthetic scenarios in `classification.md`, used as fixtures, reproduce
+  their classifications and review items exactly.
 - Every Gold transaction traces back to one Silver record through lineage.
 - The worked example in `gold-layer.md`, used as a fixture, reproduces its
   balance checks, snapshots, and coverage exactly.

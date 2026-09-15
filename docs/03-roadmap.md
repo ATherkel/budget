@@ -25,7 +25,8 @@ Deliverables:
 - Python project tooling and database migrations.
 - Bronze import-run and raw-record persistence.
 - Danske CSV parser, canonical Silver records, validation, and deduplication.
-- Gold classification with an auditable manual override mechanism.
+- Gold classification: classification rules, transfer matching, and auditable
+  manual decisions.
 
 Exit criteria:
 
