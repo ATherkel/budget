@@ -2,8 +2,14 @@
 
 ## Status
 
-Version `0.1` — proposed for the CSV MVP. Changes are backward-incompatible
+Version `0.2` — proposed for the CSV MVP. Changes are backward-incompatible
 unless a new contract version is introduced and downstream consumers migrate.
+
+- `0.2`: adds `balance`, `day_sequence`, and `category_direction` to
+  `GoldTransaction`; adds `GoldAccount`, `list_accounts()`, and
+  `boundary_transactions()`; orders `list_transactions` results; adds
+  invariants 7–9; materializes only `booked` rows (ADR-006).
+- `0.1`: initial CSV MVP contract.
 
 ## Purpose
 
@@ -27,11 +33,14 @@ out is negative.
 | `silver_transaction_id` | UUID/string | Yes | Traceable parent Silver record. |
 | `account_id` | UUID/string | Yes | Stable household account identifier. |
 | `booking_date` | `date` | Yes | Bank booking date; reporting period derives from it. |
+| `day_sequence` | int | Yes | Position among the account's transactions on the same `booking_date`, ascending in the bank's own row order. Values ascend but need not be consecutive. |
 | `amount` | `Decimal` | Yes | Signed monetary amount. |
 | `currency` | ISO 4217 string | Yes | Currency, initially `DKK`. |
 | `description` | string | Yes | Normalized human-readable transaction text. |
 | `transaction_type` | enum | Yes | `income`, `expense`, `transfer`, `adjustment`, or `unknown`. |
-| `category_id` | UUID/string/null | Conditional | Required for classified income/expense; null is permitted for transfer, adjustment, and unknown. |
+| `category_id` | UUID/string/null | Conditional | Required for classified income/expense. An adjustment with a `category_id` is a refund and nets against that category; an adjustment without one is an uncategorized correction. Null for transfer and unknown. |
+| `category_direction` | enum/null | Conditional | `income` or `expense`: the direction of the `category_id` category, so consumers can net refunds without a category lookup. Null exactly when `category_id` is null. |
+| `balance` | `Decimal`/null | No | Bank-stated account balance immediately after this transaction. Drives balance-chain reconciliation and coverage; null when the source omitted it, which is a discrepancy, not an assumed zero. |
 | `counterparty` | string/null | No | Normalized merchant, person, or organisation when known. |
 | `transfer_group_id` | UUID/string/null | No | Groups two or more internal transfer legs when confidently matched. |
 | `classification_source` | enum | Yes | `rule`, `manual`, `imported`, or `unclassified`. |
@@ -53,6 +62,28 @@ out is negative.
    Bronze provenance.
 6. Classification is never silently destructive: a materialized Gold version
    records how it was derived and can be rebuilt.
+7. `booking_date` is used exactly as supplied by the source; no timezone
+   conversion is applied at any layer.
+8. Only Silver transactions with `booking_status=booked` are materialized as
+   `GoldTransaction`. `pending` and `cancelled` rows remain in Bronze/Silver
+   only and take no part in the balance chain.
+9. Gold carries `balance` exactly as the source states it and never corrects,
+   fills, or reconciles it. `(account_id, booking_date, day_sequence)` is
+   unique, so each account's transactions have one total order. Whether
+   consecutive balances chain is evaluated by analytics (`analytics-layer.md`,
+   Coverage); Gold does not guarantee that the chain holds.
+
+## `GoldAccount`
+
+One record per registered household account, whether or not it has
+transactions yet. Account taxonomy and ownership attributes belong to issue #6.
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `account_id` | UUID/string | Yes | Matches `GoldTransaction.account_id`. |
+| `active` | bool | Yes | Whether the account is currently in use. |
+| `coverage_start` | `date`/null | No | `booking_date` of the account's first transaction, whose balance is trusted as the opening balance. Null when the account has no transactions. |
+| `evidence_through` | `date`/null | No | Last date the account's imported exports are known to cover: the day before its latest export date, because the export day itself may still be booking. Null when no export of the account has been imported. |
 
 ## Consumer Interface
 
@@ -68,7 +99,26 @@ class GoldTransactionRepository(Protocol):
         end_date: date,
         account_ids: Sequence[str] | None = None,
     ) -> Sequence[GoldTransaction]: ...
+
+    def boundary_transactions(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+        account_ids: Sequence[str] | None = None,
+    ) -> Sequence[GoldTransaction]: ...
+
+    def list_accounts(self) -> Sequence[GoldAccount]: ...
 ```
+
+- `list_transactions` returns records ordered by `account_id`, `booking_date`,
+  `day_sequence`.
+- `boundary_transactions` returns, for each account, its last transaction
+  before `start_date` and its first transaction after `end_date`, where they
+  exist. Analytics needs them to check the balance links into and out of a
+  period.
+- `list_accounts` returns every registered account, including accounts with no
+  transactions.
 
 Consumers may filter the returned records and aggregate them. They may not
 assume a database table name, source-system identifier, or raw CSV column.
@@ -77,7 +127,10 @@ assume a database table name, source-system identifier, or raw CSV column.
 
 Before analytics or UI work begins, provide fixtures covering: income,
 expense, paired transfer, unmatched transfer candidate, unclassified record,
-and a manually overridden category. Fixtures contain synthetic data only.
+a manually overridden category, a refund, an uncategorized adjustment,
+several transactions on one day, a
+balance-chain break, and an account with no transactions. Fixtures contain
+synthetic data only.
 
 ## Open Decisions
 

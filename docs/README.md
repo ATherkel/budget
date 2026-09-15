@@ -23,6 +23,12 @@ agent authority outside its boundary.
 - `decisions/` records accepted architectural decisions. Changes require a new
   ADR; do not silently revise a decision to fit an implementation.
 
+## Vocabulary
+
+[`../CONTEXT.md`](../CONTEXT.md) is the household finance glossary: tight,
+opinionated term definitions. It defines terms only and links to the governing
+document for each rule; where they seem to differ, the governing document wins.
+
 ## Conventions
 
 - Dates and times use ISO 8601. Monetary values use decimal arithmetic, never

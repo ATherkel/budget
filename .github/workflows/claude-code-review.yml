@@ -3,20 +3,19 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+    # Skip PRs that only change docs; a PR that also touches other files is still reviewed.
+    paths-ignore:
+      - "docs/**"
+
+# A new push to the same PR cancels the review still running on the previous push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    # Drafts are skipped; marking the PR ready for review triggers the first review.
+    if: github.event.pull_request.draft == false
 
     runs-on: ubuntu-latest
     permissions:
