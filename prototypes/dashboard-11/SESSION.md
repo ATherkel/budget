@@ -1,11 +1,13 @@
-# #11 — sessionsnoter, 15. september 2026
+# #11 — sessionsnoter, 15.–16. september 2026
 
 ## Status
 
-Den danske prototype er under afprøvning. Brugeren har påpeget, at positive
-og negative beløb er for svære at skelne i detaljevisningen. En ændring er
-lavet og afventer ny afprøvning. Der er ikke givet godkendelse af hele designet
-eller dokumenteret, at de tre opgaver kan løses uden hjælp.
+Den danske prototype er under afprøvning. Brugeren har bekræftet, at farverne
+nu gør forskellen på ind- og udbetalinger tydelig, og efterlyst mindre tekst,
+tættere posteringer, frit kontovalg og grafer over tid. De fire ændringer er
+lavet og browserkontrolleret; deres brugervenlighed afventer ny afprøvning.
+Der er ikke dokumenteret en samlet gennemførsel af de tre opgaver eller
+selvstændig feedback fra brugerens kone.
 
 ## Brugerens input og ændringerne
 
@@ -26,11 +28,39 @@ eller dokumenteret, at de tre opgaver kan løses uden hjælp.
   i septemberudgifterne i det opdigtede eksempel og efterlyste tydeligere
   visuel forskel på positive og negative beløb. Det er en konkret observation
   fra detaljevisningen; den dokumenterer ikke i sig selv en løst opgave.
-- Ændring: Alle posteringer viser nu et udtrykkeligt plus eller minus,
+- Ændring: Første ændring: Alle posteringer fik et udtrykkeligt plus eller minus,
   en grøn eller rød beløbsbaggrund og teksten Penge ind eller Penge ud.
   Nulbeløb er neutrale. Forskellen afhænger dermed ikke alene af farve.
   Beløb, kategorisummer og øvrige rapporttal er uændrede. Brugerens vurdering
-  af denne løsning afventes.
+  af farverne blev senere bekræftet, se nedenfor.
+- Browserkommentar om Mangler en kategori: Brugeren kunne ikke se, hvordan
+  manglende kategorier skulle løses, og spurgte, om det var relevant for denne
+  visning. Det afdækker et uklart næste skridt; det er ikke en bestilling på
+  en redigeringsfunktion eller en beslutning om den fremtidige arbejdsgang.
+- Ændring: Oversigten siger nu, at kategorier ikke kan ændres i prototypen.
+  Detaljerne forklarer, at afprøvningen kan fortsætte, og inviterer deltagerne
+  til at fortælle, hvilken kategori de forventer. Den fremtidige arbejdsgang
+  er tydeligt angivet som uafklaret. #10 er fortsat stedet for at afklare
+  vedligeholdelse uden for den skrivebeskyttede oversigt. Ingen kategorier,
+  finansielle tal eller foreslåede ADR'er er ændret.
+
+## Fire nye browserkommentarer — håndteret 16. september
+
+- **Kontovalg:** Brugeren vil kunne vælge enhver kombination af konti,
+  uafhængigt af ejer og antal. Tilføjet individuelle afkrydsningsfelter og
+  Vælg alle. Alle dele af skærmen bruger valget. De faste eksempler har to
+  konti og tre ikke-tomme kombinationer; flere konti er endnu ikke afprøvet.
+- **Graf:** Brugeren efterlyste indtægter, udgifter og resten over tid med
+  seneste 12 måneder, indeværende år og egen periode. Tilføjet én graf med
+  disse valg, danske månedsnavne og en tabel med præcise tal og datagrundlag.
+- **Gentaget tekst:** Brugeren skrev, at Penge ind/Penge ud var overflødigt,
+  fordi retningen nu var tydelig fra farverne. Fjernet synlig tekst ved hvert
+  beløb; farver og +/− bevares. Retningen findes stadig i tilgængelighedsteksten.
+  Dette er brugerens konkrete bekræftelse af farvernes nytte, ikke en samlet
+  godkendelse fra begge deltagere.
+- **Rækkehøjde:** Brugeren fandt posteringerne for høje og foreslog tættere
+  rækker eller et valg. Valgt kompakte rækker som standard uden ekstra knap.
+  Almindelige rækker er omkring 60 px; længere beskrivelser kan ombrydes.
 
 ## Agentens kontroller
 
@@ -63,6 +93,23 @@ eller dokumenteret, at de tre opgaver kan løses uden hjælp.
   overfyldning i detaljevinduet. Begge sider af en overførsel får korrekt
   fortegn og tekst. Regnestykkerne består fortsat for alle 17 måneder.
 
+### Kontroller af den nye version
+
+- Alle tre kontokombinationer for 3 opdigtede og 14 lokale måneder er
+  kontrolleret mod posteringerne, inklusive ukendte beløb, overførsler,
+  stille måneder og manglende oplysninger. Det er 51 rapporter med kontovalg.
+- I browseren virker enkeltkonto, begge konti, tomt valg og Vælg alle.
+  Fælleskontoens stille august viser nul, mens september uden data er ukendt.
+- Grafens perioder, egen periode med én eller flere måneder, afvisning af
+  omvendte datoer og månedsskift fra tabellen er kontrolleret. Ukendte
+  måneder tegnes ikke som nul. Danske månedsvalg erstatter browserfelter,
+  som viste engelske navne på denne computer.
+- Graf og kontovalg er visuelt kontrolleret ved 1280×900, 390×844 og
+  320×740. Ingen vandret overfyldning af siden. Browserloggen er uden fejl
+  og advarsler. JavaScript-syntaks og Git-diffkontrol består.
+- Kompakte beløb viser kun fortegn og tal. Forklaringen om manglende kategorier
+  er kontrolleret; Escape lukker fortsat detaljevinduet.
+
 ## Afprøvning med jer — afventer næste observationer
 
 1. Find ud af, hvor pengene blev af denne måned.
@@ -77,8 +124,9 @@ misforståelse, og gentag den relevante opgave.
 ## Udtrykkeligt bekræftet
 
 - Dansk er påkrævet i hele brugeroplevelsen.
-- Positive og negative posteringer skal være lettere at skelne. Den konkrete
-  løsning med fortegn, farve og tekst er endnu ikke bekræftet som tilstrækkelig.
+- Brugeren finder nu farvernes skelnen mellem ind- og udbetaling tydelig.
+  Gentagne tekster ved beløbene er uønskede. Den kompakte udgave afventer feedback.
+- Frit kontovalg og udviklingsgrafer er udtrykkeligt efterspurgte behov.
 - De beskrevne afgrænsninger og brug af lokale data er aftalt.
 - Intet layout eller nogen forklaring af økonomiske tal er endnu valideret
   gennem deltagernes løsning af opgaverne.
@@ -86,13 +134,21 @@ misforståelse, og gentag den relevante opgave.
 ## Uafprøvede antagelser og åbne spørgsmål
 
 - Er de danske navne og kategorier forståelige for begge deltagere?
-- Er ind- og udbetalinger nu lette at skelne i den kommenterede detaljevisning?
+- Er de kompakte rækker nemme at skimme for begge deltagere?
+- Er kontovalgets virkning på samtlige tal tydelig?
+- Forstås grafens huller, stiplede linjer og faste referencedato?
+- Er det forståeligt, at interne overførsler forbliver udeladt, selv når
+  kun den ene konto er valgt? Denne forklaring er endnu ikke brugerafprøvet.
 - Bliver markeringerne af ufuldstændige tal set og forstået?
 - Forstås Tilbage efter udgifter som indtægter minus udgifter, særskilt fra
   ændringer i saldo og penge uden kategori?
 - Er de generelle beskrivelser præcise nok til at undersøge et beløb?
+- Forstår deltagerne nu, at kategorier ikke kan ændres her, og hvad de kan
+  gøre under afprøvningen? Hvordan skal den færdige oversigt pege videre til
+  en arbejdsgang uden for visningen, når denne er besluttet i #10?
 - Hjælper Min/Fælles, og hvordan skal Hendes og børnenes konti vises?
 - Er forskellen mellem bekræftet stilstand og manglende oplysninger tydelig?
 - Lokale kategorier og fuldstændighed er stadig ikke kontrollerede fakta.
-- Forsøget afgør ikke år-til-dato, udviklingsgrafer, lagerets implementeringsparathed,
-  import og konfiguration i #10 eller forslagene i #18/#20.
+- År og udviklingsgrafer er nu med i forsøget, men ikke valideret. Forsøget
+  afgør ikke lagerets implementeringsparathed, import og konfiguration i #10
+  eller forslagene i #18/#20.

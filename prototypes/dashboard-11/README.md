@@ -1,6 +1,6 @@
 # #11 — prototype af et månedsoverblik
 
-**Klar til afprøvning; endnu ingen konklusioner om brugervenlighed.** Én dansk
+**Opdateret efter konkret feedback; de nye ændringer er klar til afprøvning.** Én dansk
 udgave, uden redigering, lavet med HTML/CSS/JavaScript og Pythons standardbibliotek.
 Prototypen skal kasseres efter forsøget. Ingen pakker skal installeres.
 
@@ -24,6 +24,19 @@ Kontrollér rapporteksemplernes regnestykker:
 ```powershell
 py -3.12 prototypes/dashboard-11/check_fixtures.py
 ```
+
+## Kontovalg, graf og kompakte posteringer
+
+Vælg én eller begge af de to tilgængelige konti. Overblik, kategorier,
+posteringer, saldi og graf følger samme valg. Ingen valgte konti giver en tom
+visning. Kontovælgeren bruger kontolisten; eksemplerne indeholder endnu ikke
+flere personlige konti, hendes konto eller børnenes konti.
+
+Grafen viser indtægter, udgifter og beløbet tilbage pr. måned. Vælg seneste
+12 måneder, indeværende år eller egne start- og slutmåneder. Eksemplets faste
+dato er 15. september 2026. Manglende måneder bliver huller, ikke nul.
+Månedstabellen viser beløb og datagrundlag og kan åbne en måned i overblikket.
+Posteringer vises kompakt med farve og tydeligt fortegn.
 
 ## Oplysningerne i prototypen
 
@@ -51,6 +64,10 @@ py -3.12 prototypes/dashboard-11/check_fixtures.py
 - Beløb er præcise decimalstrenge. Skærmen formaterer dem blot på dansk.
   Søjlerne bruger forudberegnede procenter. Summer kontrolleres mod de
   medvirkende posteringer; de opdigtede summer har også håndkontrollerede facit.
+- Alle tre ikke-tomme kontokombinationer har egne, forberedte rapporter i
+  `views`. Regnekontrollen sammenholder dem med de oprindelige posteringer.
+  Browseren vælger rapporter og beregner alene grafens koordinater. En konto
+  uden oplysninger giver ukendte beløb; en bekræftet stille måned giver nul.
 
 ## Afgrænsning og beslutningsstatus
 

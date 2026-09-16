@@ -10,9 +10,10 @@
 <body>
   <div class="prototype"><div><strong>Prototype til afprøvning</strong> <span id="source-label">Henter faste rapporteksempler…</span></div><label>Data <select id="dataset"><option value="local">Jeres kontoudtog</option><option value="example">Opdigtet eksempel</option></select></label></div>
   <main>
-    <header class="page-header"><div><div class="eyebrow">HUSSTAND / TO KONTI</div><h1>Vores måned</h1><p>Et overblik over, hvor pengene blev af.</p></div><div class="month-control"><label for="month">Vælg måned</label><select id="month"></select></div></header>
+    <header class="page-header"><div><div class="eyebrow" id="scope-label">KONTI I OVERBLIKKET</div><h1>Vores måned</h1><p>Et overblik over, hvor pengene blev af.</p></div><div class="month-control"><label for="month">Vælg måned</label><select id="month"></select></div></header>
+    <fieldset class="account-picker"><legend>Konti i visningen</legend><div id="account-options"></div><button id="select-all" type="button" class="text-button">Vælg alle</button><p id="selection-note" class="footnote" aria-live="polite"></p></fieldset>
     <div id="content" aria-live="polite" aria-atomic="false"><p>Henter overblikket…</p></div>
-    <footer>Prototype uden redigering · DKK · Fast øjebliksbillede pr. 15. september 2026<br>Kun de to viste konti er med.</footer>
+    <footer>Prototype uden redigering · DKK · Fast øjebliksbillede pr. 15. september 2026<br>Overblikket og grafen følger dit valg af konti.</footer>
   </main>
   <dialog id="detail" aria-labelledby="detail-title"><div class="dialog-top"><span class="eyebrow">SE NÆRMERE</span><button id="close-detail" class="close" aria-label="Luk detaljer">Luk ×</button></div><div id="detail-content"></div></dialog>
 </body>
