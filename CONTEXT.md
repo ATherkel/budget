@@ -44,9 +44,9 @@ later amount. A broken link, or a missing balance, is a discrepancy, never
 silently corrected.
 
 **Evidence through**:
-The last date an account's imported exports are known to cover: the furthest
-*covers through* of its admitted exports, or the day before the export date
-when an export reaches its own production day.
+The last date an account's imported exports are known to cover, computed from
+its admitted exports by the formula in
+[`docs/architecture/silver-layer.md`](docs/architecture/silver-layer.md#evidence-through).
 _Avoid_: last import date (the export, not the import, bounds the evidence)
 
 **Covers through**:

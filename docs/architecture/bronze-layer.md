@@ -85,10 +85,28 @@ operator asked the bank for.
   interpreted.
 - **Covers through.** How far an export reaches is declared by the operator as
   the end of the range they asked the bank for, because the filename cannot
-  tell a year of history exported today from today's own export. When the
-  operator declares nothing, `covers_through` falls back to `exported_on` and
-  is recorded as such. The import summary shows both dates for the operator to
-  check, and a declared range end after the export date is refused.
+  tell a year of history exported today from today's own export. Three rules
+  bound the declaration, because a wrong `covers_through` is not a visible
+  error: too early silently truncates the account's evidence, and too late
+  silently manufactures confirmed zeros over months the export never covered.
+  - **Bounded.** A declared `covers_through` must fall on or after the payload's
+    last transaction date — the export demonstrably reaches at least that far —
+    and on or before `exported_on`. Outside that range the import run is
+    `refused`; it is never clamped or silently corrected.
+  - **Required where the fallback would be wrong.** The declaration is required,
+    not defaulted, when the payload's last transaction date is more than 7 days
+    before `exported_on`, and when the payload has no rows at all. The first is
+    the shape of an export of old history, where falling back to `exported_on`
+    reintroduces exactly the confirmed zeros this field exists to prevent; 7
+    days is the late-booking window, inside which an export of current activity
+    is not distinguishable from one whose range ended early. The second bounds
+    nothing on its own.
+  - **Fallback otherwise.** In every other case an undeclared `covers_through`
+    falls back to `exported_on`, and `covers_through_source` records that it
+    did.
+
+  The import summary shows both dates for the operator to check. That check is
+  a second pair of eyes, never the only safeguard.
 
 ## Danske CSV Format (`danske-csv-v1`)
 

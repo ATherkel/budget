@@ -16,8 +16,11 @@ resolve duplicates without assigning household financial meaning.
 
 - Canonical Silver transactions with lineage to every source record showing
   them.
-- Unbooked records, balance observations, import-run results, validation
-  errors, and review items, as specified in `architecture/silver-layer.md`.
+- Unbooked records, balance observations, account evidence, import-run results,
+  validation errors, and review items, as specified in
+  `architecture/silver-layer.md`.
+- `AccountEvidence.evidence_through` computed by the formula in that document,
+  which is the only place the rule is stated; Gold carries it through unchanged.
 
 ## Prohibited Work
 

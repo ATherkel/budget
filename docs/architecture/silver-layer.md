@@ -51,14 +51,35 @@ later export adds a late-booked transaction; `transaction_id` never does.
 chosen for a date is the latest admitted one that shows every transaction kept
 for it.
 
-Silver passes forward, per account, the furthest `covers_through` of its
-admitted import runs, including `repeat` runs of an admitted payload, which
-carry a later date without new source records. Gold derives
-`GoldAccount.evidence_through` from it: that date, or the day before
-`exported_on` when the export reaches its own production day, which may still
-be booking.
 Within a date, `day_sequence` preserves the bank's row order in the selected
 export; it is never sorted by amount or text.
+
+## Evidence Through
+
+Silver computes each account's evidence bound and passes it forward as
+`AccountEvidence`. This is the single definition of the rule; `gold-contract.md`,
+ADR-006 and `CONTEXT.md` cite it instead of restating it, and Gold carries the
+value through to `GoldAccount.evidence_through` unchanged rather than deriving
+it again.
+
+```text
+evidence_through(account) = max over that account's admitted import runs of:
+    covers_through - 1 day   when covers_through == exported_on
+    covers_through           otherwise
+```
+
+The adjustment is applied **per run, before the maximum**, never to the maximum
+afterwards. An export that reaches its own production day proves nothing about
+that day, because the day may still be booking; an export whose range ended
+earlier proves its whole range. Taking the maximum first would let one run's
+production-day adjustment truncate another run's fully proven range, or hide a
+production-day run behind an earlier one.
+
+`repeat` runs of an already admitted payload count here: they carry their own
+`exported_on` and `covers_through` without contributing source records, which is
+how an account with no new activity extends its evidence. An account with no
+admitted import run produces no `AccountEvidence`, and
+`GoldAccount.evidence_through` is null.
 
 ## Other Outputs
 
@@ -86,6 +107,11 @@ BalanceObservation(             # bank-stated end-of-day balance per export
     balance_date: date,
     end_of_day_balance: Decimal,
     payload_id: str,
+)
+
+AccountEvidence(                # the account's evidence bound; see above
+    account_id: str,
+    evidence_through: date,     # computed by the formula in Evidence Through
 )
 
 ImportRunResult(
