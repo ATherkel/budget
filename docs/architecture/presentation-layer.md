@@ -32,8 +32,13 @@ must preserve the analytics-facing DTO boundary.
   display — not just a documented caveat. Which month is current is decided
   from today's date in Europe/Copenhagen; `transaction_date` itself is never
   converted. The label remains until every account in the report has an
-  admitted export dated at least 7 days after the period ends, because late
-  bookings land on their transaction date.
+  admitted export that was produced at least 7 days after the period ends *and*
+  whose range covers the period's last day, because late bookings land on their
+  transaction date: an export starting after the period cannot show them,
+  however late it was produced. An account whose coverage for the period is
+  `no_data` does not hold the label, since it already reports that it has
+  nothing to say; the label exists for periods that may still change, not for
+  accounts that were never imported.
 - Account and balance views must reflect each account's coverage status from
   analytics; a `partial` or `no_data` account must never render as if its
   balance or totals are complete.

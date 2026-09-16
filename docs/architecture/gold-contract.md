@@ -89,7 +89,7 @@ transactions yet. Account taxonomy and ownership attributes belong to issue #6.
 | `account_id` | UUID/string | Yes | Matches `GoldTransaction.account_id`. |
 | `active` | bool | Yes | Whether the account is currently in use. |
 | `coverage_start` | `date`/null | No | `transaction_date` of the account's first transaction, whose balance is trusted as the opening balance. Null when the account has no transactions. |
-| `evidence_through` | `date`/null | No | Last date the account's imported exports are known to cover: the day before its latest export date, because the export day itself may still be booking. Null when no export of the account has been imported. |
+| `evidence_through` | `date`/null | No | Last date the account's imported exports are known to cover: the furthest `covers_through` of its admitted import runs, or the day before the export date when an export reaches its own production day, which may still be booking. Null when no export of the account has been imported. |
 
 ## Consumer Interface
 

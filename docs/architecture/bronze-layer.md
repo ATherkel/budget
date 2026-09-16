@@ -26,10 +26,13 @@ ImportRun(
     declared_account_id: str,
     source_format: str,
     original_filename: str,   # private provenance only; never in reports or logs
-    exported_on: date,        # the date the export reaches
+    exported_on: date,        # the date the bank produced the export
     exported_on_source: Literal["filename", "declared"],
+    covers_through: date,     # the last date the export's evidence reaches
+    covers_through_source: Literal["declared", "exported_on"],
     started_at: datetime,     # UTC
     outcome: Literal["stored", "repeat", "refused"],
+    repeat_of: str | None,    # the import run whose payload this repeats
 )
 
 SourceRecord(
@@ -52,8 +55,10 @@ touches the payload.
 
 Import-run metadata, including the export date: the date the export was
 produced, read from the source filename (Danske: the `-YYYYMMDD` suffix, e.g.
-`-20260914`) or declared by the operator at import. It bounds how far the
-export's evidence reaches.
+`-20260914`) or declared by the operator at import. It says when the bank
+produced the file, which is what the late-booking window is counted from. How
+far the file's evidence reaches is `covers_through`, the end of the range the
+operator asked the bank for.
 
 ## Rules
 
@@ -64,17 +69,26 @@ export's evidence reaches.
   expected header, and decodes strictly. Encoding is never guessed. A payload
   that does not match yields a `FormatFailure` and no source records.
 - **Repeat payloads.** Presenting bytes already stored for the same account
-  records a new `repeat` import run and stores nothing new.
+  records a new `repeat` import run and stores nothing new. It still records
+  its own `exported_on` and `covers_through` and names the run it repeats: an
+  account with no new activity exports the same bytes again, and that file is
+  evidence that nothing happened up to its own dates. Silver reads repeat runs
+  for those dates only, never for source records.
 - **Account conflicts.** Presenting bytes already stored for a different
   account is `refused`, unless the earlier import run has been voided by a
   manual decision.
 - **Currency.** The account's currency comes from account configuration, never
   from the payload.
-- **Export date.** The export date is how far the export reaches, used for
-  coverage and provisional periods. It is read from the date suffix of a
-  Danske-style filename (`…-YYYYMMDD.csv`); without one, the operator must
-  declare it. No other part of the filename is interpreted. The import summary
-  shows it for the operator to check.
+- **Export date.** The export date is when the bank produced the file. It is
+  read from the date suffix of a Danske-style filename (`…-YYYYMMDD.csv`);
+  without one, the operator must declare it. No other part of the filename is
+  interpreted.
+- **Covers through.** How far an export reaches is declared by the operator as
+  the end of the range they asked the bank for, because the filename cannot
+  tell a year of history exported today from today's own export. When the
+  operator declares nothing, `covers_through` falls back to `exported_on` and
+  is recorded as such. The import summary shows both dates for the operator to
+  check, and a declared range end after the export date is refused.
 
 ## Danske CSV Format (`danske-csv-v1`)
 

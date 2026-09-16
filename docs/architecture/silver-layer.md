@@ -13,7 +13,10 @@ resolve which source records show the same booked transaction.
 - Manual decisions that affect identity. Their file format belongs to issue #10.
   - *void import run*
   - *same transaction*: a source record shows an existing transaction.
-  - *withdrawn*: the bank removed a transaction.
+  - *withdrawn*: the bank removed a transaction. It also settles a
+    `fewer-repeats` review item and admits the export that showed fewer.
+  - *accept discrepancy*: an import run's balance break is real in the source
+    and is admitted with the break recorded (ADR-010).
 
 ## Canonical Transaction
 
@@ -44,10 +47,16 @@ transaction. `source_status` is the source's own status value, carried
 verbatim. For each date, `balance` and `day_sequence` come from the latest
 admitted export covering that date (ADR-009). They can therefore change when a
 later export adds a late-booked transaction; `transaction_id` never does.
-`balance` is null only for sources that state no balances (ADR-010).
+`balance` is null only for sources that state no balances (ADR-010). The export
+chosen for a date is the latest admitted one that shows every transaction kept
+for it.
 
-Silver passes forward each account's latest admitted export date from Bronze
-import-run metadata. Gold derives `GoldAccount.evidence_through` from it.
+Silver passes forward, per account, the furthest `covers_through` of its
+admitted import runs, including `repeat` runs of an admitted payload, which
+carry a later date without new source records. Gold derives
+`GoldAccount.evidence_through` from it: that date, or the day before
+`exported_on` when the export reaches its own production day, which may still
+be booking.
 Within a date, `day_sequence` preserves the bank's row order in the selected
 export; it is never sorted by amount or text.
 
@@ -83,7 +92,7 @@ ImportRunResult(
     import_run_id: str,
     status: Literal["accepted", "quarantined"],
     covered_from: date,         # first transaction date in the export
-    covered_to: date,           # the import run's export date (Bronze)
+    covered_to: date,           # the import run's covers_through (Bronze)
     errors: Sequence[ValidationError],
     review_item_ids: Sequence[str],
 )
@@ -133,15 +142,22 @@ ReviewItem(
   export when exports overlap.
 
 **Merge verification**
-- Import runs are admitted in `started_at` order.
+- Import runs are admitted in `exported_on` order, then `started_at` for runs
+  produced on the same date. The household's import order therefore does not
+  change the outcome, and a rebuild after a late-arriving older export replays
+  every run in that same order (ADR-009).
 - A run is admitted only if it still shows every transaction already admitted
   for the dates it covers, and its end-of-day balances differ from those
   already admitted by exactly the cumulative amounts of the transactions it
   adds (*explained growth*, ADR-009). Late bookings on earlier dates, and
   later bookings on an export's final date, are both explained growth.
+  End-of-day balances are compared only on dates where both the admitted set
+  and the run state one.
 - An unexplained difference quarantines the later run and raises an
   `export-disagreement` review item.
-- Fewer repeated transactions on any date raises a `fewer-repeats` review item.
+- Fewer repeated transactions on any date quarantine the run and raise a
+  `fewer-repeats` review item; the amounts of the missing repeats count as an
+  explained difference, so the same date raises no `export-disagreement`.
 - Silver uses balances only to verify its own merge. Coverage and
   reconciliation for reporting belong to Gold and analytics (ADR-006).
 

@@ -35,7 +35,11 @@ resolve duplicates without assigning household financial meaning.
 - `description` is the source text as delivered. The identity text is derived
   only by trimming and collapsing whitespace, as ADR-009 documents.
 - Identical, overlapping, reordered, and reverse-order imports produce the
-  same transactions and identifiers.
+  same transactions and identifiers, including when an older export is imported
+  after a newer one: runs are admitted in `exported_on` order.
+- A later export showing fewer repeats quarantines that run with a
+  `fewer-repeats` review item; a *withdrawn* decision admits it. An *accept
+  discrepancy* decision admits a run whose source states a real balance break.
 - A late booking in a later export is admitted as explained growth: identifiers
   of existing transactions are unchanged, and that date's balances come from
   the later export.

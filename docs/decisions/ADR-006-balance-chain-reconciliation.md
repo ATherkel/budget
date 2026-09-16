@@ -34,9 +34,10 @@ transaction is trusted as its opening balance, since there is nothing earlier
 to check it against.
 
 Coverage is judged over the whole reporting period, not only the rows inside
-it. An account's evidence runs from its first transaction to the day before
-its latest export date; the export date is read from the export's filename or
-declared at import, and the export day itself may still be booking. A period
+it. An account's evidence runs from its first transaction to the furthest date its
+admitted exports reach (`covers_through`, declared at import; ADR-009 and
+`bronze-layer.md`), and to the day before the export date when an export
+reaches its own production day, which may still be booking. A period
 is `complete` only when that evidence starts before the period, reaches its
 end, and every link overlapping the period is verified. A period with no
 transactions inside verified evidence is a confirmed zero. A broken link makes
