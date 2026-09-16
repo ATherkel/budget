@@ -152,3 +152,62 @@ misforståelse, og gentag den relevante opgave.
 - År og udviklingsgrafer er nu med i forsøget, men ikke valideret. Forsøget
   afgør ikke lagerets implementeringsparathed, import og konfiguration i #10
   eller forslagene i #18/#20.
+
+## Budget og øremærket opsparing — 16. september 2026
+
+### Observeret behov og udtrykkeligt svar
+
+- Brugeren efterspurgte Beløb/Mod budget under Hvor blev pengene af?,
+  en sammenligning af budget og forbrug samt synlige overskridelser og besparelser.
+- Ferie skal kunne få 3.000 kr. hver måned og gemme restbeløbet, så en særskilt
+  feriekonto på sigt kan undværes. Opsparing skal absorbere overskridelser.
+- På spørgsmålet om videreførsel svarede brugeren: “Ja, kun valgte kategorier
+  fører videre”. Ubrugte beløb i øvrige kategorier går til almindelig Opsparing.
+  Dette er en bekræftet regel for forsøget; ingen ADR er accepteret eller ændret.
+
+### Ændringer til afprøvning
+
+- Ét skift mellem Beløb og Mod budget i den eksisterende kategorioversigt.
+  Budgetrækker viser kendt forbrug, beløb til rådighed og rest/overskridelse;
+  detaljer viser regnestykket og de samme posteringer, inklusive tilbagebetalinger.
+- Ferie er markeret Opspares til senere med tidligere rest, månedens 3.000 kr.
+  og beregnet rest til næste måned. Startrest i juli er nul. Ingen kendte
+  ferieudgifter i de tre eksisterende måneder; ukendte posteringer kan ændre det.
+- Opsparing efter øremærkning viser månedens budget, bidrag efter kendte udgifter
+  og ferieøremærkning samt afvigelse. Kontoens saldo og samlet opsparingsformue
+  er andre tal. Eksisterende indtægter minus udgifter er uændret.
+- Budgetterne er faste, opdigtede rapporter for begge syntetiske konti samlet.
+  Lokale banktal og enkelte kontovalg får en forklaring og en eksplicit knap
+  til eksemplet. Husstandsbudgettet bliver ikke fordelt efter kontovalg.
+- Der er stadig ingen budgetredigering eller beregningsmotor. Kun grafisk
+  fremstilling og opslag i rapporteksempler. Browser- og regnekontrol følger
+  brugerens udtrykkelige prototypeundtagelse fra TDD-håndoverdragelser.
+
+### Kontrol og begrænsninger
+
+- Uafhængige facitværdier: Ferie 3.000 / 6.000 / 9.000 kr. i juli–september;
+  månedligt bidrag til almindelig Opsparing 17.010 / 8.370 / 17.890 kr.
+  mod budget 14.700 kr. Afvigelser 2.310 / −6.330 / 3.190 kr.
+- Regnekontrollen sammenholder budgetternes forbrug med de oprindelige
+  syntetiske posteringer; alle tidligere 51 kontorapporter består fortsat.
+- Browser: skift, detaljeåbning/lukning, tilbagebetaling, videreførsel mellem
+  måneder, manglende budget ved kontoudvalg og lokalt datasæt er kontrolleret.
+  Desktop og telefon er visuelt inspiceret. Det er agentkontrol, ikke feedback.
+
+### Afventer afprøvning og afklaring
+
+- Forstår begge deltagere ferieøremærkning og månedens almindelige opsparing?
+- Kan de udpege overskridelser og forklare deres samlede virkning?
+- Kan budgetvisningen fungere som erstatning for en dedikeret feriekonto?
+  Dette er brugerens hensigt, ikke et valideret resultat.
+- Faktisk brug af en opsparet ferierest er endnu ikke afprøvet. Ved forbrug
+  over hele ferierammen skal Opsparing ifølge brugerens hensigt dække forskellen;
+  den præcise visning og næste måneds startrest er ikke afgjort.
+- Startbeløb, ændrede budgetter/indtægter, utilstrækkelig almindelig opsparing,
+  perioder med manglende oplysninger og budgetafgrænsning ved kontoudvalg
+  er endnu ikke afprøvet. Tallene er månedlige rammer, ikke dagsfordelte mål.
+- Ingen deltagere har endnu afprøvet denne budgetudgave. Klar til feedback.
+- Afsluttende kontrol: budgetvisningen fungerer ved 1280×900, 390×844 og
+  320×740 uden vandret overfyldning. Opsparingsafsnittet gentager periode og
+  datadækning. Under hurtig genindlæsning fandt agenten et datasætskift før
+  rapporterne var indlæst; skiftet anvendes nu først, når rapporterne er klar.

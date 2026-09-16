@@ -98,3 +98,39 @@ hovedtal? Hvilke kontogrupper skal vises? Forklarer en kategorisum og dens
 posteringer en overraskelse? Hvor meget skal vises om manglende kontodata uden
 at rulle? Hvad skal den fremtidige kategorisering levere? Ingen foreslåede
 ADR'er er accepteret gennem prototypen.
+
+## Tilføjelse: budget og øremærkning
+
+Brugeren har bekræftet, at kun udvalgte kategorier fører restbeløb videre.
+Almindelige kategoriers restbeløb og overskridelser påvirker Opsparing.
+Visning og nedenstående rapportfelter er stadig forslag til afprøvning.
+
+```text
+BudgetComparison | null
+  month, accountIds, budgetId, currency
+  coverage, provisional, unclassifiedWarning
+  plannedIncome, plannedSpending, earmarked
+  plannedSavings, actualSavings, savingsDifference, incomeDifference
+  rows: [{categoryId, name, carryForward,
+          opening, allocated, available, actual,
+          remaining, carriedForward, savingsImpact}]
+```
+
+- Budgetbeløb og øremærkning er ikke transaktioner og ændrer ikke historisk
+  forbrug. `actual` bruger udgifter efter tilbagebetalinger.
+- `available = opening + allocated`; `remaining = available - actual`.
+  Almindelige kategorier starter på nul og afleverer resten til Opsparing.
+  Kategorien Ferie gemmer resten til næste måned i det viste eksempel.
+- `actualSavings` er månedens bidrag til almindelig opsparing efter ændringen
+  i de øremærkede reserver. Det er ikke den eksisterende `measures.savings`,
+  som fortsat betyder indtægter minus udgifter i de gældende domænedokumenter.
+  Det nye begreb må ikke stiltiende erstatte det eksisterende analyticsmål.
+- Browseren modtager alle økonomiske beløb færdigberegnet. Rapporten skal
+  udtrykke usikkerhed fra både aktuelle og tidligere måneder ved videreførsel.
+  Ukendt forbrug/ukendt startreserve må ikke blive en bekræftet nulværdi.
+- Budgetafgrænsningen skal svare til forbrugsafgrænsningen. Ingen automatisk
+  forholdsmæssig fordeling af et husstandsbudget på udvalgte konti.
+  Prototypen viser derfor kun budget ved begge syntetiske konti.
+- Nulbudget, negativ ferierest, ændrede mål, startsaldi og en negativ almindelig
+  opsparing skal afprøves før et egentligt budgetkontraktforslag fastlægges.
+  Der er ikke lavet budgetmotor eller ændret accepterede domænebeslutninger.

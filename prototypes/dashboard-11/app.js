@@ -4,7 +4,21 @@ const esc = text => String(text ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<
 const money = value => value === null ? 'Ukendt' : new Intl.NumberFormat('da-DK', {minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(value)) + ' kr.';
 const date = value => value ? new Intl.DateTimeFormat('da-DK', {day:'numeric',month:'short',timeZone:'UTC'}).format(new Date(value+'T12:00:00Z')) : 'Dato mangler';
 const badge = (label, warning=true) => `<span class="badge ${warning?'warning':''}">${esc(label)}</span>`;
-let datasets, data, report, activeReports = [], rangeMode = 'rolling', customStart = '', customEnd = '';
+let datasets, data, report, activeReports = [], rangeMode = 'rolling', customStart = '', customEnd = '', spendingMode = 'amounts';
+
+function currentBudget(){
+  return data.budgetExample?.accountIds.join('|')===selectedAccountIds().join('|') ? data.budgetExample.reports.find(b=>b.month===report.period.id) : null;
+}
+function budgetPanel(){
+  const b=currentBudget();
+  if(!b)return `<p class="empty">Budgeteksemplet er opdigtet og gælder begge eksempelkonti samlet. Der er endnu ikke et budget for dette datagrundlag eller kontovalg.</p><button class="text-button" data-budget-demo>Åbn opdigtet budget · begge konti →</button>`;
+  const rows=b.rows.map(c=>{
+    const over=Number(c.remaining)<0;
+    const percent=Math.max(0,Math.min(100,Number(c.actual)/Number(c.available)*100));
+    return `<button class="category budget-category ${over?'over-budget':''}" data-budget-category="${esc(c.id)}"><span class="row"><span class="row-title">${esc(c.name)}${c.carryForward?'<small>Opspares til senere</small>':''}</span><span class="row-amount">${money(c.actual)}<span class="arrow">›</span></span></span><span class="budget-subrow"><span>af ${money(c.available)} til rådighed</span><strong>${over?'Overskredet med '+money(String(Math.abs(Number(c.remaining)))):money(c.remaining)+' tilbage'}</strong></span><span class="bar-track" aria-hidden="true"><span class="bar" style="display:block;--width:${percent}%"></span></span>${c.carryForward?`<small>${money(c.opening)} fra tidligere + ${money(c.allocated)} denne måned</small>`:''}</button>`;
+  }).join('');
+  return `<p class="budget-notice">${esc(data.budgetExample.notice)}</p><p class="section-intro">Brugt efter tilbagebetalinger sammenholdt med beløbet til rådighed. Tryk på en kategori for regnestykket.</p>${rows}<section class="savings-summary" aria-labelledby="savings-heading"><h3 id="savings-heading">Opsparing efter øremærkning</h3>${badge(report.period.statusLabel,report.period.provisional)} ${badge(report.coverage.shortLabel,report.coverage.status!=='complete')}<p class="footnote">${esc(report.coverage.detail)} Beløb uden kategori kan ændre opsparingen.</p><p>Månedens bidrag til almindelig opsparing, efter ${money(b.earmarked)} til Ferie.</p><div class="row"><span>Budget</span><strong>${money(b.plannedSavings)}</strong></div><div class="row"><span>Ud fra kendte posteringer</span><strong>${money(b.actualSavings)}</strong></div><p class="savings-variance ${Number(b.savingsDifference)<0?'over-budget':''}">${money(String(Math.abs(Number(b.savingsDifference))))} ${Number(b.savingsDifference)<0?'mindre':'mere'} end planlagt</p><details><summary>Hvordan hænger opsparingen sammen?</summary><p>Planlagt indtægt ${money(b.plannedIncome)} − almindelige budgetter ${money(b.plannedSpending)} − øremærket til Ferie ${money(b.earmarked)} = ${money(b.plannedSavings)}.</p><p>Indtægter minus faktiske udgifter ${money(report.measures.netCashFlow)} − månedens øremærkning ${money(b.earmarked)} = ${money(b.actualSavings)} til almindelig opsparing.</p><p>Ubrugte beløb i almindelige kategorier øger Opsparing; overskridelser reducerer den. Ændrede indtægter påvirker også Opsparing. Her er indtægten som planlagt.</p><p>Beløbet er månedens bidrag, ikke en kontosaldo eller den samlede opsparing. Ukendte posteringer og andre rettelser er ikke med.</p></details></section><p class="footnote">Ferie er en øremærkning på tværs af de to konti, ikke en ekstra bankkonto eller en udgift. Kun kategorier markeret “Opspares til senere” fører restbeløb videre. De viste ferierester forudsætter, at de ukendte posteringer ikke er ferieudgifter.</p>`;
+}
 
 function selectedAccountIds() {
   return [...document.querySelectorAll('#account-options input:checked')].map(input=>input.value).sort();
@@ -76,11 +90,13 @@ function render() {
       <button class="metric" data-detail="expenses"><span class="label">Udgifter ↘</span><strong class="value">${money(m.expenses)}</strong><small>Efter tilbagebetalinger · ${esc(report.measureNote)}</small></button>
       <button class="metric accent" data-detail="net"><span class="label">Tilbage efter udgifter</span><strong class="value">${money(m.netCashFlow)}</strong><small>Indtægter minus udgifter · ${esc(report.measureNote)}</small></button>
     </section>
-    <p class="summary-note">Beløb uden kategori og interne overførsler er ikke med i tallene. Det gælder også, når kun den ene konto i en overførsel er valgt. “Tilbage efter udgifter” er indtægter minus udgifter — her også kaldet opsparing. Det er ikke det samme som ændringen i jeres saldi.</p>
+    <p class="summary-note">Beløb uden kategori og interne overførsler er ikke med i tallene. Det gælder også, når kun den ene konto i en overførsel er valgt. “Tilbage efter udgifter” er indtægter minus udgifter, før penge øremærkes til fx ferie. Det er ikke det samme som ændringen i jeres saldi.</p>
     ${trendPanel()}
     <div class="columns"><div>
-      <section class="panel" aria-labelledby="spending-title"><div class="section-head"><h2 id="spending-title">Hvor blev pengene af?</h2>${badge(report.coverage.shortLabel, report.coverage.status!=='complete')}</div><p class="section-intro">Vælg en kategori for at se posteringerne bag beløbet. Penge tilbage trækkes fra udgifterne.</p>
+      <section class="panel" aria-labelledby="spending-title"><div class="section-head"><h2 id="spending-title">Hvor blev pengene af?</h2>${badge(report.coverage.shortLabel, report.coverage.status!=='complete')}</div><div class="spending-switch" role="group" aria-label="Visning af kategorier"><button data-spending-mode="amounts" aria-pressed="${spendingMode==='amounts'}">Beløb</button><button data-spending-mode="budget" aria-pressed="${spendingMode==='budget'}">Mod budget</button></div>
+      ${spendingMode==='budget'?budgetPanel():`<p class="section-intro">Vælg en kategori for at se posteringerne bag beløbet. Penge tilbage trækkes fra udgifterne.</p>
       ${report.categories.map(c => `<button class="category" data-category="${esc(c.id)}"><span class="row"><span class="row-title">${esc(c.name)}</span><span class="row-amount">${money(c.netSpending)}<span class="arrow">›</span></span></span>${c.netRefund?'<small>Mere tilbagebetalt end brugt denne måned</small>':`<span class="bar-track" aria-hidden="true"><span class="bar" style="display:block;--width:${c.barPercent}%"></span></span>`}</button>`).join('') || `<p class="empty">${report.coverage.status==='no_data'?'Der mangler oplysninger om udgifter for de valgte konti.':'Ingen udgifter med kategori blandt de viste posteringer.'}</p>`}
+      `}
       <p class="footnote">${esc(report.coverage.detail)}</p></section>
       <section class="panel unknown"><div class="section-head"><h2>Mangler en kategori</h2>${badge(report.coverage.status==='no_data'?'Antal ukendt':`${report.unclassified.count} posteringer`,report.unclassified.count>0||report.coverage.status==='no_data')}</div><p class="section-intro">Disse beløb er ikke med i indtægter, udgifter eller beløbet tilbage. Penge ind og ud vises hver for sig.</p><div class="unknown-grid"><div><span>Penge ind</span><strong>${money(report.unclassified.moneyIn)}</strong></div><div><span>Penge ud</span><strong>${money(report.unclassified.moneyOut)}</strong></div></div><button class="text-button" data-detail="unknown">Se posteringerne →</button>${report.unclassified.count?'<p class="footnote">Kategorier kan ikke ændres i denne prototype.</p>':''}</section>
     </div><aside>
@@ -110,6 +126,13 @@ function showDetail({title,amount,summary,rows,coverage=report.coverage,guidance
 el('content').addEventListener('click', event => {
   const button=event.target.closest('button');
   if(!button)return;
+  if(button.dataset.spendingMode){spendingMode=button.dataset.spendingMode;render();document.querySelector(`[data-spending-mode="${spendingMode}"]`).focus();return;}
+  if(button.hasAttribute('data-budget-demo')){el('dataset').value='example';chooseDataset();document.querySelector('[data-spending-mode="budget"]').focus();return;}
+  if(button.dataset.budgetCategory){
+    const c=currentBudget().rows.find(c=>c.id===button.dataset.budgetCategory);
+    const actual=report.categories.find(a=>a.id===c.categoryId);
+    showDetail({title:c.name+' · mod budget',amount:c.remaining,summary:`<p><strong>${Number(c.remaining)<0?'Budgettet er overskredet.':'Beregnet beløb tilbage.'}</strong> Opdigtet budget; ukendte posteringer kan ændre resultatet.</p><p>Fra tidligere måneder: ${money(c.opening)}</p><p>Denne måneds budget: ${money(c.allocated)}</p><p>Til rådighed: ${money(c.available)}</p><p>Brugt efter tilbagebetalinger: ${money(c.actual)}</p><p>${c.carryForward?'Føres videre til næste måned: '+money(c.carriedForward):'Restbeløbet føres ikke videre i kategorien. Bidrag til Opsparing i forhold til planen: '+money(c.savingsImpact)}</p>${c.carryForward?'<p>Ferie får 3.000 kr. hver måned. I dette eksempel er der ingen kendte ferieudgifter i juli, august eller september. Beløbet er øremærket og indgår ikke i den almindelige opsparing. Startbeløbet i juli er sat til nul.</p>':''}`,rows:actual?.transactions??[]});return;
+  }
   if(button.dataset.month){el('month').value=button.dataset.month;render();el('month').focus();return;}
   if(button.dataset.category){
     const c=report.categories.find(c=>c.id===button.dataset.category);
@@ -130,6 +153,7 @@ el('close-detail').addEventListener('click',()=>el('detail').close());
 el('detail').addEventListener('click', event=>{if(event.target===el('detail')){const r=el('detail').getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)el('detail').close();}});
 el('month').addEventListener('change',render);
 function chooseDataset(){
+  if(!datasets)return; // A selection during loading is applied when the fixtures arrive.
   const previous=el('month').value;
   data=datasets[el('dataset').value];
   el('account-options').innerHTML=data.availableAccounts.map(a=>`<label><input type="checkbox" value="${esc(a.id)}" checked> ${esc(a.name)} <small>${esc(a.ownerLabel)}</small></label>`).join('');

@@ -4865,5 +4865,362 @@
         }
       ]
     }
-  ]
+  ],
+  "budgetExample": {
+    "accountIds": [
+      "common",
+      "mine"
+    ],
+    "notice": "Opdigtet budget for begge eksempelkonti. Beløb uden kategori og manglende kontodata kan ændre sammenligningen. Budgettet gælder hele måneden, også i september.",
+    "reports": [
+      {
+        "month": "2026-07",
+        "plannedIncome": "36000.00",
+        "plannedSpending": "18300.00",
+        "earmarked": "3000.00",
+        "plannedSavings": "14700.00",
+        "actualSavings": "17010.00",
+        "savingsDifference": "2310.00",
+        "incomeDifference": "0.00",
+        "rows": [
+          {
+            "id": "category-4",
+            "categoryId": "category-4",
+            "name": "Bolig",
+            "carryForward": false,
+            "allocated": "10000.00",
+            "opening": "0.00",
+            "available": "10000.00",
+            "actual": "9800.00",
+            "remaining": "200.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "200.00"
+          },
+          {
+            "id": "budget-1",
+            "categoryId": null,
+            "name": "Boligudstyr og møbler",
+            "carryForward": false,
+            "allocated": "1500.00",
+            "opening": "0.00",
+            "available": "1500.00",
+            "actual": "0.00",
+            "remaining": "1500.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "1500.00"
+          },
+          {
+            "id": "category-3",
+            "categoryId": "category-3",
+            "name": "Dagligvarer",
+            "carryForward": false,
+            "allocated": "3500.00",
+            "opening": "0.00",
+            "available": "3500.00",
+            "actual": "3250.00",
+            "remaining": "250.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "250.00"
+          },
+          {
+            "id": "category-0",
+            "categoryId": "category-0",
+            "name": "Faste regninger",
+            "carryForward": false,
+            "allocated": "1200.00",
+            "opening": "0.00",
+            "available": "1200.00",
+            "actual": "1100.00",
+            "remaining": "100.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "100.00"
+          },
+          {
+            "id": "category-5",
+            "categoryId": "category-5",
+            "name": "Transport",
+            "carryForward": false,
+            "allocated": "800.00",
+            "opening": "0.00",
+            "available": "800.00",
+            "actual": "740.00",
+            "remaining": "60.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "60.00"
+          },
+          {
+            "id": "category-2",
+            "categoryId": "category-2",
+            "name": "Café og restaurant",
+            "carryForward": false,
+            "allocated": "800.00",
+            "opening": "0.00",
+            "available": "800.00",
+            "actual": "650.00",
+            "remaining": "150.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "150.00"
+          },
+          {
+            "id": "category-1",
+            "categoryId": "category-1",
+            "name": "Tøj",
+            "carryForward": false,
+            "allocated": "500.00",
+            "opening": "0.00",
+            "available": "500.00",
+            "actual": "450.00",
+            "remaining": "50.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "50.00"
+          },
+          {
+            "id": "vacation",
+            "categoryId": null,
+            "name": "Ferie",
+            "carryForward": true,
+            "allocated": "3000.00",
+            "opening": "0.00",
+            "available": "3000.00",
+            "actual": "0.00",
+            "remaining": "3000.00",
+            "carriedForward": "3000.00",
+            "savingsImpact": "0.00"
+          }
+        ]
+      },
+      {
+        "month": "2026-08",
+        "plannedIncome": "36000.00",
+        "plannedSpending": "18300.00",
+        "earmarked": "3000.00",
+        "plannedSavings": "14700.00",
+        "actualSavings": "8370.00",
+        "savingsDifference": "-6330.00",
+        "incomeDifference": "0.00",
+        "rows": [
+          {
+            "id": "category-5",
+            "categoryId": "category-5",
+            "name": "Bolig",
+            "carryForward": false,
+            "allocated": "10000.00",
+            "opening": "0.00",
+            "available": "10000.00",
+            "actual": "9800.00",
+            "remaining": "200.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "200.00"
+          },
+          {
+            "id": "category-4",
+            "categoryId": "category-4",
+            "name": "Boligudstyr og møbler",
+            "carryForward": false,
+            "allocated": "1500.00",
+            "opening": "0.00",
+            "available": "1500.00",
+            "actual": "8700.00",
+            "remaining": "-7200.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "-7200.00"
+          },
+          {
+            "id": "category-3",
+            "categoryId": "category-3",
+            "name": "Dagligvarer",
+            "carryForward": false,
+            "allocated": "3500.00",
+            "opening": "0.00",
+            "available": "3500.00",
+            "actual": "3600.00",
+            "remaining": "-100.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "-100.00"
+          },
+          {
+            "id": "category-0",
+            "categoryId": "category-0",
+            "name": "Faste regninger",
+            "carryForward": false,
+            "allocated": "1200.00",
+            "opening": "0.00",
+            "available": "1200.00",
+            "actual": "1250.00",
+            "remaining": "-50.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "-50.00"
+          },
+          {
+            "id": "category-6",
+            "categoryId": "category-6",
+            "name": "Transport",
+            "carryForward": false,
+            "allocated": "800.00",
+            "opening": "0.00",
+            "available": "800.00",
+            "actual": "810.00",
+            "remaining": "-10.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "-10.00"
+          },
+          {
+            "id": "category-2",
+            "categoryId": "category-2",
+            "name": "Café og restaurant",
+            "carryForward": false,
+            "allocated": "800.00",
+            "opening": "0.00",
+            "available": "800.00",
+            "actual": "1070.00",
+            "remaining": "-270.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "-270.00"
+          },
+          {
+            "id": "category-1",
+            "categoryId": "category-1",
+            "name": "Tøj",
+            "carryForward": false,
+            "allocated": "500.00",
+            "opening": "0.00",
+            "available": "500.00",
+            "actual": "-600.00",
+            "remaining": "1100.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "1100.00"
+          },
+          {
+            "id": "vacation",
+            "categoryId": null,
+            "name": "Ferie",
+            "carryForward": true,
+            "allocated": "3000.00",
+            "opening": "3000.00",
+            "available": "6000.00",
+            "actual": "0.00",
+            "remaining": "6000.00",
+            "carriedForward": "6000.00",
+            "savingsImpact": "0.00"
+          }
+        ]
+      },
+      {
+        "month": "2026-09",
+        "plannedIncome": "36000.00",
+        "plannedSpending": "18300.00",
+        "earmarked": "3000.00",
+        "plannedSavings": "14700.00",
+        "actualSavings": "17890.00",
+        "savingsDifference": "3190.00",
+        "incomeDifference": "0.00",
+        "rows": [
+          {
+            "id": "category-4",
+            "categoryId": "category-4",
+            "name": "Bolig",
+            "carryForward": false,
+            "allocated": "10000.00",
+            "opening": "0.00",
+            "available": "10000.00",
+            "actual": "9800.00",
+            "remaining": "200.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "200.00"
+          },
+          {
+            "id": "category-3",
+            "categoryId": "category-3",
+            "name": "Boligudstyr og møbler",
+            "carryForward": false,
+            "allocated": "1500.00",
+            "opening": "0.00",
+            "available": "1500.00",
+            "actual": "1900.00",
+            "remaining": "-400.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "-400.00"
+          },
+          {
+            "id": "category-2",
+            "categoryId": "category-2",
+            "name": "Dagligvarer",
+            "carryForward": false,
+            "allocated": "3500.00",
+            "opening": "0.00",
+            "available": "3500.00",
+            "actual": "1570.00",
+            "remaining": "1930.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "1930.00"
+          },
+          {
+            "id": "category-0",
+            "categoryId": "category-0",
+            "name": "Faste regninger",
+            "carryForward": false,
+            "allocated": "1200.00",
+            "opening": "0.00",
+            "available": "1200.00",
+            "actual": "1100.00",
+            "remaining": "100.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "100.00"
+          },
+          {
+            "id": "category-5",
+            "categoryId": "category-5",
+            "name": "Transport",
+            "carryForward": false,
+            "allocated": "800.00",
+            "opening": "0.00",
+            "available": "800.00",
+            "actual": "460.00",
+            "remaining": "340.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "340.00"
+          },
+          {
+            "id": "category-1",
+            "categoryId": "category-1",
+            "name": "Café og restaurant",
+            "carryForward": false,
+            "allocated": "800.00",
+            "opening": "0.00",
+            "available": "800.00",
+            "actual": "280.00",
+            "remaining": "520.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "520.00"
+          },
+          {
+            "id": "budget-6",
+            "categoryId": null,
+            "name": "Tøj",
+            "carryForward": false,
+            "allocated": "500.00",
+            "opening": "0.00",
+            "available": "500.00",
+            "actual": "0.00",
+            "remaining": "500.00",
+            "carriedForward": "0.00",
+            "savingsImpact": "500.00"
+          },
+          {
+            "id": "vacation",
+            "categoryId": null,
+            "name": "Ferie",
+            "carryForward": true,
+            "allocated": "3000.00",
+            "opening": "6000.00",
+            "available": "9000.00",
+            "actual": "0.00",
+            "remaining": "9000.00",
+            "carriedForward": "9000.00",
+            "savingsImpact": "0.00"
+          }
+        ]
+      }
+    ]
+  }
 }

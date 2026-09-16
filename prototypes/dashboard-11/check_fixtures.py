@@ -121,6 +121,44 @@ def audit_scopes(path):
     print(f"OK: {len(data['views'])} kontovalg × {len(data['reports'])} måneder, herunder datadækning og udeladte interne overførsler.")
 
 
+def audit_budget():
+    data = json.loads((HERE / "example.json").read_text(encoding="utf-8"))
+    budget = data["budgetExample"]
+    assert budget["accountIds"] == ["common", "mine"]
+    expected = {
+        "2026-07": ("3000", "17010", "2310"),
+        "2026-08": ("6000", "8370", "-6330"),
+        "2026-09": ("9000", "17890", "3190"),
+    }
+    previous = D(0)
+    for b in budget["reports"]:
+        source = next(r for r in data["reports"] if r["period"]["id"] == b["month"])
+        rows = b["rows"]
+        assert {r["categoryId"] for r in rows if r["categoryId"]} == {c["id"] for c in source["categories"]}
+        for row in rows:
+            c = next((c for c in source["categories"] if c["id"] == row["categoryId"]), None)
+            assert D(row["actual"]) == (-total(c["transactions"]) if c else 0)
+            assert D(row["available"]) == D(row["opening"]) + D(row["allocated"])
+            assert D(row["remaining"]) == D(row["available"]) - D(row["actual"])
+            if not row["carryForward"]:
+                assert D(row["opening"]) == D(row["carriedForward"]) == 0
+                assert D(row["savingsImpact"]) == D(row["remaining"])
+        vacation = next(r for r in rows if r["id"] == "vacation")
+        assert D(vacation["opening"]) == previous
+        assert D(vacation["allocated"]) == 3000
+        assert D(vacation["carriedForward"]) == D(vacation["remaining"])
+        previous = D(vacation["carriedForward"])
+        assert sum(D(r["actual"]) for r in rows) == D(source["measures"]["expenses"])
+        assert sum(D(r["allocated"]) for r in rows if not r["carryForward"]) == D(b["plannedSpending"])
+        assert D(b["plannedIncome"]) - D(b["plannedSpending"]) - D(b["earmarked"]) == D(b["plannedSavings"])
+        assert D(source["measures"]["netCashFlow"]) - (D(vacation["carriedForward"]) - D(vacation["opening"])) == D(b["actualSavings"])
+        assert D(b["actualSavings"]) - D(b["plannedSavings"]) == D(b["savingsDifference"])
+        assert sum(D(r["savingsImpact"]) for r in rows) + D(b["incomeDifference"]) == D(b["savingsDifference"])
+        assert (previous, D(b["actualSavings"]), D(b["savingsDifference"])) == tuple(map(D, expected[b["month"]]))
+    print("OK: 3 budgetmåneder, ferie videreført og overskridelser dækket af Opsparing; håndkontrollerede facitværdier.")
+
+
+audit_budget()
 for path in (HERE / "example.json", PRIVATE / "reports.json"):
     if path.exists():
         audit(path)

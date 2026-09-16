@@ -105,3 +105,15 @@ kan I vælge en tidligere måned. August i det opdigtede eksempel kan også brug
 
 #11 skal ikke lukkes, og koden skal ikke gøres til produktionskode på baggrund
 af agentens kontroller alene.
+
+### Budgeteksempel
+
+Vælg **Mod budget** under **Hvor blev pengene af?**. Budgetvisningen findes
+for **Opdigtet eksempel** med begge konti valgt. Fra andre datavalg kan knappen
+**Åbn opdigtet budget · begge konti** åbne den. Samme startkommando som ovenfor.
+
+Skift mellem juli, august og september: Ferie får 3.000 kr. om måneden og gemmer
+resten; almindelige kategoriers over-/underforbrug påvirker Opsparing.
+Budgetter, startreserve og de øvrige månedsrammer er opdigtede. De kan ikke
+redigeres. September og beløb uden kategori gør sammenligningen foreløbig.
+Behovet og reglen om videreførsel er bekræftet; budgetvisningen afventer feedback.
