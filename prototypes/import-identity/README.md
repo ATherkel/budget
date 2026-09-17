@@ -9,6 +9,10 @@ reproduced. The findings are the comment on PR #16. This version changes the
 documents and makes the fixes the prototype's defaults, so each claim tab now
 compares **PR #16 as written (left)** with **the fix (right)**.
 
+Version 2 was then reviewed in turn, and section 6 lists what that round found
+and changed — including one rule the documents stated and the prototype did not
+enforce, which turned out to be wrong once it was enforced.
+
 ## 1. What the thing in front of you is
 
 The prototype is a toy version of the import rules in ADR-009 and ADR-010. You
@@ -236,17 +240,60 @@ text.
 
 | File | Change | Claim |
 | --- | --- | --- |
-| `docs/architecture/silver-layer.md` | Admit runs in `exported_on` order, then `started_at`; fewer repeats quarantine and a *withdrawn* decision clears them; balances compared only where both state one | C1, C6 |
-| `docs/architecture/bronze-layer.md` | `covers_through` and `repeat_of` on `ImportRun`; the filename date is the production date; a repeat records its own dates | C3, C7 |
-| `docs/architecture/presentation-layer.md` | The qualifying export must cover the period's last day; `no_data` accounts do not hold the provisional label | C7 |
-| `docs/decisions/ADR-009-transaction-identity.md` | Amount, whitespace and *k* spelled out; export-date admission order; fewer-repeats rule and its way out; two new rejected options | C1, C5, C6 |
-| `docs/decisions/ADR-010-quarantine-inconsistent-exports.md` | The *accept discrepancy* manual decision | C4 |
+| `docs/architecture/silver-layer.md` | Admit runs in `exported_on` order, then `started_at`; fewer repeats quarantine and a *withdrawn* decision clears them; balances compared where both state one; `day_sequence` for an appended transaction; `evidence_through` stated once; a `balance-break` review item | C1, C6 |
+| `docs/architecture/bronze-layer.md` | `covers_through` and `repeat_of` on `ImportRun`; the filename date is the production date; a repeat records its own dates; the three rules bounding a declared `covers_through` | C3, C7 |
+| `docs/architecture/presentation-layer.md` | The qualifying export must cover the period's last day; only a never-imported account is exempt from the provisional label | C7 |
+| `docs/decisions/ADR-009-transaction-identity.md` | Amount, whitespace and *k* spelled out; export-date admission order, scoped to different production days; fewer-repeats rule and its way out; why the balance comparison skips no check; two new rejected options | C1, C5, C6 |
+| `docs/decisions/ADR-010-quarantine-inconsistent-exports.md` | The *accept discrepancy* manual decision, and the `balance-break` review item that raises it | C4 |
 | `docs/decisions/ADR-006-balance-chain-reconciliation.md`, `docs/architecture/gold-contract.md` | `evidence_through` derives from `covers_through` | C3 |
 | `docs/domains/transaction.md` | Points at ADR-009 instead of defining a competing fingerprint | C2 |
 | `CONTEXT.md` | *Covers through* and *Export date* as separate terms | C3 |
 | `docs/agents/bronze-agent.md`, `docs/agents/silver-agent.md` | Acceptance criteria follow the above | C1, C3, C4, C6 |
 
-## 6. Trying your own files
+## 6. What the review of version 2 changed
+
+Four findings, all in this file rather than in the walkthroughs, so no claim tab
+changes shape. The baseline still reads 17 of 17.
+
+**Two `day_sequence` values could collide.** When a date's balance-source export
+does not show a transaction, that transaction is appended after the export's
+rows. The old numbering added the transaction's repeat counter *k* to the row
+count, so two different repeated groups dropping their second occurrence on one
+day both landed on the same number — breaking the uniqueness Gold's contract
+requires, silently, because the page only ever checked for duplicate *IDs*.
+Reachable only under `Fewer repeats = admit`, the reading C6 rejects, which is
+why no shipped walkthrough hit it. Appended transactions are now ordered by
+transaction ID, `silver-layer.md` states the rule as a guard rather than a path,
+and the transactions table carries a red **day_seq collision** badge next to the
+ID one.
+
+**Growth was under-counted on a withdrawn transaction.** The admission check
+compared a new export against two different pictures at once: what the household
+believes is true, and what the stored balance actually reflects. Those differ
+after a *withdrawn* decision, so an export legitimately re-showing that
+transaction was read as an unexplained balance difference and quarantined. The
+two baselines are now separate and named in the code.
+
+**A stated rule was not enforced — and was wrong.** The documents said a
+`covers_through` after the export date is refused, but nothing in the page
+checked it, so that sentence was not covered by the 17 of 17. Enforcing it also
+meant enforcing the rest of the rule, and the version as written — *require the
+declaration when the last transaction is more than 7 days before the export
+date* — **refused 5 of the 17 baseline scenarios**, all of them ordinary
+month-end exports of a quiet account. The threshold was the wrong test. What the
+fallback actually risks is claiming evidence in a reporting period the export
+never covered, so that is what now requires a declaration: the fallback may
+reach to the day before the export date inside the last transaction's own month,
+and no further. All 17 pass again, and the import-runs table now prints
+`covers through` and whether it was declared or fell back.
+
+**A quarantine with nothing to prompt the way out.** A balance break produced
+validation errors only, so *accept discrepancy* was the one manual decision
+nothing in the work list ever suggested. It now raises a `balance-break` review
+item, which the decision settles — visible in the `C4` tab's *accept* preset,
+in the new **settled by** column.
+
+## 7. Trying your own files
 
 `Free play` takes a CSV through the file picker, asks which account it belongs to
 (the export date if the filename has no `-YYYYMMDD` suffix, and optionally the

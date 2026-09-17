@@ -44,7 +44,9 @@ first. The only values observed in `Status` are `Udført` and `Slettet`, and
   reaches (`covers_through`) is declared separately. A `repeat` run records both
   dates and the run it repeats.
 - A declared `covers_through` outside `[last transaction date, exported_on]` is
-  refused, never clamped. The declaration is required when the payload's last
-  transaction date is more than 7 days before `exported_on`, or when the payload
-  has no rows; otherwise it falls back to `exported_on` and records that it did.
+  refused, never clamped. The declaration is required when falling back would
+  claim evidence in a later reporting period than the payload's last transaction
+  date, or when the payload states no transactions; otherwise it falls back to
+  `exported_on` and records that it did. An undecodable payload yields a
+  `FormatFailure` rather than a refusal for a missing declaration.
 - Bronze has no dependency on Silver, Gold, analytics, or UI modules.

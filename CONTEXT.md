@@ -52,7 +52,10 @@ _Avoid_: last import date (the export, not the import, bounds the evidence)
 **Covers through**:
 The last date one export's evidence reaches: the end of the range the operator
 asked the bank for, declared at import. Distinct from the *export date*, so a
-year of history exported today is not read as covering today.
+year of history exported today is not read as covering today. It falls back to
+the export date only where that cannot reach past the payload's last reporting
+period; see
+[`docs/architecture/bronze-layer.md`](docs/architecture/bronze-layer.md).
 _Avoid_: export range, to-date
 
 **Booked transaction**:
@@ -136,8 +139,10 @@ _Avoid_: rejected, held, failed import
 
 **Review item**:
 An ambiguity the platform cannot settle by rule and a person must decide, such
-as overlapping exports that disagree or a later export showing fewer repeated
-transactions.
+as overlapping exports that disagree, a later export showing fewer repeated
+transactions, or a source that keeps stating a broken balance chain. Every
+decision that settles a quarantine is raised by one, so none has to be known
+about in advance.
 _Avoid_: error, warning, conflict
 
 **Manual decision**:

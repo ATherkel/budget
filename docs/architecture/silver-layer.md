@@ -52,7 +52,14 @@ chosen for a date is the latest admitted one that shows every transaction kept
 for it.
 
 Within a date, `day_sequence` preserves the bank's row order in the selected
-export; it is never sorted by amount or text.
+export; it is never sorted by amount or text. A transaction kept for that date
+that the selected export does not show is appended after that export's rows, in
+`transaction_id` order. It is never numbered from its occurrence *k*: two
+appended transactions on one date can share a *k*, and `(account_id,
+transaction_date, day_sequence)` has to stay unique (`gold-contract.md`
+invariant 9). Under the rules below the selected export always does show every
+transaction kept for its dates, so this is a guard and not a path — but it is
+written down because the obvious numbering is the colliding one.
 
 ## Evidence Through
 
@@ -132,7 +139,7 @@ ValidationError(
 
 ReviewItem(
     review_item_id: str,        # deterministic
-    kind: Literal["export-disagreement", "fewer-repeats"],
+    kind: Literal["export-disagreement", "fewer-repeats", "balance-break"],
     account_id: str,
     date_from: date,
     date_to: date,
@@ -162,6 +169,12 @@ ReviewItem(
   - an unknown status;
   - a booked row without a balance, or a balance-chain break within the
     export (ADR-010).
+- A booked row without a balance, or a chain break within the export, also
+  raises a `balance-break` review item for that run alongside the validation
+  errors. The errors say what is wrong with the file; the review item is what
+  an *accept discrepancy* decision is prompted by and attaches to through
+  `resolved_by` (ADR-010). Without it the quarantine is the only signal, and
+  nothing in the operator's work list says there is a way back.
 
 **Identity and merging**
 - Per ADR-009: content plus occurrence identity, and the highest count per
@@ -169,16 +182,19 @@ ReviewItem(
 
 **Merge verification**
 - Import runs are admitted in `exported_on` order, then `started_at` for runs
-  produced on the same date. The household's import order therefore does not
-  change the outcome, and a rebuild after a late-arriving older export replays
-  every run in that same order (ADR-009).
+  produced on the same date. For runs the bank produced on different days the
+  household's import order therefore does not change the outcome, and a rebuild
+  after a late-arriving older export replays every run in that same order
+  (ADR-009). Runs sharing an `exported_on` fall back to import order; ADR-009
+  records what that can and cannot change.
 - A run is admitted only if it still shows every transaction already admitted
   for the dates it covers, and its end-of-day balances differ from those
   already admitted by exactly the cumulative amounts of the transactions it
   adds (*explained growth*, ADR-009). Late bookings on earlier dates, and
-  later bookings on an export's final date, are both explained growth.
-  End-of-day balances are compared only on dates where both the admitted set
-  and the run state one.
+  later bookings on an export's final date, are both explained growth. A date
+  states an end-of-day balance only once it has a booked transaction, so the
+  balances are compared on the dates both sides state one; ADR-009 records why
+  that is a consequence of the rules above and not an exemption from them.
 - An unexplained difference quarantines the later run and raises an
   `export-disagreement` review item.
 - Fewer repeated transactions on any date quarantine the run and raise a

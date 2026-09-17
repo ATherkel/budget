@@ -92,15 +92,21 @@ operator asked the bank for.
   - **Bounded.** A declared `covers_through` must fall on or after the payload's
     last transaction date — the export demonstrably reaches at least that far —
     and on or before `exported_on`. Outside that range the import run is
-    `refused`; it is never clamped or silently corrected.
-  - **Required where the fallback would be wrong.** The declaration is required,
-    not defaulted, when the payload's last transaction date is more than 7 days
-    before `exported_on`, and when the payload has no rows at all. The first is
-    the shape of an export of old history, where falling back to `exported_on`
-    reintroduces exactly the confirmed zeros this field exists to prevent; 7
-    days is the late-booking window, inside which an export of current activity
-    is not distinguishable from one whose range ended early. The second bounds
-    nothing on its own.
+    `refused`; it is never clamped or silently corrected. Reading the payload's
+    last transaction date is the one thing Bronze interprets, and only to bound
+    this declaration: every field is still stored and presented exactly as
+    decoded.
+  - **Required where the fallback would be wrong.** Falling back claims evidence
+    through the day before `exported_on` (`silver-layer.md`, *Evidence Through*).
+    The declaration is required, not defaulted, when that day falls in a later
+    reporting period than the payload's last transaction date, and when the
+    payload states no transactions at all. The first is the shape of an export
+    of old history, where the fallback manufactures exactly the confirmed zeros
+    this field exists to prevent; inside the last transaction's own period the
+    fallback is the quiet tail of an ordinary export, which is the common case
+    and must not need a declaration. The second bounds nothing on its own. A
+    payload Bronze cannot decode is neither: it yields a `FormatFailure`, which
+    is the more useful verdict than a missing declaration.
   - **Fallback otherwise.** In every other case an undeclared `covers_through`
     falls back to `exported_on`, and `covers_through_source` records that it
     did.
