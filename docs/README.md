@@ -32,9 +32,10 @@ document under `architecture/` or `decisions/`, that document wins and the
 primer is stale.
 
 - [`primers/overlapping-exports-primer.html`](primers/overlapping-exports-primer.html)
-  — why overlapping bank exports are hard, in thirteen modules with worked
+  — why overlapping bank exports are hard, in fourteen modules with worked
   examples: transaction identity, the balance chain, whole-file admission, the
-  manual decisions, coverage, and the provisional label. Open it by
+  manual decisions, coverage, the provisional label, and a worked case of a
+  written-down rule that was wrong until it was run. Open it by
   double-clicking; it needs no server and stores progress in the browser only.
   It loads its fonts from Google Fonts and falls back to system fonts offline.
 

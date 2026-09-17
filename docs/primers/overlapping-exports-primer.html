@@ -405,7 +405,7 @@
   <h1>Your bank sends the same purchase twice. Now what?</h1>
   <p class="standfirst">
     PR #16 and PR #31 are 2,100 lines about one small, genuinely awkward problem. This page
-    walks you through it in thirteen short modules, each with a worked example using real
+    walks you through it in fourteen short modules, each with a worked example using real
     kroner. <strong>Tick a module off once you can explain it to someone else.</strong>
     Your progress is saved.
   </p>
@@ -419,9 +419,11 @@
       right and this page is out of date — say so and it gets fixed.
     </p>
     <p>
-      Open it by double-clicking. It needs no server and sends nothing anywhere; your ticks are
-      stored in your own browser only. <b>Current as of PR #32</b>, which closes four of the ten
-      review comments in module 12.
+      It lives in the repository at <code>docs/primers/overlapping-exports-primer.html</code>;
+      that copy opens by double-clicking and needs no server. Your ticks are saved as you go.
+      <b>Current through the second review round</b>, which closes the last six of the ten comments
+      in module 12. Module 14 is what that round found — including one rule the first round got
+      wrong.
     </p>
   </div>
 
@@ -431,10 +433,11 @@
       No, you don't have to merge blind — but you also don't need to understand every sentence
       in those documents. You need to understand <strong>five ideas</strong>, and be able to
       answer <strong>five questions</strong>. Modules 01–09 are the five ideas. Module 13 is the
-      five questions. Everything in between is what the two PRs did and what is still broken.
+      five questions. Everything after that is what the PRs did, what the reviews caught, and the
+      one rule that turned out to be wrong.
     </p>
     <p>
-      Budget about 25 minutes. If you only have 10, read 01, 05, 06, 09 and 13.
+      Budget about 25 minutes. If you only have 10, read 01, 05, 06, 09 and 14.
     </p>
   </div>
 
@@ -1048,10 +1051,9 @@
     <div class="mod-body">
       <p>
         Ten review comments were raised on PR #31. Here they are in plain words, sorted by what
-        they'd actually cost you. <strong>PR #32 closes the four marked
-        <span class="tag t-done">fixed in #32</span></strong> — the three that would have forced an
-        implementer to invent an answer, plus one leftover line that contradicted the second fix.
-        The other six are open.
+        they'd actually cost you. <strong>All ten are now closed</strong> — four in PR #32, the
+        remaining six in the follow-up this page ships with. Each says what the fix actually was,
+        so you can check the fix rather than take it on trust.
       </p>
 
       <h3>The dashboard can still lie to you</h3>
@@ -1139,8 +1141,8 @@
         </p>
       </div>
 
-      <div class="issue mid">
-        <div class="issue-h"><span class="issue-file">silver-layer.md</span><span class="issue-t">A new qualifier appears in one document and not the other</span><span class="tag t-follow">follow-up</span></div>
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">silver-layer.md</span><span class="issue-t">A new qualifier appears in one document and not the other</span><span class="tag t-done">fixed</span></div>
         <p>
           The architecture doc now says balances are compared "only on dates where both state one."
           ADR-009 still states the admission condition without that qualifier — and the line traces to
@@ -1148,22 +1150,45 @@
           documents. Either it's real and belongs in ADR-009 with its reasoning, or it was defensive
           and should go.
         </p>
+        <p class="fixed">
+          <b>Fixed:</b> it turned out to be neither — it's a <em>consequence</em>, not an exemption,
+          and ADR-009 now says why. A date only gets a balance once it has a transaction on it. If
+          the old data has one for a date and the new file covers that date, the new file must have
+          one too, or it was already thrown out. The only other case is a date that's brand new in
+          the file, where everything on it is new money — counted at the next date they both have,
+          with the file's own internal chain joining the dots. <strong>Nothing goes unchecked; only
+          the date the check lands on moves.</strong>
+        </p>
       </div>
 
-      <div class="issue mid">
-        <div class="issue-h"><span class="issue-file">ADR-009</span><span class="issue-t">"Import order doesn't matter" is slightly overstated</span><span class="tag t-follow">follow-up</span></div>
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">ADR-009</span><span class="issue-t">"Import order doesn't matter" is slightly overstated</span><span class="tag t-done">fixed</span></div>
         <p>
           The tiebreak for two files the bank made on the <em>same day</em> is <code>started_at</code> —
           which is import order. So two same-day files with different ranges can still admit
           differently depending on which you feed in first. The claim just needs scoping to
           "files produced on different days."
         </p>
+        <p class="fixed">
+          <b>Fixed, and tested rather than argued.</b> The claim is scoped to different days, and
+          the prototype was run on same-day pairs to find out what actually happens. Two files the
+          bank made on the same day showing the same state: identical either way, ticks all round.
+          Two files where the bank booked something <em>between</em> them: you still end up with the
+          same transactions and the same IDs, but feeding the newer one in first quarantines the
+          older one and holds back any dates only it reached — until you void the newer run and
+          re-import it. That's written down now, including the way out.
+        </p>
+        <p class="cost">
+          <b>Why it can't be fixed properly:</b> the bank stamps its files with a <em>date</em>, not
+          a time. Two files made the same day are genuinely indistinguishable in order. This is C1's
+          bug surviving inside a single day, at the one resolution the evidence doesn't have.
+        </p>
       </div>
 
       <h3>A decision nobody will ever find</h3>
 
-      <div class="issue mid">
-        <div class="issue-h"><span class="issue-file">ADR-010</span><span class="issue-t"><em>accept discrepancy</em> never appears in your work list</span><span class="tag t-follow">follow-up</span></div>
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">ADR-010</span><span class="issue-t"><em>accept discrepancy</em> never appears in your work list</span><span class="tag t-done">fixed</span></div>
         <p>
           A balance break raises a <em>validation error</em>, not a <em>review item</em>. Review items
           are what show up as "something for you to decide." So <em>accept discrepancy</em> is the one
@@ -1172,55 +1197,74 @@
           hatch exists to use it. Given that the whole point of C4 is the permanent case, a third
           review-item kind would make it discoverable.
         </p>
+        <p class="fixed">
+          <b>Fixed:</b> a broken chain now raises a review item — a third kind, <em>balance
+          break</em> — as well as the errors. So it lands in your work list like the other two, and
+          the decision has something to attach itself to when you make it. You can see it in the
+          prototype's <code>C4</code> tab, in the new <b>settled by</b> column.
+        </p>
       </div>
 
       <h3>Bugs in the prototype itself</h3>
 
-      <div class="issue low">
-        <div class="issue-h"><span class="issue-file">prototype</span><span class="issue-t">Two look-alike groups on one date can collide</span><span class="tag t-proto">no action</span></div>
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">prototype</span><span class="issue-t">Two look-alike groups on one date can collide</span><span class="tag t-done">fixed</span></div>
         <p>
           If two coffees <em>and</em> two teas on the same day both drop their second occurrence, both
           synthesised positions compute to the same number — which breaks a uniqueness rule Gold
           relies on. Not hit by any shipped scenario.
         </p>
+        <p class="fixed">
+          <b>Fixed, and it mattered more than "prototype bug" suggests.</b> The old numbering added
+          the repeat counter to the row count, so both landed on 4. Run the reviewer's example and
+          you got positions <code>1, 2, 4, 4</code>; now you get <code>1, 2, 3, 4</code>. The real
+          finding is that <em>the documents never said how to number these at all</em> — so any
+          implementer would have invented the same colliding scheme. The rule is now written into
+          <code>silver-layer.md</code>, and the prototype grew a collision badge for it.
+        </p>
       </div>
 
-      <div class="issue low">
-        <div class="issue-h"><span class="issue-file">prototype</span><span class="issue-t">Withdrawn transactions counted asymmetrically</span><span class="tag t-proto">no action</span></div>
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">prototype</span><span class="issue-t">Withdrawn transactions counted asymmetrically</span><span class="tag t-done">fixed</span></div>
         <p>
           One check excludes withdrawn transactions, a neighbouring one doesn't, so re-importing a
           group after withdrawing one of its instances under-reports the growth. Latent; no scenario
           reaches it.
         </p>
+        <p class="fixed">
+          <b>Fixed:</b> the code was comparing against two different pictures at once — what you
+          believe is true, and what the stored balance actually reflects. Those come apart the
+          moment you record a <em>withdrawn</em> decision. So if the bank later showed that purchase
+          again, the file got quarantined for an "unexplained" balance that was perfectly
+          explainable. The two pictures are now separate and labelled as such.
+        </p>
       </div>
 
-      <div class="issue low">
-        <div class="issue-h"><span class="issue-file">bronze-layer.md</span><span class="issue-t">One new sentence isn't actually backed by the evidence</span><span class="tag t-proto">no action</span></div>
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">bronze-layer.md</span><span class="issue-t">One new sentence isn't actually backed by the evidence</span><span class="tag t-done">fixed</span></div>
         <p>
           "A declared range end after the export date is refused" is never enforced in the prototype.
           It doesn't corrupt any result — a too-late value falls through to a safe fallback — but that
           specific sentence isn't covered by the "17 of 17, 7 of 7" the PR description leans on.
         </p>
+        <p class="fixed">
+          <b>Fixed — and this is the one you should actually read about.</b> Enforcing the rule
+          proved the rule was wrong. See module 14.
+        </p>
       </div>
 
       <div class="callout">
-        <p class="callout-h">What's left after #32</p>
+        <p class="callout-h">The one worth taking away</p>
         <p>
-          Six. Three are documents disagreeing with each other in ways you'd survive but shouldn't
-          ship: a qualifier in one file and not the other, a claim about import order that's
-          slightly too strong, and a manual decision with nothing prompting it.
+          The previous version of this page told you the three prototype comments needed no action,
+          because the prototype is throwaway and had already produced its evidence. That was right
+          about two of them and <strong>wrong about the third.</strong>
         </p>
         <p>
-          The other three are in the prototype, which is explicitly throwaway — it exists to have
-          <em>already produced</em> its evidence, and it did. Its bugs are latent paths no scenario
-          exercises, so they didn't affect any result either PR relies on.
-        </p>
-        <p>
-          <b>One caveat worth holding on to:</b> the third prototype comment points out that a rule
-          the documents <em>state</em> is not <em>enforced</em> anywhere in the prototype. So that
-          particular sentence isn't covered by the "17 of 17" the evidence rests on. That's a
-          different kind of gap from a latent bug — it means nobody has checked whether the rule
-          actually works.
+          "This rule isn't enforced in the prototype" is a different kind of comment from "this code
+          has a latent bug." A latent bug is a path nobody walks. An unenforced rule means
+          <em>nobody has checked whether the rule works</em> — and when it finally was checked, it
+          didn't. Module 14 is that story, and it's the most useful thing on this page.
         </p>
       </div>
     </div>
@@ -1254,7 +1298,7 @@
       <div class="verdict">
         <h3>My honest read</h3>
         <p>
-          <strong>Merge #31 and #32 together. Six comments stay open, none of them blocking.</strong>
+          <strong>Merge the stack. All ten comments are closed.</strong>
         </p>
         <p>
           These PRs are documents, not code. Nothing ships when you merge them; they're the decisions
@@ -1275,9 +1319,9 @@
           <li><strong>The <code>covers_through</code> silent fallback</strong> — the C3 fix was opt-in, so one forgotten declaration brought the bug back at full strength. Now bounded, sometimes required, and it records when it fell back.</li>
         </ol>
         <p>
-          The remaining six are genuine but survivable, and are being handled separately so you can
-          read them on their own. Three are documents disagreeing with each other; three are in the
-          throwaway prototype.
+          The remaining six are closed in the follow-up this page ships with: three documents that
+          disagreed with each other, and three findings in the prototype. One of those six turned
+          out to matter much more than its tag suggested — module 14.
         </p>
         <p>
           <b>What "merge" buys you here:</b> nothing ships. These are documents — the decisions
@@ -1293,6 +1337,118 @@
         the test that catches almost everything — if a month you never imported ever shows up as a
         confident zero, something upstream is broken, and you'll now know roughly where to look.
       </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 14 ============ -->
+  <section class="mod" id="m14" data-key="m14">
+    <div class="mod-head">
+      <span class="mod-n">14</span>
+      <h2>The rule that was wrong until somebody ran it</h2>
+    </div>
+    <p class="goal">After this: you know why "we wrote it down carefully" is not the same as "we checked it", and what that's worth in practice.</p>
+    <div class="mod-body">
+
+      <p>
+        This module exists because of one review comment that looked like the least important of the
+        ten. It said: <em>the documents say a declared range end after the export date is refused,
+        but nothing in the prototype actually checks that.</em> Tagged "no action" in the last
+        version of this page — my mistake.
+      </p>
+
+      <h3>What the first fix said</h3>
+
+      <p>
+        Module 12's <code>covers_through</code> fix needed a rule for <em>when you must declare the
+        range end</em> rather than letting it default. The reasoning went: if the last purchase in
+        the file is long before the date the bank made the file, that's the shape of a history
+        download, and defaulting would be wrong. Seven days felt right — it's already the
+        late-booking window used elsewhere.
+      </p>
+
+      <div class="callout">
+        <p class="callout-h">It reads perfectly well. It was wrong.</p>
+        <p>
+          The moment the rule was actually implemented and the seventeen test scenarios were run
+          against it, <strong>five of the seventeen were refused.</strong> Not edge cases — five
+          perfectly ordinary imports, of the kind you'd do every month.
+        </p>
+      </div>
+
+      <h3>Why it broke</h3>
+
+      <p>
+        Take the simplest one. You download February on 1 March. Your last purchase that month was
+        on 13 February, because nothing happened in the last two weeks — a completely normal quiet
+        fortnight. That's a 16-day gap, so the rule demanded a declaration.
+      </p>
+
+      <p>
+        But there was never any danger there. Remember from module 03: a file made on 1 March proves
+        nothing about 1 March, because the day is still booking — so the system already pulls the
+        evidence back to 28 February on its own. Which is <em>exactly right</em>. There was nothing
+        to protect against, and the rule was demanding paperwork for it anyway.
+      </p>
+
+      <p>
+        <b>Counting days was the wrong question.</b> A quiet tail at the end of a month is normal.
+        What's actually dangerous is something else entirely.
+      </p>
+
+      <h3>The right question</h3>
+
+      <div class="callout">
+        <p class="callout-h">Ask what the guess would claim, not how big the gap is</p>
+        <p>
+          Defaulting means claiming evidence up to the day before the file was made. So: <strong>does
+          that reach into a later month than the last purchase in the file?</strong>
+        </p>
+        <p>
+          February file, made 1 March, last purchase 13 February → the guess reaches 28 February.
+          Same month. <b>Safe, no declaration needed.</b>
+        </p>
+        <p>
+          All of 2025, downloaded today → the guess would reach yesterday, claiming <em>eight
+          months</em> of "we checked, nothing happened" that the file never covered. <b>Different
+          month. Declare it.</b>
+        </p>
+      </div>
+
+      <p>
+        That's the rule now. All seventeen scenarios pass again, and the history download is still
+        refused without a declaration — which was the whole point. Same protection, none of the
+        false alarms.
+      </p>
+
+      <h3>What this is actually worth to you</h3>
+
+      <p>
+        You asked at the start whether you had to accept these PRs and find the pitfalls during
+        implementation. Here's the concrete answer:
+      </p>
+
+      <ol class="steps" style="margin-top:.9rem">
+        <li><strong>A carefully-reasoned rule was wrong.</strong> Not carelessly written — it cited the right window and gave a plausible justification. It was still wrong.</li>
+        <li><strong>Nothing in a document review would have caught it.</strong> It reads fine. It only fell over when something ran it against real scenarios.</li>
+        <li><strong>The cost of catching it here was about an hour.</strong> The cost of catching it in implementation would have been you, staring at a refused import of your own February statement, wondering what you did wrong.</li>
+      </ol>
+
+      <p>
+        That's the case for the prototype in one paragraph. It isn't there to be good code — it's
+        throwaway. It's there so that a sentence someone wrote confidently gets the chance to be
+        proved wrong <em>before</em> you build on it.
+      </p>
+
+      <div class="verdict">
+        <h3>The thing to remember</h3>
+        <p>
+          When a review comment says <em>"this rule isn't actually enforced anywhere"</em>, that is
+          never a small comment. It doesn't mean there's a bug. It means <strong>nobody knows
+          whether the rule works</strong>, and the confidence you have in it is borrowed from how
+          well it's written.
+        </p>
+      </div>
     </div>
     <div class="mod-foot"></div>
   </section>
@@ -1320,7 +1476,8 @@
     m10:"What PR #31 actually fixed",
     m11:"Driving the dashboard",
     m12:"The ten review comments",
-    m13:"So — merge, or not?"
+    m13:"So — merge, or not?",
+    m14:"The rule that was wrong until somebody ran it"
   };
   var KEYS = Object.keys(TITLES);
   var LS = "budget-import-primer-v1";
