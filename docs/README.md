@@ -23,6 +23,21 @@ agent authority outside its boundary.
 - `decisions/` records accepted architectural decisions. Changes require a new
   ADR; do not silently revise a decision to fit an implementation.
 
+## Explanatory Documents
+
+`primers/` holds standalone pages that explain a decision cluster to a reader
+who has to live with it, rather than to an implementer. They are **not
+normative**: a primer never decides anything, and where one disagrees with a
+document under `architecture/` or `decisions/`, that document wins and the
+primer is stale.
+
+- [`primers/overlapping-exports-primer.html`](primers/overlapping-exports-primer.html)
+  — why overlapping bank exports are hard, in thirteen modules with worked
+  examples: transaction identity, the balance chain, whole-file admission, the
+  manual decisions, coverage, and the provisional label. Open it by
+  double-clicking; it needs no server and stores progress in the browser only.
+  It loads its fonts from Google Fonts and falls back to system fonts offline.
+
 ## Vocabulary
 
 [`../CONTEXT.md`](../CONTEXT.md) is the household finance glossary: tight,
