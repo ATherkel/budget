@@ -1,7 +1,8 @@
 # Forslag til det mindste nødvendige månedsrapportformat
 
-**Forslag ud fra skærmens behov. Endnu ikke valideret af jer og ikke en
-Gold-kontrakt.** Skærmen modtager en rapport fra analyselaget. I den rigtige
+**Forslag ud fra skærmens behov, ikke en Gold-kontrakt.** Ejeren har bekræftet
+prototypens retning 17. september; det konkrete rapportinterface er stadig
+et forslag. Se [HANDOFF.md](HANDOFF.md). Skærmen modtager en rapport fra analyselaget. I den rigtige
 applikation skal rapporten komme gennem dette lag; den private forberedelse
 af eksempler skal ikke kopieres til produktionskode.
 
@@ -134,3 +135,14 @@ BudgetComparison | null
 - Nulbudget, negativ ferierest, ændrede mål, startsaldi og en negativ almindelig
   opsparing skal afprøves før et egentligt budgetkontraktforslag fastlægges.
   Der er ikke lavet budgetmotor eller ændret accepterede domænebeslutninger.
+
+
+## Enkel og avanceret visning — overlevering 17. september
+
+Brugeren efterspørger et skift i detaljegrad efter viderebragt feedback fra
+sin kone. Valget ændrer ikke rapportens økonomiske værdier. De eksisterende
+oplysninger om datadækning, foreløbig periode og ukategoriserede beløb er nok
+til en kort tillidsmarkering i Enkel og detaljer i Avanceret. Der foreslås
+ikke nye beregnede beløb eller brugerroller af den grund. Præcis opdeling,
+standardvalg og eventuel lagring af visningspræferencen skal afprøves under
+implementeringen; de er ikke valideret af det nuværende skærmbillede.

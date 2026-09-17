@@ -1,8 +1,13 @@
 # #11 — prototype af et månedsoverblik
 
-**Opdateret efter konkret feedback; de nye ændringer er klar til afprøvning.** Én dansk
-udgave, uden redigering, lavet med HTML/CSS/JavaScript og Pythons standardbibliotek.
-Prototypen skal kasseres efter forsøget. Ingen pakker skal installeres.
+**Frosset 17. september 2026 som bekræftet retning for implementering.**
+Se [HANDOFF.md](HANDOFF.md) for ejerens bekræftelse, viderebragt feedback fra
+hans kone og kravet om Enkel/Avanceret til den egentlige løsning. Skiftet er
+ikke bygget i prototypen.
+
+Én dansk udgave uden redigering, lavet med HTML/CSS/JavaScript og Pythons
+standardbibliotek. Bevares som reference på prototypegrenen; koden skal ikke
+promoveres til produktion. Ingen pakker skal installeres.
 
 Spørgsmålet er: Kan I forstå månedens forbrug, undersøge et overraskende
 kategoribeløb og se, hvilke tal der er ufuldstændige?
@@ -116,4 +121,5 @@ Skift mellem juli, august og september: Ferie får 3.000 kr. om måneden og gemm
 resten; almindelige kategoriers over-/underforbrug påvirker Opsparing.
 Budgetter, startreserve og de øvrige månedsrammer er opdigtede. De kan ikke
 redigeres. September og beløb uden kategori gør sammenligningen foreløbig.
-Behovet og reglen om videreførsel er bekræftet; budgetvisningen afventer feedback.
+Retningen og reglen om videreførsel er bekræftet. Budgetternes ydertilfælde og
+en samlet arbejdsgang med ferieøremærkning mangler stadig afprøvning.

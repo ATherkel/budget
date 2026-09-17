@@ -1,13 +1,16 @@
-# #11 — sessionsnoter, 15.–16. september 2026
+# #11 — sessionsnoter, 15.–17. september 2026
 
 ## Status
 
-Den danske prototype er under afprøvning. Brugeren har bekræftet, at farverne
-nu gør forskellen på ind- og udbetalinger tydelig, og efterlyst mindre tekst,
-tættere posteringer, frit kontovalg og grafer over tid. De fire ændringer er
-lavet og browserkontrolleret; deres brugervenlighed afventer ny afprøvning.
-Der er ikke dokumenteret en samlet gennemførsel af de tre opgaver eller
-selvstændig feedback fra brugerens kone.
+**17. september: Retningen er bekræftet af ejeren; prototypeiterationen er
+frosset og overleveret til implementering.** Se [HANDOFF.md](HANDOFF.md).
+Ejeren viderebringer sin kones feedback om mange tal/posteringer og uklarheden
+ved Mangler en kategori. Enkel/Avanceret er derfor et nyt implementeringskrav;
+det er ikke føjet til prototypen. Der er stadig ikke dokumenteret en fuld
+selvstændig gennemførsel af de tre opgaver fra begge deltagere.
+
+Noterne nedenfor er den kronologiske historik. Formuleringer om at afvente
+feedback beskriver status på det daværende tidspunkt, ikke den nye overlevering.
 
 ## Brugerens input og ændringerne
 
