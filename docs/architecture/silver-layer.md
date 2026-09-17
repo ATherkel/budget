@@ -13,7 +13,10 @@ resolve which source records show the same booked transaction.
 - Manual decisions that affect identity. Their file format belongs to issue #10.
   - *void import run*
   - *same transaction*: a source record shows an existing transaction.
-  - *withdrawn*: the bank removed a transaction.
+  - *withdrawn*: the bank removed a transaction. It also settles a
+    `fewer-repeats` review item and admits the export that showed fewer.
+  - *accept discrepancy*: an import run's balance break is real in the source
+    and is admitted with the break recorded (ADR-010).
 
 ## Canonical Transaction
 
@@ -44,12 +47,46 @@ transaction. `source_status` is the source's own status value, carried
 verbatim. For each date, `balance` and `day_sequence` come from the latest
 admitted export covering that date (ADR-009). They can therefore change when a
 later export adds a late-booked transaction; `transaction_id` never does.
-`balance` is null only for sources that state no balances (ADR-010).
+`balance` is null only for sources that state no balances (ADR-010). The export
+chosen for a date is the latest admitted one that shows every transaction kept
+for it.
 
-Silver passes forward each account's latest admitted export date from Bronze
-import-run metadata. Gold derives `GoldAccount.evidence_through` from it.
 Within a date, `day_sequence` preserves the bank's row order in the selected
-export; it is never sorted by amount or text.
+export; it is never sorted by amount or text. A transaction kept for that date
+that the selected export does not show is appended after that export's rows, in
+`transaction_id` order. It is never numbered from its occurrence *k*: two
+appended transactions on one date can share a *k*, and `(account_id,
+transaction_date, day_sequence)` has to stay unique (`gold-contract.md`
+invariant 9). Under the rules below the selected export always does show every
+transaction kept for its dates, so this is a guard and not a path — but it is
+written down because the obvious numbering is the colliding one.
+
+## Evidence Through
+
+Silver computes each account's evidence bound and passes it forward as
+`AccountEvidence`. This is the single definition of the rule; `gold-contract.md`,
+ADR-006 and `CONTEXT.md` cite it instead of restating it, and Gold carries the
+value through to `GoldAccount.evidence_through` unchanged rather than deriving
+it again.
+
+```text
+evidence_through(account) = max over that account's admitted import runs of:
+    covers_through - 1 day   when covers_through == exported_on
+    covers_through           otherwise
+```
+
+The adjustment is applied **per run, before the maximum**, never to the maximum
+afterwards. An export that reaches its own production day proves nothing about
+that day, because the day may still be booking; an export whose range ended
+earlier proves its whole range. Taking the maximum first would let one run's
+production-day adjustment truncate another run's fully proven range, or hide a
+production-day run behind an earlier one.
+
+`repeat` runs of an already admitted payload count here: they carry their own
+`exported_on` and `covers_through` without contributing source records, which is
+how an account with no new activity extends its evidence. An account with no
+admitted import run produces no `AccountEvidence`, and
+`GoldAccount.evidence_through` is null.
 
 ## Other Outputs
 
@@ -79,11 +116,16 @@ BalanceObservation(             # bank-stated end-of-day balance per export
     payload_id: str,
 )
 
+AccountEvidence(                # the account's evidence bound; see above
+    account_id: str,
+    evidence_through: date,     # computed by the formula in Evidence Through
+)
+
 ImportRunResult(
     import_run_id: str,
     status: Literal["accepted", "quarantined"],
     covered_from: date,         # first transaction date in the export
-    covered_to: date,           # the import run's export date (Bronze)
+    covered_to: date,           # the import run's covers_through (Bronze)
     errors: Sequence[ValidationError],
     review_item_ids: Sequence[str],
 )
@@ -97,7 +139,7 @@ ValidationError(
 
 ReviewItem(
     review_item_id: str,        # deterministic
-    kind: Literal["export-disagreement", "fewer-repeats"],
+    kind: Literal["export-disagreement", "fewer-repeats", "balance-break"],
     account_id: str,
     date_from: date,
     date_to: date,
@@ -127,21 +169,37 @@ ReviewItem(
   - an unknown status;
   - a booked row without a balance, or a balance-chain break within the
     export (ADR-010).
+- A booked row without a balance, or a chain break within the export, also
+  raises a `balance-break` review item for that run alongside the validation
+  errors. The errors say what is wrong with the file; the review item is what
+  an *accept discrepancy* decision is prompted by and attaches to through
+  `resolved_by` (ADR-010). Without it the quarantine is the only signal, and
+  nothing in the operator's work list says there is a way back.
 
 **Identity and merging**
 - Per ADR-009: content plus occurrence identity, and the highest count per
   export when exports overlap.
 
 **Merge verification**
-- Import runs are admitted in `started_at` order.
+- Import runs are admitted in `exported_on` order, then `started_at` for runs
+  produced on the same date. For runs the bank produced on different days the
+  household's import order therefore does not change the outcome, and a rebuild
+  after a late-arriving older export replays every run in that same order
+  (ADR-009). Runs sharing an `exported_on` fall back to import order; ADR-009
+  records what that can and cannot change.
 - A run is admitted only if it still shows every transaction already admitted
   for the dates it covers, and its end-of-day balances differ from those
   already admitted by exactly the cumulative amounts of the transactions it
   adds (*explained growth*, ADR-009). Late bookings on earlier dates, and
-  later bookings on an export's final date, are both explained growth.
+  later bookings on an export's final date, are both explained growth. A date
+  states an end-of-day balance only once it has a booked transaction, so the
+  balances are compared on the dates both sides state one; ADR-009 records why
+  that is a consequence of the rules above and not an exemption from them.
 - An unexplained difference quarantines the later run and raises an
   `export-disagreement` review item.
-- Fewer repeated transactions on any date raises a `fewer-repeats` review item.
+- Fewer repeated transactions on any date quarantine the run and raise a
+  `fewer-repeats` review item; the amounts of the missing repeats count as an
+  explained difference, so the same date raises no `export-disagreement`.
 - Silver uses balances only to verify its own merge. Coverage and
   reconciliation for reporting belong to Gold and analytics (ADR-006).
 

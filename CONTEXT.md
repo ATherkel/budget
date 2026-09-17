@@ -44,10 +44,19 @@ later amount. A broken link, or a missing balance, is a discrepancy, never
 silently corrected.
 
 **Evidence through**:
-The last date an account's imported exports are known to cover: the day
-before its latest export date.
-_Avoid_: last import date (the export date, not the import date, bounds the
-evidence)
+The last date an account's imported exports are known to cover, computed from
+its admitted exports by the formula in
+[`docs/architecture/silver-layer.md`](docs/architecture/silver-layer.md#evidence-through).
+_Avoid_: last import date (the export, not the import, bounds the evidence)
+
+**Covers through**:
+The last date one export's evidence reaches: the end of the range the operator
+asked the bank for, declared at import. Distinct from the *export date*, so a
+year of history exported today is not read as covering today. It falls back to
+the export date only where that cannot reach past the payload's last reporting
+period; see
+[`docs/architecture/bronze-layer.md`](docs/architecture/bronze-layer.md).
+_Avoid_: export range, to-date
 
 **Booked transaction**:
 A transaction whose source row Silver maps to `booking_status=booked`. A
@@ -69,9 +78,15 @@ exports covering the late-booking window. How it must be labeled is in
 ### Imports and identity
 
 **Export**:
-A file the bank produces for one account, reaching up to its export date.
-Overlapping exports of the same account are normal.
+A file the bank produces for one account, covering a date range the operator
+chose. Overlapping exports of the same account are normal.
 _Avoid_: statement, dump
+
+**Export date**:
+The date the bank produced an export, from the filename suffix or declared at
+import. It says when the file was made, not how far it reaches; the
+late-booking window is counted from it.
+_Avoid_: import date, range end
 
 **Transaction date**:
 The date the source assigns to a transaction; for Danske, the purchase date.
@@ -124,8 +139,10 @@ _Avoid_: rejected, held, failed import
 
 **Review item**:
 An ambiguity the platform cannot settle by rule and a person must decide, such
-as overlapping exports that disagree or a later export showing fewer repeated
-transactions.
+as overlapping exports that disagree, a later export showing fewer repeated
+transactions, or a source that keeps stating a broken balance chain. Every
+decision that settles a quarantine is raised by one, so none has to be known
+about in advance.
 _Avoid_: error, warning, conflict
 
 **Manual decision**:

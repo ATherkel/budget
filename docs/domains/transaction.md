@@ -48,7 +48,9 @@ the bank payload.
 
 ## Identity and Deduplication
 
-The importer must retain the bank/source identifier where supplied. When one
-is absent, Silver may generate a deterministic content fingerprint, including
-source account, booking date, amount, description, and source-record position.
-It must not deduplicate only by date and amount.
+The importer must retain the bank/source identifier where supplied. When one is
+absent, Silver derives the identifier by
+[ADR-009](../decisions/ADR-009-transaction-identity.md): account, transaction
+date, amount, identity text, and an occurrence number. It must not deduplicate
+only by date and amount, and it must not include the source-record position,
+which shifts between exports of the same transaction.
