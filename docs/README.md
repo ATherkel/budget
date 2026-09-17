@@ -23,6 +23,23 @@ agent authority outside its boundary.
 - `decisions/` records accepted architectural decisions. Changes require a new
   ADR; do not silently revise a decision to fit an implementation.
 
+## Explanatory Documents
+
+`primers/` holds standalone pages that explain a decision cluster to a reader
+who has to live with it, rather than to an implementer. They are **not
+normative**: a primer never decides anything, and where one disagrees with a
+document under `architecture/` or `decisions/`, that document wins and the
+primer is stale.
+
+- [`primers/classification-transfers-primer.html`](primers/classification-transfers-primer.html)
+  — how a transaction gets its household meaning, in thirteen modules with
+  worked examples: the reporting boundary, the taxonomy, what a rule may assign
+  and test, rule priority, transfer evidence and staged matching, ambiguous and
+  unmatched legs, manual decisions, and the review items a build publishes. It
+  closes with what issue #7 still asks a human to confirm. Open it by
+  double-clicking; it needs no server and stores progress in the browser only.
+  It loads its fonts from Google Fonts and falls back to system fonts offline.
+
 ## Vocabulary
 
 [`../CONTEXT.md`](../CONTEXT.md) is the household finance glossary: tight,
