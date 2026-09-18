@@ -7,8 +7,8 @@ Produce reporting datasets from Gold data.
 ## Inputs
 
 The versioned [Gold data contract](../architecture/gold-contract.md) through
-`GoldRepository` only: accounts, categories, transactions, and monthly balance
-snapshots.
+`GoldRepository` only: accounts, categories, transactions, category
+allocations, and monthly balance snapshots.
 
 ## Forbidden Dependencies
 

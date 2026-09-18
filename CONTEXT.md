@@ -36,9 +36,17 @@ household's data)
 
 **Booked transaction**:
 A transaction whose source row Silver maps to `booking_status=booked`.
-Pending and cancelled rows remain provenance. A booked transaction carries
-at most one category and is never split across categories.
-_Avoid_: Transaction in Bronze/Silver (too broad); split, allocation
+Pending and cancelled rows remain provenance. A booked transaction has one
+type; its category reaches it through a Category allocation.
+_Avoid_: Transaction in Bronze/Silver (too broad)
+
+**Category allocation**:
+A record that a stated amount of one Booked transaction belongs to one
+category. It is the only way a category reaches a transaction, and the
+allocations of a transaction always sum to its amount. A classified
+transaction has exactly one for now; dividing a mixed purchase into several is
+a later release.
+_Avoid_: Split (the act, not the record), transaction category
 
 **Classification**:
 A booked transaction's household interpretation: its type and, for income,
@@ -55,7 +63,8 @@ _Avoid_: Mapping, filter
 
 **Category**:
 A household-defined heading for income or spending, with a direction of
-`income` or `expense`. It is the only thing assigned to a transaction.
+`income` or `expense`. It is the only level that reaches a transaction, and it
+reaches it through a Category allocation; a Category group never does.
 _Avoid_: Bank category (a different thing)
 
 **Bank category**:
@@ -107,9 +116,10 @@ The rules are in [`gold-layer.md`](docs/architecture/gold-layer.md#coverage).
 A quiet month can be complete; absent evidence cannot be read as zero.
 
 **Evidence through**:
-The last date an account's admitted exports are known to cover: the day
-before its latest admitted export date.
-_Avoid_: last import date
+The last date an account's imported exports are known to cover, computed from
+its admitted exports by the formula in
+[`docs/architecture/silver-layer.md`](docs/architecture/silver-layer.md#evidence-through).
+_Avoid_: last import date (the export, not the import, bounds the evidence)
 
 **Monthly balance snapshot**:
 One account's balance position for one reporting month of its Managed period:
@@ -127,9 +137,24 @@ exports covering the late-booking window. How it must be labeled is in
 ### Imports and identity
 
 **Export**:
-A file the bank produces for one account, reaching up to its export date.
-Overlapping exports of the same account are normal.
+A file the bank produces for one account, covering a date range the operator
+chose. Overlapping exports of the same account are normal.
 _Avoid_: statement, dump
+
+**Export date**:
+The date the bank produced an export, from the filename suffix or declared at
+import. It says when the file was made, not how far it reaches; the
+late-booking window is counted from it.
+_Avoid_: import date, range end
+
+**Covers through**:
+The last date one export's evidence reaches: the end of the range the operator
+asked the bank for, declared at import. Distinct from the *export date*, so a
+year of history exported today is not read as covering today. It falls back to
+the export date only where that cannot reach past the payload's last reporting
+period; see
+[`docs/architecture/bronze-layer.md`](docs/architecture/bronze-layer.md).
+_Avoid_: export range, to-date
 
 **Transaction date**:
 The date the source assigns to a transaction; for Danske, the purchase date.
@@ -182,9 +207,12 @@ _Avoid_: rejected, held, failed import
 
 **Review item**:
 An ambiguity the platform cannot settle by rule and a person must decide, such
-as overlapping exports that disagree, Classification rules that conflict, or
-Transfer legs that compete for the same match.
-_Avoid_: Error, warning, conflict
+as overlapping exports that disagree, a later export showing fewer repeated
+transactions, a source that keeps stating a broken balance chain,
+Classification rules that conflict, or Transfer legs that compete for the same
+match. Every decision that settles a quarantine is raised by one, so none has
+to be known about in advance.
+_Avoid_: error, warning, conflict
 
 **Manual decision**:
 A recorded human ruling: it classifies a transaction, settles a Review item,
