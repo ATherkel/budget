@@ -20,6 +20,10 @@ agent authority outside its boundary.
   Silver storage or types.
 - `domains/` defines business meaning. It takes precedence over an individual
   layer document when there is a conflict.
+- `domains/category-changes.md` is an append-only record rather than a
+  definition: because the category dimension carries only the current
+  interpretation, it logs when the taxonomy changed and why, so a decision
+  taken on an older report can still be read.
 - `decisions/` records accepted architectural decisions. Changes require a new
   ADR; do not silently revise a decision to fit an implementation.
 

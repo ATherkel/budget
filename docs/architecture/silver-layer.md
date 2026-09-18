@@ -56,9 +56,10 @@ export; it is never sorted by amount or text. A transaction kept for that date
 that the selected export does not show is appended after that export's rows, in
 `transaction_id` order. It is never numbered from its occurrence *k*: two
 appended transactions on one date can share a *k*, and `(account_id,
-transaction_date, day_sequence)` has to stay unique (`gold-contract.md`
-invariant 9). Under the rules below the selected export always does show every
-transaction kept for its dates, so this is a guard and not a path — but it is
+transaction_date, day_sequence)` has to stay unique, because Gold numbers
+`account_sequence` from that order (`gold-contract.md` invariant 7). Under the
+rules below the selected export always does show every transaction kept for its
+dates, so this is a guard and not a path — but it is
 written down because the obvious numbering is the colliding one.
 
 ## Evidence Through
@@ -206,6 +207,16 @@ ReviewItem(
 **Reproducibility**
 - Rebuilding from the same Bronze inputs, account configuration, and manual
   decisions yields identical output, including identifiers.
+
+## Downstream Requirements
+
+Gold relies on two guarantees that Silver provides under
+[ADR-009](../decisions/ADR-009-transaction-identity.md):
+
+- a stable canonical identity for each transaction, from which Gold derives a
+  `transaction_id` that survives rebuilds;
+- a deterministic order of each account's transactions, including those
+  sharing a transaction date, so Gold can evaluate the balance chain.
 
 ## Responsibilities
 

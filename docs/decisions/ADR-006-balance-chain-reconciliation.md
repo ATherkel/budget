@@ -3,7 +3,14 @@
 **Status:** Accepted. Partly superseded by
 [ADR-010](ADR-010-quarantine-inconsistent-exports.md): for balance-stating
 sources, a missing balance or a within-export chain break quarantines the
-export.
+export. Also partly superseded by
+[ADR-007](ADR-007-dimensional-gold-model.md), which moves coverage from
+analytics into Gold and replaces this ADR's Gold interface: `balance` is
+renamed `balance_after`, `day_sequence` on the Gold transaction becomes
+`account_sequence`, `list_accounts()` becomes `GoldRepository.accounts()`, and
+`boundary_transactions()` is removed. The evidence rules below — whole-period
+judgement, verified quiet months, and a broken link making every period it
+spans partial — are unchanged.
 
 ## Context
 

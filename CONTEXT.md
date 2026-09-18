@@ -6,18 +6,13 @@ analytics and a dashboard.
 
 ## Language
 
-### Reporting
+### Accounts and boundary
 
-**Refund**:
-An Adjustment that carries a `category_id`. It nets against that category
-instead of counting as income or vanishing from spending. A reversed fee is a
-Refund against the fee's category.
-_Avoid_: Reversal, chargeback (not yet a distinct concept)
-
-**Adjustment**:
-A transaction that breaks the income/expense sign convention. With a
-`category_id` it is a Refund; without one it is a correction. How each is
-treated is in [`docs/domains/transaction.md`](docs/domains/transaction.md#types).
+**Reporting boundary**:
+The set of accounts whose activity household reports include: every account
+with `ownership_scope` of `household` or `person`. An `external` account sits
+outside it and is never an imported, reported account.
+_Avoid_: Household accounts (ambiguous with `ownership_scope=household`)
 
 **Transfer-eligible account**:
 An account inside the household reporting boundary — `ownership_scope` of
@@ -27,21 +22,64 @@ Transfer.
 _Avoid_: Household account (too narrow; excludes person-owned accounts that are
 still transfer-eligible)
 
-**Coverage**:
-A per-account, per-reporting-period status (`complete` / `partial` / `no_data`)
-saying whether that account's balance evidence shows the period's data is
-whole. It is judged over the whole period, not only the rows inside it; the
-rules are in
-[`docs/architecture/analytics-layer.md`](docs/architecture/analytics-layer.md#coverage).
-Tracked per account, not for the whole household, so a gap points at the
-account that needs attention.
+**Managed period**:
+The span of reporting months in which an account is part of the household's
+history: from the month of its first Booked transaction until the month it
+closes, or the latest reported month if it is still open. A month outside it
+is outside the reported history; a quiet month inside it is judged by Coverage.
+_Avoid_: Active period, account lifetime (the bank account may predate the
+household's data)
+
+### Transactions and classification
+
+**Booked transaction**:
+A transaction whose source row Silver maps to `booking_status=booked`.
+Pending and cancelled rows remain provenance. A booked transaction has one
+type; its category reaches it through a Category allocation.
+_Avoid_: Transaction in Bronze/Silver (too broad)
+
+**Category allocation**:
+A record that a stated amount of one Booked transaction belongs to one
+category. It is the only way a category reaches a transaction, and the
+allocations of a transaction always sum to its amount. A classified
+transaction has exactly one for now; dividing a mixed purchase into several is
+a later release.
+_Avoid_: Split (the act, not the record), transaction category
+
+**Refund**:
+Money returned against an earlier categorized movement. It nets against that
+category in the originating measure, including a reversed fee or returned income.
+_Avoid_: Reversal (ambiguous with Adjustment), chargeback (not distinct yet)
+
+**Adjustment**:
+An uncategorized correction, excluded from income and expense totals and
+reported separately. A Refund carries a category and is not an Adjustment.
+
+**Category group**:
+The fixed top level of the two-level category hierarchy. It gathers related
+categories for reporting and is never assigned to a transaction directly.
+_Avoid_: Parent category, super-category
+
+**Unclassified money**:
+Money on `unknown` transactions, reported as money in, money out, and a count,
+so opposite amounts can't cancel to zero and read as "nothing unclassified".
+_Avoid_: Unclassified total (a single sum hides offsetting amounts)
+
+### Balances and trust
 
 **Balance chain**:
 The reconciliation evidence for an account: each transaction carries the
-bank-stated balance immediately after it, and each link between consecutive
-transactions checks that the later balance equals the earlier one plus the
-later amount. A broken link, or a missing balance, is a discrepancy, never
-silently corrected.
+bank-stated balance immediately after it, which must equal the last known
+balance plus every amount booked since. The account's first transaction is
+trusted as its opening balance, and a break re-anchors the chain on the
+break's own stated balance. A break, or a missing balance, is a discrepancy —
+reflected in Coverage, never silently corrected.
+
+**Coverage**:
+A per-account, per-reporting-period status (`complete` / `partial` / `no_data`)
+saying whether the balance evidence shows that the whole period is covered.
+The rules are in [`gold-layer.md`](docs/architecture/gold-layer.md#coverage).
+A quiet month can be complete; absent evidence cannot be read as zero.
 
 **Evidence through**:
 The last date an account's imported exports are known to cover, computed from
@@ -49,26 +87,13 @@ its admitted exports by the formula in
 [`docs/architecture/silver-layer.md`](docs/architecture/silver-layer.md#evidence-through).
 _Avoid_: last import date (the export, not the import, bounds the evidence)
 
-**Covers through**:
-The last date one export's evidence reaches: the end of the range the operator
-asked the bank for, declared at import. Distinct from the *export date*, so a
-year of history exported today is not read as covering today. It falls back to
-the export date only where that cannot reach past the payload's last reporting
-period; see
-[`docs/architecture/bronze-layer.md`](docs/architecture/bronze-layer.md).
-_Avoid_: export range, to-date
-
-**Booked transaction**:
-A transaction whose source row Silver maps to `booking_status=booked`. A
-`pending` or `cancelled` source row is retained in Bronze and Silver as
-provenance but never becomes a Gold transaction.
-_Avoid_: Transaction, in Bronze/Silver context (too broad — those layers may
-hold pending or cancelled rows that aren't Transactions)
-
-**Unclassified money**:
-Money on `unknown` transactions, reported as money in, money out, and a count,
-so opposite amounts can't cancel to zero and read as "nothing unclassified".
-_Avoid_: Unclassified total (a single sum hides offsetting amounts)
+**Monthly balance snapshot**:
+One account's balance position for one reporting month of its Managed period:
+the balance before the month's first transaction, the balance after its last,
+and the month's Coverage. Balances add up across accounts for the same month,
+never across months.
+_Avoid_: Statement (a bank document), balance on its own (ambiguous with the
+bank-stated balance after one transaction)
 
 **Provisional period**:
 A reporting period that includes the current calendar month or still awaits
@@ -87,6 +112,15 @@ The date the bank produced an export, from the filename suffix or declared at
 import. It says when the file was made, not how far it reaches; the
 late-booking window is counted from it.
 _Avoid_: import date, range end
+
+**Covers through**:
+The last date one export's evidence reaches: the end of the range the operator
+asked the bank for, declared at import. Distinct from the *export date*, so a
+year of history exported today is not read as covering today. It falls back to
+the export date only where that cannot reach past the payload's last reporting
+period; see
+[`docs/architecture/bronze-layer.md`](docs/architecture/bronze-layer.md).
+_Avoid_: export range, to-date
 
 **Transaction date**:
 The date the source assigns to a transaction; for Danske, the purchase date.
