@@ -70,12 +70,21 @@ per transaction.
   it. The contract has no calendar table.
 
 All dimensions are Type 1. Renaming an account or regrouping a category
-restates every report. Deliberately reclassifying old transactions is a change
-to the facts' classification, not a dimension change. Its history belongs to
-issue #8.
+restates every report. Two things keep that from erasing the reasoning behind a
+past decision: dimension keys never change meaning, and every category rename,
+regrouping, retirement, and direction change is appended to
+[`category-changes.md`](../domains/category-changes.md) when it is made.
+Reproducing a report exactly as it was read needs the publication it was built
+from, which is issue #8's.
+
+Deliberately reclassifying old transactions is a change to the facts'
+classification, not a dimension change. Now that a category reaches a
+transaction through an allocation, that change has a row of its own to record;
+its history is still issue #8's.
 
 Dimension keys are durable, household-assigned identifiers such as
-`joint-current` or `groceries`. They are not surrogate keys and are never
+`joint-current` or `groceries`. They are immutable and never reused for a
+different meaning. They are not surrogate keys and are never
 derived from bank identifiers. `transaction_id` is derived from the Silver
 canonical transaction identity (issue #5), so rebuilds keep it stable.
 

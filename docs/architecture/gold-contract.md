@@ -65,7 +65,9 @@ current household interpretation.
 One row per assignable category. The two-level hierarchy is flattened onto the
 category: every category belongs to exactly one category group, and groups are
 never assigned to transactions. Type 1: renaming or regrouping a category
-restates all history.
+restates all history, so each such change is recorded in
+[`category-changes.md`](../domains/category-changes.md) on the day it is
+made.
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
@@ -149,8 +151,14 @@ accounts for the same month, never across months. `coverage` is non-additive.
 
 1. Every `account_id` and `category_id` on a fact references a published
    dimension row. Every `GoldAccount` is inside the reporting boundary.
+   Dimension keys — `account_id`, `category_id`, and `group_id` — are
+   immutable and are never reused for a different meaning. A category or
+   account is retired by deactivating it, never by repointing its key. Every
+   other attribute may change, and changing one restates history, which is
+   what Type 1 means.
 2. Each booked Silver transaction on a Gold account yields exactly one
-   `GoldTransaction`. Only `booking_status=booked` rows qualify; pending and cancelled records remain provenance.
+   `GoldTransaction`. Only `booking_status=booked` rows qualify; pending and
+   cancelled records remain provenance.
 3. Sign convention: `expense` amounts are negative; `income` amounts are
    positive. A `refund` reverses the direction of the category it is allocated
    to: positive for an expense category, negative for an income category.

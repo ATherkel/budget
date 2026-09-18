@@ -33,6 +33,17 @@ two-level hierarchy (category group → category). All first-release dimensions
 are Type 1 (current interpretation) and are keyed by durable, household-assigned
 identifiers. There are no surrogate keys and no Type 2 history.
 
+Type 1 is chosen knowing it restates history. Two things make that acceptable
+instead of lossy: a dimension key is immutable and never reused, so the past is
+never made ambiguous; and every category rename, regrouping, retirement, and
+direction change is recorded in
+[`docs/domains/category-changes.md`](../domains/category-changes.md) when it is
+made. Reproducing a report exactly as it was read is a separate need, met by
+retaining the publication it was built from, which issue #8 defines. Type 2
+would not have met it: it preserves what a category was called, not how a
+transaction was classified, and the latter is where a household's
+reinterpretations actually live.
+
 Gold, not analytics, evaluates the balance chain. It publishes a balance check
 on every transaction and coverage on every monthly balance snapshot. Analytics
 reads coverage and never recomputes it.
@@ -74,5 +85,7 @@ it.
   order for booked transactions, including within a transaction date. ADR-009
   defines how, using the latest admitted export for each date.
 - Introducing Type 2 dimensions, a counterparty dimension, or daily snapshots
-  later is a contract version change. Authoring several allocations per
-  transaction is not: that grain is published from the first release.
+  later is a contract version change. Type 2 in particular would mean a
+  versioned dimension key on the facts, reversing the durable-key decision, so
+  it is not a change of attribute policy alone. Authoring several allocations
+  per transaction is not: that grain is published from the first release.
