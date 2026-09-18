@@ -16,8 +16,11 @@ resolve duplicates without assigning household financial meaning.
 
 - Canonical Silver transactions with lineage to every source record showing
   them.
-- Unbooked records, balance observations, import-run results, validation
-  errors, and review items, as specified in `architecture/silver-layer.md`.
+- Unbooked records, balance observations, account evidence, import-run results,
+  validation errors, and review items, as specified in
+  `architecture/silver-layer.md`.
+- `AccountEvidence.evidence_through` computed by the formula in that document,
+  which is the only place the rule is stated; Gold carries it through unchanged.
 
 ## Prohibited Work
 
@@ -34,8 +37,16 @@ resolve duplicates without assigning household financial meaning.
   `cancelled`); an unmapped value is a validation error.
 - `description` is the source text as delivered. The identity text is derived
   only by trimming and collapsing whitespace, as ADR-009 documents.
-- Identical, overlapping, reordered, and reverse-order imports produce the
-  same transactions and identifiers.
+- Identical, overlapping, reordered, and reverse-order imports of exports the
+  bank produced on different days produce the same transactions and identifiers,
+  including when an older export is imported after a newer one: runs are
+  admitted in `exported_on` order. Runs sharing an `exported_on` fall back to
+  import order; ADR-009 records what that can and cannot change.
+- A later export showing fewer repeats quarantines that run with a
+  `fewer-repeats` review item; a *withdrawn* decision admits it. A missing
+  balance or a within-export chain break quarantines the run with a
+  `balance-break` review item; an *accept discrepancy* decision admits it and
+  settles that item through `resolved_by`.
 - A late booking in a later export is admitted as explained growth: identifiers
   of existing transactions are unchanged, and that date's balances come from
   the later export.

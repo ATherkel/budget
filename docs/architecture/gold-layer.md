@@ -10,13 +10,13 @@ The normative field list, invariants, and interfaces are in the
 them: business processes, grains, dimensions, and the balance-chain and
 coverage rules. Field names here are illustrative references to that
 contract. See [ADR-007](../decisions/ADR-007-dimensional-gold-model.md) and
-[ADR-008](../decisions/ADR-008-single-category-per-transaction.md).
+[ADR-008](../decisions/ADR-008-category-allocation-grain.md).
 
 ## Responsibilities
 
 - Publish the account and category dimensions from the household registries.
-- Materialize one Gold transaction per booked Silver transaction and classify
-  it (rules and overrides: issue #7).
+- Materialize one Gold transaction per booked Silver transaction, classify it
+  (rules and overrides: issue #7), and publish its category allocation.
 - Evaluate each account's balance chain and publish a balance check per
   transaction.
 - Publish a monthly balance snapshot with coverage for every month of each
@@ -27,8 +27,16 @@ contract. See [ADR-007](../decisions/ADR-007-dimensional-gold-model.md) and
 
 | Process | Fact | Grain |
 | --- | --- | --- |
-| Booking money movements on an account | `GoldTransaction` | One booked transaction on one account, never split across categories. |
+| Booking money movements on an account | `GoldTransaction` | One booked transaction on one account. |
+| Assigning a transaction to a category | `GoldCategoryAllocation` | One category allocation of one booked transaction. Exactly one per classified transaction in the first release. |
 | Observing account balances | `MonthlyBalanceSnapshot` | One account for one reporting month of its managed period, including months with no transactions. |
+
+Category assignment is a process of its own because it is the household's
+judgement about a transaction, not a property of the money movement, and
+because one movement can legitimately belong to more than one category. Giving
+it its own grain now means the day a mixed purchase is divided by hand, nothing
+about the transaction fact or any consumer query changes
+([ADR-008](../decisions/ADR-008-category-allocation-grain.md)).
 
 Budgets and forecasts are out of scope for the first release. They appear in
 the bus matrix only to check that the dimensions will conform later.
@@ -37,7 +45,8 @@ the bus matrix only to check that the dimensions will conform later.
 
 | Process | Date | Account | Category |
 | --- | --- | --- | --- |
-| Booked transactions | ✓ (transaction date) | ✓ | ✓ (when classified) |
+| Booked transactions | ✓ (transaction date) | ✓ | — |
+| Category allocations | ✓ (transaction date) | ✓ | ✓ |
 | Monthly balance snapshots | ✓ (month) | ✓ | — |
 | *Future: budget targets* | ✓ (month) | — | ✓ |
 
@@ -55,18 +64,27 @@ per transaction.
   hierarchy: `account_type` is the only grouping. An optional `closed_on` ends
   the account's managed period.
 - **Category.** A fixed two-level hierarchy, category group → category,
-  flattened onto the category row. Only categories are assigned; groups are
-  for rollups.
+  flattened onto the category row. Only categories are assigned, through an
+  allocation; groups are for rollups.
 - **Date.** A `date` is its own conformed key. `ReportingMonth` derives from
   it. The contract has no calendar table.
 
 All dimensions are Type 1. Renaming an account or regrouping a category
-restates every report. Deliberately reclassifying old transactions is a change
-to the facts' classification, not a dimension change. Its history belongs to
-issue #8.
+restates every report. Two things keep that from erasing the reasoning behind a
+past decision: dimension keys never change meaning, and every category rename,
+regrouping, retirement, and direction change is appended to
+[`category-changes.md`](../domains/category-changes.md) when it is made.
+Reproducing a report exactly as it was read needs the publication it was built
+from, which is issue #8's.
+
+Deliberately reclassifying old transactions is a change to the facts'
+classification, not a dimension change. Now that a category reaches a
+transaction through an allocation, that change has a row of its own to record;
+its history is still issue #8's.
 
 Dimension keys are durable, household-assigned identifiers such as
-`joint-current` or `groceries`. They are not surrogate keys and are never
+`joint-current` or `groceries`. They are immutable and never reused for a
+different meaning. They are not surrogate keys and are never
 derived from bank identifiers. `transaction_id` is derived from the Silver
 canonical transaction identity (issue #5), so rebuilds keep it stable.
 
@@ -119,9 +137,16 @@ Two open DKK household accounts: `joint-current` (current) and
 `joint-savings` (savings). Categories: `salary` and `interest` (group
 `income`, direction `income`), `rent` and `utilities` (group `housing`),
 `groceries` (group `food`), all three with direction `expense`. The latest
-published month is 2026-04. Both accounts have admitted exports dated 2026-05-08, so evidence reaches through 2026-05-07 and April is past the provisional window.
+published month is 2026-04. Both accounts have an admitted export dated
+2026-05-08 whose declared `covers_through` is 2026-05-08 as well, so by the
+formula in [`silver-layer.md`](silver-layer.md#evidence-through) evidence
+reaches through 2026-05-07 and April is past the provisional window. Gold
+carries that value; it never derives it from an export date itself.
 
-`joint-current` transactions:
+`joint-current` transactions. The `category` column is each transaction's
+single allocation, shown inline to keep the example readable; in the model it is
+a `GoldCategoryAllocation` row of its own, carrying the same account and date
+and the transaction's whole amount:
 
 | seq | transaction_date | amount | type | category | transfer | balance_after | check |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -136,6 +161,22 @@ published month is 2026-04. Both accounts have admitted exports dated 2026-05-08
 | 9 | 2026-03-20 | -1,000.00 | expense | utilities | | 35,587.50 | consistent |
 | 10 | 2026-04-01 | -8,500.00 | expense | rent | | 27,087.50 | consistent |
 | 11 | 2026-04-24 | 25,000.00 | income | salary | | 52,087.50 | consistent |
+
+February's allocations on `joint-current`, written out in full:
+
+| allocation_id | transaction | account | date | category | amount |
+| --- | --- | --- | --- | --- | --- |
+| …seq4/rent | seq 4 | joint-current | 2026-02-02 | rent | -8,500.00 |
+| …seq5/groceries | seq 5 | joint-current | 2026-02-02 | groceries | -640.00 |
+| …seq6/groceries | seq 6 | joint-current | 2026-02-12 | groceries | 120.00 |
+| …seq7/salary | seq 7 | joint-current | 2026-02-25 | salary | 25,000.00 |
+
+A `transfer`, `adjustment`, or `unknown` transaction has no allocation at all,
+so seq 2 (a January transfer) and seq 8 (a March `unknown`) appear in no
+allocation table. Were seq 5 one day divided into 510.00 of groceries and
+130.00 of homeware, it would have two rows here summing to -640.00, the
+groceries row keeping its `allocation_id`, and nothing else in this document or
+in any consumer query would change.
 
 `joint-savings` transactions:
 
@@ -163,9 +204,12 @@ What consumers can and cannot derive:
   summed across accounts for the same month, and both rows are `complete`.
 - Summing `joint-current` closing balances over February–April is
   meaningless: balances are never summed across months.
-- February (analytics): income 25,000.00; expenses 9,020.00; `groceries`
-  spending 640.00 − 120.00 = 520.00; `housing` group 8,500.00. The report
-  must show `joint-current` as `partial` and `joint-savings` as `complete`.
+- February (analytics): income 25,000.00 and expenses 9,020.00, summed over
+  transactions; `groceries` spending 640.00 − 120.00 = 520.00 and the `housing`
+  group 8,500.00, summed over allocations. The two agree because a
+  transaction's allocations sum to its amount: 8,500.00 + 520.00 = 9,020.00.
+  The report must show `joint-current` as `partial` and `joint-savings` as
+  `complete`.
 - March: unclassified money in is 0.00, money out is −450.00, and count is 1.
 - January: transfer T1 is excluded from income and expenses, and both legs
   stay visible in account activity.
@@ -181,7 +225,10 @@ What consumers can and cannot derive:
 
 ## Not in the First Release
 
-Category allocations or splits, Type 2 dimensions, counterparty or merchant
+Authored category splits — a workflow for dividing one transaction across
+several allocations, and the rule for which allocation a refund reverses. The
+allocation fact exists from the first release, always with one allocation per
+classified transaction. Also out: Type 2 dimensions, counterparty or merchant
 dimension, person dimension, account hierarchy, daily balance snapshots,
 budget facts, and audit/publication dimensions (issue #8).
 

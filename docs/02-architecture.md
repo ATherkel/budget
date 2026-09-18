@@ -57,12 +57,13 @@ Determine:
 
 Apply:
 
-- categories
+- categories, as one allocation per classified transaction
 - account relationships
 - budget mappings (future)
 
 Publish:
 
+- category allocations
 - account balance snapshots and coverage
 
 Gold becomes the stable business layer: a small dimensional model described

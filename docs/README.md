@@ -20,6 +20,10 @@ agent authority outside its boundary.
   Silver storage or types.
 - `domains/` defines business meaning. It takes precedence over an individual
   layer document when there is a conflict.
+- `domains/category-changes.md` is an append-only record rather than a
+  definition: because the category dimension carries only the current
+  interpretation, it logs when the taxonomy changed and why, so a decision
+  taken on an older report can still be read.
 - `decisions/` records accepted architectural decisions. Changes require a new
   ADR; do not silently revise a decision to fit an implementation.
 
@@ -31,14 +35,22 @@ normative**: a primer never decides anything, and where one disagrees with a
 document under `architecture/` or `decisions/`, that document wins and the
 primer is stale.
 
+- [`primers/overlapping-exports-primer.html`](primers/overlapping-exports-primer.html)
+  — why overlapping bank exports are hard, in fourteen modules with worked
+  examples: transaction identity, the balance chain, whole-file admission, the
+  manual decisions, coverage, the provisional label, and a worked case of a
+  written-down rule that was wrong until it was run. Open it by
+  double-clicking; it needs no server and stores progress in the browser only.
+  It loads its fonts from Google Fonts and falls back to system fonts offline.
 - [`primers/dimensional-gold-primer.html`](primers/dimensional-gold-primer.html)
   — what shape Gold hands household facts to a dashboard, in fourteen modules
-  with worked examples: business processes and declared grain, the three
-  conformed dimensions and why none of them keep history, monthly balance
-  snapshots, semi-additive balances, the balance chain and coverage, the
-  `refund` type, and the split between the consumer and lineage interfaces. It
-  closes with where the long comment on issue #6 has gone stale and what that
-  issue still asks a human to confirm. Open it by double-clicking; it needs no
+  with worked examples: business processes and declared grain, the category
+  allocation fact, the three conformed dimensions and how immutable keys plus
+  a change log keep Type 1 history-safe, monthly balance snapshots,
+  semi-additive balances, the balance chain and coverage, the `refund` type,
+  and the split between the consumer and lineage interfaces. It closes with
+  what the original grilling on issue #6 got wrong or left open, and what the
+  owner decided once they read it. Open it by double-clicking; it needs no
   server and stores progress in the browser only. It loads its fonts from
   Google Fonts and falls back to system fonts offline.
 

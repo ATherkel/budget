@@ -19,6 +19,8 @@ and the model in [gold-layer.md](../architecture/gold-layer.md).
 - Account and category dimensions.
 - Gold transactions that satisfy every contract invariant, including
   `account_sequence` and `balance_check`.
+- One category allocation per classified transaction, for its whole amount,
+  with the allocation sum and sign invariants enforced.
 - Monthly balance snapshots with coverage for every month of each account's
   managed period.
 - Lineage through `GoldLineageRepository`: parent Silver record,

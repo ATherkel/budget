@@ -6,7 +6,8 @@ household platform.
 Required attributes:
 
 - stable internal `account_id`: household-assigned and durable, never derived
-  from a bank account number
+  from a bank account number, immutable and never reused for a different
+  account
 - display name
 - account type (`current`, `savings`, `credit`, `investment`, or `other`)
 - currency
