@@ -1,6 +1,6 @@
 # ADR-007: Model Gold Dimensionally, with Balance Snapshots and Coverage Published by Gold
 
-**Status:** Proposed. If accepted, supersedes ADR-006 only for coverage placement and the Gold interface; ADR-010 still governs quarantine.
+**Status:** Accepted. Supersedes ADR-006 for coverage placement and the Gold interface; ADR-010 still governs quarantine.
 
 ## Context
 

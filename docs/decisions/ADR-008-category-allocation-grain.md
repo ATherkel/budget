@@ -1,6 +1,6 @@
 # ADR-008: Model Category Assignment as an Allocation Fact, One Allocation per Transaction in the First Release
 
-**Status:** Proposed
+**Status:** Accepted
 
 ## Context
 
