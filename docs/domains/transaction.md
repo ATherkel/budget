@@ -28,13 +28,11 @@ end.
   carries that movement's category and nets against its measure: positive
   for an expense category (including reversed fees), negative for returned
   income in an income category.
-
 - **Transfer:** movement between accounts within the household reporting
   boundary; not spending or income.
 - **Adjustment:** an uncategorized correction that needs an explanation. It
   carries no category, is excluded from income and expenses, and is reported
   separately.
-
 - **Unknown:** valid imported record awaiting classification.
 
 A transaction is classified as a whole: it has exactly one type and at most
@@ -52,7 +50,9 @@ the bank payload.
 
 ## Identity and Deduplication
 
-The importer must retain the bank/source identifier where supplied. When one
-is absent, Silver may generate a deterministic content fingerprint, including
-source account, booking date, amount, description, and source-record position.
-It must not deduplicate only by date and amount.
+The importer must retain the bank/source identifier where supplied. When one is
+absent, Silver derives the identifier by
+[ADR-009](../decisions/ADR-009-transaction-identity.md): account, transaction
+date, amount, identity text, and an occurrence number. It must not deduplicate
+only by date and amount, and it must not include the source-record position,
+which shifts between exports of the same transaction.

@@ -2,10 +2,13 @@
 
 ## Status
 
-Version `0.2`, proposed for the CSV MVP. The dimensional model amends the still-proposed 0.2 contract in place, retaining the accepted reporting evidence from issue #4;
-see [Changes from 0.1](#changes-from-01). Changes are backward-incompatible
-unless a new contract version is introduced and downstream consumers migrate.
-The contract stays proposed until the readiness review (issue #12) approves it.
+Version `0.2`, proposed for the CSV MVP. The dimensional model amends the
+still-proposed 0.2 contract in place, retaining the accepted reporting evidence
+from issue #4; see [Changes in 0.2](#changes-in-02), which lists every change
+since 0.1, including the ones made by the earlier 0.2 draft. Changes are
+backward-incompatible unless a new contract version is introduced and
+downstream consumers migrate. The contract stays proposed until the readiness
+review (issue #12) approves it.
 
 ## Purpose
 
@@ -55,7 +58,7 @@ current household interpretation.
 | `currency` | ISO 4217 string | Yes | Currency of every amount and balance on this account. `DKK` in the first release. |
 | `closed_on` | `date`/null | No | Date the account closed; null while open. Ends the account's managed period. |
 | `coverage_start` | `date`/null | No | First booked transaction date; null for an account with no transactions. |
-| `evidence_through` | `date`/null | No | Day before the latest admitted export date (ADR-006, ADR-009); null without admitted exports. |
+| `evidence_through` | `date`/null | No | Last date the account's imported exports are known to cover. Computed by Silver (`silver-layer.md`, *Evidence Through*) and carried through unchanged; Gold does not derive it. Null when no export of the account has been imported. |
 
 ### `GoldCategory`
 
@@ -220,9 +223,13 @@ break that demotes the previous month; first managed month (`partial`);
 complete quiet month; partial quiet month crossed by a broken link; `no_data` month beyond evidence; closed account; and two categories
 sharing a group. The worked example in `gold-layer.md` covers most of these.
 
-## Changes from 0.1
+## Changes in 0.2
 
-| 0.1 | 0.2 | Why |
+This table covers everything 0.2 changes since 0.1. Rows marked *(0.2 draft)*
+were introduced by the earlier 0.2 draft and are superseded here, so a reader
+migrating from either version finds the whole path in one place.
+
+| 0.1 or the earlier 0.2 draft | 0.2 | Why |
 | --- | --- | --- |
 | `GoldTransactionRepository.list_transactions` | `GoldRepository` with accounts, categories, transactions, monthly balances | A transaction-only interface cannot carry dimensions, balances, or `no_data` months (ADR-007). |
 | `gold_transaction_id` ("record/version") | `transaction_id` (stable across rebuilds) | Version identity belongs to issue #8. |
@@ -233,6 +240,10 @@ sharing a group. The worked example in `gold-layer.md` covers most of these.
 | `counterparty` | Removed | No first-release source or measure uses it. It can return as a dimension through issue #7. |
 | Refund = `adjustment` with a category | `refund` transaction type | Makes categorized reversals explicit, preserving signed netting for both category directions. `category_id` becomes required or null per type, with no conditional. |
 | Coverage derived by analytics | Published by Gold on `MonthlyBalanceSnapshot` | Needs source-derived ordering and managed-period knowledge (ADR-007). |
+| `boundary_transactions()` *(0.2 draft)* | Removed | Consumers fetched the links into and out of a period only to judge coverage themselves. Gold now publishes coverage, so nothing reads them (ADR-007). |
+| `day_sequence` on the transaction *(0.2 draft)* | `account_sequence` | Ordering within a date is Silver's (ADR-009). Gold publishes one account-wide order instead, so a consumer never reconstructs it from two fields. |
+| `category_direction` on the transaction *(0.2 draft)* | `GoldCategory.direction` | Direction is an attribute of the category. Copying it onto every fact row lets the two disagree. |
+| `GoldAccount.active` *(0.2 draft)* | `closed_on`, alongside the new `display_name`, `account_type`, `ownership_scope`, and `currency` | A boolean cannot bound the managed period: a closed account would keep producing snapshot rows. The other attributes make the account a real dimension rather than a key with a flag. |
 
 Silver identity and within-date order are defined by ADR-009. Coverage uses
 the admitted export evidence from ADR-006, including verified quiet months.

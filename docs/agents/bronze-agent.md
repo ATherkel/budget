@@ -40,5 +40,13 @@ first. The only values observed in `Status` are `Udført` and `Slettet`, and
 - A UTF-8 file, a byte undefined in Windows-1252, or an unexpected header
   yields a `FormatFailure` and no source records.
 - The export date comes from a `…-YYYYMMDD.csv` filename suffix, or else must be
-  declared; no other part of the filename is interpreted.
+  declared; no other part of the filename is interpreted. How far the export
+  reaches (`covers_through`) is declared separately. A `repeat` run records both
+  dates and the run it repeats.
+- A declared `covers_through` outside `[last transaction date, exported_on]` is
+  refused, never clamped. The declaration is required when falling back would
+  claim evidence in a later reporting period than the payload's last transaction
+  date, or when the payload states no transactions; otherwise it falls back to
+  `exported_on` and records that it did. An undecodable payload yields a
+  `FormatFailure` rather than a refusal for a missing declaration.
 - Bronze has no dependency on Silver, Gold, analytics, or UI modules.

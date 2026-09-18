@@ -119,7 +119,10 @@ Two open DKK household accounts: `joint-current` (current) and
 `joint-savings` (savings). Categories: `salary` and `interest` (group
 `income`, direction `income`), `rent` and `utilities` (group `housing`),
 `groceries` (group `food`), all three with direction `expense`. The latest
-published month is 2026-04. Both accounts have admitted exports dated 2026-05-08, so evidence reaches through 2026-05-07 and April is past the provisional window.
+published month is 2026-04. Both accounts have an admitted export dated 2026-05-08 whose declared `covers_through` is 2026-05-08 as well, so by the formula in
+[`silver-layer.md`](silver-layer.md#evidence-through) evidence reaches through
+2026-05-07 and April is past the provisional window. Gold carries that value; it
+never derives it from an export date itself.
 
 `joint-current` transactions:
 
