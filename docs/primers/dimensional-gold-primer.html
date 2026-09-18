@@ -389,26 +389,29 @@
     </p>
   </div>
 
-  <div class="callout warnbox">
-    <p class="callout-h">Nothing here was agreed by a human</p>
+  <div class="callout">
+    <p class="callout-h">This round, a human read it</p>
     <p>
-      Every answer on issue #6 came from an agent running <code>/grill-with-docs</code> while you
-      were away, told to take the recommended option each time. ADR-007 and ADR-008 say
-      <strong>Proposed</strong>. The contract says <strong>0.2, proposed</strong>. Module 14 is the
-      short list of things to push back on before any of that becomes <code>Accepted</code>.
+      The first draft of this page described a grilling session an agent ran alone: every answer
+      was the recommended option, ADR-007 and ADR-008 said <strong>Proposed</strong>, and module 14
+      was a list of things to check before that changed. The owner then read it, challenged two of
+      those answers, and settled both. <strong>ADR-007 and ADR-008 are now
+      <code>Accepted</code></strong> — one of them with a real amendment, not a rubber stamp. Module
+      14 is now the record of what was decided and why, not a list of open questions.
     </p>
   </div>
 
   <div class="callout">
     <p class="callout-h">The short version</p>
     <p>
-      There are <strong>two facts</strong> (transactions, monthly balances), <strong>three
-      dimensions</strong> (account, category, date), and <strong>two doors</strong> (the report
-      interface and the lineage interface). Modules 01–10 are those seven things. Module 11 is the
-      whole worked example. Modules 12–14 are what changed, what's stale, and what to check.
+      There are <strong>three facts</strong> (transactions, category allocations, monthly
+      balances), <strong>three dimensions</strong> (account, category, date), and
+      <strong>two doors</strong> (the report interface and the lineage interface). Modules 01–10
+      are those eight things. Module 11 is the whole worked example. Modules 12–14 are what
+      changed, what's stale, and what was decided.
     </p>
     <p>
-      Budget about 25 minutes. If you only have 10, read 01, 05, 08, 13 and 14.
+      Budget about 25 minutes. If you only have 10, read 01, 03, 08 and 14.
     </p>
   </div>
 
@@ -549,42 +552,69 @@
   <!-- ============ 03 ============ -->
   <section class="mod" id="m3" data-key="m3">
     <div class="mod-head"><span class="mod-n">03</span><h2>The receipt with two categories on it</h2></div>
-    <p class="goal">After this: you can say what ADR-008 gives up, and what it would cost to change your mind later.</p>
+    <p class="goal">After this: you can say what ADR-008 decides now, what it still defers, and why the first draft of it was wrong.</p>
     <div class="mod-body">
       <p>
         You spend 640 kr at Netto. 510 kr of it is food; 130 kr is a frying pan. Under this model
-        that transaction gets <strong>one</strong> category, and you pick which. There is no way to
-        split it. That is ADR-008, and it is deliberate.
+        that transaction gets exactly <strong>one</strong> category in the first release, and you
+        pick which. The frying pan example is small enough to shrug off. The one that isn't: buy an
+        expensive pan together with something equally expensive and unrelated, and one budget line
+        reads over while the other reads fine, when in truth both are within budget. That is a wrong
+        answer to the question this whole project exists to answer, not a rounding error.
       </p>
 
-      <h3>What splitting would actually require</h3>
+      <div class="callout warnbox">
+        <p class="callout-h">This module used to say something different</p>
+        <p>
+          The first draft of ADR-008 rejected building a category-allocation fact now, on the
+          grounds that it "adds a type, a join, and an invariant that buy you nothing until splits
+          exist." That is a cost argument on a project with zero code, and it never engaged with the
+          frying-pan case above. The owner pushed back and the ADR was rewritten. <strong>The
+          allocation fact exists from the first release.</strong> What's still deferred is narrower
+          than "no splits, ever": only the workflow for authoring one.
+        </p>
+      </div>
+
+      <h3>What actually changed</h3>
+      <p>
+        A category no longer sits on the transaction. It sits on
+        <code>GoldCategoryAllocation</code> — one row per category allocation of one booked
+        transaction. In the first release a classified transaction has exactly one allocation, for
+        its whole amount, and nothing can author a second yet. That restriction is its own
+        invariant, separate from the grain — so relaxing it later changes the invariant, not the
+        model, the interface, or a single consumer query.
+      </p>
+
+      <h3>What splitting would still require</h3>
       <ul>
         <li>A screen where you sit and divide a transaction up, by hand, transaction by transaction.</li>
-        <li>A rule that the parts always add back to the total — and something sensible to do when they don't.</li>
-        <li>An answer for what happens when the frying pan is <em>returned</em>: which part of the original does the refund reverse?</li>
+        <li>A rule that the parts always add back to the total — the contract already states it as an invariant, ready for the day a second allocation exists.</li>
+        <li>An answer for what happens when the frying pan is <em>returned</em>: which allocation does the refund reverse? Still open, and explicitly routed to issue #7 rather than assumed.</li>
       </ul>
 
       <p>
-        None of that is hard exactly. It is just a workflow you would have to use forever, to make
-        the Housing total slightly more accurate than it already is. The bank gives one row per
-        purchase and no line items, so nothing in the source knows about the frying pan anyway.
+        The workflow is genuine work. The fact that holds its output is not — and building that fact
+        now, while there is no code and no consumer yet, is the cheapest this decision will ever be.
       </p>
 
       <div class="callout">
-        <p class="callout-h">The door it leaves open</p>
+        <p class="callout-h">What this actually costs</p>
         <p>
-          If you do want splits later, they arrive as a <strong>second fact standing beside</strong>
-          the transaction fact — "one category allocation of one transaction" — not as a change to
-          what a transaction row means. The existing rows keep their meaning and their IDs. It costs
-          a contract version bump and a new ADR, and nothing you have already recorded is invalidated.
+          One more fact and one more repository method, <code>category_allocations()</code>. Two
+          invariants that are testable from the first fixture, which is when they're cheap: an
+          allocation's amount carries the transaction's sign, and a transaction's allocations sum
+          <em>exactly</em> to its amount — no rounding tolerance. <code>GoldTransaction</code> loses
+          <code>category_id</code> entirely, so a category has exactly one owner and can't disagree
+          with itself. Household income and expenses stay transaction measures; category and
+          category-group spending become allocation measures, and the two agree today because
+          allocations sum to their transactions — and keep agreeing once one carries several.
         </p>
       </div>
 
       <p>
-        The rejected middle option is worth knowing about: build the allocation fact <em>now</em>,
-        with exactly one allocation per transaction, so the structure is ready. It was turned down
-        because it adds a type, a join and an invariant that buy you nothing at all until the day
-        splits actually exist.
+        Free insurance in the meantime, while the split workflow doesn't exist: pay for the
+        expensive unrelated item as a separate transaction at the till. It costs nothing and solves
+        the frying-pan case outright.
       </p>
     </div>
     <div class="mod-foot"></div>
@@ -606,28 +636,58 @@
         gives you "Housing".
       </p>
 
-      <h3>Nothing has a memory (Type 1)</h3>
+      <h3>Nothing has a memory (Type 1) — and that was worth arguing about</h3>
       <p>
         Rename <code>groceries</code> to "Food &amp; household" and <strong>every report you have
         ever run changes with it</strong>, back to the beginning. Move it into a different group and
         last January's Housing total moves too. There is no "it was called X back then".
       </p>
 
+      <p>
+        The owner's objection was concrete: decisions get made looking at a report, and six months
+        later a category change shouldn't erase the ability to understand that decision. Worth
+        answering directly, because Type 2 dimensions — the standard Kimball fix for exactly this —
+        turned out <strong>not</strong> to be the answer. Type 2 preserves what a category was
+        <em>called</em>. It says nothing about which transactions were <em>assigned</em> to it, and
+        reassignment — "that purchase was actually utilities, not groceries" — is where a
+        household's second thoughts actually live. Type 2 also needs a versioned key on every fact,
+        which reverses the durable-key decision below. Reproducing a report exactly as it was read
+        needs the published output it was built from, which is issue #8's job either way — so Type 2
+        would have cost a contract version change and still not delivered what was asked of it.
+      </p>
+
       <div class="callout">
         <p class="callout-h">The distinction that saves this</p>
         <p>
           Deciding that a <em>particular old transaction</em> was actually utilities, not groceries,
-          is <strong>not</strong> a dimension change. It is a change to that transaction's
-          classification — a fact change — and keeping a history of those is issue #8's problem, not
-          this model's. Type 1 dimensions don't stop you doing it.
+          is <strong>not</strong> a dimension change. It is a change to that transaction's category
+          allocation — a fact change — and keeping a history of those is issue #8's problem, not this
+          model's. Type 1 dimensions don't stop you doing it, and now that a category reaches a
+          transaction through its own allocation row (module 03), that change has a row of its own
+          to record.
+        </p>
+      </div>
+
+      <div class="callout">
+        <p class="callout-h">What Type 1 needed instead</p>
+        <p>
+          Two things, both now written down. First, <strong>a dimension key is immutable and never
+          reused for a different meaning.</strong> Retiring a category deactivates it; the key is
+          never repointed at something else. Without this, no history mechanism of any kind can
+          recover the past, because the same key would mean two things. Second,
+          <code>docs/domains/category-changes.md</code> is an append-only, dated log of every
+          rename, regrouping, retirement, and direction change — so even without Type 2, a decision
+          made on an older report stays legible.
         </p>
       </div>
 
       <h3>Keys you chose, never keys the bank chose</h3>
       <p>
         An account is <code>joint-current</code>. A category is <code>groceries</code>. These are
-        names you assign and they never change. They are explicitly <em>never</em> derived from an
-        IBAN or a bank account number — switch banks and your history survives intact.
+        names you assign, and they are immutable: an attribute can change (a rename, a regroup), but
+        the key itself never does and is never reused for something else. They are explicitly
+        <em>never</em> derived from an IBAN or a bank account number — switch banks and your history
+        survives intact.
       </p>
 
       <p>
@@ -900,13 +960,24 @@
         rate goes up slightly, correctly, because the 120 kr came back.
       </p>
 
-      <div class="callout warnbox">
-        <p class="callout-h">This reverses a decision you already made</p>
+      <div class="callout">
+        <p class="callout-h">The 9.020,00 was already yours</p>
         <p>
-          The <code>adjustment</code> encoding was a deliberate choice on issue #4, taken to avoid
-          exactly this kind of contract churn. Overturning it is defensible — but it is the clearest
-          case on this page of an agent changing something a human had settled. It is item one on
-          the check-first list.
+          Netting refunds into household Expenses was accepted before this page existed — issue #4,
+          PR #14 — so 9.020,00 is not a new number this document produces. What changes here is only
+          the <em>encoding</em>: a refund stops being an <code>adjustment</code> that happens to
+          carry a category, and becomes its own type. The "Old" column above is what the encoding
+          implied before that PR landed, not a figure you ever reported.
+        </p>
+      </div>
+
+      <div class="callout">
+        <p class="callout-h">Settled: the encoding reversal was accepted</p>
+        <p>
+          The <code>adjustment</code> encoding was a deliberate choice on issue #4, taken at the time
+          to avoid exactly this kind of contract churn. The owner agreed the glossary's own wording —
+          "a Refund is not an Adjustment" — should win instead, and <strong>ADR-007 and ADR-008 are
+          now <code>Accepted</code></strong> with this change in them. Nothing here is still open.
         </p>
       </div>
     </div>
@@ -921,14 +992,17 @@
       <p>Everything a report needs comes through one small interface:</p>
 
 <pre><code>class GoldRepository(Protocol):
-    def accounts(self)          -&gt; Sequence[GoldAccount]: ...
-    def categories(self)        -&gt; Sequence[GoldCategory]: ...
+    def accounts(self)              -&gt; Sequence[GoldAccount]: ...
+    def categories(self)            -&gt; Sequence[GoldCategory]: ...
     def transactions(self, *, start_date, end_date, account_ids=None) -&gt; ...
+    def category_allocations(self, *, start_date, end_date, account_ids=None) -&gt; ...
     def monthly_balances(self, *, start_month, end_month, account_ids=None) -&gt; ...</code></pre>
 
       <p>
-        Four methods. Ranges are inclusive. Nothing in there names a table, a CSV column, or
-        anything the bank invented. Behind a separate door, for review and audit tooling only:
+        Five methods now, not four — <code>category_allocations()</code> joined the door once
+        category assignment got its own fact (module 03). Ranges are inclusive. Nothing in there
+        names a table, a CSV column, or anything the bank invented. Behind a separate door, for
+        review and audit tooling only:
       </p>
 
 <pre><code>class GoldLineageRepository(Protocol):
@@ -939,6 +1013,13 @@
         <li><code>silver_transaction_id</code> — the link back to the raw record. The current contract hands this to analytics, which its own agent brief forbids. This fixes that.</li>
         <li><code>classification_source</code> and <code>classification_version</code> — whether a category came from a rule or from you, and which rule set said so.</li>
       </ul>
+
+      <p>
+        <code>category_id</code> moved too, but not behind this door — it went the other way, off
+        the transaction and onto <code>GoldCategoryAllocation</code>, a public fact every consumer
+        reads through the first door (module 03). Lineage is for provenance a report has no business
+        seeing; an allocation is exactly the kind of thing a report exists to show.
+      </p>
 
       <h3>And what was dropped entirely</h3>
       <div class="scroller">
@@ -1003,10 +1084,31 @@
         </table>
       </div>
 
+      <p>February's four category allocations on <code>joint-current</code>, in full — one per classified transaction, since none has been split yet:</p>
+
+      <div class="scroller">
+        <table class="ledger">
+          <caption>GoldCategoryAllocation rows for February, joint-current</caption>
+          <thead><tr><th>Transaction</th><th>Category</th><th class="num">Amount</th></tr></thead>
+          <tbody>
+            <tr><td>seq 4</td><td>rent</td><td class="num">−8.500,00</td></tr>
+            <tr><td>seq 5</td><td>groceries</td><td class="num">−640,00</td></tr>
+            <tr><td>seq 6</td><td>groceries</td><td class="num">120,00</td></tr>
+            <tr><td>seq 7</td><td>salary</td><td class="num">25.000,00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Seq 8 (<code>unknown</code>) and the January transfer have no allocation at all — those
+        types never get one. Were seq 5 divided one day into 510,00 of groceries and 130,00 of
+        homeware, it would be two rows here summing to −640,00, and nothing else on this page or in
+        any consumer query would change.
+      </p>
+
       <h3>What consumers may and may not take from it</h3>
       <ul>
         <li><strong>April net worth: 105.099,90.</strong> Two <code>complete</code> rows, same month, different accounts. Valid.</li>
-        <li><strong>February on joint-current:</strong> income 25.000,00, expenses 9.020,00, groceries 520,00, housing 8.500,00 — and the screen must show the account as <code>partial</code> while joint-savings shows <code>complete</code>.</li>
+        <li><strong>February on joint-current:</strong> income 25.000,00 and expenses 9.020,00, summed over transactions; groceries 520,00 and housing 8.500,00, summed over allocations. 8.500,00 + 520,00 = 9.020,00 — the two measures agree because a transaction's allocations always sum to its amount. The screen must show the account as <code>partial</code> while joint-savings shows <code>complete</code>.</li>
         <li><strong>March unclassified:</strong> money in 0,00, money out −450,00, count 1. The break has a face, and it is transaction 8.</li>
         <li><strong>January transfer T1</strong> appears on both accounts, is excluded from income and expenses, and stays visible in account activity. 3.000,00 leaving one pocket for another is not spending.</li>
         <li><strong>June:</strong> beyond the publication. No rows. Must never render as zero.</li>
@@ -1042,10 +1144,10 @@
 
       <div class="qlist">
         <div class="qrow"><span class="qn">Q1</span><span class="qt"><b>Two processes:</b> money movements and balance observations. Budgets are out.</span></div>
-        <div class="qrow"><span class="qn">Q2</span><span class="qt"><b>Grain is one booked transaction.</b> No category splits (ADR-008).</span></div>
+        <div class="qrow moved"><span class="qn">Q2</span><span class="qt"><b>Grain is one booked transaction; category assignment is its own fact.</b> One allocation per transaction in release one — the split workflow, not the fact, is what's deferred (ADR-008).</span></div>
         <div class="qrow"><span class="qn">Q3</span><span class="qt"><b>Star-shaped contract.</b> Not a flat list, not wide denormalized rows.</span></div>
         <div class="qrow"><span class="qn">Q4</span><span class="qt"><b>Gold accounts are inside the reporting boundary</b> only. <code>current</code> and <code>savings</code>, DKK. No person dimension, no account hierarchy.</span></div>
-        <div class="qrow"><span class="qn">Q5</span><span class="qt"><b>Everything Type 1.</b> No dimension history in this release.</span></div>
+        <div class="qrow"><span class="qn">Q5</span><span class="qt"><b>Everything Type 1</b> — but keys are immutable and never reused, and every category change is logged in <code>category-changes.md</code>, so the past stays legible without Type 2 history.</span></div>
         <div class="qrow"><span class="qn">Q6</span><span class="qt"><b>Monthly balance snapshots,</b> plus the stated balance on each transaction. No daily snapshots.</span></div>
         <div class="qrow"><span class="qn">Q7</span><span class="qt"><b>Durable household keys</b> (<code>joint-current</code>), never bank identifiers, no surrogate keys.</span></div>
         <div class="qrow"><span class="qn">Q8</span><span class="qt"><b>Fixed two-level category hierarchy,</b> group → category, flattened onto the category row.</span></div>
@@ -1057,12 +1159,12 @@
         <div class="qrow"><span class="qn">Q14</span><span class="qt"><b>Refunds reduce household Expenses,</b> not just category spending.</span></div>
         <div class="qrow"><span class="qn">Q15</span><span class="qt"><b><code>account_sequence</code></b> gives order within a date. For ordering only — never identity.</span></div>
         <div class="qrow"><span class="qn">Q16</span><span class="qt"><b>One snapshot row per month of the managed period.</b> <code>closed_on</code> replaces the active/inactive flag.</span></div>
-        <div class="qrow"><span class="qn">Q17</span><span class="qt"><b>Four-method <code>GoldRepository</code></b> plus a privileged lineage repository.</span></div>
+        <div class="qrow moved"><span class="qn">Q17</span><span class="qt"><b>Five-method <code>GoldRepository</code></b> — <code>category_allocations()</code> joined it — plus a privileged lineage repository.</span></div>
         <div class="qrow moved"><span class="qn">Q18</span><span class="qt"><b>Missing balances bridge, never get invented.</b> Any month containing one is partial.</span></div>
         <div class="qrow"><span class="qn">Q19</span><span class="qt"><b>A break demotes every month its link spans,</b> including months where every check passed.</span></div>
         <div class="qrow moved"><span class="qn">Q20</span><span class="qt"><b>Quiet months stay <code>no_data</code></b> with null balances; a follow-up recorded for later. <em>This one was reversed outright.</em></span></div>
         <div class="qrow"><span class="qn">Q21</span><span class="qt"><b>Contract 0.2 replaces 0.1 entirely,</b> with a changelog. <code>gold-layer.md</code> stops being a competing schema and becomes the explainer.</span></div>
-        <div class="qrow"><span class="qn">Q22</span><span class="qt"><b>Two ADRs:</b> 007 (the model, coverage placement, lineage split, Type 1) and 008 (no splits). Everything else recorded in the changelog only.</span></div>
+        <div class="qrow moved"><span class="qn">Q22</span><span class="qt"><b>Two ADRs, both now <code>Accepted</code>:</b> 007 (the model, coverage placement, lineage split, Type 1 plus its immutable-key safeguard) and 008 (category-allocation grain, one per transaction). Everything else recorded in the changelog only.</span></div>
       </div>
 
       <h3>Deliberately not decided here</h3>
@@ -1071,8 +1173,8 @@
           <thead><tr><th>Left to</th><th>What</th></tr></thead>
           <tbody>
             <tr><td class="nw">#5</td><td>Canonical identity and the deterministic order within a date — both of which this model depends on.</td></tr>
-            <tr><td class="nw">#7</td><td>The actual category taxonomy, bank-category attribution, transfer matching and its evidence.</td></tr>
-            <tr><td class="nw">#8</td><td>Which publication a consumer reads, identity across rebuilds, and whether anything ever needs Type 2 history.</td></tr>
+            <tr><td class="nw">#7</td><td>The actual category taxonomy, bank-category attribution, transfer matching and its evidence, and the split-entry workflow plus which allocation a refund reverses.</td></tr>
+            <tr><td class="nw">#8</td><td>Which publication a consumer reads and identity across rebuilds. Whether anything needs Type 2 history is <em>not</em> left here any more — module 04 records why Type 1 plus immutable keys and a change log settled it.</td></tr>
             <tr><td class="nw">#9</td><td>Storage. Whether a calendar or snapshot table is physically materialized.</td></tr>
             <tr><td class="nw">#11</td><td>The analytics DTO shapes the dashboard actually consumes.</td></tr>
           </tbody>
@@ -1084,8 +1186,8 @@
 
   <!-- ============ 13 ============ -->
   <section class="mod" id="m13" data-key="m13">
-    <div class="mod-head"><span class="mod-n">13</span><h2>The comment is already out of date in five places</h2></div>
-    <p class="goal">After this: you know where to trust the PR over the comment, and two gaps to close before merging.</p>
+    <div class="mod-head"><span class="mod-n">13</span><h2>The comment — and this page's own first draft — were out of date in six places</h2></div>
+    <p class="goal">After this: you know where to trust the PR over the comment, and that the two gaps below are already closed on this branch.</p>
     <div class="mod-body">
       <p>
         The grilling ran before PR #16 merged into this branch. Reconciling the two changed some
@@ -1133,41 +1235,53 @@
         </p>
       </div>
 
-      <h3>Two gaps to close before this merges</h3>
-
-      <div class="find high">
-        <div class="find-h"><span class="where">gold-contract.md</span><span class="find-t"><code>evidence_through</code> is written the old way</span><span class="tag t-check">check</span></div>
+      <div class="find info">
+        <div class="find-h"><span class="find-t">Two of "the four answers a human should judge" weren't new at all</span><span class="tag t-stale">this page's own error</span></div>
         <p>
-          PR #18 defines it as <em>"day before the latest admitted export date"</em>. That is exactly
-          the definition the prototype broke — download all of 2025 today and the system concludes
-          its evidence reaches yesterday, so January to March read <code>complete</code> with zero
-          activity. PR #31 fixes it by declaring separately how far an export <em>reaches</em>.
-        </p>
-        <p>
-          Gold's coverage is computed from this field. If #18 merges on top of #31 without adopting
-          the new wording, <strong>the fixed bug comes back at the Gold layer</strong>. The wording
-          #31 lands is already in the repo; this line needs to match it.
+          The first draft of module 14 listed Q19 ("a break demotes its neighbours") as
+          <em>stricter than the current rule</em>, and Q14 ("refunds reduce household Expenses") as
+          this branch's own change. Neither is true. Both were accepted before PR #18 existed —
+          Q19 in ADR-006, Q14 in issue #4 / PR #14 — and #18 only carries the same rule forward. The
+          owner caught this while reviewing; it is recorded here because a primer that gets a fact
+          wrong is exactly the failure mode this file exists to prevent.
         </p>
       </div>
 
-      <div class="find mid">
-        <div class="find-h"><span class="where">gold-contract.md</span><span class="find-t">The changelog is written against the wrong version</span><span class="tag t-check">check</span></div>
+      <h3>Two gaps that were closed on this branch before merging</h3>
+
+      <div class="find info">
+        <div class="find-h"><span class="where">gold-contract.md, CONTEXT.md</span><span class="find-t"><code>evidence_through</code> was written the old way</span><span class="tag t-ok">fixed</span></div>
         <p>
-          The table is headed "Changes from 0.1", but the branch it merges into already carries a
-          <em>different</em> 0.2 — the one that added balances and account listing. Three members of
-          that version disappear without appearing in the table:
+          PR #18 originally defined it as <em>"day before the latest admitted export date"</em>, in
+          two places. That is exactly the definition the prototype broke — download all of 2025
+          today and the system concludes its evidence reaches yesterday, so January to March read
+          <code>complete</code> with zero activity. PR #31 fixed it by declaring separately how far
+          an export <em>reaches</em>, and this branch now defers to that formula in both places
+          instead of restating it, plus the worked example in <code>gold-layer.md</code> now says
+          which <code>covers_through</code> it assumes rather than implying the old rule.
+        </p>
+      </div>
+
+      <div class="find info">
+        <div class="find-h"><span class="where">gold-contract.md</span><span class="find-t">The changelog was written against the wrong version, and missed a fourth removal</span><span class="tag t-ok">fixed</span></div>
+        <p>
+          The table was headed "Changes from 0.1", although the branch it merges into already
+          carried a <em>different</em> 0.2 — the one that added balances and account listing. It is
+          now "Changes in 0.2" and covers both paths. Four members of that earlier 0.2 disappeared
+          without appearing in the table — one more than this page first found:
         </p>
         <ul>
           <li><code>boundary_transactions()</code> — no longer needed, because Gold computes coverage itself now.</li>
           <li><code>category_direction</code> on the transaction — moved onto the category dimension, where it belongs.</li>
           <li><code>day_sequence</code> on the transaction — replaced by <code>account_sequence</code>.</li>
+          <li><code>GoldAccount.active</code> — replaced by <code>closed_on</code>, because a boolean cannot bound a managed period. This was the one the first draft of this page missed.</li>
         </ul>
         <p>
-          Every one of those removals is justified by a decision on this page. None of them is
-          <em>written down</em> as a change, so anyone reading the changelog to migrate will miss
-          them. ADR-006 also still names <code>boundary_transactions()</code> and the old field
-          names; ADR-007 says it supersedes ADR-006 on exactly these points, so the text is stale
-          rather than wrong — but it reads as wrong.
+          Every one of those removals is justified by a decision on this page and is now written
+          down as a change. ADR-006 still names <code>boundary_transactions()</code> and the old
+          field names — that stays, since it is a record of a decision — but its status line now
+          names ADR-007 as superseding it on exactly these points, so the old names read as history
+          rather than as current.
         </p>
       </div>
     </div>
@@ -1176,49 +1290,56 @@
 
   <!-- ============ 14 ============ -->
   <section class="mod" id="m14" data-key="m14">
-    <div class="mod-head"><span class="mod-n">14</span><h2>So — accept, or push back?</h2></div>
-    <p class="goal">After this: you can act, in either direction, without rereading anything.</p>
+    <div class="mod-head"><span class="mod-n">14</span><h2>What was decided, and why</h2></div>
+    <p class="goal">After this: you know what changed from the first draft, and that ADR-007 and ADR-008 are both Accepted.</p>
     <div class="mod-body">
       <p>
-        Four of the twenty-two answers change something a human had already settled, or tighten a
-        rule in a way you would notice on screen. These are the ones worth your judgement; the rest
-        are internal shape.
+        Four of the twenty-two answers were worth a human's judgement rather than a rubber stamp.
+        The owner read this page, pushed back on two of the four, and both ADRs are now
+        <strong><code>Accepted</code></strong> with the owner's changes in them, not the agent's
+        first draft.
       </p>
 
       <div class="qlist">
-        <div class="qrow"><span class="qn">Q12<br>Q14</span><span class="qt"><b>Refunds.</b> A new <code>refund</code> type, reversing issue #4's <code>adjustment</code> encoding — and refunds now reduce household Expenses, so February reads 9.020,00 where it used to read 9.140,00. <em>Say "keep <code>adjustment</code>" and module 09 unwinds.</em></span></div>
-        <div class="qrow"><span class="qn">Q13</span><span class="qt"><b>Coverage moves into Gold.</b> The accepted documents put it in analytics. The meaning doesn't change, only the place — but it is a move, not a clarification.</span></div>
-        <div class="qrow"><span class="qn">Q19</span><span class="qt"><b>A break demotes its neighbours.</b> February goes <code>partial</code> although every February row is fine. Stricter than the current rule. It will make more of your dashboard amber than you expect.</span></div>
-        <div class="qrow"><span class="qn">Q2</span><span class="qt"><b>No category splits, ever, in release one.</b> The one decision the ticket explicitly refused to let an agent assume either way.</span></div>
+        <div class="qrow"><span class="qn">Q12<br>Q14</span><span class="qt"><b>Refunds — settled as proposed.</b> A new <code>refund</code> type, reversing issue #4's <code>adjustment</code> encoding. Household Expenses netting refunds (9.020,00, not 9.140,00) was already accepted before this page existed; only the encoding was open, and it's now Accepted.</span></div>
+        <div class="qrow"><span class="qn">Q13</span><span class="qt"><b>Coverage moves into Gold — settled as proposed.</b> The meaning doesn't change, only the place it's computed.</span></div>
+        <div class="qrow"><span class="qn">Q19</span><span class="qt"><b>A break demotes its neighbours — was never actually open.</b> This page's first draft called it stricter than the current rule; it isn't. ADR-006 already said this. Nothing to accept here, only to understand (module 08).</span></div>
+        <div class="qrow moved"><span class="qn">Q2</span><span class="qt"><b>Reversed: the grain now includes a category-allocation fact, from release one.</b> The owner's challenge — a mixed expensive purchase can make one budget line read red and another read fine while both are within budget — held. One allocation per transaction for now; the split workflow, not the fact, is what's deferred.</span></div>
       </div>
 
-      <h3>To accept</h3>
-      <ol class="steps">
-        <li>Merge PR #16 first — #18 is stacked on it and does not stand alone.</li>
-        <li>Settle the two gaps in module 13, particularly <code>evidence_through</code>.</li>
-        <li>Merge #18, then flip ADR-007 and ADR-008 from <code>Proposed</code> to <code>Accepted</code>.</li>
-        <li>Close issue #6 with a resolution comment and append the decision to the map, issue #2.</li>
-      </ol>
-
-      <h3>To change one thing</h3>
+      <h3>A fifth question, raised by the owner and not by the grilling</h3>
       <p>
-        Reply on the issue or the PR naming the question number — <em>"Q12: keep refunds as
-        <code>adjustment</code>"</em> is enough. Each answer in module 12 records what depends on it,
-        so the blast radius of any single reversal is knowable before you ask for it.
+        Module 04's Type 1 decision drew a real objection: a category rename shouldn't erase the
+        ability to understand a past decision. Type 2 dimensions were considered and rejected — they
+        preserve what a category was <em>called</em>, not what a transaction was <em>assigned</em>,
+        which is where a household's reclassifications actually live, and they would have reversed
+        the durable-key decision to get there. Kept instead: dimension keys are immutable and never
+        reused, and <code>docs/domains/category-changes.md</code> logs every rename, regrouping,
+        retirement, and direction change. Both are folded into ADR-007, not a separate decision.
+      </p>
+
+      <h3>What actually happened, in order</h3>
+      <ol class="steps">
+        <li>PR #16 merged into main, then into this branch.</li>
+        <li>The two gaps in module 13 were closed: <code>evidence_through</code> now defers to Silver's formula everywhere, and the changelog covers both 0.2 drafts with all four removals.</li>
+        <li>The grain reversed (Q2): <code>GoldCategoryAllocation</code> exists from release one, and <code>GoldTransaction</code> lost <code>category_id</code>.</li>
+        <li>Immutable keys and <code>category-changes.md</code> were added, closing the Type 1 objection without Type 2.</li>
+        <li>ADR-007 and ADR-008 flipped from <code>Proposed</code> to <code>Accepted</code>.</li>
+      </ol>
+      <p>
+        Left, deliberately, for the owner: merging #18 (and this primer, stacked on it) into
+        <code>main</code>, and closing issue #6 with a resolution comment referencing both ADRs.
       </p>
 
       <div class="verdict">
         <h3>The thing to remember</h3>
         <p>
-          The expensive decision here is not the star schema or the lineage split — both of those are
-          reversible refactors on a project with no code yet. The expensive one is
-          <strong>the grain</strong>. Everything you classify, correct and annotate from now on hangs
-          off "one row = one booked transaction", and changing that later means every one of those
-          hangs off nothing.
-        </p>
-        <p>
-          That is why ADR-008 exists as its own document for a decision that, read quickly, looks like
-          it decided to do less work.
+          The expensive decision here was never the star schema or the lineage split — both of those
+          are reversible refactors on a project with no code yet. The expensive one is
+          <strong>the grain</strong>. Everything classified, corrected, and annotated from now on
+          hangs off it. That is exactly why it was worth reopening once, carefully, before any of it
+          existed — and why, once decided, ADR-008 changed rather than staying a decision made under
+          a cost argument that never engaged with the case that mattered.
         </p>
       </div>
     </div>
