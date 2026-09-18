@@ -6,8 +6,8 @@ Produce reproducible reporting datasets from the Gold contract.
 
 ## Allowed Dependencies
 
-- `GoldRepository` (accounts, categories, transactions, monthly balance
-  snapshots)
+- `GoldRepository` (accounts, categories, transactions, category allocations,
+  monthly balance snapshots)
 - Gold contract fixtures
 - Configuration for report date range and household presentation
 
@@ -31,22 +31,28 @@ category's `GoldCategory.direction`. Every sum below uses signed `amount`s.
   document later treatment of investments and debt repayment rather than
   assuming they are savings.
 - **Savings rate:** `savings / income`, null when income is not positive.
-- **Category spending:** for each expense-direction category, −(Σ `expense` +
-  Σ refunds) in that category. When refunds exceed purchases in the period,
-  the category shows negative spending (a net refund). It is reported signed:
+- **Category spending:** summed over category allocations, not transactions:
+  for each expense-direction category, −(Σ allocations of `expense`
+  transactions + Σ allocations of refunds) in that category. When refunds
+  exceed purchases in the period, the category shows negative spending (a net
+  refund). It is reported signed:
   never clamped to zero and never moved to the purchase's period. Category
   spending therefore always adds up to Expenses. Styling belongs to issue #11.
 - **Unclassified:** for `unknown` transactions, money in (Σ positive amounts),
   money out (Σ negative amounts), and a count.
-- **Uncategorized adjustments:** the same three figures for adjustments
-  without a `category_id`.
+- **Uncategorized adjustments:** the same three figures for `adjustment`
+  transactions, which never carry an allocation.
 
 Money in and out are never netted against each other on these last two lines,
 and neither line counts toward Income or Expenses. Every transaction in the
 period is counted in exactly one of: Income/Expenses, transfers, Unclassified,
 or Uncategorized adjustments.
 
-Category-group spending sums categories through `GoldCategory.group_id`.
+Category-group spending sums allocations through `GoldCategory.group_id`.
+Because a transaction's allocations sum exactly to its amount, category
+spending still adds up to Expenses — and keeps adding up once a transaction
+carries more than one allocation. Analytics must never mix the two facts in one
+sum: a transaction and its allocations are the same money.
 Account balance is the snapshot's `closing_balance`, summed across accounts
 for one month only; balances are never summed across months.
 

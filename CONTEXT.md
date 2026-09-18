@@ -34,9 +34,17 @@ household's data)
 
 **Booked transaction**:
 A transaction whose source row Silver maps to `booking_status=booked`.
-Pending and cancelled rows remain provenance. A booked transaction carries
-at most one category and is never split across categories.
-_Avoid_: Transaction in Bronze/Silver (too broad); split, allocation
+Pending and cancelled rows remain provenance. A booked transaction has one
+type; its category reaches it through a Category allocation.
+_Avoid_: Transaction in Bronze/Silver (too broad)
+
+**Category allocation**:
+A record that a stated amount of one Booked transaction belongs to one
+category. It is the only way a category reaches a transaction, and the
+allocations of a transaction always sum to its amount. A classified
+transaction has exactly one for now; dividing a mixed purchase into several is
+a later release.
+_Avoid_: Split (the act, not the record), transaction category
 
 **Refund**:
 Money returned against an earlier categorized movement. It nets against that

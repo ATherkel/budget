@@ -17,14 +17,18 @@ first-release Gold model.
 
 ## Decision
 
-Gold is a small dimensional model with two business processes and two facts:
+Gold is a small dimensional model with three business processes and three
+facts:
 
 - **Booked transaction fact**: one row per booked transaction on one account.
+- **Category allocation fact**: one row per category allocation of a booked
+  transaction, exactly one per classified transaction in the first release
+  ([ADR-008](ADR-008-category-allocation-grain.md)).
 - **Monthly balance snapshot fact**: one row per account per reporting month
   of the account's managed period, including months with no transactions.
 
-Both facts share conformed **Account** and **Date** dimensions. The
-transaction fact also references the **Category** dimension, which has a fixed
+All three facts share conformed **Account** and **Date** dimensions. The
+allocation fact also references the **Category** dimension, which has a fixed
 two-level hierarchy (category group → category). All first-release dimensions
 are Type 1 (current interpretation) and are keyed by durable, household-assigned
 identifiers. There are no surrogate keys and no Type 2 history.
@@ -34,8 +38,8 @@ on every transaction and coverage on every monthly balance snapshot. Analytics
 reads coverage and never recomputes it.
 
 The consumer contract is star-shaped and storage-neutral. One `GoldRepository`
-returns accounts, categories, transactions, and monthly balance snapshots as
-typed records. Source lineage, such as the parent Silver transaction and how a
+returns accounts, categories, transactions, category allocations, and monthly
+balance snapshots as typed records. Source lineage, such as the parent Silver transaction and how a
 classification was derived, sits behind a separate `GoldLineageRepository` for
 review and audit tooling only. Analytics and presentation must not depend on
 it.
@@ -69,5 +73,6 @@ it.
 - Silver must supply a stable canonical identity and a deterministic per-account
   order for booked transactions, including within a transaction date. ADR-009
   defines how, using the latest admitted export for each date.
-- Introducing Type 2 dimensions, category allocations, a counterparty
-  dimension, or daily snapshots later is a contract version change.
+- Introducing Type 2 dimensions, a counterparty dimension, or daily snapshots
+  later is a contract version change. Authoring several allocations per
+  transaction is not: that grain is published from the first release.

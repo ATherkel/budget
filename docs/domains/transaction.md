@@ -35,9 +35,12 @@ end.
   separately.
 - **Unknown:** valid imported record awaiting classification.
 
-A transaction is classified as a whole: it has exactly one type and at most
-one category, and it is never split across categories
-([ADR-008](../decisions/ADR-008-single-category-per-transaction.md)).
+A transaction has exactly one type. Its category is not an attribute of the
+transaction but a **category allocation**: a record that this transaction's
+money belongs to that category. A classified transaction has exactly one
+allocation, for its whole amount; dividing a mixed purchase into several is a
+later release, and needs no change to what a transaction means
+([ADR-008](../decisions/ADR-008-category-allocation-grain.md)).
 
 ## Lifecycle
 

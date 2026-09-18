@@ -12,13 +12,16 @@ Initial category attributes:
 - active state
 
 The hierarchy has exactly two levels, category group → category. Only a
-category is ever assigned to a transaction; a category group exists for
+category is ever allocated to a transaction; a category group exists for
 rollups. Renaming a category or moving it to another group restates all
 reports (current interpretation). Deliberately reclassifying past transactions
 is a classification change, not a category change.
 
-A classified booked transaction carries exactly one category. It is never
-split across categories ([ADR-008](../decisions/ADR-008-single-category-per-transaction.md)).
+A category reaches a transaction through a **category allocation**, a record
+of how much of that transaction belongs to the category. A classified
+transaction has exactly one allocation, for its whole amount, and no way to
+author a second exists yet; the allocations of a transaction always sum to its
+amount ([ADR-008](../decisions/ADR-008-category-allocation-grain.md)).
 
 Bank-provided categories in the current CSV exports are useful classification
 signals but are not authoritative. They are retained as provenance in Silver;
