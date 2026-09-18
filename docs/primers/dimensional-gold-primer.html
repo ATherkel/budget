@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dimensional Gold Primer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,500;0,600;0,700;1,500&display=swap">
+<style>
+  :root{
+    --paper:#F5F7F9;
+    --card:#FFFFFF;
+    --sunk:#ECEFF3;
+    --ink:#161A20;
+    --ink-2:#39424F;
+    --muted:#69737F;
+    --rule:#DCE1E7;
+    --rule-2:#C6CDD6;
+    --accent:#0B6B6B;
+    --accent-soft:#E2EFEE;
+    --ok:#2C7A54;
+    --ok-soft:#E3F1E9;
+    --bad:#AB362A;
+    --bad-soft:#F8E6E3;
+    --warn:#8E6010;
+    --warn-soft:#F8EEDC;
+    --shadow:0 1px 2px rgba(22,26,32,.05), 0 8px 24px -16px rgba(22,26,32,.28);
+    --ff-serif:"IBM Plex Serif", Georgia, "Times New Roman", serif;
+    --ff-sans:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --ff-mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#111419;
+      --card:#181C23;
+      --sunk:#1F242C;
+      --ink:#E7EBF1;
+      --ink-2:#BFC7D2;
+      --muted:#8E99A7;
+      --rule:#2A3039;
+      --rule-2:#3B434E;
+      --accent:#54B5AE;
+      --accent-soft:#12302F;
+      --ok:#62BE8C;
+      --ok-soft:#142A20;
+      --bad:#E48173;
+      --bad-soft:#331C19;
+      --warn:#D7A445;
+      --warn-soft:#2E2617;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#111419;
+    --card:#181C23;
+    --sunk:#1F242C;
+    --ink:#E7EBF1;
+    --ink-2:#BFC7D2;
+    --muted:#8E99A7;
+    --rule:#2A3039;
+    --rule-2:#3B434E;
+    --accent:#54B5AE;
+    --accent-soft:#12302F;
+    --ok:#62BE8C;
+    --ok-soft:#142A20;
+    --bad:#E48173;
+    --bad-soft:#331C19;
+    --warn:#D7A445;
+    --warn-soft:#2E2617;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+    color-scheme: dark;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--ff-sans);
+    font-size:16px;
+    line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- progress bar ---------- */
+  .topbar{
+    position:sticky;
+    top:env(safe-area-inset-top, 0px);
+    z-index:40;
+    background:color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--rule);
+  }
+  .topbar-in{
+    max-width:52rem;margin:0 auto;
+    padding:.6rem 1rem;
+    display:flex;align-items:center;gap:.85rem;
+  }
+  .topbar-title{
+    font-family:var(--ff-serif);font-weight:600;font-size:.94rem;
+    letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .track{flex:1;height:5px;border-radius:99px;background:var(--rule);overflow:hidden;min-width:60px}
+  .track > i{display:block;height:100%;width:0%;background:var(--accent);border-radius:99px;transition:width .35s cubic-bezier(.4,0,.2,1)}
+  .tally{
+    font-family:var(--ff-mono);font-size:.76rem;font-variant-numeric:tabular-nums;
+    color:var(--muted);white-space:nowrap;
+  }
+
+  /* ---------- page frame ---------- */
+  .wrap{max-width:52rem;margin:0 auto;padding-inline:1rem;padding-block:2.4rem 5rem}
+
+  .eyebrow{
+    font-family:var(--ff-mono);font-size:.72rem;letter-spacing:.11em;text-transform:uppercase;
+    color:var(--accent);font-weight:500;margin:0 0 .7rem;
+  }
+  h1{
+    font-family:var(--ff-serif);font-weight:700;font-size:clamp(1.9rem,6vw,2.7rem);
+    line-height:1.12;letter-spacing:-.022em;margin:0 0 .8rem;text-wrap:balance;
+  }
+  .standfirst{font-size:1.06rem;color:var(--ink-2);max-width:40rem;margin:0 0 1.5rem}
+  .standfirst strong{color:var(--ink);font-weight:600}
+
+  .callout{
+    background:var(--card);border:1px solid var(--rule);border-left:3px solid var(--accent);
+    border-radius:0 10px 10px 0;padding:1rem 1.15rem;margin:1.5rem 0;box-shadow:var(--shadow);
+  }
+  .callout p{margin:0;max-width:42rem}
+  .callout p + p{margin-top:.7rem}
+  .callout.warnbox{border-left-color:var(--warn)}
+  .callout.warnbox .callout-h{color:var(--warn)}
+  .callout-h{
+    font-family:var(--ff-mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--accent);font-weight:600;margin:0 0 .5rem;
+  }
+
+  /* ---------- contents ---------- */
+  .toc{margin:2.2rem 0 3rem;border-top:1px solid var(--rule);padding-top:1.2rem}
+  .toc-h{
+    font-family:var(--ff-mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:0 0 .85rem;
+  }
+  .toc-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:.3rem}
+  .toc-item{
+    display:flex;align-items:baseline;gap:.6rem;
+    padding:.4rem .55rem;border-radius:7px;text-decoration:none;color:var(--ink-2);
+    font-size:.88rem;line-height:1.35;border:1px solid transparent;
+  }
+  .toc-item:hover{background:var(--sunk);color:var(--ink)}
+  .toc-item:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .toc-item .n{
+    font-family:var(--ff-mono);font-size:.72rem;color:var(--muted);
+    font-variant-numeric:tabular-nums;flex:none;
+  }
+  .toc-item.done{color:var(--muted)}
+  .toc-item.done .n{color:var(--ok)}
+  .toc-item.done .t{text-decoration:line-through;text-decoration-color:var(--rule-2)}
+
+  /* ---------- modules ---------- */
+  .mod{
+    background:var(--card);border:1px solid var(--rule);border-radius:12px;
+    padding:1.5rem 1.35rem 1.1rem;margin:0 0 1.15rem;
+    box-shadow:var(--shadow);
+    scroll-margin-top:5rem;
+    border-left:3px solid var(--rule-2);
+    transition:border-left-color .3s ease;
+  }
+  .mod.done{border-left-color:var(--ok)}
+  .mod-head{display:flex;gap:.9rem;align-items:baseline;margin-bottom:.15rem}
+  .mod-n{
+    font-family:var(--ff-mono);font-size:.78rem;font-weight:600;color:var(--accent);
+    font-variant-numeric:tabular-nums;flex:none;padding-top:.28rem;
+  }
+  .mod.done .mod-n{color:var(--ok)}
+  .mod h2{
+    font-family:var(--ff-serif);font-weight:600;font-size:1.3rem;line-height:1.25;
+    letter-spacing:-.015em;margin:0;text-wrap:balance;
+  }
+  .goal{
+    font-size:.86rem;color:var(--muted);font-style:italic;font-family:var(--ff-serif);
+    margin:.45rem 0 1.1rem;padding-left:calc(.78rem + .9rem + 1ch);
+  }
+  .mod-body > *:first-child{margin-top:0}
+  .mod-body p{margin:0 0 .9rem;max-width:42rem}
+  .mod-body h3{
+    font-family:var(--ff-sans);font-size:.8rem;font-weight:600;letter-spacing:.04em;
+    text-transform:uppercase;color:var(--muted);margin:1.6rem 0 .6rem;
+  }
+  .mod-body ul,.mod-body ol{margin:0 0 .9rem;padding-left:1.15rem;max-width:42rem}
+  .mod-body li{margin:0 0 .4rem}
+  .mod-body li::marker{color:var(--muted)}
+  code{
+    font-family:var(--ff-mono);font-size:.855em;
+    background:var(--sunk);padding:.1em .34em;border-radius:4px;
+    border:1px solid var(--rule);
+  }
+  pre{
+    font-family:var(--ff-mono);font-size:.78rem;line-height:1.6;
+    background:var(--sunk);border:1px solid var(--rule);border-radius:9px;
+    padding:.9rem 1rem;overflow-x:auto;margin:0 0 1rem;color:var(--ink-2);
+  }
+  pre code{background:none;border:0;padding:0;font-size:1em}
+  b,strong{font-weight:600;color:var(--ink)}
+  em{font-style:italic}
+
+  /* ---------- tables ---------- */
+  .scroller{overflow-x:auto;margin:0 0 1rem;border:1px solid var(--rule);border-radius:9px;background:var(--sunk)}
+  table.ledger{
+    border-collapse:collapse;width:100%;min-width:32rem;
+    font-family:var(--ff-mono);font-size:.795rem;font-variant-numeric:tabular-nums;
+  }
+  table.ledger caption{
+    caption-side:top;text-align:left;padding:.6rem .8rem .45rem;
+    font-family:var(--ff-sans);font-size:.78rem;color:var(--muted);font-weight:500;
+    border-bottom:1px solid var(--rule);
+  }
+  table.ledger th{
+    text-align:left;font-weight:600;color:var(--muted);font-size:.72rem;
+    letter-spacing:.04em;text-transform:uppercase;padding:.5rem .7rem;
+    border-bottom:1px solid var(--rule-2);white-space:nowrap;
+  }
+  table.ledger td{padding:.38rem .7rem;border-bottom:1px solid var(--rule);white-space:nowrap;color:var(--ink-2)}
+  table.ledger tbody tr:last-child td{border-bottom:0}
+  table.ledger td.num{text-align:right}
+  table.ledger .note{font-family:var(--ff-sans);font-size:.74rem;white-space:normal;color:var(--muted)}
+  tr.hit td{background:var(--bad-soft)}
+  tr.hit td{color:var(--ink)}
+  tr.good td{background:var(--ok-soft)}
+  .chk{color:var(--ok);font-weight:600}
+  .xmk{color:var(--bad);font-weight:600}
+
+  table.grid{
+    border-collapse:collapse;width:100%;min-width:32rem;
+    font-size:.84rem;font-family:var(--ff-sans);
+  }
+  table.grid th{
+    text-align:left;font-weight:600;color:var(--muted);font-size:.71rem;letter-spacing:.05em;
+    text-transform:uppercase;padding:.55rem .75rem;border-bottom:1px solid var(--rule-2);
+    vertical-align:bottom;
+  }
+  table.grid td{padding:.55rem .75rem;border-bottom:1px solid var(--rule);vertical-align:top;color:var(--ink-2);line-height:1.5}
+  table.grid tbody tr:last-child td{border-bottom:0}
+  table.grid td:first-child{color:var(--ink);font-weight:500}
+  table.grid td.nw{white-space:nowrap}
+
+  /* ---------- star schema figure ---------- */
+  figure.fig{margin:0 0 1.1rem;padding:1rem .9rem .8rem;background:var(--sunk);border:1px solid var(--rule);border-radius:9px}
+  figure.fig figcaption{font-family:var(--ff-sans);font-size:.76rem;color:var(--muted);margin-top:.75rem;line-height:1.5}
+  figure.fig svg{display:block;width:100%;height:auto;max-width:100%}
+  .sv-fact{fill:var(--accent-soft);stroke:var(--accent)}
+  .sv-dim{fill:var(--card);stroke:var(--rule-2)}
+  .sv-link{stroke:var(--rule-2);fill:none}
+  .sv-t{fill:var(--ink);font-family:var(--ff-sans);font-size:11px;font-weight:600}
+  .sv-s{fill:var(--muted);font-family:var(--ff-mono);font-size:9px}
+  .sv-k{fill:var(--accent);font-family:var(--ff-mono);font-size:9px}
+
+  /* ---------- decision rows ---------- */
+  .qlist{display:grid;gap:0;border:1px solid var(--rule);border-radius:9px;overflow:hidden;margin:0 0 1rem}
+  .qrow{display:grid;grid-template-columns:2.6rem 1fr;gap:.7rem;padding:.6rem .8rem;border-bottom:1px solid var(--rule);background:var(--sunk);align-items:baseline}
+  .qrow:last-child{border-bottom:0}
+  .qrow .qn{font-family:var(--ff-mono);font-size:.72rem;font-weight:600;color:var(--accent)}
+  .qrow .qt{font-size:.86rem;color:var(--ink-2);line-height:1.5}
+  .qrow .qt b{color:var(--ink)}
+  .qrow.moved{background:var(--warn-soft)}
+  .qrow.moved .qn{color:var(--warn)}
+
+  /* ---------- finding cards ---------- */
+  .find{border:1px solid var(--rule);border-radius:9px;padding:.85rem .9rem;margin:0 0 .65rem;background:var(--sunk)}
+  .find.high{border-left:3px solid var(--bad)}
+  .find.mid{border-left:3px solid var(--warn)}
+  .find.info{border-left:3px solid var(--accent)}
+  .find-h{display:flex;gap:.55rem;align-items:baseline;flex-wrap:wrap;margin-bottom:.4rem}
+  .find-t{font-weight:600;font-size:.93rem;color:var(--ink);line-height:1.3;flex:1 1 14rem}
+  .find p{margin:0 0 .5rem;font-size:.88rem;color:var(--ink-2);max-width:42rem}
+  .find p:last-child{margin-bottom:0}
+  .find .where{font-family:var(--ff-mono);font-size:.71rem;color:var(--muted);background:var(--card);padding:.06rem .38rem;border-radius:4px;border:1px solid var(--rule)}
+
+  .tag{
+    display:inline-block;font-family:var(--ff-mono);font-size:.66rem;letter-spacing:.05em;
+    text-transform:uppercase;padding:.08rem .4rem;border-radius:4px;font-weight:600;
+    vertical-align:.08em;
+  }
+  .tag.t-new{background:var(--accent-soft);color:var(--accent)}
+  .tag.t-stale{background:var(--warn-soft);color:var(--warn)}
+  .tag.t-check{background:var(--bad-soft);color:var(--bad)}
+  .tag.t-ok{background:var(--ok-soft);color:var(--ok)}
+
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:0 0 1rem}
+  ol.steps > li{
+    counter-increment:s;position:relative;padding-left:2rem;margin-bottom:.65rem;
+    font-size:.92rem;max-width:42rem;
+  }
+  ol.steps > li::before{
+    content:counter(s);position:absolute;left:0;top:.08rem;
+    width:1.35rem;height:1.35rem;border-radius:50%;
+    background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);
+    font-family:var(--ff-mono);font-size:.7rem;font-weight:600;
+    display:flex;align-items:center;justify-content:center;
+  }
+
+  /* ---------- check-off footer ---------- */
+  .mod-foot{
+    margin-top:1.25rem;padding-top:.85rem;border-top:1px solid var(--rule);
+    display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;
+  }
+  .checkoff{
+    display:inline-flex;align-items:center;gap:.55rem;cursor:pointer;
+    font-size:.86rem;font-weight:500;color:var(--muted);
+    background:none;border:1px solid var(--rule-2);border-radius:99px;
+    padding:.32rem .8rem .32rem .42rem;
+    font-family:var(--ff-sans);
+    transition:color .18s ease,border-color .18s ease,background .18s ease;
+  }
+  .checkoff:hover{border-color:var(--accent);color:var(--ink)}
+  .checkoff:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .box{
+    width:1.15rem;height:1.15rem;border-radius:5px;border:1.5px solid var(--rule-2);
+    background:var(--card);flex:none;display:flex;align-items:center;justify-content:center;
+    transition:background .18s ease,border-color .18s ease;
+  }
+  .box svg{width:.75rem;height:.75rem;opacity:0;transition:opacity .18s ease}
+  .checkoff[aria-pressed="true"]{color:var(--ok);border-color:var(--ok)}
+  .checkoff[aria-pressed="true"] .box{background:var(--ok);border-color:var(--ok)}
+  .checkoff[aria-pressed="true"] .box svg{opacity:1}
+  .box svg path{stroke:#fff;stroke-width:2.6;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+  .verdict{
+    background:var(--accent-soft);border:1px solid var(--accent);border-radius:12px;
+    padding:1.3rem 1.25rem;margin:1.15rem 0;
+  }
+  .verdict h3{color:var(--accent);margin-top:0}
+  .verdict p{max-width:42rem}
+  .verdict p:last-child{margin-bottom:0}
+
+  .footer{
+    margin-top:2.5rem;padding-top:1.2rem;border-top:1px solid var(--rule);
+    font-size:.8rem;color:var(--muted);display:flex;justify-content:space-between;
+    gap:1rem;flex-wrap:wrap;align-items:center;
+  }
+  .reset{
+    background:none;border:1px solid var(--rule);border-radius:7px;color:var(--muted);
+    font-family:var(--ff-sans);font-size:.78rem;padding:.25rem .6rem;cursor:pointer;
+  }
+  .reset:hover{border-color:var(--bad);color:var(--bad)}
+  .reset:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:2px}
+
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{transition-duration:.01ms !important;animation-duration:.01ms !important}
+  }
+</style>
+
+<div class="topbar">
+  <div class="topbar-in">
+    <span class="topbar-title">Dimensional Gold</span>
+    <span class="track"><i id="bar"></i></span>
+    <span class="tally" id="tally">0 / 14</span>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <p class="eyebrow">Issue #6 · PR #18 · ATherkel/budget</p>
+  <h1>What shape do you hand a year of transactions to a dashboard?</h1>
+  <p class="standfirst">
+    The agent comment on issue #6 answers twenty-two questions in nineteen thousand characters,
+    and PR #18 turns those answers into fourteen changed documents. This page is the same
+    material in fourteen short modules, each with a worked example in real kroner.
+    <strong>Tick a module off once you can explain it to someone else.</strong> Your progress
+    is saved in this browser.
+  </p>
+
+  <div class="callout">
+    <p class="callout-h">About this file</p>
+    <p>
+      This is a <strong>primer, not a contract.</strong> It explains what
+      <code>docs/architecture/gold-contract.md</code>, <code>gold-layer.md</code>, ADR-007 and
+      ADR-008 decide; it never decides anything itself. Where this page and one of those documents
+      disagree, the document is right and this page is out of date — say so and it gets fixed.
+    </p>
+    <p>
+      It is the companion to the <em>Overlapping Exports</em> primer, which covers PRs #16 and #31.
+      That one is about getting the transactions <em>in</em> and knowing they are right. This one
+      starts the moment they are right, and asks what to do with them.
+    </p>
+    <p>
+      It lives in the repository at <code>docs/primers/dimensional-gold-primer.html</code>; that copy
+      opens by double-clicking and needs no server. Your ticks are saved in this browser as you go.
+    </p>
+  </div>
+
+  <div class="callout warnbox">
+    <p class="callout-h">Nothing here was agreed by a human</p>
+    <p>
+      Every answer on issue #6 came from an agent running <code>/grill-with-docs</code> while you
+      were away, told to take the recommended option each time. ADR-007 and ADR-008 say
+      <strong>Proposed</strong>. The contract says <strong>0.2, proposed</strong>. Module 14 is the
+      short list of things to push back on before any of that becomes <code>Accepted</code>.
+    </p>
+  </div>
+
+  <div class="callout">
+    <p class="callout-h">The short version</p>
+    <p>
+      There are <strong>two facts</strong> (transactions, monthly balances), <strong>three
+      dimensions</strong> (account, category, date), and <strong>two doors</strong> (the report
+      interface and the lineage interface). Modules 01–10 are those seven things. Module 11 is the
+      whole worked example. Modules 12–14 are what changed, what's stale, and what to check.
+    </p>
+    <p>
+      Budget about 25 minutes. If you only have 10, read 01, 05, 08, 13 and 14.
+    </p>
+  </div>
+
+  <nav class="toc">
+    <p class="toc-h">Contents</p>
+    <div class="toc-list" id="toc"></div>
+  </nav>
+
+  <!-- ============ 01 ============ -->
+  <section class="mod" id="m1" data-key="m1">
+    <div class="mod-head"><span class="mod-n">01</span><h2>Three things a list of transactions cannot say</h2></div>
+    <p class="goal">After this: you can state why the existing contract had to be rewritten at all.</p>
+    <div class="mod-body">
+      <p>
+        The Gold contract you have today hands out one thing: a list of transactions, through
+        <code>list_transactions()</code>. That sounds like everything. It isn't, and here are the
+        three sentences it structurally cannot produce.
+      </p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>You want to ask</th><th>Why a transaction list can't answer</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>"What was in my savings account in February?"</td>
+              <td>Nothing happened in February, so there are no rows, so there is no balance. The money was there the whole time and the list is silent about it.</td>
+            </tr>
+            <tr>
+              <td>"Did I really spend nothing in June, or do I just not have June?"</td>
+              <td>Both are zero rows. Identical. This is the failure the whole import stack exists to prevent, and a bare list reintroduces it at the last step.</td>
+            </tr>
+            <tr>
+              <td>"How much went on Housing?"</td>
+              <td>"Housing" is a group of categories. The list has a category on each row and nowhere for the group to live, so every consumer would hardcode its own grouping.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Each of those could be patched by having the dashboard work it out. That is exactly what
+        the current documents say: analytics derives coverage, analytics sums the balances,
+        analytics knows the groups. Then forecasting arrives and derives it again, slightly
+        differently, and an API arrives and derives it a third way.
+      </p>
+
+      <div class="callout">
+        <p class="callout-h">The one sentence</p>
+        <p>
+          <strong>Gold should publish the answers, not the raw material the answers are worked out
+          from</strong> — because every consumer that works them out separately is a chance for two
+          screens to disagree about your February.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 02 ============ -->
+  <section class="mod" id="m2" data-key="m2">
+    <div class="mod-head"><span class="mod-n">02</span><h2>Facts, dimensions, grain — the whole of Kimball you need</h2></div>
+    <p class="goal">After this: you can read the phrase "declared grain" and know what it commits you to.</p>
+    <div class="mod-body">
+      <p>Three words carry the entire design. They are less abstract than they sound.</p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Word</th><th>Means</th><th>Here</th></tr></thead>
+          <tbody>
+            <tr><td class="nw">Fact</td><td>A thing that happened, with numbers on it you can add up.</td><td>A booked transaction. A month-end balance.</td></tr>
+            <tr><td class="nw">Dimension</td><td>A thing you slice the facts <em>by</em>. It has no numbers to add.</td><td>Account, category, date.</td></tr>
+            <tr><td class="nw">Grain</td><td>What exactly one row means. Stated in one sentence, before anything else.</td><td>"One booked transaction on one account."</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Grain is the one that bites. Once you declare "one row = one booked transaction", you have
+        also declared that a row cannot be half groceries and half homeware — because that would
+        need two rows, and two rows would mean a different grain. That is module 03, and it is the
+        decision the ticket specifically refused to let an agent make by accident.
+      </p>
+
+      <h3>What the model looks like</h3>
+
+      <figure class="fig">
+        <svg viewBox="0 0 640 300" role="img" aria-label="Star schema: two fact tables in the centre sharing Account and Date dimensions, with Category joined only to the transaction fact.">
+          <!-- links -->
+          <g class="sv-link" stroke-width="1.5">
+            <path d="M150 62 L232 96"/>
+            <path d="M150 238 L232 128"/>
+            <path d="M490 62 L408 96"/>
+            <path d="M150 62 L232 218"/>
+            <path d="M150 238 L232 238"/>
+          </g>
+          <!-- dimensions -->
+          <g>
+            <rect class="sv-dim" x="18" y="34" width="132" height="56" rx="7" stroke-width="1.5"/>
+            <text class="sv-t" x="30" y="55">Account</text>
+            <text class="sv-s" x="30" y="70">joint-current</text>
+            <text class="sv-s" x="30" y="82">type · scope · DKK</text>
+
+            <rect class="sv-dim" x="18" y="210" width="132" height="56" rx="7" stroke-width="1.5"/>
+            <text class="sv-t" x="30" y="231">Date</text>
+            <text class="sv-s" x="30" y="246">2026-02-12</text>
+            <text class="sv-s" x="30" y="258">month derived</text>
+
+            <rect class="sv-dim" x="490" y="34" width="132" height="56" rx="7" stroke-width="1.5"/>
+            <text class="sv-t" x="502" y="55">Category</text>
+            <text class="sv-s" x="502" y="70">groceries</text>
+            <text class="sv-s" x="502" y="82">group: food</text>
+          </g>
+          <!-- facts -->
+          <g>
+            <rect class="sv-fact" x="232" y="76" width="176" height="64" rx="7" stroke-width="1.5"/>
+            <text class="sv-t" x="246" y="98">GoldTransaction</text>
+            <text class="sv-s" x="246" y="113">one booked transaction</text>
+            <text class="sv-k" x="246" y="128">amount · balance_after</text>
+
+            <rect class="sv-fact" x="232" y="204" width="176" height="64" rx="7" stroke-width="1.5"/>
+            <text class="sv-t" x="246" y="226">MonthlyBalanceSnapshot</text>
+            <text class="sv-s" x="246" y="241">one account, one month</text>
+            <text class="sv-k" x="246" y="256">opening · closing · coverage</text>
+          </g>
+        </svg>
+        <figcaption>
+          Two facts in the middle, dimensions around them — the shape Kimball calls a star. Account
+          and Date are <em>conformed</em>: both facts point at the same ones, which is what makes
+          "transactions and balances for March, by account" a single question rather than two
+          reports stapled together. Category joins only the transaction fact; a balance has no
+          category.
+        </figcaption>
+      </figure>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 03 ============ -->
+  <section class="mod" id="m3" data-key="m3">
+    <div class="mod-head"><span class="mod-n">03</span><h2>The receipt with two categories on it</h2></div>
+    <p class="goal">After this: you can say what ADR-008 gives up, and what it would cost to change your mind later.</p>
+    <div class="mod-body">
+      <p>
+        You spend 640 kr at Netto. 510 kr of it is food; 130 kr is a frying pan. Under this model
+        that transaction gets <strong>one</strong> category, and you pick which. There is no way to
+        split it. That is ADR-008, and it is deliberate.
+      </p>
+
+      <h3>What splitting would actually require</h3>
+      <ul>
+        <li>A screen where you sit and divide a transaction up, by hand, transaction by transaction.</li>
+        <li>A rule that the parts always add back to the total — and something sensible to do when they don't.</li>
+        <li>An answer for what happens when the frying pan is <em>returned</em>: which part of the original does the refund reverse?</li>
+      </ul>
+
+      <p>
+        None of that is hard exactly. It is just a workflow you would have to use forever, to make
+        the Housing total slightly more accurate than it already is. The bank gives one row per
+        purchase and no line items, so nothing in the source knows about the frying pan anyway.
+      </p>
+
+      <div class="callout">
+        <p class="callout-h">The door it leaves open</p>
+        <p>
+          If you do want splits later, they arrive as a <strong>second fact standing beside</strong>
+          the transaction fact — "one category allocation of one transaction" — not as a change to
+          what a transaction row means. The existing rows keep their meaning and their IDs. It costs
+          a contract version bump and a new ADR, and nothing you have already recorded is invalidated.
+        </p>
+      </div>
+
+      <p>
+        The rejected middle option is worth knowing about: build the allocation fact <em>now</em>,
+        with exactly one allocation per transaction, so the structure is ready. It was turned down
+        because it adds a type, a join and an invariant that buy you nothing at all until the day
+        splits actually exist.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 04 ============ -->
+  <section class="mod" id="m4" data-key="m4">
+    <div class="mod-head"><span class="mod-n">04</span><h2>Three dimensions, and none of them remember</h2></div>
+    <p class="goal">After this: you can predict what happens to last year's reports when you rename a category.</p>
+    <div class="mod-body">
+      <p>Account, Category, Date. That is the whole list. Two things about them matter.</p>
+
+      <h3>Category has exactly two levels, and always two</h3>
+      <p>
+        <code>groceries</code> sits inside the group <code>food</code>. <code>rent</code> and
+        <code>utilities</code> sit inside <code>housing</code>. You assign the category; you never
+        assign the group. Depth is fixed at two — not a tree you can nest arbitrarily — because a
+        tree of unknown depth needs recursive queries to roll anything up, and two levels already
+        gives you "Housing".
+      </p>
+
+      <h3>Nothing has a memory (Type 1)</h3>
+      <p>
+        Rename <code>groceries</code> to "Food &amp; household" and <strong>every report you have
+        ever run changes with it</strong>, back to the beginning. Move it into a different group and
+        last January's Housing total moves too. There is no "it was called X back then".
+      </p>
+
+      <div class="callout">
+        <p class="callout-h">The distinction that saves this</p>
+        <p>
+          Deciding that a <em>particular old transaction</em> was actually utilities, not groceries,
+          is <strong>not</strong> a dimension change. It is a change to that transaction's
+          classification — a fact change — and keeping a history of those is issue #8's problem, not
+          this model's. Type 1 dimensions don't stop you doing it.
+        </p>
+      </div>
+
+      <h3>Keys you chose, never keys the bank chose</h3>
+      <p>
+        An account is <code>joint-current</code>. A category is <code>groceries</code>. These are
+        names you assign and they never change. They are explicitly <em>never</em> derived from an
+        IBAN or a bank account number — switch banks and your history survives intact.
+      </p>
+
+      <p>
+        There is also no calendar table. A date is its own key, and the reporting month is derived
+        from it. Nothing in this release needs to know about holidays or pay periods, so storing a
+        table of them would be furniture.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 05 ============ -->
+  <section class="mod" id="m5" data-key="m5">
+    <div class="mod-head"><span class="mod-n">05</span><h2>A row for every month, including the quiet ones</h2></div>
+    <p class="goal">After this: you can explain why an absent row means something different from a zero.</p>
+    <div class="mod-body">
+      <p>
+        The second fact is <code>MonthlyBalanceSnapshot</code>: one row per account per month, with
+        an opening balance, a closing balance, and a coverage label. A month where nothing happened
+        <em>still gets a row</em>. That is the entire point of it.
+      </p>
+
+      <div class="scroller">
+        <table class="ledger">
+          <caption>joint-savings — one transaction in January, one in April, four rows</caption>
+          <thead><tr><th>Month</th><th class="num">Opening</th><th class="num">Closing</th><th>Coverage</th><th>What the row says</th></tr></thead>
+          <tbody>
+            <tr><td>2026-01</td><td class="num">50.000,00</td><td class="num">53.000,00</td><td>partial</td><td class="note">First month we track — nothing before it to check against.</td></tr>
+            <tr class="good"><td>2026-02</td><td class="num">53.000,00</td><td class="num">53.000,00</td><td>complete</td><td class="note">Nothing happened, <em>and we can prove it</em>.</td></tr>
+            <tr class="good"><td>2026-03</td><td class="num">53.000,00</td><td class="num">53.000,00</td><td>complete</td><td class="note">Same.</td></tr>
+            <tr><td>2026-04</td><td class="num">53.000,00</td><td class="num">53.012,40</td><td>complete</td><td class="note">12,40 kr of interest.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Which months get a row: the managed period</h3>
+      <p>
+        From the month of the account's first booked transaction, through the month it closed —
+        or, while it is open, through <strong>the latest month in the published data</strong>. Not
+        "today". Using today would mean a rebuild next Tuesday produces different rows from a
+        rebuild today, which makes the output impossible to compare with itself.
+      </p>
+
+      <p>
+        So <code>closed_on</code> is a real field on the account now, replacing a vague
+        active/inactive flag. Without it a closed account would keep producing rows forever,
+        every one of them saying <code>no_data</code>.
+      </p>
+
+      <div class="callout">
+        <p class="callout-h">The rule to remember</p>
+        <p>
+          <strong>No row at all means "outside the period we track this account".</strong> A row
+          saying <code>no_data</code> means "we track it, and we don't know". A row saying
+          <code>complete</code> with zero activity means "we track it, and we checked, and nothing
+          happened". Three different statements, three different shapes on the page.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 06 ============ -->
+  <section class="mod" id="m6" data-key="m6">
+    <div class="mod-head"><span class="mod-n">06</span><h2>Balances add sideways, never downwards</h2></div>
+    <p class="goal">After this: you can spot the wrong sum at a glance.</p>
+    <div class="mod-body">
+      <p>
+        Amounts add up any way you like. Balances don't — they are what Kimball calls
+        <strong>semi-additive</strong>, and it is worth ten seconds of your attention because the
+        wrong sum looks entirely plausible on a chart.
+      </p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Sum</th><th>Verdict</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="nw">April, across accounts<br><code>52.087,50 + 53.012,40</code></td>
+              <td><span class="chk">✓ 105.099,90</span> — two different pots of money at the same moment. This is your net worth in April, and it is a real number.</td>
+            </tr>
+            <tr>
+              <td class="nw">joint-current, Feb + Mar + Apr<br><code>37.537,50 + 35.587,50 + 52.087,50</code></td>
+              <td><span class="xmk">✗ 125.212,50</span> — meaningless. Mostly the same kroner counted three times. There is no question this number answers.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        The contract states this as an invariant, so the rule travels with the data instead of
+        living in whoever happens to be writing the dashboard. The same section also forbids adding
+        amounts across currencies — irrelevant today, since everything is DKK, but it means that
+        adding a second currency later cannot quietly corrupt a total that used to be right.
+      </p>
+
+      <p>
+        Currency, incidentally, lives on the <em>account</em>, not on each transaction. Every amount
+        and balance is in its account's currency, full stop.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 07 ============ -->
+  <section class="mod" id="m7" data-key="m7">
+    <div class="mod-head"><span class="mod-n">07</span><h2>The chain check moves into Gold</h2></div>
+    <p class="goal">After this: you can read a <code>balance_check</code> value and say what it proves.</p>
+    <div class="mod-body">
+      <p>
+        Each transaction carries the bank's stated balance after it. Walk an account in order and
+        each balance should be the previous one plus this amount. Gold now does that walk itself and
+        stamps the result on every transaction.
+      </p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Stamp</th><th>Means</th></tr></thead>
+          <tbody>
+            <tr><td class="nw"><code>opening</code></td><td>First transaction we have for this account. Nothing earlier to check it against, so it is taken on trust and becomes the anchor.</td></tr>
+            <tr><td class="nw"><code>consistent</code></td><td>The arithmetic ties out. This is the ordinary case.</td></tr>
+            <tr><td class="nw"><code>break</code></td><td>It doesn't tie out. Money moved that we cannot see.</td></tr>
+            <tr><td class="nw"><code>missing_balance</code></td><td>The source stated no balance on this row. The check bridges over it and carries on — it never invents the missing number.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>A break does not cascade</h3>
+      <p>
+        After a break, the chain <strong>re-anchors on the broken row's own stated balance</strong>
+        and carries on. One unexplained 500 kr does not turn the rest of your year red. In the worked
+        example, transaction 8 breaks and transaction 9 is <code>consistent</code> again:
+      </p>
+
+      <div class="scroller">
+        <table class="ledger">
+          <caption>joint-current, late February into March</caption>
+          <thead><tr><th>seq</th><th>Date</th><th class="num">Amount</th><th class="num">Balance</th><th>Check</th></tr></thead>
+          <tbody>
+            <tr><td>7</td><td>2026-02-25</td><td class="num">25.000,00</td><td class="num">37.537,50</td><td class="note"><span class="chk">✓</span> consistent</td></tr>
+            <tr class="hit"><td>8</td><td>2026-03-02</td><td class="num">−450,00</td><td class="num">36.587,50</td><td class="note"><span class="xmk">✗</span> break — expected 37.087,50, off by 500,00</td></tr>
+            <tr><td>9</td><td>2026-03-20</td><td class="num">−1.000,00</td><td class="num">35.587,50</td><td class="note"><span class="chk">✓</span> consistent — re-anchored on 36.587,50</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Why Gold and not the dashboard</h3>
+      <p>
+        Doing this walk needs two things the dashboard has no business holding: the order of
+        transactions <em>within</em> a single date, which only the import layer knows, and each
+        account's managed period. It also needs doing exactly once — if forecasting and an API each
+        re-derive it, they will eventually disagree.
+      </p>
+      <p>
+        This is the part of ADR-007 that changes an earlier decision: the accepted documents said
+        analytics derives all this. The <em>meaning</em> of every check is unchanged. Only the place
+        it happens moves.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 08 ============ -->
+  <section class="mod" id="m8" data-key="m8">
+    <div class="mod-head"><span class="mod-n">08</span><h2>Why February is partial when nothing about February is wrong</h2></div>
+    <p class="goal">After this: you can explain the most counterintuitive rule in the model.</p>
+    <div class="mod-body">
+      <p>Each account-month carries one of three labels:</p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Label</th><th>Means</th></tr></thead>
+          <tbody>
+            <tr><td class="nw"><code>complete</code></td><td>Evidence spans the whole month and every link in and out of it checks out. A zero here is a <em>proven</em> zero.</td></tr>
+            <tr><td class="nw"><code>partial</code></td><td>There is data, but there is a gap or a broken link. Don't trust the total.</td></tr>
+            <tr><td class="nw"><code>no_data</code></td><td>No evidence reaches this month. The system has nothing to say, and the dashboard must never draw that as a zero.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>The surprising part</h3>
+      <p>
+        In the worked example, <strong>every single February check is <code>consistent</code></strong>.
+        Every row ties out. February is still <code>partial</code>.
+      </p>
+
+      <p>
+        The reason is that a <em>link</em> joins two consecutive transactions, and its span covers
+        both their dates. The broken link runs from 25 February to 2 March, so its span includes the
+        end of February. The 500 kr that went missing could have moved on either side of midnight on
+        the 28th — nothing in the data says which. Calling February complete would be claiming to
+        know something you don't.
+      </p>
+
+      <div class="scroller">
+        <table class="ledger">
+          <caption>The same break, seen as coverage</caption>
+          <thead><tr><th>Month</th><th class="num">Opening</th><th class="num">Closing</th><th>Coverage</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr><td>2026-02</td><td class="num">21.557,50</td><td class="num">37.537,50</td><td>partial</td><td class="note">Every check consistent — but the March break's link starts here.</td></tr>
+            <tr class="hit"><td>2026-03</td><td class="num">37.037,50</td><td class="num">35.587,50</td><td>partial</td><td class="note">The break itself. Note the opening is 500,00 below February's closing — that gap <em>is</em> the missing money, visible on the page.</td></tr>
+            <tr class="good"><td>2026-04</td><td class="num">35.587,50</td><td class="num">52.087,50</td><td>complete</td><td class="note">Past the break. 35.587,50 − 8.500,00 + 25.000,00 = 52.087,50.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout">
+        <p class="callout-h">Worth noticing</p>
+        <p>
+          March's opening balance is <strong>not</strong> February's closing balance. They differ by
+          exactly the 500 kr that is unaccounted for. The model doesn't paper over the gap and it
+          doesn't correct it — it puts the discrepancy somewhere you can see it. That is the same
+          instinct as quarantining a bad export rather than importing three quarters of it.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 09 ============ -->
+  <section class="mod" id="m9" data-key="m9">
+    <div class="mod-head"><span class="mod-n">09</span><h2>A refund stops pretending to be an adjustment</h2></div>
+    <p class="goal">After this: you can check the February expense figure yourself, and see what it used to be.</p>
+    <div class="mod-body">
+      <p>
+        Your glossary says, in your own words: <em>"A Refund is not an Adjustment."</em> The contract
+        encoded a refund as <code>transaction_type = adjustment</code> with a category attached,
+        because that avoided a contract change at the time. The contract is being rewritten anyway,
+        so the glossary wins: <strong><code>refund</code> is now its own type.</strong>
+      </p>
+
+      <p>One thing gets simpler immediately — the rule for when a category is required:</p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Type</th><th>Category</th></tr></thead>
+          <tbody>
+            <tr><td class="nw"><code>income</code> · <code>expense</code> · <code>refund</code></td><td>Required.</td></tr>
+            <tr><td class="nw"><code>transfer</code> · <code>adjustment</code> · <code>unknown</code></td><td>Always null.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>No exceptions, no conditional. Previously <code>adjustment</code> was both, depending.</p>
+
+      <h3>And Expenses changes — check this one</h3>
+      <p>
+        Under the old wording, household <em>Expenses</em> was the absolute sum of expense
+        transactions, while <em>category</em> spending netted refunds off. So the categories didn't
+        add up to the total. February, worked both ways:
+      </p>
+
+      <div class="scroller">
+        <table class="ledger">
+          <caption>February on joint-current: rent 8.500,00 · groceries 640,00 · a 120,00 grocery refund</caption>
+          <thead><tr><th>Measure</th><th class="num">Old</th><th class="num">New</th></tr></thead>
+          <tbody>
+            <tr><td>Housing (group)</td><td class="num">8.500,00</td><td class="num">8.500,00</td></tr>
+            <tr><td>Food (group)</td><td class="num">520,00</td><td class="num">520,00</td></tr>
+            <tr><td>Categories add to</td><td class="num">9.020,00</td><td class="num">9.020,00</td></tr>
+            <tr class="hit"><td>Household Expenses</td><td class="num">9.140,00</td><td class="num">—</td></tr>
+            <tr class="good"><td>Household Expenses</td><td class="num">—</td><td class="num">9.020,00</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        The new rule is <code>Expenses = |sum of expenses| − sum of refunds</code>, so
+        9.140,00 − 120,00 = <strong>9.020,00</strong>, and the two rows finally agree. Your savings
+        rate goes up slightly, correctly, because the 120 kr came back.
+      </p>
+
+      <div class="callout warnbox">
+        <p class="callout-h">This reverses a decision you already made</p>
+        <p>
+          The <code>adjustment</code> encoding was a deliberate choice on issue #4, taken to avoid
+          exactly this kind of contract churn. Overturning it is defensible — but it is the clearest
+          case on this page of an agent changing something a human had settled. It is item one on
+          the check-first list.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 10 ============ -->
+  <section class="mod" id="m10" data-key="m10">
+    <div class="mod-head"><span class="mod-n">10</span><h2>Two doors, and who is allowed through each</h2></div>
+    <p class="goal">After this: you can say what the dashboard is not allowed to see, and why that matters.</p>
+    <div class="mod-body">
+      <p>Everything a report needs comes through one small interface:</p>
+
+<pre><code>class GoldRepository(Protocol):
+    def accounts(self)          -&gt; Sequence[GoldAccount]: ...
+    def categories(self)        -&gt; Sequence[GoldCategory]: ...
+    def transactions(self, *, start_date, end_date, account_ids=None) -&gt; ...
+    def monthly_balances(self, *, start_month, end_month, account_ids=None) -&gt; ...</code></pre>
+
+      <p>
+        Four methods. Ranges are inclusive. Nothing in there names a table, a CSV column, or
+        anything the bank invented. Behind a separate door, for review and audit tooling only:
+      </p>
+
+<pre><code>class GoldLineageRepository(Protocol):
+    def transaction_lineage(self, transaction_ids) -&gt; Sequence[GoldTransactionLineage]: ...</code></pre>
+
+      <h3>What moved behind that second door</h3>
+      <ul>
+        <li><code>silver_transaction_id</code> — the link back to the raw record. The current contract hands this to analytics, which its own agent brief forbids. This fixes that.</li>
+        <li><code>classification_source</code> and <code>classification_version</code> — whether a category came from a rule or from you, and which rule set said so.</li>
+      </ul>
+
+      <h3>And what was dropped entirely</h3>
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Field</th><th>Why it went</th></tr></thead>
+          <tbody>
+            <tr><td class="nw"><code>reporting_month</code></td><td>Derivable from the date. Storing it twice means it can disagree with itself.</td></tr>
+            <tr><td class="nw"><code>created_at</code></td><td>That is publication metadata — when a build ran. Issue #8's business.</td></tr>
+            <tr><td class="nw"><code>counterparty</code></td><td>Nothing produces it and no measure uses it. It can come back as a real dimension through issue #7 if merchant reporting ever matters.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        The practical effect of the split: if you ever want to know <em>why</em> a transaction is
+        filed under groceries, that question has an answer and a place to ask it — and the dashboard
+        still cannot reach into the raw import to find out.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 11 ============ -->
+  <section class="mod" id="m11" data-key="m11">
+    <div class="mod-head"><span class="mod-n">11</span><h2>The whole example, end to end</h2></div>
+    <p class="goal">After this: you have seen every rule on this page acting on the same eleven rows.</p>
+    <div class="mod-body">
+      <p>
+        Two DKK accounts. Categories <code>salary</code> and <code>interest</code> in group
+        <code>income</code>; <code>rent</code> and <code>utilities</code> in <code>housing</code>;
+        <code>groceries</code> in <code>food</code>. Latest published month is April 2026.
+      </p>
+
+      <div class="scroller">
+        <table class="ledger">
+          <caption>joint-current — eleven booked transactions</caption>
+          <thead><tr><th>seq</th><th>Date</th><th class="num">Amount</th><th>Type</th><th>Category</th><th class="num">Balance</th><th>Check</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>2026-01-14</td><td class="num">25.000,00</td><td>income</td><td>salary</td><td class="num">25.400,00</td><td>opening</td></tr>
+            <tr><td>2</td><td>2026-01-20</td><td class="num">−3.000,00</td><td>transfer</td><td>—</td><td class="num">22.400,00</td><td>consistent</td></tr>
+            <tr><td>3</td><td>2026-01-28</td><td class="num">−842,50</td><td>expense</td><td>groceries</td><td class="num">21.557,50</td><td>consistent</td></tr>
+            <tr><td>4</td><td>2026-02-02</td><td class="num">−8.500,00</td><td>expense</td><td>rent</td><td class="num">13.057,50</td><td>consistent</td></tr>
+            <tr><td>5</td><td>2026-02-02</td><td class="num">−640,00</td><td>expense</td><td>groceries</td><td class="num">12.417,50</td><td>consistent</td></tr>
+            <tr><td>6</td><td>2026-02-12</td><td class="num">120,00</td><td>refund</td><td>groceries</td><td class="num">12.537,50</td><td>consistent</td></tr>
+            <tr><td>7</td><td>2026-02-25</td><td class="num">25.000,00</td><td>income</td><td>salary</td><td class="num">37.537,50</td><td>consistent</td></tr>
+            <tr class="hit"><td>8</td><td>2026-03-02</td><td class="num">−450,00</td><td>unknown</td><td>—</td><td class="num">36.587,50</td><td>break</td></tr>
+            <tr><td>9</td><td>2026-03-20</td><td class="num">−1.000,00</td><td>expense</td><td>utilities</td><td class="num">35.587,50</td><td>consistent</td></tr>
+            <tr><td>10</td><td>2026-04-01</td><td class="num">−8.500,00</td><td>expense</td><td>rent</td><td class="num">27.087,50</td><td>consistent</td></tr>
+            <tr><td>11</td><td>2026-04-24</td><td class="num">25.000,00</td><td>income</td><td>salary</td><td class="num">52.087,50</td><td>consistent</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="scroller">
+        <table class="ledger">
+          <caption>joint-savings — two transactions</caption>
+          <thead><tr><th>seq</th><th>Date</th><th class="num">Amount</th><th>Type</th><th>Category</th><th class="num">Balance</th><th>Check</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>2026-01-20</td><td class="num">3.000,00</td><td>transfer</td><td>—</td><td class="num">53.000,00</td><td>opening</td></tr>
+            <tr><td>2</td><td>2026-04-30</td><td class="num">12,40</td><td>income</td><td>interest</td><td class="num">53.012,40</td><td>consistent</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>What consumers may and may not take from it</h3>
+      <ul>
+        <li><strong>April net worth: 105.099,90.</strong> Two <code>complete</code> rows, same month, different accounts. Valid.</li>
+        <li><strong>February on joint-current:</strong> income 25.000,00, expenses 9.020,00, groceries 520,00, housing 8.500,00 — and the screen must show the account as <code>partial</code> while joint-savings shows <code>complete</code>.</li>
+        <li><strong>March unclassified:</strong> money in 0,00, money out −450,00, count 1. The break has a face, and it is transaction 8.</li>
+        <li><strong>January transfer T1</strong> appears on both accounts, is excluded from income and expenses, and stays visible in account activity. 3.000,00 leaving one pocket for another is not spending.</li>
+        <li><strong>June:</strong> beyond the publication. No rows. Must never render as zero.</li>
+      </ul>
+
+      <p>
+        The 500 kr break sits <em>between</em> two exports that are each internally consistent, so
+        neither is quarantined by the import rules. It still costs February and March their
+        <code>complete</code> label. Those two systems are doing different jobs and both are right.
+      </p>
+
+      <div class="callout">
+        <p class="callout-h">Checked</p>
+        <p>
+          Every balance step, all eleven checks, all eight snapshot rows, the February expense
+          arithmetic and the household total were re-derived from the transaction rows and agree
+          with the documents. The numbers on this page are not decorative.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 12 ============ -->
+  <section class="mod" id="m12" data-key="m12">
+    <div class="mod-head"><span class="mod-n">12</span><h2>All twenty-two answers, on one screen</h2></div>
+    <p class="goal">After this: you never have to scroll the original comment again.</p>
+    <div class="mod-body">
+      <p>
+        This is the whole grilling session, one line per question. Amber rows are the ones that have
+        since moved — module 13 says how.
+      </p>
+
+      <div class="qlist">
+        <div class="qrow"><span class="qn">Q1</span><span class="qt"><b>Two processes:</b> money movements and balance observations. Budgets are out.</span></div>
+        <div class="qrow"><span class="qn">Q2</span><span class="qt"><b>Grain is one booked transaction.</b> No category splits (ADR-008).</span></div>
+        <div class="qrow"><span class="qn">Q3</span><span class="qt"><b>Star-shaped contract.</b> Not a flat list, not wide denormalized rows.</span></div>
+        <div class="qrow"><span class="qn">Q4</span><span class="qt"><b>Gold accounts are inside the reporting boundary</b> only. <code>current</code> and <code>savings</code>, DKK. No person dimension, no account hierarchy.</span></div>
+        <div class="qrow"><span class="qn">Q5</span><span class="qt"><b>Everything Type 1.</b> No dimension history in this release.</span></div>
+        <div class="qrow"><span class="qn">Q6</span><span class="qt"><b>Monthly balance snapshots,</b> plus the stated balance on each transaction. No daily snapshots.</span></div>
+        <div class="qrow"><span class="qn">Q7</span><span class="qt"><b>Durable household keys</b> (<code>joint-current</code>), never bank identifiers, no surrogate keys.</span></div>
+        <div class="qrow"><span class="qn">Q8</span><span class="qt"><b>Fixed two-level category hierarchy,</b> group → category, flattened onto the category row.</span></div>
+        <div class="qrow"><span class="qn">Q9</span><span class="qt"><b>No calendar dimension</b> in the contract. A date is its own key.</span></div>
+        <div class="qrow moved"><span class="qn">Q10</span><span class="qt"><b>Consumer fields vs lineage fields</b> split. <code>silver_transaction_id</code> and classification provenance move behind the lineage door. <code>reporting_month</code>, <code>created_at</code> and <code>counterparty</code> dropped.</span></div>
+        <div class="qrow"><span class="qn">Q11</span><span class="qt"><b>Currency lives on the account.</b> Never aggregate across currencies.</span></div>
+        <div class="qrow"><span class="qn">Q12</span><span class="qt"><b><code>refund</code> becomes its own transaction type</b> — reversing the earlier <code>adjustment</code> encoding.</span></div>
+        <div class="qrow"><span class="qn">Q13</span><span class="qt"><b>Gold computes the chain and coverage,</b> not analytics.</span></div>
+        <div class="qrow"><span class="qn">Q14</span><span class="qt"><b>Refunds reduce household Expenses,</b> not just category spending.</span></div>
+        <div class="qrow"><span class="qn">Q15</span><span class="qt"><b><code>account_sequence</code></b> gives order within a date. For ordering only — never identity.</span></div>
+        <div class="qrow"><span class="qn">Q16</span><span class="qt"><b>One snapshot row per month of the managed period.</b> <code>closed_on</code> replaces the active/inactive flag.</span></div>
+        <div class="qrow"><span class="qn">Q17</span><span class="qt"><b>Four-method <code>GoldRepository</code></b> plus a privileged lineage repository.</span></div>
+        <div class="qrow moved"><span class="qn">Q18</span><span class="qt"><b>Missing balances bridge, never get invented.</b> Any month containing one is partial.</span></div>
+        <div class="qrow"><span class="qn">Q19</span><span class="qt"><b>A break demotes every month its link spans,</b> including months where every check passed.</span></div>
+        <div class="qrow moved"><span class="qn">Q20</span><span class="qt"><b>Quiet months stay <code>no_data</code></b> with null balances; a follow-up recorded for later. <em>This one was reversed outright.</em></span></div>
+        <div class="qrow"><span class="qn">Q21</span><span class="qt"><b>Contract 0.2 replaces 0.1 entirely,</b> with a changelog. <code>gold-layer.md</code> stops being a competing schema and becomes the explainer.</span></div>
+        <div class="qrow"><span class="qn">Q22</span><span class="qt"><b>Two ADRs:</b> 007 (the model, coverage placement, lineage split, Type 1) and 008 (no splits). Everything else recorded in the changelog only.</span></div>
+      </div>
+
+      <h3>Deliberately not decided here</h3>
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Left to</th><th>What</th></tr></thead>
+          <tbody>
+            <tr><td class="nw">#5</td><td>Canonical identity and the deterministic order within a date — both of which this model depends on.</td></tr>
+            <tr><td class="nw">#7</td><td>The actual category taxonomy, bank-category attribution, transfer matching and its evidence.</td></tr>
+            <tr><td class="nw">#8</td><td>Which publication a consumer reads, identity across rebuilds, and whether anything ever needs Type 2 history.</td></tr>
+            <tr><td class="nw">#9</td><td>Storage. Whether a calendar or snapshot table is physically materialized.</td></tr>
+            <tr><td class="nw">#11</td><td>The analytics DTO shapes the dashboard actually consumes.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 13 ============ -->
+  <section class="mod" id="m13" data-key="m13">
+    <div class="mod-head"><span class="mod-n">13</span><h2>The comment is already out of date in five places</h2></div>
+    <p class="goal">After this: you know where to trust the PR over the comment, and two gaps to close before merging.</p>
+    <div class="mod-body">
+      <p>
+        The grilling ran before PR #16 merged into this branch. Reconciling the two changed some
+        answers. <strong>Where the comment and PR #18 disagree, the PR is current.</strong>
+      </p>
+
+      <div class="find info">
+        <div class="find-h"><span class="find-t">Quiet months are <code>complete</code>, not <code>no_data</code></span><span class="tag t-stale">Q20 reversed</span></div>
+        <p>
+          The comment decided a savings account with no February activity shows <code>no_data</code>
+          with null balances — honest but noisy — and filed a follow-up. The import work landed the
+          answer first: a quiet month inside verified evidence is <strong><code>complete</code>, with
+          the last stated balance carried into both opening and closing</strong>.
+        </p>
+        <p>
+          So the example table in the comment is wrong now. Module 05 on this page shows the current
+          behaviour. This is the single biggest divergence and it is an improvement.
+        </p>
+      </div>
+
+      <div class="find info">
+        <div class="find-h"><span class="find-t"><code>booking_date</code> is now <code>transaction_date</code></span><span class="tag t-ok">already done</span></div>
+        <p>
+          You confirmed that Danske's <code>Dato</code> is the purchase date, not the booking date.
+          The comment's field list still says <code>booking_date</code>; the PR has been rebased onto
+          the rename. Nothing to do.
+        </p>
+      </div>
+
+      <div class="find info">
+        <div class="find-h"><span class="find-t">Missing balances are now nearly unreachable</span><span class="tag t-stale">Q18 narrowed</span></div>
+        <p>
+          The import rules quarantine a balance-stating export that has a missing balance, so
+          <code>missing_balance</code> now only arises for a source that states no balances at all.
+          Danske isn't one. The rule is still correct; the case it covers is hypothetical for you today.
+        </p>
+      </div>
+
+      <div class="find info">
+        <div class="find-h"><span class="find-t">The account gained two fields the comment never mentions</span></div>
+        <p>
+          <code>coverage_start</code> and <code>evidence_through</code> on <code>GoldAccount</code>.
+          They are how an account with no transactions at all can still be reported as
+          <code>no_data</code> rather than silently vanishing from the dashboard.
+        </p>
+      </div>
+
+      <h3>Two gaps to close before this merges</h3>
+
+      <div class="find high">
+        <div class="find-h"><span class="where">gold-contract.md</span><span class="find-t"><code>evidence_through</code> is written the old way</span><span class="tag t-check">check</span></div>
+        <p>
+          PR #18 defines it as <em>"day before the latest admitted export date"</em>. That is exactly
+          the definition the prototype broke — download all of 2025 today and the system concludes
+          its evidence reaches yesterday, so January to March read <code>complete</code> with zero
+          activity. PR #31 fixes it by declaring separately how far an export <em>reaches</em>.
+        </p>
+        <p>
+          Gold's coverage is computed from this field. If #18 merges on top of #31 without adopting
+          the new wording, <strong>the fixed bug comes back at the Gold layer</strong>. The wording
+          #31 lands is already in the repo; this line needs to match it.
+        </p>
+      </div>
+
+      <div class="find mid">
+        <div class="find-h"><span class="where">gold-contract.md</span><span class="find-t">The changelog is written against the wrong version</span><span class="tag t-check">check</span></div>
+        <p>
+          The table is headed "Changes from 0.1", but the branch it merges into already carries a
+          <em>different</em> 0.2 — the one that added balances and account listing. Three members of
+          that version disappear without appearing in the table:
+        </p>
+        <ul>
+          <li><code>boundary_transactions()</code> — no longer needed, because Gold computes coverage itself now.</li>
+          <li><code>category_direction</code> on the transaction — moved onto the category dimension, where it belongs.</li>
+          <li><code>day_sequence</code> on the transaction — replaced by <code>account_sequence</code>.</li>
+        </ul>
+        <p>
+          Every one of those removals is justified by a decision on this page. None of them is
+          <em>written down</em> as a change, so anyone reading the changelog to migrate will miss
+          them. ADR-006 also still names <code>boundary_transactions()</code> and the old field
+          names; ADR-007 says it supersedes ADR-006 on exactly these points, so the text is stale
+          rather than wrong — but it reads as wrong.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 14 ============ -->
+  <section class="mod" id="m14" data-key="m14">
+    <div class="mod-head"><span class="mod-n">14</span><h2>So — accept, or push back?</h2></div>
+    <p class="goal">After this: you can act, in either direction, without rereading anything.</p>
+    <div class="mod-body">
+      <p>
+        Four of the twenty-two answers change something a human had already settled, or tighten a
+        rule in a way you would notice on screen. These are the ones worth your judgement; the rest
+        are internal shape.
+      </p>
+
+      <div class="qlist">
+        <div class="qrow"><span class="qn">Q12<br>Q14</span><span class="qt"><b>Refunds.</b> A new <code>refund</code> type, reversing issue #4's <code>adjustment</code> encoding — and refunds now reduce household Expenses, so February reads 9.020,00 where it used to read 9.140,00. <em>Say "keep <code>adjustment</code>" and module 09 unwinds.</em></span></div>
+        <div class="qrow"><span class="qn">Q13</span><span class="qt"><b>Coverage moves into Gold.</b> The accepted documents put it in analytics. The meaning doesn't change, only the place — but it is a move, not a clarification.</span></div>
+        <div class="qrow"><span class="qn">Q19</span><span class="qt"><b>A break demotes its neighbours.</b> February goes <code>partial</code> although every February row is fine. Stricter than the current rule. It will make more of your dashboard amber than you expect.</span></div>
+        <div class="qrow"><span class="qn">Q2</span><span class="qt"><b>No category splits, ever, in release one.</b> The one decision the ticket explicitly refused to let an agent assume either way.</span></div>
+      </div>
+
+      <h3>To accept</h3>
+      <ol class="steps">
+        <li>Merge PR #16 first — #18 is stacked on it and does not stand alone.</li>
+        <li>Settle the two gaps in module 13, particularly <code>evidence_through</code>.</li>
+        <li>Merge #18, then flip ADR-007 and ADR-008 from <code>Proposed</code> to <code>Accepted</code>.</li>
+        <li>Close issue #6 with a resolution comment and append the decision to the map, issue #2.</li>
+      </ol>
+
+      <h3>To change one thing</h3>
+      <p>
+        Reply on the issue or the PR naming the question number — <em>"Q12: keep refunds as
+        <code>adjustment</code>"</em> is enough. Each answer in module 12 records what depends on it,
+        so the blast radius of any single reversal is knowable before you ask for it.
+      </p>
+
+      <div class="verdict">
+        <h3>The thing to remember</h3>
+        <p>
+          The expensive decision here is not the star schema or the lineage split — both of those are
+          reversible refactors on a project with no code yet. The expensive one is
+          <strong>the grain</strong>. Everything you classify, correct and annotate from now on hangs
+          off "one row = one booked transaction", and changing that later means every one of those
+          hangs off nothing.
+        </p>
+        <p>
+          That is why ADR-008 exists as its own document for a decision that, read quickly, looks like
+          it decided to do less work.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <div class="footer">
+    <span id="footnote">Progress saves in this browser.</span>
+    <button class="reset" id="reset" type="button">Reset progress</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var TITLES = {
+    m1:"Three things a list cannot say",
+    m2:"Facts, dimensions, grain",
+    m3:"The receipt with two categories",
+    m4:"Three dimensions, none remember",
+    m5:"A row for every month",
+    m6:"Balances add sideways",
+    m7:"The chain check moves into Gold",
+    m8:"Why February is partial",
+    m9:"A refund becomes its own type",
+    m10:"Two doors",
+    m11:"The whole example, end to end",
+    m12:"All 22 answers",
+    m13:"Where the comment is stale",
+    m14:"So — accept, or push back?"
+  };
+  var KEYS = Object.keys(TITLES);
+  var LS = "budget-gold-primer-v1";
+
+  var done = {};
+  try {
+    var raw = localStorage.getItem(LS);
+    if (raw) { var p = JSON.parse(raw); if (p && typeof p === "object") done = p; }
+  } catch (e) { /* private window, blocked storage */ }
+
+  var bar = document.getElementById("bar");
+  var tally = document.getElementById("tally");
+  var toc = document.getElementById("toc");
+
+  KEYS.forEach(function(k, i){
+    var a = document.createElement("a");
+    a.className = "toc-item";
+    a.href = "#" + k;
+    a.id = "toc-" + k;
+    a.innerHTML = '<span class="n">' + String(i+1).padStart(2,"0") + '</span><span class="t"></span>';
+    a.querySelector(".t").textContent = TITLES[k];
+    toc.appendChild(a);
+  });
+
+  KEYS.forEach(function(k){
+    var sec = document.getElementById(k);
+    if (!sec) return;
+    var foot = sec.querySelector(".mod-foot");
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "checkoff";
+    btn.id = "chk-" + k;
+    btn.setAttribute("aria-pressed","false");
+    btn.innerHTML =
+      '<span class="box" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3.5 8.5 L6.5 11.5 L12.5 4.5"/></svg></span>' +
+      '<span class="lbl">I’ve got this</span>';
+    btn.addEventListener("click", function(){
+      done[k] = !done[k];
+      if (!done[k]) delete done[k];
+      render();
+      persist();
+    });
+    foot.appendChild(btn);
+  });
+
+  function render(){
+    var n = 0;
+    KEYS.forEach(function(k){
+      var on = !!done[k];
+      if (on) n++;
+      var sec = document.getElementById(k);
+      var btn = document.getElementById("chk-" + k);
+      var ti = document.getElementById("toc-" + k);
+      if (sec) sec.classList.toggle("done", on);
+      if (ti) ti.classList.toggle("done", on);
+      if (btn){
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+        btn.querySelector(".lbl").textContent = on ? "Understood" : "I’ve got this";
+      }
+    });
+    tally.textContent = n + " / " + KEYS.length;
+    bar.style.width = Math.round((n / KEYS.length) * 100) + "%";
+  }
+
+  function persist(){
+    try { localStorage.setItem(LS, JSON.stringify(done)); } catch (e) {}
+  }
+
+  render();
+
+  document.getElementById("reset").addEventListener("click", function(){
+    done = {};
+    render();
+    try { localStorage.removeItem(LS); } catch (e) {}
+  });
+})();
+</script>
