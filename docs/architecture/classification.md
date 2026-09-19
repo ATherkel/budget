@@ -3,9 +3,12 @@
 ## Purpose
 
 Classification gives every Gold transaction its household interpretation: a
-`transaction_type`, a `category_id` where the type needs one, and a
-`transfer_group_id` for a matched transfer. This document is the policy Gold
-applies. The fields it produces are defined in the
+`transaction_type`, a category allocation where the type needs one, and a
+`transfer_group_id` for a matched transfer. A classified transaction has
+exactly one allocation, for its whole amount
+([ADR-008](../decisions/ADR-008-category-allocation-grain.md)); this document
+decides the category, not how many allocations carry it. This document is the
+policy Gold applies. The fields it produces are defined in the
 [Gold contract](gold-contract.md), and the decisions behind it are
 [ADR-011](../decisions/ADR-011-classification-precedence.md) and
 [ADR-012](../decisions/ADR-012-transfer-evidence.md).
@@ -38,8 +41,9 @@ change to any of them is versioned belongs to issue #8.
 
 ## Outputs
 
-- `transaction_type`, `category_id`, and `transfer_group_id` on each
-  `GoldTransaction`.
+- `transaction_type` and `transfer_group_id` on each `GoldTransaction`, and
+  the `GoldCategoryAllocation` of every transaction whose type carries a
+  category: one allocation, for the transaction's whole amount.
 - Classification lineage and transfer evidence for each transaction, through
   `GoldLineageRepository`.
 - The open classification review items, through `GoldLineageRepository`.
@@ -53,7 +57,7 @@ built-in categories. `transfer`, `adjustment`, and `unknown` are transaction
 types, not categories.
 
 - The hierarchy has exactly two levels: category group → category. Only a
-  category is assigned to a transaction.
+  category is allocated to a transaction; a group never is.
 - Every category has a direction, `income` or `expense`. All categories in a
   group share one direction, so a group rollup never mixes income and expense.
 - Category and group identifiers are durable and household-assigned, such as

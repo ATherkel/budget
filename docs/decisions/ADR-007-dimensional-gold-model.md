@@ -1,6 +1,6 @@
 # ADR-007: Model Gold Dimensionally, with Balance Snapshots and Coverage Published by Gold
 
-**Status:** Proposed. If accepted, supersedes ADR-006 only for coverage placement and the Gold interface; ADR-010 still governs quarantine.
+**Status:** Accepted. Supersedes ADR-006 for coverage placement and the Gold interface; ADR-010 still governs quarantine.
 
 ## Context
 
@@ -17,25 +17,40 @@ first-release Gold model.
 
 ## Decision
 
-Gold is a small dimensional model with two business processes and two facts:
+Gold is a small dimensional model with three business processes and three
+facts:
 
 - **Booked transaction fact**: one row per booked transaction on one account.
+- **Category allocation fact**: one row per category allocation of a booked
+  transaction, exactly one per classified transaction in the first release
+  ([ADR-008](ADR-008-category-allocation-grain.md)).
 - **Monthly balance snapshot fact**: one row per account per reporting month
   of the account's managed period, including months with no transactions.
 
-Both facts share conformed **Account** and **Date** dimensions. The
-transaction fact also references the **Category** dimension, which has a fixed
+All three facts share conformed **Account** and **Date** dimensions. The
+allocation fact also references the **Category** dimension, which has a fixed
 two-level hierarchy (category group → category). All first-release dimensions
 are Type 1 (current interpretation) and are keyed by durable, household-assigned
 identifiers. There are no surrogate keys and no Type 2 history.
+
+Type 1 is chosen knowing it restates history. Two things make that acceptable
+instead of lossy: a dimension key is immutable and never reused, so the past is
+never made ambiguous; and every category rename, regrouping, retirement, and
+direction change is recorded in
+[`docs/domains/category-changes.md`](../domains/category-changes.md) when it is
+made. Reproducing a report exactly as it was read is a separate need, met by
+retaining the publication it was built from, which issue #8 defines. Type 2
+would not have met it: it preserves what a category was called, not how a
+transaction was classified, and the latter is where a household's
+reinterpretations actually live.
 
 Gold, not analytics, evaluates the balance chain. It publishes a balance check
 on every transaction and coverage on every monthly balance snapshot. Analytics
 reads coverage and never recomputes it.
 
 The consumer contract is star-shaped and storage-neutral. One `GoldRepository`
-returns accounts, categories, transactions, and monthly balance snapshots as
-typed records. Source lineage, such as the parent Silver transaction and how a
+returns accounts, categories, transactions, category allocations, and monthly
+balance snapshots as typed records. Source lineage, such as the parent Silver transaction and how a
 classification was derived, sits behind a separate `GoldLineageRepository` for
 review and audit tooling only. Analytics and presentation must not depend on
 it.
@@ -69,5 +84,8 @@ it.
 - Silver must supply a stable canonical identity and a deterministic per-account
   order for booked transactions, including within a transaction date. ADR-009
   defines how, using the latest admitted export for each date.
-- Introducing Type 2 dimensions, category allocations, a counterparty
-  dimension, or daily snapshots later is a contract version change.
+- Introducing Type 2 dimensions, a counterparty dimension, or daily snapshots
+  later is a contract version change. Type 2 in particular would mean a
+  versioned dimension key on the facts, reversing the durable-key decision, so
+  it is not a change of attribute policy alone. Authoring several allocations
+  per transaction is not: that grain is published from the first release.

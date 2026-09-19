@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Import Identity Prototype</title>
+<!-- PROTOTYPE, throwaway. Answers one question about PR #16 (ADR-009/ADR-010); see the intro. -->
+<style>
+:root {
+  --bg: #fafaf8; --panel: #ffffff; --ink: #1d1f23; --muted: #62666d; --line: #e3e3de;
+  --accent: #2f5bd3; --accent-soft: #e8eefc; --ok: #1e7a45; --ok-soft: #e3f3e9; --warn: #9a6200; --warn-soft: #fdf1dc;
+  --bad: #b3261e; --bad-soft: #fbe6e4; --diff: #fff1a8; --mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #16181c; --panel: #1f2227; --ink: #e8e9ec; --muted: #9aa0a8; --line: #33373e;
+  --accent: #7fa2ff; --accent-soft: #24304d; --ok: #6fd39a; --ok-soft: #1c3326; --warn: #f0b95a; --warn-soft: #3a2f1a;
+  --bad: #ff8a80; --bad-soft: #3d2220; --diff: #5a4f12; } }
+:root[data-theme="dark"] {
+  --bg: #16181c; --panel: #1f2227; --ink: #e8e9ec; --muted: #9aa0a8; --line: #33373e;
+  --accent: #7fa2ff; --accent-soft: #24304d; --ok: #6fd39a; --ok-soft: #1c3326; --warn: #f0b95a; --warn-soft: #3a2f1a;
+  --bad: #ff8a80; --bad-soft: #3d2220; --diff: #5a4f12; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1500px; margin: 0 auto; padding: 24px 16px 80px; }
+h1 { font-size: 22px; margin: 0 0 6px; } h2 { font-size: 17px; margin: 22px 0 8px; } h3 { font-size: 14px; margin: 16px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+p { margin: 6px 0; } .muted { color: var(--muted); } code, .mono { font-family: var(--mono); font-size: 12.5px; }
+.intro { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; max-width: 980px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 18px 0 0; border-bottom: 1px solid var(--line); }
+.tabs button { border: 1px solid transparent; border-bottom: none; background: none; padding: 8px 12px; border-radius: 6px 6px 0 0; cursor: pointer; color: var(--muted); font: inherit; }
+.tabs button.on { background: var(--panel); border-color: var(--line); color: var(--ink); font-weight: 600; margin-bottom: -1px; }
+.tabpanel { background: var(--panel); border: 1px solid var(--line); border-top: none; border-radius: 0 0 8px 8px; padding: 16px; }
+button.btn { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+button.btn:hover { border-color: var(--accent); } button.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.btn:disabled { opacity: .45; cursor: default; }
+.claim { border-left: 3px solid var(--accent); padding: 4px 12px; margin: 8px 0; }
+.verdict { background: var(--accent-soft); border-radius: 6px; padding: 10px 12px; margin: 10px 0; }
+.cites { margin: 4px 0 8px 18px; padding: 0; color: var(--muted); font-size: 13px; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; }
+.compare.single { grid-template-columns: 1fr; }
+@media (max-width: 900px) { .compare { grid-template-columns: 1fr; } }
+.side { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+.side > .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.rules { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; font-size: 12.5px; margin: 6px 0; }
+.rules select { font: inherit; max-width: 100%; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; }
+.rules .changed { background: var(--warn-soft); }
+.steps { list-style: none; padding: 0; margin: 6px 0; }
+.steps li { padding: 3px 6px; border-radius: 4px; font-size: 13px; }
+.steps li.done { color: var(--muted); } .steps li.next { background: var(--accent-soft); font-weight: 600; }
+.diffbar { background: var(--diff); border-radius: 6px; padding: 8px 12px; margin: 10px 0 0; font-size: 13px; }
+.diffbar.none { background: var(--ok-soft); }
+.scroll { overflow-x: auto; max-height: 420px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { text-align: left; padding: 4px 7px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { position: sticky; top: 0; background: var(--panel); font-weight: 600; color: var(--muted); z-index: 1; }
+td.num { text-align: right; font-family: var(--mono); white-space: nowrap; }
+tr.diff td { background: var(--diff); } td.diff { background: var(--diff); }
+.badge { display: inline-block; padding: 0 7px; border-radius: 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.b-ok { background: var(--ok-soft); color: var(--ok); } .b-bad { background: var(--bad-soft); color: var(--bad); }
+.b-warn { background: var(--warn-soft); color: var(--warn); } .b-mute { background: var(--line); color: var(--muted); }
+.grid td { text-align: center; } .grid td:first-child, .grid th:first-child { text-align: left; }
+.pass { color: var(--ok); font-weight: 700; } .fail { color: var(--bad); font-weight: 700; }
+.form { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px 14px; align-items: end; margin: 8px 0; }
+.form label { display: flex; flex-direction: column; font-size: 12.5px; color: var(--muted); gap: 2px; }
+.form input, .form select { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--ink); }
+.card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+.small { font-size: 12px; } .err { color: var(--bad); } .nowrap { white-space: nowrap; }
+details summary { cursor: pointer; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Import identity and merge: prototype of PR #16's rules</h1>
+  <div class="intro">
+    <p><b>The question.</b> Do ADR-009/ADR-010's import-identity and merge rules give stable transaction IDs and the same set of transactions no matter how a
+      household actually imports its exports, and where exactly do they break?</p>
+    <p><b>This is version 2.</b> Run against PR #16 as written (5076f70), all 17 of issue #5's scenarios passed but every one of the review's seven claims
+      reproduced. The <b>defaults below are now the proposed fixes</b>, which this branch also writes into the ADRs and the layer documents; each claim tab
+      compares PR #16 as written (left) with the fix (right), and every switch still offers the old reading.</p>
+    <p>The <b>compare view</b> runs one scenario under two rule sets side by side and highlights what differs (transactions, IDs, run status, review
+      items, per-month coverage, provisional labels). Every state is rebuilt from the import runs, so nothing is stored anywhere; reloading the page
+      starts over. <code>README.md</code> next to this file is a plain-language walkthrough.</p>
+    <p class="muted small">Built-in walkthroughs use made-up data. Real or tweaked exports come in through <b>Free play → import a file</b>. They stay in this
+      browser tab. Filenames are shown with long digit runs masked.</p>
+  </div>
+  <nav class="tabs" id="tabs"></nav>
+  <section class="tabpanel" id="panel"></section>
+</main>
+<script>
+// ---------------------------------------------------------------------------
+// Part 1: hashing, Windows-1252, dates and amounts, danske-csv-v1 (Bronze)
+// ---------------------------------------------------------------------------
+
+// Synchronous SHA-256 so the module stays pure (crypto.subtle is async).
+const K256 = new Uint32Array([
+  0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+  0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+  0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+  0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+  0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+  0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+  0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+  0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
+function sha256(bytes) {
+  const len = bytes.length, bitLen = len * 8;
+  const padded = new Uint8Array(((len + 9 + 63) >> 6) << 6);
+  padded.set(bytes); padded[len] = 0x80;
+  const dv = new DataView(padded.buffer);
+  dv.setUint32(padded.length - 8, Math.floor(bitLen / 0x100000000));
+  dv.setUint32(padded.length - 4, bitLen >>> 0);
+  const H = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+  const W = new Uint32Array(64);
+  const rotr = (x, n) => (x >>> n) | (x << (32 - n));
+  for (let off = 0; off < padded.length; off += 64) {
+    for (let i = 0; i < 16; i++) W[i] = dv.getUint32(off + i * 4);
+    for (let i = 16; i < 64; i++) {
+      const s0 = rotr(W[i-15], 7) ^ rotr(W[i-15], 18) ^ (W[i-15] >>> 3);
+      const s1 = rotr(W[i-2], 17) ^ rotr(W[i-2], 19) ^ (W[i-2] >>> 10);
+      W[i] = (W[i-16] + s0 + W[i-7] + s1) >>> 0;
+    }
+    let [a, b, c, d, e, f, g, h] = H;
+    for (let i = 0; i < 64; i++) {
+      const t1 = (h + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) + ((e & f) ^ (~e & g)) + K256[i] + W[i]) >>> 0;
+      const t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) >>> 0;
+      h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+    }
+    H[0] += a; H[1] += b; H[2] += c; H[3] += d; H[4] += e; H[5] += f; H[6] += g; H[7] += h;
+  }
+  return Array.from(H, x => x.toString(16).padStart(8, '0')).join('');
+}
+const utf8 = s => new TextEncoder().encode(s);
+const hashFields = (...parts) => sha256(utf8(parts.join('')));
+
+// Windows-1252. A browser TextDecoder('windows-1252', {fatal:true}) never fails:
+// WHATWG maps 0x81, 0x8D, 0x8F, 0x90 and 0x9D to C1 controls. The spec's strict
+// decode (issue #5 scenario 12) needs those five bytes rejected, so decode by hand.
+const CP1252 = {0x80:'€',0x82:'‚',0x83:'ƒ',0x84:'„',0x85:'…',0x86:'†',
+  0x87:'‡',0x88:'ˆ',0x89:'‰',0x8a:'Š',0x8b:'‹',0x8c:'Œ',0x8e:'Ž',
+  0x91:'‘',0x92:'’',0x93:'“',0x94:'”',0x95:'•',0x96:'–',0x97:'—',
+  0x98:'˜',0x99:'™',0x9a:'š',0x9b:'›',0x9c:'œ',0x9e:'ž',0x9f:'Ÿ'};
+const CP1252_REV = Object.fromEntries(Object.entries(CP1252).map(([b, c]) => [c, +b]));
+function decodeCp1252Strict(bytes) {
+  let out = '';
+  for (let i = 0; i < bytes.length; i++) {
+    const b = bytes[i];
+    if (b < 0x80 || b >= 0xa0) out += String.fromCharCode(b);
+    else if (CP1252[b]) out += CP1252[b];
+    else return { error: `byte 0x${b.toString(16).toUpperCase()} at offset ${i} is undefined in Windows-1252` };
+  }
+  return { text: out };
+}
+function encodeCp1252(str) {
+  const out = new Uint8Array(str.length);
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    if (c < 0x80 || (c >= 0xa0 && c <= 0xff)) out[i] = c;
+    else if (CP1252_REV[str[i]] !== undefined) out[i] = CP1252_REV[str[i]];
+    else throw new Error('not encodable in Windows-1252: ' + str[i]);
+  }
+  return out;
+}
+
+// ISO dates as 'YYYY-MM-DD' strings; they sort and compare lexically.
+const isoAdd = (iso, days) => {
+  const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+const monthOf = iso => iso.slice(0, 7);
+const monthEnd = ym => { const [y, m] = ym.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
+const nextMonth = ym => { const [y, m] = ym.split('-').map(Number); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`; };
+const daysBetween = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 86400000);
+
+function parseDanskeDate(s) {
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(s);
+  if (!m) return null;
+  const iso = `${m[3]}-${m[2]}-${m[1]}`;
+  return isoAdd(iso, 0) === iso ? iso : null;
+}
+// Danish decimal: '-1.234,56'. Returns integer hundredths plus the digits as written.
+function parseDanskeAmount(s) {
+  if (!/^-?(\d{1,3}(\.\d{3})+|\d+)(,\d+)?$/.test(s)) return null;
+  const plain = s.replace(/\./g, '').replace(',', '.');   // what Python's Decimal() would receive
+  const [ip, fp = ''] = plain.replace('-', '').split('.');
+  if (fp.length > 2 && /[1-9]/.test(fp.slice(2))) return null;   // prototype limit: hundredths
+  const cents = (Number(ip) * 100 + Number((fp + '00').slice(0, 2))) * (s.startsWith('-') ? -1 : 1);
+  return { cents, written: plain };                         // written == str(Decimal(plain))
+}
+function formatDanske(cents) {
+  const neg = cents < 0, a = Math.abs(cents);
+  const ip = String(Math.floor(a / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return (neg ? '-' : '') + ip + ',' + String(a % 100).padStart(2, '0');
+}
+const fmtKr = cents => cents == null ? '—' : formatDanske(cents);
+
+const DANSKE_HEADER = ['Dato', 'Kategori', 'Underkategori', 'Tekst', 'Beløb', 'Saldo', 'Status', 'Afstemt'];
+
+// Split a strictly decoded payload into source records. No interpretation.
+function splitCsv(text) {
+  const records = []; let rec = [], field = '', i = 0, quoted = false, sawQuote = false;
+  const endField = () => { rec.push(field); field = ''; sawQuote = false; };
+  while (i < text.length) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i += 2; continue; } quoted = false; i++; continue; }
+      field += ch; i++; continue;
+    }
+    if (ch === '"' && field === '' && !sawQuote) { quoted = true; sawQuote = true; i++; continue; }
+    if (ch === ',') { endField(); i++; continue; }
+    if (ch === '\r' && text[i + 1] === '\n') { endField(); records.push(rec); rec = []; i += 2; continue; }
+    if (ch === '\n') { endField(); records.push(rec); rec = []; i++; continue; }
+    field += ch; i++;
+  }
+  if (field !== '' || rec.length) { endField(); records.push(rec); }
+  return records;
+}
+
+// Bronze for danske-csv-v1: strict decode, exact header, records by ordinal.
+function parseDanske(bytes) {
+  const dec = decodeCp1252Strict(bytes);
+  if (dec.error) return { failure: dec.error, records: [] };
+  const rows = splitCsv(dec.text);
+  if (!rows.length) return { failure: 'empty payload', records: [] };
+  const hdr = rows[0];
+  if (hdr.length !== DANSKE_HEADER.length || hdr.some((h, i) => h !== DANSKE_HEADER[i]))
+    return { failure: `unexpected header: ${hdr.map(h => JSON.stringify(h)).join(', ')}`, records: [] };
+  const records = rows.slice(1).map((values, i) => ({ ordinal: i + 1, values }));
+  const notes = [];
+  if (dec.text.endsWith('\r\n') || dec.text.endsWith('\n')) notes.push('payload ends with a line break (the format says it should not)');
+  if (/[^\r]\n/.test(dec.text)) notes.push('LF line endings seen (the format says CRLF)');
+  return { failure: null, records, notes };
+}
+
+// The Danske date suffix: '…-YYYYMMDD.csv'. No other part of the name is read.
+function exportDateFromFilename(name) {
+  const m = /-(\d{4})(\d{2})(\d{2})\.csv$/i.exec(name || '');
+  if (!m) return null;
+  const iso = `${m[1]}-${m[2]}-${m[3]}`;
+  return isoAdd(iso, 0) === iso ? iso : null;
+}
+
+// ---------------------------------------------------------------------------
+// Part 2: rule sets, Bronze replay, Silver validation, identity and merge
+// ---------------------------------------------------------------------------
+
+// Every point where PR #16 was ambiguous, or where two documents disagreed.
+// The first option of each is the proposed rule and the page's default; the
+// others are what PR #16 said as written, kept so the two can be compared.
+const SWITCHES = [
+  { key: 'identity', label: 'Identity scheme', options: [
+    ['adr009', 'ADR-009: account, date, amount, identity text, k'],
+    ['fingerprint', 'transaction.md as written: fingerprint incl. source-record position'],
+    ['balance', 'Balance-anchored (ADR-009 rejected option)']] },
+  { key: 'order', label: 'Admission order', options: [
+    ['exported', 'exported_on, then started_at'],
+    ['started', 'started_at, the import order (as written)']] },
+  { key: 'kText', label: 'k counts rows with the same', options: [
+    ['identity', 'identity text'],
+    ['raw', 'raw text (one reading of “visibly identical”)']] },
+  { key: 'exportDate', label: 'How far an export reaches', options: [
+    ['rangeEnd', 'operator-declared covers_through'],
+    ['suffix', 'the filename export date (as written)']] },
+  { key: 'fewer', label: 'Fewer repeats', options: [
+    ['quarantine', 'quarantine the run; a withdrawn decision admits it'],
+    ['admit', 'admit it and raise a review item (ADR-009:43-45 as written)']] },
+  { key: 'provisional', label: 'Provisional ends when', options: [
+    ['covers-skip-nodata', 'an export produced ≥7 days after the period covers its last day; no_data accounts do not hold the label'],
+    ['covers', '…the same, but a no_data account still holds the label'],
+    ['dated', 'an admitted export is dated ≥7 days after the period ends (as written)']] },
+  { key: 'amountEnc', label: 'Amount in the hash', options: [
+    ['cents', 'quantized to hundredths, always "-45.00"'],
+    ['written', 'Decimal as written, so "-45.0" ≠ "-45.00" (unstated)']] },
+  { key: 'whitespace', label: 'Whitespace in identity text', options: [
+    ['unicode', 'any Unicode whitespace, incl. NBSP (Python str.split)'],
+    ['ascii', 'ASCII space and tab only (unstated)']] },
+  { key: 'breakDecision', label: 'Way back from an ADR-010 chain break', options: [
+    ['accept', 'an "accept discrepancy" manual decision'],
+    ['none', 'none: void / same transaction / withdrawn only (as written)']] },
+  { key: 'repeatDate', label: 'Same bytes exported again later', options: [
+    ['extend', 'a repeat run still records its later export date'],
+    ['ignore', 'repeat run: nothing new recorded (as written)']] },
+];
+// PR #16 as written, for the left-hand side of each comparison.
+const AS_WRITTEN = { order: 'started', exportDate: 'suffix', provisional: 'dated', amountEnc: 'written', breakDecision: 'none', repeatDate: 'ignore' };
+const DEFAULT_RULES = Object.fromEntries(SWITCHES.map(s => [s.key, s.options[0][0]]));
+const optionLabel = (key, value) => (SWITCHES.find(s => s.key === key).options.find(o => o[0] === value) || [, value])[1];
+
+function identityText(text, whitespace) {
+  return whitespace === 'ascii'
+    ? text.replace(/^[ \t]+|[ \t]+$/g, '').replace(/[ \t]+/g, ' ')
+    : text.trim().replace(/\s+/g, ' ');
+}
+const collapseAll = t => t.trim().replace(/\s+/g, ' ');
+
+// The payload's last transaction date. Bronze reads it only to bound a declared
+// covers_through; it still stores and presents every field exactly as decoded.
+// A payload it cannot decode has no last date and no readable rows either, and
+// is left to fail as a format failure rather than for a missing declaration.
+function payloadDates(bytes) {
+  const parsed = parseDanske(bytes);
+  if (parsed.failure) return { unreadable: true, lastTx: null };
+  let lastTx = null;
+  for (const rec of parsed.records) { const d = parseDanskeDate(rec.values[0]); if (d && (!lastTx || d > lastTx)) lastTx = d; }
+  return { unreadable: false, lastTx };
+}
+
+// bronze-layer.md "Covers through": bound the declaration, require it where the
+// fallback would be wrong, fall back otherwise. Returns the run's two fields, or
+// a refusal. Only meaningful under the proposed rule, where the field exists.
+function coversThroughFor(declared, exportedOn, payload) {
+  const { unreadable, lastTx } = payload;
+  if (declared) {
+    if (declared > exportedOn) return { refused: `declared range end ${declared} is after the export date ${exportedOn}` };
+    if (lastTx && declared < lastTx) return { refused: `declared range end ${declared} is before the payload's last transaction ${lastTx}` };
+    return { coversThrough: declared, source: 'declared' };
+  }
+  const fallback = { coversThrough: exportedOn, source: 'exported_on' };
+  if (unreadable) return fallback;
+  if (!lastTx) return { refused: 'the payload states no transactions, so nothing bounds the range end: declare it' };
+  // Falling back claims evidence through the day before the export was produced.
+  // Inside the last transaction's own reporting period that is the quiet tail of
+  // an ordinary export. Past it, the fallback would manufacture the confirmed
+  // zeros this field exists to prevent, so the operator has to say the range.
+  const claimed = isoAdd(exportedOn, -1);
+  if (monthOf(claimed) > monthOf(lastTx))
+    return { refused: `falling back to the export date would claim evidence through ${claimed}, past the reporting period of the payload's last transaction (${lastTx}): declare the range end` };
+  return fallback;
+}
+
+// Bronze: replay import runs in the order they were presented.
+function runBronze(actions, rules) {
+  const accounts = [], runs = [], decisions = [], voidedAt = new Map();
+  let seq = 0;
+  actions.forEach((a, step) => {
+    if (a.t === 'account') { if (!accounts.includes(a.id)) accounts.push(a.id); return; }
+    if (a.t !== 'import') { decisions.push({ ...a, step }); if (a.t === 'void') voidedAt.set(a.run, step); return; }
+    seq++;
+    if (!accounts.includes(a.account)) accounts.push(a.account);
+    const payloadId = sha256(a.bytes);
+    const fromName = exportDateFromFilename(a.filename);
+    const exportedOn = fromName || a.exportedOn || null;
+    let outcome = 'stored', reason = '', repeatOf = null;
+    const live = runs.find(r => r.payloadId === payloadId && r.outcome === 'stored' && !voidedAt.has(r.runNo));
+    if (!exportedOn) { outcome = 'refused'; reason = 'no export date: no -YYYYMMDD suffix and none declared'; }
+    else if (live && live.account === a.account) { outcome = 'repeat'; reason = `same bytes as run #${live.runNo}; nothing new stored`; repeatOf = live.runNo; }
+    else if (live) { outcome = 'refused'; reason = `these bytes are stored for ${live.account} by run #${live.runNo}; void it first`; }
+    let coversThrough = null, coversThroughSource = null;
+    if (outcome !== 'refused' && rules.exportDate === 'rangeEnd') {
+      const c = coversThroughFor(a.rangeEnd || null, exportedOn, payloadDates(a.bytes));
+      if (c.refused) { outcome = 'refused'; reason = c.refused; repeatOf = null; }
+      else { coversThrough = c.coversThrough; coversThroughSource = c.source; }
+    }
+    runs.push({ runNo: seq, payloadId, account: a.account, filename: a.filename, label: a.label || a.filename,
+      exportedOn, exportedOnSource: fromName ? 'filename' : 'declared', rangeEnd: a.rangeEnd || null,
+      coversThrough, coversThroughSource,
+      startedAt: seq, step, outcome, reason, repeatOf, bytes: a.bytes });
+  });
+  return { accounts, runs, decisions, voided: new Set(voidedAt.keys()) };
+}
+
+// Silver, per run: type and validate every record (whole run or nothing).
+function readRun(run, rules, decisions) {
+  const parsed = parseDanske(run.bytes);
+  const errors = [], accepted = [], rows = [], unbooked = [];
+  if (parsed.failure) errors.push({ ordinal: null, code: 'format-failure', message: parsed.failure });
+  const acceptBreak = rules.breakDecision === 'accept' && decisions.some(d => d.t === 'accept-break' && d.run === run.runNo);
+  const same = new Map(decisions.filter(d => d.t === 'same' && d.run === run.runNo).map(d => [d.ordinal, d.target]));
+  let prevBal = null;
+  for (const rec of parsed.records) {
+    const v = rec.values, ord = rec.ordinal, bad = [];
+    if (v.length !== 8) { errors.push({ ordinal: ord, code: 'field-count', message: `${v.length} fields, expected 8` }); continue; }
+    const f = Object.fromEntries(DANSKE_HEADER.map((h, i) => [h, v[i]]));
+    const date = parseDanskeDate(f.Dato);
+    if (!date) bad.push(['date', `unparseable date "${f.Dato}"`]);
+    const amt = parseDanskeAmount(f['Beløb']);
+    if (!amt) bad.push(['amount', `unparseable amount "${f['Beløb']}"`]);
+    const booking = { 'Udført': 'booked', 'Slettet': 'cancelled' }[f.Status];
+    if (!booking) bad.push(['status', `unknown status "${f.Status}"`]);
+    let balance = null;
+    if (f.Saldo !== '') { const b = parseDanskeAmount(f.Saldo); if (!b) bad.push(['balance', `unparseable balance "${f.Saldo}"`]); else balance = b.cents; }
+    if (bad.length) { bad.forEach(([code, message]) => errors.push({ ordinal: ord, code, message })); continue; }
+    if (booking !== 'booked') {
+      unbooked.push({ runNo: run.runNo, payloadId: run.payloadId, ordinal: ord, account: run.account, date, cents: amt.cents, text: f.Tekst, sourceStatus: f.Status, booking });
+      continue;
+    }
+    if (balance == null) { errors.push({ ordinal: ord, code: 'missing-balance', message: 'booked row has no balance (ADR-010)' }); continue; }
+    if (prevBal != null && prevBal + amt.cents !== balance) {
+      const e = { ordinal: ord, code: 'chain-break', message: `balance ${fmtKr(balance)} ≠ previous ${fmtKr(prevBal)} + amount ${fmtKr(amt.cents)} (ADR-010)` };
+      (acceptBreak ? accepted : errors).push(e);
+    }
+    prevBal = balance;
+    const row = { ordinal: ord, date, cents: amt.cents, amountWritten: amt.written, text: f.Tekst, balance, balanceStr: f.Saldo,
+      sourceStatus: f.Status, category: f.Kategori.trim(), subcategory: f.Underkategori.trim() };
+    const target = same.get(ord);
+    if (target) { const [, , tc, tt] = target.split('|'); row.sameAs = target; row.gcents = Number(tc); row.gtext = tt; }
+    else { row.gcents = row.cents; row.gtext = identityText(row.text, rules.whitespace); }
+    rows.push(row);
+  }
+  // k: structural occurrence among rows with the same (date, amount, identity text), in source order.
+  const seen = new Map(), seenRaw = new Map();
+  for (const r of rows) {
+    r.gkey = `${r.date}|${r.gcents}|${r.gtext}`;
+    r.k = (seen.get(r.gkey) || 0) + 1; seen.set(r.gkey, r.k);
+    const rk = `${r.date}|${r.gcents}|${r.text}`;
+    r.rawK = (seenRaw.get(rk) || 0) + 1; seenRaw.set(rk, r.rawK);
+    r.matchKey = `${run.account}|${r.date}|${r.gcents}|${collapseAll(r.gtext)}|${r.k}`;
+  }
+  const coveredFrom = rows.length ? rows[0].date : (unbooked[0] || {}).date || null;
+  const useRange = rules.exportDate === 'rangeEnd' && run.rangeEnd;
+  const coveredTo = useRange ? run.rangeEnd : run.exportedOn;
+  const evidenceThrough = useRange && run.rangeEnd < run.exportedOn ? run.rangeEnd : isoAdd(run.exportedOn, -1);
+  const eod = new Map(), groupCount = new Map(), byDate = new Map();
+  for (const r of rows) {
+    eod.set(r.date, r.balance);
+    groupCount.set(r.gkey, r.k);
+    if (!byDate.has(r.date)) byDate.set(r.date, []);
+    byDate.get(r.date).push(r);
+  }
+  const summary = rows.length ? { from: rows[0].date, to: rows[rows.length - 1].date, booked: rows.length, unbooked: unbooked.length,
+    opening: rows[0].balance - rows[0].cents, closing: rows[rows.length - 1].balance } : null;
+  return { run, rows, unbooked, errors, accepted, notes: parsed.notes || [], coveredFrom, coveredTo, evidenceThrough, eod, groupCount, byDate, summary };
+}
+
+// ADR-009 admission check of run R against the account's admitted state S.
+// Two baselines, deliberately. What the household is told (missing / fewer /
+// added) is counted against the live admitted set. What the balances can be
+// checked against is counted against the export S.obs took that date's balance
+// from, because that export's rows are the only ones the stored balance
+// reflects. Using one baseline for both under-counts growth on a group with a
+// withdrawn instance, and invents a difference on a date whose balance already
+// came from an export showing fewer repeats.
+function checkAgainst(S, R) {
+  const out = { missing: [], fewer: [], unexplained: [], added: [], removed: [] };
+  if (!S.admitted.length || !R.coveredFrom) return out;
+  const from = R.coveredFrom, to = R.coveredTo;
+  const delta = new Map();   // date -> explained change in cents
+  const bump = (d, c) => delta.set(d, (delta.get(d) || 0) + c);
+  const overlapStart = from > S.from ? from : S.from;
+  const liveIn = gkey => S.groups.has(gkey) ? S.groups.get(gkey).instances.filter(i => !i.withdrawn).length : 0;
+  const balanceBase = (date, gkey) => { const src = S.dateSource.get(date); return src ? (src.groupCount.get(gkey) || 0) : 0; };
+  const compare = (gkey, date, cents, gtext, shown) => {
+    const live = liveIn(gkey), item = { date, text: gtext, cents, admitted: live, shown };
+    if (shown === 0 && live > 0) out.missing.push(item);
+    else if (shown < live) out.fewer.push(item);
+    else if (shown > live) out.added.push({ date, text: gtext, cents, n: shown - live, inOverlap: date >= overlapStart && date <= S.to });
+    const base = balanceBase(date, gkey);
+    if (shown < base) out.removed.push({ date, text: gtext, cents, n: base - shown });
+    if (date >= overlapStart && shown !== base) bump(date, cents * (shown - base));
+  };
+  const compared = new Set();
+  for (const g of S.groups.values()) {
+    if (g.date < from || g.date > to) continue;
+    compared.add(g.gkey);
+    compare(g.gkey, g.date, g.cents, g.gtext, R.groupCount.get(g.gkey) || 0);
+  }
+  for (const [gkey, shown] of R.groupCount) {
+    if (compared.has(gkey)) continue;
+    const r = R.rows.find(x => x.gkey === gkey);
+    compare(gkey, r.date, r.gcents, r.gtext, shown);
+  }
+  const deltaDates = [...delta.keys()].sort();
+  for (const d of [...R.eod.keys()].sort()) {
+    if (d < from || d > to || !S.obs.has(d)) continue;
+    const expected = deltaDates.filter(x => x <= d).reduce((s, x) => s + delta.get(x), 0);
+    const actual = R.eod.get(d) - S.obs.get(d).balance;
+    if (actual !== expected) out.unexplained.push({ date: d, admittedBalance: S.obs.get(d).balance, runBalance: R.eod.get(d), expected, actual });
+  }
+  return out;
+}
+
+function reviewItem(kind, R, dates, detail) {
+  const sorted = dates.slice().sort();
+  const it = { kind, account: R.run.account, dateFrom: sorted[0], dateTo: sorted[sorted.length - 1], payloadIds: [R.run.payloadId], runNo: R.run.runNo, detail, resolvedBy: null };
+  it.id = 'ri-' + hashFields(kind, it.account, it.dateFrom, it.dateTo, R.run.payloadId).slice(0, 8);
+  return it;
+}
+
+function admit(S, R, withdrawnSet) {
+  for (const r of R.rows) {
+    if (!S.groups.has(r.gkey)) S.groups.set(r.gkey, { gkey: r.gkey, date: r.date, cents: r.gcents, gtext: r.gtext, instances: [] });
+    const g = S.groups.get(r.gkey);
+    while (g.instances.length < r.k) {
+      const k = g.instances.length + 1;
+      const matchKey = `${R.run.account}|${r.date}|${r.gcents}|${collapseAll(r.gtext)}|${k}`;
+      g.instances.push({ matchKey, gkey: r.gkey, date: r.date, cents: r.gcents, gtext: r.gtext, k, evidence: [], withdrawn: withdrawnSet.has(matchKey) });
+    }
+    g.instances[r.k - 1].evidence.push({ runNo: R.run.runNo, payloadId: R.run.payloadId, ordinal: r.ordinal });
+  }
+  for (const [d, b] of R.eod) S.obs.set(d, { balance: b, runNo: R.run.runNo });
+  for (const d of R.byDate.keys()) S.dateSource.set(d, R);
+  if (!S.from || R.coveredFrom < S.from) S.from = R.coveredFrom;
+  if (!S.to || R.coveredTo > S.to) S.to = R.coveredTo;
+  S.admitted.push(R);
+}
+
+function transactionId(rules, account, row, inst) {
+  const amountKey = rules.amountEnc === 'cents' ? (row.gcents / 100).toFixed(2) : row.amountWritten;
+  if (rules.identity === 'fingerprint') return hashFields('fingerprint', account, inst.date, row.amountWritten, row.text, row.ordinal).slice(0, 10);
+  if (rules.identity === 'balance') return hashFields('balance-v1', account, inst.date, amountKey, row.gtext, row.balance).slice(0, 10);
+  return hashFields('adr009-v1', account, inst.date, amountKey, row.gtext, rules.kText === 'raw' ? row.rawK : row.k).slice(0, 10);
+}
+
+function runSilver(bronze, rules) {
+  const stored = bronze.runs.filter(r => r.outcome === 'stored' && !bronze.voided.has(r.runNo));
+  const order = stored.slice().sort((a, b) => rules.order === 'exported'
+    ? (a.exportedOn < b.exportedOn ? -1 : a.exportedOn > b.exportedOn ? 1 : a.startedAt - b.startedAt)
+    : a.startedAt - b.startedAt);
+  const withdrawnSet = new Set(bronze.decisions.filter(d => d.t === 'withdrawn').map(d => d.target));
+  const states = new Map(), results = new Map(), reviewItems = [], unbooked = [];
+  const stateOf = acct => states.get(acct) || states.set(acct, { admitted: [], groups: new Map(), obs: new Map(), dateSource: new Map(), from: null, to: null }).get(acct);
+  order.forEach((run, i) => {
+    const R = readRun(run, rules, bronze.decisions), S = stateOf(run.account);
+    const res = { R, admitOrder: i + 1, status: 'quarantined', reviewItemIds: [], check: null };
+    results.set(run.runNo, res);
+    // ADR-010: a balance break is what the "accept discrepancy" decision settles,
+    // so it has to raise a review item for that decision to attach to. Otherwise
+    // the run carries validation errors and nothing in the work list says a way
+    // back exists. Under the "none" reading there is no decision, so no item.
+    const breaks = R.errors.filter(e => e.code === 'chain-break' || e.code === 'missing-balance');
+    if (rules.breakDecision === 'accept' && (breaks.length || R.accepted.length)) {
+      const it = reviewItem('balance-break', R, [R.coveredFrom || run.exportedOn, R.coveredTo], breaks.length ? breaks : R.accepted);
+      if (!breaks.length) it.resolvedBy = `accept discrepancy on run #${run.runNo}`;
+      reviewItems.push(it); res.reviewItemIds.push(it.id);
+    }
+    if (R.errors.length) return;
+    const c = checkAgainst(S, R); res.check = c;
+    const items = [];
+    if (c.missing.length || c.unexplained.length)
+      items.push(reviewItem('export-disagreement', R, [...c.missing.map(m => m.date), ...c.unexplained.map(u => u.date)], c));
+    if (c.fewer.length) items.push(reviewItem('fewer-repeats', R, c.fewer.map(f => f.date), c));
+    items.forEach(it => { reviewItems.push(it); res.reviewItemIds.push(it.id); });
+    const blocked = items.some(it => it.kind === 'export-disagreement' || rules.fewer === 'quarantine');
+    if (blocked) return;
+    admit(S, R, withdrawnSet); res.status = 'accepted';
+    unbooked.push(...R.unbooked);
+  });
+  // Materialize: order and balances per date from the latest admitted export showing that date.
+  const transactions = [];
+  for (const [account, S] of states) {
+    const picked = [];
+    for (const g of S.groups.values()) for (const inst of g.instances) {
+      if (inst.withdrawn) continue;
+      const src = S.dateSource.get(inst.date);
+      let row = src.rows.find(r => r.gkey === inst.gkey && r.k === inst.k), from = src, fallback = false;
+      if (!row) {   // the balance-source export does not show it (only when fewer repeats are admitted)
+        for (let j = S.admitted.length - 1; j >= 0 && !row; j--) {
+          row = S.admitted[j].rows.find(r => r.gkey === inst.gkey && r.k === inst.k); from = S.admitted[j];
+        }
+        fallback = true;
+      }
+      picked.push({ id: transactionId(rules, account, row, inst), inst, row, src, from, fallback });
+    }
+    // day_sequence: rows the date's balance-source export shows keep that export's
+    // row order. Transactions it does not show are appended after them in
+    // transaction_id order — not numbered by k, which two groups falling back on
+    // one date would share: (account, transaction_date, day_sequence) has to stay
+    // unique (gold-contract.md invariant 9).
+    const appended = new Map();
+    for (const p of picked.filter(p => p.fallback).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
+      const n = (appended.get(p.inst.date) || 0) + 1;
+      appended.set(p.inst.date, n);
+      p.daySeq = p.src.byDate.get(p.inst.date).length + n;
+    }
+    for (const { id, inst, row, src, from, fallback, daySeq } of picked)
+      transactions.push({ id, account, date: inst.date, cents: inst.cents,
+        daySeq: fallback ? daySeq : src.byDate.get(inst.date).indexOf(row) + 1,
+        description: row.text, identityText: row.gtext, balance: row.balance, k: row.k, rawK: row.rawK, matchKey: inst.matchKey,
+        sourceRun: from.run.runNo, sourceOrdinal: row.ordinal, fallback, sameAs: row.sameAs || null,
+        category: row.category, evidence: inst.evidence });
+  }
+  transactions.sort((a, b) => a.account < b.account ? -1 : a.account > b.account ? 1 : a.date < b.date ? -1 : a.date > b.date ? 1 : a.daySeq - b.daySeq);
+  const idCount = new Map(), seqCount = new Map();
+  const seqKey = t => `${t.account}|${t.date}|${t.daySeq}`;
+  transactions.forEach(t => { idCount.set(t.id, (idCount.get(t.id) || 0) + 1); seqCount.set(seqKey(t), (seqCount.get(seqKey(t)) || 0) + 1); });
+  transactions.forEach(t => { t.collision = idCount.get(t.id) > 1; t.seqCollision = seqCount.get(seqKey(t)) > 1; });
+  return { results, reviewItems, transactions, unbooked, states };
+}
+
+// ---------------------------------------------------------------------------
+// Part 3: Gold evidence, analytics Coverage, provisional label, build, diff
+// ---------------------------------------------------------------------------
+
+// analytics-layer.md "Coverage", per account and calendar month.
+function coverageFor(txns, coverageStart, evidenceThrough, ym) {
+  const ps = ym + '-01', pe = monthEnd(ym);
+  if (!coverageStart || !evidenceThrough || evidenceThrough < ps || coverageStart > pe || evidenceThrough < coverageStart)
+    return { status: 'no_data', why: coverageStart ? 'evidence does not reach this month' : 'no admitted data' };
+  const broken = [];
+  for (let i = 1; i < txns.length; i++) {
+    const a = txns[i - 1], b = txns[i];
+    if (b.date < ps || a.date > pe) continue;        // link span [a.date, b.date] misses the period
+    if (a.balance == null || b.balance == null || a.balance + b.cents !== b.balance) broken.push(`${a.date}→${b.date}`);
+  }
+  const why = [];
+  if (!(coverageStart < ps)) why.push(`evidence starts ${coverageStart}`);
+  if (!(evidenceThrough >= pe)) why.push(`evidence through ${evidenceThrough}`);
+  if (broken.length) why.push(`broken link ${broken.join(', ')}`);
+  if (why.length) return { status: 'partial', why: why.join('; ') };
+  const n = txns.filter(t => t.date >= ps && t.date <= pe).length;
+  return { status: 'complete', zero: n === 0, why: n === 0 ? 'complete with zero activity' : `${n} transactions, all links verified` };
+}
+
+function runAnalytics(bronze, silver, rules, today) {
+  const accounts = bronze.accounts.map(id => {
+    const txns = silver.transactions.filter(t => t.account === id);
+    const admitted = [...silver.results.values()].filter(r => r.status === 'accepted' && r.R.run.account === id).map(r => r.R);
+    if (rules.repeatDate === 'extend') {   // a repeat of an admitted payload still vouches for its own, later export date
+      for (const rep of bronze.runs.filter(r => r.outcome === 'repeat' && r.account === id)) {
+        const orig = silver.results.get(rep.repeatOf);
+        if (!orig || orig.status !== 'accepted') continue;
+        const useRange = rules.exportDate === 'rangeEnd' && rep.rangeEnd;
+        admitted.push({ ...orig.R, run: rep, coveredTo: useRange ? rep.rangeEnd : rep.exportedOn,
+          evidenceThrough: useRange && rep.rangeEnd < rep.exportedOn ? rep.rangeEnd : isoAdd(rep.exportedOn, -1) });
+      }
+    }
+    const evidenceThrough = admitted.reduce((m, R) => (!m || R.evidenceThrough > m ? R.evidenceThrough : m), null);
+    return { id, txns, admitted, coverageStart: txns.length ? txns[0].date : null, evidenceThrough,
+      latestExportedOn: admitted.reduce((m, R) => (!m || R.run.exportedOn > m ? R.run.exportedOn : m), null) };
+  });
+  const current = monthOf(today);
+  let first = current;
+  for (const a of accounts) if (a.coverageStart && monthOf(a.coverageStart) < first) first = monthOf(a.coverageStart);
+  for (const r of bronze.runs) {
+    const res = silver.results.get(r.runNo);
+    if (res && res.R.coveredFrom && monthOf(res.R.coveredFrom) < first) first = monthOf(res.R.coveredFrom);
+  }
+  const months = [];
+  for (let m = first; m <= current; m = nextMonth(m)) months.push(m);
+  while (months.length > 30) months.shift();
+  const grid = {}, provisional = {};
+  for (const a of accounts) {
+    grid[a.id] = {};
+    for (const ym of months) grid[a.id][ym] = coverageFor(a.txns, a.coverageStart, a.evidenceThrough, ym);
+  }
+  // presentation-layer.md "Data Trust Display".
+  for (const ym of months) {
+    const pe = monthEnd(ym), holders = [];
+    if (ym >= current) { provisional[ym] = { provisional: true, why: 'current month (Europe/Copenhagen)', holders }; continue; }
+    for (const a of accounts) {
+      if (rules.provisional === 'covers-skip-nodata' && grid[a.id][ym].status === 'no_data') continue;
+      const ok = a.admitted.some(R => R.run.exportedOn >= isoAdd(pe, 7)
+        && (rules.provisional === 'dated' || (R.coveredFrom <= pe && R.coveredTo >= pe)));
+      if (!ok) holders.push(a.id);
+    }
+    provisional[ym] = { provisional: holders.length > 0, holders,
+      why: holders.length ? `no qualifying export yet for ${holders.join(', ')}` : 'every account has a qualifying export' };
+  }
+  return { accounts, months, grid, provisional };
+}
+
+// The whole pipeline: a pure replay of the operator's actions under one rule set.
+function build(actions, rules, today) {
+  rules = { ...DEFAULT_RULES, ...rules };
+  const bronze = runBronze(actions, rules);
+  const silver = runSilver(bronze, rules);
+  const analytics = runAnalytics(bronze, silver, rules, today);
+  const runs = bronze.runs.map(r => {
+    const res = silver.results.get(r.runNo);
+    const status = r.outcome !== 'stored' ? r.outcome : bronze.voided.has(r.runNo) ? 'voided' : res.status;
+    return { ...r, status, res };
+  });
+  return { rules, today, bronze, silver, analytics, runs, decisions: bronze.decisions };
+}
+
+// ID history: the IDs each transaction had after every step of the replay.
+function idHistory(actions, rules, today) {
+  const hist = new Map();
+  for (let i = 1; i <= actions.length; i++) {
+    const s = build(actions.slice(0, i), rules, today);
+    for (const t of s.silver.transactions) {
+      if (!hist.has(t.matchKey)) hist.set(t.matchKey, []);
+      const h = hist.get(t.matchKey);
+      if (!h.length || h[h.length - 1].id !== t.id) h.push({ id: t.id, step: i });
+    }
+  }
+  return hist;
+}
+
+// Compare two built states and list what differs.
+function diffStates(L, R) {
+  const d = { txOnlyL: [], txOnlyR: [], txId: [], txBalance: [], runs: [], review: [], coverage: [], provisional: [], keys: new Set() };
+  d.schemesDiffer = L.rules.identity !== R.rules.identity;   // then every ID differs by construction; not reported
+  const lt = new Map(L.silver.transactions.map(t => [t.matchKey, t])), rt = new Map(R.silver.transactions.map(t => [t.matchKey, t]));
+  for (const [k, t] of lt) {
+    const o = rt.get(k);
+    if (!o) { d.txOnlyL.push(t); d.keys.add('tx:' + k); continue; }
+    if (o.id !== t.id && !d.schemesDiffer) { d.txId.push([t, o]); d.keys.add('tx:' + k); }
+    if (o.balance !== t.balance || o.daySeq !== t.daySeq) { d.txBalance.push([t, o]); d.keys.add('tx:' + k); }
+  }
+  for (const [k, t] of rt) if (!lt.has(k)) { d.txOnlyR.push(t); d.keys.add('tx:' + k); }
+  const runKey = r => r.label + '|' + r.account;
+  const rr = new Map(R.runs.map(r => [runKey(r), r]));
+  for (const r of L.runs) {
+    const o = rr.get(runKey(r));
+    if (!o || o.status !== r.status) { d.runs.push([r, o]); d.keys.add('run:' + runKey(r)); }
+  }
+  const riKey = i => `${i.kind}|${i.account}|${i.dateFrom}|${i.dateTo}`;
+  const lr = new Set(L.silver.reviewItems.map(riKey)), rri = new Set(R.silver.reviewItems.map(riKey));
+  for (const k of lr) if (!rri.has(k)) { d.review.push(['L', k]); d.keys.add('ri:' + k); }
+  for (const k of rri) if (!lr.has(k)) { d.review.push(['R', k]); d.keys.add('ri:' + k); }
+  const months = [...new Set([...L.analytics.months, ...R.analytics.months])].sort();
+  for (const a of new Set([...L.bronze.accounts, ...R.bronze.accounts])) for (const m of months) {
+    const x = (L.analytics.grid[a] || {})[m], y = (R.analytics.grid[a] || {})[m];
+    const sx = x ? x.status + (x.zero ? '(zero)' : '') : '—', sy = y ? y.status + (y.zero ? '(zero)' : '') : '—';
+    if (sx !== sy) { d.coverage.push([a, m, sx, sy]); d.keys.add(`cov:${a}|${m}`); }
+  }
+  for (const m of months) {
+    const x = L.analytics.provisional[m], y = R.analytics.provisional[m];
+    if (!!(x && x.provisional) !== !!(y && y.provisional)) { d.provisional.push([m, x && x.provisional, y && y.provisional]); d.keys.add('prov:' + m); }
+  }
+  d.count = d.txOnlyL.length + d.txOnlyR.length + d.txId.length + d.txBalance.length + d.runs.length + d.review.length + d.coverage.length + d.provisional.length;
+  return d;
+}
+
+// ---------------------------------------------------------------------------
+// Part 4a: synthetic bank (made-up data only) and issue #5's scenarios
+// ---------------------------------------------------------------------------
+
+// A ledger entry: transaction date d, booked date (default d), amount in kroner.
+// hidden: the bank counts it in Saldo but never exports it. removedOn: withdrawn by the bank.
+const E = (d, text, kr, o = {}) => ({ d, text, cents: Math.round(kr * 100), booked: o.booked || d, ...o });
+const PAD = s => s.padEnd(78, ' ');
+
+// What the bank would export on producedOn for the range [from, to]. Saldo is the
+// running balance recalculated at export time in Dato order, like Danske does.
+function bankExport({ name, ledger, opening = 1000000, from, to, producedOn, suffix = true, reorderDate, tweak, bytesTweak, label }) {
+  const live = ledger.map((e, i) => ({ ...e, i }))
+    .filter(e => e.booked <= producedOn && !(e.removedOn && producedOn >= e.removedOn));
+  live.sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : (a.d === reorderDate ? b.i - a.i : a.i - b.i));
+  let bal = opening; const rows = [];
+  for (const e of live) {
+    const deleted = e.status === 'Slettet';
+    if (!deleted) bal += e.cents;
+    if (e.hidden || e.d < from || e.d > to) continue;
+    const [y, m, dd] = e.d.split('-');
+    rows.push([`${dd}.${m}.${y}`, PAD(deleted ? '' : (e.cat || 'Diverse')), PAD(deleted ? '' : (e.sub || 'Andet')), e.text,
+      formatDanske(e.cents), deleted ? '' : formatDanske(bal), e.status || 'Udført', 'Nej']);
+  }
+  const out = tweak ? tweak(rows) : rows;
+  const text = [DANSKE_HEADER, ...out].map(r => r.map(f => '"' + f.replace(/"/g, '""') + '"').join(',')).join('\r\n');
+  let bytes = encodeCp1252(text);
+  if (bytesTweak) bytes = bytesTweak(bytes, text);
+  const filename = `${name}${suffix ? '-' + producedOn.replace(/-/g, '') : ''}.csv`;
+  return { filename, bytes, label: label || filename, rows: out };
+}
+const imp = (account, x, extra = {}) => ({ t: 'import', account, filename: x.filename, bytes: x.bytes, label: x.label, ...extra });
+const ordinalOf = (x, pred) => x.rows.findIndex(pred) + 1;
+// Rewrite one field in the rows matching pred.
+const editRows = (pred, col, fn) => rows => rows.map(r => pred(r) ? r.map((f, i) => i === col ? fn(f) : f) : r);
+const onDate = (dmy) => r => r[0] === dmy;
+
+const K1 = 'Fælleskonto', K2 = 'Opsparing';
+
+function marchApril(extra = []) {
+  return [
+    E('2026-02-26', 'Tankstation', -420),
+    E('2026-03-02', 'Løn', 25000, { cat: 'Indtægt' }), E('2026-03-03', 'Husleje', -9500), E('2026-03-05', 'Supermarked', -589.9),
+    E('2026-03-12', 'Bageriet', -42), E('2026-03-16', 'Supermarked', -802.35),
+    E('2026-03-20', 'Kaffebar', -45), E('2026-03-20', 'Kaffebar', -45), E('2026-03-20', 'Supermarked', -311.2),
+    E('2026-03-24', 'Tankstation', -455), E('2026-03-27', 'Apotek Nord', -89.5),
+    E('2026-04-02', 'Løn', 25000, { cat: 'Indtægt' }), E('2026-04-03', 'Husleje', -9500), E('2026-04-07', 'Supermarked', -655.8),
+    E('2026-04-10', 'Kaffebar', -45), E('2026-04-14', 'Bageriet', -36), ...extra,
+  ].sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
+}
+function febToApril(extra = []) {
+  return [
+    E('2026-02-02', 'Løn', 25000, { cat: 'Indtægt' }), E('2026-02-03', 'Husleje', -9500), E('2026-02-06', 'Supermarked', -612.45),
+    E('2026-02-10', 'Kaffebar', -45), E('2026-02-13', 'Bageriet', -38.5), E('2026-02-17', 'Supermarked', -734.1),
+    E('2026-02-20', 'Tankstation', -420), E('2026-02-24', 'Apotek Nord', -129.95), ...marchApril().slice(1), ...extra,
+  ].sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
+}
+const pairAB = (ledger, o = {}) => ({
+  A: bankExport({ name: 'Faelleskonto-A', ledger, from: '2026-03-01', to: '2026-03-31', producedOn: '2026-04-01', label: 'A (1–31 Mar, exported 1 Apr)', ...o.A }),
+  B: bankExport({ name: 'Faelleskonto-B', ledger, from: '2026-03-15', to: '2026-04-15', producedOn: '2026-04-16', label: 'B (15 Mar–15 Apr, exported 16 Apr)', ...o.B }),
+});
+const txOn = (s, date, text) => s.silver.transactions.filter(t => t.date === date && (!text || t.identityText === text));
+const runBy = (s, labelStart) => s.runs.find(r => r.label.startsWith(labelStart));
+const ids = s => s.silver.transactions.map(t => t.matchKey + '=' + t.id).sort().join(',');
+const ok = (pass, detail) => ({ pass: !!pass, detail });
+
+// Issue #5's synthetic acceptance scenarios. check() gets the state after every step.
+const BASELINE = [
+  { n: 1, title: 'Clean first import (5 rows)', expected: '5 transactions; summary printed', today: '2026-03-10',
+    steps: () => [imp(K1, bankExport({ name: 'Faelleskonto', ledger: febToApril().slice(0, 5), from: '2026-02-01', to: '2026-02-28', producedOn: '2026-03-01', label: 'Feb export' }))],
+    check: ([s]) => ok(s.silver.transactions.length === 5 && s.runs[0].status === 'accepted' && s.runs[0].res.R.summary,
+      `${s.silver.transactions.length} transactions, run ${s.runs[0].status}, summary ${s.runs[0].res.R.summary ? 'shown' : 'missing'}`) },
+  { n: 2, title: 'Same bytes again', expected: '`repeat` run, 0 new transactions, identical IDs', today: '2026-03-10',
+    steps: () => { const x = bankExport({ name: 'Faelleskonto', ledger: febToApril().slice(0, 5), from: '2026-02-01', to: '2026-02-28', producedOn: '2026-03-01', label: 'Feb export' });
+      return [imp(K1, x), imp(K1, { ...x, label: 'Feb export (again)' })]; },
+    check: ([a, b]) => ok(b.runs[1].status === 'repeat' && ids(a) === ids(b), `second run: ${b.runs[1].status}; IDs ${ids(a) === ids(b) ? 'identical' : 'changed'}`) },
+  { n: 3, title: 'A 1–31 Mar, B 15 Mar–15 Apr', expected: 'overlap collapses; overlapping rows get identical IDs', today: '2026-04-20',
+    steps: () => { const p = pairAB(marchApril()); return [imp(K1, p.A), imp(K1, p.B)]; },
+    check: ([a, b]) => { const ov = b.silver.transactions.filter(t => t.date >= '2026-03-15' && t.date <= '2026-03-31');
+      const same = ov.every(t => a.silver.transactions.some(x => x.id === t.id)) && ov.every(t => t.evidence.length === 2);
+      return ok(b.runs.every(r => r.status === 'accepted') && b.silver.transactions.length === 15 && same,
+        `${b.silver.transactions.length} transactions (ledger has 15 in range); overlap rows shown by both: ${same}`); } },
+  { n: 4, title: 'Two identical coffees on 20 Mar, in A and B', expected: '2 transactions (k=1, k=2)', today: '2026-04-20',
+    steps: () => { const p = pairAB(marchApril()); return [imp(K1, p.A), imp(K1, p.B)]; },
+    check: ss => { const c = txOn(ss[1], '2026-03-20', 'Kaffebar'); return ok(c.length === 2 && c[0].k === 1 && c[1].k === 2, `${c.length} coffees, k = ${c.map(t => t.k).join(', ')}`); } },
+  { n: 5, title: 'A’s final date shows 1 coffee, B shows 2', expected: '2 transactions; explained growth, no review item', today: '2026-04-20',
+    steps: () => { const L = marchApril(); L.find((e, i) => e.text === 'Kaffebar' && e.d === '2026-03-20' && L[i - 1].text === 'Kaffebar').booked = '2026-03-21';
+      return [imp(K1, bankExport({ name: 'Faelleskonto-A', ledger: L, from: '2026-03-01', to: '2026-03-20', producedOn: '2026-03-20', label: 'A (to 20 Mar, exported 20 Mar)' })),
+        imp(K1, bankExport({ name: 'Faelleskonto-B', ledger: L, from: '2026-03-15', to: '2026-04-15', producedOn: '2026-04-16', label: 'B (15 Mar–15 Apr)' }))]; },
+    check: ss => { const s = ss[1], c = txOn(s, '2026-03-20', 'Kaffebar');
+      return ok(c.length === 2 && s.silver.reviewItems.length === 0 && s.runs[1].status === 'accepted', `${c.length} coffees; B ${s.runs[1].status}; ${s.silver.reviewItems.length} review items`); } },
+  { n: 6, title: 'B lists the same day’s rows in a different order', expected: 'identical IDs', today: '2026-04-20',
+    steps: () => { const p = pairAB(marchApril(), { B: { reorderDate: '2026-03-20' } }); return [imp(K1, p.A), imp(K1, p.B)]; },
+    check: ss => { const ref = build(BASELINE[2].steps(), DEFAULT_RULES, '2026-04-20');
+      return ok(ss[1].runs[1].status === 'accepted' && ids(ss[1]) === ids(ref), `B ${ss[1].runs[1].status}; IDs ${ids(ss[1]) === ids(ref) ? 'identical to scenario 3' : 'differ from scenario 3'}`); } },
+  { n: 7, title: 'B shows 1 coffee on 20 Mar where A showed 2', expected: 'keep 2; `fewer-repeats` review item, B quarantined', today: '2026-04-20',
+    steps: () => { const L = marchApril(); L.find((e, i) => e.text === 'Kaffebar' && e.d === '2026-03-20' && L[i - 1].text === 'Kaffebar').removedOn = '2026-04-10';
+      const p = pairAB(L); return [imp(K1, p.A), imp(K1, p.B)]; },
+    check: ss => { const s = ss[1], kinds = s.silver.reviewItems.map(i => i.kind);
+      return ok(txOn(s, '2026-03-20', 'Kaffebar').length === 2 && kinds.includes('fewer-repeats') && s.runs[1].status === 'quarantined',
+        `${txOn(s, '2026-03-20', 'Kaffebar').length} coffees kept; B ${s.runs[1].status}; review: ${kinds.join(', ') || 'none'}`); } },
+  { n: 8, title: 'B’s text gains an extra space', expected: 'identical ID', today: '2026-04-20',
+    steps: () => { const p = pairAB(marchApril(), { B: { tweak: rows => editRows(onDate('27.03.2026'), 3, t => t.replace(' ', '  '))(editRows(onDate('24.03.2026'), 3, t => t + ' ')(rows)) } });
+      return [imp(K1, p.A), imp(K1, p.B)]; },
+    check: ss => { const ref = build(BASELINE[2].steps(), DEFAULT_RULES, '2026-04-20');
+      return ok(ss[1].runs[1].status === 'accepted' && ids(ss[1]) === ids(ref), `B ${ss[1].runs[1].status}; IDs ${ids(ss[1]) === ids(ref) ? 'identical' : 'differ'}`); } },
+  { n: 9, title: 'B’s text is reworded', expected: 'B quarantined (export disagreement); a *same transaction* decision admits it with no double count', today: '2026-04-20',
+    steps: () => { const p = pairAB(marchApril(), { B: { tweak: editRows(onDate('27.03.2026'), 3, () => 'Apotek Nørrebro') } });
+      const ord = ordinalOf(p.B, r => r[0] === '27.03.2026');
+      return [imp(K1, p.A), imp(K1, p.B), { t: 'same', run: 2, ordinal: ord, target: `${K1}|2026-03-27|-8950|Apotek Nord|1`, note: `Decide: B record ${ord} is the same transaction as “Apotek Nord” on 27 Mar` }]; },
+    check: ([, b, c]) => ok(b.runs[1].status === 'quarantined' && b.silver.reviewItems.some(i => i.kind === 'export-disagreement') && c.runs[1].status === 'accepted' && c.silver.transactions.length === 15,
+      `after B: ${b.runs[1].status}; after decision: ${c.runs[1].status}, ${c.silver.transactions.length} transactions (15 expected)`) },
+  { n: 10, title: 'Malformed amount / status `Venter` / blank balance / chain break', expected: 'whole run quarantined; row errors listed', today: '2026-03-10',
+    steps: () => { const L = febToApril().slice(0, 6), base = { ledger: L, from: '2026-02-01', to: '2026-02-28', producedOn: '2026-03-01' };
+      return [
+        imp(K1, bankExport({ ...base, name: 'bad-amount', label: 'malformed amount', tweak: editRows(onDate('06.02.2026'), 4, () => '-612,4x') })),
+        imp(K1, bankExport({ ...base, name: 'venter', label: 'status Venter', tweak: editRows(onDate('10.02.2026'), 6, () => 'Venter') })),
+        imp(K1, bankExport({ ...base, name: 'blank-saldo', label: 'booked row, blank balance', tweak: editRows(onDate('13.02.2026'), 5, () => '') })),
+        imp(K1, bankExport({ ...base, name: 'chain-break', label: 'chain break', tweak: editRows(onDate('10.02.2026'), 5, f => formatDanske(parseDanskeAmount(f).cents + 100)) }))]; },
+    check: ss => { const s = ss[3], codes = s.runs.map(r => (r.res.R.errors[0] || {}).code);
+      return ok(s.runs.every(r => r.status === 'quarantined') && codes.join() === 'amount,status,missing-balance,chain-break' && s.silver.transactions.length === 0,
+        `statuses ${s.runs.map(r => r.status).join('/')}; first error codes ${codes.join(', ')}`); } },
+  { n: 11, title: '`Slettet` row with blank balance', expected: 'unbooked record; not a transaction, not a repeat, skipped by the chain', today: '2026-03-10',
+    steps: () => { const L = febToApril().slice(0, 6); L.splice(4, 0, E('2026-02-10', 'Kaffebar', -45, { status: 'Slettet' }));
+      return [imp(K1, bankExport({ name: 'Faelleskonto', ledger: L, from: '2026-02-01', to: '2026-02-28', producedOn: '2026-03-01', label: 'Feb export with a Slettet row' }))]; },
+    check: ([s]) => ok(s.runs[0].status === 'accepted' && s.silver.unbooked.length === 1 && txOn(s, '2026-02-10').length === 1,
+      `${s.runs[0].status}; ${s.silver.unbooked.length} unbooked; ${txOn(s, '2026-02-10').length} coffee on 10 Feb`) },
+  { n: 12, title: 'UTF-8 file / byte 0x81 / different header', expected: 'format failure; quarantined', today: '2026-03-10',
+    steps: () => { const base = { ledger: febToApril().slice(0, 5), from: '2026-02-01', to: '2026-02-28', producedOn: '2026-03-01' };
+      return [
+        imp(K1, bankExport({ ...base, name: 'utf8', label: 'UTF-8 encoded', bytesTweak: (b, t) => utf8(t) })),
+        imp(K1, bankExport({ ...base, name: 'x81', label: 'contains byte 0x81', bytesTweak: b => { const c = b.slice(); c[c.length - 3] = 0x81; return c; } })),
+        imp(K1, bankExport({ ...base, name: 'hdr', label: 'different header', bytesTweak: (b, t) => encodeCp1252(t.replace('"Afstemt"', '"Afstemt?"')) }))]; },
+    check: ss => { const s = ss[2]; return ok(s.runs.every(r => r.status === 'quarantined' && r.res.R.errors[0].code === 'format-failure'),
+      s.runs.map(r => `${r.label}: ${r.res.R.errors[0] ? r.res.R.errors[0].message.slice(0, 60) : r.status}`).join(' | ')); } },
+  { n: 13, title: 'Export imported under the wrong account', expected: 'quarantined; void + reimport fixes it; same bytes for another account without a void are refused', today: '2026-04-20',
+    steps: () => { const p = pairAB(marchApril());
+      const other = bankExport({ name: 'Opsparing', ledger: [E('2026-03-10', 'Overførsel', 2000), E('2026-03-25', 'Rente', 12.5)], opening: 5000000, from: '2026-03-01', to: '2026-03-31', producedOn: '2026-04-01', label: 'Opsparing export' });
+      return [imp(K1, p.A), imp(K1, other, { note: `Import the Opsparing export, declared as ${K1} (wrong)` }), imp(K2, other, { note: `Import the same bytes as ${K2} without voiding` }),
+        { t: 'void', run: 2, note: 'Decide: void run #2 (wrong account)' }, imp(K2, other, { note: `Import the same bytes as ${K2} again` })]; },
+    check: ss => { const s = ss[4];
+      return ok(ss[1].runs[1].status === 'quarantined' && ss[2].runs[2].status === 'refused' && s.runs[1].status === 'voided' && s.runs[3].status === 'accepted',
+        `wrong-account run: ${ss[1].runs[1].status}; without void: ${ss[2].runs[2].status}; after void: ${s.runs[3].status}`); } },
+  { n: 14, title: 'Import B then A instead of A then B', expected: 'same transactions and IDs', today: '2026-04-20',
+    steps: () => { const p = pairAB(marchApril()); return [imp(K1, p.B), imp(K1, p.A)]; },
+    check: ss => { const ref = build(BASELINE[2].steps(), DEFAULT_RULES, '2026-04-20'), d = diffStates(ref, ss[1]);
+      return ok(d.txOnlyL.length + d.txOnlyR.length + d.txId.length === 0 && ss[1].runs.every(r => r.status === 'accepted'),
+        `vs A→B: ${d.txOnlyL.length + d.txOnlyR.length} transaction differences, ${d.txId.length} ID differences (nothing is dated A’s export day and there is no late booking; see C1)`); } },
+  { n: 15, title: 'Rebuild Silver from Bronze', expected: 'identical output', today: '2026-04-20',
+    steps: () => { const p = pairAB(marchApril()); return [imp(K1, p.A), imp(K1, p.B)]; },
+    check: ss => { const again = build(BASELINE[14].steps(), DEFAULT_RULES, '2026-04-20');
+      const j = s => JSON.stringify([s.silver.transactions.map(t => [t.id, t.balance, t.daySeq]), s.runs.map(r => r.status), s.silver.reviewItems.map(i => i.id)]);
+      return ok(j(again) === j(ss[1]), j(again) === j(ss[1]) ? 'identical' : 'different'); } },
+  { n: 16, title: 'Late booking: A exported 8 Mar; B shows a 7 Mar purchase booked 9 Mar', expected: 'admitted (explained growth); existing IDs unchanged; 7 Mar onward takes balances from B', today: '2026-04-20',
+    steps: () => C1_EXPORTS().late.AB,
+    check: ([a, b]) => { const kept = a.silver.transactions.every(t => b.silver.transactions.some(x => x.id === t.id));
+      const fromB = b.silver.transactions.filter(t => t.date >= '2026-03-07').every(t => t.sourceRun === 2);
+      return ok(b.runs[1].status === 'accepted' && kept && fromB, `B ${b.runs[1].status}; A’s IDs kept: ${kept}; balances from 7 Mar come from B: ${fromB}`); } },
+  { n: 17, title: 'Latest export for one account is dated 5 Apr', expected: 'March provisional until that account has an export dated 7 Apr or later', today: '2026-04-20',
+    steps: () => { const L = marchApril();
+      return [imp(K1, bankExport({ name: 'Faelleskonto', ledger: L, from: '2026-03-01', to: '2026-04-04', producedOn: '2026-04-05', label: 'export dated 5 Apr' })),
+        imp(K1, bankExport({ name: 'Faelleskonto', ledger: L, from: '2026-03-01', to: '2026-04-07', producedOn: '2026-04-07', label: 'export dated 7 Apr' }))]; },
+    check: ([a, b]) => ok(a.analytics.provisional['2026-03'].provisional && !b.analytics.provisional['2026-03'].provisional,
+      `March provisional after the 5 Apr export: ${a.analytics.provisional['2026-03'].provisional}; after the 7 Apr export: ${b.analytics.provisional['2026-03'].provisional}`) },
+];
+
+// ---------------------------------------------------------------------------
+// Part 4b: the review's claims C1–C7 as walkthroughs (synthetic data only)
+// ---------------------------------------------------------------------------
+
+function C1_EXPORTS() {
+  const make = extra => {
+    const L = febToApril([E('2026-03-08', 'Kaffebar', -45), ...extra]);
+    const A = bankExport({ name: 'Faelleskonto-A', ledger: L, from: '2026-02-01', to: '2026-03-08', producedOn: '2026-03-08', label: 'A (1 Feb–8 Mar, exported 8 Mar)' });
+    const B = bankExport({ name: 'Faelleskonto-B', ledger: L, from: '2026-02-15', to: '2026-04-15', producedOn: '2026-04-15', label: 'B (15 Feb–15 Apr, exported 15 Apr)' });
+    return { A, B, AB: [imp(K1, A), imp(K1, B)], BA: [imp(K1, B), imp(K1, A)] };
+  };
+  return {
+    late: make([E('2026-03-07', 'Boghandel', -249, { booked: '2026-03-09' })]),
+    lastDay: make([E('2026-03-08', 'Bageriet', -32, { booked: '2026-03-09' })]),
+  };
+}
+
+function C3_EXPORTS() {
+  const L = [];
+  const month = (y, m, extra = 0) => { const mm = String(m).padStart(2, '0');
+    L.push(E(`${y}-${mm}-01`, 'Løn', 25000, { cat: 'Indtægt' }), E(`${y}-${mm}-02`, 'Husleje', -9500), E(`${y}-${mm}-15`, 'Supermarked', -(600 + m * 7.35 + extra))); };
+  for (let m = 1; m <= 12; m++) month(2025, m);
+  for (let m = 1; m <= 4; m++) month(2026, m, 11);
+  L.push(E('2026-03-20', 'Kaffebar', -45), E('2026-04-08', 'Apotek Nord', -89.5));
+  L.sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
+  const H = bankExport({ name: 'Faelleskonto-historik', ledger: L, from: '2025-01-01', to: '2025-12-31', producedOn: '2026-04-15', label: 'H (all of 2025, exported 15 Apr 2026)' });
+  const C = bankExport({ name: 'Faelleskonto', ledger: L, from: '2026-03-01', to: '2026-04-15', producedOn: '2026-04-15', label: 'C (1 Mar–15 Apr 2026, exported 15 Apr)' });
+  const h = imp(K1, H, { rangeEnd: '2025-12-31' }), c = imp(K1, C, { rangeEnd: '2026-04-15' });
+  return { H: [h], HC: [h, c], CH: [c, h] };
+}
+
+function C4_EXPORTS() {
+  const base = [...febToApril(), E('2026-04-20', 'Supermarked', -400), E('2026-04-28', 'Tankstation', -380)];
+  const withFee = [...base, E('2026-03-10', 'Gebyr', -150, { hidden: true })].sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
+  const exp = (L, o) => bankExport({ ledger: L, ...o });
+  const set = (L, xTweak) => ({
+    A: exp(L, { name: 'Faelleskonto-A', from: '2026-02-01', to: '2026-02-28', producedOn: '2026-03-01', label: 'A (Feb)' }),
+    X: exp(L, { name: 'Faelleskonto-X', from: '2026-03-01', to: '2026-03-31', producedOn: '2026-04-01', label: 'X (Mar)', tweak: xTweak }),
+    Z: exp(L, { name: 'Faelleskonto-Z', from: '2026-03-01', to: '2026-04-15', producedOn: '2026-04-16', label: 'Z (1 Mar–15 Apr)' }),
+    W: exp(L, { name: 'Faelleskonto-W', from: '2026-03-11', to: '2026-04-30', producedOn: '2026-05-01', label: 'W (11 Mar–30 Apr)' }),
+  });
+  const p = set(withFee), t = set(base, rows => rows.filter(r => r[0] !== '12.03.2026'));
+  return {
+    persistent: [imp(K1, p.A), imp(K1, p.X), imp(K1, p.Z),
+      { t: 'void', run: 2, note: 'Decide: void run #2 (X)' },
+      { t: 'note', note: 'Try: same transaction (no source record shows the missing fee, so there is nothing to point at)' },
+      { t: 'note', note: 'Try: withdrawn (the fee was never admitted, so there is nothing to withdraw)' },
+      imp(K1, p.W)],
+    accept: [imp(K1, p.A), imp(K1, p.X), imp(K1, p.Z), { t: 'accept-break', run: 3, note: 'Decide: accept the discrepancy in run #3 (Z)' }, imp(K1, p.W)],
+    transient: [imp(K1, t.A), imp(K1, t.X), imp(K1, t.Z), imp(K1, t.W)],
+  };
+}
+
+function C5_EXPORTS() {
+  const amt = pairAB(marchApril(), { B: { tweak: editRows(r => r[4] === '-45,00', 4, () => '-45,0') } });
+  const spaced = marchApril().map(e => e.text === 'Kaffebar' ? { ...e, text: 'Kaffe Bar' } : e);
+  const nb = pairAB(spaced, { B: { tweak: editRows(r => r[3] === 'Kaffe Bar', 3, () => 'Kaffe Bar') } });
+  const kL = [...febToApril().slice(0, 6), E('2026-02-11', 'Kiosk', -20), E('2026-02-11', 'Kiosk', -20)].sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
+  let seen = 0;
+  const kx = bankExport({ name: 'Faelleskonto', ledger: kL, from: '2026-02-01', to: '2026-02-28', producedOn: '2026-03-01', label: 'Feb export: "Kiosk" and "Kiosk " on 11 Feb',
+    tweak: rows => rows.map(r => r[3] === 'Kiosk' && ++seen === 2 ? r.map((f, i) => i === 3 ? 'Kiosk ' : f) : r) });
+  return { amount: [imp(K1, amt.A), imp(K1, amt.B)], nbsp: [imp(K1, nb.A), imp(K1, nb.B)], kraw: [imp(K1, kx)] };
+}
+
+function C6_EXPORTS() {
+  const L = febToApril();
+  L.find((e, i) => e.text === 'Kaffebar' && e.d === '2026-03-20' && L[i - 1].text === 'Kaffebar').removedOn = '2026-04-10';
+  const fromFeb = { A: { from: '2026-02-01', label: 'A (1 Feb–31 Mar, exported 1 Apr)' } };
+  const consistent = pairAB(L, fromFeb);
+  let dropped = false;
+  const inconsistent = pairAB(febToApril(), { ...fromFeb, B: { tweak: rows => rows.filter(r => !(r[3] === 'Kaffebar' && r[0] === '20.03.2026' && !dropped && (dropped = true))) } });
+  return { consistent: [imp(K1, consistent.A), imp(K1, consistent.B)], inconsistent: [imp(K1, inconsistent.A), imp(K1, inconsistent.B)],
+    withdrawn: [imp(K1, consistent.A), imp(K1, consistent.B),
+      { t: 'withdrawn', target: `${K1}|2026-03-20|-4500|Kaffebar|2`, note: 'Decide: the bank withdrew the second coffee on 20 Mar' }] };
+}
+
+function C7_EXPORTS() {
+  const L = febToApril([E('2026-03-31', 'Supermarked', -512.3, { booked: '2026-04-02' }), E('2026-04-01', 'Kaffebar', -45)]);
+  const E1 = bankExport({ name: 'Faelleskonto', ledger: L, from: '2026-02-01', to: '2026-03-31', producedOn: '2026-04-01', label: 'E1 (1 Feb–31 Mar, exported 1 Apr)' });
+  const E2 = bankExport({ name: 'Faelleskonto', ledger: L, from: '2026-04-01', to: '2026-04-08', producedOn: '2026-04-08', label: 'E2 (1–8 Apr, exported 8 Apr)' });
+  const full = bankExport({ name: 'Faelleskonto', ledger: febToApril(), from: '2026-02-01', to: '2026-04-15', producedOn: '2026-04-16', label: 'Fælleskonto (1 Feb–15 Apr)' });
+  const quietL = febToApril().filter(e => e.d <= '2026-04-03');
+  const Q1 = bankExport({ name: 'Faelleskonto', ledger: quietL, from: '2026-02-01', to: '2026-04-05', producedOn: '2026-04-05', label: 'Q1 (1 Feb–5 Apr, exported 5 Apr)' });
+  const Q2 = bankExport({ name: 'Faelleskonto', ledger: quietL, from: '2026-02-01', to: '2026-04-09', producedOn: '2026-04-09', label: 'Q2 (1 Feb–9 Apr, exported 9 Apr; no new rows)' });
+  return { late: [imp(K1, E1, { rangeEnd: '2026-03-31' }), imp(K1, E2, { rangeEnd: '2026-04-08' })],
+    noImports: [{ t: 'account', id: K2, note: `Register ${K2} (no exports yet)` }, imp(K1, full)],
+    quiet: [imp(K1, Q1), imp(K1, Q2)] };
+}
+
+const side = (variant, rules = {}) => ({ variant, rules });
+const CLAIMS = [
+  { id: 'C1', title: 'Import order', today: '2026-04-20',
+    claim: 'A covers 1 Feb–8 Mar (exported 8 Mar). B covers 15 Feb–15 Apr and includes a purchase dated 7 Mar, booked 9 Mar, that A lacks. A→B admits 1 Feb–15 Apr. B→A quarantines A: 1–14 Feb is lost and an export-disagreement item is raised for normal data. The same happens with no late booking, when B merely has more rows on A’s last day.',
+    cites: ['ADR-009:31 “The merge does not depend on import order.”', 'silver-agent.md:37 “Identical, overlapping, reordered, and reverse-order imports produce the same transactions and identifiers.”', 'silver-layer.md:136 “Import runs are admitted in started_at order.”', 'ADR-009:37 a run must still show every admitted transaction for the dates it covers'],
+    variants: { 'late booking, A→B': () => C1_EXPORTS().late.AB, 'late booking, B→A': () => C1_EXPORTS().late.BA,
+      'last-day rows, A→B': () => C1_EXPORTS().lastDay.AB, 'last-day rows, B→A': () => C1_EXPORTS().lastDay.BA },
+    presets: [
+      { label: 'As written: A→B vs B→A', L: side('late booking, A→B', AS_WRITTEN), R: side('late booking, B→A', AS_WRITTEN) },
+      { label: 'B→A: as written vs fixed', L: side('late booking, B→A', AS_WRITTEN), R: side('late booking, B→A') },
+      { label: 'Fixed: A→B vs B→A', L: side('late booking, A→B'), R: side('late booking, B→A') },
+      { label: 'Last-day rows, as written: A→B vs B→A', L: side('last-day rows, A→B', AS_WRITTEN), R: side('last-day rows, B→A', AS_WRITTEN) },
+      { label: 'Last-day rows, B→A: as written vs fixed', L: side('last-day rows, B→A', AS_WRITTEN), R: side('last-day rows, B→A') }] },
+  { id: 'C2', title: 'Conflicting ID schemes', today: '2026-04-20', history: true,
+    claim: 'ADR-009 and domains/transaction.md define different identifiers. transaction.md’s fingerprint includes source-record position, which changes between exports, so IDs are not stable. A late booking shows why ADR-009 rejected the balance-anchored scheme.',
+    cites: ['ADR-009:23-27 identity = version, account, date, amount, identity text, k', 'domains/transaction.md:49-54 “…including source account, booking date, amount, description, and source-record position.”', 'ADR-009:53-54 balance-anchored identifier rejected'],
+    variants: { 'no late booking, A→B': () => { const p = pairAB(marchApril()); return [imp(K1, p.A), imp(K1, p.B)]; },
+      'no late booking, B→A': () => { const p = pairAB(marchApril()); return [imp(K1, p.B), imp(K1, p.A)]; },
+      'late booking 16 Mar, A→B': () => { const p = pairAB(marchApril([E('2026-03-16', 'Boghandel', -249, { booked: '2026-04-03' })])); return [imp(K1, p.A), imp(K1, p.B)]; } },
+    presets: [
+      { label: 'A→B: transaction.md fingerprint vs ADR-009', L: side('no late booking, A→B', { identity: 'fingerprint' }), R: side('no late booking, A→B') },
+      { label: 'Fingerprint, as-written order: A→B vs B→A', L: side('no late booking, A→B', { identity: 'fingerprint', order: 'started' }), R: side('no late booking, B→A', { identity: 'fingerprint', order: 'started' }) },
+      { label: 'Late booking: balance-anchored vs ADR-009', L: side('late booking 16 Mar, A→B', { identity: 'balance' }), R: side('late booking 16 Mar, A→B') }] },
+  { id: 'C3', title: 'Export date from the filename', today: '2026-04-20',
+    claim: 'A historical export (all of 2025) made today gets today’s date suffix. Imported after a current export, it is quarantined. Imported first, the later months with no transactions show complete with zero activity.',
+    cites: ['bronze-layer.md:73-77 the export date is read from the suffix and is how far the export reaches', 'silver-layer.md:86 covered_to = the import run’s export date', 'analytics-layer.md:73-74 “A period with no transactions that meets these conditions is complete with zero activity”'],
+    variants: { 'H only': () => C3_EXPORTS().H, 'H→C': () => C3_EXPORTS().HC, 'C→H': () => C3_EXPORTS().CH },
+    presets: [
+      { label: 'H alone: as written vs fixed', L: side('H only', AS_WRITTEN), R: side('H only') },
+      { label: 'C→H: as written vs fixed', L: side('C→H', AS_WRITTEN), R: side('C→H') },
+      { label: 'As written: H→C vs C→H', L: side('H→C', AS_WRITTEN), R: side('C→H', AS_WRITTEN) },
+      { label: 'Fixed: H→C vs C→H', L: side('H→C'), R: side('C→H') }] },
+  { id: 'C4', title: 'No way back from an ADR-010 quarantine', today: '2026-05-05',
+    claim: 'Break the chain inside one export. Later exports that overlap that date are quarantined too, and none of the three manual decisions (void, same transaction, withdrawn) admits the affected window.',
+    cites: ['ADR-010:15-23 a within-export chain break quarantines the whole run; “a manual decision is recorded where needed”', 'silver-layer.md:13-16 the only identity decisions: void import run, same transaction, withdrawn', 'ADR-010:35-36 “only the export’s new dates are delayed”'],
+    variants: { 'bank omits a fee (persistent)': () => C4_EXPORTS().persistent, 'with an accept decision': () => C4_EXPORTS().accept, 'only X omits a row (transient)': () => C4_EXPORTS().transient },
+    presets: [
+      { label: 'As written vs the “accept discrepancy” decision', L: side('bank omits a fee (persistent)', AS_WRITTEN), R: side('with an accept decision') },
+      { label: 'Persistent vs transient break (as written)', L: side('bank omits a fee (persistent)', AS_WRITTEN), R: side('only X omits a row (transient)', AS_WRITTEN) }] },
+  { id: 'C5', title: 'Identity encoding', today: '2026-04-20', history: true,
+    claim: 'The identity inputs are underspecified: -45,00 vs -45,0; a non-breaking space (0xA0) vs a space; and two same-day, same-amount rows "X" and "X " get one ID when k counts raw text.',
+    cites: ['ADR-009:23-27 “amount”, and identity text = trim + collapse “whitespace”', 'ADR-009:27 “k numbers visibly identical booked rows within one export”', 'silver-layer.md:27 amount: Decimal'],
+    variants: { 'B writes -45,0': () => C5_EXPORTS().amount, 'B has NBSP in "Kaffe Bar"': () => C5_EXPORTS().nbsp, '"Kiosk" and "Kiosk " same day': () => C5_EXPORTS().kraw },
+    presets: [
+      { label: '-45,0: as written vs quantized', L: side('B writes -45,0', { amountEnc: 'written' }), R: side('B writes -45,0') },
+      { label: 'NBSP: ASCII vs Unicode whitespace', L: side('B has NBSP in "Kaffe Bar"', { whitespace: 'ascii' }), R: side('B has NBSP in "Kaffe Bar"') },
+      { label: '"X" / "X ": k by raw text vs identity text', L: side('"Kiosk" and "Kiosk " same day', { kText: 'raw' }), R: side('"Kiosk" and "Kiosk " same day') }] },
+  { id: 'C6', title: 'Fewer repeats', today: '2026-04-20',
+    claim: 'Issue #5 scenario 7 says B is quarantined; ADR-009 says a review item is raised and the higher count kept, which reads as admitting B. Run scenario 7 under both readings.',
+    cites: ['ADR-009:43-45 “…also raises a review item, and the higher count is kept.”', 'issue #5 scenario 7 “keep 2; fewer-repeats review item, B quarantined”', 'ADR-009:47-49 each date’s order and balances come from the latest admitted export'],
+    variants: { 'bank withdrew one coffee': () => C6_EXPORTS().consistent, 'B drops a coffee, balances unchanged': () => C6_EXPORTS().inconsistent,
+      'bank withdrew one coffee + withdrawn decision': () => C6_EXPORTS().withdrawn },
+    presets: [
+      { label: 'ADR-009 as written (admit) vs fixed (quarantine)', L: side('bank withdrew one coffee', { fewer: 'admit' }), R: side('bank withdrew one coffee') },
+      { label: 'Fixed: quarantine, then a withdrawn decision', L: side('bank withdrew one coffee'), R: side('bank withdrew one coffee + withdrawn decision') },
+      { label: 'Inconsistent B: admit vs quarantine', L: side('B drops a coffee, balances unchanged', { fewer: 'admit' }), R: side('B drops a coffee, balances unchanged') }] },
+  { id: 'C7', title: 'Provisional period', today: '2026-04-20',
+    claim: 'An account’s only later export is dated 8 Apr but starts on 1 Apr, so it misses a late booking dated 31 Mar; March still loses its provisional label. And a registered account with no imports keeps every period provisional forever.',
+    cites: ['presentation-layer.md:34-36 “…until every account in the report has an admitted export dated at least 7 days after the period ends”', 'analytics-layer.md:75-76 an account with no imported data is no_data', 'analytics-layer.md:82-83 every account gets a status for every reported period'],
+    variants: { 'late booking missed': () => C7_EXPORTS().late, 'account with no imports': () => C7_EXPORTS().noImports,
+      'quiet account re-exported (found here)': () => C7_EXPORTS().quiet },
+    presets: [
+      { label: 'Missed late booking: as written vs fixed', L: side('late booking missed', AS_WRITTEN), R: side('late booking missed') },
+      { label: 'No-import account: as written vs fixed', L: side('account with no imports', AS_WRITTEN), R: side('account with no imports') },
+      { label: 'Quiet account: as written vs fixed', L: side('quiet account re-exported (found here)', AS_WRITTEN), R: side('quiet account re-exported (found here)') }] },
+];
+
+</script>
+<script>
+// ---------------------------------------------------------------------------
+// The page: a thin shell over the module above. Nothing below is liftable.
+// ---------------------------------------------------------------------------
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const maskName = n => String(n || '').replace(/\d{9,}/g, '••••');
+const showText = t => { const odd = /^\s|\s$|\s\s|[^\S ]/.test(t); const e = esc(t).replace(/ /g, '<b title="non-breaking space">⍽</b>'); return odd ? `“${e}”` : e; };
+const badge = (text, kind) => `<span class="badge b-${kind}">${esc(text)}</span>`;
+const statusBadge = s => badge(s, { accepted: 'ok', quarantined: 'bad', refused: 'bad', repeat: 'mute', voided: 'mute' }[s] || 'mute');
+const covBadge = c => c ? badge(c.status === 'complete' && c.zero ? 'complete · zero' : c.status.replace('_', ' '), { complete: c.zero ? 'warn' : 'ok', partial: 'warn', no_data: 'mute' }[c.status]) : '';
+const copenhagenToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' }).format(new Date());
+const stepLabel = a => a.note || (a.t === 'import' ? `Import ${maskName(a.label || a.filename)} as ${a.account}${a.exportedOn ? ` (declared export date ${a.exportedOn})` : ''}${a.rangeEnd ? `, range end ${a.rangeEnd}` : ''}`
+  : a.t === 'account' ? `Register account ${a.id}` : a.t === 'void' ? `Void run #${a.run}` : a.t === 'same' ? `Same transaction: run #${a.run} record ${a.ordinal} → ${a.target}`
+  : a.t === 'withdrawn' ? `Withdrawn: ${a.target}` : a.t === 'accept-break' ? `Accept the discrepancy in run #${a.run}` : a.t);
+
+// [verdict on PR #16 as written, what the comparison shows, what this version changes]
+const VERDICTS = {
+  C1: ['Reproduced', 'As written, B→A quarantines A with an export-disagreement item (7–8 Mar), and A’s 5 transactions dated 1–14 Feb are lost. Coverage does not reveal the loss, because February is the account’s first month and so is partial either way. The last-day variant fails the same way (item on 8 Mar only).', 'silver-layer.md admits runs in exported_on order, then started_at. A→B and B→A now agree exactly, whichever way you import.'],
+  C2: ['Reproduced', 'With transaction.md’s fingerprint, 6 of 15 IDs change when B is admitted, because the overlap rows are re-sourced to B at other positions, and under the as-written import order 6 final IDs also depend on which file arrived first. With balance-anchored IDs, a late booking on 16 Mar re-identifies the 5 earlier-admitted rows after it. ADR-009: 0 changes in every case. Note that C1’s order fix removes the import-order half of this, but not the churn during the replay — only the identity rule does that.', 'domains/transaction.md now points at ADR-009 instead of defining a fingerprint with source-record position. The old readings stay as switches so the damage is still visible.'],
+  C3: ['Reproduced', 'As written, H alone shows Jan–Mar 2026 complete with zero activity; H after C is quarantined (export-disagreement 1 Mar–15 Apr) and all of 2025 is lost; H before C admits both but leaves Dec 2025–Apr 2026 partial. exported_on order does not help, because both files are dated 15 Apr.', 'Bronze records covers_through, the operator-declared range end, separately from exported_on. H alone now reports no_data after Dec 2025, and either import order admits both files.'],
+  C4: ['Reproduced, for persistent breaks', 'Bank-recalculated balances only break when the bank counts a row it never exports, so every later export of that date breaks too: Z is quarantined, void only removes X, and same transaction / withdrawn have nothing to point at. W (from 11 Mar) is admitted, and 1–10 Mar stays missing for good. If only X had omitted a row, Z would be admitted and March complete.', 'ADR-010 gains an “accept discrepancy” decision: Z is admitted, 3 transactions come back, and March stays honestly partial because the chain really is broken.'],
+  C5: ['Reproduced; latent on real exports', '-45,0: hashing the amount as written changes the two 20 Mar coffee IDs when B is admitted. NBSP: ASCII-only whitespace quarantines B. "Kiosk"/"Kiosk ": k by raw text gives two transactions one ID. The real exports always have 2 decimals and no 0xA0 byte, but one has 176 rows with internal double spaces, so the collapse rule matters in practice.', 'ADR-009 now states all three: the amount is quantized to hundredths, whitespace means any Unicode whitespace including 0xA0, and k counts identity text.'],
+  C6: ['Reproduced, with a different impact', 'The documents do disagree. But “admit” is the incoherent reading: B supplies 20 Mar’s balances and lacks the kept second coffee, so the chain breaks and March flips from complete to partial. An inconsistent B is quarantined by ADR-010 either way.', 'ADR-009 keeps the quarantine and records that a withdrawn decision settles the review item and admits the export with its chain intact.'],
+  C7: ['Reproduced, with a different impact', 'As written, March loses its provisional label once E2 (dated 8 Apr, starting 1 Apr) is admitted, although no admitted export shows the 31 Mar late booking. Coverage still marks March partial, so the gap is visible but the month reads settled. A registered account with no imports keeps every month provisional forever.', 'presentation-layer.md requires the qualifying export to cover the period’s last day and exempts no_data accounts; Bronze lets a repeat run record its own export date.'],
+};
+const SURPRISES = [
+  'A quiet account re-exported later is byte-identical, so Bronze recorded a <b>repeat</b> and never used its later export date. The month stayed provisional and the evidence stopped early. Issue #5 scenario 17 failed on exactly this until the data was changed. One real export ends 13 days before its export date, so the shape is real. Now a repeat records its own export date and covers_through; see C7 “quiet account”.',
+  'Fewer repeats always comes with a balance difference when the bank recalculates Saldo, so ADR-009 now says the missing amount is an explained difference. Otherwise scenario 7 would also raise an export-disagreement item.',
+  'Scenario 14 (B then A) passed only because nothing is dated A’s export day: covered_to was the export date even when the operator’s chosen range ended earlier. covers_through fixes that too.',
+  'A UTF-8 file fails only through the header (“Beløb” decodes as “BelÃ¸b”), not the decode. Every Danske header has an ø, so it holds for this format.',
+  'In C3, H→C, the gap link makes December 2025 partial too: a gap demotes the last month of the older export.',
+  'Real data: 0 of about 900 links break, and the only blank Saldo is on a Slettet row. The chain rule and the Slettet rule hold on the samples.',
+  'Review of this prototype, round 2: the rule “require a declared covers_through when the last transaction is more than 7 days before the export date” <b>refused 5 of the 17 baseline scenarios</b> the moment it was enforced here — every one of them an ordinary month-end export of a quiet account. A day count was the wrong test. The rule now asks whether falling back would claim evidence in a <i>later reporting period</i> than the payload’s last transaction, which is the harm it was written against. All 17 pass again.',
+  'Round 2 also: two transactions appended to the same date were numbered from their repeat counter k, so two groups could share a day_sequence and break Gold’s uniqueness invariant — invisibly, because only duplicate IDs were ever checked. Reachable only under “fewer repeats = admit”, the reading C6 rejects, so no walkthrough hit it. Appended transactions are now ordered by transaction ID, and a day_seq collision badge sits next to the ID one.',
+];
+
+// ---- views ----
+const actionCache = new Map();
+const actionsOf = (claim, variant) => { const k = claim.id + '|' + variant; if (!actionCache.has(k)) actionCache.set(k, claim.variants[variant]()); return actionCache.get(k); };
+const free = { actions: [], compare: false, L: { ...DEFAULT_RULES }, R: { ...DEFAULT_RULES }, today: copenhagenToday(), pending: null };
+let tab = 'free', view = null;
+
+function claimView(claim, preset) {
+  const p = preset || claim.presets[0];
+  return { claim, L: { variant: p.L.variant, rules: { ...DEFAULT_RULES, ...p.L.rules } }, R: { variant: p.R.variant, rules: { ...DEFAULT_RULES, ...p.R.rules } },
+    pos: 0, today: claim.today, single: false, preset: p.label };
+}
+function scenarioView(sc) {
+  const claim = { id: 'S' + sc.n, today: sc.today, variants: { default: sc.steps } };
+  return { claim, L: { variant: 'default', rules: { ...DEFAULT_RULES } }, R: null, pos: 0, today: sc.today, single: true, scenario: sc };
+}
+
+function renderTabs() {
+  const tabs = [['free', 'Free play'], ['baseline', 'Issue #5 baseline'], ...CLAIMS.map(c => [c.id, `${c.id} ${c.title}`]), ['verdicts', 'Verdicts']];
+  document.getElementById('tabs').innerHTML = tabs.map(([id, l]) => `<button class="${tab === id ? 'on' : ''}" data-tab="${id}">${esc(l)}</button>`).join('');
+}
+function render() {
+  renderTabs();
+  const P = document.getElementById('panel');
+  if (tab === 'free') P.innerHTML = renderFree();
+  else if (tab === 'baseline') P.innerHTML = renderBaseline();
+  else if (tab === 'verdicts') P.innerHTML = renderVerdicts();
+  else P.innerHTML = renderClaim(CLAIMS.find(c => c.id === tab));
+}
+
+function rulesSummary(rules) {
+  const ch = SWITCHES.filter(s => rules[s.key] !== DEFAULT_RULES[s.key]);
+  return ch.length ? `Rule set: <b>${ch.map(s => `${esc(s.label)} = ${esc(optionLabel(s.key, rules[s.key]))}`).join('; ')}</b>` : 'Rule set: proposed rules (this branch)';
+}
+function rulesBlock(sideKey, rules, editable) {
+  return `<details><summary>${rulesSummary(rules)}</summary>${rulesTable(sideKey, rules, editable)}</details>`;
+}
+function rulesTable(sideKey, rules, editable) {
+  return `<div class="rules">${SWITCHES.map(s => {
+    const changed = rules[s.key] !== DEFAULT_RULES[s.key];
+    return `<span class="muted">${esc(s.label)}</span><select data-rule="${sideKey}|${s.key}" ${editable ? '' : 'disabled'} class="${changed ? 'changed' : ''}">${
+      s.options.map(o => `<option value="${o[0]}" ${o[0] === rules[s.key] ? 'selected' : ''}>${esc(o[1])}${o[0] === s.options[0][0] ? ' (default)' : ''}</option>`).join('')}</select>`;
+  }).join('')}</div>`;
+}
+
+function renderStepper(v) {
+  const acts = { L: actionsOf(v.claim, v.L.variant), R: v.R ? actionsOf(v.claim, v.R.variant) : [] };
+  const max = Math.max(acts.L.length, acts.R.length);
+  const states = {}, hist = {};
+  for (const k of v.single ? ['L'] : ['L', 'R']) {
+    const a = acts[k].slice(0, Math.min(v.pos, acts[k].length));
+    states[k] = build(a, v[k].rules, v.today);
+    if (v.claim.history) hist[k] = idHistory(a, v[k].rules, v.today);
+  }
+  const d = v.single ? null : diffStates(states.L, states.R);
+  const sideHtml = k => {
+    const s = v[k], variants = Object.keys(v.claim.variants);
+    return `<div class="side"><div class="head"><b>${k === 'L' ? 'Left' : 'Right'}</b>${variants.length > 1 ? `<label class="small">scenario <select data-variant="${k}">${variants.map(n => `<option ${n === s.variant ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>` : ''}</div>
+      ${rulesBlock(k, s.rules, true)}
+      <ol class="steps">${acts[k].map((a, i) => `<li class="${i < v.pos ? 'done' : i === v.pos ? 'next' : ''}">${i < v.pos ? '✓' : i + 1 + '.'} ${esc(stepLabel(a))}</li>`).join('')}</ol>
+      ${renderState(states[k], d ? d.keys : new Set(), hist[k], v.scenario ? null : k)}</div>`;
+  };
+  return `<div class="presets"><button class="btn" data-act="reset">⟲ Reset</button><button class="btn primary" data-act="next" ${v.pos >= max ? 'disabled' : ''}>Next step ▸</button>
+      <button class="btn" data-act="all" ${v.pos >= max ? 'disabled' : ''}>Run all ▸▸</button><span class="muted small" style="align-self:center">step ${v.pos} of ${max}</span>
+      <label class="small muted" style="align-self:center">today <input type="date" data-today value="${v.today}"></label></div>
+    ${d ? renderDiff(d) : ''}
+    <div class="compare ${v.single ? 'single' : ''}">${sideHtml('L')}${v.single ? '' : sideHtml('R')}</div>`;
+}
+
+function renderDiff(d) {
+  const note = d.schemesDiffer ? ' The two sides use different identity schemes, so IDs are not compared; read <b>ID over steps</b>.' : '';
+  if (!d.count) return `<div class="diffbar none">No differences between left and right.${note}</div>`;
+  const li = note ? [note.trim()] : [];
+  const txs = ts => ts.slice(0, 4).map(t => `${t.date} ${showText(t.description)} ${fmtKr(t.cents)}`).join('; ') + (ts.length > 4 ? '; …' : '');
+  if (d.txOnlyL.length) li.push(`Transactions only on the left: <b>${d.txOnlyL.length}</b> (${txs(d.txOnlyL)})`);
+  if (d.txOnlyR.length) li.push(`Transactions only on the right: <b>${d.txOnlyR.length}</b> (${txs(d.txOnlyR)})`);
+  if (d.txId.length) li.push(`Same transaction, different ID: <b>${d.txId.length}</b>`);
+  if (d.txBalance.length) li.push(`Different balance or day_sequence: <b>${d.txBalance.length}</b>`);
+  d.runs.forEach(([a, b]) => li.push(`Run ${esc(maskName(a.label))}: ${a.status} vs ${b ? b.status : 'absent'}`));
+  d.review.forEach(([s, k]) => li.push(`Review item only on the ${s === 'L' ? 'left' : 'right'}: ${esc(k.replace(/\|/g, ' · '))}`));
+  d.coverage.forEach(([a, m, x, y]) => li.push(`Coverage ${esc(a)} ${m}: ${x} vs ${y}`));
+  d.provisional.forEach(([m, x, y]) => li.push(`Provisional ${m}: ${x ? 'yes' : 'no'} vs ${y ? 'yes' : 'no'}`));
+  return `<div class="diffbar"><b>${d.count} differences</b> (highlighted in both panels)<ul style="margin:4px 0 0 18px;padding:0">${li.map(x => `<li>${x}</li>`).join('')}</ul></div>`;
+}
+
+function renderState(s, keys, hist, sideKey) {
+  const runKey = r => 'run:' + r.label + '|' + r.account;
+  const runs = s.runs.map(r => {
+    const R = r.res && r.res.R, c = r.res && r.res.check;
+    const errs = R ? R.errors.map(e => `<div class="err small">${e.ordinal ? 'record ' + e.ordinal + ': ' : ''}${esc(e.code)}: ${esc(e.message)}</div>`).join('') : '';
+    const acc = R && R.accepted.length ? `<div class="small">accepted discrepancy: ${R.accepted.map(e => 'record ' + e.ordinal).join(', ')}</div>` : '';
+    const chk = c ? [c.added.length && `adds ${c.added.reduce((n, a) => n + a.n, 0)} (${c.added.filter(a => a.inOverlap).length} inside the overlap)`, c.missing.length && `<span class="err">missing ${c.missing.length}: ${c.missing.slice(0, 3).map(m => m.date + ' ' + showText(m.text)).join('; ')}</span>`,
+      c.fewer.length && `<span class="err">fewer repeats ${c.fewer.map(f => `${f.date} ${showText(f.text)} ${f.shown}/${f.admitted}`).join('; ')}</span>`,
+      c.unexplained.length && `<span class="err">unexplained balance ${c.unexplained.slice(0, 2).map(u => `${u.date}: Δ ${fmtKr(u.actual)}, explained ${fmtKr(u.expected)}`).join('; ')}</span>`].filter(Boolean).join('<br>') : '';
+    return `<tr class="${keys.has(runKey(r)) ? 'diff' : ''}"><td>#${r.runNo}${R && r.res.admitOrder ? `<div class="muted small">order ${r.res.admitOrder}</div>` : ''}</td>
+      <td>${esc(maskName(r.label))}<div class="muted small mono">${esc(maskName(r.filename))} · ${r.payloadId.slice(0, 8)}</div></td><td>${esc(r.account)}</td>
+      <td class="nowrap">${r.exportedOn || '—'}<div class="muted small">${r.exportedOnSource}${r.coversThrough
+        ? `<br>covers through ${r.coversThrough}<br>(${r.coversThroughSource === 'declared' ? 'declared' : 'fell back to the export date'})`
+        : r.rangeEnd ? ', range end ' + r.rangeEnd : ''}</div></td>
+      <td>${statusBadge(r.status)}${r.reason ? `<div class="muted small">${esc(r.reason)}</div>` : ''}</td>
+      <td class="nowrap small">${R ? `${R.coveredFrom || '—'} → ${R.coveredTo}<div class="muted">evidence through ${R.evidenceThrough}</div>` : ''}</td>
+      <td class="small">${R && R.summary ? `${R.summary.booked} booked${R.summary.unbooked ? `, ${R.summary.unbooked} unbooked` : ''}<div class="muted">${R.summary.from} → ${R.summary.to}<br>opening ${fmtKr(R.summary.opening)}, closing ${fmtKr(R.summary.closing)}</div>` : ''}</td>
+      <td class="small">${errs}${acc}${chk}${R && R.notes.length ? `<div class="muted">${R.notes.map(esc).join('; ')}</div>` : ''}</td></tr>`;
+  }).join('');
+  const riKey = i => `ri:${i.kind}|${i.account}|${i.dateFrom}|${i.dateTo}`;
+  const reviews = s.silver.reviewItems.map(i => `<tr class="${keys.has(riKey(i)) ? 'diff' : ''}"><td class="mono">${i.id}</td><td>${badge(i.kind, i.kind === 'fewer-repeats' ? 'warn' : 'bad')}</td>
+    <td>${esc(i.account)}</td><td class="nowrap">${i.dateFrom} → ${i.dateTo}</td><td>run #${i.runNo}</td>
+    <td class="small">${i.resolvedBy ? esc(i.resolvedBy) : '<span class="muted">open</span>'}</td></tr>`).join('');
+  const A = s.analytics;
+  const grid = `<table class="grid"><tr><th>account</th>${A.months.map(m => `<th>${m}</th>`).join('')}</tr>
+    ${A.accounts.map(a => `<tr><td>${esc(a.id)}<div class="muted small">${a.coverageStart || '—'} → ${a.evidenceThrough || '—'}</div></td>${A.months.map(m => {
+      const c = A.grid[a.id][m], p = A.provisional[m];
+      return `<td class="${keys.has(`cov:${a.id}|${m}`) ? 'diff' : ''}" title="${esc(c.why)}">${covBadge(c)}${p && p.holders.includes(a.id) ? '<div class="muted small">holds label</div>' : ''}</td>`;
+    }).join('')}</tr>`).join('')}
+    <tr><td><b>Provisional label</b></td>${A.months.map(m => { const p = A.provisional[m];
+      return `<td class="${keys.has('prov:' + m) ? 'diff' : ''}" title="${esc(p.why)}">${p.provisional ? badge('provisional', 'warn') : badge('final', 'ok')}</td>`; }).join('')}</tr></table>`;
+  const tx = s.silver.transactions.map(t => {
+    const h = hist && hist.get(t.matchKey);
+    const hcell = hist ? `<td class="mono small nowrap">${!h || h.length < 2 ? '<span class="muted">stable</span>' : h.map(x => `${x.id.slice(0, 6)}<span class="muted">@${x.step}</span>`).join(' → ')}</td>` : '';
+    return `<tr class="${keys.has('tx:' + t.matchKey) ? 'diff' : ''}"><td class="mono">${t.id}${t.collision ? ' ' + badge('ID collision', 'bad') : ''}</td><td class="nowrap">${t.date}</td>
+      <td class="num">${t.daySeq}${t.fallback ? '*' : ''}${t.seqCollision ? ' ' + badge('day_seq collision', 'bad') : ''}</td><td>${showText(t.description)}${t.sameAs ? '<div class="muted small">same as ' + esc(t.sameAs) + '</div>' : ''}</td>
+      <td class="num">${fmtKr(t.cents)}</td><td class="num">${fmtKr(t.balance)}</td><td class="num">${t.k}${t.rawK !== t.k ? ` <span class="muted">(raw ${t.rawK})</span>` : ''}</td>
+      <td class="small nowrap">#${t.sourceRun}:${t.sourceOrdinal}</td><td class="small">${t.evidence.map(e => `#${e.runNo}:${e.ordinal}`).join(', ')}</td>${hcell}</tr>`;
+  }).join('');
+  const unb = s.silver.unbooked.map(u => `<tr><td>run #${u.runNo}:${u.ordinal}</td><td>${u.date}</td><td>${showText(u.text)}</td><td class="num">${fmtKr(u.cents)}</td><td>${esc(u.sourceStatus)} → ${u.booking}</td></tr>`).join('');
+  const dec = s.decisions.filter(x => x.t !== 'note').map(x => `<li>${esc(stepLabel(x))}${x.t === 'accept-break' && s.rules.breakDecision !== 'accept' ? ' <span class="muted">(no effect: switch off)</span>' : ''}</li>`).join('');
+  return `<h3>Import runs</h3><div class="scroll"><table style="min-width:980px"><tr><th>run</th><th>export</th><th>account</th><th>export date</th><th>status</th><th>covers</th><th>first-import summary</th><th>errors and merge check</th></tr>${runs || '<tr><td colspan=8 class="muted">No import runs yet.</td></tr>'}</table></div>
+    <h3>Review items</h3>${reviews ? `<div class="scroll"><table><tr><th>id</th><th>kind</th><th>account</th><th>dates</th><th>raised by</th><th>settled by</th></tr>${reviews}</table></div>` : '<p class="muted small">None.</p>'}
+    ${dec ? `<h3>Manual decisions</h3><ul class="small">${dec}</ul>` : ''}
+    <h3>Coverage and provisional label (months × accounts, today ${s.today})</h3><div class="scroll">${grid}</div>
+    <h3>Admitted transactions (${s.silver.transactions.length})</h3><div class="scroll"><table><tr><th>transaction_id</th><th>date</th><th>day_seq</th><th>text</th><th>amount</th><th>balance</th><th>k</th><th>balance from</th><th>lineage (run:record)</th>${hist ? '<th>ID over steps</th>' : ''}</tr>${tx || '<tr><td colspan=10 class="muted">None.</td></tr>'}</table></div>
+    <p class="muted small">day_seq* = the balance-source export does not show this transaction; it is appended. Hover a coverage cell for the reason.</p>
+    ${unb ? `<h3>Unbooked records</h3><div class="scroll"><table><tr><th>record</th><th>date</th><th>text</th><th>amount</th><th>status</th></tr>${unb}</table></div>` : ''}`;
+}
+
+function renderClaim(c) {
+  if (!view || view.claim !== c) view = claimView(c);
+  const [v, why, fix] = VERDICTS[c.id];
+  return `<h2>${c.id}: ${esc(c.title)}</h2><div class="claim">${esc(c.claim)}</div>
+    <ul class="cites">${c.cites.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+    <div class="verdict"><b>Verdict on PR #16 as written: ${esc(v)}.</b> ${esc(why)}<br><span class="small"><b>Changed here:</b> ${esc(fix)}</span></div>
+    <div class="presets">${c.presets.map((p, i) => `<button class="btn ${view.preset === p.label ? 'primary' : ''}" data-preset="${i}">${esc(p.label)}</button>`).join('')}</div>
+    ${c.history ? '<p class="muted small">Two different schemes always produce different IDs, so read the <b>ID over steps</b> column: it shows whether a transaction’s ID changed while the imports were replayed.</p>' : ''}
+    ${renderStepper(view)}`;
+}
+
+let baselineResults = null;
+function renderBaseline() {
+  if (!baselineResults) baselineResults = BASELINE.map(sc => {
+    const acts = sc.steps();
+    try { return sc.check(acts.map((_, i) => build(acts.slice(0, i + 1), DEFAULT_RULES, sc.today))); } catch (e) { return { pass: false, detail: 'error: ' + e.message }; }
+  });
+  const passed = baselineResults.filter(r => r.pass).length;
+  return `<h2>Issue #5 synthetic scenarios under the proposed rule set</h2><p>${passed} of ${BASELINE.length} pass. Click <b>Step through</b> to replay one below.</p>
+    <div class="scroll" style="max-height:none"><table><tr><th>#</th><th>scenario</th><th>expected</th><th>result</th><th>what happened</th><th></th></tr>
+    ${BASELINE.map((sc, i) => `<tr class="${view && view.scenario === sc ? 'diff' : ''}"><td>${sc.n}</td><td>${esc(sc.title)}</td><td class="small">${esc(sc.expected)}</td>
+      <td class="${baselineResults[i].pass ? 'pass' : 'fail'}">${baselineResults[i].pass ? 'PASS' : 'FAIL'}</td><td class="small">${esc(baselineResults[i].detail)}</td>
+      <td><button class="btn" data-scenario="${i}">Step through</button></td></tr>`).join('')}</table></div>
+    ${view && view.scenario ? `<h2>Scenario ${view.scenario.n}: ${esc(view.scenario.title)}</h2>${renderStepper(view)}` : ''}`;
+}
+
+function renderVerdicts() {
+  return `<h2>Verdicts</h2><div class="scroll" style="max-height:none"><table><tr><th>claim</th><th>verdict on PR #16</th><th>evidence</th><th>what this branch changes</th></tr>
+    ${CLAIMS.map(c => { const [v, why, fix] = VERDICTS[c.id]; return `<tr><td><button class="btn" data-tab="${c.id}">${c.id}</button> ${esc(c.title)}</td><td><b>${esc(v)}</b></td><td class="small">${esc(why)}</td><td class="small">${esc(fix)}</td></tr>`; }).join('')}
+    </table></div><h2>Found along the way</h2><ol>${SURPRISES.map(s => `<li>${s}</li>`).join('')}</ol>
+    <h2>Checked on real-format files</h2><p>The same module was run on minimal working examples cut from the real exports, kept in the gitignored
+      <code>imports\\mwe\\</code> and not part of this file: <code>s01/s02</code> (clean, repeat), <code>s10-*</code>, <code>s11-slettet</code> and <code>s12-*</code> (validation),
+      <code>c1-*</code>, <code>c2-*</code>, <code>c3-*</code>, <code>c4-*</code>, <code>c5-*</code>, <code>c6-*</code> and <code>c7-*</code>. Every claim behaved as in its synthetic walkthrough: B→A quarantines A;
+      fingerprint and balance-anchored IDs change during the replay; the historical export shows zero-activity months as complete; a persistent break quarantines Z; raw-text k collides;
+      ASCII-only whitespace quarantines the NBSP export; “admit” fewer repeats breaks 2 balance links; the quiet re-export is a repeat.
+      Load them through Free play to see the same thing.</p>`;
+}
+
+function renderFree() {
+  const acts = free.actions, L = build(acts, free.L, free.today), R = free.compare ? build(acts, free.R, free.today) : null;
+  const d = R ? diffStates(L, R) : null;
+  const runs = L.runs, txs = L.silver.transactions;
+  const accts = L.bronze.accounts;
+  const pend = free.pending;
+  const runOpts = f => runs.filter(f).map(r => `<option value="${r.runNo}">#${r.runNo} ${esc(maskName(r.label))} (${r.status})</option>`).join('');
+  const txOpts = txs.map(t => `<option value="${esc(t.matchKey)}">${t.date} ${esc(t.identityText)} ${fmtKr(t.cents)} k=${t.k}</option>`).join('');
+  return `<h2>Free play</h2><p class="muted">Import real or tweaked exports (for example the MWEs in <code>imports\\mwe\\</code>) and record manual decisions. Every action is replayed from scratch under the rule set(s) below.</p>
+    <div class="card"><b>Import a file</b>
+      <div class="form"><label>CSV file<input type="file" id="file" accept=".csv,text/csv"></label>
+      ${pend ? `<label>declared account<input id="acct" list="accts" value="${esc(pend.account || accts[0] || '')}" placeholder="e.g. Account 1"></label>
+        <label>export date ${pend.suffix ? '(from filename)' : '(no suffix: declare it)'}<input type="date" id="expd" value="${pend.suffix || ''}" ${pend.suffix ? 'disabled' : ''}></label>
+        <label>range end (the last date you asked the bank for; required when falling back would claim a later month than the file's last transaction)<input type="date" id="rend"></label>
+        <button class="btn primary" data-act="import">Import ${esc(maskName(pend.name))}</button>` : ''}</div>
+      <datalist id="accts">${accts.map(a => `<option value="${esc(a)}">`).join('')}</datalist></div>
+    <div class="card"><b>Accounts and decisions</b>
+      <div class="form"><label>register an account<input id="newacct" placeholder="account name"></label><button class="btn" data-act="register">Register</button>
+        <label>today (Europe/Copenhagen)<input type="date" data-today value="${free.today}"></label></div>
+      <div class="form"><label>void import run<select id="voidrun">${runOpts(r => r.outcome === 'stored' && r.status !== 'voided')}</select></label><button class="btn" data-act="void">Void</button>
+        <label>accept discrepancy (added switch)<select id="accrun">${runOpts(r => r.status === 'quarantined')}</select></label><button class="btn" data-act="accept">Accept</button></div>
+      <div class="form"><label>same transaction: run<select id="samerun">${runOpts(r => r.status === 'quarantined')}</select></label><label>record #<input id="sameord" type="number" min="1"></label>
+        <label>is the existing transaction<select id="sametarget">${txOpts}</select></label><button class="btn" data-act="same">Record</button></div>
+      <div class="form"><label>withdrawn by the bank<select id="wtarget">${txOpts}</select></label><button class="btn" data-act="withdrawn">Record</button></div>
+      <p class="small"><b>Actions so far:</b> ${acts.length ? '' : '<span class="muted">none</span>'}</p><ol class="steps">${acts.map(a => `<li class="done">${esc(stepLabel(a))}</li>`).join('')}</ol>
+      <button class="btn" data-act="undo" ${acts.length ? '' : 'disabled'}>Undo last</button> <button class="btn" data-act="clear" ${acts.length ? '' : 'disabled'}>Clear all</button>
+      <label class="small" style="margin-left:14px"><input type="checkbox" data-act="compare" ${free.compare ? 'checked' : ''}> compare with a second rule set</label></div>
+    ${d ? renderDiff(d) : ''}
+    <div class="compare ${R ? '' : 'single'}">
+      <div class="side"><div class="head"><b>${R ? 'Left' : 'State'}</b></div>${rulesBlock('FL', free.L, true)}${renderState(L, d ? d.keys : new Set(), null)}</div>
+      ${R ? `<div class="side"><div class="head"><b>Right</b></div>${rulesBlock('FR', free.R, true)}${renderState(R, d.keys, null)}</div>` : ''}
+    </div>`;
+}
+
+// ---- events ----
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-tab],[data-act],[data-preset],[data-scenario]');
+  if (!b || b.tagName === 'INPUT') return;
+  if (b.dataset.tab) { tab = b.dataset.tab; view = null; render(); return; }
+  if (b.dataset.preset) { const c = CLAIMS.find(x => x.id === tab); view = claimView(c, c.presets[+b.dataset.preset]); render(); return; }
+  if (b.dataset.scenario) { view = scenarioView(BASELINE[+b.dataset.scenario]); render(); return; }
+  const act = b.dataset.act, val = id => (document.getElementById(id) || {}).value;
+  if (view && ['reset', 'next', 'all'].includes(act)) {
+    const max = Math.max(actionsOf(view.claim, view.L.variant).length, view.R ? actionsOf(view.claim, view.R.variant).length : 0);
+    view.pos = act === 'reset' ? 0 : act === 'next' ? Math.min(max, view.pos + 1) : max; render(); return;
+  }
+  const push = a => { free.actions.push(a); render(); };
+  if (act === 'import') {
+    const p = free.pending, account = (val('acct') || '').trim(), exportedOn = p.suffix || val('expd');
+    if (!account) return alert('Declare the account this export belongs to.');
+    if (!exportedOn) return alert('This filename has no -YYYYMMDD suffix, so declare the export date.');
+    free.pending = null;
+    push({ t: 'import', account, filename: p.name, label: p.name, bytes: p.bytes, exportedOn: p.suffix ? undefined : exportedOn, rangeEnd: val('rend') || undefined });
+  }
+  else if (act === 'register') { const id = (val('newacct') || '').trim(); if (id) push({ t: 'account', id }); }
+  else if (act === 'void' && val('voidrun')) push({ t: 'void', run: +val('voidrun') });
+  else if (act === 'accept' && val('accrun')) push({ t: 'accept-break', run: +val('accrun') });
+  else if (act === 'same' && val('samerun') && val('sameord') && val('sametarget')) push({ t: 'same', run: +val('samerun'), ordinal: +val('sameord'), target: val('sametarget') });
+  else if (act === 'withdrawn' && val('wtarget')) push({ t: 'withdrawn', target: val('wtarget') });
+  else if (act === 'undo') { free.actions.pop(); render(); }
+  else if (act === 'clear') { free.actions = []; render(); }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.rule) {
+    const [side, key] = t.dataset.rule.split('|');
+    if (side === 'FL') free.L[key] = t.value; else if (side === 'FR') free.R[key] = t.value; else view[side].rules[key] = t.value;
+    if (view) view.preset = null;
+    render();
+  } else if (t.dataset.variant) { view[t.dataset.variant].variant = t.value; view.preset = null; render(); }
+  else if (t.dataset.today !== undefined) { if (tab === 'free') free.today = t.value; else view.today = t.value; render(); }
+  else if (t.dataset.act === 'compare') { free.compare = t.checked; render(); }
+  else if (t.id === 'file' && t.files[0]) {
+    const f = t.files[0], rd = new FileReader();
+    rd.onload = () => { free.pending = { name: f.name, bytes: new Uint8Array(rd.result), suffix: exportDateFromFilename(f.name) }; render(); };
+    rd.readAsArrayBuffer(f);
+  }
+});
+window.addEventListener('error', e => { document.getElementById('panel').insertAdjacentHTML('afterbegin', `<p class="err">Error: ${esc(e.message)}</p>`); });
+// Deep links: #C1, #C1:2 (third preset), #C1:0:all (run every step), #baseline:16.
+(() => {
+  const [t, a, b] = decodeURIComponent(location.hash.slice(1)).split(':');
+  if (!t) return;
+  tab = t;
+  const c = CLAIMS.find(x => x.id === t);
+  if (c) view = claimView(c, c.presets[+a || 0]);
+  if (t === 'baseline' && a) view = scenarioView(BASELINE[+a]);
+  if (view && b === 'all') view.pos = Math.max(actionsOf(view.claim, view.L.variant).length, view.R ? actionsOf(view.claim, view.R.variant).length : 0);
+})();
+render();
+
+</script>
+</body>
+</html>

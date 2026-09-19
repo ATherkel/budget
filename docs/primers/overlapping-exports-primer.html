@@ -1,0 +1,1588 @@
+<title>Overlapping Exports Primer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,500;0,600;0,700;1,500&display=swap">
+<style>
+  :root{
+    --paper:#F5F7F9;
+    --card:#FFFFFF;
+    --sunk:#ECEFF3;
+    --ink:#161A20;
+    --ink-2:#39424F;
+    --muted:#69737F;
+    --rule:#DCE1E7;
+    --rule-2:#C6CDD6;
+    --accent:#0B6B6B;
+    --accent-soft:#E2EFEE;
+    --ok:#2C7A54;
+    --ok-soft:#E3F1E9;
+    --bad:#AB362A;
+    --bad-soft:#F8E6E3;
+    --warn:#8E6010;
+    --warn-soft:#F8EEDC;
+    --shadow:0 1px 2px rgba(22,26,32,.05), 0 8px 24px -16px rgba(22,26,32,.28);
+    --ff-serif:"IBM Plex Serif", Georgia, "Times New Roman", serif;
+    --ff-sans:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --ff-mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#111419;
+      --card:#181C23;
+      --sunk:#1F242C;
+      --ink:#E7EBF1;
+      --ink-2:#BFC7D2;
+      --muted:#8E99A7;
+      --rule:#2A3039;
+      --rule-2:#3B434E;
+      --accent:#54B5AE;
+      --accent-soft:#12302F;
+      --ok:#62BE8C;
+      --ok-soft:#142A20;
+      --bad:#E48173;
+      --bad-soft:#331C19;
+      --warn:#D7A445;
+      --warn-soft:#2E2617;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#111419;
+    --card:#181C23;
+    --sunk:#1F242C;
+    --ink:#E7EBF1;
+    --ink-2:#BFC7D2;
+    --muted:#8E99A7;
+    --rule:#2A3039;
+    --rule-2:#3B434E;
+    --accent:#54B5AE;
+    --accent-soft:#12302F;
+    --ok:#62BE8C;
+    --ok-soft:#142A20;
+    --bad:#E48173;
+    --bad-soft:#331C19;
+    --warn:#D7A445;
+    --warn-soft:#2E2617;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+    color-scheme: dark;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--ff-sans);
+    font-size:16px;
+    line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- progress bar ---------- */
+  .topbar{
+    position:sticky;
+    top:env(safe-area-inset-top, 0px);
+    z-index:40;
+    background:color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--rule);
+  }
+  .topbar-in{
+    max-width:52rem;margin:0 auto;
+    padding:.6rem 1rem;
+    display:flex;align-items:center;gap:.85rem;
+  }
+  .topbar-title{
+    font-family:var(--ff-serif);font-weight:600;font-size:.94rem;
+    letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .track{flex:1;height:5px;border-radius:99px;background:var(--rule);overflow:hidden;min-width:60px}
+  .track > i{display:block;height:100%;width:0%;background:var(--accent);border-radius:99px;transition:width .35s cubic-bezier(.4,0,.2,1)}
+  .tally{
+    font-family:var(--ff-mono);font-size:.76rem;font-variant-numeric:tabular-nums;
+    color:var(--muted);white-space:nowrap;
+  }
+
+  /* ---------- page frame ---------- */
+  .wrap{max-width:52rem;margin:0 auto;padding-inline:1rem;padding-block:2.4rem 5rem}
+
+  .eyebrow{
+    font-family:var(--ff-mono);font-size:.72rem;letter-spacing:.11em;text-transform:uppercase;
+    color:var(--accent);font-weight:500;margin:0 0 .7rem;
+  }
+  h1{
+    font-family:var(--ff-serif);font-weight:700;font-size:clamp(1.9rem,6vw,2.7rem);
+    line-height:1.12;letter-spacing:-.022em;margin:0 0 .8rem;text-wrap:balance;
+  }
+  .standfirst{
+    font-size:1.06rem;color:var(--ink-2);max-width:40rem;margin:0 0 1.5rem;
+  }
+  .standfirst strong{color:var(--ink);font-weight:600}
+
+  .callout{
+    background:var(--card);border:1px solid var(--rule);border-left:3px solid var(--accent);
+    border-radius:0 10px 10px 0;padding:1rem 1.15rem;margin:1.5rem 0;box-shadow:var(--shadow);
+  }
+  .callout p{margin:0}
+  .callout p + p{margin-top:.7rem}
+  .callout-h{
+    font-family:var(--ff-mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--accent);font-weight:600;margin:0 0 .5rem;
+  }
+
+  /* ---------- contents ---------- */
+  .toc{margin:2.2rem 0 3rem;border-top:1px solid var(--rule);padding-top:1.2rem}
+  .toc-h{
+    font-family:var(--ff-mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:0 0 .85rem;
+  }
+  .toc-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:.3rem}
+  .toc-item{
+    display:flex;align-items:baseline;gap:.6rem;
+    padding:.4rem .55rem;border-radius:7px;text-decoration:none;color:var(--ink-2);
+    font-size:.88rem;line-height:1.35;border:1px solid transparent;
+  }
+  .toc-item:hover{background:var(--sunk);color:var(--ink)}
+  .toc-item .n{
+    font-family:var(--ff-mono);font-size:.72rem;color:var(--muted);
+    font-variant-numeric:tabular-nums;flex:none;
+  }
+  .toc-item.done{color:var(--muted)}
+  .toc-item.done .n{color:var(--ok)}
+  .toc-item.done .t{text-decoration:line-through;text-decoration-color:var(--rule-2)}
+
+  /* ---------- modules ---------- */
+  .mod{
+    background:var(--card);border:1px solid var(--rule);border-radius:12px;
+    padding:1.5rem 1.35rem 1.1rem;margin:0 0 1.15rem;
+    box-shadow:var(--shadow);
+    scroll-margin-top:5rem;
+    border-left:3px solid var(--rule-2);
+    transition:border-left-color .3s ease;
+  }
+  .mod.done{border-left-color:var(--ok)}
+  .mod-head{display:flex;gap:.9rem;align-items:baseline;margin-bottom:.15rem}
+  .mod-n{
+    font-family:var(--ff-mono);font-size:.78rem;font-weight:600;color:var(--accent);
+    font-variant-numeric:tabular-nums;flex:none;padding-top:.28rem;
+  }
+  .mod.done .mod-n{color:var(--ok)}
+  .mod h2{
+    font-family:var(--ff-serif);font-weight:600;font-size:1.3rem;line-height:1.25;
+    letter-spacing:-.015em;margin:0;text-wrap:balance;
+  }
+  .goal{
+    font-size:.86rem;color:var(--muted);font-style:italic;font-family:var(--ff-serif);
+    margin:.45rem 0 1.1rem;padding-left:calc(.78rem + .9rem + 1ch);
+  }
+  .mod-body > *:first-child{margin-top:0}
+  .mod-body p{margin:0 0 .9rem;max-width:42rem}
+  .mod-body h3{
+    font-family:var(--ff-sans);font-size:.8rem;font-weight:600;letter-spacing:.04em;
+    text-transform:uppercase;color:var(--muted);margin:1.6rem 0 .6rem;
+  }
+  .mod-body ul,.mod-body ol{margin:0 0 .9rem;padding-left:1.15rem;max-width:42rem}
+  .mod-body li{margin:0 0 .4rem}
+  .mod-body li::marker{color:var(--muted)}
+  code{
+    font-family:var(--ff-mono);font-size:.855em;
+    background:var(--sunk);padding:.1em .34em;border-radius:4px;
+    border:1px solid var(--rule);
+  }
+  b,strong{font-weight:600;color:var(--ink)}
+  em{font-style:italic}
+
+  /* ---------- ledger tables ---------- */
+  .scroller{overflow-x:auto;margin:0 0 1rem;border:1px solid var(--rule);border-radius:9px;background:var(--sunk)}
+  table.ledger{
+    border-collapse:collapse;width:100%;min-width:30rem;
+    font-family:var(--ff-mono);font-size:.795rem;font-variant-numeric:tabular-nums;
+  }
+  table.ledger caption{
+    caption-side:top;text-align:left;padding:.6rem .8rem .45rem;
+    font-family:var(--ff-sans);font-size:.78rem;color:var(--muted);font-weight:500;
+    border-bottom:1px solid var(--rule);
+  }
+  table.ledger th{
+    text-align:left;font-weight:600;color:var(--muted);font-size:.72rem;
+    letter-spacing:.04em;text-transform:uppercase;padding:.5rem .7rem;
+    border-bottom:1px solid var(--rule-2);white-space:nowrap;
+  }
+  table.ledger td{padding:.38rem .7rem;border-bottom:1px solid var(--rule);white-space:nowrap;color:var(--ink-2)}
+  table.ledger tbody tr:last-child td{border-bottom:0}
+  table.ledger td.num{text-align:right}
+  table.ledger .note{
+    font-family:var(--ff-sans);font-size:.74rem;white-space:normal;color:var(--muted);
+  }
+  tr.hit td{background:var(--bad-soft)}
+  tr.hit td.num,tr.hit td{color:var(--ink)}
+  tr.new td{background:var(--ok-soft)}
+  .chk{color:var(--ok);font-weight:600}
+  .xmk{color:var(--bad);font-weight:600}
+
+  /* wide tables (comparisons) */
+  table.grid{
+    border-collapse:collapse;width:100%;min-width:34rem;
+    font-size:.84rem;font-family:var(--ff-sans);
+  }
+  table.grid th{
+    text-align:left;font-weight:600;color:var(--muted);font-size:.71rem;letter-spacing:.05em;
+    text-transform:uppercase;padding:.55rem .75rem;border-bottom:1px solid var(--rule-2);
+    vertical-align:bottom;
+  }
+  table.grid td{padding:.55rem .75rem;border-bottom:1px solid var(--rule);vertical-align:top;color:var(--ink-2);line-height:1.5}
+  table.grid tbody tr:last-child td{border-bottom:0}
+  table.grid td:first-child{color:var(--ink);font-weight:500;white-space:nowrap}
+
+  /* ---------- timeline figure ---------- */
+  figure.fig{margin:0 0 1.1rem;padding:1rem .9rem .8rem;background:var(--sunk);border:1px solid var(--rule);border-radius:9px}
+  figure.fig figcaption{
+    font-family:var(--ff-sans);font-size:.76rem;color:var(--muted);margin-top:.75rem;line-height:1.5;
+  }
+  .tl{display:grid;gap:.4rem}
+  .tl-row{display:grid;grid-template-columns:4.6rem 1fr;gap:.55rem;align-items:center}
+  .tl-lab{font-family:var(--ff-mono);font-size:.72rem;color:var(--muted);text-align:right}
+  .tl-bar{position:relative;height:1.55rem;background:var(--card);border:1px solid var(--rule);border-radius:5px;overflow:hidden}
+  .tl-bar > span{
+    position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;
+    font-family:var(--ff-mono);font-size:.68rem;color:#fff;border-radius:4px;overflow:hidden;
+  }
+  .tl-a > span{background:var(--accent)}
+  .tl-b > span{background:#6A5BA8}
+  :root[data-theme="dark"] .tl-b > span{background:#8D7DD0;color:#0E1014}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tl-b > span{background:#8D7DD0;color:#0E1014}}
+  :root[data-theme="dark"] .tl-a > span{color:#07100F}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tl-a > span{color:#07100F}}
+  .tl-ov{
+    position:absolute;top:0;bottom:0;background:repeating-linear-gradient(45deg,transparent,transparent 4px,var(--warn) 4px,var(--warn) 5px);
+    opacity:.85;
+  }
+  .tl-scale{display:grid;grid-template-columns:4.6rem 1fr;gap:.55rem;margin-top:.15rem}
+  .tl-ticks{display:flex;justify-content:space-between;font-family:var(--ff-mono);font-size:.66rem;color:var(--muted)}
+
+  /* ---------- claim cards ---------- */
+  .claims{display:grid;gap:.6rem;margin:0 0 1rem}
+  .claim{
+    border:1px solid var(--rule);border-radius:9px;background:var(--sunk);
+    padding:.8rem .9rem;
+  }
+  .claim-h{display:flex;align-items:baseline;gap:.55rem;margin-bottom:.45rem;flex-wrap:wrap}
+  .claim-id{
+    font-family:var(--ff-mono);font-size:.72rem;font-weight:600;color:#fff;background:var(--accent);
+    padding:.06rem .4rem;border-radius:4px;flex:none;
+  }
+  :root[data-theme="dark"] .claim-id{color:#07100F}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .claim-id{color:#07100F}}
+  .claim-t{font-weight:600;font-size:.94rem;color:var(--ink);line-height:1.3}
+  .claim dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:.2rem .7rem;font-size:.87rem}
+  .claim dt{
+    font-family:var(--ff-mono);font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted);padding-top:.28rem;white-space:nowrap;
+  }
+  .claim dd{margin:0;color:var(--ink-2);line-height:1.52}
+  .claim dd.fix{color:var(--ink)}
+  @media (max-width:30rem){
+    .claim dl{grid-template-columns:1fr;gap:0}
+    .claim dt{padding-top:.5rem}
+  }
+
+  /* ---------- open-issue cards ---------- */
+  .issue{border:1px solid var(--rule);border-radius:9px;padding:.8rem .9rem;margin:0 0 .6rem;background:var(--sunk)}
+  .issue.high{border-left:3px solid var(--bad)}
+  .issue.mid{border-left:3px solid var(--warn)}
+  .issue.low{border-left:3px solid var(--rule-2)}
+  .issue.done{border-left:3px solid var(--ok)}
+  .issue.done .issue-t{color:var(--ink-2)}
+  .issue .fixed{font-size:.84rem;color:var(--ink)}
+  .issue .fixed b{color:var(--ok)}
+  .issue-h{display:flex;gap:.55rem;align-items:baseline;flex-wrap:wrap;margin-bottom:.35rem}
+  .issue-file{font-family:var(--ff-mono);font-size:.71rem;color:var(--muted);background:var(--card);padding:.06rem .38rem;border-radius:4px;border:1px solid var(--rule)}
+  .issue-t{font-weight:600;font-size:.92rem;color:var(--ink);line-height:1.3;flex:1 1 14rem}
+  .issue p{margin:0 0 .5rem;font-size:.88rem;color:var(--ink-2);max-width:42rem}
+  .issue p:last-child{margin-bottom:0}
+  .issue .cost{font-size:.84rem;color:var(--ink)}
+  .issue .cost b{color:var(--bad)}
+
+  .tag{
+    display:inline-block;font-family:var(--ff-mono);font-size:.66rem;letter-spacing:.05em;
+    text-transform:uppercase;padding:.08rem .4rem;border-radius:4px;font-weight:600;
+    vertical-align:.08em;
+  }
+  .tag.t-fix{background:var(--bad-soft);color:var(--bad)}
+  .tag.t-follow{background:var(--warn-soft);color:var(--warn)}
+  .tag.t-proto{background:var(--sunk);color:var(--muted);border:1px solid var(--rule)}
+  .tag.t-done{background:var(--ok-soft);color:var(--ok)}
+
+  /* ---------- steps ---------- */
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:0 0 1rem}
+  ol.steps > li{
+    counter-increment:s;position:relative;padding-left:2rem;margin-bottom:.65rem;
+    font-size:.92rem;max-width:42rem;
+  }
+  ol.steps > li::before{
+    content:counter(s);position:absolute;left:0;top:.08rem;
+    width:1.35rem;height:1.35rem;border-radius:50%;
+    background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);
+    font-family:var(--ff-mono);font-size:.7rem;font-weight:600;
+    display:flex;align-items:center;justify-content:center;
+  }
+
+  .qs{list-style:none;padding:0;margin:0 0 1rem;counter-reset:q}
+  .qs li{
+    counter-increment:q;position:relative;padding:.55rem .8rem .55rem 2.4rem;
+    border-bottom:1px solid var(--rule);font-size:.93rem;color:var(--ink);
+  }
+  .qs li:last-child{border-bottom:0}
+  .qs li::before{
+    content:"Q" counter(q);position:absolute;left:.15rem;top:.62rem;
+    font-family:var(--ff-mono);font-size:.68rem;font-weight:600;color:var(--accent);
+  }
+
+  /* ---------- check-off footer ---------- */
+  .mod-foot{
+    margin-top:1.25rem;padding-top:.85rem;border-top:1px solid var(--rule);
+    display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;
+  }
+  .checkoff{
+    display:inline-flex;align-items:center;gap:.55rem;cursor:pointer;
+    font-size:.86rem;font-weight:500;color:var(--muted);
+    background:none;border:1px solid var(--rule-2);border-radius:99px;
+    padding:.32rem .8rem .32rem .42rem;
+    font-family:var(--ff-sans);
+    transition:color .18s ease,border-color .18s ease,background .18s ease;
+  }
+  .checkoff:hover{border-color:var(--accent);color:var(--ink)}
+  .checkoff:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .box{
+    width:1.15rem;height:1.15rem;border-radius:5px;border:1.5px solid var(--rule-2);
+    background:var(--card);flex:none;display:flex;align-items:center;justify-content:center;
+    transition:background .18s ease,border-color .18s ease;
+  }
+  .box svg{width:.75rem;height:.75rem;opacity:0;transition:opacity .18s ease}
+  .checkoff[aria-pressed="true"]{color:var(--ok);border-color:var(--ok)}
+  .checkoff[aria-pressed="true"] .box{background:var(--ok);border-color:var(--ok)}
+  .checkoff[aria-pressed="true"] .box svg{opacity:1}
+  .box svg path{stroke:#fff;stroke-width:2.6;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---------- closing ---------- */
+  .verdict{
+    background:var(--accent-soft);border:1px solid var(--accent);border-radius:12px;
+    padding:1.3rem 1.25rem;margin:1.15rem 0;
+  }
+  .verdict h3{color:var(--accent);margin-top:0}
+  .verdict p{max-width:42rem}
+  .verdict p:last-child{margin-bottom:0}
+
+  .footer{
+    margin-top:2.5rem;padding-top:1.2rem;border-top:1px solid var(--rule);
+    font-size:.8rem;color:var(--muted);display:flex;justify-content:space-between;
+    gap:1rem;flex-wrap:wrap;align-items:center;
+  }
+  .reset{
+    background:none;border:1px solid var(--rule);border-radius:7px;color:var(--muted);
+    font-family:var(--ff-sans);font-size:.78rem;padding:.25rem .6rem;cursor:pointer;
+  }
+  .reset:hover{border-color:var(--bad);color:var(--bad)}
+  .reset:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:2px}
+
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{transition-duration:.01ms !important;animation-duration:.01ms !important}
+  }
+</style>
+
+<div class="topbar">
+  <div class="topbar-in">
+    <span class="topbar-title">Overlapping Exports</span>
+    <span class="track"><i id="bar"></i></span>
+    <span class="tally" id="tally">0 / 13</span>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <p class="eyebrow">PR #16 + PR #31 + PR #32 · ATherkel/budget</p>
+  <h1>Your bank sends the same purchase twice. Now what?</h1>
+  <p class="standfirst">
+    PR #16 and PR #31 are 2,100 lines about one small, genuinely awkward problem. This page
+    walks you through it in fourteen short modules, each with a worked example using real
+    kroner. <strong>Tick a module off once you can explain it to someone else.</strong>
+    Your progress is saved.
+  </p>
+
+  <div class="callout">
+    <p class="callout-h">About this file</p>
+    <p>
+      This is a <strong>primer, not a contract.</strong> It explains what the documents in
+      <code>docs/architecture/</code> and <code>docs/decisions/</code> decide; it never decides
+      anything itself. Where this page and one of those documents disagree, the document is
+      right and this page is out of date — say so and it gets fixed.
+    </p>
+    <p>
+      It lives in the repository at <code>docs/primers/overlapping-exports-primer.html</code>;
+      that copy opens by double-clicking and needs no server. Your ticks are saved as you go.
+      <b>Current through the second review round</b>, which closes the last six of the ten comments
+      in module 12. Module 14 is what that round found — including one rule the first round got
+      wrong.
+    </p>
+  </div>
+
+  <div class="callout">
+    <p class="callout-h">The short answer to your question</p>
+    <p>
+      No, you don't have to merge blind — but you also don't need to understand every sentence
+      in those documents. You need to understand <strong>five ideas</strong>, and be able to
+      answer <strong>five questions</strong>. Modules 01–09 are the five ideas. Module 13 is the
+      five questions. Everything after that is what the PRs did, what the reviews caught, and the
+      one rule that turned out to be wrong.
+    </p>
+    <p>
+      Budget about 25 minutes. If you only have 10, read 01, 05, 06, 09 and 14.
+    </p>
+  </div>
+
+  <nav class="toc">
+    <p class="toc-h">Contents</p>
+    <div class="toc-list" id="toc"></div>
+  </nav>
+
+  <!-- ============ 01 ============ -->
+  <section class="mod" id="m1" data-key="m1">
+    <div class="mod-head">
+      <span class="mod-n">01</span>
+      <h2>The whole problem, in one picture</h2>
+    </div>
+    <p class="goal">After this: you can state the problem both PRs exist to solve, in one sentence.</p>
+    <div class="mod-body">
+      <p>
+        You log into Danske Bank and ask for a date range. You get a CSV. A few weeks later you
+        ask again, for a range that overlaps the first one. Now you have two files that both
+        contain your February.
+      </p>
+
+      <figure class="fig">
+        <div class="tl">
+          <div class="tl-row">
+            <span class="tl-lab">Export A</span>
+            <span class="tl-bar tl-a"><span style="left:0%;right:40%">1 Jan → 14 Feb</span></span>
+          </div>
+          <div class="tl-row">
+            <span class="tl-lab">Export B</span>
+            <span class="tl-bar tl-b"><span style="left:34%;right:0%">1 Feb → 1 Mar</span><i class="tl-ov" style="left:34%;right:40%"></i></span>
+          </div>
+        </div>
+        <div class="tl-scale">
+          <span></span>
+          <span class="tl-ticks"><span>1 Jan</span><span>1 Feb</span><span>1 Mar</span></span>
+        </div>
+        <figcaption>
+          The hatched strip is the overlap: 1–14 February appears in <em>both</em> files. Every
+          purchase in that strip is printed twice — once in each file.
+        </figcaption>
+      </figure>
+
+      <p>
+        The bank does not put an ID on any row. So when the same Netto purchase shows up in both
+        files, nothing in the data says "these two lines are the same event." You have to work it
+        out from the content. And that is where it gets nasty, because <strong>two identical lines
+        are sometimes one purchase seen twice, and sometimes two real purchases.</strong>
+      </p>
+
+      <div class="callout">
+        <p class="callout-h">The one sentence</p>
+        <p>
+          <strong>Which rows across my overlapping export files are the same transaction — and how
+          do I <em>prove</em> I got it right, given the bank gave me no IDs?</strong>
+        </p>
+      </div>
+
+      <p>
+        Get it wrong one way and you double-count your spending. Get it wrong the other way and
+        your two coffees on Friday become one, and 45 kr quietly evaporates. Every rule in these
+        two PRs is an answer to that sentence.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 02 ============ -->
+  <section class="mod" id="m2" data-key="m2">
+    <div class="mod-head">
+      <span class="mod-n">02</span>
+      <h2>What the CSV gives you, and what it doesn't</h2>
+    </div>
+    <p class="goal">After this: you know which three things are missing and why that's the root of everything.</p>
+    <div class="mod-body">
+      <p>Eight columns. That's the whole raw material.</p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Column</th><th>What it is</th></tr></thead>
+          <tbody>
+            <tr><td><code>Dato</code></td><td>The <em>purchase</em> date — not the date the bank recorded it. Module 03 is entirely about this.</td></tr>
+            <tr><td><code>Tekst</code></td><td>Free text. "Netto 8721", "Kaffebar", "Rejsekort". Sometimes has double spaces in it.</td></tr>
+            <tr><td><code>Beløb</code></td><td>The amount, with a Danish decimal comma.</td></tr>
+            <tr><td><code>Saldo</code></td><td>Your running account balance after this row. <strong>Recalculated every time the bank makes a file.</strong></td></tr>
+            <tr><td><code>Status</code></td><td><code>Udført</code> (done) or <code>Slettet</code> (deleted before it was ever booked).</td></tr>
+            <tr><td><code>Kategori</code>, <code>Underkategori</code></td><td>The bank's own guess at a category. Space-padded. Kept, never trusted.</td></tr>
+            <tr><td><code>Afstemt</code></td><td>Always <code>Nej</code> in every file you have. Ignored.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>The three things that aren't there</h3>
+      <ul>
+        <li><strong>No transaction ID.</strong> Nothing identifies a row as a specific event. This is the whole problem.</li>
+        <li><strong>No account.</strong> The file doesn't say which of your accounts it is. <em>You</em> tell the system that at import time.</li>
+        <li><strong>No currency.</strong> Same — it comes from your account settings, never from the file.</li>
+      </ul>
+
+      <p>
+        So the system only ever knows what account a file belongs to because you told it. That's
+        why one of the manual decisions in Module 08 is "I imported this against the wrong
+        account, undo that."
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 03 ============ -->
+  <section class="mod" id="m3" data-key="m3">
+    <div class="mod-head">
+      <span class="mod-n">03</span>
+      <h2>Two dates that are not the same date</h2>
+    </div>
+    <p class="goal">After this: you can explain why a month you thought was finished can still grow.</p>
+    <div class="mod-body">
+      <p>
+        You buy coffee on Tuesday 31 March. The café's terminal settles on Thursday. The bank
+        <em>books</em> it on 2 April — but it writes <code>Dato = 31-03-2026</code>, the day you
+        actually bought it.
+      </p>
+
+      <p>Two consequences, and they cause about half the trouble in these PRs:</p>
+
+      <ul>
+        <li>
+          <strong>That purchase lands in March.</strong> Not April. So your March total changes
+          <em>after</em> March is over.
+        </li>
+        <li>
+          <strong>A file made on 1 April cannot contain it.</strong> The bank hadn't booked it yet.
+          Only a file made on 3 April or later shows it — and when it does, it appears on 31 March,
+          on a date your earlier file already "covered".
+        </li>
+      </ul>
+
+      <p>The system calls this a <strong>late booking</strong>. It is completely normal, not an error.</p>
+
+      <div class="callout">
+        <p class="callout-h">Why this matters for everything downstream</p>
+        <p>
+          When a newer file shows a transaction your older file didn't, that is <em>not</em>
+          evidence the files disagree. It's the expected shape of the data. The rules have to
+          allow it — which is exactly what Module 07's "explained growth" is for.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 04 ============ -->
+  <section class="mod" id="m4" data-key="m4">
+    <div class="mod-head">
+      <span class="mod-n">04</span>
+      <h2>Bronze, Silver, Gold — who is allowed to do what</h2>
+    </div>
+    <p class="goal">After this: you can say which layer a given rule belongs in, and why the split is enforced.</p>
+    <div class="mod-body">
+      <p>Three layers. The whole point is that each one is <em>forbidden</em> from doing the next one's job.</p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Layer</th><th>Think of it as</th><th>Does</th><th>Must never</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Bronze</td>
+              <td>A photocopier</td>
+              <td>Keeps the exact bytes forever. Splits them into rows. Records which account you declared and when the file was made.</td>
+              <td>Interpret anything. No trimming, no number parsing, no dedupe.</td>
+            </tr>
+            <tr>
+              <td>Silver</td>
+              <td>A librarian</td>
+              <td>Turns text into dates and decimals. Maps <code>Udført</code> → booked. Works out which rows are the same transaction. Checks the balances add up.</td>
+              <td>Assign household meaning — no categories, no budgets, no "this is a transfer".</td>
+            </tr>
+            <tr>
+              <td>Gold</td>
+              <td>The report table</td>
+              <td>One row per booked transaction, categorised, ready for the dashboard.</td>
+              <td>Correct or fill in a balance. It carries numbers, it never fixes them.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        The reason for the strictness: Bronze keeps the original bytes, so if you later find a
+        parser bug, you re-run Silver over the same bytes and get a corrected result. Nothing is
+        ever lost, because Bronze never edited anything in the first place.
+      </p>
+
+      <p>
+        Everything in Modules 05–08 happens in <strong>Silver</strong>. That's where the whole
+        argument lives.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 05 ============ -->
+  <section class="mod" id="m5" data-key="m5">
+    <div class="mod-head">
+      <span class="mod-n">05</span>
+      <h2>Giving a transaction a name that never moves</h2>
+    </div>
+    <p class="goal">After this: you can explain the ID formula and why two obvious alternatives were rejected.</p>
+    <div class="mod-body">
+      <p>This is ADR-009, the most important document in the stack. A transaction's ID is a hash of five things:</p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Ingredient</th><th>Example</th></tr></thead>
+          <tbody>
+            <tr><td>account</td><td>your everyday account</td></tr>
+            <tr><td>transaction date</td><td><code>2026-03-20</code></td></tr>
+            <tr><td>amount</td><td><code>-45.00</code></td></tr>
+            <tr><td>identity text</td><td><code>Kaffebar</code> — trimmed, double spaces collapsed to one</td></tr>
+            <tr><td>occurrence <em>k</em></td><td><code>1</code> or <code>2</code> — see below</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>What <em>k</em> is for</h3>
+      <p>You bought two identical coffees on the same day. The file shows:</p>
+
+      <div class="scroller">
+        <table class="ledger">
+          <caption>Export A — two genuinely different purchases</caption>
+          <thead><tr><th>Dato</th><th>Tekst</th><th class="num">Beløb</th><th>k</th></tr></thead>
+          <tbody>
+            <tr><td>2026-03-20</td><td>Kaffebar</td><td class="num">-45,00</td><td>1</td></tr>
+            <tr><td>2026-03-20</td><td>Kaffebar</td><td class="num">-45,00</td><td>2</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Without <em>k</em>, both rows hash to the same ID, the system says "duplicate", collapses
+        them, and you lose 45 kr. With <em>k</em>, they're two distinct IDs. <em>k</em> counts
+        look-alike rows <strong>within one file</strong>, top to bottom.
+      </p>
+
+      <h3>Two ideas that were rejected — and you should know why</h3>
+
+      <p>
+        <strong>"Use the row's position in the file."</strong> The same coffee is row 7 in Export A
+        and row 12 in Export B. Its ID would change the moment a newer file arrives. Your category,
+        your note, your correction — all of it detaches and points at nothing.
+      </p>
+
+      <p>
+        <strong>"Include the balance after the transaction."</strong> Worse. A late-booked purchase
+        on the 19th makes the bank recalculate every balance after it. So a coffee on the 20th gets
+        a new balance, therefore a new ID, <em>even though nothing about the coffee changed.</em>
+      </p>
+
+      <div class="callout">
+        <p class="callout-h">The rule to remember</p>
+        <p>
+          <strong>Your categories and corrections hang off these IDs. An ID that moves is worse than
+          no ID at all.</strong> Everything ADR-009 rejects, it rejects for that reason.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 06 ============ -->
+  <section class="mod" id="m6" data-key="m6">
+    <div class="mod-head">
+      <span class="mod-n">06</span>
+      <h2>The balance chain is your lie detector</h2>
+    </div>
+    <p class="goal">After this: you can read a Saldo column and say whether the file is trustworthy.</p>
+    <div class="mod-body">
+      <p>
+        Since the bank gave you no IDs, you need some other proof that a file is complete. The
+        <code>Saldo</code> column is it. Each row's balance should equal the previous row's balance
+        plus this row's amount. That's the <strong>balance chain</strong>.
+      </p>
+
+      <div class="scroller">
+        <table class="ledger">
+          <caption>A healthy chain — every line checks out</caption>
+          <thead><tr><th>Dato</th><th>Tekst</th><th class="num">Beløb</th><th class="num">Saldo</th><th>Check</th></tr></thead>
+          <tbody>
+            <tr><td>2026-03-19</td><td>Netto</td><td class="num">-120,00</td><td class="num">1.249,50</td><td class="note">—</td></tr>
+            <tr><td>2026-03-20</td><td>Kaffebar</td><td class="num">-45,00</td><td class="num">1.204,50</td><td class="note"><span class="chk">✓</span> 1.249,50 − 45,00</td></tr>
+            <tr><td>2026-03-20</td><td>Kaffebar</td><td class="num">-45,00</td><td class="num">1.159,50</td><td class="note"><span class="chk">✓</span> 1.204,50 − 45,00</td></tr>
+            <tr><td>2026-03-21</td><td>DSB</td><td class="num">-36,00</td><td class="num">1.123,50</td><td class="note"><span class="chk">✓</span> 1.159,50 − 36,00</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Now a broken one:</p>
+
+      <div class="scroller">
+        <table class="ledger">
+          <caption>A broken chain — the file is not telling you everything</caption>
+          <thead><tr><th>Dato</th><th>Tekst</th><th class="num">Beløb</th><th class="num">Saldo</th><th>Check</th></tr></thead>
+          <tbody>
+            <tr><td>2026-03-20</td><td>Kaffebar</td><td class="num">-45,00</td><td class="num">1.204,50</td><td class="note">—</td></tr>
+            <tr class="hit"><td>2026-03-21</td><td>DSB</td><td class="num">-36,00</td><td class="num">1.098,50</td><td class="note"><span class="xmk">✗</span> expected 1.168,50 — off by 70,00</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        70 kr went out and the file doesn't show what it was. The bank is counting a row it isn't
+        exporting to you. <strong>That file cannot be trusted as evidence</strong>, so the rule
+        (ADR-010) is to set the entire file aside — <em>quarantine</em> it — rather than import a
+        version of your March that is quietly 70 kr wrong.
+      </p>
+
+      <div class="callout">
+        <p class="callout-h">Good news, checked against your real files</p>
+        <p>
+          The prototype ran your actual exports: <strong>0 out of roughly 900 balance links break</strong>,
+          and the single blank <code>Saldo</code> is on a <code>Slettet</code> row, which the chain
+          correctly skips. The chain rule holds on your real data today.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 07 ============ -->
+  <section class="mod" id="m7" data-key="m7">
+    <div class="mod-head">
+      <span class="mod-n">07</span>
+      <h2>A file gets admitted whole, or not at all</h2>
+    </div>
+    <p class="goal">After this: you can explain "explained growth" and why half a file is never imported.</p>
+    <div class="mod-body">
+      <p>When a new file arrives, it is admitted only if <strong>both</strong> of these hold:</p>
+
+      <ol class="steps">
+        <li>It still shows <em>every</em> transaction already admitted for the dates it covers. Nothing has gone missing.</li>
+        <li>Its end-of-day balances differ from the ones already on file by <em>exactly</em> the total of the transactions it adds.</li>
+      </ol>
+
+      <p>Rule 2 is called <strong>explained growth</strong>. Worked through:</p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th></th><th>Export A (made 14 Feb)</th><th>Export B (made 1 Mar)</th></tr></thead>
+          <tbody>
+            <tr><td>Rows on 12 Feb</td><td>Netto −120,00</td><td>Netto −120,00 <strong>+ Rejsekort −200,00</strong></td></tr>
+            <tr><td>Balance end of 14 Feb</td><td>3.480,00</td><td>3.280,00</td></tr>
+            <tr><td>Difference</td><td colspan="2">−200,00 — <em>exactly</em> the Rejsekort that B adds. Explained. <span class="chk">✓ admit B</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        The Rejsekort was bought on 12 February and booked on 16 February — a late booking
+        (Module 03). B is right, A was right when it was made, and nothing is wrong.
+      </p>
+
+      <p>
+        If the difference had been −250,00 instead, nothing accounts for the extra 50 kr. That's
+        an <strong>unexplained difference</strong>: the file is quarantined and a
+        <em>review item</em> lands on your desk.
+      </p>
+
+      <h3>Why never half a file</h3>
+      <p>
+        Because the balance chain only proves anything as a whole run of rows. Import the good half
+        and the arithmetic no longer ties out, so you've thrown away the one proof you had.
+        All or nothing.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 08 ============ -->
+  <section class="mod" id="m8" data-key="m8">
+    <div class="mod-head">
+      <span class="mod-n">08</span>
+      <h2>The four times a human has to decide</h2>
+    </div>
+    <p class="goal">After this: you know every case where the system stops and asks you something.</p>
+    <div class="mod-body">
+      <p>
+        The system refuses to guess. When it can't settle something by rule, it quarantines and
+        waits. There are exactly four rulings you can record — and the fourth one is new in PR #31.
+      </p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Decision</th><th>You're saying</th><th>When</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>void import run</td>
+              <td>"I imported this file against the wrong account."</td>
+              <td>Your mistake at import time.</td>
+            </tr>
+            <tr>
+              <td>same transaction</td>
+              <td>"These two rows are one purchase; the bank reworded the text."</td>
+              <td>The bank changes <code>Tekst</code>, so the ID formula sees a new transaction.</td>
+            </tr>
+            <tr>
+              <td>withdrawn</td>
+              <td>"The bank removed that one. The newer file is correct."</td>
+              <td>A newer file shows fewer copies of a repeated transaction.</td>
+            </tr>
+            <tr>
+              <td><strong>accept discrepancy</strong> <span class="tag t-fix">new in #31</span></td>
+              <td>"The bank's own numbers don't add up and never will. Take the file anyway, and mark those months honestly incomplete."</td>
+              <td>A permanent balance-chain break (Module 06).</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Crucially, a manual decision <strong>never edits the source data</strong>. It's recorded
+        alongside it, and re-running the whole import from scratch replays your decisions and gives
+        the identical result. Your rulings are inputs, not patches.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 09 ============ -->
+  <section class="mod" id="m9" data-key="m9">
+    <div class="mod-head">
+      <span class="mod-n">09</span>
+      <h2>Coverage — how a dashboard tells a comfortable lie</h2>
+    </div>
+    <p class="goal">After this: you can spot the single most dangerous failure mode in the whole system.</p>
+    <div class="mod-body">
+      <p>Every account × month gets one of three coverage labels:</p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Label</th><th>Means</th></tr></thead>
+          <tbody>
+            <tr><td><code>complete</code></td><td>Evidence spans the whole month and every balance link checks out. If the total is 0, that is a <em>proven</em> zero.</td></tr>
+            <tr><td><code>partial</code></td><td>There's data, but there's a gap or a broken link. Don't trust the total.</td></tr>
+            <tr><td><code>no data</code></td><td>No evidence reaches this month at all. The system has nothing to say.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>And separately, a period can be <strong>provisional</strong>: it may still change, because late bookings are still landing in it (Module 03).</p>
+
+      <div class="callout">
+        <p class="callout-h">The one rule that matters most</p>
+        <p>
+          <strong><code>no data</code> must never render as "you spent 0 kr."</strong>
+        </p>
+        <p>
+          "I have no idea what happened in February" and "I have proof you spent nothing in
+          February" look identical on a chart — both are an empty bar. One of them is a lie that
+          will make you think you're doing better than you are.
+        </p>
+      </div>
+
+      <p>
+        Hold onto this. Two of PR #31's seven fixes (C3 and C7) exist purely to stop the dashboard
+        making this exact mistake — and <strong>one of the still-open review comments says it can
+        still happen.</strong> That's Module 12.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 10 ============ -->
+  <section class="mod" id="m10" data-key="m10">
+    <div class="mod-head">
+      <span class="mod-n">10</span>
+      <h2>What PR #31 actually fixed</h2>
+    </div>
+    <p class="goal">After this: you can say what each of C1–C7 was, without re-reading the PR.</p>
+    <div class="mod-body">
+      <p>
+        PR #16 wrote the rules. Someone then <em>built a working toy</em> of those rules and ran them.
+        Seven things broke. PR #31 fixes those seven and ships the toy as evidence. Here they are,
+        roughly worst first.
+      </p>
+
+      <div class="claims">
+
+        <div class="claim">
+          <div class="claim-h"><span class="claim-id">C1</span><span class="claim-t">The order you import files in changed your data</span></div>
+          <dl>
+            <dt>Symptom</dt><dd>Import A then B → 25 transactions. Import B then A → 20 transactions, and two weeks of February gone. Same two files.</dd>
+            <dt>Cause</dt><dd>Files were admitted in the order <em>you</em> fed them in. The older file A can't show a purchase booked after A was made — so arriving second, A looked like it was hiding something, and got quarantined.</dd>
+            <dt>Fix</dt><dd class="fix">Admit files in the order <strong>the bank made them</strong>, not the order you imported them.</dd>
+          </dl>
+        </div>
+
+        <div class="claim">
+          <div class="claim-h"><span class="claim-id">C3</span><span class="claim-t">A file of old history claimed to reach today</span></div>
+          <dl>
+            <dt>Symptom</dt><dd>You download all of 2025 on 15 April 2026. The filename ends <code>-20260415</code>, so the system concludes the file's evidence reaches 15 April 2026. Result: January, February and March 2026 read <code>complete · zero</code>. The dashboard says you spent nothing in February.</dd>
+            <dt>Cause</dt><dd>One date was doing two jobs: <em>when the bank made the file</em> and <em>how far the file reaches</em>.</dd>
+            <dt>Fix</dt><dd class="fix">Two separate fields. <code>exported_on</code> = when it was made. <code>covers_through</code> = how far it reaches, which you declare at import. Those months now read <code>no data</code>.</dd>
+          </dl>
+        </div>
+
+        <div class="claim">
+          <div class="claim-h"><span class="claim-id">C4</span><span class="claim-t">One bad day locked out a window forever</span></div>
+          <dl>
+            <dt>Symptom</dt><dd>A balance break on 5 March quarantines that file — correct. But every <em>later</em> file covering 5 March breaks identically, because the bank recalculates <code>Saldo</code> the same wrong way every time. 1–10 March is permanently unreachable. None of the three existing manual decisions could touch it.</dd>
+            <dt>Cause</dt><dd>Quarantine had no exit for a break that's real and permanent in the source.</dd>
+            <dt>Fix</dt><dd class="fix">The fourth decision, <em>accept discrepancy</em>. The file is admitted, the break is <strong>recorded and never repaired</strong>, and those months stay honestly <code>partial</code>.</dd>
+          </dl>
+        </div>
+
+        <div class="claim">
+          <div class="claim-h"><span class="claim-id">C7</span><span class="claim-t">"Provisional" came off too early — three ways</span></div>
+          <dl>
+            <dt>Symptom</dt><dd>The rule was "wait for a file made 7+ days after the month ends". A file made 8 April but <em>starting</em> 1 April qualifies — yet it structurally cannot contain a 31 March purchase booked on 2 April. March was declared final on evidence that couldn't possibly contain what we were waiting for. Also: an account you never imported held every month provisional forever; and a quiet account with no new activity could never clear the label at all.</dd>
+            <dt>Cause</dt><dd>Three separate holes in one rule.</dd>
+            <dt>Fix</dt><dd class="fix">The qualifying file must also <em>cover</em> the period's last day; <code>no_data</code> accounts don't hold the label; a re-exported identical file still records its own date.</dd>
+          </dl>
+        </div>
+
+        <div class="claim">
+          <div class="claim-h"><span class="claim-id">C6</span><span class="claim-t">Two documents gave opposite instructions</span></div>
+          <dl>
+            <dt>Symptom</dt><dd>Two coffees on 20 March; a later file shows only one. ADR-009 said "keep the higher count, raise a review item" — which reads like <em>accept the file</em>. Issue #5 said <em>quarantine it</em>. The prototype showed accepting is incoherent: the coffee you insisted on keeping has no slot in the new balances, so the chain breaks and March flips <code>complete</code> → <code>partial</code>.</dd>
+            <dt>Fix</dt><dd class="fix">Keep the quarantine. A <em>withdrawn</em> decision clears it and admits the file with the chain intact.</dd>
+          </dl>
+        </div>
+
+        <div class="claim">
+          <div class="claim-h"><span class="claim-id">C2</span><span class="claim-t">Two documents defined the ID differently</span></div>
+          <dl>
+            <dt>Symptom</dt><dd><code>domains/transaction.md</code> said to include the row's position in the file. ADR-009 said the opposite (Module 05). Under the old text, 6 of 15 IDs moved when a second file arrived.</dd>
+            <dt>Fix</dt><dd class="fix"><code>transaction.md</code> now just points at ADR-009 instead of defining a competing rule.</dd>
+          </dl>
+        </div>
+
+        <div class="claim">
+          <div class="claim-h"><span class="claim-id">C5</span><span class="claim-t">Three details nobody had written down</span></div>
+          <dl>
+            <dt>Symptom</dt><dd>Is <code>-45,0</code> the same amount as <code>-45,00</code>? Does a non-breaking space count as whitespace? Is <em>k</em> counted before or after trimming? The third one was nasty — counting on untrimmed text produced <strong>two different transactions sharing one ID</strong>.</dd>
+            <dt>Fix</dt><dd class="fix">ADR-009 now states all three: amount quantised to two decimals, whitespace means <em>any</em> Unicode whitespace including 0xA0, and <em>k</em> is counted on the trimmed text.</dd>
+            <dt>Note</dt><dd>None of these bite your current files — but one of your real exports has 176 rows with double spaces inside the text, so the whitespace rule is already load-bearing.</dd>
+          </dl>
+        </div>
+
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 11 ============ -->
+  <section class="mod" id="m11" data-key="m11">
+    <div class="mod-head">
+      <span class="mod-n">11</span>
+      <h2>Driving the dashboard without getting lost</h2>
+    </div>
+    <p class="goal">After this: you can open the prototype and get something out of it in ten minutes.</p>
+    <div class="mod-body">
+      <p>
+        The file is <code>prototypes/import-identity/identity-merge.prototype.html</code>. Double-click
+        it. Nothing is saved; reload and it's blank again. It's a throwaway toy, not code to build on.
+      </p>
+
+      <h3>What you're looking at</h3>
+      <p>
+        <strong>Almost every screen is two panels side by side, and that's the key to the whole thing.</strong>
+        The left panel runs the rules <em>as PR #16 wrote them</em>. The right panel runs them
+        <em>with PR #31's fix</em>. You are meant to compare, not to read.
+      </p>
+
+      <ul>
+        <li><strong>The yellow bar</strong> at the top lists exactly what differs between left and right. The same differences are highlighted yellow inside both panels. <em>If you read nothing else on a tab, read the yellow bar.</em></li>
+        <li><strong>Each panel, top to bottom:</strong> the files you imported (green = accepted, red = quarantined) → any review items raised → the months × accounts grid with the provisional row under it → the transactions that survived.</li>
+        <li><strong>"Rule set"</strong> at the top of each panel expands to show every switch that's on. It says <em>proposed rules</em> when nothing is changed from PR #31's defaults.</li>
+        <li><strong>Buttons:</strong> <code>Run all</code> does every import at once. <code>Next step</code> goes one at a time — use this when a result surprises you. <code>Reset</code> clears.</li>
+      </ul>
+
+      <h3>A ten-minute path</h3>
+      <ol class="steps">
+        <li>Open the <strong>Issue #5 baseline</strong> tab. Confirm it says 17 of 17 pass. This is your sanity check — the original acceptance scenarios still work under the new rules. Don't bother reading the individual scenarios.</li>
+        <li><strong>C1</strong> → press <code>Run all</code>. Both panels are PR #16 as written; one imported A-then-B, the other B-then-A. Watch 5 transactions vanish and a file go red. Then press <code>Fixed: A→B vs B→A</code>: <em>no differences at all.</em> That's the headline result of the whole PR.</li>
+        <li><strong>C3</strong> → preset <code>H alone: as written vs fixed</code>. Left: three months of 2026 marked <code>complete · zero</code> from a file containing only 2025. Right: <code>no data</code>. This is Module 09's lie, on screen.</li>
+        <li><strong>C7</strong> → preset <code>Missed late booking: as written vs fixed</code>. Left says March is final. Right says provisional. Small difference, real consequence.</li>
+        <li><strong>C4</strong> → preset <code>As written vs the "accept discrepancy" decision</code>. Left: 1–10 March gone for good. Right: recovered, and still honestly <code>partial</code>.</li>
+      </ol>
+
+      <p>
+        That's the tour. C2, C5 and C6 are worth clicking through only if Module 10's summary of
+        them didn't land.
+      </p>
+
+      <p>
+        <strong>Free play</strong> takes your own CSV. It asks which account, the export date if the
+        filename has no <code>-YYYYMMDD</code> suffix, and optionally the range end. Cut-down
+        versions of your real exports are in <code>imports/mwe/</code> (gitignored — nothing real is
+        committed).
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 12 ============ -->
+  <section class="mod" id="m12" data-key="m12">
+    <div class="mod-head">
+      <span class="mod-n">12</span>
+      <h2>The ten review comments, and what #32 did about them</h2>
+    </div>
+    <p class="goal">After this: you know which comments would have bitten you during implementation, which are now closed, and which are tidy-ups.</p>
+    <div class="mod-body">
+      <p>
+        Ten review comments were raised on PR #31. Here they are in plain words, sorted by what
+        they'd actually cost you. <strong>All ten are now closed</strong> — four in PR #32, the
+        remaining six in the follow-up this page ships with. Each says what the fix actually was,
+        so you can check the fix rather than take it on trust.
+      </p>
+
+      <h3>The dashboard can still lie to you</h3>
+
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">presentation-layer.md</span><span class="issue-t">The current month can still render as final</span><span class="tag t-done">fixed in #32</span></div>
+        <p>
+          PR #31 added: accounts with <code>no_data</code> don't hold the provisional label. Sensible
+          — an account you never imported shouldn't make every month provisional forever. But
+          <code>no_data</code> also covers an account you <em>did</em> import, just not recently enough.
+        </p>
+        <p class="cost">
+          <b>Concretely:</b> it's 16 September and you last imported through August. Every account is
+          <code>no_data</code> for September → no account holds the label → <strong>September renders
+          as final.</strong> The current, still-accumulating month, shown as settled. That's precisely
+          the failure this PR exists to prevent.
+        </p>
+        <p class="fixed">
+          <b>Fixed in #32:</b> a period containing the current month <em>always</em> carries the
+          label, no exceptions. The exemption now applies only to closed periods, and is written on
+          "this account has never been imported" rather than on the coverage status — which is the
+          thing that was actually meant all along.
+        </p>
+      </div>
+
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">bronze-layer.md</span><span class="issue-t">The C3 fix is opt-in, and silently falls back</span><span class="tag t-done">fixed in #32</span></div>
+        <p>
+          <code>covers_through</code> is something <em>you</em> declare at import. Declare nothing and
+          it silently falls back to the export date — which is exactly the old behaviour C3 removed.
+          The only stated validation is that it can't be later than the export date.
+        </p>
+        <p class="cost">
+          <b>So:</b> forget to declare it once on a year-of-history download and C3's bug returns in
+          full. A mistyped-but-plausible date is accepted silently too — too early truncates your
+          evidence, too late manufactures confirmed zeros over months the file never covered. The
+          suggested minimum: refuse a <code>covers_through</code> earlier than the last transaction
+          date in the file, since the file demonstrably reaches at least that far.
+        </p>
+        <p class="fixed">
+          <b>Fixed in #32:</b> three rules replace the bare fallback. A declared date outside
+          <em>[last transaction in the file, export date]</em> is <strong>refused</strong>, never
+          quietly corrected. The declaration is <strong>required</strong> in the cases where the
+          fallback would be wrong. Only otherwise does it fall back — and it records that it did,
+          so you can always tell which happened.
+        </p>
+      </div>
+
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">ADR-006</span><span class="issue-t">A leftover line still states the thing C3 removed</span><span class="tag t-done">fixed in #32</span></div>
+        <p>
+          ADR-006 still lists "the export date is trusted as the extent of an export" as an accepted
+          consequence. That's the C3 behaviour, left standing as a recorded decision. Cheap to fix,
+          confusing if left.
+        </p>
+        <p class="fixed">
+          <b>Fixed in #32:</b> removed, and folded into the fix below rather than left as a
+          follow-up — a recorded consequence that contradicts the new formula would have made the
+          two documents disagree the moment the formula landed.
+        </p>
+      </div>
+
+      <h3>Two documents still disagree</h3>
+
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">silver-layer.md</span><span class="issue-t">Gold can't compute <code>evidence_through</code> from what Silver hands it</span><span class="tag t-done">fixed in #32</span></div>
+        <p>
+          Silver passes a single date per account. Gold then has to choose between "that date" and
+          "the day before the export date" — which needs to know the export date of the run that date
+          came from. <strong>That value never crosses the boundary.</strong> The hand-off exists in
+          prose only.
+        </p>
+        <p class="cost">
+          <b>And:</b> four documents state this rule in four different wordings, with a real ambiguity
+          between them — is the answer "take the max, then adjust" or "adjust each, then take the
+          max"? Those give different answers. An implementer will just pick one, and the four
+          documents will drift apart from day one. The suggestion: state the formula <em>once</em>,
+          per-run then maxed, and have the other three cite it.
+        </p>
+        <p class="fixed">
+          <b>Fixed in #32:</b> exactly that. <code>silver-layer.md</code> states the formula once —
+          <strong>adjust each file, then take the maximum</strong>, with the reason that order is
+          the right one — and Silver now hands the computed value across the boundary as a named
+          field instead of leaving Gold to re-derive it. The other three documents cite it.
+        </p>
+      </div>
+
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">silver-layer.md</span><span class="issue-t">A new qualifier appears in one document and not the other</span><span class="tag t-done">fixed</span></div>
+        <p>
+          The architecture doc now says balances are compared "only on dates where both state one."
+          ADR-009 still states the admission condition without that qualifier — and the line traces to
+          none of the seven claims. It's the same divergence C2 was about, in a different pair of
+          documents. Either it's real and belongs in ADR-009 with its reasoning, or it was defensive
+          and should go.
+        </p>
+        <p class="fixed">
+          <b>Fixed:</b> it turned out to be neither — it's a <em>consequence</em>, not an exemption,
+          and ADR-009 now says why. A date only gets a balance once it has a transaction on it. If
+          the old data has one for a date and the new file covers that date, the new file must have
+          one too, or it was already thrown out. The only other case is a date that's brand new in
+          the file, where everything on it is new money — counted at the next date they both have,
+          with the file's own internal chain joining the dots. <strong>Nothing goes unchecked; only
+          the date the check lands on moves.</strong>
+        </p>
+      </div>
+
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">ADR-009</span><span class="issue-t">"Import order doesn't matter" is slightly overstated</span><span class="tag t-done">fixed</span></div>
+        <p>
+          The tiebreak for two files the bank made on the <em>same day</em> is <code>started_at</code> —
+          which is import order. So two same-day files with different ranges can still admit
+          differently depending on which you feed in first. The claim just needs scoping to
+          "files produced on different days."
+        </p>
+        <p class="fixed">
+          <b>Fixed, and tested rather than argued.</b> The claim is scoped to different days, and
+          the prototype was run on same-day pairs to find out what actually happens. Two files the
+          bank made on the same day showing the same state: identical either way, ticks all round.
+          Two files where the bank booked something <em>between</em> them: you still end up with the
+          same transactions and the same IDs, but feeding the newer one in first quarantines the
+          older one and holds back any dates only it reached — until you void the newer run and
+          re-import it. That's written down now, including the way out.
+        </p>
+        <p class="cost">
+          <b>Why it can't be fixed properly:</b> the bank stamps its files with a <em>date</em>, not
+          a time. Two files made the same day are genuinely indistinguishable in order. This is C1's
+          bug surviving inside a single day, at the one resolution the evidence doesn't have.
+        </p>
+      </div>
+
+      <h3>A decision nobody will ever find</h3>
+
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">ADR-010</span><span class="issue-t"><em>accept discrepancy</em> never appears in your work list</span><span class="tag t-done">fixed</span></div>
+        <p>
+          A balance break raises a <em>validation error</em>, not a <em>review item</em>. Review items
+          are what show up as "something for you to decide." So <em>accept discrepancy</em> is the one
+          manual decision with nothing prompting it: the file is quarantined, every later file covering
+          that date is quarantined for the same reason, and you'd have to already know this escape
+          hatch exists to use it. Given that the whole point of C4 is the permanent case, a third
+          review-item kind would make it discoverable.
+        </p>
+        <p class="fixed">
+          <b>Fixed:</b> a broken chain now raises a review item — a third kind, <em>balance
+          break</em> — as well as the errors. So it lands in your work list like the other two, and
+          the decision has something to attach itself to when you make it. You can see it in the
+          prototype's <code>C4</code> tab, in the new <b>settled by</b> column.
+        </p>
+      </div>
+
+      <h3>Bugs in the prototype itself</h3>
+
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">prototype</span><span class="issue-t">Two look-alike groups on one date can collide</span><span class="tag t-done">fixed</span></div>
+        <p>
+          If two coffees <em>and</em> two teas on the same day both drop their second occurrence, both
+          synthesised positions compute to the same number — which breaks a uniqueness rule Gold
+          relies on. Not hit by any shipped scenario.
+        </p>
+        <p class="fixed">
+          <b>Fixed, and it mattered more than "prototype bug" suggests.</b> The old numbering added
+          the repeat counter to the row count, so both landed on 4. Run the reviewer's example and
+          you got positions <code>1, 2, 4, 4</code>; now you get <code>1, 2, 3, 4</code>. The real
+          finding is that <em>the documents never said how to number these at all</em> — so any
+          implementer would have invented the same colliding scheme. The rule is now written into
+          <code>silver-layer.md</code>, and the prototype grew a collision badge for it.
+        </p>
+      </div>
+
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">prototype</span><span class="issue-t">Withdrawn transactions counted asymmetrically</span><span class="tag t-done">fixed</span></div>
+        <p>
+          One check excludes withdrawn transactions, a neighbouring one doesn't, so re-importing a
+          group after withdrawing one of its instances under-reports the growth. Latent; no scenario
+          reaches it.
+        </p>
+        <p class="fixed">
+          <b>Fixed:</b> the code was comparing against two different pictures at once — what you
+          believe is true, and what the stored balance actually reflects. Those come apart the
+          moment you record a <em>withdrawn</em> decision. So if the bank later showed that purchase
+          again, the file got quarantined for an "unexplained" balance that was perfectly
+          explainable. The two pictures are now separate and labelled as such.
+        </p>
+      </div>
+
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">bronze-layer.md</span><span class="issue-t">One new sentence isn't actually backed by the evidence</span><span class="tag t-done">fixed</span></div>
+        <p>
+          "A declared range end after the export date is refused" is never enforced in the prototype.
+          It doesn't corrupt any result — a too-late value falls through to a safe fallback — but that
+          specific sentence isn't covered by the "17 of 17, 7 of 7" the PR description leans on.
+        </p>
+        <p class="fixed">
+          <b>Fixed — and this is the one you should actually read about.</b> Enforcing the rule
+          proved the rule was wrong. See module 14.
+        </p>
+      </div>
+
+      <div class="callout">
+        <p class="callout-h">The one worth taking away</p>
+        <p>
+          The previous version of this page told you the three prototype comments needed no action,
+          because the prototype is throwaway and had already produced its evidence. That was right
+          about two of them and <strong>wrong about the third.</strong>
+        </p>
+        <p>
+          "This rule isn't enforced in the prototype" is a different kind of comment from "this code
+          has a latent bug." A latent bug is a path nobody walks. An unenforced rule means
+          <em>nobody has checked whether the rule works</em> — and when it finally was checked, it
+          didn't. Module 14 is that story, and it's the most useful thing on this page.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 13 ============ -->
+  <section class="mod" id="m13" data-key="m13">
+    <div class="mod-head">
+      <span class="mod-n">13</span>
+      <h2>So — merge, or not?</h2>
+    </div>
+    <p class="goal">After this: you have a decision and a short list, not a feeling.</p>
+    <div class="mod-body">
+
+      <h3>First, test yourself</h3>
+      <p>If you can answer these five without scrolling up, you understand enough to merge.</p>
+
+      <ol class="qs">
+        <li>Why can't we just use date + amount + text as the transaction ID?</li>
+        <li>What does the balance chain actually prove, and why do we need it at all?</li>
+        <li>What's the difference between <code>no data</code> and <code>complete</code> with a zero total — and why does it matter?</li>
+        <li>Why did the order you imported files in change your data, and what fixed it?</li>
+        <li>Name two of the four situations where the system stops and asks you to decide something.</li>
+      </ol>
+
+      <p>
+        Anything you can't answer: the module number is in the question. Go back to just that one.
+      </p>
+
+      <div class="verdict">
+        <h3>My honest read</h3>
+        <p>
+          <strong>Merge the stack. All ten comments are closed.</strong>
+        </p>
+        <p>
+          These PRs are documents, not code. Nothing ships when you merge them; they're the decisions
+          you'll build from. And the unusual thing here is that somebody actually <em>ran</em> the
+          rules before writing them down and found seven real defects. That's much stronger evidence
+          than you normally get from a docs review — "we'll find the pitfalls during implementation"
+          is what you'd be settling for, and #31 already did better than that.
+        </p>
+        <p>
+          Three of the ten comments were the ones an implementer could not route around: they'd have
+          had to invent an answer, and the documents would then have been wrong. <strong>PR #32
+          makes exactly those three fixes</strong>, plus the ADR-006 leftover that would have
+          contradicted one of them:
+        </p>
+        <ol class="steps" style="margin-top:.9rem">
+          <li><strong>The <code>no_data</code> provisional exemption</strong> — it made the current month render as final whenever you were behind on imports. That's the exact class of bug this whole stack exists to prevent. Now the current month always carries the label.</li>
+          <li><strong><code>evidence_through</code> stated four ways and not computable from Silver's output</strong> — an implementer would have picked one reading and the four documents would have diverged immediately. Now stated once, and the value crosses the boundary.</li>
+          <li><strong>The <code>covers_through</code> silent fallback</strong> — the C3 fix was opt-in, so one forgotten declaration brought the bug back at full strength. Now bounded, sometimes required, and it records when it fell back.</li>
+        </ol>
+        <p>
+          The remaining six are closed in the follow-up this page ships with: three documents that
+          disagreed with each other, and three findings in the prototype. One of those six turned
+          out to matter much more than its tag suggested — module 14.
+        </p>
+        <p>
+          <b>What "merge" buys you here:</b> nothing ships. These are documents — the decisions
+          you'll build from. The unusual thing is that somebody actually <em>ran</em> the rules
+          before writing them down. "We'll find the pitfalls during implementation" is the
+          alternative, and it's strictly worse than what you already have in front of you.
+        </p>
+      </div>
+
+      <p>
+        One thing worth saying plainly: <strong>you don't need to hold all of this in your head.</strong>
+        You need to be able to recognise a wrong answer when the dashboard shows you one. Module 09 is
+        the test that catches almost everything — if a month you never imported ever shows up as a
+        confident zero, something upstream is broken, and you'll now know roughly where to look.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 14 ============ -->
+  <section class="mod" id="m14" data-key="m14">
+    <div class="mod-head">
+      <span class="mod-n">14</span>
+      <h2>The rule that was wrong until somebody ran it</h2>
+    </div>
+    <p class="goal">After this: you know why "we wrote it down carefully" is not the same as "we checked it", and what that's worth in practice.</p>
+    <div class="mod-body">
+
+      <p>
+        This module exists because of one review comment that looked like the least important of the
+        ten. It said: <em>the documents say a declared range end after the export date is refused,
+        but nothing in the prototype actually checks that.</em> Tagged "no action" in the last
+        version of this page — my mistake.
+      </p>
+
+      <h3>What the first fix said</h3>
+
+      <p>
+        Module 12's <code>covers_through</code> fix needed a rule for <em>when you must declare the
+        range end</em> rather than letting it default. The reasoning went: if the last purchase in
+        the file is long before the date the bank made the file, that's the shape of a history
+        download, and defaulting would be wrong. Seven days felt right — it's already the
+        late-booking window used elsewhere.
+      </p>
+
+      <div class="callout">
+        <p class="callout-h">It reads perfectly well. It was wrong.</p>
+        <p>
+          The moment the rule was actually implemented and the seventeen test scenarios were run
+          against it, <strong>five of the seventeen were refused.</strong> Not edge cases — five
+          perfectly ordinary imports, of the kind you'd do every month.
+        </p>
+      </div>
+
+      <h3>Why it broke</h3>
+
+      <p>
+        Take the simplest one. You download February on 1 March. Your last purchase that month was
+        on 13 February, because nothing happened in the last two weeks — a completely normal quiet
+        fortnight. That's a 16-day gap, so the rule demanded a declaration.
+      </p>
+
+      <p>
+        But there was never any danger there. Remember from module 03: a file made on 1 March proves
+        nothing about 1 March, because the day is still booking — so the system already pulls the
+        evidence back to 28 February on its own. Which is <em>exactly right</em>. There was nothing
+        to protect against, and the rule was demanding paperwork for it anyway.
+      </p>
+
+      <p>
+        <b>Counting days was the wrong question.</b> A quiet tail at the end of a month is normal.
+        What's actually dangerous is something else entirely.
+      </p>
+
+      <h3>The right question</h3>
+
+      <div class="callout">
+        <p class="callout-h">Ask what the guess would claim, not how big the gap is</p>
+        <p>
+          Defaulting means claiming evidence up to the day before the file was made. So: <strong>does
+          that reach into a later month than the last purchase in the file?</strong>
+        </p>
+        <p>
+          February file, made 1 March, last purchase 13 February → the guess reaches 28 February.
+          Same month. <b>Safe, no declaration needed.</b>
+        </p>
+        <p>
+          All of 2025, downloaded today → the guess would reach yesterday, claiming <em>eight
+          months</em> of "we checked, nothing happened" that the file never covered. <b>Different
+          month. Declare it.</b>
+        </p>
+      </div>
+
+      <p>
+        That's the rule now. All seventeen scenarios pass again, and the history download is still
+        refused without a declaration — which was the whole point. Same protection, none of the
+        false alarms.
+      </p>
+
+      <h3>What this is actually worth to you</h3>
+
+      <p>
+        You asked at the start whether you had to accept these PRs and find the pitfalls during
+        implementation. Here's the concrete answer:
+      </p>
+
+      <ol class="steps" style="margin-top:.9rem">
+        <li><strong>A carefully-reasoned rule was wrong.</strong> Not carelessly written — it cited the right window and gave a plausible justification. It was still wrong.</li>
+        <li><strong>Nothing in a document review would have caught it.</strong> It reads fine. It only fell over when something ran it against real scenarios.</li>
+        <li><strong>The cost of catching it here was about an hour.</strong> The cost of catching it in implementation would have been you, staring at a refused import of your own February statement, wondering what you did wrong.</li>
+      </ol>
+
+      <p>
+        That's the case for the prototype in one paragraph. It isn't there to be good code — it's
+        throwaway. It's there so that a sentence someone wrote confidently gets the chance to be
+        proved wrong <em>before</em> you build on it.
+      </p>
+
+      <div class="verdict">
+        <h3>The thing to remember</h3>
+        <p>
+          When a review comment says <em>"this rule isn't actually enforced anywhere"</em>, that is
+          never a small comment. It doesn't mean there's a bug. It means <strong>nobody knows
+          whether the rule works</strong>, and the confidence you have in it is borrowed from how
+          well it's written.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <div class="footer">
+    <span id="footnote">Progress saves automatically.</span>
+    <button class="reset" id="reset" type="button">Reset progress</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var TITLES = {
+    m1:"The whole problem, in one picture",
+    m2:"What the CSV gives you, and what it doesn't",
+    m3:"Two dates that are not the same date",
+    m4:"Bronze, Silver, Gold",
+    m5:"Giving a transaction a name that never moves",
+    m6:"The balance chain is your lie detector",
+    m7:"A file gets admitted whole, or not at all",
+    m8:"The four times a human has to decide",
+    m9:"Coverage — how a dashboard lies",
+    m10:"What PR #31 actually fixed",
+    m11:"Driving the dashboard",
+    m12:"The ten review comments",
+    m13:"So — merge, or not?",
+    m14:"The rule that was wrong until somebody ran it"
+  };
+  var KEYS = Object.keys(TITLES);
+  var LS = "budget-import-primer-v1";
+
+  var done = {};
+  try {
+    var raw = localStorage.getItem(LS);
+    if (raw) { var p = JSON.parse(raw); if (p && typeof p === "object") done = p; }
+  } catch (e) { /* private window, blocked storage */ }
+
+  var docRef = null;          // db document, when available
+  var applyingRemote = false; // guard so a snapshot doesn't echo a write
+
+  var bar = document.getElementById("bar");
+  var tally = document.getElementById("tally");
+  var toc = document.getElementById("toc");
+
+  /* ---- build the contents list ---- */
+  KEYS.forEach(function(k, i){
+    var a = document.createElement("a");
+    a.className = "toc-item";
+    a.href = "#" + k;
+    a.id = "toc-" + k;
+    a.innerHTML = '<span class="n">' + String(i+1).padStart(2,"0") + '</span><span class="t"></span>';
+    a.querySelector(".t").textContent = TITLES[k];
+    toc.appendChild(a);
+  });
+
+  /* ---- build the check-off buttons ---- */
+  KEYS.forEach(function(k){
+    var sec = document.getElementById(k);
+    if (!sec) return;
+    var foot = sec.querySelector(".mod-foot");
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "checkoff";
+    btn.id = "chk-" + k;
+    btn.setAttribute("aria-pressed","false");
+    btn.innerHTML =
+      '<span class="box" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3.5 8.5 L6.5 11.5 L12.5 4.5"/></svg></span>' +
+      '<span class="lbl">I’ve got this</span>';
+    btn.addEventListener("click", function(){
+      done[k] = !done[k];
+      if (!done[k]) delete done[k];
+      render();
+      persist();
+    });
+    foot.appendChild(btn);
+  });
+
+  function render(){
+    var n = 0;
+    KEYS.forEach(function(k){
+      var on = !!done[k];
+      if (on) n++;
+      var sec = document.getElementById(k);
+      var btn = document.getElementById("chk-" + k);
+      var ti = document.getElementById("toc-" + k);
+      if (sec) sec.classList.toggle("done", on);
+      if (ti) ti.classList.toggle("done", on);
+      if (btn){
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+        btn.querySelector(".lbl").textContent = on ? "Understood" : "I’ve got this";
+      }
+    });
+    tally.textContent = n + " / " + KEYS.length;
+    bar.style.width = Math.round((n / KEYS.length) * 100) + "%";
+  }
+
+  function persist(){
+    try { localStorage.setItem(LS, JSON.stringify(done)); } catch (e) {}
+    if (docRef && !applyingRemote){
+      docRef.set({ done: done, updatedAt: Date.now() }).catch(function(){});
+    }
+  }
+
+  render();
+
+  /* ---- cross-device progress, when the runtime offers it ---- */
+  if (window.claude && typeof window.claude.use === "function"){
+    window.claude.use("db").then(function(db){
+      if (!db) return;
+      docRef = db.doc("progress/primer");
+      docRef.onSnapshot(function(snap){
+        if (!snap || !snap.exists) return;
+        var d = snap.data();
+        var remote = d && d.done;
+        if (!remote || typeof remote !== "object") return;
+        applyingRemote = true;
+        // union: ticking on one device never un-ticks on another
+        Object.keys(remote).forEach(function(k){ if (remote[k]) done[k] = true; });
+        try { localStorage.setItem(LS, JSON.stringify(done)); } catch (e) {}
+        render();
+        applyingRemote = false;
+      }, function(){ docRef = null; });
+      // push whatever this device already had
+      if (Object.keys(done).length) persist();
+    }).catch(function(){});
+  }
+
+  document.getElementById("reset").addEventListener("click", function(){
+    done = {};
+    render();
+    try { localStorage.removeItem(LS); } catch (e) {}
+    if (docRef) docRef.set({ done: {}, updatedAt: Date.now() }).catch(function(){});
+  });
+})();
+</script>
