@@ -28,12 +28,16 @@ end.
   carries that movement's category and nets against its measure: positive
   for an expense category (including reversed fees), negative for returned
   income in an income category.
-- **Transfer:** movement between accounts within the household reporting
-  boundary; not spending or income.
+- **Transfer:** movement between two accounts within the household reporting
+  boundary; not spending or income. It needs matching evidence or a manual
+  decision ([ADR-012](../decisions/ADR-012-transfer-evidence.md)). Money to or
+  from an account the household does not import is income or expense.
 - **Adjustment:** an uncategorized correction that needs an explanation. It
   carries no category, is excluded from income and expenses, and is reported
   separately.
-- **Unknown:** valid imported record awaiting classification.
+- **Unknown:** valid imported record awaiting classification: nothing
+  classified it, or its evidence conflicts or is ambiguous. Every unknown
+  transaction has an open review item.
 
 A transaction has exactly one type. Its category is not an attribute of the
 transaction but a **category allocation**: a record that this transaction's
@@ -42,14 +46,21 @@ allocation, for its whole amount; dividing a mixed purchase into several is a
 later release, and needs no change to what a transaction means
 ([ADR-008](../decisions/ADR-008-category-allocation-grain.md)).
 
+Classification decides the type and the allocation together, and it decides
+them for the transaction as a whole: a manual decision first, then a transfer
+match, then classification rules
+([ADR-011](../decisions/ADR-011-classification-precedence.md)); the policy is
+in [`classification.md`](../architecture/classification.md).
+
 ## Lifecycle
 
 `source payload → Bronze record → Silver canonical transaction → Gold business
 transaction`
 
 No step mutates the record in the preceding layer. A corrected classification
-creates a new materialized Gold version or override history, not a rewrite of
-the bank payload.
+is a new manual decision or rule change that Gold applies on the next build,
+never a rewrite of the bank payload. How versions are kept is issue #8's
+concern.
 
 ## Identity and Deduplication
 

@@ -9,9 +9,11 @@ analytics and a dashboard.
 ### Accounts and boundary
 
 **Reporting boundary**:
-The set of accounts whose activity household reports include: every account
-with `ownership_scope` of `household` or `person`. An `external` account sits
-outside it and is never an imported, reported account.
+The set of accounts whose activity household reports include: the imported
+accounts, each with `ownership_scope` of `household` or `person`. Every other
+account is `external`, including a household member's account that the
+household does not import; money to or from it is income or expense, never a
+Transfer.
 _Avoid_: Household accounts (ambiguous with `ownership_scope=household`)
 
 **Transfer-eligible account**:
@@ -46,6 +48,37 @@ transaction has exactly one for now; dividing a mixed purchase into several is
 a later release.
 _Avoid_: Split (the act, not the record), transaction category
 
+**Classification**:
+A booked transaction's household interpretation: its type and, for income,
+expense, or Refund, its Category. It comes from a Manual decision, a matched
+Transfer, or a Classification rule; without one, the transaction is
+unclassified.
+_Avoid_: Categorisation (narrower), tagging
+
+**Classification rule**:
+A household-authored pattern over one transaction's own facts that assigns a
+Category, claims the transaction as a Transfer leg, or marks an Adjustment. A
+rule never looks at other transactions.
+_Avoid_: Mapping, filter
+
+**Category**:
+A household-defined heading for income or spending, with a direction of
+`income` or `expense`. It is the only level that reaches a transaction, and it
+reaches it through a Category allocation; a Category group never does.
+_Avoid_: Bank category (a different thing)
+
+**Bank category**:
+The category label a bank puts on its own export rows. It is provenance: a
+Classification rule may test it, but it never becomes a Category by itself.
+_Avoid_: Category, when meaning the bank's label
+
+**Transfer**:
+Money moved between two accounts inside the Reporting boundary. It shows as
+two booked transactions, its legs, one on each account. A Transfer is either a
+matched pair of legs or, by Manual decision, one-sided when the other leg lies
+outside the counterpart's Managed period.
+_Avoid_: Internal transfer (redundant), movement
+
 **Refund**:
 Money returned against an earlier categorized movement. It nets against that
 category in the originating measure, including a reversed fee or returned income.
@@ -57,7 +90,8 @@ reported separately. A Refund carries a category and is not an Adjustment.
 
 **Category group**:
 The fixed top level of the two-level category hierarchy. It gathers related
-categories for reporting and is never assigned to a transaction directly.
+categories of one direction for reporting and is never assigned to a
+transaction directly.
 _Avoid_: Parent category, super-category
 
 **Unclassified money**:
@@ -174,15 +208,17 @@ _Avoid_: rejected, held, failed import
 **Review item**:
 An ambiguity the platform cannot settle by rule and a person must decide, such
 as overlapping exports that disagree, a later export showing fewer repeated
-transactions, or a source that keeps stating a broken balance chain. Every
-decision that settles a quarantine is raised by one, so none has to be known
-about in advance.
+transactions, a source that keeps stating a broken balance chain,
+Classification rules that conflict, or Transfer legs that compete for the same
+match. Every decision that settles a quarantine is raised by one, so none has
+to be known about in advance.
 _Avoid_: error, warning, conflict
 
 **Manual decision**:
-A recorded human ruling that settles a review item or voids an import run. It
-never edits source data.
-_Avoid_: override, fix, edit
+A recorded human ruling: it classifies a transaction, settles a Review item,
+or voids an import run. It targets transactions by their identity and never
+edits source data.
+_Avoid_: Override, fix, edit
 
 **Voided import run**:
 An import run a person has declared mistaken, for example because it was
