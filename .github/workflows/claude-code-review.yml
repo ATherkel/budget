@@ -3,9 +3,6 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
-    # Skip PRs that only change docs; a PR that also touches other files is still reviewed.
-    paths-ignore:
-      - "docs/**"
 
 # A new push to the same PR cancels the review still running on the previous push.
 concurrency:
@@ -13,6 +10,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # `claude-review` is a required status check on `main`. A workflow skipped by
+  # a `paths-ignore:` filter never reports its checks at all, so filtering the
+  # trigger left every docs-only PR waiting forever on a check that could not
+  # run. Decide the same question inside the job instead, so the check always
+  # reports: docs-only PRs pass here without spending a review.
   claude-review:
     # Drafts are skipped; marking the PR ready for review triggers the first review.
     if: github.event.pull_request.draft == false
@@ -25,13 +27,37 @@ jobs:
       id-token: write
 
     steps:
+      - name: Check whether the PR touches anything outside docs/
+        id: scope
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          files=$(gh api --paginate \
+            "repos/${{ github.repository }}/pulls/$PR/files" \
+            --jq '.[].filename')
+          # `printf '%s'` adds no trailing newline, so an empty file list counts
+          # as 0 rather than as one empty line. `|| true` absorbs grep's exit 1
+          # when nothing matches; a failing `gh` above already failed the step.
+          count=$(printf '%s' "$files" | grep -cv '^docs/' || true)
+          echo "$count changed file(s) outside docs/"
+          if [ "$count" -gt 0 ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "Docs-only pull request; skipping the review." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Checkout repository
+        if: steps.scope.outputs.code == 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
       - name: Run Claude Code Review
         id: claude-review
+        if: steps.scope.outputs.code == 'true'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
