@@ -12,8 +12,8 @@ or `gh pr merge --body`.
   - Codex: `Co-Authored-By: Codex <model> <noreply@openai.com>`
   - GitHub Copilot: `Co-Authored-By: GitHub Copilot <model> <noreply@github.com>`
 
-  Commit as the agent App's bot user, never as the owner. See "Commit
-  identity" in `docs/agents/github-app.md`.
+  Commit as the agent machine account, never as the owner. See "Commit
+  identity" in `docs/agents/agent-credentials.md`.
 - **GitHub text** (PR descriptions, issue bodies, comments, reviews): end with
   a footer line `🤖 Generated with <agent> (<model>)`. Claude Code's default
   `🤖 Generated with [Claude Code](...)` footer satisfies this.
@@ -28,10 +28,11 @@ or `gh pr merge --body`.
 
 Issues and specs are tracked in GitHub Issues. See `docs/agents/issue-tracker.md`.
 
-### Agent GitHub App
+### Agent GitHub credentials
 
-For any `gh` command or push, App setup, or a change under `.github/workflows/`,
-read `docs/agents/github-app.md` and use its bot credential wrapper.
+For any `gh` command or push, credential setup, or a change under
+`.github/workflows/`, read `docs/agents/agent-credentials.md` and use its
+machine-account wrapper.
 
 ### Triage labels
 
