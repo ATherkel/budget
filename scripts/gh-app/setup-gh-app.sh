@@ -188,52 +188,53 @@ TOTAL_STAGES=5
 ENV_FILE="$HOME/.config/budget/agent-app.env"
 mkdir -p "$(dirname "$ENV_FILE")"
 
-banner "GitHub App bot for ATherkel/budget"
+banner "Agent machine account for ATherkel/budget"
 
-stage "Register the App under ATherkel"
-say "GitHub should prefill the private App, inactive webhooks, and three repository permissions."
-open_url "https://github.com/settings/apps/new?name=ATherkel-budget-agent&url=https%3A%2F%2Fgithub.com%2FATherkel%2Fbudget&contents=write&pull_requests=write&issues=write&webhook_active=false&public=false"
-step "Sign in as ATherkel. Rename the App if the suggested name is taken."
-step "Verify: Contents, Pull requests, and Issues = Read & write; all other permissions = No access."
-step "Verify webhooks are inactive, OAuth user authorization is off, and installation is Only on this account."
-step "Click Create GitHub App. On its settings page, copy the numeric App ID."
-ask BUDGET_AGENT_APP_ID "Enter the App ID:"
-if [[ ! "$BUDGET_AGENT_APP_ID" =~ ^[0-9]+$ ]]; then warn "App ID must be numeric."; exit 1; fi
-write_env BUDGET_AGENT_APP_ID "$BUDGET_AGENT_APP_ID"
+stage "Confirm the machine account has Write"
+say "Agents write to GitHub as the machine account ATherkel-agent, never as you."
+open_url "https://github.com/ATherkel/budget/settings/access"
+step "Sign in as ATherkel. Check that ATherkel-agent is listed with the Write role."
+step "If it is missing, add it and accept the invitation from the ATherkel-agent account."
+pause "Press Enter once ATherkel-agent has Write on budget."
 
-stage "Install only on budget"
-open_url "https://github.com/settings/apps"
-step "Open the App you just registered, select Install App, then Install beside ATherkel."
-step "Choose Only select repositories and select budget alone. Review permissions and click Install."
-pause "Press Enter after the App is installed on budget alone."
+stage "Create a classic token as ATherkel-agent"
+say "This must be a CLASSIC token. A fine-grained token cannot reach this repo at"
+say "all: its owner is only a collaborator on a repository another personal"
+say "account owns, so budget never appears in its repository picker."
+open_url "https://github.com/settings/tokens/new?description=budget%20agent&scopes=public_repo"
+step "Sign in as ATherkel-agent, NOT as ATherkel."
+step "Tick public_repo and nothing else. Leave workflow unticked."
+warn "Do not tick 'workflow'. Its absence is what stops an agent pushing .github/workflows/."
+note "A pushed workflow runs with the repository's secrets before anyone reviews the PR,"
+note "so the owner pushes those commits themselves. See docs/agents/agent-credentials.md."
+step "Set an expiry you are willing to renew, then click Generate token and copy it."
 
-stage "Generate and keep the private key"
-open_url "https://github.com/settings/apps"
-step "Open the App settings. Under Private keys, click Generate a private key."
-step "Move the downloaded PEM to a private location outside this Git repository."
-step "Do not paste the PEM or recovery material into this wizard, the repo, or chat."
-ask BUDGET_AGENT_PRIVATE_KEY_PATH "Enter the PEM's absolute Windows file path:"
-if [[ ! "$BUDGET_AGENT_PRIVATE_KEY_PATH" =~ ^[A-Za-z]:\\ ]] && [[ ! "$BUDGET_AGENT_PRIVATE_KEY_PATH" =~ ^[A-Za-z]:/ ]]; then
-  warn "Enter an absolute Windows path such as C:\\Users\\you\\...\\key.pem."
+stage "Store the token"
+ask_secret BUDGET_AGENT_TOKEN "Paste the token (input hidden):"
+if [[ ! "$BUDGET_AGENT_TOKEN" =~ ^ghp_[A-Za-z0-9]+$ ]]; then
+  warn "That does not look like a classic token. Classic tokens start with ghp_."
+  warn "A github_pat_ prefix means a fine-grained token, which cannot reach this repo."
   exit 1
 fi
-key_unix=$(cygpath -u "$BUDGET_AGENT_PRIVATE_KEY_PATH")
-if [[ ! -f "$key_unix" ]]; then warn "Private key file not found. Check the path and rerun."; exit 1; fi
-key_unix=$(realpath "$key_unix")
-repo_unix=$(pwd -P)
-if [[ "$key_unix" == "$repo_unix"/* ]]; then warn "Move the private key outside the repository first."; exit 1; fi
-write_env BUDGET_AGENT_PRIVATE_KEY_PATH "$BUDGET_AGENT_PRIVATE_KEY_PATH"
+write_env BUDGET_AGENT_TOKEN "$BUDGET_AGENT_TOKEN"
+chmod 600 "$ENV_FILE" 2>/dev/null || true
+note "The token now lives only in $ENV_FILE. Keep it out of this repository."
 
-stage "Discover the installation ID"
-installation_id=$(pwsh -NoProfile -File "scripts/gh-app/Invoke-BudgetAgent.ps1" -Mode Discover)
-if [[ ! "$installation_id" =~ ^[0-9]+$ ]]; then warn "Could not discover the budget installation ID."; exit 1; fi
-write_env BUDGET_AGENT_INSTALLATION_ID "$installation_id"
-say "Found installation $installation_id for ATherkel/budget."
-
-stage "Verify permissions and repository scope"
+stage "Verify the token and the workflow gate"
 pwsh -NoProfile -File "scripts/gh-app/Invoke-BudgetAgent.ps1" -Mode Check
-say "Setup values are in $ENV_FILE; the PEM remains at its private path."
-say "Agents can run gh through Invoke-BudgetAgent.ps1 -Mode Gh or push a named feature branch with -Mode Push."
+say "Agents can now run gh through -Mode Gh and push a feature branch with -Mode Push."
+
+stage "Clean up the retired GitHub App"
+say "The atherkel-budget-agent App is no longer used by any of these scripts."
+warn "Suspend its installation; do NOT delete the App registration."
+note "Deleting the App deletes its bot user, and existing commits authored by"
+note "atherkel-budget-agent[bot] would lose their avatar and profile link."
+open_url "https://github.com/settings/installations"
+step "Open the atherkel-budget-agent installation and choose Suspend."
+step "Delete the old private key PEM yourself, wherever you stored it."
+note "This wizard does not delete the PEM for you."
+step "Remove any stale BUDGET_AGENT_APP_ID, BUDGET_AGENT_PRIVATE_KEY_PATH and"
+note "  BUDGET_AGENT_INSTALLATION_ID lines from $ENV_FILE."
 pause "Press Enter to finish."
 
 finish
