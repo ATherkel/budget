@@ -12,8 +12,7 @@ or `gh pr merge --body`.
   - Codex: `Co-Authored-By: Codex <model> <noreply@openai.com>`
   - GitHub Copilot: `Co-Authored-By: GitHub Copilot <model> <noreply@github.com>`
 
-  Commit as the agent machine account, never as the owner. See "Commit
-  identity" in `docs/agents/agent-credentials.md`.
+  Commit under the agent's own identity, never as the owner.
 - **GitHub text** (PR descriptions, issue bodies, comments, reviews): end with
   a footer line `🤖 Generated with <agent> (<model>)`. Claude Code's default
   `🤖 Generated with [Claude Code](...)` footer satisfies this.
@@ -28,11 +27,12 @@ or `gh pr merge --body`.
 
 Issues and specs are tracked in GitHub Issues. See `docs/agents/issue-tracker.md`.
 
-### Agent GitHub credentials
+### Workflow changes
 
-For any `gh` command or push, credential setup, or a change under
-`.github/workflows/`, read `docs/agents/agent-credentials.md` and use its
-machine-account wrapper.
+The owner pushes any change under `.github/workflows/`, because a pushed
+workflow runs with the repository's secrets before anyone reviews it. Commit
+such a change on its own, touching no other path, then give the owner the
+worktree path and branch name and wait for them to push.
 
 ### Triage labels
 
