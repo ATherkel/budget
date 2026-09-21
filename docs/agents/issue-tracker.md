@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations, and run every command, reads included, through the App wrapper's `-Mode Gh` described in `docs/agents/github-app.md`.
+Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations, and run every command, reads included, through the agent wrapper's `-Mode Gh` described in `docs/agents/agent-credentials.md`.
 
 ## Conventions
 
