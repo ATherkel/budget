@@ -254,5 +254,69 @@ class BronzeStoreTests(unittest.TestCase):
             self.assertEqual(header_failure_reasons[0], header_failure_reasons[1])
 
 
+    def test_import_metadata_failures_happen_before_persistence(self):
+        content = (
+            b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
+            b'"Saldo","Status","Afstemt"\r\n'
+            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9, ""\xd8en""  ",'
+            b'"-45,00","955,00","Udf\xf8rt","Nej"'
+        )
+        expected_payload_id = (
+            "46677a064218cc78e114e60ba2a01525fe2c28f5de0e594284e34914b7be895a"
+        )
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "bronze.sqlite3"
+            no_suffix = root / "synthetic.csv"
+            impossible_suffix = root / "synthetic-20260931.csv"
+            no_suffix.write_bytes(content)
+            impossible_suffix.write_bytes(content)
+
+            with BronzeStore(database) as store:
+                with self.assertRaises(ValueError) as missing_export_date:
+                    store.import_file(
+                        no_suffix,
+                        declared_account_id="daily-account",
+                        source_format="danske-csv-v1",
+                        covers_through=date(2026, 9, 13),
+                    )
+                self.assertNotIn("synthetic", str(missing_export_date.exception))
+                with self.assertRaises(ValueError) as impossible_export_date:
+                    store.import_file(
+                        impossible_suffix,
+                        declared_account_id="daily-account",
+                        source_format="danske-csv-v1",
+                        covers_through=date(2026, 9, 13),
+                    )
+                self.assertNotIn("synthetic", str(impossible_export_date.exception))
+                with self.assertRaises(ValueError) as unknown_format:
+                    store.import_file(
+                        no_suffix,
+                        declared_account_id="daily-account",
+                        source_format="nordea-csv-v1",
+                        covers_through=date(2026, 9, 13),
+                    )
+                self.assertNotIn("synthetic", str(unknown_format.exception))
+
+            with BronzeStore(database) as reopened:
+                # A refused declaration is not an import: no payload was stored.
+                with self.assertRaises(KeyError):
+                    reopened.get_payload(expected_payload_id)
+
+            # A declared export date is the run's date, whatever the filename
+            # cannot say: the impossible suffix is never read as a date.
+            with BronzeStore(database) as store:
+                declared = store.import_file(
+                    impossible_suffix,
+                    declared_account_id="daily-account",
+                    source_format="danske-csv-v1",
+                    exported_on=date(2026, 9, 14),
+                    covers_through=date(2026, 9, 13),
+                )
+            self.assertEqual(declared.exported_on, date(2026, 9, 14))
+            self.assertEqual(declared.exported_on_source, "declared")
+
+
 if __name__ == "__main__":
     unittest.main()
