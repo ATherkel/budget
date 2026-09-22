@@ -484,5 +484,103 @@ class BronzeStoreTests(unittest.TestCase):
                     self.assertEqual(failures, ())
 
 
+    def test_a_refused_or_failed_presentation_is_evidence_never_an_original(self):
+        content = (
+            b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
+            b'"Saldo","Status","Afstemt"\r\n'
+            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"-45,00","955,00","Udf\xf8rt","Nej"'
+        )
+        malformed = content[:-1] + b"\x81"
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "bronze.sqlite3"
+            source = root / "synthetic-20260914.csv"
+            source.write_bytes(content)
+
+            with BronzeStore(database) as store:
+                refused = store.import_file(
+                    source,
+                    declared_account_id="daily-account",
+                    source_format="danske-csv-v1",
+                    covers_through=date(2026, 9, 20),
+                )
+            self.assertEqual(refused.outcome, "refused")
+
+            with BronzeStore(database) as reopened:
+                # A refusal still retains the payload and its parsed records.
+                self.assertEqual(
+                    reopened.get_payload(refused.payload_id).content, content
+                )
+                refused_records = reopened.get_source_records(refused.payload_id)
+                self.assertEqual(len(refused_records), 1)
+                self.assertEqual(
+                    dict(refused_records[0].fields)["Dato"], "12-09-2026"
+                )
+
+            # The same bytes declared correctly afterwards are a new import, not
+            # a repeat of the refusal, and the refusal is left as it was.
+            with BronzeStore(database) as reopened:
+                corrected = reopened.import_file(
+                    source,
+                    declared_account_id="daily-account",
+                    source_format="danske-csv-v1",
+                    covers_through=date(2026, 9, 13),
+                )
+            self.assertEqual(corrected.outcome, "stored")
+            self.assertIsNone(corrected.repeat_of)
+            self.assertNotEqual(corrected.import_run_id, refused.import_run_id)
+            self.assertEqual(corrected.payload_id, refused.payload_id)
+
+            with BronzeStore(database) as reopened:
+                self.assertEqual(
+                    reopened.get_import_run(refused.import_run_id), refused
+                )
+                # A refusal never seeds ownership: the same bytes stay refused
+                # for another account, and still repeat the stored run only.
+                foreign = reopened.import_file(
+                    source,
+                    declared_account_id="savings-account",
+                    source_format="danske-csv-v1",
+                    covers_through=date(2026, 9, 13),
+                )
+                self.assertEqual(foreign.outcome, "refused")
+                self.assertIsNone(foreign.repeat_of)
+                repeated = reopened.import_file(
+                    source,
+                    declared_account_id="daily-account",
+                    source_format="danske-csv-v1",
+                    covers_through=date(2026, 9, 13),
+                )
+                self.assertEqual(repeated.outcome, "repeat")
+                self.assertEqual(repeated.repeat_of, corrected.import_run_id)
+
+            # A payload that failed its format is stored once, so presenting it
+            # again records its own repeat run and keeps the one failure.
+            malformed_source = root / "synthetic-20260915.csv"
+            malformed_source.write_bytes(malformed)
+            with BronzeStore(database) as reopened:
+                failed = reopened.import_file(
+                    malformed_source,
+                    declared_account_id="daily-account",
+                    source_format="danske-csv-v1",
+                )
+                again = reopened.import_file(
+                    malformed_source,
+                    declared_account_id="daily-account",
+                    source_format="danske-csv-v1",
+                )
+                failures = reopened.get_format_failures(failed.payload_id)
+                failed_records = reopened.get_source_records(failed.payload_id)
+
+            self.assertEqual(failed.outcome, "stored")
+            self.assertEqual(again.outcome, "repeat")
+            self.assertEqual(again.repeat_of, failed.import_run_id)
+            self.assertEqual(again.payload_id, failed.payload_id)
+            self.assertEqual(failed_records, ())
+            self.assertEqual(len(failures), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
