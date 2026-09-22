@@ -15,6 +15,59 @@ from typing import Literal, Self
 from uuid import uuid4
 
 
+# The declared header of `danske-csv-v1`, in order. A payload is split against
+# exactly this, and no other field name is ever interpreted.
+_DANSKE_HEADER = (
+    "Dato",
+    "Kategori",
+    "Underkategori",
+    "Tekst",
+    "Beløb",
+    "Saldo",
+    "Status",
+    "Afstemt",
+)
+
+
+def _split_danske_csv(content: bytes) -> tuple[list[dict[str, str]], str | None]:
+    """Split one payload into source records, or name why it does not match.
+
+    The verdict is deterministic and describes the payload as a whole; it never
+    repeats source content, so a failure reason stays safe to show or log.
+    """
+    try:
+        text = content.decode("cp1252", errors="strict")
+    except UnicodeDecodeError:
+        return [], "payload is not strict Windows-1252"
+    if not text:
+        return [], "payload is empty"
+    try:
+        rows = list(
+            csv.reader(
+                StringIO(text, newline=""),
+                delimiter=",",
+                quotechar='"',
+                strict=True,
+            )
+        )
+    except csv.Error:
+        return [], "payload is not well-formed CSV"
+    if not rows:
+        return [], "payload is empty"
+    header, *data = rows
+    if tuple(header) != _DANSKE_HEADER:
+        return [], "payload header does not match danske-csv-v1"
+    records = []
+    for ordinal, values in enumerate(data, start=1):
+        if len(values) != len(_DANSKE_HEADER):
+            return [], (
+                f"record {ordinal} has {len(values)} fields, "
+                f"expected {len(_DANSKE_HEADER)}"
+            )
+        records.append(dict(zip(_DANSKE_HEADER, values, strict=True)))
+    return records, None
+
+
 @dataclass(frozen=True)
 class RawPayload:
     payload_id: str
@@ -139,14 +192,7 @@ class BronzeStore:
         if covers_through is None:
             raise NotImplementedError("Coverage-date inference is not implemented")
 
-        reader = csv.reader(
-            StringIO(content.decode("cp1252", errors="strict"), newline=""),
-            delimiter=",",
-            quotechar='"',
-            strict=True,
-        )
-        header = next(reader)
-        records = [dict(zip(header, values, strict=True)) for values in reader]
+        records, failure_reason = _split_danske_csv(content)
         import_run_id = uuid4().hex
 
         # Commit the payload, provenance, and derived records together.
@@ -211,13 +257,23 @@ class BronzeStore:
                 ),
             )
             if repeat_of is None and not refused:
-                self._connection.executemany(
-                    "INSERT INTO source_records (payload_id, record_ordinal, fields) VALUES (?, ?, ?)",
-                    (
-                        (payload_id, ordinal, json.dumps(fields))
-                        for ordinal, fields in enumerate(records, start=1)
-                    ),
-                )
+                if failure_reason is None:
+                    self._connection.executemany(
+                        "INSERT INTO source_records (payload_id, record_ordinal, fields) VALUES (?, ?, ?)",
+                        (
+                            (payload_id, ordinal, json.dumps(fields))
+                            for ordinal, fields in enumerate(records, start=1)
+                        ),
+                    )
+                else:
+                    self._connection.execute(
+                        """
+                        INSERT INTO format_failures (payload_id, source_format, reason)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT (payload_id, source_format) DO NOTHING
+                        """,
+                        (payload_id, source_format, failure_reason),
+                    )
 
         return self.get_import_run(import_run_id)
 
