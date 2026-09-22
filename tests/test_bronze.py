@@ -199,5 +199,60 @@ class BronzeStoreTests(unittest.TestCase):
                 )
 
 
+    def test_malformed_payloads_yield_a_format_failure_and_no_source_records(self):
+        well_formed = (
+            b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
+            b'"Saldo","Status","Afstemt"\r\n'
+            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"-45,00","955,00","Udf\xf8rt","Nej"'
+        )
+        malformed = {
+            "unexpected header": well_formed.replace(b'"Afstemt"', b'"Afstemt?"'),
+            "utf-8 encoded header": well_formed.decode("cp1252").encode("utf-8"),
+            "byte undefined in windows-1252": well_formed[:-1] + b"\x81",
+        }
+        header_failure_reasons = []
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "bronze.sqlite3"
+
+            for index, (label, content) in enumerate(malformed.items()):
+                with self.subTest(payload=label):
+                    source = root / f"synthetic-{index}-20260914.csv"
+                    source.write_bytes(content)
+                    with BronzeStore(database) as store:
+                        run = store.import_file(
+                            source,
+                            declared_account_id="daily-account",
+                            source_format="danske-csv-v1",
+                            covers_through=date(2026, 9, 13),
+                        )
+                    with BronzeStore(database) as reopened:
+                        payload = reopened.get_payload(run.payload_id)
+                        records = reopened.get_source_records(run.payload_id)
+                        failures = reopened.get_format_failures(run.payload_id)
+
+                    self.assertEqual(run.outcome, "stored")
+                    self.assertEqual(run.covers_through, date(2026, 9, 13))
+                    self.assertEqual(run.covers_through_source, "declared")
+                    self.assertEqual(payload.content, content)
+                    self.assertEqual(payload.byte_length, len(content))
+                    self.assertEqual(records, ())
+                    self.assertEqual(len(failures), 1)
+                    self.assertEqual(failures[0].payload_id, run.payload_id)
+                    self.assertEqual(failures[0].source_format, "danske-csv-v1")
+                    self.assertTrue(failures[0].reason)
+                    # A failure reason is a verdict, never a copy of the source.
+                    self.assertNotIn(source.name, failures[0].reason)
+                    self.assertNotIn("Dato", failures[0].reason)
+                    self.assertNotIn("Afstemt", failures[0].reason)
+                    if "header" in label:
+                        header_failure_reasons.append(failures[0].reason)
+
+            self.assertEqual(len(header_failure_reasons), 2)
+            self.assertEqual(header_failure_reasons[0], header_failure_reasons[1])
+
+
 if __name__ == "__main__":
     unittest.main()
