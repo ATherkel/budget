@@ -428,5 +428,60 @@ class BronzeStoreTests(unittest.TestCase):
                         self.assertIsNone(run.repeat_of)
 
 
+    def test_a_missing_declaration_falls_back_only_where_it_cannot_claim_too_much(self):
+        def payload(dates):
+            lines = [
+                b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
+                b'"Saldo","Status","Afstemt"'
+            ]
+            lines.extend(
+                b'"%s"," Mad "," Dagligvarer "," Caf\xe9",'
+                b'"-45,00","955,00","Udf\xf8rt","Nej"' % dato.encode("ascii")
+                for dato in dates
+            )
+            return b"\r\n".join(lines)
+
+        cases = (
+            ("quiet tail in the last transaction's month", ("12-09-2026",), "stored"),
+            ("fallback lands in a later month", ("31-08-2026",), "refused"),
+            ("payload states no transactions", (), "refused"),
+            ("fallback before the last transaction", ("20-09-2026",), "refused"),
+        )
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "bronze.sqlite3"
+
+            for index, (label, dates, expected_outcome) in enumerate(cases):
+                with self.subTest(declaration=label):
+                    content = payload(dates)
+                    source = root / f"synthetic-{index}-20260914.csv"
+                    source.write_bytes(content)
+                    with BronzeStore(database) as store:
+                        run = store.import_file(
+                            source,
+                            declared_account_id="daily-account",
+                            source_format="danske-csv-v1",
+                        )
+                    with BronzeStore(database) as reopened:
+                        stored_payload = reopened.get_payload(run.payload_id)
+                        records = reopened.get_source_records(run.payload_id)
+
+                    self.assertEqual(run.outcome, expected_outcome)
+                    self.assertIsNone(run.repeat_of)
+                    self.assertEqual(run.exported_on, date(2026, 9, 14))
+                    self.assertEqual(run.exported_on_source, "filename")
+                    # The attempted fallback is recorded, not a date invented
+                    # from the payload: covers_through is the export date.
+                    self.assertEqual(run.covers_through, date(2026, 9, 14))
+                    self.assertEqual(run.covers_through_source, "exported_on")
+                    self.assertEqual(stored_payload.content, content)
+                    self.assertEqual(
+                        [record.record_ordinal for record in records],
+                        list(range(1, len(dates) + 1)),
+                    )
+                    self.assertEqual(reopened.get_format_failures(run.payload_id), ())
+
+
 if __name__ == "__main__":
     unittest.main()
