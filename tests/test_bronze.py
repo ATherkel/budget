@@ -318,5 +318,56 @@ class BronzeStoreTests(unittest.TestCase):
             self.assertEqual(declared.exported_on_source, "declared")
 
 
+    def test_an_unreadable_transaction_date_is_a_format_failure(self):
+        header = (
+            b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
+            b'"Saldo","Status","Afstemt"\r\n'
+        )
+        row = (
+            b'%s," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"-45,00","955,00","Udf\xf8rt","Nej"'
+        )
+        malformed = {
+            "impossible date": b'"31-02-2026"',
+            "unexpected date shape": b'"2026-09-12"',
+        }
+        failure_reasons = []
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "bronze.sqlite3"
+
+            for index, (label, dato) in enumerate(malformed.items()):
+                with self.subTest(dato=label):
+                    content = header + row % dato
+                    source = root / f"synthetic-{index}-20260914.csv"
+                    source.write_bytes(content)
+                    with BronzeStore(database) as store:
+                        run = store.import_file(
+                            source,
+                            declared_account_id="daily-account",
+                            source_format="danske-csv-v1",
+                            covers_through=date(2026, 9, 13),
+                        )
+                    with BronzeStore(database) as reopened:
+                        payload = reopened.get_payload(run.payload_id)
+                        records = reopened.get_source_records(run.payload_id)
+                        failures = reopened.get_format_failures(run.payload_id)
+
+                    # An unreadable Dato cannot bound a coverage declaration,
+                    # so the payload is retained with a verdict, never guessed.
+                    self.assertEqual(run.outcome, "stored")
+                    self.assertEqual(payload.content, content)
+                    self.assertEqual(records, ())
+                    self.assertEqual(len(failures), 1)
+                    self.assertTrue(failures[0].reason)
+                    self.assertNotIn(dato.decode("cp1252"), failures[0].reason)
+                    self.assertNotIn(source.name, failures[0].reason)
+                    failure_reasons.append(failures[0].reason)
+
+            self.assertEqual(len(failure_reasons), 2)
+            self.assertEqual(failure_reasons[0], failure_reasons[1])
+
+
 if __name__ == "__main__":
     unittest.main()
