@@ -49,6 +49,8 @@ Patch size against the baseline for the owned source: 4 files, 1017 insertions
 | declared `covers_through` is bounded | `a980359` test(red) | `13cf0d9` feat(green) |
 | missing declaration fallback rules | `82bc74c` test(red) | `bb540e8` feat(green) |
 | refused/failed presentation invariants | `31d1438` test(regression), green on first run | - |
+| legacy store cannot keep records under a format failure | `0627d40` test(red) | `4f935c8` fix(green) |
+| declared field quoting is exact | `c21269f` test(red) | `29fd817` feat(green) |
 | VS Code discovery configuration | `6f88dc1` chore(vscode) | - |
 | plan checkpoint | `8af1b52` docs (Astra authorship) | - |
 
@@ -93,10 +95,21 @@ block closed (fixed in `bb540e8`, which did not change the red verdict).
 - refuses bytes already stored for another account, retains the payload,
   provenance and deterministic source records for refused attempts, and never
   lets a refusal seed account ownership or become a repeat origin;
-- writes payload, run, and derived records/failures in one `BEGIN IMMEDIATE`
-  transaction with bound `?` parameters and `CREATE TABLE IF NOT EXISTS` only -
-  no destructive statement, no destructive migration, and existing rows in an
-  existing store are preserved;
+- validates field quoting on the decoded text before splitting: every field
+  opens with a quote, `""` is an escaped quote, and only a comma, a line break
+  or the end of the payload may follow a closing quote, so an unquoted field, a
+  stray quote in unquoted text, an unterminated field and data after a closing
+  quote are each one deterministic `FormatFailure` with zero records. Line
+  endings are deliberately not checked, and a quoted field may still carry an
+  escaped quote and a line break of its own;
+- reconciles derived cache inside the run's transaction: a payload that does not
+  match the declared format has its stale `source_records` deleted and its
+  `FormatFailure` recorded, a matching payload has stale failures for that
+  format deleted, and every write uses bound `?` parameters with
+  `CREATE TABLE IF NOT EXISTS` only. `DELETE` statements touch derived rows
+  alone - never `raw_payloads` or `import_runs` - so bytes, provenance and run
+  history survive, and `get_source_records` also returns nothing for a payload
+  that has a format failure, whatever parser wrote the store;
 - fails clearly on an unknown source format instead of guessing.
 
 ## Verification
@@ -107,13 +120,17 @@ TMP/TEMP override was needed: `TemporaryDirectory()` worked throughout.
 
 | Command | Exit | Result |
 | --- | --- | --- |
-| `python -B -m unittest discover -v -s tests -p 'test_*.py' -t .` | 0 | `Ran 9 tests ... OK` |
-| `python -B -m unittest discover -v -s tests -p 'test_*.py' -t . .` (brief's trailing-dot form) | 0 | `Ran 9 tests ... OK` |
+| `python -B -m unittest discover -v -s tests -p 'test_*.py' -t .` | 0 | `Ran 11 tests ... OK` (post-correction) |
+| `python -B -m unittest discover -v -s tests -p 'test_*.py' -t . .` (brief's trailing-dot form) | 0 | `Ran 11 tests ... OK` |
 | `python -B -m unittest tests.test_bronze.BronzeStoreTests.<slice test> -v` per slice | 1 red, 0 green | recorded in each commit body |
 | `python -B -c "import kernel.bronze"` from `tests/` with the workspace on `PYTHONPATH` | 0 | `import ok: kernel.bronze` |
+| Astra repro 1, re-run against the corrected code: baseline `BronzeStore` imports the header-mismatched payload, then the current store re-imports it | 0 | `outcome = repeat`, `repeat_of` = the legacy run, `failures = 1`, `records = 0`, bytes intact, the legacy run's twelve stored columns unchanged, `import_runs = 2`, `raw_payloads = 1` |
+| Astra repro 2, re-run against the corrected code: `Tekst` written `Ca` + quote + `fe` with no outer quotes | 0 | `outcome = stored`, `failures = 1`, `records = 0`, bytes intact, reason `payload quoting does not match danske-csv-v1: every field must be double-quoted` |
+| line-ending tolerance: one payload with LF endings, one CRLF payload with a trailing newline | 0 | both `outcome = stored` with one record and no failure, so the strictness added for quoting did not change line-ending behaviour |
+| read-only open, with no re-import, of a lax-parser store | 0 | `records = 1`, `failures = 0`, the documented state before the bytes are presented again |
 | `rg -n 'f"""\|f"SELECT\|...' kernel/bronze/__init__.py` | 1 (no match) | no interpolated SQL text |
-| `rg -n -i 'drop table\|delete from\|alter table\|truncate\|vacuum' kernel/bronze/__init__.py` | 1 (no match) | no destructive statement; only `PRAGMA foreign_keys = ON` |
-| `rg -c 'def test_' tests/test_bronze.py` | 0 | 9 test methods; discovery finds all 9 |
+| `rg -n -i 'drop table\|alter table\|truncate\|vacuum\|delete from raw_payloads\|delete from import_runs' kernel/bronze/__init__.py` | 1 (no match) | the only `DELETE` statements target derived `source_records` and `format_failures`; `PRAGMA foreign_keys = ON` is the only pragma |
+| `rg -c 'def test_' tests/test_bronze.py` | 0 | 11 test methods; discovery finds all 11 |
 
 Test discovery and VS Code checks: `.vscode/settings.json` parses and reports
 `unittestEnabled=True`, `pytestEnabled=False`, `cwd=${workspaceFolder}` and
@@ -156,6 +173,21 @@ the Test Explorer UI itself is unverified.
    here.
 7. **`Dato` is read as `DD-MM-YYYY`** (the format the existing synthetic fixtures
    use), not the prototype's `DD.MM.YYYY`.
+8. **Derived cache is reconciled on presentation, read-side suppression backs
+   it up.** Astra's correction 1 is implemented twice over: the transaction
+   deletes stale `source_records` when a payload fails its format and stale
+   `format_failures` for that format when a payload matches, and
+   `get_source_records` returns nothing whenever the payload has a format
+   failure. Both leave `raw_payloads` and `import_runs` untouched. A store opened
+   read-only that was written by the laxer parser and never re-presented still
+   shows that parser's records, because nothing has re-parsed it and no failure
+   row exists yet; the first presentation of those bytes replaces them.
+9. **Field quoting is validated on the decoded text, not by `csv` alone.**
+   `csv.reader(strict=True)` accepts an unquoted field that carries a stray
+   quote, which is Astra's correction 2. The format's other stated rules - CRLF
+   line endings and no final line break - remain prototype-level notes and are
+   deliberately not enforced, so a payload with LF endings or a trailing newline
+   is still stored; only quoting and the declared header are strict.
 
 ## Limitations and outstanding risks
 
@@ -169,12 +201,26 @@ the Test Explorer UI itself is unverified.
   accepted without a note.
 - Refused and format-failed runs are persisted with their payload, which grows
   the database on every rejected presentation. There is no retention policy.
+- Derived-cache reconciliation is destructive by design, so a payload_id held
+  across presentations can lose its records when a stricter parser rejects the
+  bytes. Nothing downstream should cache a `get_source_records` result across an
+  import of the same payload.
+- The quoting rule is a hand-written scanner rather than the standard library's
+  reader, so its behaviour has to keep pace with the declared format if that
+  format ever changes.
 - No linter, type checker, or CI was run; none is configured in this worktree.
 - All evidence is synthetic; no real or private bank export was read.
 
 ## Next checkpoint
 
-Astra reviews the actual patch and this evidence in one batched pass. If
-accepted, the natural next bundle is the Silver-layer continuation, which owns
-run admission, status mapping and `evidence_through`; the deferred manual
-decisions (issue #10) unblock cross-account payload reuse.
+Astra's first batched review raised two corrections, both are implemented with
+their own red/green pairs and re-verified above (`0627d40`/`4f935c8` for legacy
+derived records, `c21269f`/`29fd817` for declared quoting). The decisions the
+review accepted for this scoped prototype are recorded in
+`docs/agent-work/kernel-bronze/PLAN.md`; six earlier decisions above remain open
+for the record, and nothing in this bundle depends on them being re-litigated.
+
+The patch is back in review at HEAD after the correction commits. If accepted,
+the natural next bundle is the Silver-layer continuation, which owns run
+admission, status mapping and `evidence_through`; the deferred manual decisions
+(issue #10) unblock cross-account payload reuse.
