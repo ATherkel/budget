@@ -1,1 +1,1 @@
-"""Household finance kernel."""
+"""Household finance application package."""
