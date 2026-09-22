@@ -3,3 +3,5 @@ imports/
 __pycache__/
 *.py[cod]
 .venv/
+dist/
+build/

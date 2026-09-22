@@ -8,7 +8,7 @@ import sqlite3
 from tempfile import TemporaryDirectory
 import unittest
 
-from kernel.bronze import BronzeStore
+from budget.bronze import BronzeStore
 
 
 # The on-disk shape the baseline BronzeStore wrote, copied verbatim. A test that

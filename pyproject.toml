@@ -1,0 +1,14 @@
+[project]
+name = "budget"
+version = "0.1.0"
+description = "A Python-first, self-hostable household budget platform"
+readme = "README.md"
+authors = [
+    { name = "Therkel", email = "antherkelsen@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13.0"]
+build-backend = "uv_build"
