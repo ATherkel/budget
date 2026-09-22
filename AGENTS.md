@@ -42,6 +42,14 @@ The default five-role triage label vocabulary is in use. See `docs/agents/triage
 
 This repository uses a single-context domain-doc layout. See `docs/agents/domain.md`.
 
+### Code quality gate
+
+All Python code must pass ruff (lint and format), ty, complexipy (cognitive
+complexity at most 15 per function, as in SonarQube) and the SonarQube Cloud
+quality gate. CI enforces all of them. Run the local checks before every
+commit, and never loosen the configuration or add a suppression without the
+owner's approval. See `docs/agents/code-quality.md`.
+
 ### Behavior-changing application work
 
 Use the repository's test-driven development workflow for all application
