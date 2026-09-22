@@ -369,5 +369,64 @@ class BronzeStoreTests(unittest.TestCase):
             self.assertEqual(failure_reasons[0], failure_reasons[1])
 
 
+    def test_a_declared_covers_through_is_bounded_and_never_clamped(self):
+        # The row carrying the maximum Dato comes first and is cancelled, so a
+        # bound read from row order or Status would land somewhere else.
+        content = (
+            b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
+            b'"Saldo","Status","Afstemt"\r\n'
+            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"-45,00","955,00","Slettet","Nej"\r\n'
+            b'"05-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"-45,00","1000,00","Udf\xf8rt","Nej"'
+        )
+        cases = (
+            ("after the export date", date(2026, 9, 15), "refused"),
+            ("before the last transaction", date(2026, 9, 11), "refused"),
+            ("on the last transaction", date(2026, 9, 12), "stored"),
+            ("on the export date", date(2026, 9, 14), "repeat"),
+        )
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "synthetic-20260914.csv"
+            source.write_bytes(content)
+            database = root / "bronze.sqlite3"
+            stored_run_id = None
+
+            for label, declared, expected_outcome in cases:
+                with self.subTest(covers_through=label):
+                    with BronzeStore(database) as store:
+                        run = store.import_file(
+                            source,
+                            declared_account_id="daily-account",
+                            source_format="danske-csv-v1",
+                            covers_through=declared,
+                        )
+                    with BronzeStore(database) as reopened:
+                        payload = reopened.get_payload(run.payload_id)
+                        records = reopened.get_source_records(run.payload_id)
+
+                    self.assertEqual(run.outcome, expected_outcome)
+                    # A refused declaration is recorded as declared, not moved
+                    # to the nearest acceptable date.
+                    self.assertEqual(run.covers_through, declared)
+                    self.assertEqual(run.covers_through_source, "declared")
+                    self.assertEqual(payload.content, content)
+                    self.assertEqual(
+                        [record.record_ordinal for record in records], [1, 2]
+                    )
+                    self.assertEqual(dict(records[0].fields)["Dato"], "12-09-2026")
+                    self.assertEqual(dict(records[0].fields)["Status"], "Slettet")
+
+                    if expected_outcome == "stored":
+                        stored_run_id = run.import_run_id
+                        self.assertIsNone(run.repeat_of)
+                    elif expected_outcome == "repeat":
+                        self.assertEqual(run.repeat_of, stored_run_id)
+                    else:
+                        self.assertIsNone(run.repeat_of)
+
+
 if __name__ == "__main__":
     unittest.main()
