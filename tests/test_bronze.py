@@ -820,5 +820,67 @@ class BronzeStoreTests(unittest.TestCase):
             self.assertEqual(quoting_reasons[0], quoting_reasons[1])
 
 
+    def test_a_row_ending_in_a_comma_still_needs_its_quoted_field(self):
+        header = (
+            b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
+            b'"Saldo","Status","Afstemt"\r\n'
+        )
+        seven_fields = (
+            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"-45,00","955,00","Udf\xf8rt",'
+        )
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "bronze.sqlite3"
+
+            # An empty final field is legal when it is quoted, and a trailing
+            # line break after it stays legal too.
+            quoted_empty = header + seven_fields + b'""\r\n'
+            quoted_empty_source = root / "synthetic-20260914.csv"
+            quoted_empty_source.write_bytes(quoted_empty)
+            with BronzeStore(database) as store:
+                stored = store.import_file(
+                    quoted_empty_source,
+                    declared_account_id="daily-account",
+                    source_format="danske-csv-v1",
+                    covers_through=date(2026, 9, 13),
+                )
+                stored_records = store.get_source_records(stored.payload_id)
+                stored_failures = store.get_format_failures(stored.payload_id)
+                stored_payload = store.get_payload(stored.payload_id)
+
+            self.assertEqual(stored.outcome, "stored")
+            self.assertEqual(stored_failures, ())
+            self.assertEqual(len(stored_records), 1)
+            self.assertEqual(dict(stored_records[0].fields)["Afstemt"], "")
+            self.assertEqual(stored_payload.content, quoted_empty)
+
+            # A trailing comma with nothing after it is an unquoted eighth
+            # field, however many fields csv.reader then counts.
+            trailing_comma = header + seven_fields
+            trailing_source = root / "synthetic-20260915.csv"
+            trailing_source.write_bytes(trailing_comma)
+            with BronzeStore(database) as store:
+                run = store.import_file(
+                    trailing_source,
+                    declared_account_id="daily-account",
+                    source_format="danske-csv-v1",
+                    covers_through=date(2026, 9, 13),
+                )
+            with BronzeStore(database) as reopened:
+                payload = reopened.get_payload(run.payload_id)
+                records = reopened.get_source_records(run.payload_id)
+                failures = reopened.get_format_failures(run.payload_id)
+
+            self.assertEqual(run.outcome, "stored")
+            self.assertEqual(payload.content, trailing_comma)
+            self.assertEqual(records, ())
+            self.assertEqual(len(failures), 1)
+            self.assertEqual(failures[0].source_format, "danske-csv-v1")
+            self.assertTrue(failures[0].reason)
+            self.assertNotIn(trailing_source.name, failures[0].reason)
+
+
 if __name__ == "__main__":
     unittest.main()
