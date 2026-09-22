@@ -3,8 +3,11 @@
 A parser is the only place that knows a source format's rules: its encoding,
 its layout, its field names, and the syntax of any date it has to read. It
 takes the exact bytes of one raw payload and returns one `ParserResult`. It
-never touches storage, never guesses which format it is looking at, and never
-interprets a value.
+never touches storage, never guesses which format it is looking at, and leaves
+every decoded field as it arrived. The one value a parser reads rather than
+presents is the transaction date that bounds a declared `covers_through`;
+`danske_csv_v1` is today's example, and nothing else may be trimmed, typed, or
+mapped.
 """
 
 from dataclasses import dataclass
@@ -21,8 +24,12 @@ class ParserResult:
     exists for one purpose, bounding a declared `covers_through`; it is never
     stored in place of the source value. `failure_reason` is a verdict on the
     payload as a whole, safe to show or log because it repeats neither source
-    content nor the filename. A failure exposes no records, which is why the
-    two cases are constructed rather than assembled by hand.
+    content nor the filename.
+
+    A parser reports either records or a failure, never both. `matched` and
+    `failed` are convenience constructors for those two cases; this dataclass
+    is a plain frozen record with no runtime validation, so keeping the two
+    apart is the parser's obligation rather than something the type enforces.
     """
 
     records: tuple[Mapping[str, str], ...] = ()

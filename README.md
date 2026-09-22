@@ -24,6 +24,12 @@ sdist into the ignored `dist/` directory; installing that wheel is what proves
 the package works outside the checkout, so nothing relies on `PYTHONPATH` or a
 hand-edited `sys.path`. Python 3.12 or newer is required.
 
+In VS Code, select `.venv/Scripts/python.exe` with **Python: Select
+Interpreter** if the workspace was already using system Python.
+`python.defaultInterpreterPath` only supplies the default for a window that has
+no interpreter selected yet, so it does not replace a selection you already
+made.
+
 ## Layout
 
 | Path | Contents |

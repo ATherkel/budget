@@ -10,8 +10,10 @@ and never guesses from a bank, an account, a filename, or a header.
 
 - `ParserResult` is one payload's `records`, its `last_transaction_date`, and an
   optional `failure_reason`. `ParserResult.matched(...)` and
-  `ParserResult.failed(...)` are the two ways to build one, so a failure
-  exposes no records by construction. A reason describes the payload as a
+  `ParserResult.failed(...)` are convenience constructors for the two cases a
+  parser reports. A parser must not report records and a failure reason
+  together; the dataclass is a plain frozen record that does not validate that,
+  so the obligation rests on the parser. A reason describes the payload as a
   whole and repeats neither source content nor the file's private name, which
   keeps it safe to show or log.
 - `SourceParser` is `source_format`, `parse(content: bytes) -> ParserResult`,
@@ -21,7 +23,9 @@ Two rules the contract exists to keep:
 
 - **Decoded fields stay as they are.** Records are `Mapping[str, str]` keyed by
   the format's own field names. Nothing is trimmed, typed, or mapped: `" Mad "`
-  and `"12-09-2026"` are presented exactly as they arrived.
+  and `"12-09-2026"` are presented exactly as they arrived. The only value read
+  rather than presented is the transaction date used for the coverage bound
+  below.
 - **`last_transaction_date` has one job.** It bounds a declared
   `covers_through` (`architecture/bronze-layer.md`, *Covers through*). It is
   never stored in place of the source value.
