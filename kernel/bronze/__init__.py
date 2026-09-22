@@ -58,6 +58,10 @@ def _field_quoting_error(text: str) -> str | None:
             return None
         if text[index] == ",":
             index += 1
+            if index >= length:
+                # A comma promises another field, and every field is quoted: a
+                # bare trailing delimiter is an unquoted empty field.
+                return "a record ends with a comma and no quoted field"
             continue
         if text[index] == "\r" and text[index + 1 : index + 2] == "\n":
             index += 2
