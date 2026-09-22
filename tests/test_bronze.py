@@ -1,11 +1,52 @@
 """Bronze behavior through the public store interface, using synthetic inputs."""
 
 from datetime import UTC, date, datetime, timedelta
+from hashlib import sha256
+import json
 from pathlib import Path
+import sqlite3
 from tempfile import TemporaryDirectory
 import unittest
 
 from kernel.bronze import BronzeStore
+
+
+# The on-disk shape the baseline BronzeStore wrote, copied verbatim. A test that
+# models a store left behind by that code pins what it has to keep reading; the
+# baseline module itself is deliberately not a test dependency.
+_LEGACY_BRONZE_SCHEMA = """
+CREATE TABLE raw_payloads (
+    payload_id TEXT PRIMARY KEY,
+    byte_length INTEGER NOT NULL,
+    content BLOB NOT NULL
+);
+CREATE TABLE import_runs (
+    import_run_id TEXT PRIMARY KEY,
+    payload_id TEXT NOT NULL REFERENCES raw_payloads(payload_id),
+    declared_account_id TEXT NOT NULL,
+    source_format TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+    exported_on TEXT NOT NULL,
+    exported_on_source TEXT NOT NULL,
+    covers_through TEXT NOT NULL,
+    covers_through_source TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    repeat_of TEXT REFERENCES import_runs(import_run_id)
+);
+CREATE TABLE source_records (
+    payload_id TEXT NOT NULL REFERENCES raw_payloads(payload_id),
+    record_ordinal INTEGER NOT NULL,
+    fields TEXT NOT NULL,
+    PRIMARY KEY (payload_id, record_ordinal)
+);
+CREATE TABLE format_failures (
+    payload_id TEXT NOT NULL REFERENCES raw_payloads(payload_id),
+    source_format TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    PRIMARY KEY (payload_id, source_format)
+);
+"""
 
 
 class BronzeStoreTests(unittest.TestCase):
@@ -580,6 +621,119 @@ class BronzeStoreTests(unittest.TestCase):
             self.assertEqual(again.payload_id, failed.payload_id)
             self.assertEqual(failed_records, ())
             self.assertEqual(len(failures), 1)
+
+
+    def test_a_store_written_by_the_laxer_baseline_cannot_keep_invalid_records(self):
+        content = (
+            b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
+            b'"Saldo","Status","Afstemt"\r\n'
+            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"-45,00","955,00","Udf\xf8rt","Nej"'
+        ).replace(b'"Afstemt"', b'"Wrong"')
+        payload_id = sha256(content).hexdigest()
+        # Observed in the baseline BronzeStore's own raw_payloads row for these
+        # bytes, so the fixture below cannot drift from what it stored.
+        self.assertEqual(
+            payload_id,
+            "9eb3ef8f9b179c9fa22d054c6d8549c9223869b6382addacdb28c8349f423c6e",
+        )
+        legacy_run_id = "4ade3d79f4984d59b522d8509a9bfbe5"
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "synthetic-20260914.csv"
+            source.write_bytes(content)
+            database = root / "bronze.sqlite3"
+
+            # A store the baseline wrote: it split a payload whose header did not
+            # match the declared format and derived one record from it.
+            connection = sqlite3.connect(database)
+            connection.executescript(_LEGACY_BRONZE_SCHEMA)
+            connection.execute(
+                "INSERT INTO raw_payloads (payload_id, byte_length, content)"
+                " VALUES (?, ?, ?)",
+                (payload_id, len(content), content),
+            )
+            connection.execute(
+                "INSERT INTO import_runs ("
+                " import_run_id, payload_id, declared_account_id, source_format,"
+                " original_filename, exported_on, exported_on_source,"
+                " covers_through, covers_through_source, started_at, outcome, repeat_of"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    legacy_run_id,
+                    payload_id,
+                    "daily-account",
+                    "danske-csv-v1",
+                    source.name,
+                    "2026-09-14",
+                    "filename",
+                    "2026-09-13",
+                    "declared",
+                    "2026-09-22T09:33:11.931353+00:00",
+                    "stored",
+                    None,
+                ),
+            )
+            connection.execute(
+                "INSERT INTO source_records (payload_id, record_ordinal, fields)"
+                " VALUES (?, ?, ?)",
+                (
+                    payload_id,
+                    1,
+                    json.dumps(
+                        {
+                            "Dato": "12-09-2026",
+                            "Kategori": " Mad ",
+                            "Underkategori": " Dagligvarer ",
+                            "Tekst": " Café",
+                            "Beløb": "-45,00",
+                            "Saldo": "955,00",
+                            "Status": "Udført",
+                            "Wrong": "Nej",
+                        }
+                    ),
+                ),
+            )
+            connection.commit()
+            connection.close()
+
+            with BronzeStore(database) as reopened:
+                run = reopened.import_file(
+                    source,
+                    declared_account_id="daily-account",
+                    source_format="danske-csv-v1",
+                    covers_through=date(2026, 9, 13),
+                )
+                failures = reopened.get_format_failures(run.payload_id)
+                records = reopened.get_source_records(run.payload_id)
+                payload = reopened.get_payload(run.payload_id)
+                legacy_run = reopened.get_import_run(legacy_run_id)
+
+            self.assertEqual(run.outcome, "repeat")
+            self.assertEqual(run.repeat_of, legacy_run_id)
+            self.assertEqual(len(failures), 1)
+            self.assertEqual(failures[0].source_format, "danske-csv-v1")
+            self.assertEqual(failures[0].payload_id, payload_id)
+            # A payload with a format failure exposes no source records, even
+            # when a laxer parser had derived some for the same bytes.
+            self.assertEqual(records, ())
+            # The evidence itself is untouched: exact bytes and run history.
+            self.assertEqual(payload.payload_id, payload_id)
+            self.assertEqual(payload.content, content)
+            self.assertEqual(payload.byte_length, len(content))
+            self.assertEqual(legacy_run.import_run_id, legacy_run_id)
+            self.assertEqual(legacy_run.payload_id, payload_id)
+            self.assertEqual(legacy_run.outcome, "stored")
+            self.assertEqual(legacy_run.original_filename, source.name)
+            self.assertEqual(legacy_run.covers_through, date(2026, 9, 13))
+            self.assertEqual(
+                legacy_run.started_at.isoformat(), "2026-09-22T09:33:11.931353+00:00"
+            )
+
+            with BronzeStore(database) as reopened_again:
+                self.assertEqual(reopened_again.get_source_records(payload_id), ())
+                self.assertEqual(len(reopened_again.get_format_failures(payload_id)), 1)
 
 
 if __name__ == "__main__":
