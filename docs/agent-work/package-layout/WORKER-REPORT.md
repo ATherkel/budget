@@ -5,9 +5,11 @@ STATUS: ready_for_review
 Task: `/root/budget_package_layout`.
 
 Workspace: `C:\Users\Therkel\Documents\GitHub\budget\.tmp\kernel-bronze`, branch
-`codex/kernel-bronze`, baseline `f1eeda124525b02d5dedc6464814be86cd878f48`
-(HEAD `212225d1c350102c7097a9dff2e6cb147a496357` after this bundle). Astra owns
-`PLAN.md` and `CHECKPOINT.md`; this report and the code are the worker's.
+`codex/kernel-bronze`, baseline `f1eeda124525b02d5dedc6464814be86cd878f48`. The
+bundle's commits are listed below: `137cc07` adds this report, and the
+follow-up docs commit that corrects this paragraph is the branch tip at
+hand-off. Astra owns `PLAN.md` and `CHECKPOINT.md`; this report and the code are
+the worker's.
 
 Local only: no push, no rebase, no amend, no merge, no deploy, no production
 data, no network API call. Every commit below is authored and committed as
@@ -60,6 +62,7 @@ is left exactly as Astra wrote it for Astra to commit.
 | `dc9f7bf` | test(red) | let the declared parser own its export-date filename convention |
 | `c56c1c5` | feat(green) | read the export date through the declared parser |
 | `212225d` | docs | install, test, and extend the budget package (`README.md`, parser guide, package docstring) |
+| `137cc07` | docs | this report, plus the follow-up commit that corrects its tip reference |
 
 `3e5e419` and `212225d` are honestly un-red: the first is a behavior-preserving
 move (`docs/agents/tdd.md`, *Exceptions*), the second is documentation plus a
