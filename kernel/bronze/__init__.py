@@ -340,10 +340,19 @@ class BronzeStore:
                     repeat_of,
                 ),
             )
-            # Source records and format failures are deterministic functions of
-            # the payload and its format, so they are stored once per payload and
-            # re-derived by any later run, whatever its outcome.
+            # Source records and format failures are derived cache: functions of
+            # the payload, its format, and the parser, which a parser change can
+            # regenerate at any time. A presentation therefore reconciles them -
+            # and only them - while payload bytes and import-run history stay
+            # untouched.
             if failure_reason is None:
+                self._connection.execute(
+                    """
+                    DELETE FROM format_failures
+                    WHERE payload_id = ? AND source_format = ?
+                    """,
+                    (payload_id, source_format),
+                )
                 self._connection.executemany(
                     """
                     INSERT INTO source_records (payload_id, record_ordinal, fields)
@@ -356,6 +365,12 @@ class BronzeStore:
                     ),
                 )
             else:
+                # A payload that does not match the declared format has no
+                # source records, so records a laxer parser derived for the same
+                # bytes must not stay visible beside the stricter verdict.
+                self._connection.execute(
+                    "DELETE FROM source_records WHERE payload_id = ?", (payload_id,)
+                )
                 self._connection.execute(
                     """
                     INSERT INTO format_failures (payload_id, source_format, reason)
@@ -401,6 +416,14 @@ class BronzeStore:
         )
 
     def get_source_records(self, payload_id: str) -> tuple[SourceRecord, ...]:
+        # A payload that failed its format has no source records. The verdict
+        # belongs to the payload, so it holds for a store written by any parser.
+        failure = self._connection.execute(
+            "SELECT 1 FROM format_failures WHERE payload_id = ? LIMIT 1",
+            (payload_id,),
+        ).fetchone()
+        if failure is not None:
+            return ()
         rows = self._connection.execute(
             "SELECT * FROM source_records WHERE payload_id = ? ORDER BY record_ordinal",
             (payload_id,),
