@@ -163,9 +163,28 @@ class BronzeStore:
             ).fetchone()
             repeat_of = original_run["import_run_id"] if original_run is not None else None
 
+            # Bytes already stored for another account are refused: the
+            # payload has one owner, and only a manual decision may move it.
+            account_conflict = None
             if repeat_of is None:
+                account_conflict = self._connection.execute(
+                    """
+                    SELECT import_run_id FROM import_runs
+                    WHERE payload_id = ? AND outcome = 'stored' AND declared_account_id <> ?
+                    ORDER BY started_at, import_run_id
+                    LIMIT 1
+                    """,
+                    (payload_id, declared_account_id),
+                ).fetchone()
+            refused = account_conflict is not None
+
+            if not refused:
                 self._connection.execute(
-                    "INSERT INTO raw_payloads (payload_id, byte_length, content) VALUES (?, ?, ?)",
+                    """
+                    INSERT INTO raw_payloads (payload_id, byte_length, content)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT (payload_id) DO NOTHING
+                    """,
                     (payload_id, len(content), content),
                 )
             self._connection.execute(
@@ -187,11 +206,11 @@ class BronzeStore:
                     covers_through.isoformat(),
                     "declared",
                     started_at.isoformat(),
-                    "repeat" if repeat_of is not None else "stored",
+                    "refused" if refused else ("repeat" if repeat_of is not None else "stored"),
                     repeat_of,
                 ),
             )
-            if repeat_of is None:
+            if repeat_of is None and not refused:
                 self._connection.executemany(
                     "INSERT INTO source_records (payload_id, record_ordinal, fields) VALUES (?, ?, ?)",
                     (
