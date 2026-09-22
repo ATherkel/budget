@@ -6,10 +6,10 @@ Task: `/root/budget_package_layout`.
 
 Workspace: `C:\Users\Therkel\Documents\GitHub\budget\.tmp\kernel-bronze`, branch
 `codex/kernel-bronze`, baseline `f1eeda124525b02d5dedc6464814be86cd878f48`. The
-bundle's commits are listed below: `137cc07` adds this report, and the
-follow-up docs commit that corrects this paragraph is the branch tip at
-hand-off. Astra owns `PLAN.md` and `CHECKPOINT.md`; this report and the code are
-the worker's.
+bundle's commits are listed below. `137cc07` added this report, `eedd1dd`
+carries the documentation corrections from Astra's batched review, and the last
+row - this report update - is the branch tip at hand-off. Astra owns `PLAN.md`
+and `CHECKPOINT.md`; this report and the code are the worker's.
 
 Local only: no push, no rebase, no amend, no merge, no deploy, no production
 data, no network API call. Every commit below is authored and committed as
@@ -62,7 +62,10 @@ is left exactly as Astra wrote it for Astra to commit.
 | `dc9f7bf` | test(red) | let the declared parser own its export-date filename convention |
 | `c56c1c5` | feat(green) | read the export date through the declared parser |
 | `212225d` | docs | install, test, and extend the budget package (`README.md`, parser guide, package docstring) |
-| `137cc07` | docs | this report, plus the follow-up commit that corrects its tip reference |
+| `137cc07` | docs | this report |
+| `8acea1b` | docs | correct the report's tip reference |
+| `eedd1dd` | docs | Astra's review corrections: VS Code interpreter selection in `README.md`, parser-obligation wording in `parsers/base.py` and the guide |
+| *(branch tip)* | docs | this report update, folding the corrections and the rebuilt-artifact evidence into it |
 
 `3e5e419` and `212225d` are honestly un-red: the first is a behavior-preserving
 move (`docs/agents/tdd.md`, *Exceptions*), the second is documentation plus a
@@ -89,8 +92,10 @@ state, and each red failed on the missing behavior, not on setup.
   method are unchanged. The legacy-store fixture test still passes.
 - `budget.bronze.parsers.base` declares the small typed contract: exact bytes
   in; `ParserResult.matched(records, last_transaction_date)` or
-  `ParserResult.failed(reason)` out. A failure exposes no records by
-  construction, and a reason never repeats source content or the filename.
+  `ParserResult.failed(reason)` out. Those two are convenience constructors,
+  not enforcement: the dataclass is a plain frozen record with no runtime
+  validation, so reporting records or a failure - never both - is the parser's
+  obligation, and a reason never repeats source content or the filename.
 - `budget.bronze.parsers.registry` is the only selection point: one explicit
   map, no auto-detection, no entry points, no mutable registration. An
   undeclared ID is refused by name before the store reads the file.
@@ -137,7 +142,7 @@ working interpreter `C:\Users\Therkel\AppData\Local\Programs\Python\Python312\py
 
 | Command | Exit | Result |
 | --- | --- | --- |
-| `UV_CACHE_DIR=%TEMP%\budget-uv-cache uv build --offline` | 0 | `Successfully built dist\budget-0.1.0.tar.gz` (8,791 bytes) and `dist\budget-0.1.0-py3-none-any.whl` (12,229 bytes) (`11-final-build.txt`) |
+| `UV_CACHE_DIR=%TEMP%\budget-uv-cache uv build --offline` | 0 | `Successfully built dist\budget-0.1.0.tar.gz` and `dist\budget-0.1.0-py3-none-any.whl` (`11-final-build.txt`; rebuilt after `eedd1dd` in `15-review-build.txt`) |
 | `tar -tf dist/budget-0.1.0-py3-none-any.whl` | 0 | only `budget/`, `budget/bronze/**`, `budget/bronze/parsers/**`, and `budget-0.1.0.dist-info/{WHEEL,METADATA,RECORD}`; no `kernel*`, no `entry_points.txt`, so no console script |
 | `tar -tf dist/budget-0.1.0.tar.gz` | 0 | `pyproject.toml`, `README.md`, and `src/budget/**`; no tests, no caches, no `.tmp`, no build artifacts |
 | `Get-ChildItem <fresh venv>\Scripts` | 0 | only `python.exe`, `pythonw.exe` (plus activate helpers): `kernel-bronze.exe` is absent |
@@ -154,6 +159,18 @@ inspected to confirm it contains only `pyproject.toml`, `README.md`, and
 `src/budget/**`. Everything was resolved offline from the cache; no global
 install, no paid probe, no new runtime dependency, and no network API call was
 made.
+
+Because `eedd1dd` changed packaged documentation - `README.md` is embedded in
+the wheel's `METADATA` and `parsers/base.py` ships in both artifacts - the
+distributions were rebuilt (`15-review-build.txt`): `budget-0.1.0.tar.gz` is
+now 9,093 bytes and `budget-0.1.0-py3-none-any.whl` 12,539 bytes. The packaged
+`METADATA` carries the VS Code interpreter paragraph and the packaged
+`budget/bronze/parsers/base.py` carries the convenience-constructor wording,
+with no `kernel*` path and no `entry_points.txt`. Both rebuilt artifacts were
+installed into fresh environments (`16-review-install-*.txt`) and passed the
+same smoke test from outside the checkout (`17-review-smoke-*.txt`), so the
+table above still describes the shipped files; only their byte sizes and the
+packaged wording changed.
 
 Not verified: a GUI VS Code session (Test Explorer, F5) was not launched, so
 the JSON, interpreter path, discovery arguments, and direct-file run are
