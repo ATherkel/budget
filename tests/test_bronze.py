@@ -736,5 +736,89 @@ class BronzeStoreTests(unittest.TestCase):
                 self.assertEqual(len(reopened_again.get_format_failures(payload_id)), 1)
 
 
+    def test_every_field_must_be_quoted_exactly_as_the_format_declares(self):
+        header = (
+            b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
+            b'"Saldo","Status","Afstemt"\r\n'
+        )
+        prefix = b'"12-09-2026"," Mad "," Dagligvarer ",'
+        suffix = b'"-45,00","955,00","Udf\xf8rt","Nej"'
+        malformed = {
+            "unquoted field carrying a stray quote": prefix + b'Ca"fe,' + suffix,
+            "unquoted field": prefix + b"Cafe," + suffix,
+            "data after a closing quote": prefix + b'"Ca"fe",' + suffix,
+            "unterminated quoted field": prefix + b'"Cafe',
+            "one field too many": prefix + b'"Caf\xe9","ekstra",' + suffix,
+            "one field too few": prefix + b'"Caf\xe9","955,00","Udf\xf8rt","Nej"',
+        }
+        # A field may hold an escaped quote and a line break of its own; the
+        # format allows both inside a quoted field.
+        well_formed = (
+            header + b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9, ""\xd8en""'
+            b'\r\nand more ","-45,00","955,00","Udf\xf8rt","Nej"'
+        )
+        quoting_reasons = []
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "bronze.sqlite3"
+            good_source = root / "synthetic-good-20260914.csv"
+            good_source.write_bytes(well_formed)
+
+            with BronzeStore(database) as store:
+                stored = store.import_file(
+                    good_source,
+                    declared_account_id="daily-account",
+                    source_format="danske-csv-v1",
+                    covers_through=date(2026, 9, 13),
+                )
+                stored_records = store.get_source_records(stored.payload_id)
+                stored_failures = store.get_format_failures(stored.payload_id)
+                stored_payload = store.get_payload(stored.payload_id)
+
+            self.assertEqual(stored.outcome, "stored")
+            self.assertEqual(stored_failures, ())
+            self.assertEqual(len(stored_records), 1)
+            self.assertEqual(dict(stored_records[0].fields)["Tekst"], ' Café, "Øen"\r\nand more ')
+            self.assertEqual(dict(stored_records[0].fields)["Dato"], "12-09-2026")
+            self.assertEqual(stored_payload.content, well_formed)
+
+            for index, (label, row) in enumerate(malformed.items()):
+                with self.subTest(payload=label):
+                    content = header + row
+                    source = root / f"synthetic-{index}-20260914.csv"
+                    source.write_bytes(content)
+                    with BronzeStore(database) as store:
+                        run = store.import_file(
+                            source,
+                            declared_account_id="daily-account",
+                            source_format="danske-csv-v1",
+                            covers_through=date(2026, 9, 13),
+                        )
+                    with BronzeStore(database) as reopened:
+                        payload = reopened.get_payload(run.payload_id)
+                        records = reopened.get_source_records(run.payload_id)
+                        failures = reopened.get_format_failures(run.payload_id)
+
+                    # A shape the format does not declare is a verdict on the
+                    # payload, not a refusal, and it derives nothing.
+                    self.assertEqual(run.outcome, "stored")
+                    self.assertEqual(payload.content, content)
+                    self.assertEqual(records, ())
+                    self.assertEqual(len(failures), 1)
+                    self.assertEqual(failures[0].source_format, "danske-csv-v1")
+                    self.assertTrue(failures[0].reason)
+                    self.assertNotIn(source.name, failures[0].reason)
+                    self.assertNotIn("Cafe", failures[0].reason)
+                    self.assertNotIn('Ca"fe', failures[0].reason)
+                    self.assertNotIn("Caf\xe9", failures[0].reason)
+                    if "unquoted field" in label or label.endswith("stray quote"):
+                        quoting_reasons.append(failures[0].reason)
+
+            # The same defect gives the same verdict whatever the row said.
+            self.assertEqual(len(quoting_reasons), 2)
+            self.assertEqual(quoting_reasons[0], quoting_reasons[1])
+
+
 if __name__ == "__main__":
     unittest.main()
