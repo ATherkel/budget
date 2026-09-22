@@ -175,7 +175,7 @@ class BronzeStore:
         """Retain a file's bytes, provenance, and decoded source records."""
         started_at = datetime.now(UTC)
         if source_format != "danske-csv-v1":
-            raise NotImplementedError("Only danske-csv-v1 is supported")
+            raise ValueError(f"Unsupported source format: {source_format}")
 
         source = Path(path)
         content = source.read_bytes()
