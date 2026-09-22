@@ -466,6 +466,7 @@ class BronzeStoreTests(unittest.TestCase):
                     with BronzeStore(database) as reopened:
                         stored_payload = reopened.get_payload(run.payload_id)
                         records = reopened.get_source_records(run.payload_id)
+                        failures = reopened.get_format_failures(run.payload_id)
 
                     self.assertEqual(run.outcome, expected_outcome)
                     self.assertIsNone(run.repeat_of)
@@ -480,7 +481,7 @@ class BronzeStoreTests(unittest.TestCase):
                         [record.record_ordinal for record in records],
                         list(range(1, len(dates) + 1)),
                     )
-                    self.assertEqual(reopened.get_format_failures(run.payload_id), ())
+                    self.assertEqual(failures, ())
 
 
 if __name__ == "__main__":
