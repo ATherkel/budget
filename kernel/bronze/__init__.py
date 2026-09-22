@@ -227,6 +227,14 @@ class BronzeStore:
             raise NotImplementedError("Coverage-date inference is not implemented")
 
         records, last_transaction_date, failure_reason = _parse_danske_payload(content)
+        # A declared covers_through is bounded by the payload's own evidence: it
+        # can neither truncate a transaction the export shows nor reach past the
+        # day the bank produced it. Outside that range the run is refused and the
+        # declaration is recorded as made, never clamped to the nearest date.
+        declaration_refused = covers_through > exported_on or (
+            last_transaction_date is not None
+            and covers_through < last_transaction_date
+        )
         import_run_id = uuid4().hex
 
         # Commit the payload, provenance, and derived records together.
@@ -256,17 +264,20 @@ class BronzeStore:
                     """,
                     (payload_id, declared_account_id),
                 ).fetchone()
-            refused = account_conflict is not None
+            refused = declaration_refused or account_conflict is not None
+            if refused:
+                # A refused run is nobody's original: it is never the run a
+                # later presentation of these bytes repeats.
+                repeat_of = None
 
-            if not refused:
-                self._connection.execute(
-                    """
-                    INSERT INTO raw_payloads (payload_id, byte_length, content)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT (payload_id) DO NOTHING
-                    """,
-                    (payload_id, len(content), content),
-                )
+            self._connection.execute(
+                """
+                INSERT INTO raw_payloads (payload_id, byte_length, content)
+                VALUES (?, ?, ?)
+                ON CONFLICT (payload_id) DO NOTHING
+                """,
+                (payload_id, len(content), content),
+            )
             self._connection.execute(
                 """
                 INSERT INTO import_runs (
@@ -290,24 +301,30 @@ class BronzeStore:
                     repeat_of,
                 ),
             )
-            if repeat_of is None and not refused:
-                if failure_reason is None:
-                    self._connection.executemany(
-                        "INSERT INTO source_records (payload_id, record_ordinal, fields) VALUES (?, ?, ?)",
-                        (
-                            (payload_id, ordinal, json.dumps(fields))
-                            for ordinal, fields in enumerate(records, start=1)
-                        ),
-                    )
-                else:
-                    self._connection.execute(
-                        """
-                        INSERT INTO format_failures (payload_id, source_format, reason)
-                        VALUES (?, ?, ?)
-                        ON CONFLICT (payload_id, source_format) DO NOTHING
-                        """,
-                        (payload_id, source_format, failure_reason),
-                    )
+            # Source records and format failures are deterministic functions of
+            # the payload and its format, so they are stored once per payload and
+            # re-derived by any later run, whatever its outcome.
+            if failure_reason is None:
+                self._connection.executemany(
+                    """
+                    INSERT INTO source_records (payload_id, record_ordinal, fields)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT (payload_id, record_ordinal) DO NOTHING
+                    """,
+                    (
+                        (payload_id, ordinal, json.dumps(fields))
+                        for ordinal, fields in enumerate(records, start=1)
+                    ),
+                )
+            else:
+                self._connection.execute(
+                    """
+                    INSERT INTO format_failures (payload_id, source_format, reason)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT (payload_id, source_format) DO NOTHING
+                    """,
+                    (payload_id, source_format, failure_reason),
+                )
 
         return self.get_import_run(import_run_id)
 
