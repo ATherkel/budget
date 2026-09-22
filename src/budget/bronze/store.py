@@ -11,7 +11,6 @@ from datetime import UTC, date, datetime
 from hashlib import sha256
 import json
 from pathlib import Path
-import re
 import sqlite3
 from types import MappingProxyType, TracebackType
 from typing import Self
@@ -99,10 +98,13 @@ class BronzeStore:
 
         exported_on_source = "declared"
         if exported_on is None:
-            suffix = re.search(r"-([0-9]{8})\.csv$", source.name, re.IGNORECASE)
-            if suffix is None:
-                raise ValueError("Declare exported_on when the filename has no date suffix")
-            exported_on = datetime.strptime(suffix.group(1), "%Y%m%d").date()
+            inferred = parser.exported_on_from_filename(source.name)
+            if inferred is None:
+                raise ValueError(
+                    "Declare exported_on: the declared source format reads no "
+                    "export date from this filename"
+                )
+            exported_on = inferred
             exported_on_source = "filename"
 
         result = parser.parse(content)

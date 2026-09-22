@@ -52,3 +52,13 @@ class SourceParser(Protocol):
     def parse(self, content: bytes) -> ParserResult:
         """Split one payload into source records, or state why it does not match."""
         ...
+
+    def exported_on_from_filename(self, filename: str) -> date | None:
+        """Read the export date a filename declares, if this format declares one.
+
+        `None` means the name carries no date this format recognises, so the
+        operator has to declare one. A `ValueError` means the name carries a
+        date-shaped suffix that is not a real date, which is a mistake rather
+        than a missing declaration. The message never repeats the filename.
+        """
+        ...

@@ -9,6 +9,7 @@ one's meaning.
 import csv
 from datetime import date, datetime
 from io import StringIO
+import re
 
 from budget.bronze.parsers.base import ParserResult, SourceParser
 
@@ -30,6 +31,10 @@ _HEADER = (
 
 # The transaction date is the only value this parser reads rather than presents.
 _TRANSACTION_DATE = "%d-%m-%Y"
+
+# The export date convention of this format: `…-YYYYMMDD.csv`.
+_EXPORT_DATE_SUFFIX = re.compile(r"-([0-9]{8})\.csv$", re.IGNORECASE)
+_EXPORT_DATE = "%Y%m%d"
 
 
 def _field_quoting_error(text: str) -> str | None:
@@ -153,6 +158,20 @@ class DanskeCsvV1Parser:
         if failure_reason is not None:
             return ParserResult.failed(failure_reason)
         return ParserResult.matched(tuple(records), last_transaction_date)
+
+    def exported_on_from_filename(self, filename: str) -> date | None:
+        """Read the `-YYYYMMDD.csv` export date, if the name carries one."""
+        suffix = _EXPORT_DATE_SUFFIX.search(filename)
+        if suffix is None:
+            return None
+        try:
+            return datetime.strptime(suffix.group(1), _EXPORT_DATE).date()
+        except ValueError:
+            # The name is private provenance: the verdict states the defect and
+            # never repeats the digits it came from.
+            raise ValueError(
+                "the filename's date suffix is not a real date"
+            ) from None
 
 
 # The one parser instance the registry declares for this format ID.
