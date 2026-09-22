@@ -51,6 +51,7 @@ Patch size against the baseline for the owned source: 4 files, 1017 insertions
 | refused/failed presentation invariants | `31d1438` test(regression), green on first run | - |
 | legacy store cannot keep records under a format failure | `0627d40` test(red) | `4f935c8` fix(green) |
 | declared field quoting is exact | `c21269f` test(red) | `29fd817` feat(green) |
+| a trailing delimiter still needs its quoted field | `ab2bccb` test(red) | `04aac40` fix(green) |
 | VS Code discovery configuration | `6f88dc1` chore(vscode) | - |
 | plan checkpoint | `8af1b52` docs (Astra authorship) | - |
 
@@ -58,6 +59,10 @@ Patch size against the baseline for the owned source: 4 files, 1017 insertions
 pins (derived source records written with `ON CONFLICT DO NOTHING`, and a repeat
 lookup filtered to `outcome = 'stored'`) landed with `13cf0d9`. Nothing was
 reverted to manufacture a red.
+
+`04aac40` is the tree of the original green commit for the trailing-delimiter
+fix; its message was amended before any push or review because the first version
+mis-typed the `Co-Authored-By` model string. The change itself is identical.
 
 Every red above was run before its implementation and failed on the missing
 behavior; each green commit records the passing focused run. Two test defects
@@ -97,11 +102,12 @@ block closed (fixed in `bb540e8`, which did not change the red verdict).
   lets a refusal seed account ownership or become a repeat origin;
 - validates field quoting on the decoded text before splitting: every field
   opens with a quote, `""` is an escaped quote, and only a comma, a line break
-  or the end of the payload may follow a closing quote, so an unquoted field, a
-  stray quote in unquoted text, an unterminated field and data after a closing
-  quote are each one deterministic `FormatFailure` with zero records. Line
-  endings are deliberately not checked, and a quoted field may still carry an
-  escaped quote and a line break of its own;
+  or the end of the payload may follow a closing quote, with a comma promising
+  another quoted field, so an unquoted field, a stray quote in unquoted text, an
+  unterminated field, data after a closing quote and a bare trailing delimiter
+  are each one deterministic `FormatFailure` with zero records. Line endings are
+  deliberately not checked, and a quoted field may still carry an escaped quote
+  and a line break of its own;
 - reconciles derived cache inside the run's transaction: a payload that does not
   match the declared format has its stale `source_records` deleted and its
   `FormatFailure` recorded, a matching payload has stale failures for that
@@ -120,17 +126,18 @@ TMP/TEMP override was needed: `TemporaryDirectory()` worked throughout.
 
 | Command | Exit | Result |
 | --- | --- | --- |
-| `python -B -m unittest discover -v -s tests -p 'test_*.py' -t .` | 0 | `Ran 11 tests ... OK` (post-correction) |
-| `python -B -m unittest discover -v -s tests -p 'test_*.py' -t . .` (brief's trailing-dot form) | 0 | `Ran 11 tests ... OK` |
+| `python -B -m unittest discover -v -s tests -p 'test_*.py' -t .` | 0 | `Ran 12 tests ... OK` (post-correction) |
+| `python -B -m unittest discover -v -s tests -p 'test_*.py' -t . .` (brief's trailing-dot form) | 0 | `Ran 12 tests ... OK` |
 | `python -B -m unittest tests.test_bronze.BronzeStoreTests.<slice test> -v` per slice | 1 red, 0 green | recorded in each commit body |
 | `python -B -c "import kernel.bronze"` from `tests/` with the workspace on `PYTHONPATH` | 0 | `import ok: kernel.bronze` |
 | Astra repro 1, re-run against the corrected code: baseline `BronzeStore` imports the header-mismatched payload, then the current store re-imports it | 0 | `outcome = repeat`, `repeat_of` = the legacy run, `failures = 1`, `records = 0`, bytes intact, the legacy run's twelve stored columns unchanged, `import_runs = 2`, `raw_payloads = 1` |
 | Astra repro 2, re-run against the corrected code: `Tekst` written `Ca` + quote + `fe` with no outer quotes | 0 | `outcome = stored`, `failures = 1`, `records = 0`, bytes intact, reason `payload quoting does not match danske-csv-v1: every field must be double-quoted` |
 | line-ending tolerance: one payload with LF endings, one CRLF payload with a trailing newline | 0 | both `outcome = stored` with one record and no failure, so the strictness added for quoting did not change line-ending behaviour |
 | read-only open, with no re-import, of a lax-parser store | 0 | `records = 1`, `failures = 0`, the documented state before the bytes are presented again |
+| acceptance follow-up: seven quoted fields followed by a bare comma, re-run against the final HEAD | 0 | `outcome = stored`, `failures = 1`, `records = 0`, bytes intact, reason `payload quoting does not match danske-csv-v1: a record ends with a comma and no quoted field` |
 | `rg -n 'f"""\|f"SELECT\|...' kernel/bronze/__init__.py` | 1 (no match) | no interpolated SQL text |
 | `rg -n -i 'drop table\|alter table\|truncate\|vacuum\|delete from raw_payloads\|delete from import_runs' kernel/bronze/__init__.py` | 1 (no match) | the only `DELETE` statements target derived `source_records` and `format_failures`; `PRAGMA foreign_keys = ON` is the only pragma |
-| `rg -c 'def test_' tests/test_bronze.py` | 0 | 11 test methods; discovery finds all 11 |
+| `rg -c 'def test_' tests/test_bronze.py` | 0 | 12 test methods; discovery finds all 12 |
 
 Test discovery and VS Code checks: `.vscode/settings.json` parses and reports
 `unittestEnabled=True`, `pytestEnabled=False`, `cwd=${workspaceFolder}` and
@@ -188,6 +195,10 @@ the Test Explorer UI itself is unverified.
    line endings and no final line break - remain prototype-level notes and are
    deliberately not enforced, so a payload with LF endings or a trailing newline
    is still stored; only quoting and the declared header are strict.
+   A comma promises another field, so a record that ends in a bare delimiter is
+   rejected even though `csv.reader` counts it as eight fields: the delimiter
+   introduces an unquoted empty field. An explicitly quoted empty field (`""`)
+   in last position is stored, with `Afstemt` equal to the empty string.
 
 ## Limitations and outstanding risks
 
