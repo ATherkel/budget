@@ -29,6 +29,46 @@ _DANSKE_HEADER = (
 )
 
 
+def _field_quoting_error(text: str) -> str | None:
+    """Return why the payload's quoting is not the declared shape, if it is not.
+
+    `danske-csv-v1` quotes every field, and a quote inside a field is doubled.
+    So a field opens with a quote, and only a comma, a line break or the end of
+    the payload may follow its closing quote. Line endings themselves are not
+    checked: the declared CRLF and no-final-line-break rules stay the
+    prototype's notes, and a quoted field may carry line breaks of its own.
+    """
+    index = 0
+    length = len(text)
+    while index < length:
+        if text[index] != '"':
+            return "every field must be double-quoted"
+        index += 1
+        while True:
+            if index >= length:
+                return "a quoted field is never closed"
+            if text[index] == '"':
+                if text[index + 1 : index + 2] == '"':
+                    index += 2
+                    continue
+                index += 1
+                break
+            index += 1
+        if index >= length:
+            return None
+        if text[index] == ",":
+            index += 1
+            continue
+        if text[index] == "\r" and text[index + 1 : index + 2] == "\n":
+            index += 2
+            continue
+        if text[index] in "\r\n":
+            index += 1
+            continue
+        return "a quoted field is followed by unquoted data"
+    return None
+
+
 def _split_danske_csv(content: bytes) -> tuple[list[dict[str, str]], str | None]:
     """Split one payload into source records, or name why it does not match.
 
@@ -41,6 +81,9 @@ def _split_danske_csv(content: bytes) -> tuple[list[dict[str, str]], str | None]
         return [], "payload is not strict Windows-1252"
     if not text:
         return [], "payload is empty"
+    quoting_error = _field_quoting_error(text)
+    if quoting_error is not None:
+        return [], f"payload quoting does not match danske-csv-v1: {quoting_error}"
     try:
         rows = list(
             csv.reader(
