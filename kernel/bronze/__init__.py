@@ -68,6 +68,40 @@ def _split_danske_csv(content: bytes) -> tuple[list[dict[str, str]], str | None]
     return records, None
 
 
+def _danske_last_transaction_date(
+    records: list[dict[str, str]],
+) -> tuple[date | None, str | None]:
+    """Read Dato for one purpose only: bounding a covers_through declaration.
+
+    Every record counts, whatever its row order or Status, and the value is
+    never stored anywhere: the source record keeps its original string. A
+    payload whose Dato cannot be read yields a verdict instead, so a missing
+    bound can never pass for a satisfied one.
+    """
+    last: date | None = None
+    for ordinal, fields in enumerate(records, start=1):
+        try:
+            value = datetime.strptime(fields["Dato"], "%d-%m-%Y").date()
+        except (KeyError, ValueError):
+            return None, f"record {ordinal} has an unreadable transaction date"
+        if last is None or value > last:
+            last = value
+    return last, None
+
+
+def _parse_danske_payload(
+    content: bytes,
+) -> tuple[list[dict[str, str]], date | None, str | None]:
+    """Return the payload's source records, its last transaction date, or why."""
+    records, failure_reason = _split_danske_csv(content)
+    if failure_reason is not None:
+        return [], None, failure_reason
+    last_transaction_date, failure_reason = _danske_last_transaction_date(records)
+    if failure_reason is not None:
+        return [], None, failure_reason
+    return records, last_transaction_date, None
+
+
 @dataclass(frozen=True)
 class RawPayload:
     payload_id: str
@@ -192,7 +226,7 @@ class BronzeStore:
         if covers_through is None:
             raise NotImplementedError("Coverage-date inference is not implemented")
 
-        records, failure_reason = _split_danske_csv(content)
+        records, last_transaction_date, failure_reason = _parse_danske_payload(content)
         import_run_id = uuid4().hex
 
         # Commit the payload, provenance, and derived records together.
