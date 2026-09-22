@@ -60,6 +60,26 @@ class SourceParserRegistryTests(unittest.TestCase):
         self.assertTrue(result.failure_reason)
         self.assertNotIn("Dato", result.failure_reason)
 
+    def test_the_declared_parser_owns_its_export_date_filename_convention(self):
+        parser = registry.source_parser("danske-csv-v1")
+
+        self.assertEqual(
+            parser.exported_on_from_filename("synthetic-20260914.csv"),
+            date(2026, 9, 14),
+        )
+        # A name this format does not recognise is not a failure: the operator
+        # can still declare the export date for it.
+        self.assertIsNone(parser.exported_on_from_filename("synthetic.csv"))
+        self.assertIsNone(parser.exported_on_from_filename("synthetic-20260914.txt"))
+
+    def test_an_unreadable_date_suffix_is_refused_without_naming_the_file(self):
+        parser = registry.source_parser("danske-csv-v1")
+
+        with self.assertRaises(ValueError) as refusal:
+            parser.exported_on_from_filename("synthetic-20260931.csv")
+        self.assertNotIn("synthetic", str(refusal.exception))
+        self.assertNotIn("20260931", str(refusal.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
