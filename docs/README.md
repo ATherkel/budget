@@ -27,6 +27,10 @@ agent authority outside its boundary.
   taken on an older report can still be read.
 - `decisions/` records accepted architectural decisions. Changes require a new
   ADR; do not silently revise a decision to fit an implementation.
+- `architecture/data-maps/` holds one logical data map per source format and
+  target layer: for every target column, its source and transformation. A map
+  restates its layer contract column by column; where they differ, the layer
+  contract and ADRs win.
 
 ## Explanatory Documents
 
