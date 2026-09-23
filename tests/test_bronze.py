@@ -1,5 +1,11 @@
 # Copyright 2026 Therkel
-"""Bronze behavior through the public store interface, using synthetic inputs."""
+"""The Bronze store: exact bytes, provenance, and run outcomes.
+
+Every test here goes through `BronzeStore`, with synthetic `danske-csv-v1`
+payloads as fixtures and one representative payload per outcome. The rules of
+the format itself live in `test_danske_csv_v1.py` and the registry's selection
+in `test_source_parsers.py`, so the store does not repeat those matrices.
+"""
 
 import json
 import sqlite3
@@ -236,61 +242,51 @@ class BronzeStoreTests(unittest.TestCase):
                     reopened.get_source_records(original.payload_id) == original_records
                 )
 
-    def test_malformed_payloads_yield_a_format_failure_and_no_source_records(
+    def test_a_malformed_payload_is_recorded_as_a_verdict_with_its_bytes(
         self,
     ) -> None:
-        well_formed = (
+        # The exhaustive header, encoding, quoting and date matrices live with
+        # the parser in test_danske_csv_v1.py. The store's own job is to keep
+        # the bytes and record one verdict, which one payload shows.
+        content = (
             b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
             b'"Saldo","Status","Afstemt"\r\n'
             b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
             b'"-45,00","955,00","Udf\xf8rt","Nej"'
-        )
-        malformed = {
-            "unexpected header": well_formed.replace(b'"Afstemt"', b'"Afstemt?"'),
-            "utf-8 encoded header": well_formed.decode("cp1252").encode("utf-8"),
-            "byte undefined in windows-1252": well_formed[:-1] + b"\x81",
-        }
-        header_failure_reasons = []
+        ).replace(b'"Afstemt"', b'"Afstemt?"')
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
             database = root / "bronze.sqlite3"
+            source = root / "synthetic-20260914.csv"
+            source.write_bytes(content)
 
-            for index, (label, content) in enumerate(malformed.items()):
-                with self.subTest(payload=label):
-                    source = root / f"synthetic-{index}-20260914.csv"
-                    source.write_bytes(content)
-                    with BronzeStore(database) as store:
-                        run = store.import_file(
-                            source,
-                            declared_account_id="daily-account",
-                            source_format="danske-csv-v1",
-                            covers_through=date(2026, 9, 13),
-                        )
-                    with BronzeStore(database) as reopened:
-                        payload = reopened.get_payload(run.payload_id)
-                        records = reopened.get_source_records(run.payload_id)
-                        failures = reopened.get_format_failures(run.payload_id)
+            with BronzeStore(database) as store:
+                run = store.import_file(
+                    source,
+                    declared_account_id="daily-account",
+                    source_format="danske-csv-v1",
+                    covers_through=date(2026, 9, 13),
+                )
+            with BronzeStore(database) as reopened:
+                payload = reopened.get_payload(run.payload_id)
+                records = reopened.get_source_records(run.payload_id)
+                failures = reopened.get_format_failures(run.payload_id)
 
-                    assert run.outcome == "stored"
-                    assert run.covers_through == date(2026, 9, 13)
-                    assert run.covers_through_source == "declared"
-                    assert payload.content == content
-                    assert payload.byte_length == len(content)
-                    assert records == ()
-                    assert len(failures) == 1
-                    assert failures[0].payload_id == run.payload_id
-                    assert failures[0].source_format == "danske-csv-v1"
-                    assert failures[0].reason
-                    # A failure reason is a verdict, never a copy of the source.
-                    assert source.name not in failures[0].reason
-                    assert "Dato" not in failures[0].reason
-                    assert "Afstemt" not in failures[0].reason
-                    if "header" in label:
-                        header_failure_reasons.append(failures[0].reason)
-
-            assert len(header_failure_reasons) == 2
-            assert header_failure_reasons[0] == header_failure_reasons[1]
+            assert run.outcome == "stored"
+            assert run.covers_through == date(2026, 9, 13)
+            assert run.covers_through_source == "declared"
+            assert payload.content == content
+            assert payload.byte_length == len(content)
+            assert records == ()
+            assert len(failures) == 1
+            assert failures[0].payload_id == run.payload_id
+            assert failures[0].source_format == "danske-csv-v1"
+            assert failures[0].reason
+            # A failure reason is a verdict, never a copy of the source.
+            assert source.name not in failures[0].reason
+            assert "Dato" not in failures[0].reason
+            assert "Afstemt" not in failures[0].reason
 
     def test_import_metadata_failures_happen_before_persistence(self) -> None:
         content = (
@@ -360,54 +356,46 @@ class BronzeStoreTests(unittest.TestCase):
             assert declared.exported_on == date(2026, 9, 14)
             assert declared.exported_on_source == "declared"
 
-    def test_an_unreadable_transaction_date_is_a_format_failure(self) -> None:
-        header = (
+    def test_a_date_the_parser_cannot_read_is_a_verdict_not_a_refusal(self) -> None:
+        # An unreadable Dato cannot bound a coverage declaration, so the payload
+        # is retained with a verdict, never guessed. The date-shape matrix lives
+        # with the parser in test_danske_csv_v1.py.
+        content = (
             b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
             b'"Saldo","Status","Afstemt"\r\n'
+            b'"31-02-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"-45,00","955,00","Udf\xf8rt","Nej"'
         )
-        row = (
-            b'%s," Mad "," Dagligvarer "," Caf\xe9","-45,00","955,00","Udf\xf8rt","Nej"'
-        )
-        malformed = {
-            "impossible date": b'"31-02-2026"',
-            "unexpected date shape": b'"2026-09-12"',
-        }
-        failure_reasons = []
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
             database = root / "bronze.sqlite3"
+            source = root / "synthetic-20260914.csv"
+            source.write_bytes(content)
 
-            for index, (label, dato) in enumerate(malformed.items()):
-                with self.subTest(dato=label):
-                    content = header + row % dato
-                    source = root / f"synthetic-{index}-20260914.csv"
-                    source.write_bytes(content)
-                    with BronzeStore(database) as store:
-                        run = store.import_file(
-                            source,
-                            declared_account_id="daily-account",
-                            source_format="danske-csv-v1",
-                            covers_through=date(2026, 9, 13),
-                        )
-                    with BronzeStore(database) as reopened:
-                        payload = reopened.get_payload(run.payload_id)
-                        records = reopened.get_source_records(run.payload_id)
-                        failures = reopened.get_format_failures(run.payload_id)
+            with BronzeStore(database) as store:
+                run = store.import_file(
+                    source,
+                    declared_account_id="daily-account",
+                    source_format="danske-csv-v1",
+                    covers_through=date(2026, 9, 13),
+                )
+            with BronzeStore(database) as reopened:
+                payload = reopened.get_payload(run.payload_id)
+                records = reopened.get_source_records(run.payload_id)
+                failures = reopened.get_format_failures(run.payload_id)
 
-                    # An unreadable Dato cannot bound a coverage declaration,
-                    # so the payload is retained with a verdict, never guessed.
-                    assert run.outcome == "stored"
-                    assert payload.content == content
-                    assert records == ()
-                    assert len(failures) == 1
-                    assert failures[0].reason
-                    assert dato.decode("cp1252") not in failures[0].reason
-                    assert source.name not in failures[0].reason
-                    failure_reasons.append(failures[0].reason)
-
-            assert len(failure_reasons) == 2
-            assert failure_reasons[0] == failure_reasons[1]
+            # The declaration was acceptable, so the run is stored with a
+            # verdict rather than refused.
+            assert run.outcome == "stored"
+            assert run.covers_through == date(2026, 9, 13)
+            assert run.covers_through_source == "declared"
+            assert payload.content == content
+            assert records == ()
+            assert len(failures) == 1
+            assert failures[0].reason
+            assert "31-02-2026" not in failures[0].reason
+            assert source.name not in failures[0].reason
 
     def test_a_declared_covers_through_is_bounded_and_never_clamped(self) -> None:
         # The row carrying the maximum Dato comes first and is cancelled, so a
@@ -729,152 +717,6 @@ class BronzeStoreTests(unittest.TestCase):
             with BronzeStore(database) as reopened_again:
                 assert reopened_again.get_source_records(payload_id) == ()
                 assert len(reopened_again.get_format_failures(payload_id)) == 1
-
-    def test_every_field_must_be_quoted_exactly_as_the_format_declares(self) -> None:
-        header = (
-            b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
-            b'"Saldo","Status","Afstemt"\r\n'
-        )
-        prefix = b'"12-09-2026"," Mad "," Dagligvarer ",'
-        suffix = b'"-45,00","955,00","Udf\xf8rt","Nej"'
-        malformed = {
-            "unquoted field carrying a stray quote": prefix + b'Ca"fe,' + suffix,
-            "unquoted field": prefix + b"Cafe," + suffix,
-            "data after a closing quote": prefix + b'"Ca"fe",' + suffix,
-            "unterminated quoted field": prefix + b'"Cafe',
-            "one field too many": prefix + b'"Caf\xe9","ekstra",' + suffix,
-            "one field too few": prefix + b'"Caf\xe9","955,00","Udf\xf8rt","Nej"',
-        }
-        # A field may hold an escaped quote and a line break of its own; the
-        # format allows both inside a quoted field.
-        well_formed = (
-            header + b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9, ""\xd8en""'
-            b'\r\nand more ","-45,00","955,00","Udf\xf8rt","Nej"'
-        )
-        quoting_reasons = []
-
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            database = root / "bronze.sqlite3"
-            good_source = root / "synthetic-good-20260914.csv"
-            good_source.write_bytes(well_formed)
-
-            with BronzeStore(database) as store:
-                stored = store.import_file(
-                    good_source,
-                    declared_account_id="daily-account",
-                    source_format="danske-csv-v1",
-                    covers_through=date(2026, 9, 13),
-                )
-                stored_records = store.get_source_records(stored.payload_id)
-                stored_failures = store.get_format_failures(stored.payload_id)
-                stored_payload = store.get_payload(stored.payload_id)
-
-            assert stored.outcome == "stored"
-            assert stored_failures == ()
-            assert len(stored_records) == 1
-            assert (
-                dict(stored_records[0].fields)["Tekst"] == ' Café, "Øen"\r\nand more '
-            )
-            assert dict(stored_records[0].fields)["Dato"] == "12-09-2026"
-            assert stored_payload.content == well_formed
-
-            for index, (label, row) in enumerate(malformed.items()):
-                with self.subTest(payload=label):
-                    content = header + row
-                    source = root / f"synthetic-{index}-20260914.csv"
-                    source.write_bytes(content)
-                    with BronzeStore(database) as store:
-                        run = store.import_file(
-                            source,
-                            declared_account_id="daily-account",
-                            source_format="danske-csv-v1",
-                            covers_through=date(2026, 9, 13),
-                        )
-                    with BronzeStore(database) as reopened:
-                        payload = reopened.get_payload(run.payload_id)
-                        records = reopened.get_source_records(run.payload_id)
-                        failures = reopened.get_format_failures(run.payload_id)
-
-                    # A shape the format does not declare is a verdict on the
-                    # payload, not a refusal, and it derives nothing.
-                    assert run.outcome == "stored"
-                    assert payload.content == content
-                    assert records == ()
-                    assert len(failures) == 1
-                    assert failures[0].source_format == "danske-csv-v1"
-                    assert failures[0].reason
-                    assert source.name not in failures[0].reason
-                    assert "Cafe" not in failures[0].reason
-                    assert 'Ca"fe' not in failures[0].reason
-                    assert "Caf\xe9" not in failures[0].reason
-                    if "unquoted field" in label or label.endswith("stray quote"):
-                        quoting_reasons.append(failures[0].reason)
-
-            # The same defect gives the same verdict whatever the row said.
-            assert len(quoting_reasons) == 2
-            assert quoting_reasons[0] == quoting_reasons[1]
-
-    def test_a_row_ending_in_a_comma_still_needs_its_quoted_field(self) -> None:
-        header = (
-            b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
-            b'"Saldo","Status","Afstemt"\r\n'
-        )
-        seven_fields = (
-            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
-            b'"-45,00","955,00","Udf\xf8rt",'
-        )
-
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            database = root / "bronze.sqlite3"
-
-            # An empty final field is legal when it is quoted, and a trailing
-            # line break after it stays legal too.
-            quoted_empty = header + seven_fields + b'""\r\n'
-            quoted_empty_source = root / "synthetic-20260914.csv"
-            quoted_empty_source.write_bytes(quoted_empty)
-            with BronzeStore(database) as store:
-                stored = store.import_file(
-                    quoted_empty_source,
-                    declared_account_id="daily-account",
-                    source_format="danske-csv-v1",
-                    covers_through=date(2026, 9, 13),
-                )
-                stored_records = store.get_source_records(stored.payload_id)
-                stored_failures = store.get_format_failures(stored.payload_id)
-                stored_payload = store.get_payload(stored.payload_id)
-
-            assert stored.outcome == "stored"
-            assert stored_failures == ()
-            assert len(stored_records) == 1
-            assert dict(stored_records[0].fields)["Afstemt"] == ""
-            assert stored_payload.content == quoted_empty
-
-            # A trailing comma with nothing after it is an unquoted eighth
-            # field, however many fields csv.reader then counts.
-            trailing_comma = header + seven_fields
-            trailing_source = root / "synthetic-20260915.csv"
-            trailing_source.write_bytes(trailing_comma)
-            with BronzeStore(database) as store:
-                run = store.import_file(
-                    trailing_source,
-                    declared_account_id="daily-account",
-                    source_format="danske-csv-v1",
-                    covers_through=date(2026, 9, 13),
-                )
-            with BronzeStore(database) as reopened:
-                payload = reopened.get_payload(run.payload_id)
-                records = reopened.get_source_records(run.payload_id)
-                failures = reopened.get_format_failures(run.payload_id)
-
-            assert run.outcome == "stored"
-            assert payload.content == trailing_comma
-            assert records == ()
-            assert len(failures) == 1
-            assert failures[0].source_format == "danske-csv-v1"
-            assert failures[0].reason
-            assert trailing_source.name not in failures[0].reason
 
 
 if __name__ == "__main__":

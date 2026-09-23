@@ -43,14 +43,30 @@ A format ID names a **source, a representation, and a version** -
 implementations. A new layout gets a new ID; an existing ID never quietly
 changes meaning.
 
+## Where The Tests Live
+
+- `tests/test_source_parsers.py` - the registry: which format IDs are declared,
+  which parser each ID selects, and how an undeclared ID is refused.
+- `tests/test_danske_csv_v1.py` - the declared rules of one format, observed
+  only through `parse` and `exported_on_from_filename`: encoding, header,
+  quoting, the transaction-date syntax and the coverage bound it feeds, and the
+  filename convention.
+- `tests/test_bronze.py` - the store: exact bytes, provenance, reopening,
+  repeats, account conflicts, coverage and refusals, and the recording of a
+  format failure, with representative `danske-csv-v1` payloads as fixtures.
+
+The exhaustive variants of a format belong to that format's file. The store
+keeps one representative payload per outcome rather than repeating the matrix,
+so a rule change fails in one place instead of two.
+
 ## Adding a Format
 
 1. Add `src/budget/bronze/parsers/<format>.py` with a parser implementing the
    contract. Keep the encoding, layout, field names, date syntax, and filename
    convention in that module: the store must not learn any of them.
 2. Register it in `parsers/registry.py` under its ID.
-3. Add a test at the registry seam; `tests/test_source_parsers.py` shows the
-   shape.
+3. Add a suite beside the parser, following `tests/test_danske_csv_v1.py`, and
+   its ID to the registry assertions in `tests/test_source_parsers.py`.
 
 ## Limits These Decisions Do Not Solve
 
