@@ -17,7 +17,11 @@ jobs:
   # reports: docs-only PRs pass here without spending a review.
   claude-review:
     # Drafts are skipped; marking the PR ready for review triggers the first review.
-    if: github.event.pull_request.draft == false
+    # Dependabot PRs are skipped too: their runs get only Dependabot secrets, so
+    # the OAuth token is absent. A skipped job still satisfies a required check.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
 
     runs-on: ubuntu-latest
     permissions:
