@@ -217,3 +217,25 @@ An import run a person has declared mistaken, for example because it was
 declared against the wrong account. Its raw payload is retained but it
 contributes nothing downstream.
 _Avoid_: deleted import, undone import
+
+### Operations
+
+**Profile**:
+One of `production`, `development`, or `test`: a configuration of the same
+code that names every path the application touches. Every store records the
+profile it belongs to. The rules are in
+[`docs/architecture/operations.md`](docs/architecture/operations.md).
+_Avoid_: environment (ambiguous with the Python environment), instance
+
+**Household inputs**:
+Everything the household authors: the account registry, category taxonomy,
+and classification rules as edited files, and the decision and import logs,
+which only the application appends to. With the export archive, they are
+enough to rebuild every store.
+_Avoid_: configuration (only part of it), settings
+
+**Backup set**:
+A snapshot of every store in a profile, with a copy of its household inputs
+and a manifest, taken together. Development reads production only through
+one.
+_Avoid_: backup (when meaning a copy of one file), dump

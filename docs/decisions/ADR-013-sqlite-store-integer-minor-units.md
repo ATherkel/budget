@@ -1,6 +1,8 @@
 # ADR-013: Store Data in SQLite, with Money as Integer Minor Units
 
-**Status:** Proposed
+**Status:** Accepted. The location decision is refined by
+[ADR-015](ADR-015-profiles-stages-and-household-inputs.md): one store per ETL
+stage, each at a path the profile names.
 
 ## Context
 

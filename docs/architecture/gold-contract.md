@@ -369,8 +369,6 @@ the admitted export evidence from ADR-006, including verified quiet months.
 ## Open Decisions
 
 - Versioning of classification inputs and as-of reports (issue #8).
-- File formats for rules and manual decisions, and the CLI review commands
-  (issue #10).
 - Whether money moved to savings, investment, or loan accounts that are not
   imported should count differently in the savings measure; it is an expense
   today (issue #12).

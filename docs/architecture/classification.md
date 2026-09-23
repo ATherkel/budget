@@ -270,7 +270,8 @@ Silver's import review items (issue #5) are separate.
 
 ### What the review workflow shows
 
-After each Gold build, the CLI review workflow (issue #10) shows:
+After each Gold build, the CLI review workflow
+([`operations.md`](operations.md)) shows:
 
 - a summary: transactions by classification source; unclassified money in,
   money out, and count per account and month; and open review items by kind;
@@ -369,8 +370,6 @@ A zero-amount `INTEREST ADJ` matched by `r-interest` is `unknown`, with a
 
 - **Issue #8:** versioning of rules, decisions, the taxonomy, and the matching
   policy; as-of reports; reproducing a report as it was before a change.
-- **Issue #10:** file formats for rules and decisions, CLI command names, and
-  how review output is presented.
 - **Issue #12:** whether money moved to savings, investment, or loan accounts
   that are not imported should count differently in the savings measure. It is
   an expense today.

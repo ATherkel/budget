@@ -25,6 +25,8 @@ agent authority outside its boundary.
   definition: because the category dimension carries only the current
   interpretation, it logs when the taxonomy changed and why, so a decision
   taken on an older report can still be read.
+- `architecture/operations.md` says how the household runs the pipeline:
+  profiles, stores, input file formats, commands, and backup and restore.
 - `decisions/` records accepted architectural decisions. Changes require a new
   ADR; do not silently revise a decision to fit an implementation.
 
