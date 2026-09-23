@@ -1,3 +1,4 @@
+# Copyright 2026 Therkel
 """Public Bronze contracts: provenance in, source records out."""
 
 from collections.abc import Mapping
@@ -8,6 +9,8 @@ from typing import Literal
 
 @dataclass(frozen=True)
 class RawPayload:
+    """One source's exact bytes, stored once under their SHA-256 identifier."""
+
     payload_id: str
     byte_length: int
     content: bytes = field(repr=False)
@@ -15,6 +18,8 @@ class RawPayload:
 
 @dataclass(frozen=True)
 class ImportRun:
+    """One presentation of a payload, with the operator's declarations."""
+
     import_run_id: str
     payload_id: str
     declared_account_id: str
@@ -31,6 +36,8 @@ class ImportRun:
 
 @dataclass(frozen=True)
 class SourceRecord:
+    """One record exactly as the source presented it, still uninterpreted."""
+
     payload_id: str
     record_ordinal: int
     fields: Mapping[str, str] = field(repr=False)
@@ -38,6 +45,8 @@ class SourceRecord:
 
 @dataclass(frozen=True)
 class FormatFailure:
+    """A verdict that a payload does not match its declared source format."""
+
     payload_id: str
     source_format: str
     reason: str

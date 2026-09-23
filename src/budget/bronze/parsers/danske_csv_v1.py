@@ -1,3 +1,4 @@
+# Copyright 2026 Therkel
 """``danske-csv-v1``: one bank's CSV export, exactly as it declares itself.
 
 Everything format-specific lives here - the encoding, the declared header, the
@@ -7,12 +8,11 @@ one's meaning.
 """
 
 import csv
-from datetime import date, datetime
-from io import StringIO
 import re
+from datetime import date
+from io import StringIO
 
 from budget.bronze.parsers.base import ParserResult, SourceParser
-
 
 SOURCE_FORMAT_ID = "danske-csv-v1"
 
@@ -30,11 +30,51 @@ _HEADER = (
 )
 
 # The transaction date is the only value this parser reads rather than presents.
-_TRANSACTION_DATE = "%d-%m-%Y"
+_TRANSACTION_DATE_PATTERN = re.compile(r"(\d{2})-(\d{2})-(\d{4})")
 
 # The export date convention of this format: `…-YYYYMMDD.csv`.
 _EXPORT_DATE_SUFFIX = re.compile(r"-([0-9]{8})\.csv$", re.IGNORECASE)
-_EXPORT_DATE = "%Y%m%d"
+
+
+class ExportDateSuffixError(ValueError):
+    """A recognised export-date suffix is not a real date."""
+
+    def __init__(self) -> None:
+        """State the defect without repeating the private filename."""
+        super().__init__("the filename's date suffix is not a real date")
+
+
+def _quoted_field_end(text: str, start: int) -> tuple[int, str | None]:
+    """Return the index after a field's closing quote, or why it never closes."""
+    index = start
+    length = len(text)
+    while index < length:
+        if text[index] != '"':
+            index += 1
+            continue
+        if text[index + 1 : index + 2] == '"':
+            index += 2
+            continue
+        return index + 1, None
+    return index, "a quoted field is never closed"
+
+
+def _record_separator_end(text: str, index: int) -> tuple[int, str | None]:
+    """Return the index after a separator, or why that position is not one."""
+    length = len(text)
+    if index >= length:
+        return index, None
+    if text[index] == ",":
+        # A comma promises another field, and every field is quoted: a bare
+        # trailing delimiter is an unquoted empty field.
+        if index + 1 >= length:
+            return index, "a record ends with a comma and no quoted field"
+        return index + 1, None
+    if text[index] == "\r" and text[index + 1 : index + 2] == "\n":
+        return index + 2, None
+    if text[index] in "\r\n":
+        return index + 1, None
+    return index, "a quoted field is followed by unquoted data"
 
 
 def _field_quoting_error(text: str) -> str | None:
@@ -51,42 +91,17 @@ def _field_quoting_error(text: str) -> str | None:
     while index < length:
         if text[index] != '"':
             return "every field must be double-quoted"
-        index += 1
-        while True:
-            if index >= length:
-                return "a quoted field is never closed"
-            if text[index] == '"':
-                if text[index + 1 : index + 2] == '"':
-                    index += 2
-                    continue
-                index += 1
-                break
-            index += 1
-        if index >= length:
-            return None
-        if text[index] == ",":
-            index += 1
-            if index >= length:
-                # A comma promises another field, and every field is quoted: a
-                # bare trailing delimiter is an unquoted empty field.
-                return "a record ends with a comma and no quoted field"
-            continue
-        if text[index] == "\r" and text[index + 1 : index + 2] == "\n":
-            index += 2
-            continue
-        if text[index] in "\r\n":
-            index += 1
-            continue
-        return "a quoted field is followed by unquoted data"
+        index, error = _quoted_field_end(text, index + 1)
+        if error is not None:
+            return error
+        index, error = _record_separator_end(text, index)
+        if error is not None:
+            return error
     return None
 
 
-def _split_payload(content: bytes) -> tuple[list[dict[str, str]], str | None]:
-    """Split one payload into source records, or name why it does not match.
-
-    The verdict is deterministic and describes the payload as a whole; it never
-    repeats source content, so a failure reason stays safe to show or log.
-    """
+def _split_rows(content: bytes) -> tuple[list[list[str]], str | None]:
+    """Read one payload as CSV rows, or name why it is not readable at all."""
     try:
         text = content.decode("cp1252", errors="strict")
     except UnicodeDecodeError:
@@ -109,6 +124,18 @@ def _split_payload(content: bytes) -> tuple[list[dict[str, str]], str | None]:
         return [], "payload is not well-formed CSV"
     if not rows:
         return [], "payload is empty"
+    return rows, None
+
+
+def _split_payload(content: bytes) -> tuple[list[dict[str, str]], str | None]:
+    """Split one payload into source records, or name why it does not match.
+
+    The verdict is deterministic and describes the payload as a whole; it never
+    repeats source content, so a failure reason stays safe to show or log.
+    """
+    rows, failure_reason = _split_rows(content)
+    if failure_reason is not None:
+        return [], failure_reason
     header, *data = rows
     if tuple(header) != _HEADER:
         return [], "payload header does not match danske-csv-v1"
@@ -116,11 +143,22 @@ def _split_payload(content: bytes) -> tuple[list[dict[str, str]], str | None]:
     for ordinal, values in enumerate(data, start=1):
         if len(values) != len(_HEADER):
             return [], (
-                f"record {ordinal} has {len(values)} fields, "
-                f"expected {len(_HEADER)}"
+                f"record {ordinal} has {len(values)} fields, expected {len(_HEADER)}"
             )
         records.append(dict(zip(_HEADER, values, strict=True)))
     return records, None
+
+
+def _transaction_date(value: str) -> date | None:
+    """Read one `DD-MM-YYYY` transaction date, or None if it is not a real date."""
+    match = _TRANSACTION_DATE_PATTERN.fullmatch(value)
+    if match is None:
+        return None
+    day, month, year = (int(part) for part in match.groups())
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
 
 
 def _last_transaction_date(
@@ -135,9 +173,8 @@ def _last_transaction_date(
     """
     last: date | None = None
     for ordinal, fields in enumerate(records, start=1):
-        try:
-            value = datetime.strptime(fields["Dato"], _TRANSACTION_DATE).date()
-        except (KeyError, ValueError):
+        value = _transaction_date(fields["Dato"])
+        if value is None:
             return None, f"record {ordinal} has an unreadable transaction date"
         if last is None or value > last:
             last = value
@@ -164,14 +201,13 @@ class DanskeCsvV1Parser:
         suffix = _EXPORT_DATE_SUFFIX.search(filename)
         if suffix is None:
             return None
+        digits = suffix.group(1)
         try:
-            return datetime.strptime(suffix.group(1), _EXPORT_DATE).date()
+            return date(int(digits[0:4]), int(digits[4:6]), int(digits[6:8]))
         except ValueError:
             # The name is private provenance: the verdict states the defect and
             # never repeats the digits it came from.
-            raise ValueError(
-                "the filename's date suffix is not a real date"
-            ) from None
+            raise ExportDateSuffixError from None
 
 
 # The one parser instance the registry declares for this format ID.

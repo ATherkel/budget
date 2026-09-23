@@ -1,7 +1,7 @@
 [project]
 name = "budget"
 version = "0.1.0"
-description = "A Python-first, self-hostable household budget platform"
+description = "Self-hostable household budget platform built on a Bronze/Silver/Gold data pipeline."
 readme = "README.md"
 authors = [
     { name = "Therkel", email = "antherkelsen@gmail.com" }
@@ -12,3 +12,52 @@ dependencies = []
 [build-system]
 requires = ["uv_build>=0.12.13,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "complexipy>=4",
+    "pytest>=8",
+    "ruff>=0.13",
+    "ty>=0.0.1a20",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    # Conflict with the formatter; see
+    # https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
+    "COM812",
+    "ISC001",
+    # Mutually exclusive pairs; keep D203 and D213 off in favour of D211 and D212.
+    "D203",
+    "D213",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "S101",    # pytest uses bare `assert`
+    "D",       # test names document the behaviour
+    "PLR2004", # expected values are literal by design
+]
+
+[tool.ruff.lint.mccabe]
+# SonarQube's cognitive-complexity limit is 15 (rule python:S3776); keep
+# cyclomatic complexity under the same ceiling.
+max-complexity = 15
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ty.rules]
+# Promote every ty warning to an error so the gate cannot pass with warnings.
+all = "error"
+
+[tool.complexipy]
+# Mirrors SonarQube python:S3776 (cognitive complexity per function <= 15).
+max-complexity-allowed = 15
+paths = ["."]
+exclude = [".venv"]

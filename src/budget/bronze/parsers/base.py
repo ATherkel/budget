@@ -1,3 +1,4 @@
+# Copyright 2026 Therkel
 """The contract every source parser implements.
 
 A parser is the only place that knows a source format's rules: its encoding,
@@ -10,9 +11,10 @@ presents is the transaction date that bounds a declared `covers_through`;
 mapped.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
-from typing import Mapping, Protocol
+from typing import Protocol
 
 
 @dataclass(frozen=True)

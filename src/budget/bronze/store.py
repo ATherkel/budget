@@ -1,3 +1,4 @@
+# Copyright 2026 Therkel
 """Bronze persistence: retain exact bytes, provenance, and source records.
 
 The store is source-agnostic. It reads a file's bytes, resolves the export
@@ -7,13 +8,13 @@ date syntax: those belong to the parser the registry selects for the operator's
 declared `source_format`.
 """
 
+import json
+import sqlite3
 from datetime import UTC, date, datetime
 from hashlib import sha256
-import json
 from pathlib import Path
-import sqlite3
 from types import MappingProxyType, TracebackType
-from typing import Self
+from typing import Literal, Self
 from uuid import uuid4
 
 from budget.bronze.coverage import covers_through_for
@@ -21,10 +22,35 @@ from budget.bronze.models import FormatFailure, ImportRun, RawPayload, SourceRec
 from budget.bronze.parsers.registry import source_parser
 
 
+class MissingExportDateError(ValueError):
+    """The declared format reads no export date from the filename."""
+
+    def __init__(self, source_format: str) -> None:
+        """Name the format whose filename carries no usable export date."""
+        super().__init__(
+            "Declare exported_on: the declared source format "
+            f"{source_format} reads no export date from this filename"
+        )
+
+
+def _outcome_for(
+    *,
+    refused: bool,
+    repeat_of: str | None,
+) -> Literal["stored", "repeat", "refused"]:
+    """Name the run's outcome: a refusal first, then a repeat, then a store."""
+    if refused:
+        return "refused"
+    if repeat_of is not None:
+        return "repeat"
+    return "stored"
+
+
 class BronzeStore:
     """Import and retrieve Bronze provenance in a local SQLite store."""
 
     def __init__(self, database: str | Path) -> None:
+        """Open the store, creating the Bronze tables in this database."""
         self._connection = sqlite3.connect(database)
         self._connection.row_factory = sqlite3.Row
         self._connection.execute("PRAGMA foreign_keys = ON")
@@ -65,6 +91,7 @@ class BronzeStore:
         )
 
     def __enter__(self) -> Self:
+        """Return the open store for a `with` block."""
         return self
 
     def __exit__(
@@ -73,6 +100,7 @@ class BronzeStore:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
+        """Close the store when the `with` block ends."""
         self.close()
 
     def close(self) -> None:
@@ -100,22 +128,17 @@ class BronzeStore:
         if exported_on is None:
             inferred = parser.exported_on_from_filename(source.name)
             if inferred is None:
-                raise ValueError(
-                    "Declare exported_on: the declared source format reads no "
-                    "export date from this filename"
-                )
+                raise MissingExportDateError(source_format)
             exported_on = inferred
             exported_on_source = "filename"
 
         result = parser.parse(content)
         failure_reason = result.failure_reason
-        covers_through, covers_through_source, declaration_refused = (
-            covers_through_for(
-                covers_through,
-                exported_on,
-                result.last_transaction_date,
-                failure_reason is None,
-            )
+        covers_through, covers_through_source, declaration_refused = covers_through_for(
+            covers_through,
+            exported_on,
+            result.last_transaction_date,
+            payload_readable=failure_reason is None,
         )
         import_run_id = uuid4().hex
 
@@ -131,7 +154,9 @@ class BronzeStore:
                 """,
                 (payload_id, declared_account_id),
             ).fetchone()
-            repeat_of = original_run["import_run_id"] if original_run is not None else None
+            repeat_of = (
+                original_run["import_run_id"] if original_run is not None else None
+            )
 
             # Bytes already stored for another account are refused: the
             # payload has one owner, and only a manual decision may move it.
@@ -140,7 +165,8 @@ class BronzeStore:
                 account_conflict = self._connection.execute(
                     """
                     SELECT import_run_id FROM import_runs
-                    WHERE payload_id = ? AND outcome = 'stored' AND declared_account_id <> ?
+                    WHERE payload_id = ? AND outcome = 'stored'
+                        AND declared_account_id <> ?
                     ORDER BY started_at, import_run_id
                     LIMIT 1
                     """,
@@ -165,7 +191,8 @@ class BronzeStore:
                 INSERT INTO import_runs (
                     import_run_id, payload_id, declared_account_id, source_format,
                     original_filename, exported_on, exported_on_source,
-                    covers_through, covers_through_source, started_at, outcome, repeat_of
+                    covers_through, covers_through_source, started_at, outcome,
+                    repeat_of
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
@@ -179,7 +206,7 @@ class BronzeStore:
                     covers_through.isoformat(),
                     covers_through_source,
                     started_at.isoformat(),
-                    "refused" if refused else ("repeat" if repeat_of is not None else "stored"),
+                    _outcome_for(refused=refused, repeat_of=repeat_of),
                     repeat_of,
                 ),
             )
@@ -226,6 +253,7 @@ class BronzeStore:
         return self.get_import_run(import_run_id)
 
     def get_import_run(self, import_run_id: str) -> ImportRun:
+        """Return one import run's stored provenance."""
         row = self._connection.execute(
             "SELECT * FROM import_runs WHERE import_run_id = ?", (import_run_id,)
         ).fetchone()
@@ -247,6 +275,7 @@ class BronzeStore:
         )
 
     def get_payload(self, payload_id: str) -> RawPayload:
+        """Return one retained payload's exact bytes."""
         row = self._connection.execute(
             "SELECT * FROM raw_payloads WHERE payload_id = ?", (payload_id,)
         ).fetchone()
@@ -259,6 +288,7 @@ class BronzeStore:
         )
 
     def get_source_records(self, payload_id: str) -> tuple[SourceRecord, ...]:
+        """Return one payload's source records, or nothing if it failed format."""
         # A payload that failed its format has no source records. The verdict
         # belongs to the payload, so it holds for a store written by any parser.
         failure = self._connection.execute(
@@ -281,6 +311,7 @@ class BronzeStore:
         )
 
     def get_format_failures(self, payload_id: str) -> tuple[FormatFailure, ...]:
+        """Return the format verdicts recorded for one payload."""
         rows = self._connection.execute(
             "SELECT * FROM format_failures WHERE payload_id = ? ORDER BY source_format",
             (payload_id,),

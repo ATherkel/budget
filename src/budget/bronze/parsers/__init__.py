@@ -1,3 +1,4 @@
+# Copyright 2026 Therkel
 """Source parsing: one declared format ID selects one parser."""
 
 from budget.bronze.parsers.base import ParserResult, SourceParser

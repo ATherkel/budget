@@ -1,3 +1,4 @@
+# Copyright 2026 Therkel
 """Explicit source-format selection: one declared ID, one parser.
 
 There is no auto-detection, no entry-point discovery, and no mutable
@@ -7,11 +8,19 @@ format is adding one module and one entry here, never a guess about a bank, an
 account, or a filename.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Mapping
 
 from budget.bronze.parsers.base import SourceParser
 from budget.bronze.parsers.danske_csv_v1 import PARSER as _DANSKE_CSV_V1
+
+
+class UnsupportedSourceFormatError(ValueError):
+    """A declared source format has no parser in the registry."""
+
+    def __init__(self, source_format: str) -> None:
+        """Name the format that is not accepted input."""
+        super().__init__(f"Unsupported source format: {source_format}")
 
 
 _PARSERS: Mapping[str, SourceParser] = MappingProxyType(
@@ -29,4 +38,4 @@ def source_parser(source_format: str) -> SourceParser:
     try:
         return _PARSERS[source_format]
     except KeyError:
-        raise ValueError(f"Unsupported source format: {source_format}") from None
+        raise UnsupportedSourceFormatError(source_format) from None

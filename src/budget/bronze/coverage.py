@@ -1,3 +1,4 @@
+# Copyright 2026 Therkel
 """Bank-independent safeguards for a declared ``covers_through``.
 
 Nothing in this module knows a source format. It decides how far one import
@@ -12,6 +13,7 @@ def covers_through_for(
     declared: date | None,
     exported_on: date,
     last_transaction_date: date | None,
+    *,
     payload_readable: bool,
 ) -> tuple[date, Literal["declared", "exported_on"], bool]:
     """Resolve an import run's covers_through, and whether it must be refused.

@@ -1,14 +1,16 @@
+# Copyright 2026 Therkel
 """The source-parser seam: one declared format ID selects one parser.
 
 These tests observe the extension contract the store itself depends on, and
 they use only the synthetic payloads the Bronze tests already use.
 """
 
-from datetime import date
 import unittest
+from datetime import date
+
+import pytest
 
 from budget.bronze.parsers import registry
-
 
 ONE_RECORD_PAYLOAD = (
     b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
@@ -19,66 +21,63 @@ ONE_RECORD_PAYLOAD = (
 
 
 class SourceParserRegistryTests(unittest.TestCase):
-    def test_the_registry_declares_only_formats_that_exist(self):
+    def test_the_registry_declares_only_formats_that_exist(self) -> None:
         # A format ID is a promise that a parser is implemented for it, so the
         # declared list is the whole set of accepted inputs.
-        self.assertEqual(registry.source_formats(), ("danske-csv-v1",))
+        assert registry.source_formats() == ("danske-csv-v1",)
 
-    def test_an_undeclared_format_is_refused_by_name(self):
-        with self.assertRaises(ValueError) as refusal:
+    def test_an_undeclared_format_is_refused_by_name(self) -> None:
+        with pytest.raises(ValueError, match="Unsupported source format") as refusal:
             registry.source_parser("nordea-csv-v1")
-        self.assertIn("nordea-csv-v1", str(refusal.exception))
+        assert "nordea-csv-v1" in str(refusal.value)
 
-    def test_a_declared_parser_presents_fields_exactly_as_decoded(self):
+    def test_a_declared_parser_presents_fields_exactly_as_decoded(self) -> None:
         parser = registry.source_parser("danske-csv-v1")
         result = parser.parse(ONE_RECORD_PAYLOAD)
 
-        self.assertIsNone(result.failure_reason)
-        self.assertEqual(
-            [dict(record) for record in result.records],
-            [
-                {
-                    "Dato": "12-09-2026",
-                    "Kategori": " Mad ",
-                    "Underkategori": " Dagligvarer ",
-                    "Tekst": " Café",
-                    "Beløb": "-45,00",
-                    "Saldo": "955,00",
-                    "Status": "Udført",
-                    "Afstemt": "Nej",
-                }
-            ],
-        )
-        self.assertEqual(result.last_transaction_date, date(2026, 9, 12))
+        assert result.failure_reason is None
+        assert [dict(record) for record in result.records] == [
+            {
+                "Dato": "12-09-2026",
+                "Kategori": " Mad ",
+                "Underkategori": " Dagligvarer ",
+                "Tekst": " Café",
+                "Beløb": "-45,00",
+                "Saldo": "955,00",
+                "Status": "Udført",
+                "Afstemt": "Nej",
+            }
+        ]
+        assert result.last_transaction_date == date(2026, 9, 12)
 
-    def test_a_failure_verdict_offers_no_records_and_no_transaction_date(self):
+    def test_a_failure_verdict_offers_no_records_and_no_transaction_date(self) -> None:
         parser = registry.source_parser("danske-csv-v1")
         result = parser.parse(ONE_RECORD_PAYLOAD[:-1] + b"\x81")
 
-        self.assertEqual(result.records, ())
-        self.assertIsNone(result.last_transaction_date)
-        self.assertTrue(result.failure_reason)
-        self.assertNotIn("Dato", result.failure_reason)
+        assert result.records == ()
+        assert result.last_transaction_date is None
+        reason = result.failure_reason
+        assert reason is not None
+        assert "Dato" not in reason
 
-    def test_the_declared_parser_owns_its_export_date_filename_convention(self):
+    def test_the_declared_parser_owns_its_export_date_filename_convention(self) -> None:
         parser = registry.source_parser("danske-csv-v1")
 
-        self.assertEqual(
-            parser.exported_on_from_filename("synthetic-20260914.csv"),
-            date(2026, 9, 14),
+        assert parser.exported_on_from_filename("synthetic-20260914.csv") == date(
+            2026, 9, 14
         )
         # A name this format does not recognise is not a failure: the operator
         # can still declare the export date for it.
-        self.assertIsNone(parser.exported_on_from_filename("synthetic.csv"))
-        self.assertIsNone(parser.exported_on_from_filename("synthetic-20260914.txt"))
+        assert parser.exported_on_from_filename("synthetic.csv") is None
+        assert parser.exported_on_from_filename("synthetic-20260914.txt") is None
 
-    def test_an_unreadable_date_suffix_is_refused_without_naming_the_file(self):
+    def test_an_unreadable_date_suffix_is_refused_without_naming_the_file(self) -> None:
         parser = registry.source_parser("danske-csv-v1")
 
-        with self.assertRaises(ValueError) as refusal:
+        with pytest.raises(ValueError, match="not a real date") as refusal:
             parser.exported_on_from_filename("synthetic-20260931.csv")
-        self.assertNotIn("synthetic", str(refusal.exception))
-        self.assertNotIn("20260931", str(refusal.exception))
+        assert "synthetic" not in str(refusal.value)
+        assert "20260931" not in str(refusal.value)
 
 
 if __name__ == "__main__":
