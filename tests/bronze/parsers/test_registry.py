@@ -2,8 +2,9 @@
 """The source-parser registry: which format IDs are accepted input.
 
 The rules of a declared format belong to that format's own suite
-(`test_danske_csv_v1.py`). This file observes only selection: the declared list,
-the parser each ID selects, and how an undeclared ID is refused.
+(`tests/bronze/parsers/test_danske_csv_v1.py`). This file observes only
+selection: the declared list, the parser each ID selects, and how an undeclared
+ID is refused.
 """
 
 import unittest

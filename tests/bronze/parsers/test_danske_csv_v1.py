@@ -4,8 +4,8 @@
 Every test here uses `parse` and `exported_on_from_filename` only, so a rule
 change is observed where a caller sees it. What the store does with these
 payloads - retaining bytes, recording verdicts, refusing runs - lives in
-`test_bronze.py`, which keeps one representative payload per outcome instead of
-repeating these matrices.
+`tests/bronze/test_store.py`, which keeps one representative payload per outcome
+instead of repeating these matrices.
 """
 
 import unittest

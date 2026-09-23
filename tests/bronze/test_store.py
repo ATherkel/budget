@@ -3,8 +3,9 @@
 
 Every test here goes through `BronzeStore`, with synthetic `danske-csv-v1`
 payloads as fixtures and one representative payload per outcome. The rules of
-the format itself live in `test_danske_csv_v1.py` and the registry's selection
-in `test_source_parsers.py`, so the store does not repeat those matrices.
+the format itself live in `tests/bronze/parsers/test_danske_csv_v1.py` and the
+registry's selection in `tests/bronze/parsers/test_registry.py`, so the store
+does not repeat those matrices.
 """
 
 import json
