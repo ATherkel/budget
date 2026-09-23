@@ -57,8 +57,30 @@ class SourceParserRegistryTests(unittest.TestCase):
         assert result.records == ()
         assert result.last_transaction_date is None
         reason = result.failure_reason
-        assert reason is not None
+        assert reason
         assert "Dato" not in reason
+
+    def test_lenient_transaction_dates_stay_readable_and_unchanged(self) -> None:
+        # `%d-%m-%Y` accepts a one-digit day or month and a leading space, and
+        # the source's own Dato string is presented exactly as it arrived.
+        dates = ("1-9-2026", "01-9-2026", " 1-09-2026", "3-10-2026")
+        header = (
+            b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
+            b'"Saldo","Status","Afstemt"'
+        )
+        row = (
+            b'"%s"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"-45,00","955,00","Udf\xf8rt","Nej"'
+        )
+        payload = b"\r\n".join(
+            [header] + [row % value.encode("cp1252") for value in dates]
+        )
+
+        result = registry.source_parser("danske-csv-v1").parse(payload)
+
+        assert result.failure_reason is None
+        assert [dict(record)["Dato"] for record in result.records] == list(dates)
+        assert result.last_transaction_date == date(2026, 10, 3)
 
     def test_the_declared_parser_owns_its_export_date_filename_convention(self) -> None:
         parser = registry.source_parser("danske-csv-v1")
