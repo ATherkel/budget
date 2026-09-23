@@ -54,6 +54,10 @@ primer is stale.
   owner decided once they read it. Open it by double-clicking; it needs no
   server and stores progress in the browser only. It loads its fonts from
   Google Fonts and falls back to system fonts offline.
+- [`primers/classification-transfers-primer.html`](primers/classification-transfers-primer.html)
+  — how each transaction gets its household meaning, in thirteen modules:
+  the reporting boundary, rules and priority, transfer evidence, manual
+  decisions, and review items. Opens and stores progress like the others.
 
 ## Vocabulary
 

@@ -35,9 +35,8 @@ end.
 - **Adjustment:** an uncategorized correction that needs an explanation. It
   carries no category, is excluded from income and expenses, and is reported
   separately.
-- **Unknown:** valid imported record awaiting classification: nothing
-  classified it, or its evidence conflicts or is ambiguous. Every unknown
-  transaction has an open review item.
+- **Unknown:** valid imported record that nothing classified, or whose
+  evidence conflicts or is ambiguous. It always has an open review item.
 
 A transaction has exactly one type. Its category is not an attribute of the
 transaction but a **category allocation**: a record that this transaction's
@@ -46,11 +45,10 @@ allocation, for its whole amount; dividing a mixed purchase into several is a
 later release, and needs no change to what a transaction means
 ([ADR-008](../decisions/ADR-008-category-allocation-grain.md)).
 
-Classification decides the type and the allocation together, and it decides
-them for the transaction as a whole: a manual decision first, then a transfer
-match, then classification rules
-([ADR-011](../decisions/ADR-011-classification-precedence.md)); the policy is
-in [`classification.md`](../architecture/classification.md).
+Classification decides the type and the allocation together, for the whole
+transaction: a manual decision first, then a transfer match, then rules
+([ADR-011](../decisions/ADR-011-classification-precedence.md),
+[`classification.md`](../architecture/classification.md)).
 
 ## Lifecycle
 

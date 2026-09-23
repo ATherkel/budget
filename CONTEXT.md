@@ -9,20 +9,12 @@ analytics and a dashboard.
 ### Accounts and boundary
 
 **Reporting boundary**:
-The set of accounts whose activity household reports include: the imported
-accounts, each with `ownership_scope` of `household` or `person`. Every other
-account is `external`, including a household member's account that the
-household does not import; money to or from it is income or expense, never a
-Transfer.
-_Avoid_: Household accounts (ambiguous with `ownership_scope=household`)
-
-**Transfer-eligible account**:
-An account inside the household reporting boundary — `ownership_scope` of
-`household` or `person` — whose movements can be matched as an internal
-Transfer. An `external` account can never be presumed the other leg of a
-Transfer.
-_Avoid_: Household account (too narrow; excludes person-owned accounts that are
-still transfer-eligible)
+The imported accounts, each with `ownership_scope` of `household` or
+`person`. Only accounts inside it can hold a Transfer. Every other account is
+external, including a household member's account that the household does not
+import; money to or from it is income or expense, never a Transfer.
+_Avoid_: Household accounts (ambiguous with `ownership_scope=household`),
+transfer-eligible account (same set)
 
 **Managed period**:
 The span of reporting months in which an account is part of the household's
