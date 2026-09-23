@@ -137,7 +137,11 @@ Two booked transactions are transfer candidates when:
 - their amounts cancel exactly;
 - their transaction dates are at most 3 days apart;
 - neither is targeted by an applicable manual decision; and
-- if the dates differ, at least one leg's rule result is a transfer claim.
+- at least one leg's rule result is a transfer claim, whatever the date gap.
+
+The claim keeps an unrelated same-day coincidence from hiding an expense and
+an income. A low-priority rule on the bank's transfer label is the usual way
+to claim real transfers.
 
 ### Stages
 
@@ -168,6 +172,10 @@ An unpaired leg whose rule result is a transfer claim is `unknown`, with an
   leg may arrive with the next import. This is only a hint: a quiet account
   also triggers it.
 - `no-candidate`: otherwise.
+
+A transfer that loses a fee, such as 1,000.00 out and 995.00 in, never pairs,
+because the amounts do not cancel. Each leg is classified on its own until
+splits exist ([issue #47](https://github.com/ATherkel/budget/issues/47)).
 
 A **one-sided transfer**, whose other leg can never be in Gold, comes only
 from a manual decision naming the counterpart Gold account. The transaction
@@ -219,8 +227,9 @@ For each transaction, the first step that applies decides:
    - A conflict gives `unknown` with a `rule-conflict` item.
 5. **Nothing matched:** `unknown`, with an `unclassified` item.
 
-A pair beats a rule result because two opposite legs in the household's own
-accounts are stronger evidence than a text pattern. Otherwise a broad rule,
+A pair beats a rule result because a transfer claim confirmed by an opposite
+leg in the household's own accounts is stronger evidence than a text pattern
+alone. Otherwise a broad rule,
 such as one on the bank's "other income" label, would swallow incoming
 transfers.
 
@@ -332,7 +341,7 @@ does not import, so it is outside the reporting boundary.
 | 7 | A manual decision beats a rule | `joint-current` 2026-02-07 −2,400.00 `IKEA 551` | `expense`, `gifts` | decision `d-0001`. Lineage also records `r-home` as matching. |
 | 8 | Same-day transfer | `joint-current` 2026-01-20 −3,000.00 `TO SAVINGS`; `joint-savings` 2026-01-20 +3,000.00 `FROM CURRENT` | `transfer` ×2, one group | `same_day` |
 | 9 | Transfer across a month boundary | `joint-current` Fri 2026-01-30 −5,000.00 `TO SAVINGS`; `joint-savings` Mon 2026-02-02 +5,000.00 `FROM CURRENT` | `transfer` ×2, one group | `date_gap` of 3 days, claimed by `r-savings-transfer`. Each month shows its own leg; neither month's income or expenses change. |
-| 10 | A coincidence with a date gap | `joint-current` 2026-03-10 −250.00 `IKEA 551`; `anna-current` 2026-03-12 +250.00 `MOBILEPAY CARL` | `expense`, `household-goods`; `refund`, `eating-out` | Not candidates: the dates differ and neither leg has a transfer claim. |
+| 10 | A coincidence | `joint-current` 2026-03-10 −250.00 `IKEA 551`; `anna-current` 2026-03-12 +250.00 `MOBILEPAY CARL` | `expense`, `household-goods`; `refund`, `eating-out` | Not candidates: neither leg has a transfer claim. They would not pair on the same day either. |
 | 11 | Repeated same-amount legs | `anna-current` 2026-03-02 −2,000.00 `BUDGET JOINT` twice; `joint-current` 2026-03-02 +2,000.00 `BUDGET FROM ANNA` twice | `transfer` ×4, two groups | `repeated_legs`, paired in `account_sequence` order |
 | 12 | Competing legs | `joint-current` 2026-03-05 −1,500.00 `TO SAVINGS` and −1,500.00 `DENTIST 7`; `joint-savings` 2026-03-05 +1,500.00 `FROM CURRENT` | `unknown` ×3 | One `ambiguous-transfer` item: the outgoing legs have different text. After `d-0002` pairs the savings legs, the dentist leg falls back to `r-dentist`: `expense`, `health`. |
 | 13 | A leg waiting for the next import | `joint-current` 2026-04-29 −800.00 `TO SAVINGS`; the latest `joint-savings` transaction is from 2026-04-20 | `unknown` | `unmatched-transfer`, `counterpart-may-not-be-imported`. When the next export adds +800.00 on 2026-04-29, the rebuild pairs them (`same_day`). |
@@ -364,3 +373,4 @@ A zero-amount `INTEREST ADJ` matched by `r-interest` is `unknown`, with a
 - **Issue #12:** whether money moved to savings, investment, or loan accounts
   that are not imported should count differently in the savings measure. It is
   an expense today.
+- **Issue #47:** pairing transfers that lose a fee, once splits exist.

@@ -34,7 +34,7 @@ Gold fields, it is illustrative.
 | --- | --- | --- |
 | `ReportingMonth` | `YYYY-MM` | Calendar month. `ReportingMonth.of(d)` is derived solely from a `date`. |
 | `AccountType` | `current`, `savings` | First-release account types. The account domain reserves further types; Gold rejects them until a reporting policy exists. |
-| `OwnershipScope` | `household`, `person` | Scopes inside the reporting boundary. `external` accounts are never Gold accounts. |
+| `OwnershipScope` | `household`, `person` | Scopes inside the reporting boundary. Accounts outside it are never Gold accounts. |
 | `CategoryDirection` | `income`, `expense` | Which measure a category reports under. |
 | `TransactionType` | `income`, `expense`, `refund`, `transfer`, `adjustment`, `unknown` | Household interpretation of a booked transaction. |
 | `BalanceCheck` | `opening`, `consistent`, `break`, `missing_balance` | Result of the balance-chain check for one transaction. |
@@ -303,7 +303,7 @@ Confidence is a named evidence basis, not a score.
 | `counterpart_account_id` | string | Yes | The other leg's Gold account. |
 | `counterpart_transaction_id` | string/null | Conditional | The other leg. Null only for `one_sided`. |
 | `date_gap_days` | int/null | Conditional | Days between the two transaction dates. Null only for `one_sided`. |
-| `claim_rule_ids` | list of string | Yes | Rules that claim either leg as a transfer. Non-empty for `date_gap`. |
+| `claim_rule_ids` | list of string | Yes | Rules that claim either leg as a transfer. Non-empty for every automatic pair. |
 
 #### `ClassificationReviewItem`
 

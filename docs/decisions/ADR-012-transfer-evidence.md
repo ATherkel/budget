@@ -30,8 +30,8 @@ Raised in [issue #7](https://github.com/ATherkel/budget/issues/7).
 - **Candidates** are two booked transactions on different Gold accounts, with
   amounts that cancel exactly, at most 3 days apart, and neither targeted by an
   applicable manual decision.
-- **Same-day candidates need nothing more.** Candidates on different dates also
-  need a rule's transfer claim on at least one leg.
+- **Every candidate needs a rule's transfer claim on at least one leg**,
+  whatever the date gap.
 - **Matching runs in stages** by date gap: 0, 1, 2, then 3 days. A lone
   candidate pair is paired. Repeated transactions on each side (same account,
   date, amount, and text) are interchangeable and pair in account order. Any
@@ -52,6 +52,9 @@ Raised in [issue #7](https://github.com/ATherkel/budget/issues/7).
   and audit, and any threshold would be arbitrary with this little evidence.
 - **Pair any unique opposite-amount match within the window.** Rejected: the
   samples contain date-gap matches with no transfer signal on either leg.
+- **Pair same-day matches without a claim.** Rejected: an unrelated same-day
+  coincidence would silently hide an expense and an income. Every same-day
+  transfer in the samples carries a bank transfer label that a rule can claim.
 - **Settle competition by nearest date or first come.** Rejected: a guess, and
   a wrong guess is silent.
 - **Publish an unpaired transfer claim as a transfer.** Rejected: it would hide
@@ -62,7 +65,11 @@ Raised in [issue #7](https://github.com/ATherkel/budget/issues/7).
 
 ## Consequences
 
+- No transfer pairs without a claim rule. One rule on the bank's transfer label
+  covers the samples.
 - A transfer between banks that takes more than 3 days needs a `pair` decision.
+- A transfer that loses a fee never pairs, because the amounts do not cancel.
+  Each leg is classified on its own until splits exist (issue #47).
 - A coincidental same-amount payment on the same day can hold a real transfer
   in review.
 - Importing a new account can turn income and expenses into transfers, or a

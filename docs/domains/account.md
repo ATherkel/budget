@@ -11,7 +11,7 @@ Required attributes:
 - display name
 - account type (`current`, `savings`, `credit`, `investment`, or `other`)
 - currency
-- ownership scope (`household`, `person`, or `external`)
+- ownership scope (`household` or `person`)
 - closing date, when the account has closed
 
 Sensitive identifiers such as full IBANs are stored only when needed and are
@@ -19,11 +19,8 @@ never exposed in reports or logs. An account can have several source-specific
 identifiers, which belong in source metadata rather than the Gold consumer
 contract.
 
-An account within the household reporting boundary — ownership scope
-`household` or `person` — is eligible for internal-transfer matching. A
-counterparty with ownership scope `external` cannot be presumed to be a
-transfer; a transfer between a shared and an individually-owned account is
-still internal.
+Any two accounts in the registry can hold a transfer between them, including
+one between a shared and an individually-owned account.
 
 ## First-Release Taxonomy
 

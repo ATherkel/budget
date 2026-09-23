@@ -868,7 +868,7 @@
         <li>their <strong>amounts cancel exactly</strong>: one negative, the other its positive counterpart;</li>
         <li>their transaction dates are <strong>at most 3 days apart</strong> — enough for Friday → Monday;</li>
         <li><strong>neither is targeted by a manual decision</strong> (module 10);</li>
-        <li>if the dates <strong>differ at all</strong>, at least one leg carries a <strong>transfer claim</strong> from a rule. A same-day pair needs no claim.</li>
+        <li>at least one leg carries a <strong>transfer claim</strong> from a rule, <strong>even on the same day</strong>. One low-priority rule on the bank&rsquo;s transfer label covers the real ones.</li>
       </ul>
 
       <p>
@@ -881,9 +881,9 @@
           <caption>Scenarios 8, 9 and 10.</caption>
           <thead><tr><th>#</th><th>The two rows</th><th>Result</th><th class="note">Why</th></tr></thead>
           <tbody>
-            <tr class="new"><td>8</td><td>joint-current 2026-01-20 &minus;3,000.00 <code>TO SAVINGS</code><br>joint-savings 2026-01-20 +3,000.00 <code>FROM CURRENT</code></td><td><code>transfer</code> ×2</td><td class="note">basis <code>same_day</code>. Nothing else needed.</td></tr>
+            <tr class="new"><td>8</td><td>joint-current 2026-01-20 &minus;3,000.00 <code>TO SAVINGS</code><br>joint-savings 2026-01-20 +3,000.00 <code>FROM CURRENT</code></td><td><code>transfer</code> ×2</td><td class="note">basis <code>same_day</code>, with the claim from <code>r-savings-transfer</code>.</td></tr>
             <tr class="new"><td>9</td><td>joint-current Fri 2026-01-30 &minus;5,000.00 <code>TO SAVINGS</code><br>joint-savings Mon 2026-02-02 +5,000.00 <code>FROM CURRENT</code></td><td><code>transfer</code> ×2</td><td class="note">basis <code>date_gap</code>, 3 days — allowed because a rule claims both texts as transfers.</td></tr>
-            <tr class="hit"><td>10</td><td>joint-current 2026-03-10 &minus;250.00 <code>IKEA 551</code><br>anna-current 2026-03-12 +250.00 <code>MOBILEPAY CARL</code></td><td>not even candidates</td><td class="note">The dates differ and no rule claims either leg as a transfer. Module 02&rsquo;s trap closes on the claim requirement.</td></tr>
+            <tr class="hit"><td>10</td><td>joint-current 2026-03-10 &minus;250.00 <code>IKEA 551</code><br>anna-current 2026-03-12 +250.00 <code>MOBILEPAY CARL</code></td><td>not even candidates</td><td class="note">No rule claims either leg as a transfer, so they would not pair even on the same day. Module 02&rsquo;s trap closes on the claim requirement.</td></tr>
           </tbody>
         </table>
       </div>
@@ -891,7 +891,7 @@
       <p>
         A transfer that costs a fee — 1,000.00 out, 995.00 in — is never a candidate either, because
         the amounts do not cancel, and a <code>pair</code> decision does not apply to it. Each leg is
-        classified on its own.
+        classified on its own until splits exist (issue #47).
       </p>
 
       <h3>Confidence is a name, not a number</h3>
@@ -1184,7 +1184,7 @@
         <li>
           <strong>The pairs worth eyeballing.</strong> Every pair formed on a date gap, and every
           pair where a leg&rsquo;s own rule says something other than "transfer". This is the net
-          under module 07: a coincidental same-day pair shows up here, and a <code>classify</code>
+          under module 07: a claimed leg that paired with a coincidence shows up here, and a <code>classify</code>
           decision on either leg undoes it.
         </li>
       </ol>
@@ -1301,9 +1301,10 @@
           produce review items until you set a priority. <em>(module 06)</em>
         </li>
         <li>
-          <strong>A date-gap pair needs a rule&rsquo;s transfer claim; a same-day pair needs
-          nothing.</strong> That is the line between catching a Friday-to-Monday transfer and
-          inventing one out of a coincidence. <em>(module 07)</em>
+          <strong>Every pair needs a rule&rsquo;s transfer claim, even on the same day.</strong>
+          You write one rule on the bank&rsquo;s transfer label; in return, a coincidence can never
+          pass as a transfer. Changed in the #20 review: the draft let same-day pairs through with
+          no claim. <em>(module 07)</em>
         </li>
       </ol>
 
