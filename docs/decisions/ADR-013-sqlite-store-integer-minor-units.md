@@ -62,6 +62,9 @@ and Alembic.
   runner that records the schema version in `PRAGMA user_version`. Only an
   explicit migrate command creates or changes the schema. Opening a store
   never creates tables, and it fails when the database file does not exist.
+  Connections use the URI form with `mode=rw`, or `mode=ro` for the dashboard,
+  because a plain `sqlite3.connect(path)` creates an empty file when none
+  exists. Only the migrate command connects with `mode=rwc`.
   Each migration file and its `user_version` update run in one transaction,
   so a failure leaves the schema and the version as they were. The runner
   opens the transaction explicitly, because `executescript()` commits any
