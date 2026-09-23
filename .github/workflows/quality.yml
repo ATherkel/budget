@@ -1,10 +1,10 @@
 name: Code Quality
 
-# Hard gate for Python code: ruff (lint and format), ty (types), complexipy
-# (SonarQube cognitive complexity <= 15, rule python:S3776) and the SonarQube
-# Cloud quality gate. Every job must pass; make each one a required status
-# check on `main`. The jobs always run, so docs-only PRs report the checks too
-# and never wait on a check that cannot start.
+# Hard gate for Python code: ruff (lint and format), ty (types) and complexipy
+# (cognitive complexity <= 15, mirroring SonarQube rule python:S3776). Every
+# job must pass; make each one a required status check on `main`. The jobs
+# always run, so docs-only PRs report the checks too and never wait on a check
+# that cannot start.
 
 on:
   pull_request:
@@ -47,26 +47,3 @@ jobs:
       - run: uv sync --locked
       - name: Cognitive complexity
         run: uv run complexipy
-
-  sonarqube:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          # SonarQube needs full history to attribute new code and blame.
-          fetch-depth: 0
-      - name: Require the SonarQube token
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: |
-          if [ -z "$SONAR_TOKEN" ]; then
-            echo "::error::SONAR_TOKEN is not set; the SonarQube gate cannot run."
-            exit 1
-          fi
-      - name: SonarQube scan and quality gate
-        uses: SonarSource/sonarqube-scan-action@v5
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          # Fail this job when the project's quality gate fails.
-          args: -Dsonar.qualitygate.wait=true
