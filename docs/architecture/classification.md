@@ -204,6 +204,9 @@ A manual decision is a recorded human ruling. Classification uses three kinds:
   When the bank rewords a transaction's text, Silver's *same transaction*
   decision keeps its identifier.
 - Each decision has a durable `decision_id` and a short reason.
+- Decisions are entries in an append-only decision log. A decision is never
+  edited or deleted; a later entry supersedes or withdraws it
+  ([`publications.md`](publications.md#the-decision-log)).
 - A transaction is targeted by at most one decision; a `pair` counts for both
   of its transactions.
 - A decision that is not applicable changes nothing: the transaction is
@@ -264,7 +267,7 @@ identifiers involved, so it is stable across rebuilds.
 | `sign-mismatch` | the winning rule assigns a category to a zero amount | `unknown` | a narrower rule or a decision |
 | `ambiguous-transfer` | a candidate set is neither a single pair nor repeated legs | `unknown` (every leg in the set) | a `pair` or `classify` decision |
 | `unmatched-transfer` | a transfer claim finds no pair | `unknown` | the next import, a `pair`, `one-sided-transfer`, or `classify` decision, or a rule fix |
-| `decision-not-applicable` | a decision's target or conditions no longer hold | classified as if the decision did not exist | editing or removing the decision |
+| `decision-not-applicable` | a decision's target or conditions no longer hold | classified as if the decision did not exist | a decision that supersedes or withdraws it |
 
 Silver's import review items (issue #5) are separate.
 
@@ -367,8 +370,6 @@ A zero-amount `INTEREST ADJ` matched by `r-interest` is `unknown`, with a
 
 ## Left to Other Tickets
 
-- **Issue #8:** versioning of rules, decisions, the taxonomy, and the matching
-  policy; as-of reports; reproducing a report as it was before a change.
 - **Issue #10:** file formats for rules and decisions, CLI command names, and
   how review output is presented.
 - **Issue #12:** whether money moved to savings, investment, or loan accounts

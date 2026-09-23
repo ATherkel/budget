@@ -207,6 +207,10 @@ ReviewItem(
 **Reproducibility**
 - Rebuilding from the same Bronze inputs, account configuration, and manual
   decisions yields identical output, including identifiers.
+- Silver is a function of a set of import runs. An as-known-at view derives
+  Silver from the runs started by its cutoff, in a scratch area that leaves
+  the current Silver untouched
+  ([`publications.md`](publications.md)).
 
 ## Downstream Requirements
 

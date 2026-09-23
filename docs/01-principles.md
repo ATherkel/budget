@@ -19,9 +19,13 @@ Raw data is retained indefinitely.
 
 ## Principle 3: Deterministic Transformations
 
-Silver data must always be reproducible from Bronze.
+Silver data must always be reproducible from Bronze and the recorded manual
+decisions.
 
-Gold data must always be reproducible from Silver.
+Gold data must always be reproducible from its recipe: the import runs, the
+household configuration, the manual decisions, and the code version it was
+built with. A build never reads the clock. See
+[ADR-014](decisions/ADR-014-gold-publications-and-history.md).
 
 ## Principle 4: Replaceable Modules
 

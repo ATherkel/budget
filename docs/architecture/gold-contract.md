@@ -20,7 +20,10 @@ storage.
 Gold is derived from Silver, the household account and category registries,
 and classification inputs. It is not the original bank record, and it can be
 rebuilt when classification logic changes. The classification policy is in
-[`classification.md`](classification.md).
+[`classification.md`](classification.md). Each build is a publication, built
+from a recorded recipe, and a consumer reads exactly one publication
+([`publications.md`](publications.md),
+[ADR-014](../decisions/ADR-014-gold-publications-and-history.md)).
 
 The dimensional model behind this contract (processes, grains, the bus
 matrix, balance-chain evaluation, and a worked synthetic example) is described
@@ -194,9 +197,10 @@ accounts for the same month, never across months. `coverage` is non-additive.
 13. All first-release accounts use `DKK`. Consumers must never aggregate
     amounts or balances across different currencies.
 14. No `transaction_date` falls after its account's `closed_on`.
-15. A consumer reads exactly one Gold publication at a time. Which publication
-    is selected, and identity across materializations, are defined by issue
-    #8.
+15. A consumer reads exactly one Gold publication at a time, and every record
+    it reads belongs to that publication. A consumer reads the current
+    publication unless it opens another one explicitly. Identity across
+    publications is defined in [`publications.md`](publications.md).
 16. `transfer_group_id` is non-null only on `transfer` transactions. Each
     non-null value appears on exactly two transactions, which are on different
     accounts and whose amounts sum to zero.
@@ -216,6 +220,8 @@ All date and month ranges are inclusive.
 
 ```python
 class GoldRepository(Protocol):
+    def publication(self) -> GoldPublication: ...
+
     def accounts(self) -> Sequence[GoldAccount]: ...
 
     def categories(self) -> Sequence[GoldCategory]: ...
@@ -251,6 +257,36 @@ raw CSV column. A month with no `MonthlyBalanceSnapshot` row for an account is
 outside that account's managed period. A requested month beyond the latest
 published month has no data and must never be read as zero.
 
+A `GoldRepository` is bound to one publication, and every method reads from
+it. Consumers obtain one through `GoldPublications`:
+
+```python
+class GoldPublications(Protocol):
+    def current(self) -> GoldPublication: ...
+
+    def available(self) -> Sequence[GoldPublication]: ...
+
+    def open(self, publication_id: int) -> GoldRepository: ...
+```
+
+`available()` lists the publications whose results are retained: the current
+one, the previous one, and every labeled one. Opening any other publication
+fails.
+
+#### `GoldPublication`
+
+Publication metadata. None of it enters the result fingerprint.
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `publication_id` | int | Yes | Increasing per store. |
+| `kind` | enum | Yes | `pipeline` for a build that became current when it was built, or `as_known_at` for a view, which is never current. |
+| `label` | string/null | No | Household-assigned name. A labeled publication's result is retained. |
+| `known_at` | datetime | Yes | The moment whose knowledge the publication represents: `built_at` for `pipeline`, and the requested cutoff for `as_known_at`. Past views take the provisional label as of this moment. |
+| `built_at` | datetime | Yes | When the build finished. Metadata only. |
+| `contract_version` | string | Yes | Gold contract version the publication implements. |
+| `result_fingerprint` | string | Yes | SHA-256 over the canonical serialization of every consumer and lineage record. Equal fingerprints mean identical results. |
+
 Anything reported by category is summed over `category_allocations`, and
 anything reported per transaction over `transactions`. Household income and
 expenses are transaction measures; category and category-group spending are
@@ -282,7 +318,7 @@ class GoldLineageRepository(Protocol):
 | `classification_source` | enum | Yes | `manual`, `transfer_match`, `rule`, or `unclassified`. |
 | `rule_ids` | list of string | Yes | The highest-priority matching rules; they decided only when `classification_source` is `rule`. Empty when no rule matched. |
 | `decision_id` | string/null | Conditional | The manual decision that decided. Required when `classification_source` is `manual`, otherwise null. |
-| `classification_version` | string | Yes | Version of the classification inputs (taxonomy, rules, manual decisions, and matching policy); issue #8 defines it. |
+| `classification_version` | string | Yes | Fingerprint of the classification inputs: the configuration snapshot (account registry, taxonomy, rules, and matching policy) and the effective classification decisions ([`publications.md`](publications.md)). |
 | `transfer_evidence` | `TransferEvidence`/null | Conditional | Required on every `transfer`, otherwise null. |
 | `review_item_ids` | list of string | Yes | Open classification review items involving this transaction. Often empty. |
 
@@ -319,8 +355,9 @@ Confidence is a named evidence basis, not a score.
 Gold derives review items afresh on every build, so an item exists exactly
 while its cause does. Silver's import review items (issue #5) are separate.
 
-Publication and materialization metadata (such as when a version was built)
-are added by issue #8.
+Each publication's recipe (its import runs, configuration snapshot,
+decision-log position, and code version) is privileged metadata for the CLI
+and audit tooling, alongside lineage. Its shape belongs to issue #10.
 
 ## Contract Fixtures
 
@@ -336,7 +373,10 @@ account; and two categories sharing a group. The worked example in
 `gold-layer.md` covers most of these.
 
 Classification fixtures reproduce every synthetic scenario and taxonomy change
-in [`classification.md`](classification.md) exactly.
+in [`classification.md`](classification.md) exactly. Publication fixtures
+reproduce the lifecycle and view scenarios in
+[`publications.md`](publications.md), including an unchanged result
+fingerprint after a full rebuild.
 
 ## Changes in 0.2
 
@@ -347,11 +387,12 @@ migrating from either version finds the whole path in one place.
 | 0.1 or the earlier 0.2 draft | 0.2 | Why |
 | --- | --- | --- |
 | `GoldTransactionRepository.list_transactions` | `GoldRepository` with accounts, categories, transactions, category allocations, monthly balances | A transaction-only interface cannot carry dimensions, balances, or `no_data` months (ADR-007). |
-| `gold_transaction_id` ("record/version") | `transaction_id` (stable across rebuilds) | Version identity belongs to issue #8. |
+| `gold_transaction_id` ("record/version") | `transaction_id` (stable across rebuilds) | One version of one fact is (`publication_id`, `transaction_id`) (ADR-014). |
 | `silver_transaction_id`, `classification_source`, `classification_version` on the fact | Moved to `GoldTransactionLineage` | Keep lineage away from report consumers. |
 | `balance` | `balance_after` plus `balance_check`, `account_sequence` | Name the point in time. Publish the chain result and the order it was checked in. |
 | `currency` on each transaction | `GoldAccount.currency` | Every amount is in its account's currency. |
-| `reporting_month`, `created_at` on the fact | Removed | Month derives from `transaction_date`; build time is publication metadata (issue #8). |
+| `reporting_month`, `created_at` on the fact | Removed | Month derives from `transaction_date`; build time is `GoldPublication.built_at` (ADR-014). |
+| No way to choose a publication | `GoldPublications`, `GoldPublication`, and `GoldRepository.publication()` | A consumer must read exactly one publication, and must be able to open a past one explicitly (ADR-014). |
 | `counterparty` | Removed | Classification rules match description text instead; a counterparty dimension would be a later contract version. |
 | Refund = `adjustment` with a category | `refund` transaction type | Makes categorized reversals explicit, preserving signed netting for both category directions. Whether a transaction has a category follows from its type, with no conditional. |
 | Coverage derived by analytics | Published by Gold on `MonthlyBalanceSnapshot` | Needs source-derived ordering and managed-period knowledge (ADR-007). |
@@ -368,11 +409,8 @@ the admitted export evidence from ADR-006, including verified quiet months.
 
 ## Open Decisions
 
-- Versioning of classification inputs and as-of reports (issue #8).
 - File formats for rules and manual decisions, and the CLI review commands
   (issue #10).
 - Whether money moved to savings, investment, or loan accounts that are not
   imported should count differently in the savings measure; it is an expense
   today (issue #12).
-- Publication selection, identity across materializations, and whether any
-  dimension needs historical (Type 2) interpretation (issue #8).
