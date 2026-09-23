@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operations Primer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,500;0,600;0,700;1,500&display=swap">
+<style>
+  :root{
+    --paper:#F5F7F9;
+    --card:#FFFFFF;
+    --sunk:#ECEFF3;
+    --ink:#161A20;
+    --ink-2:#39424F;
+    --muted:#69737F;
+    --rule:#DCE1E7;
+    --rule-2:#C6CDD6;
+    --accent:#0B6B6B;
+    --accent-soft:#E2EFEE;
+    --ok:#2C7A54;
+    --ok-soft:#E3F1E9;
+    --bad:#AB362A;
+    --bad-soft:#F8E6E3;
+    --warn:#8E6010;
+    --warn-soft:#F8EEDC;
+    --shadow:0 1px 2px rgba(22,26,32,.05), 0 8px 24px -16px rgba(22,26,32,.28);
+    --ff-serif:"IBM Plex Serif", Georgia, "Times New Roman", serif;
+    --ff-sans:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --ff-mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#111419;
+      --card:#181C23;
+      --sunk:#1F242C;
+      --ink:#E7EBF1;
+      --ink-2:#BFC7D2;
+      --muted:#8E99A7;
+      --rule:#2A3039;
+      --rule-2:#3B434E;
+      --accent:#54B5AE;
+      --accent-soft:#12302F;
+      --ok:#62BE8C;
+      --ok-soft:#142A20;
+      --bad:#E48173;
+      --bad-soft:#331C19;
+      --warn:#D7A445;
+      --warn-soft:#2E2617;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#111419;
+    --card:#181C23;
+    --sunk:#1F242C;
+    --ink:#E7EBF1;
+    --ink-2:#BFC7D2;
+    --muted:#8E99A7;
+    --rule:#2A3039;
+    --rule-2:#3B434E;
+    --accent:#54B5AE;
+    --accent-soft:#12302F;
+    --ok:#62BE8C;
+    --ok-soft:#142A20;
+    --bad:#E48173;
+    --bad-soft:#331C19;
+    --warn:#D7A445;
+    --warn-soft:#2E2617;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+    color-scheme: dark;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--ff-sans);
+    font-size:16px;
+    line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- progress bar ---------- */
+  .topbar{
+    position:sticky;
+    top:env(safe-area-inset-top, 0px);
+    z-index:40;
+    background:color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--rule);
+  }
+  .topbar-in{
+    max-width:52rem;margin:0 auto;
+    padding:.6rem 1rem;
+    display:flex;align-items:center;gap:.85rem;
+  }
+  .topbar-title{
+    font-family:var(--ff-serif);font-weight:600;font-size:.94rem;
+    letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .track{flex:1;height:5px;border-radius:99px;background:var(--rule);overflow:hidden;min-width:60px}
+  .track > i{display:block;height:100%;width:0%;background:var(--accent);border-radius:99px;transition:width .35s cubic-bezier(.4,0,.2,1)}
+  .tally{
+    font-family:var(--ff-mono);font-size:.76rem;font-variant-numeric:tabular-nums;
+    color:var(--muted);white-space:nowrap;
+  }
+
+  /* ---------- page frame ---------- */
+  .wrap{max-width:52rem;margin:0 auto;padding-inline:1rem;padding-block:2.4rem 5rem}
+
+  .eyebrow{
+    font-family:var(--ff-mono);font-size:.72rem;letter-spacing:.11em;text-transform:uppercase;
+    color:var(--accent);font-weight:500;margin:0 0 .7rem;
+  }
+  h1{
+    font-family:var(--ff-serif);font-weight:700;font-size:clamp(1.9rem,6vw,2.7rem);
+    line-height:1.12;letter-spacing:-.022em;margin:0 0 .8rem;text-wrap:balance;
+  }
+  .standfirst{
+    font-size:1.06rem;color:var(--ink-2);max-width:40rem;margin:0 0 1.5rem;
+  }
+  .standfirst strong{color:var(--ink);font-weight:600}
+
+  .callout{
+    background:var(--card);border:1px solid var(--rule);border-left:3px solid var(--accent);
+    border-radius:0 10px 10px 0;padding:1rem 1.15rem;margin:1.5rem 0;box-shadow:var(--shadow);
+  }
+  .callout p{margin:0}
+  .callout p + p{margin-top:.7rem}
+  .callout-h{
+    font-family:var(--ff-mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--accent);font-weight:600;margin:0 0 .5rem;
+  }
+
+  /* ---------- contents ---------- */
+  .toc{margin:2.2rem 0 3rem;border-top:1px solid var(--rule);padding-top:1.2rem}
+  .toc-h{
+    font-family:var(--ff-mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:0 0 .85rem;
+  }
+  .toc-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:.3rem}
+  .toc-item{
+    display:flex;align-items:baseline;gap:.6rem;
+    padding:.4rem .55rem;border-radius:7px;text-decoration:none;color:var(--ink-2);
+    font-size:.88rem;line-height:1.35;border:1px solid transparent;
+  }
+  .toc-item:hover{background:var(--sunk);color:var(--ink)}
+  .toc-item .n{
+    font-family:var(--ff-mono);font-size:.72rem;color:var(--muted);
+    font-variant-numeric:tabular-nums;flex:none;
+  }
+  .toc-item.done{color:var(--muted)}
+  .toc-item.done .n{color:var(--ok)}
+  .toc-item.done .t{text-decoration:line-through;text-decoration-color:var(--rule-2)}
+
+  /* ---------- modules ---------- */
+  .mod{
+    background:var(--card);border:1px solid var(--rule);border-radius:12px;
+    padding:1.5rem 1.35rem 1.1rem;margin:0 0 1.15rem;
+    box-shadow:var(--shadow);
+    scroll-margin-top:5rem;
+    border-left:3px solid var(--rule-2);
+    transition:border-left-color .3s ease;
+  }
+  .mod.done{border-left-color:var(--ok)}
+  .mod-head{display:flex;gap:.9rem;align-items:baseline;margin-bottom:.15rem}
+  .mod-n{
+    font-family:var(--ff-mono);font-size:.78rem;font-weight:600;color:var(--accent);
+    font-variant-numeric:tabular-nums;flex:none;padding-top:.28rem;
+  }
+  .mod.done .mod-n{color:var(--ok)}
+  .mod h2{
+    font-family:var(--ff-serif);font-weight:600;font-size:1.3rem;line-height:1.25;
+    letter-spacing:-.015em;margin:0;text-wrap:balance;
+  }
+  .goal{
+    font-size:.86rem;color:var(--muted);font-style:italic;font-family:var(--ff-serif);
+    margin:.45rem 0 1.1rem;padding-left:calc(.78rem + .9rem + 1ch);
+  }
+  .mod-body > *:first-child{margin-top:0}
+  .mod-body p{margin:0 0 .9rem;max-width:42rem}
+  .mod-body h3{
+    font-family:var(--ff-sans);font-size:.8rem;font-weight:600;letter-spacing:.04em;
+    text-transform:uppercase;color:var(--muted);margin:1.6rem 0 .6rem;
+  }
+  .mod-body ul,.mod-body ol{margin:0 0 .9rem;padding-left:1.15rem;max-width:42rem}
+  .mod-body li{margin:0 0 .4rem}
+  .mod-body li::marker{color:var(--muted)}
+  code{
+    font-family:var(--ff-mono);font-size:.855em;
+    background:var(--sunk);padding:.1em .34em;border-radius:4px;
+    border:1px solid var(--rule);
+  }
+  b,strong{font-weight:600;color:var(--ink)}
+  em{font-style:italic}
+
+  /* ---------- ledger tables ---------- */
+  .scroller{overflow-x:auto;margin:0 0 1rem;border:1px solid var(--rule);border-radius:9px;background:var(--sunk)}
+  table.ledger{
+    border-collapse:collapse;width:100%;min-width:30rem;
+    font-family:var(--ff-mono);font-size:.795rem;font-variant-numeric:tabular-nums;
+  }
+  table.ledger caption{
+    caption-side:top;text-align:left;padding:.6rem .8rem .45rem;
+    font-family:var(--ff-sans);font-size:.78rem;color:var(--muted);font-weight:500;
+    border-bottom:1px solid var(--rule);
+  }
+  table.ledger th{
+    text-align:left;font-weight:600;color:var(--muted);font-size:.72rem;
+    letter-spacing:.04em;text-transform:uppercase;padding:.5rem .7rem;
+    border-bottom:1px solid var(--rule-2);white-space:nowrap;
+  }
+  table.ledger td{padding:.38rem .7rem;border-bottom:1px solid var(--rule);white-space:nowrap;color:var(--ink-2)}
+  table.ledger tbody tr:last-child td{border-bottom:0}
+  table.ledger td.num{text-align:right}
+  table.ledger .note{
+    font-family:var(--ff-sans);font-size:.74rem;white-space:normal;color:var(--muted);
+  }
+  tr.hit td{background:var(--bad-soft)}
+  tr.hit td.num,tr.hit td{color:var(--ink)}
+  tr.new td{background:var(--ok-soft)}
+  .chk{color:var(--ok);font-weight:600}
+  .xmk{color:var(--bad);font-weight:600}
+
+  /* wide tables (comparisons) */
+  table.grid{
+    border-collapse:collapse;width:100%;min-width:34rem;
+    font-size:.84rem;font-family:var(--ff-sans);
+  }
+  table.grid th{
+    text-align:left;font-weight:600;color:var(--muted);font-size:.71rem;letter-spacing:.05em;
+    text-transform:uppercase;padding:.55rem .75rem;border-bottom:1px solid var(--rule-2);
+    vertical-align:bottom;
+  }
+  table.grid td{padding:.55rem .75rem;border-bottom:1px solid var(--rule);vertical-align:top;color:var(--ink-2);line-height:1.5}
+  table.grid tbody tr:last-child td{border-bottom:0}
+  table.grid td:first-child{color:var(--ink);font-weight:500;white-space:nowrap}
+
+  /* ---------- timeline figure ---------- */
+  figure.fig{margin:0 0 1.1rem;padding:1rem .9rem .8rem;background:var(--sunk);border:1px solid var(--rule);border-radius:9px}
+  figure.fig figcaption{
+    font-family:var(--ff-sans);font-size:.76rem;color:var(--muted);margin-top:.75rem;line-height:1.5;
+  }
+  .tl{display:grid;gap:.4rem}
+  .tl-row{display:grid;grid-template-columns:4.6rem 1fr;gap:.55rem;align-items:center}
+  .tl-lab{font-family:var(--ff-mono);font-size:.72rem;color:var(--muted);text-align:right}
+  .tl-bar{position:relative;height:1.55rem;background:var(--card);border:1px solid var(--rule);border-radius:5px;overflow:hidden}
+  .tl-bar > span{
+    position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;
+    font-family:var(--ff-mono);font-size:.68rem;color:#fff;border-radius:4px;overflow:hidden;
+  }
+  .tl-a > span{background:var(--accent)}
+  .tl-b > span{background:#6A5BA8}
+  :root[data-theme="dark"] .tl-b > span{background:#8D7DD0;color:#0E1014}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tl-b > span{background:#8D7DD0;color:#0E1014}}
+  :root[data-theme="dark"] .tl-a > span{color:#07100F}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tl-a > span{color:#07100F}}
+  .tl-ov{
+    position:absolute;top:0;bottom:0;background:repeating-linear-gradient(45deg,transparent,transparent 4px,var(--warn) 4px,var(--warn) 5px);
+    opacity:.85;
+  }
+  .tl-scale{display:grid;grid-template-columns:4.6rem 1fr;gap:.55rem;margin-top:.15rem}
+  .tl-ticks{display:flex;justify-content:space-between;font-family:var(--ff-mono);font-size:.66rem;color:var(--muted)}
+
+  /* ---------- claim cards ---------- */
+  .claims{display:grid;gap:.6rem;margin:0 0 1rem}
+  .claim{
+    border:1px solid var(--rule);border-radius:9px;background:var(--sunk);
+    padding:.8rem .9rem;
+  }
+  .claim-h{display:flex;align-items:baseline;gap:.55rem;margin-bottom:.45rem;flex-wrap:wrap}
+  .claim-id{
+    font-family:var(--ff-mono);font-size:.72rem;font-weight:600;color:#fff;background:var(--accent);
+    padding:.06rem .4rem;border-radius:4px;flex:none;
+  }
+  :root[data-theme="dark"] .claim-id{color:#07100F}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .claim-id{color:#07100F}}
+  .claim-t{font-weight:600;font-size:.94rem;color:var(--ink);line-height:1.3}
+  .claim dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:.2rem .7rem;font-size:.87rem}
+  .claim dt{
+    font-family:var(--ff-mono);font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted);padding-top:.28rem;white-space:nowrap;
+  }
+  .claim dd{margin:0;color:var(--ink-2);line-height:1.52}
+  .claim dd.fix{color:var(--ink)}
+  @media (max-width:30rem){
+    .claim dl{grid-template-columns:1fr;gap:0}
+    .claim dt{padding-top:.5rem}
+  }
+
+  /* ---------- open-issue cards ---------- */
+  .issue{border:1px solid var(--rule);border-radius:9px;padding:.8rem .9rem;margin:0 0 .6rem;background:var(--sunk)}
+  .issue.high{border-left:3px solid var(--bad)}
+  .issue.mid{border-left:3px solid var(--warn)}
+  .issue.low{border-left:3px solid var(--rule-2)}
+  .issue.done{border-left:3px solid var(--ok)}
+  .issue.done .issue-t{color:var(--ink-2)}
+  .issue .fixed{font-size:.84rem;color:var(--ink)}
+  .issue .fixed b{color:var(--ok)}
+  .issue-h{display:flex;gap:.55rem;align-items:baseline;flex-wrap:wrap;margin-bottom:.35rem}
+  .issue-file{font-family:var(--ff-mono);font-size:.71rem;color:var(--muted);background:var(--card);padding:.06rem .38rem;border-radius:4px;border:1px solid var(--rule)}
+  .issue-t{font-weight:600;font-size:.92rem;color:var(--ink);line-height:1.3;flex:1 1 14rem}
+  .issue p{margin:0 0 .5rem;font-size:.88rem;color:var(--ink-2);max-width:42rem}
+  .issue p:last-child{margin-bottom:0}
+  .issue .cost{font-size:.84rem;color:var(--ink)}
+  .issue .cost b{color:var(--bad)}
+
+  .tag{
+    display:inline-block;font-family:var(--ff-mono);font-size:.66rem;letter-spacing:.05em;
+    text-transform:uppercase;padding:.08rem .4rem;border-radius:4px;font-weight:600;
+    vertical-align:.08em;
+  }
+  .tag.t-fix{background:var(--bad-soft);color:var(--bad)}
+  .tag.t-follow{background:var(--warn-soft);color:var(--warn)}
+  .tag.t-proto{background:var(--sunk);color:var(--muted);border:1px solid var(--rule)}
+  .tag.t-done{background:var(--ok-soft);color:var(--ok)}
+
+  /* ---------- steps ---------- */
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:0 0 1rem}
+  ol.steps > li{
+    counter-increment:s;position:relative;padding-left:2rem;margin-bottom:.65rem;
+    font-size:.92rem;max-width:42rem;
+  }
+  ol.steps > li::before{
+    content:counter(s);position:absolute;left:0;top:.08rem;
+    width:1.35rem;height:1.35rem;border-radius:50%;
+    background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);
+    font-family:var(--ff-mono);font-size:.7rem;font-weight:600;
+    display:flex;align-items:center;justify-content:center;
+  }
+
+  .qs{list-style:none;padding:0;margin:0 0 1rem;counter-reset:q}
+  .qs li{
+    counter-increment:q;position:relative;padding:.55rem .8rem .55rem 2.4rem;
+    border-bottom:1px solid var(--rule);font-size:.93rem;color:var(--ink);
+  }
+  .qs li:last-child{border-bottom:0}
+  .qs li::before{
+    content:"Q" counter(q);position:absolute;left:.15rem;top:.62rem;
+    font-family:var(--ff-mono);font-size:.68rem;font-weight:600;color:var(--accent);
+  }
+
+  /* ---------- check-off footer ---------- */
+  .mod-foot{
+    margin-top:1.25rem;padding-top:.85rem;border-top:1px solid var(--rule);
+    display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;
+  }
+  .checkoff{
+    display:inline-flex;align-items:center;gap:.55rem;cursor:pointer;
+    font-size:.86rem;font-weight:500;color:var(--muted);
+    background:none;border:1px solid var(--rule-2);border-radius:99px;
+    padding:.32rem .8rem .32rem .42rem;
+    font-family:var(--ff-sans);
+    transition:color .18s ease,border-color .18s ease,background .18s ease;
+  }
+  .checkoff:hover{border-color:var(--accent);color:var(--ink)}
+  .checkoff:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .box{
+    width:1.15rem;height:1.15rem;border-radius:5px;border:1.5px solid var(--rule-2);
+    background:var(--card);flex:none;display:flex;align-items:center;justify-content:center;
+    transition:background .18s ease,border-color .18s ease;
+  }
+  .box svg{width:.75rem;height:.75rem;opacity:0;transition:opacity .18s ease}
+  .checkoff[aria-pressed="true"]{color:var(--ok);border-color:var(--ok)}
+  .checkoff[aria-pressed="true"] .box{background:var(--ok);border-color:var(--ok)}
+  .checkoff[aria-pressed="true"] .box svg{opacity:1}
+  .box svg path{stroke:#fff;stroke-width:2.6;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---------- closing ---------- */
+  .verdict{
+    background:var(--accent-soft);border:1px solid var(--accent);border-radius:12px;
+    padding:1.3rem 1.25rem;margin:1.15rem 0;
+  }
+  .verdict h3{color:var(--accent);margin-top:0}
+  .verdict p{max-width:42rem}
+  .verdict p:last-child{margin-bottom:0}
+
+  .footer{
+    margin-top:2.5rem;padding-top:1.2rem;border-top:1px solid var(--rule);
+    font-size:.8rem;color:var(--muted);display:flex;justify-content:space-between;
+    gap:1rem;flex-wrap:wrap;align-items:center;
+  }
+  .reset{
+    background:none;border:1px solid var(--rule);border-radius:7px;color:var(--muted);
+    font-family:var(--ff-sans);font-size:.78rem;padding:.25rem .6rem;cursor:pointer;
+  }
+  .reset:hover{border-color:var(--bad);color:var(--bad)}
+  .reset:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:2px}
+
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{transition-duration:.01ms !important;animation-duration:.01ms !important}
+  }
+
+  table.ledger td.note{min-width:15rem}
+
+  /* ---------- terminal and file listings ---------- */
+  pre.term{
+    font-family:var(--ff-mono);font-size:.76rem;line-height:1.55;
+    background:var(--sunk);border:1px solid var(--rule);border-radius:9px;
+    padding:.8rem .9rem;margin:0 0 1rem;overflow-x:auto;color:var(--ink-2);white-space:pre;
+  }
+  pre.term .c{color:var(--muted)}
+
+  /* ---------- stage flow ---------- */
+  .flow{display:flex;align-items:stretch;gap:.4rem;flex-wrap:wrap}
+  .flow .st{
+    flex:1 1 8.5rem;min-width:0;background:var(--card);border:1px solid var(--rule);border-radius:8px;
+    padding:.55rem .65rem;display:flex;flex-direction:column;gap:.2rem;font-size:.8rem;line-height:1.35;
+  }
+  .flow .st b{font-size:.84rem}
+  .flow .st code{align-self:flex-start}
+  .flow .st span{color:var(--muted);font-size:.76rem}
+  .flow .st.rd{border-style:dashed}
+  .flow .ar{align-self:center;color:var(--muted);font-family:var(--ff-mono)}
+  @media (max-width:36rem){.flow{flex-direction:column}.flow .ar{transform:rotate(90deg);align-self:center}}
+</style>
+
+<div class="topbar">
+  <div class="topbar-in">
+    <span class="topbar-title">Running the Pipeline at Home</span>
+    <span class="track"><i id="bar"></i></span>
+    <span class="tally" id="tally">0 / 13</span>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <p class="eyebrow">Issue #10 + ADR-015 · ATherkel/budget</p>
+  <h1>The laptop dies on a Sunday. What do you still have?</h1>
+  <p class="standfirst">
+    Issue #10 decides how the household actually runs the pipeline: where every file lives, how
+    production, development and test stay apart, what you edit and in which format, and how it all
+    comes back after something breaks. This page walks through it in thirteen short modules, each
+    with a worked example.
+    <strong>Tick a module off once you can explain it to someone else.</strong>
+    Your progress is saved.
+  </p>
+
+  <div class="callout">
+    <p class="callout-h">About this file</p>
+    <p>
+      This is a <strong>primer, not a contract.</strong> It explains what
+      <code>docs/architecture/operations.md</code> and <code>ADR-015</code> propose. Where they
+      disagree with this page, they win.
+    </p>
+    <p>
+      It leans on two neighbours: <code>ADR-013</code> (SQLite, whole øre) and
+      <code>ADR-014</code>, proposed in PR #57 (what a Gold publication is). Every account, date
+      and amount below is synthetic.
+    </p>
+  </div>
+
+  <div class="callout">
+    <p class="callout-h">The short answer</p>
+    <p>
+      Everything is <strong>Proposed</strong>. You made seven of the choices; the agent made the
+      rest, and module 13 lists them for you to check. <strong>One collides with PR #57</strong>:
+      module 09.
+    </p>
+    <p>
+      Budget about 30 minutes. If you only have 10, read 01, 03, 05, 09 and 13.
+    </p>
+  </div>
+
+  <nav class="toc">
+    <p class="toc-h">Contents</p>
+    <div class="toc-list" id="toc"></div>
+  </nav>
+
+  <!-- ============ 01 ============ -->
+  <section class="mod" id="m1" data-key="m1">
+    <div class="mod-head">
+      <span class="mod-n">01</span>
+      <h2>Three kinds of thing, and only two are precious</h2>
+    </div>
+    <p class="goal">After this: you can sort any file the platform touches into one of three kinds, and say which kind a backup exists for.</p>
+    <div class="mod-body">
+      <p>
+        Issues #4 to #8 decided what the pipeline <em>computes</em>. Issue #10 is about
+        <em>running</em> it: a real machine, a real folder, a Sunday when the disk dies. The whole
+        design follows from sorting every file into one of three kinds.
+      </p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Kind</th><th>Examples</th><th>If it is lost</th></tr></thead>
+          <tbody>
+            <tr><td>What the bank says</td><td>The CSV exports you download</td><td><span class="xmk">Gone</span>, unless the bank still offers that history</td></tr>
+            <tr><td>What you say</td><td>Accounts, categories, rules, manual decisions, and each import&rsquo;s declared account and dates</td><td><span class="xmk">Gone</span>. No one else knows why you called that IKEA purchase a gift.</td></tr>
+            <tr><td>What the pipeline derives</td><td>Silver&rsquo;s transactions, Gold&rsquo;s facts, the dashboard&rsquo;s numbers</td><td><span class="chk">Rebuilt</span> from the other two (ADR-003)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        So the design has one principle in two halves: <strong>everything you say is kept as text,
+        and everything the bank says is kept as a file</strong>. Both live in OneDrive. The
+        databases can then always be rebuilt, and backups exist to make that <em>fast</em>, not to
+        make it <em>possible</em>.
+      </p>
+
+      <div class="callout">
+        <p class="callout-h">The one sentence</p>
+        <p>
+          <strong>How does the household run this pipeline so that a report is reproducible, a
+          mistake is undoable, and a broken machine is an inconvenience rather than a loss?</strong>
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 02 ============ -->
+  <section class="mod" id="m2" data-key="m2">
+    <div class="mod-head">
+      <span class="mod-n">02</span>
+      <h2>Three profiles, one code</h2>
+    </div>
+    <p class="goal">After this: you can say what separates production, development and test, and why there is no default.</p>
+    <div class="mod-body">
+      <p>
+        At work there is production and nothing else, so every experiment runs against real tables.
+        Here the three tiers are an explicit learning objective (issue #2), kept apart even where a
+        single household could get by with fewer. They are not three servers: they are three
+        <strong>profiles</strong>, meaning three configurations of the same code, each naming every
+        path the application may touch.
+      </p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th></th><th>Production</th><th>Development</th><th>Test</th></tr></thead>
+          <tbody>
+            <tr><td>Data</td><td>Real exports</td><td>Production&rsquo;s latest backup</td><td>Synthetic fixtures in the repo</td></tr>
+            <tr><td>Written by</td><td>Pipeline commands only</td><td>You, experimenting</td><td>The test run</td></tr>
+            <tr><td>Lives</td><td>Forever</td><td>Until the next refresh</td><td>One test run</td></tr>
+            <tr><td>Dashboard</td><td>Home Wi-Fi, with a password</td><td>This PC only</td><td>Never served</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Why nothing picks a profile for you</h3>
+      <p>
+        You would naturally set <code>BUDGET_PROFILE</code> to production in your shell, so that
+        <code>budget import</code> just works. Then you run the test suite in the same shell. If the
+        code fell back to &ldquo;whatever the environment says&rdquo;, the tests would open your
+        real database. So:
+      </p>
+      <ol class="steps">
+        <li>Every command refuses to run until a profile is named, with <code>--profile</code> or <code>BUDGET_PROFILE</code>.</li>
+        <li>Test profiles are <strong>never files</strong>. The test suite builds each one in a temporary folder, ignores <code>BUDGET_PROFILE</code>, and refuses any store path outside that folder.</li>
+        <li>Every database <strong>records which profile it belongs to</strong> when it is created. Opening a production store under the test profile is refused, even if a bug hands the test its path.</li>
+      </ol>
+      <p>
+        Three independent guards, because any one of them can be defeated by a single mistake.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 03 ============ -->
+  <section class="mod" id="m3" data-key="m3">
+    <div class="mod-head">
+      <span class="mod-n">03</span>
+      <h2>Extract, clean, conform, deliver: one file per step</h2>
+    </div>
+    <p class="goal">After this: you can map Kimball&rsquo;s four ETL steps onto the stores, including the one place the mapping bends.</p>
+    <div class="mod-body">
+      <p>
+        Kimball&rsquo;s <em>ETL Toolkit</em> splits the back room into four steps, <strong>extract,
+        clean, conform, deliver</strong>, and <strong>saves the data after each one</strong>
+        (&ldquo;staging&rdquo;), so a failure restarts from the last completed step instead of the
+        beginning. You chose to make those saved steps literal: each is its own SQLite file.
+      </p>
+
+      <figure class="fig">
+        <div class="flow">
+          <div class="st"><b>Extract</b><code>bronze.db</code><span>raw bytes, import runs, source records</span></div>
+          <div class="ar">→</div>
+          <div class="st"><b>Clean + conform</b><code>silver.db</code><span>validated, de-duplicated transactions</span></div>
+          <div class="ar">→</div>
+          <div class="st"><b>Deliver</b><code>gold/</code><span>catalog + one file per publication</span></div>
+          <div class="ar">→</div>
+          <div class="st rd"><b>Dashboard</b><span>opens one Gold file, read-only</span></div>
+        </div>
+        <figcaption>The dashboard is handed only a Gold file&rsquo;s path. ADR-004 (&ldquo;analytics reads only Gold&rdquo;) becomes a fact about what it can open, not a rule it has to remember.</figcaption>
+      </figure>
+
+      <h3>Where the mapping bends</h3>
+      <p>
+        In Kimball, <em>conform</em> also builds the <strong>conformed dimensions</strong>: the
+        account, category and date tables every fact shares. Here Silver conforms each
+        <em>source</em> into one canonical transaction, but the dimensions come from
+        <em>your</em> account registry and taxonomy, so Gold builds them. The conform step is
+        therefore split across two files. The doc says so rather than adding a fourth store.
+      </p>
+
+      <h3>What staging buys</h3>
+      <ul>
+        <li><strong>Restart points.</strong> A rule change rebuilds Gold only, reading the Silver file as it is.</li>
+        <li><strong>Divergence points.</strong> Development can take production&rsquo;s Bronze and Silver and rebuild only what it changed (module 05).</li>
+        <li><strong>Independent migrations.</strong> Each file has its own numbered migrations and schema version, so a Gold change never touches Bronze.</li>
+      </ul>
+
+      <div class="callout">
+        <p class="callout-h">The cost</p>
+        <p>
+          A Silver write and a Gold write are two transactions, in two files. A crash between them is
+          harmless only because nobody reads Silver: the dashboard still sees the previous Gold
+          publication, and the next command carries on. That is why module 09&rsquo;s commit point
+          matters.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 04 ============ -->
+  <section class="mod" id="m4" data-key="m4">
+    <div class="mod-head">
+      <span class="mod-n">04</span>
+      <h2>Two folders: one live, one synchronised</h2>
+    </div>
+    <p class="goal">After this: you can say which folder each file goes in, and why the live databases must stay out of OneDrive.</p>
+    <div class="mod-body">
+      <pre class="term">%LOCALAPPDATA%\budget\production\      <span class="c">live databases: never synchronised</span>
+    bronze.db  silver.db
+    gold\catalog.db  gold\publication-000042.db
+    scratch\  logs\
+OneDrive\Budget\                       <span class="c">closed files only: safe to synchronise</span>
+    inbox\joint-current\               <span class="c">drop new exports here</span>
+    exports\joint-current\             <span class="c">the archive</span>
+    inputs\                            <span class="c">what you say</span>
+        accounts.toml  taxonomy.toml  rules.toml
+        decisions.jsonl  imports.jsonl
+    backups\2026-05-02T18-05-11Z\      <span class="c">backup sets</span></pre>
+
+      <p>
+        A SQLite database in WAL mode is <strong>three files that change together</strong>:
+        <code>bronze.db</code>, <code>bronze.db-wal</code> and <code>bronze.db-shm</code>. A sync
+        client copies files one at a time, whenever it gets round to them. If it uploads the main
+        file from one moment and the WAL file from another, the cloud holds a database that never
+        existed, and SQLite&rsquo;s own guidance lists exactly this as a way to corrupt one. So
+        (ADR-013) the live stores stay in <code>%LOCALAPPDATA%</code>, which OneDrive does not
+        touch.
+      </p>
+      <p>
+        Everything in the OneDrive folder is a <strong>closed file</strong>: an export, a text file
+        you saved, a finished backup. Copying one of those at any moment is safe. That split is
+        what lets OneDrive be the off-site copy of everything precious.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 05 ============ -->
+  <section class="mod" id="m5" data-key="m5">
+    <div class="mod-head">
+      <span class="mod-n">05</span>
+      <h2>Development starts from a backup and diverges at a stage</h2>
+    </div>
+    <p class="goal">After this: you can pick the right <code>--from</code> for a change, and say why development never opens production&rsquo;s files.</p>
+    <div class="mod-body">
+      <p>
+        Issue #10&rsquo;s requirement: development reads production&rsquo;s data, and
+        <strong>unchanged upstream layers are read, never recomputed</strong>. You chose to read
+        them from production&rsquo;s latest backup rather than from the live files.
+      </p>
+
+      <pre class="term">&gt; budget dev refresh --inputs
+Restored backup set 2026-05-02T18-05-11Z into upstream (read-only)
+&gt; <span class="c"># edit the development copy of rules.toml</span>
+&gt; budget rebuild --from gold
+Gold     development publication 1 (from upstream silver.db)
+Changes  February: groceries +85.00, unclassified out −85.00; 1 rule-conflict closed</pre>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>You changed</th><th>Rebuild from</th><th>Read from upstream</th><th>Written in development</th></tr></thead>
+          <tbody>
+            <tr><td>How a CSV is parsed</td><td><code>bronze</code></td><td>Raw bytes, import runs</td><td>Source records, Silver, Gold</td></tr>
+            <tr><td>Silver mapping or identity</td><td><code>silver</code></td><td><code>bronze.db</code></td><td>Silver, Gold</td></tr>
+            <tr><td>A rule, a category, an account, Gold code</td><td><code>gold</code></td><td><code>bronze.db</code>, <code>silver.db</code></td><td>Gold</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Why a backup, not the live files</h3>
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th></th><th>From the latest backup (chosen)</th><th>Live, read-only</th></tr></thead>
+          <tbody>
+            <tr><td>Freshness</td><td>As of the last import, which always writes a backup</td><td>This second</td></tr>
+            <tr><td>Stable while you work</td><td><span class="chk">Yes</span></td><td>No: an import can land mid-run</td></tr>
+            <tr><td>Effect on production</td><td>None</td><td>A long-lived reader stops production&rsquo;s WAL file from resetting, so it grows</td></tr>
+            <tr><td>Bonus</td><td><b>Every refresh is a restore drill</b></td><td>—</td></tr>
+            <tr><td>Workplace pattern</td><td>&ldquo;Clone production into dev&rdquo;</td><td>&ldquo;Read grants on prod schemas&rdquo;</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        The bonus is the real reason. A backup nobody has restored is a hope, not a backup.
+        Here, every <code>dev refresh</code> restores one, so you find out it is broken on a
+        Tuesday evening, not on the Sunday you need it.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 06 ============ -->
+  <section class="mod" id="m6" data-key="m6">
+    <div class="mod-head">
+      <span class="mod-n">06</span>
+      <h2>Your configuration is TOML, and money is always in quotes</h2>
+    </div>
+    <p class="goal">After this: you can write a rule, and explain the one trap TOML sets for money.</p>
+    <div class="mod-body">
+      <pre class="term">format = 1
+
+[[rule]]
+id = "r-furniture"
+priority = 10
+when.description_contains = "IKEA"
+when.amount_max = "-1000.00"        <span class="c"># quoted: a decimal string</span>
+then.category = "furniture"
+
+[[rule]]
+id = "r-savings-transfer"
+when.description_contains = ["TO SAVINGS", "FROM CURRENT"]   <span class="c"># any of these</span>
+then.transfer_claim = true</pre>
+
+      <p>
+        Every <code>when</code> condition must hold, and <code>then</code> has exactly one outcome:
+        a category, a transfer claim, or an adjustment with a reason (ADR-011). Python reads TOML with
+        the standard library, so the CLI gains no dependency.
+      </p>
+
+      <h3>The trap</h3>
+      <p>
+        Write <code>when.amount_max = -1000.00</code> without quotes and TOML reads it as a
+        <strong>binary floating-point number</strong>, the same kind that turns 0.1 + 0.2 into
+        0.30000000000000004. Most of the time the damage is invisible. The platform never accepts
+        one for money, so an unquoted amount is a <strong>configuration error</strong> that fails
+        the build before anything is published, naming the file and the rule:
+      </p>
+      <pre class="term">rules.toml: rule "r-furniture": when.amount_max must be a quoted decimal, got a number
+1 configuration error. Nothing was built.</pre>
+
+      <h3>Three more guards</h3>
+      <ul>
+        <li><strong>Unknown keys are errors.</strong> A misspelt <code>when.descripton_contains</code> would otherwise make a rule match everything.</li>
+        <li><strong>Every file says <code>format = 1</code>.</strong> When the format changes, old files are refused with a clear message instead of being half-understood.</li>
+        <li><strong><code>budget check</code></strong> validates every file without building, and lists every error at once.</li>
+      </ul>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 07 ============ -->
+  <section class="mod" id="m7" data-key="m7">
+    <div class="mod-head">
+      <span class="mod-n">07</span>
+      <h2>Manual decisions: a log you append to through one door</h2>
+    </div>
+    <p class="goal">After this: you can say why decisions are not in TOML, how you undo one, and what the &ldquo;door&rdquo; is for.</p>
+    <div class="mod-body">
+      <p>
+        Rules are yours to edit. Decisions are different: PR #57 makes them an
+        <strong>append-only log</strong>, where a new entry supersedes an old one and nothing is
+        rewritten. That gives an audit trail you can read without a database.
+      </p>
+      <pre class="term">&gt; budget review
+unmatched-transfer  no-candidate
+  3f9a2c1e  joint-current  2026-02-16  −1,000.00  TO SAVINGS
+&gt; budget decide classify 3f9a2c1e external-saving --reason "To Bo's savings, not imported"
+Recorded d-0005. Gold publication 44 is current (was 43).</pre>
+
+      <p>That appends one line to <code>decisions.jsonl</code>:</p>
+      <pre class="term">{"format": 1, "entry": 5, "decision_id": "d-0005", "recorded_at": "2026-05-03T09:12:40Z",
+ "kind": "classify", "targets": ["3f9a2c1e77b0…"], "category": "external-saving",
+ "reason": "To Bo's savings, not imported", "supersedes": null}</pre>
+
+      <h3>Why JSON Lines and not TOML</h3>
+      <p>
+        You write rules; <strong>the application writes decisions</strong>. Python&rsquo;s standard
+        library can read TOML but not write it, and it can do both with JSON. One JSON object per
+        line also makes &ldquo;append&rdquo; literal.
+      </p>
+
+      <h3>The door</h3>
+      <p>
+        Every decision goes through one validation boundary before it is recorded. Do the targets
+        exist? Does the category? Does a <code>pair</code>&rsquo;s amount cancel? Does the
+        transaction already have a decision this one fails to supersede? The CLI uses that boundary
+        today. The browser editor that issue #2 says may come later uses <strong>the same
+        one</strong>, so it inherits every rule instead of reinventing them.
+      </p>
+
+      <h3>Undo and hand edits</h3>
+      <ul>
+        <li>To withdraw a decision, record a <code>retract</code> entry naming it in <code>supersedes</code>. It is called <code>retract</code> so it is not confused with <code>withdrawn</code>, which records that the <em>bank</em> removed a transaction.</li>
+        <li>Each build&rsquo;s recipe stores a hash of the log up to the entry it read. Edit an old line by hand and <code>check</code> notices.</li>
+      </ul>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 08 ============ -->
+  <section class="mod" id="m8" data-key="m8">
+    <div class="mod-head">
+      <span class="mod-n">08</span>
+      <h2>The monthly import: an inbox folder per account</h2>
+    </div>
+    <p class="goal">After this: you can walk through a monthly import, including the one prompt, and say what happens if it crashes halfway.</p>
+    <div class="mod-body">
+      <p>
+        ADR-009 requires you to <strong>declare</strong> which account every export belongs to,
+        because the file does not say. Here the folder is the declaration: save into
+        <code>inbox\joint-current\</code>, and you have declared <code>joint-current</code>.
+      </p>
+      <pre class="term">&gt; budget import
+joint-current   export-20260502.csv
+  exported on    2026-05-02 (from filename)
+  covers through 2026-05-02 (falls back to exported on)
+joint-savings   export-20260502.csv
+  exported on    2026-05-02 (from filename)
+  covers through? The payload's last transaction is 2026-01-31, in an earlier
+                 month than 2026-05-01, so it must be declared.
+  Enter the last date you asked the bank for: 2026-04-30
+Import both? [y/N] y
+Bronze   2 import runs stored
+Silver   2 admitted, 0 quarantined
+Gold     publication 43 is current (was 42)
+Review   1 unmatched-transfer
+Backup   2026-05-02T18-05-11Z written</pre>
+
+      <p>
+        The savings account had no activity for three months. Without a declaration, Bronze would
+        assume the file covers up to the day before it was made, and silently certify February to
+        April as quiet (<code>bronze-layer.md</code>). So it asks, and only then.
+      </p>
+
+      <h3>If the power goes halfway</h3>
+      <p>
+        Each file is <strong>idempotent</strong>. Rerun <code>budget import</code>. A file whose
+        account, original filename and bytes already have a stored run is simply finished: archived
+        and cleared from the inbox, with no second run recorded. A genuinely new export of the same
+        bytes has a new date in its filename, so it still counts as the &ldquo;nothing
+        happened&rdquo; evidence Bronze wants.
+      </p>
+
+      <h3>The import log</h3>
+      <p>
+        Your answer <code>2026-04-30</code> is something <em>you said</em>, so module 01 wants it
+        as text. Every import appends a line to <code>imports.jsonl</code> with the account, both
+        dates and the archive path. With it, Bronze can be rebuilt from the archive alone (module
+        10, the worst case).
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 09 ============ -->
+  <section class="mod" id="m9" data-key="m9">
+    <div class="mod-head">
+      <span class="mod-n">09</span>
+      <h2>Publishing without a half-built dashboard, and the collision with #57</h2>
+    </div>
+    <p class="goal">After this: you can name the commit point, and argue either side of the open collision.</p>
+    <div class="mod-body">
+      <p>You chose <strong>one file per Gold build, behind a pointer</strong>:</p>
+      <ol class="steps">
+        <li>Write <code>publication-000043.db</code> completely, and close it.</li>
+        <li>In <code>catalog.db</code>, in <strong>one transaction</strong>: store the recipe, register publication 43, move the pointer to it. <b>This is the commit point.</b></li>
+        <li>Delete the files no longer kept: not current, not previous, not labeled (PR #57&rsquo;s retention).</li>
+      </ol>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Crash</th><th>Dashboard shows</th><th>Next command</th></tr></thead>
+          <tbody>
+            <tr><td>During step 1</td><td>Publication 42</td><td>Deletes the half-written file the catalog never heard of</td></tr>
+            <tr><td>During step 2</td><td>Publication 42 (SQLite rolls the transaction back)</td><td>Same as above</td></tr>
+            <tr><td>During step 3</td><td>Publication 43</td><td>Finishes the deletions</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Why not simply write a new <code>gold.db</code> and rename it over the old one? Because
+        <strong>Windows refuses to replace a file another process has open</strong>, and the
+        dashboard always has it open.
+      </p>
+
+      <h3>The collision</h3>
+      <p>
+        PR #57&rsquo;s ADR-014 lists &ldquo;one database file per publication&rdquo; among its
+        <em>rejected</em> options and keeps every publication as rows in one Gold database, each
+        tagged with <code>publication_id</code>. That rejection was the agent&rsquo;s choice in #57,
+        not yours, and when asked you said you could not decide. ADR-015 follows the agent&rsquo;s
+        recommendation, labelled as such. Here is the argument, using #57&rsquo;s own example:
+      </p>
+      <div class="scroller">
+        <table class="ledger">
+          <caption>February expenses, with four publications kept (PR #57, scenario V1–V3).</caption>
+          <thead><tr><th>Query</th><th class="num">Result</th><th class="note">Why</th></tr></thead>
+          <tbody>
+            <tr class="new"><td>With the publication filter</td><td class="num">3,349.00</td><td class="note">Right</td></tr>
+            <tr class="hit"><td>Filter forgotten, rows in one database</td><td class="num">12,796.00</td><td class="note">3,349 + 3,349 + 3,049 + 3,049: four versions added together</td></tr>
+            <tr class="new"><td>One file per publication</td><td class="num">3,349.00</td><td class="note">There is nothing else in the file to add</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th></th><th>One file per publication (ADR-015)</th><th>Rows in one database (ADR-014 draft)</th></tr></thead>
+          <tbody>
+            <tr><td>Double counting</td><td>Impossible by construction</td><td>Prevented by discipline and tests</td></tr>
+            <tr><td>Publishing</td><td>Write a file, then one pointer transaction</td><td>One transaction</td></tr>
+            <tr><td>After a Gold migration</td><td>Old files keep their schema and stay readable by their own code</td><td>Every retained result is converted or deleted</td></tr>
+            <tr><td>Housekeeping</td><td>Orphans after a crash; Windows won&rsquo;t delete an open file, so deletion retries</td><td>None</td></tr>
+            <tr><td>Workplace pattern</td><td>&ldquo;Versioned tables behind a view&rdquo;, blue-green swap</td><td>&ldquo;Partition by load id&rdquo;</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        It is the same reasoning you used for module 03: when a file boundary can enforce a rule,
+        let it. Whichever of #57 and this PR is merged second needs a small edit so the two agree.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 10 ============ -->
+  <section class="mod" id="m10" data-key="m10">
+    <div class="mod-head">
+      <span class="mod-n">10</span>
+      <h2>Backups, restore, and the worst case</h2>
+    </div>
+    <p class="goal">After this: you can say what a backup set holds, when one is taken, and what survives when every backup is gone.</p>
+    <div class="mod-body">
+      <p>
+        A <strong>backup set</strong> is one folder: a snapshot of every store, taken through
+        SQLite&rsquo;s backup API (never a plain file copy of a live database), a copy of your
+        inputs folder, and a manifest with each file&rsquo;s hash and schema version. It is written
+        <strong>after every import or rebuild that publishes</strong>, and <strong>before every
+        migration</strong>, into OneDrive. The newest 30 are kept, plus the newest of each month.
+      </p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>What went wrong</th><th>You run</th><th>What comes back</th></tr></thead>
+          <tbody>
+            <tr><td>A bad rule, noticed in the printed diff</td><td><code>budget undo</code></td><td>The previous publication, instantly (PR #57)</td></tr>
+            <tr><td>The machine dies</td><td><code>budget restore &lt;newest set&gt;</code></td><td>Everything. At most the imports since the last set are missing, and every import writes one.</td></tr>
+            <tr><td>Every backup set is lost too</td><td><code>budget restore --from-archive</code></td><td><b>Every report, exactly</b>, from the export archive, <code>imports.jsonl</code> and your inputs. Past views and recipes are lost.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        The third row is module 01 paying off. It works only because the import declarations
+        (module 08) and the decisions (module 07) are text in OneDrive, not rows in a database.
+      </p>
+
+      <h3>Two safety rules</h3>
+      <ul>
+        <li><code>restore</code> only writes into a profile with <strong>no stores yet</strong>. It cannot overwrite a working database by mistake.</li>
+        <li>Every restore ends with <code>verify</code>: SQLite&rsquo;s integrity check on every file, then a full rebuild into a scratch folder whose result fingerprint must equal the current publication&rsquo;s. That is PR #57&rsquo;s &ldquo;routine proof of reproducibility&rdquo;, run on the copy you just restored.</li>
+      </ul>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 11 ============ -->
+  <section class="mod" id="m11" data-key="m11">
+    <div class="mod-head">
+      <span class="mod-n">11</span>
+      <h2>What the terminal tells you, and what the log never does</h2>
+    </div>
+    <p class="goal">After this: you can read an exit code, find the two completeness checks, and say what never reaches a log file.</p>
+    <div class="mod-body">
+      <h3>Exit codes</h3>
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Code</th><th>Means</th></tr></thead>
+          <tbody>
+            <tr><td>0</td><td>Done. Open review items and quarantined imports are <em>results</em>, not failures: reports may be provisional as long as they say so (issue #2).</td></tr>
+            <tr><td>1</td><td>You typed the command wrong.</td></tr>
+            <tr><td>2</td><td>Your input was refused: a configuration error, a rejected decision, a refused import. Nothing was published.</td></tr>
+            <tr><td>3</td><td>The environment was refused: no profile, the wrong profile&rsquo;s store, a pending migration, SQLite too old, uncommitted code in production, a locked store.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Two completeness checks, after every command that builds</h3>
+      <ul>
+        <li><strong>Balances:</strong> per account, the latest export, how far the evidence reaches, quarantined imports, and which months are provisional and why.</li>
+        <li><strong>Classification:</strong> per account and month, unclassified money in, money out and count, and open review items by kind.</li>
+      </ul>
+      <p>
+        <code>budget status</code> shows the same on demand. It answers &ldquo;can I trust
+        this month yet?&rdquo; before you open the dashboard.
+      </p>
+
+      <h3>The log</h3>
+      <p>
+        Routine logs keep what a fault needs: the command, counts, durations, versions, error codes,
+        and the ids of import runs, publications and decisions. They <strong>never</strong> hold an
+        amount, a balance, a description, a bank label, an original filename, or a
+        <code>transaction_id</code>, which is a hash of the transaction&rsquo;s content. A test runs
+        every walkthrough and searches the log for each synthetic amount and description.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 12 ============ -->
+  <section class="mod" id="m12" data-key="m12">
+    <div class="mod-head">
+      <span class="mod-n">12</span>
+      <h2>Proved outside production first, and the dashboard on your Wi-Fi</h2>
+    </div>
+    <p class="goal">After this: you can state the rule a procedure passes before production trusts it, and the one accepted risk on the dashboard.</p>
+    <div class="mod-body">
+      <div class="callout">
+        <p class="callout-h">The rule</p>
+        <p>
+          <strong>A procedure runs in production only after it passed in test and ran at least once
+          in development against a restored production backup.</strong>
+        </p>
+      </div>
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Procedure</th><th>Test, every CI run</th><th>Development</th></tr></thead>
+          <tbody>
+            <tr><td>Migrations</td><td>Every one, from empty and from last release&rsquo;s stores</td><td>Rehearsed on a fresh refresh first</td></tr>
+            <tr><td>Import retry</td><td>A crash injected after each step</td><td>Real export shapes, via upstream</td></tr>
+            <tr><td>Publishing</td><td>Crash either side of the commit point; <code>undo</code></td><td>Every rebuild publishes</td></tr>
+            <tr><td>Backup and restore</td><td>Backup, restore, verify</td><td>Every refresh is a restore</td></tr>
+            <tr><td>Restore from the archive</td><td>Reports come back exactly</td><td>Once before trusting it, then yearly</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        This is the part meant to carry to work: a test tier built only from synthetic fixtures, a
+        development tier cloned from production&rsquo;s backups, and production written only by the
+        pipeline.
+      </p>
+
+      <h3>The dashboard</h3>
+      <ul>
+        <li>It listens on the home network only; a Windows firewall rule allows the port on private networks. Nothing is reachable from the internet.</li>
+        <li>One household password guards every page. Its hash lives under <code>%APPDATA%</code>, never in OneDrive or the repository.</li>
+        <li>It opens Gold files read-only, and has no route that writes, apart from logging in and out.</li>
+        <li><strong>Accepted risk:</strong> it runs over plain HTTP. Someone on the same Wi-Fi who captures traffic could read the password and the pages. HTTPS with a certificate trusted on each phone is the upgrade if that changes.</li>
+      </ul>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 13 ============ -->
+  <section class="mod" id="m13" data-key="m13">
+    <div class="mod-head">
+      <span class="mod-n">13</span>
+      <h2>So, what is being asked of you?</h2>
+    </div>
+    <p class="goal">After this: you know which choices were yours, which were the agent&rsquo;s, and what merging means.</p>
+    <div class="mod-body">
+      <h3>You chose</h3>
+      <ol class="steps">
+        <li>One store per ETL step: extract, clean + conform, deliver <em>(module 03)</em></li>
+        <li>Development reads production only through its latest backup <em>(module 05)</em></li>
+        <li>Everything you author is text in a folder <em>(modules 06, 07)</em></li>
+        <li>The dashboard on home Wi-Fi, behind one password <em>(module 12)</em></li>
+        <li>An inbox folder per account <em>(module 08)</em></li>
+        <li>Backups to OneDrive <em>(module 10)</em></li>
+        <li>TOML for what you edit <em>(module 06)</em></li>
+      </ol>
+
+      <h3>The agent chose; please check</h3>
+      <ul>
+        <li><strong>One file per publication</strong>, against PR #57&rsquo;s draft. You left it open. <em>(module 09)</em></li>
+        <li><strong>No default profile</strong>, and every store records its profile. <em>(module 02)</em></li>
+        <li><strong>Amounts in quotes</strong>; an unquoted one fails the build. <em>(module 06)</em></li>
+        <li><strong>JSON Lines for the two logs</strong>, because the app writes them. <em>(module 07)</em></li>
+        <li><strong><code>retract</code></strong> instead of #57&rsquo;s <code>withdraw</code>. <em>(module 07)</em></li>
+        <li><strong>The import log</strong>, so Bronze survives the loss of every backup. <em>(modules 08, 10)</em></li>
+        <li><strong>No git repository for your inputs</strong>: a <code>.git</code> folder inside OneDrive risks the same inconsistent copies as a live database. History comes from recipes and OneDrive&rsquo;s version history. <em>(module 04)</em></li>
+        <li><strong>Plain HTTP</strong> on the home network. <em>(module 12)</em></li>
+        <li><strong>ADR-013 flipped to Accepted</strong>, since merging #48 was your acceptance, with its location refined by ADR-015.</li>
+      </ul>
+
+      <div class="verdict">
+        <h3>Proposed, and what merging means</h3>
+        <p>
+          ADR-015 and <code>operations.md</code> are <strong>Proposed</strong>. As with #48,
+          merging the PR marks your acceptance and resolves issue #10. <strong>To change one
+          thing:</strong> name the bullet above.
+        </p>
+        <p>
+          Before either merges, <strong>#57 and this PR must agree</strong> on module 09. If you keep
+          #57&rsquo;s rows-in-one-database, only the publishing section of <code>operations.md</code>
+          changes; the rest of ADR-015 stands.
+        </p>
+        <p>
+          Deliberately <em>not</em> here: the dashboard&rsquo;s screens and login page (issue #11);
+          acceptance cases and implementation order (issue #12). PR #45&rsquo;s Bronze code must
+          move its table creation into a migration and record its profile.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <div class="footer">
+    <span id="footnote">Progress saves automatically.</span>
+    <button class="reset" id="reset" type="button">Reset progress</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var TITLES = {
+    m1:"Three kinds of thing, and only two are precious",
+    m2:"Three profiles, one code",
+    m3:"Extract, clean, conform, deliver",
+    m4:"Two folders: one live, one synchronised",
+    m5:"Development starts from a backup",
+    m6:"TOML, and money in quotes",
+    m7:"Manual decisions through one door",
+    m8:"The monthly import",
+    m9:"Publishing, and the collision with #57",
+    m10:"Backups, restore, and the worst case",
+    m11:"The terminal, and the log",
+    m12:"Proved outside production first",
+    m13:"So, what is being asked of you?"
+  };
+  var KEYS = Object.keys(TITLES);
+  var LS = "budget-operations-primer-v1";
+
+  var done = {};
+  try {
+    var raw = localStorage.getItem(LS);
+    if (raw) { var p = JSON.parse(raw); if (p && typeof p === "object") done = p; }
+  } catch (e) { /* private window, blocked storage */ }
+
+  var docRef = null;          // db document, when available
+  var applyingRemote = false; // guard so a snapshot doesn't echo a write
+
+  var bar = document.getElementById("bar");
+  var tally = document.getElementById("tally");
+  var toc = document.getElementById("toc");
+
+  /* ---- build the contents list ---- */
+  KEYS.forEach(function(k, i){
+    var a = document.createElement("a");
+    a.className = "toc-item";
+    a.href = "#" + k;
+    a.id = "toc-" + k;
+    a.innerHTML = '<span class="n">' + String(i+1).padStart(2,"0") + '</span><span class="t"></span>';
+    a.querySelector(".t").textContent = TITLES[k];
+    toc.appendChild(a);
+  });
+
+  /* ---- build the check-off buttons ---- */
+  KEYS.forEach(function(k){
+    var sec = document.getElementById(k);
+    if (!sec) return;
+    var foot = sec.querySelector(".mod-foot");
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "checkoff";
+    btn.id = "chk-" + k;
+    btn.setAttribute("aria-pressed","false");
+    btn.innerHTML =
+      '<span class="box" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3.5 8.5 L6.5 11.5 L12.5 4.5"/></svg></span>' +
+      '<span class="lbl">I’ve got this</span>';
+    btn.addEventListener("click", function(){
+      done[k] = !done[k];
+      if (!done[k]) delete done[k];
+      render();
+      persist();
+    });
+    foot.appendChild(btn);
+  });
+
+  function render(){
+    var n = 0;
+    KEYS.forEach(function(k){
+      var on = !!done[k];
+      if (on) n++;
+      var sec = document.getElementById(k);
+      var btn = document.getElementById("chk-" + k);
+      var ti = document.getElementById("toc-" + k);
+      if (sec) sec.classList.toggle("done", on);
+      if (ti) ti.classList.toggle("done", on);
+      if (btn){
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+        btn.querySelector(".lbl").textContent = on ? "Understood" : "I’ve got this";
+      }
+    });
+    tally.textContent = n + " / " + KEYS.length;
+    bar.style.width = Math.round((n / KEYS.length) * 100) + "%";
+  }
+
+  function persist(){
+    try { localStorage.setItem(LS, JSON.stringify(done)); } catch (e) {}
+    if (docRef && !applyingRemote){
+      docRef.set({ done: done, updatedAt: Date.now() }).catch(function(){});
+    }
+  }
+
+  render();
+
+  /* ---- cross-device progress, when the runtime offers it ---- */
+  if (window.claude && typeof window.claude.use === "function"){
+    window.claude.use("db").then(function(db){
+      if (!db) return;
+      docRef = db.doc("progress/operations-primer");
+      docRef.onSnapshot(function(snap){
+        if (!snap || !snap.exists) return;
+        var d = snap.data();
+        var remote = d && d.done;
+        if (!remote || typeof remote !== "object") return;
+        applyingRemote = true;
+        // union: ticking on one device never un-ticks on another
+        Object.keys(remote).forEach(function(k){ if (remote[k]) done[k] = true; });
+        try { localStorage.setItem(LS, JSON.stringify(done)); } catch (e) {}
+        render();
+        applyingRemote = false;
+      }, function(){ docRef = null; });
+      // push whatever this device already had
+      if (Object.keys(done).length) persist();
+    }).catch(function(){});
+  }
+
+  document.getElementById("reset").addEventListener("click", function(){
+    done = {};
+    render();
+    try { localStorage.removeItem(LS); } catch (e) {}
+    if (docRef) docRef.set({ done: {}, updatedAt: Date.now() }).catch(function(){});
+  });
+})();
+</script>
