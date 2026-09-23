@@ -78,5 +78,5 @@ reverses the only allocation there is.
 - A mixed purchase is still reported under one category until the split
   workflow exists. Paying for an expensive unrelated item separately at the
   till remains the cheapest way to keep a category honest in the meantime.
-- Per-allocation classification provenance arrives with the split workflow
-  (issue #7). Until then, lineage explains the transaction as a whole.
+- Per-allocation classification provenance arrives with the split workflow.
+  Until then, lineage explains the transaction as a whole.
