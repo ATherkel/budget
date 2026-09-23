@@ -8,9 +8,7 @@ from issue #4; see [Changes in 0.2](#changes-in-02), which lists every change
 since 0.1, including the ones made by the earlier 0.2 draft. Changes are
 backward-incompatible unless a new contract version is introduced and
 downstream consumers migrate. The contract stays proposed until the readiness
-review (issue #12) approves it. While it is proposed, issue #7 amended it in
-place: transfer invariants, classification lineage, and classification review
-items.
+review (issue #12) approves it.
 
 ## Purpose
 
@@ -21,9 +19,8 @@ storage.
 
 Gold is derived from Silver, the household account and category registries,
 and classification inputs. It is not the original bank record, and it can be
-rebuilt when classification logic changes. How classification inputs produce
-`transaction_type`, the category allocation, and `transfer_group_id` is the
-policy in [`classification.md`](classification.md).
+rebuilt when classification logic changes. The classification policy is in
+[`classification.md`](classification.md).
 
 The dimensional model behind this contract (processes, grains, the bus
 matrix, balance-chain evaluation, and a worked synthetic example) is described
@@ -105,7 +102,7 @@ is a separate fact at its own grain
 | `amount` | `Decimal` | Yes | Signed amount in the account's currency. |
 | `description` | string | Yes | Normalized human-readable transaction text. |
 | `transaction_type` | `TransactionType` | Yes | Household interpretation. |
-| `transfer_group_id` | string/null | No | Shared by the two legs of a paired transfer and derived from their `transaction_id`s, so it is stable across rebuilds while the same legs pair. Null for a one-sided transfer and for every other type. Policy: [`classification.md`](classification.md). |
+| `transfer_group_id` | string/null | No | Shared by the two legs of a paired transfer, derived from their `transaction_id`s so it is stable across rebuilds. Null for a one-sided transfer and every other type. |
 | `balance_after` | `Decimal`/null | No | Bank-stated balance from the latest admitted export covering this date (ADR-009). Null only for sources that state no balances; inconsistent balance-stating exports are quarantined under ADR-010. |
 | `balance_check` | `BalanceCheck` | Yes | Result of the balance-chain check for this transaction (see `gold-layer.md`). |
 
@@ -283,9 +280,9 @@ class GoldLineageRepository(Protocol):
 | `transaction_id` | string | Yes | The Gold transaction explained. |
 | `silver_transaction_id` | string | Yes | Traceable parent Silver record, and through it the retained Bronze provenance, including the bank's category labels. |
 | `classification_source` | enum | Yes | `manual`, `transfer_match`, `rule`, or `unclassified`. |
-| `rule_ids` | list of string | Yes | The highest-priority matching rules, whether or not they decided. They decided only when `classification_source` is `rule`. Several when they agree or conflict; empty when no rule matched. |
+| `rule_ids` | list of string | Yes | The highest-priority matching rules; they decided only when `classification_source` is `rule`. Empty when no rule matched. |
 | `decision_id` | string/null | Conditional | The manual decision that decided. Required when `classification_source` is `manual`, otherwise null. |
-| `classification_version` | string | Yes | Version of the classification inputs (taxonomy, rules, manual decisions, and matching policy) that produced this classification. Issue #8 defines what a version is. |
+| `classification_version` | string | Yes | Version of the classification inputs (taxonomy, rules, manual decisions, and matching policy); issue #8 defines it. |
 | `transfer_evidence` | `TransferEvidence`/null | Conditional | Required on every `transfer`, otherwise null. |
 | `review_item_ids` | list of string | Yes | Open classification review items involving this transaction. Often empty. |
 
@@ -312,7 +309,7 @@ Confidence is a named evidence basis, not a score.
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
-| `review_item_id` | string | Yes | Derived from the kind and the transaction or decision identifiers involved, so the same situation keeps its identifier across rebuilds. |
+| `review_item_id` | string | Yes | Derived from the kind and the identifiers involved, so it is stable across rebuilds. |
 | `kind` | enum | Yes | `unclassified`, `rule-conflict`, `sign-mismatch`, `ambiguous-transfer`, `unmatched-transfer`, or `decision-not-applicable`. |
 | `transaction_ids` | list of string | Yes | Transactions involved. Empty only when a decision's target is missing. |
 | `rule_ids` | list of string | Yes | Rules involved, such as the conflicting rules. |
@@ -338,13 +335,8 @@ quiet month crossed by a broken link; `no_data` month beyond evidence; closed
 account; and two categories sharing a group. The worked example in
 `gold-layer.md` covers most of these.
 
-Classification fixtures reproduce the synthetic scenarios in
-[`classification.md`](classification.md) exactly. They include a refund
-derived from an expense-category rule, a rule conflict, a sign mismatch, a
-transfer pair across a month boundary, repeated same-amount legs, an ambiguous
-transfer, a leg waiting for its next import, a one-sided transfer, a
-contribution from an account that is not imported, a decision whose target
-disappeared, and each taxonomy change.
+Classification fixtures reproduce every synthetic scenario and taxonomy change
+in [`classification.md`](classification.md) exactly.
 
 ## Changes in 0.2
 

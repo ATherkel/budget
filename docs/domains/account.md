@@ -27,14 +27,12 @@ still internal.
 
 ## First-Release Taxonomy
 
-- Only accounts inside the reporting boundary are imported and reported; they
-  are the Gold account dimension. An `external` account is never imported.
-- The boundary is the set of imported accounts. A household member's account
-  that the household does not import is outside it, so money to or from it is
-  income or expense, never a transfer. Importing that account later turns
-  those movements into transfers, and reports restate.
-- The registry lists only accounts inside the boundary. External accounts are
-  not registered; classification rules recognize them by description text.
+- The reporting boundary is the set of imported accounts. They are the only
+  accounts in the registry and the Gold account dimension.
+- Every other account is external, including a household member's account
+  that is not imported. Money to or from it is income or expense, never a
+  transfer, and rules recognize it by description text. Importing it later
+  turns those movements into transfers, and reports restate.
 - Supported account types are `current` and `savings`, in `DKK`. The other
   types stay reserved: a `credit`, `investment`, or `other` account is rejected
   until a reporting policy for it exists, which preserves the extension point

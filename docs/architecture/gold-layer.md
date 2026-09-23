@@ -16,11 +16,9 @@ contract. See [ADR-007](../decisions/ADR-007-dimensional-gold-model.md) and
 
 - Publish the account and category dimensions from the household registries.
 - Materialize one Gold transaction per booked Silver transaction, classify it
-  — manual decisions, then transfer matching, then classification rules
-  ([`classification.md`](classification.md)) — and publish its category
+  ([`classification.md`](classification.md)), and publish its category
   allocation.
-- Publish classification lineage and classification review items for review
-  tooling.
+- Publish classification lineage and review items for review tooling.
 - Evaluate each account's balance chain and publish a balance check per
   transaction.
 - Publish a monthly balance snapshot with coverage for every month of each
@@ -216,7 +214,8 @@ What consumers can and cannot derive:
   `complete`.
 - March: unclassified money in is 0.00, money out is −450.00, and count is 1.
 - January: transfer T1 is excluded from income and expenses, and both legs
-  stay visible in account activity. T1 is a `same_day` pair under the classification policy.
+  stay visible in account activity. T1 is a `same_day` pair
+  ([`classification.md`](classification.md)).
 - `joint-savings` February and March are verified quiet months. A requested
   June beyond the publication has no data and must not be read as zero.
 - The DKK 500.00 break is between admitted exports, so ADR-010 does not

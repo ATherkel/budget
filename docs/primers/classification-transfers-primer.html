@@ -419,23 +419,18 @@
     <p>
       This is a <strong>primer, not a contract.</strong> It explains what
       <code>docs/architecture/classification.md</code>, <code>ADR-011</code>, <code>ADR-012</code>
-      and the Gold contract decide; it never decides anything itself. Where this page and one of
-      those documents disagree, the document is right and this page is out of date — say so and it
-      gets fixed.
+      and the Gold contract decide. Where they disagree with this page, they win.
     </p>
     <p>
-      It lives at <code>docs/primers/classification-transfers-primer.html</code>; that copy opens
-      by double-clicking and needs no server. It is the companion to
-      <code>overlapping-exports-primer.html</code>, which covers the import side: that one is about
-      <em>which rows are the same transaction</em>, this one about <em>what each transaction
-      means</em>.
+      Its companion, <code>overlapping-exports-primer.html</code>, covers <em>which rows are the
+      same transaction</em>; this one covers <em>what each transaction means</em>.
     </p>
   </div>
 
   <div class="callout">
     <p class="callout-h">The short answer</p>
     <p>
-      PR #20 is 737 lines, and none of it is decided yet. You need <strong>five ideas</strong> —
+      None of PR #20 is decided yet. You need <strong>five ideas</strong> —
       modules 02, 03, 05, 06 and 07 — and then <strong>five questions</strong> to answer, which are
       in module 13. Everything in between is what happens at the edges: competing legs, missing
       partners, rulings you make by hand, and what lands in front of you after a build.
@@ -745,7 +740,7 @@
           <thead><tr><th>Account</th><th>Date</th><th>Text</th><th class="num">Amount</th><th>Result</th><th class="note">Effect</th></tr></thead>
           <tbody>
             <tr><td>joint-current</td><td>2026-02-02</td><td>NETTO 0412</td><td class="num">&minus;640.00</td><td><code>expense</code> · <code>groceries</code></td><td class="note">rule <code>r-netto</code></td></tr>
-            <tr><td>joint-current</td><td>2026-02-12</td><td>NETTO 0412</td><td class="num">+120.00</td><td><code>refund</code> · <code>groceries</code></td><td class="note">same rule. February groceries net to <b>520.00</b>.</td></tr>
+            <tr><td>joint-current</td><td>2026-02-12</td><td>NETTO 0412</td><td class="num">+120.00</td><td><code>refund</code> · <code>groceries</code></td><td class="note">same rule. With the row above, groceries net to <b>520.00</b>.</td></tr>
             <tr><td>joint-savings</td><td>2026-03-31</td><td>INTEREST ADJ</td><td class="num">&minus;3.50</td><td><code>refund</code> · <code>interest</code></td><td class="note">an income category going backwards: income falls by 3.50</td></tr>
           </tbody>
         </table>
@@ -754,8 +749,7 @@
       <p>
         So a reimbursed outlay — a friend paying back their share of dinner — nets against
         eating-out by itself, and returned interest nets against interest. That is exactly issue
-        #4&rsquo;s refund semantics, and it matches what the bank does in the samples, where returns
-        arrive filed under income.
+        #4&rsquo;s refund semantics.
       </p>
 
       <h3>The other two things a rule can assign</h3>
@@ -896,8 +890,8 @@
 
       <p>
         A transfer that costs a fee — 1,000.00 out, 995.00 in — is never a candidate either, because
-        the amounts do not cancel. ADR-008 forbids splitting it into a transfer plus a fee, so each
-        leg is simply classified on its own.
+        the amounts do not cancel, and a <code>pair</code> decision does not apply to it. Each leg is
+        classified on its own.
       </p>
 
       <h3>Confidence is a name, not a number</h3>
@@ -1138,8 +1132,8 @@
 
       <h3>Depends on the data → a review item</h3>
       <p>
-        The affected transaction is classified <em>as if the decision did not exist</em>, and an
-        item explains why. Items are derived afresh on every build, so an item exists exactly while
+        Nothing stops. The affected transaction gets whatever the evidence supports, often
+        <code>unknown</code>, and an item explains why. Items are derived afresh on every build, so an item exists exactly while
         its cause does. Its identifier derives from the kind plus the identifiers involved, so the
         same situation keeps the same item across rebuilds.
       </p>
@@ -1208,17 +1202,6 @@
         total and the items — the contract requires that every <code>unknown</code> transaction has
         an open item. Keeping the two measures apart keeps both honest.
       </p>
-
-      <div class="callout">
-        <p class="callout-h">One thing that got fixed on the way</p>
-        <p>
-          A signed unclassified total would let the two <code>unknown</code> legs of one unpaired
-          transfer — &minus;800.00 and +800.00 in the same month — cancel to 0.00 and read as
-          "nothing unexplained". The merged documents publish unclassified <strong>money in, money
-          out and count separately</strong>, so offsetting legs cannot hide. The long comment on #7
-          flagged this as an open worry; it is closed.
-        </p>
-      </div>
     </div>
     <div class="mod-foot"></div>
   </section>
@@ -1254,7 +1237,7 @@
         </li>
         <li>
           <strong>Gold contract 0.2, amended in place</strong> — there is no 0.3 because nothing has
-          shipped. Invariants 13 to 16 cover transfer groups, one-sided transfers, group direction,
+          shipped. Invariants 16 to 19 cover transfer groups, one-sided transfers, group direction,
           and "every classification traces to its source, and every <code>unknown</code> has an open
           item". Lineage gains <code>classification_source</code>, <code>rule_ids</code>,
           <code>decision_id</code>, <code>transfer_evidence</code> and
