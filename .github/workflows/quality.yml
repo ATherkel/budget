@@ -1,0 +1,58 @@
+name: Code Quality
+
+# Hard gate for Python code: ruff (lint and format), ty (types) and complexipy
+# (cognitive complexity <= 15, mirroring SonarQube rule python:S3776). Every
+# job must pass; make each one a required status check on `main`. The jobs
+# always run, so docs-only PRs report the checks too and never wait on a check
+# that cannot start.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Sync dependencies
+        run: uv sync --locked
+      - name: Lint
+        run: uv run ruff check --output-format=github .
+      - name: Format
+        run: uv run ruff format --check .
+
+  ty:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Sync dependencies
+        run: uv sync --locked
+      - name: Type check
+        run: uv run ty check --output-format=github
+
+  complexity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Sync dependencies
+        run: uv sync --locked
+      - name: Cognitive complexity
+        run: uv run complexipy

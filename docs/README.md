@@ -12,6 +12,7 @@ agent authority outside its boundary.
 3. For implementation work, read the relevant layer contract and domain
    documents, then the matching agent brief. For behavior-changing application
    work, also follow the [test-driven development workflow](agents/tdd.md).
+   All Python code must pass the [code quality gate](agents/code-quality.md).
 
 ## Normative Documents
 
