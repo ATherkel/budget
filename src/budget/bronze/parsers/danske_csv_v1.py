@@ -9,7 +9,7 @@ one's meaning.
 
 import csv
 import re
-from datetime import date
+from datetime import UTC, date, datetime
 from io import StringIO
 
 from budget.bronze.parsers.base import ParserResult, SourceParser
@@ -30,7 +30,7 @@ _HEADER = (
 )
 
 # The transaction date is the only value this parser reads rather than presents.
-_TRANSACTION_DATE_PATTERN = re.compile(r"(\d{2})-(\d{2})-(\d{4})")
+_TRANSACTION_DATE = "%d-%m-%Y"
 
 # The export date convention of this format: `…-YYYYMMDD.csv`.
 _EXPORT_DATE_SUFFIX = re.compile(r"-([0-9]{8})\.csv$", re.IGNORECASE)
@@ -150,15 +150,17 @@ def _split_payload(content: bytes) -> tuple[list[dict[str, str]], str | None]:
 
 
 def _transaction_date(value: str) -> date | None:
-    """Read one `DD-MM-YYYY` transaction date, or None if it is not a real date."""
-    match = _TRANSACTION_DATE_PATTERN.fullmatch(value)
-    if match is None:
-        return None
-    day, month, year = (int(part) for part in match.groups())
+    """Read one `DD-MM-YYYY` transaction date, or None if it is not a real date.
+
+    The declared syntax is the one the baseline parser read, so the leniency of
+    `%d-%m-%Y` - a one-digit day or month, leading spaces - is part of the
+    accepted input rather than a defect to tighten.
+    """
     try:
-        return date(year, month, day)
+        parsed = datetime.strptime(value, _TRANSACTION_DATE).replace(tzinfo=UTC)
     except ValueError:
         return None
+    return parsed.date()
 
 
 def _last_transaction_date(
