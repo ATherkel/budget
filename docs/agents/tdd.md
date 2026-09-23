@@ -40,7 +40,7 @@ review stage after the behavior is green.
 After the behavior slices are complete, review the change and refactor in a
 separate stage. Refactoring must preserve behavior; keep the tests passing and
 do not add behavior without first returning to a red test. Run the relevant
-test suite after refactoring.
+test suite and the [code quality gate](code-quality.md) after refactoring.
 
 Tests should assert known behavior through public interfaces and use
 independent expected values. Avoid tests that mirror implementation, assert

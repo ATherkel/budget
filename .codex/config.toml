@@ -1,7 +1,0 @@
-# Agent commits use the agent GitHub App's bot identity.
-# See "Commit identity" in docs/agents/github-app.md.
-[shell_environment_policy.set]
-GIT_AUTHOR_NAME = "atherkel-budget-agent[bot]"
-GIT_AUTHOR_EMAIL = "329499554+atherkel-budget-agent[bot]@users.noreply.github.com"
-GIT_COMMITTER_NAME = "atherkel-budget-agent[bot]"
-GIT_COMMITTER_EMAIL = "329499554+atherkel-budget-agent[bot]@users.noreply.github.com"
