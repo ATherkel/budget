@@ -12,6 +12,7 @@ agent authority outside its boundary.
 3. For implementation work, read the relevant layer contract and domain
    documents, then the matching agent brief. For behavior-changing application
    work, also follow the [test-driven development workflow](agents/tdd.md).
+   All Python code must pass the [code quality gate](agents/code-quality.md).
 
 ## Normative Documents
 
@@ -42,6 +43,17 @@ primer is stale.
   written-down rule that was wrong until it was run. Open it by
   double-clicking; it needs no server and stores progress in the browser only.
   It loads its fonts from Google Fonts and falls back to system fonts offline.
+- [`primers/dimensional-gold-primer.html`](primers/dimensional-gold-primer.html)
+  — what shape Gold hands household facts to a dashboard, in fourteen modules
+  with worked examples: business processes and declared grain, the category
+  allocation fact, the three conformed dimensions and how immutable keys plus
+  a change log keep Type 1 history-safe, monthly balance snapshots,
+  semi-additive balances, the balance chain and coverage, the `refund` type,
+  and the split between the consumer and lineage interfaces. It closes with
+  what the original grilling on issue #6 got wrong or left open, and what the
+  owner decided once they read it. Open it by double-clicking; it needs no
+  server and stores progress in the browser only. It loads its fonts from
+  Google Fonts and falls back to system fonts offline.
 
 ## Vocabulary
 

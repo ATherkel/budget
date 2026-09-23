@@ -40,12 +40,23 @@ review stage after the behavior is green.
 After the behavior slices are complete, review the change and refactor in a
 separate stage. Refactoring must preserve behavior; keep the tests passing and
 do not add behavior without first returning to a red test. Run the relevant
-test suite after refactoring.
+test suite and the [code quality gate](code-quality.md) after refactoring.
 
 Tests should assert known behavior through public interfaces and use
 independent expected values. Avoid tests that mirror implementation, assert
 private details, or mock project-owned collaborators. Mock only system
 boundaries when needed.
+
+## Test data and environment
+
+Tests run against the test profile only: synthetic fixtures and an ephemeral
+database created and destroyed by the run. No test opens the production or
+development database, and no test reads `imports/`. Resolve the database
+location from configuration; never hard-code a path in a test or fixture.
+
+Real bank data never enters a fixture, a test name, or an assertion. When a
+real export exposes a bug, reproduce it with a synthetic record carrying the
+same shape.
 
 ## Exceptions
 
