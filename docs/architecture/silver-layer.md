@@ -210,13 +210,16 @@ ReviewItem(
 
 ## Downstream Requirements
 
-Gold relies on two guarantees that Silver provides under
+Gold relies on three guarantees that Silver provides under
 [ADR-009](../decisions/ADR-009-transaction-identity.md):
 
 - a stable canonical identity for each transaction, from which Gold derives a
   `transaction_id` that survives rebuilds;
 - a deterministic order of each account's transactions, including those
-  sharing a transaction date, so Gold can evaluate the balance chain.
+  sharing a transaction date, so Gold can evaluate the balance chain;
+- the source's category labels as trimmed Silver provenance (`bank_category`
+  and `bank_subcategory`), which Gold rules may test; Bronze preserves the
+  original labels ([`classification.md`](classification.md)).
 
 ## Responsibilities
 

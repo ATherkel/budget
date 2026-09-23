@@ -1,0 +1,1468 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Classification and Transfers Primer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,500;0,600;0,700;1,500&display=swap">
+<style>
+  :root{
+    --paper:#F5F7F9;
+    --card:#FFFFFF;
+    --sunk:#ECEFF3;
+    --ink:#161A20;
+    --ink-2:#39424F;
+    --muted:#69737F;
+    --rule:#DCE1E7;
+    --rule-2:#C6CDD6;
+    --accent:#0B6B6B;
+    --accent-soft:#E2EFEE;
+    --ok:#2C7A54;
+    --ok-soft:#E3F1E9;
+    --bad:#AB362A;
+    --bad-soft:#F8E6E3;
+    --warn:#8E6010;
+    --warn-soft:#F8EEDC;
+    --shadow:0 1px 2px rgba(22,26,32,.05), 0 8px 24px -16px rgba(22,26,32,.28);
+    --ff-serif:"IBM Plex Serif", Georgia, "Times New Roman", serif;
+    --ff-sans:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --ff-mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#111419;
+      --card:#181C23;
+      --sunk:#1F242C;
+      --ink:#E7EBF1;
+      --ink-2:#BFC7D2;
+      --muted:#8E99A7;
+      --rule:#2A3039;
+      --rule-2:#3B434E;
+      --accent:#54B5AE;
+      --accent-soft:#12302F;
+      --ok:#62BE8C;
+      --ok-soft:#142A20;
+      --bad:#E48173;
+      --bad-soft:#331C19;
+      --warn:#D7A445;
+      --warn-soft:#2E2617;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#111419;
+    --card:#181C23;
+    --sunk:#1F242C;
+    --ink:#E7EBF1;
+    --ink-2:#BFC7D2;
+    --muted:#8E99A7;
+    --rule:#2A3039;
+    --rule-2:#3B434E;
+    --accent:#54B5AE;
+    --accent-soft:#12302F;
+    --ok:#62BE8C;
+    --ok-soft:#142A20;
+    --bad:#E48173;
+    --bad-soft:#331C19;
+    --warn:#D7A445;
+    --warn-soft:#2E2617;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+    color-scheme: dark;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--ff-sans);
+    font-size:16px;
+    line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- progress bar ---------- */
+  .topbar{
+    position:sticky;
+    top:env(safe-area-inset-top, 0px);
+    z-index:40;
+    background:color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--rule);
+  }
+  .topbar-in{
+    max-width:52rem;margin:0 auto;
+    padding:.6rem 1rem;
+    display:flex;align-items:center;gap:.85rem;
+  }
+  .topbar-title{
+    font-family:var(--ff-serif);font-weight:600;font-size:.94rem;
+    letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .track{flex:1;height:5px;border-radius:99px;background:var(--rule);overflow:hidden;min-width:60px}
+  .track > i{display:block;height:100%;width:0%;background:var(--accent);border-radius:99px;transition:width .35s cubic-bezier(.4,0,.2,1)}
+  .tally{
+    font-family:var(--ff-mono);font-size:.76rem;font-variant-numeric:tabular-nums;
+    color:var(--muted);white-space:nowrap;
+  }
+
+  /* ---------- page frame ---------- */
+  .wrap{max-width:52rem;margin:0 auto;padding-inline:1rem;padding-block:2.4rem 5rem}
+
+  .eyebrow{
+    font-family:var(--ff-mono);font-size:.72rem;letter-spacing:.11em;text-transform:uppercase;
+    color:var(--accent);font-weight:500;margin:0 0 .7rem;
+  }
+  h1{
+    font-family:var(--ff-serif);font-weight:700;font-size:clamp(1.9rem,6vw,2.7rem);
+    line-height:1.12;letter-spacing:-.022em;margin:0 0 .8rem;text-wrap:balance;
+  }
+  .standfirst{
+    font-size:1.06rem;color:var(--ink-2);max-width:40rem;margin:0 0 1.5rem;
+  }
+  .standfirst strong{color:var(--ink);font-weight:600}
+
+  .callout{
+    background:var(--card);border:1px solid var(--rule);border-left:3px solid var(--accent);
+    border-radius:0 10px 10px 0;padding:1rem 1.15rem;margin:1.5rem 0;box-shadow:var(--shadow);
+  }
+  .callout p{margin:0}
+  .callout p + p{margin-top:.7rem}
+  .callout-h{
+    font-family:var(--ff-mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--accent);font-weight:600;margin:0 0 .5rem;
+  }
+
+  /* ---------- contents ---------- */
+  .toc{margin:2.2rem 0 3rem;border-top:1px solid var(--rule);padding-top:1.2rem}
+  .toc-h{
+    font-family:var(--ff-mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:0 0 .85rem;
+  }
+  .toc-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:.3rem}
+  .toc-item{
+    display:flex;align-items:baseline;gap:.6rem;
+    padding:.4rem .55rem;border-radius:7px;text-decoration:none;color:var(--ink-2);
+    font-size:.88rem;line-height:1.35;border:1px solid transparent;
+  }
+  .toc-item:hover{background:var(--sunk);color:var(--ink)}
+  .toc-item .n{
+    font-family:var(--ff-mono);font-size:.72rem;color:var(--muted);
+    font-variant-numeric:tabular-nums;flex:none;
+  }
+  .toc-item.done{color:var(--muted)}
+  .toc-item.done .n{color:var(--ok)}
+  .toc-item.done .t{text-decoration:line-through;text-decoration-color:var(--rule-2)}
+
+  /* ---------- modules ---------- */
+  .mod{
+    background:var(--card);border:1px solid var(--rule);border-radius:12px;
+    padding:1.5rem 1.35rem 1.1rem;margin:0 0 1.15rem;
+    box-shadow:var(--shadow);
+    scroll-margin-top:5rem;
+    border-left:3px solid var(--rule-2);
+    transition:border-left-color .3s ease;
+  }
+  .mod.done{border-left-color:var(--ok)}
+  .mod-head{display:flex;gap:.9rem;align-items:baseline;margin-bottom:.15rem}
+  .mod-n{
+    font-family:var(--ff-mono);font-size:.78rem;font-weight:600;color:var(--accent);
+    font-variant-numeric:tabular-nums;flex:none;padding-top:.28rem;
+  }
+  .mod.done .mod-n{color:var(--ok)}
+  .mod h2{
+    font-family:var(--ff-serif);font-weight:600;font-size:1.3rem;line-height:1.25;
+    letter-spacing:-.015em;margin:0;text-wrap:balance;
+  }
+  .goal{
+    font-size:.86rem;color:var(--muted);font-style:italic;font-family:var(--ff-serif);
+    margin:.45rem 0 1.1rem;padding-left:calc(.78rem + .9rem + 1ch);
+  }
+  .mod-body > *:first-child{margin-top:0}
+  .mod-body p{margin:0 0 .9rem;max-width:42rem}
+  .mod-body h3{
+    font-family:var(--ff-sans);font-size:.8rem;font-weight:600;letter-spacing:.04em;
+    text-transform:uppercase;color:var(--muted);margin:1.6rem 0 .6rem;
+  }
+  .mod-body ul,.mod-body ol{margin:0 0 .9rem;padding-left:1.15rem;max-width:42rem}
+  .mod-body li{margin:0 0 .4rem}
+  .mod-body li::marker{color:var(--muted)}
+  code{
+    font-family:var(--ff-mono);font-size:.855em;
+    background:var(--sunk);padding:.1em .34em;border-radius:4px;
+    border:1px solid var(--rule);
+  }
+  b,strong{font-weight:600;color:var(--ink)}
+  em{font-style:italic}
+
+  /* ---------- ledger tables ---------- */
+  .scroller{overflow-x:auto;margin:0 0 1rem;border:1px solid var(--rule);border-radius:9px;background:var(--sunk)}
+  table.ledger{
+    border-collapse:collapse;width:100%;min-width:30rem;
+    font-family:var(--ff-mono);font-size:.795rem;font-variant-numeric:tabular-nums;
+  }
+  table.ledger caption{
+    caption-side:top;text-align:left;padding:.6rem .8rem .45rem;
+    font-family:var(--ff-sans);font-size:.78rem;color:var(--muted);font-weight:500;
+    border-bottom:1px solid var(--rule);
+  }
+  table.ledger th{
+    text-align:left;font-weight:600;color:var(--muted);font-size:.72rem;
+    letter-spacing:.04em;text-transform:uppercase;padding:.5rem .7rem;
+    border-bottom:1px solid var(--rule-2);white-space:nowrap;
+  }
+  table.ledger td{padding:.38rem .7rem;border-bottom:1px solid var(--rule);white-space:nowrap;color:var(--ink-2)}
+  table.ledger tbody tr:last-child td{border-bottom:0}
+  table.ledger td.num{text-align:right}
+  table.ledger .note{
+    font-family:var(--ff-sans);font-size:.74rem;white-space:normal;color:var(--muted);
+  }
+  tr.hit td{background:var(--bad-soft)}
+  tr.hit td.num,tr.hit td{color:var(--ink)}
+  tr.new td{background:var(--ok-soft)}
+  .chk{color:var(--ok);font-weight:600}
+  .xmk{color:var(--bad);font-weight:600}
+
+  /* wide tables (comparisons) */
+  table.grid{
+    border-collapse:collapse;width:100%;min-width:34rem;
+    font-size:.84rem;font-family:var(--ff-sans);
+  }
+  table.grid th{
+    text-align:left;font-weight:600;color:var(--muted);font-size:.71rem;letter-spacing:.05em;
+    text-transform:uppercase;padding:.55rem .75rem;border-bottom:1px solid var(--rule-2);
+    vertical-align:bottom;
+  }
+  table.grid td{padding:.55rem .75rem;border-bottom:1px solid var(--rule);vertical-align:top;color:var(--ink-2);line-height:1.5}
+  table.grid tbody tr:last-child td{border-bottom:0}
+  table.grid td:first-child{color:var(--ink);font-weight:500;white-space:nowrap}
+
+  /* ---------- timeline figure ---------- */
+  figure.fig{margin:0 0 1.1rem;padding:1rem .9rem .8rem;background:var(--sunk);border:1px solid var(--rule);border-radius:9px}
+  figure.fig figcaption{
+    font-family:var(--ff-sans);font-size:.76rem;color:var(--muted);margin-top:.75rem;line-height:1.5;
+  }
+  .tl{display:grid;gap:.4rem}
+  .tl-row{display:grid;grid-template-columns:4.6rem 1fr;gap:.55rem;align-items:center}
+  .tl-lab{font-family:var(--ff-mono);font-size:.72rem;color:var(--muted);text-align:right}
+  .tl-bar{position:relative;height:1.55rem;background:var(--card);border:1px solid var(--rule);border-radius:5px;overflow:hidden}
+  .tl-bar > span{
+    position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;
+    font-family:var(--ff-mono);font-size:.68rem;color:#fff;border-radius:4px;overflow:hidden;
+  }
+  .tl-a > span{background:var(--accent)}
+  .tl-b > span{background:#6A5BA8}
+  :root[data-theme="dark"] .tl-b > span{background:#8D7DD0;color:#0E1014}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tl-b > span{background:#8D7DD0;color:#0E1014}}
+  :root[data-theme="dark"] .tl-a > span{color:#07100F}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tl-a > span{color:#07100F}}
+  .tl-ov{
+    position:absolute;top:0;bottom:0;background:repeating-linear-gradient(45deg,transparent,transparent 4px,var(--warn) 4px,var(--warn) 5px);
+    opacity:.85;
+  }
+  .tl-scale{display:grid;grid-template-columns:4.6rem 1fr;gap:.55rem;margin-top:.15rem}
+  .tl-ticks{display:flex;justify-content:space-between;font-family:var(--ff-mono);font-size:.66rem;color:var(--muted)}
+
+  /* ---------- claim cards ---------- */
+  .claims{display:grid;gap:.6rem;margin:0 0 1rem}
+  .claim{
+    border:1px solid var(--rule);border-radius:9px;background:var(--sunk);
+    padding:.8rem .9rem;
+  }
+  .claim-h{display:flex;align-items:baseline;gap:.55rem;margin-bottom:.45rem;flex-wrap:wrap}
+  .claim-id{
+    font-family:var(--ff-mono);font-size:.72rem;font-weight:600;color:#fff;background:var(--accent);
+    padding:.06rem .4rem;border-radius:4px;flex:none;
+  }
+  :root[data-theme="dark"] .claim-id{color:#07100F}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .claim-id{color:#07100F}}
+  .claim-t{font-weight:600;font-size:.94rem;color:var(--ink);line-height:1.3}
+  .claim dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:.2rem .7rem;font-size:.87rem}
+  .claim dt{
+    font-family:var(--ff-mono);font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted);padding-top:.28rem;white-space:nowrap;
+  }
+  .claim dd{margin:0;color:var(--ink-2);line-height:1.52}
+  .claim dd.fix{color:var(--ink)}
+  @media (max-width:30rem){
+    .claim dl{grid-template-columns:1fr;gap:0}
+    .claim dt{padding-top:.5rem}
+  }
+
+  /* ---------- open-issue cards ---------- */
+  .issue{border:1px solid var(--rule);border-radius:9px;padding:.8rem .9rem;margin:0 0 .6rem;background:var(--sunk)}
+  .issue.high{border-left:3px solid var(--bad)}
+  .issue.mid{border-left:3px solid var(--warn)}
+  .issue.low{border-left:3px solid var(--rule-2)}
+  .issue.done{border-left:3px solid var(--ok)}
+  .issue.done .issue-t{color:var(--ink-2)}
+  .issue .fixed{font-size:.84rem;color:var(--ink)}
+  .issue .fixed b{color:var(--ok)}
+  .issue-h{display:flex;gap:.55rem;align-items:baseline;flex-wrap:wrap;margin-bottom:.35rem}
+  .issue-file{font-family:var(--ff-mono);font-size:.71rem;color:var(--muted);background:var(--card);padding:.06rem .38rem;border-radius:4px;border:1px solid var(--rule)}
+  .issue-t{font-weight:600;font-size:.92rem;color:var(--ink);line-height:1.3;flex:1 1 14rem}
+  .issue p{margin:0 0 .5rem;font-size:.88rem;color:var(--ink-2);max-width:42rem}
+  .issue p:last-child{margin-bottom:0}
+  .issue .cost{font-size:.84rem;color:var(--ink)}
+  .issue .cost b{color:var(--bad)}
+
+  .tag{
+    display:inline-block;font-family:var(--ff-mono);font-size:.66rem;letter-spacing:.05em;
+    text-transform:uppercase;padding:.08rem .4rem;border-radius:4px;font-weight:600;
+    vertical-align:.08em;
+  }
+  .tag.t-fix{background:var(--bad-soft);color:var(--bad)}
+  .tag.t-follow{background:var(--warn-soft);color:var(--warn)}
+  .tag.t-proto{background:var(--sunk);color:var(--muted);border:1px solid var(--rule)}
+  .tag.t-done{background:var(--ok-soft);color:var(--ok)}
+
+  /* ---------- steps ---------- */
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:0 0 1rem}
+  ol.steps > li{
+    counter-increment:s;position:relative;padding-left:2rem;margin-bottom:.65rem;
+    font-size:.92rem;max-width:42rem;
+  }
+  ol.steps > li::before{
+    content:counter(s);position:absolute;left:0;top:.08rem;
+    width:1.35rem;height:1.35rem;border-radius:50%;
+    background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);
+    font-family:var(--ff-mono);font-size:.7rem;font-weight:600;
+    display:flex;align-items:center;justify-content:center;
+  }
+
+  .qs{list-style:none;padding:0;margin:0 0 1rem;counter-reset:q}
+  .qs li{
+    counter-increment:q;position:relative;padding:.55rem .8rem .55rem 2.4rem;
+    border-bottom:1px solid var(--rule);font-size:.93rem;color:var(--ink);
+  }
+  .qs li:last-child{border-bottom:0}
+  .qs li::before{
+    content:"Q" counter(q);position:absolute;left:.15rem;top:.62rem;
+    font-family:var(--ff-mono);font-size:.68rem;font-weight:600;color:var(--accent);
+  }
+
+  /* ---------- check-off footer ---------- */
+  .mod-foot{
+    margin-top:1.25rem;padding-top:.85rem;border-top:1px solid var(--rule);
+    display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;
+  }
+  .checkoff{
+    display:inline-flex;align-items:center;gap:.55rem;cursor:pointer;
+    font-size:.86rem;font-weight:500;color:var(--muted);
+    background:none;border:1px solid var(--rule-2);border-radius:99px;
+    padding:.32rem .8rem .32rem .42rem;
+    font-family:var(--ff-sans);
+    transition:color .18s ease,border-color .18s ease,background .18s ease;
+  }
+  .checkoff:hover{border-color:var(--accent);color:var(--ink)}
+  .checkoff:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .box{
+    width:1.15rem;height:1.15rem;border-radius:5px;border:1.5px solid var(--rule-2);
+    background:var(--card);flex:none;display:flex;align-items:center;justify-content:center;
+    transition:background .18s ease,border-color .18s ease;
+  }
+  .box svg{width:.75rem;height:.75rem;opacity:0;transition:opacity .18s ease}
+  .checkoff[aria-pressed="true"]{color:var(--ok);border-color:var(--ok)}
+  .checkoff[aria-pressed="true"] .box{background:var(--ok);border-color:var(--ok)}
+  .checkoff[aria-pressed="true"] .box svg{opacity:1}
+  .box svg path{stroke:#fff;stroke-width:2.6;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---------- closing ---------- */
+  .verdict{
+    background:var(--accent-soft);border:1px solid var(--accent);border-radius:12px;
+    padding:1.3rem 1.25rem;margin:1.15rem 0;
+  }
+  .verdict h3{color:var(--accent);margin-top:0}
+  .verdict p{max-width:42rem}
+  .verdict p:last-child{margin-bottom:0}
+
+  .footer{
+    margin-top:2.5rem;padding-top:1.2rem;border-top:1px solid var(--rule);
+    font-size:.8rem;color:var(--muted);display:flex;justify-content:space-between;
+    gap:1rem;flex-wrap:wrap;align-items:center;
+  }
+  .reset{
+    background:none;border:1px solid var(--rule);border-radius:7px;color:var(--muted);
+    font-family:var(--ff-sans);font-size:.78rem;padding:.25rem .6rem;cursor:pointer;
+  }
+  .reset:hover{border-color:var(--bad);color:var(--bad)}
+  .reset:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:2px}
+
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{transition-duration:.01ms !important;animation-duration:.01ms !important}
+  }
+</style>
+
+<div class="topbar">
+  <div class="topbar-in">
+    <span class="topbar-title">Classification &amp; Transfers</span>
+    <span class="track"><i id="bar"></i></span>
+    <span class="tally" id="tally">0 / 13</span>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <p class="eyebrow">Issue #7 + PR #20 · ATherkel/budget</p>
+  <h1>Is that 4,000 kr income, or just your own money moving?</h1>
+  <p class="standfirst">
+    Issue #7 and PR #20 decide how every transaction gets its household meaning — a category, a
+    transfer, or an honest <code>unknown</code>. This page walks through it in thirteen short
+    modules, each with a worked example in kroner.
+    <strong>Tick a module off once you can explain it to someone else.</strong>
+    Your progress is saved.
+  </p>
+
+  <div class="callout">
+    <p class="callout-h">About this file</p>
+    <p>
+      This is a <strong>primer, not a contract.</strong> It explains what
+      <code>docs/architecture/classification.md</code>, <code>ADR-011</code>, <code>ADR-012</code>
+      and the Gold contract decide. Where they disagree with this page, they win.
+    </p>
+    <p>
+      Its companion, <code>overlapping-exports-primer.html</code>, covers <em>which rows are the
+      same transaction</em>; this one covers <em>what each transaction means</em>.
+    </p>
+  </div>
+
+  <div class="callout">
+    <p class="callout-h">The short answer</p>
+    <p>
+      ADR-011 and ADR-012 are <strong>Accepted</strong>. You need <strong>five ideas</strong> —
+      modules 02, 03, 05, 06 and 07 — and module 13 lists the <strong>five choices</strong> that
+      were confirmed. Everything in between is what happens at the edges: competing legs, missing
+      partners, rulings you make by hand, and what lands in front of you after a build.
+    </p>
+    <p>
+      Budget about 25 minutes. If you only have 10, read 02, 03, 05, 07 and 13.
+    </p>
+  </div>
+
+  <nav class="toc">
+    <p class="toc-h">Contents</p>
+    <div class="toc-list" id="toc"></div>
+  </nav>
+
+  <!-- ============ 01 ============ -->
+  <section class="mod" id="m1" data-key="m1">
+    <div class="mod-head">
+      <span class="mod-n">01</span>
+      <h2>The one question behind all of it</h2>
+    </div>
+    <p class="goal">After this: you can state what issue #7 exists to decide, in one sentence.</p>
+    <div class="mod-body">
+      <p>
+        The import side hands you clean, de-duplicated rows: an account, a date, an amount, some
+        text. Every one of them still needs a <strong>household meaning</strong> —
+        <code>income</code>, <code>expense</code>, <code>refund</code>, <code>transfer</code>,
+        <code>adjustment</code> or <code>unknown</code>, plus a category where the type needs one.
+      </p>
+
+      <p>Two of those meanings are the ones you must not confuse.</p>
+
+      <div class="scroller">
+        <table class="ledger">
+          <caption>One row, two readings. <code>joint-current</code>, 1 February 2026.</caption>
+          <thead><tr><th>Date</th><th>Text</th><th class="num">Amount</th><th>Read as</th><th class="note">What your year looks like</th></tr></thead>
+          <tbody>
+            <tr><td>2026-02-01</td><td>FROM BO</td><td class="num">+4,000.00</td><td><code>income</code> · <code>contribution</code></td><td class="note">Household income is 48,000 kr a year higher, and it covers the joint spending it funds.</td></tr>
+            <tr class="hit"><td>2026-02-01</td><td>FROM BO</td><td class="num">+4,000.00</td><td><code>transfer</code></td><td class="note">Income never sees it. The spending it funds is still an expense, so the household looks 48,000 kr a year worse at saving.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Four different things could supply that meaning: <strong>a rule you wrote</strong>,
+        <strong>a ruling you made by hand</strong>, <strong>an opposite leg found on another one of
+        your accounts</strong>, and <strong>the bank&rsquo;s own category label</strong>. They
+        disagree regularly. Issue #7 puts them in an order, and says what happens when even that is
+        not enough.
+      </p>
+
+      <div class="callout">
+        <p class="callout-h">The one sentence</p>
+        <p>
+          <strong>For each transaction, which household meaning does the evidence actually
+          support — and what happens when it supports none?</strong>
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 02 ============ -->
+  <section class="mod" id="m2" data-key="m2">
+    <div class="mod-head">
+      <span class="mod-n">02</span>
+      <h2>Why a wrong transfer is the dangerous kind of wrong</h2>
+    </div>
+    <p class="goal">After this: you can say why the whole policy prefers a visible gap to a good guess.</p>
+    <div class="mod-body">
+      <p>
+        Most classification mistakes are loud. File a supermarket run in the wrong category and the
+        category looks wrong, so you notice. One mistake is silent.
+      </p>
+
+      <div class="scroller">
+        <table class="ledger">
+          <caption>Two unrelated transactions, two days apart, same amount.</caption>
+          <thead><tr><th>Account</th><th>Date</th><th>Text</th><th class="num">Amount</th></tr></thead>
+          <tbody>
+            <tr><td>joint-current</td><td>2026-03-10</td><td>IKEA 551</td><td class="num">&minus;250.00</td></tr>
+            <tr><td>anna-current</td><td>2026-03-12</td><td>MOBILEPAY CARL</td><td class="num">+250.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        A tempting reading: the amounts cancel, they are close in time, so this is 250 kr moving
+        between your own accounts. Call it a transfer and both rows leave the income and expense
+        totals entirely.
+      </p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th></th><th>Paired as a transfer</th><th>Left as two transactions</th></tr></thead>
+          <tbody>
+            <tr><td>March expenses</td><td>250.00 too low</td><td>correct</td></tr>
+            <tr><td>March income</td><td>250.00 too low</td><td>correct</td></tr>
+            <tr><td>March saving</td><td><b>exactly right</b></td><td>exactly right</td></tr>
+            <tr><td>Balances</td><td>unchanged</td><td>unchanged</td></tr>
+            <tr><td>What the dashboard shows</td><td><span class="xmk">nothing at all</span></td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        That is the trap. A false transfer hides one income <em>and</em> one expense of the same
+        size, so the saving figure — the number you would use to catch the error — comes out
+        perfect. Nothing anywhere says a word.
+      </p>
+
+      <p>
+        The opposite failure is much milder. If Gold refuses to guess, each row is classified by its
+        own rule, or stays <code>unknown</code>. An <code>unknown</code> counts toward unclassified
+        money and raises a review item, so it turns up in front of you with the account, date,
+        amount and text. That is issue #4&rsquo;s unclassified total doing its job: unexplained
+        money is a visible claim, not an artefact.
+      </p>
+
+      <div class="callout">
+        <p class="callout-h">The principle, and its price</p>
+        <p>
+          <strong>A visible unknown beats a silent guess.</strong> When the evidence is weak,
+          conflicting or ambiguous, the transaction stays <code>unknown</code>.
+        </p>
+        <p>
+          The price is a longer review list. Modules 06 to 09 are mostly about keeping that list
+          short enough to actually read — and the two rows above are not even candidates for
+          pairing, so they cost you nothing at all (module 07).
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 03 ============ -->
+  <section class="mod" id="m3" data-key="m3">
+    <div class="mod-head">
+      <span class="mod-n">03</span>
+      <h2>What is inside the boundary — and what Bo&rsquo;s money is</h2>
+    </div>
+    <p class="goal">After this: you can say which accounts can hold a transfer, and what that costs you elsewhere.</p>
+    <div class="mod-body">
+      <p>
+        A transfer is money moving <em>inside</em> the reporting boundary, so the boundary settles
+        the question in module 01. Issue #6 defined it as every account the household or one of its
+        members owns. Issue #7 narrows that to <strong>the accounts you actually import</strong>.
+      </p>
+
+      <p>
+        Bo is a household member. He sends 4,000.00 from his own bank to <code>joint-current</code>
+        every month, and his account is never imported. Under #7 his account is outside the
+        boundary, so that 4,000.00 is <code>income</code> in a <code>contribution</code> category
+        (scenario 15).
+      </p>
+
+      <p>
+        In the real exports this is the common case, not the corner case: most rows the bank labels
+        as transfers have no counterpart among the imported accounts at all.
+      </p>
+
+      <h3>Why not keep his account inside the boundary?</h3>
+      <p>
+        Because then his contributions would never count as household income, while the joint
+        spending they fund would still count as expenses. The household would look far worse at
+        saving than it is — module 02&rsquo;s silent error, running every month. It would also leave
+        an account inside the boundary with no data and no coverage flag, which is invisible.
+      </p>
+
+      <h3>Two consequences to be willing to live with</h3>
+      <ul>
+        <li>
+          <strong>Money you send to a savings account you don&rsquo;t import is an expense.</strong>
+          Scenario 14: 1,000.00 <code>TO SAVINGS</code> with no counterpart anywhere. You settle it
+          with a <code>classify</code> decision into a category such as
+          <code>external-saving</code>, and it reads as spending. Whether the <em>savings</em>
+          measure should treat it differently is left to issue #12.
+        </li>
+        <li>
+          <strong>Importing an account later rewrites history.</strong> Scenario 19: import
+          Bo&rsquo;s account and his outgoing leg now matches the 4,000.00 on the same day. The pair
+          beats the contribution rule, the money stops being income, and every report restates.
+          Before Bo&rsquo;s managed period starts, <code>FROM BO</code> stays a contribution.
+        </li>
+      </ul>
+
+      <div class="callout">
+        <p class="callout-h">Check this one</p>
+        <p>
+          This sharpens a definition #6 had already proposed, and it is the decision that moves the
+          most money in your real data. If you disagree with it, most of modules 07 to 09 changes
+          shape.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 04 ============ -->
+  <section class="mod" id="m4" data-key="m4">
+    <div class="mod-head">
+      <span class="mod-n">04</span>
+      <h2>Your taxonomy, and what the bank&rsquo;s labels are worth</h2>
+    </div>
+    <p class="goal">After this: you know what you have to write down yourself, and why the free labels are not used.</p>
+    <div class="mod-body">
+      <p>
+        The platform ships <strong>no categories at all</strong>. You define the taxonomy in
+        configuration, and it has exactly two levels: category group → category. Only a category is
+        ever assigned to a transaction.
+      </p>
+
+      <ul>
+        <li>
+          Every category has a <strong>direction</strong>, <code>income</code> or
+          <code>expense</code>, and <strong>all categories in a group share it</strong> — so a group
+          rollup can never add salary to rent.
+        </li>
+        <li>
+          Identifiers are yours and durable, such as <code>groceries</code>. Renaming one is a
+          display change and nothing is reclassified.
+        </li>
+        <li>
+          <code>transfer</code>, <code>adjustment</code> and <code>unknown</code> are transaction
+          <em>types</em>, not categories. You never file something under "transfer".
+        </li>
+        <li>
+          You also need categories for money that <em>crosses</em> the boundary without being
+          ordinary pay or spending: a <code>contribution</code> from Bo, an
+          <code>external-saving</code> for savings you do not import (module 03). Those can never be
+          transfers.
+        </li>
+      </ul>
+
+      <h3>The bank&rsquo;s own labels</h3>
+      <p>
+        Every Danske row carries a two-level bank label, free of charge. Issue #7 keeps them as
+        <strong>Silver provenance only</strong>: a rule may test them like any other source text,
+        and nothing else uses them. They are never copied into Gold, and there is no fallback that
+        turns a bank label into a category when no rule matches.
+      </p>
+
+      <p>The reason is that they do not mean what you mean:</p>
+      <ul>
+        <li>the bank files <strong>transfers</strong> under its own income and expense groups;</li>
+        <li>it files <strong>returned goods and reimbursed outlays</strong> under income;</li>
+        <li>roughly <strong>one row in ten</strong> carries no bank label at all.</li>
+      </ul>
+
+      <p>
+        As a fallback they would misfile transfers and refunds without anyone noticing — module
+        02&rsquo;s failure again. As a separate Gold column they would put a bank-specific field
+        into the consumer contract that a second bank would break.
+      </p>
+
+      <p>
+        You lose nothing by it. "Bank label <code>Groceries</code> → my <code>groceries</code>" is
+        an ordinary rule; you give it a low priority so that anything more specific wins
+        (scenario 3, module 06). And the review workflow shows you the bank label through lineage
+        while you are deciding.
+      </p>
+
+      <p>
+        This also settles an open question the Gold contract had been carrying — "retain bank
+        categories as a Gold attribution?" — and that entry is removed.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 05 ============ -->
+  <section class="mod" id="m5" data-key="m5">
+    <div class="mod-head">
+      <span class="mod-n">05</span>
+      <h2>A rule gives a category; the sign gives the type</h2>
+    </div>
+    <p class="goal">After this: you can predict what a rule does to a refund without looking anything up.</p>
+    <div class="mod-body">
+      <p>
+        You write "text contains <code>NETTO</code> → <code>groceries</code>". That rule meets two
+        very different rows: &minus;640.00 when you shopped, and +120.00 when you took something
+        back.
+      </p>
+
+      <p>
+        If rules named the transaction type as well as the category, every expense rule would need a
+        twin for refunds — and the first twin you forget quietly misfiles a return as income. So a
+        rule assigns only the <strong>category</strong>, and the type follows from the
+        category&rsquo;s direction and the sign of the amount:
+      </p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Category direction</th><th>Amount</th><th>Type</th></tr></thead>
+          <tbody>
+            <tr><td><code>expense</code></td><td>negative</td><td><code>expense</code></td></tr>
+            <tr><td><code>expense</code></td><td>positive</td><td><code>refund</code></td></tr>
+            <tr><td><code>income</code></td><td>positive</td><td><code>income</code></td></tr>
+            <tr><td><code>income</code></td><td>negative</td><td><code>refund</code></td></tr>
+            <tr class="hit"><td>either</td><td>zero</td><td>none: <code>sign-mismatch</code>, the transaction stays <code>unknown</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="scroller">
+        <table class="ledger">
+          <caption>Scenarios 1, 2 and 6 — one rule each, no refund rules anywhere.</caption>
+          <thead><tr><th>Account</th><th>Date</th><th>Text</th><th class="num">Amount</th><th>Result</th><th class="note">Effect</th></tr></thead>
+          <tbody>
+            <tr><td>joint-current</td><td>2026-02-02</td><td>NETTO 0412</td><td class="num">&minus;640.00</td><td><code>expense</code> · <code>groceries</code></td><td class="note">rule <code>r-netto</code></td></tr>
+            <tr><td>joint-current</td><td>2026-02-12</td><td>NETTO 0412</td><td class="num">+120.00</td><td><code>refund</code> · <code>groceries</code></td><td class="note">same rule. With the row above, groceries net to <b>520.00</b>.</td></tr>
+            <tr><td>joint-savings</td><td>2026-03-31</td><td>INTEREST ADJ</td><td class="num">&minus;3.50</td><td><code>refund</code> · <code>interest</code></td><td class="note">an income category going backwards: income falls by 3.50</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        So a reimbursed outlay — a friend paying back their share of dinner — nets against
+        eating-out by itself, and returned interest nets against interest. That is exactly issue
+        #4&rsquo;s refund semantics.
+      </p>
+
+      <h3>The other two things a rule can assign</h3>
+      <ul>
+        <li>
+          <strong>A transfer claim</strong>: "this is one leg of a transfer." The claim on its own
+          never makes a transfer — the leg still has to be paired (modules 07 and 09).
+        </li>
+        <li>
+          <strong>An adjustment, with a reason.</strong> The reason becomes the explanation the
+          contract requires for an adjustment.
+        </li>
+      </ul>
+      <p>A rule never assigns <code>unknown</code>. Not matching anything does that.</p>
+
+      <h3>What a rule may look at</h3>
+      <ul>
+        <li><code>account_id</code>;</li>
+        <li>the description: contains, starts with, or a regular expression, always case-insensitive;</li>
+        <li>the amount: its sign, or an inclusive range;</li>
+        <li>an inclusive date range, for a rule that only applies to a period — an old landlord&rsquo;s rent, say;</li>
+        <li>the bank&rsquo;s category labels.</li>
+      </ul>
+      <p>
+        And nothing else. A rule never looks at another transaction. Relating two rows to each other
+        is transfer matching&rsquo;s job alone, which is what keeps every rule explainable on its
+        own.
+      </p>
+
+      <div class="callout">
+        <p class="callout-h">Check this one</p>
+        <p>
+          Automatic refunds are the surprising half of this module: a positive amount in an expense
+          category becomes a refund whether or not you were thinking about returns when you wrote
+          the rule.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 06 ============ -->
+  <section class="mod" id="m6" data-key="m6">
+    <div class="mod-head">
+      <span class="mod-n">06</span>
+      <h2>Priority, not file order</h2>
+    </div>
+    <p class="goal">After this: you can settle a rule collision, and you know why it is loud by default.</p>
+    <div class="mod-body">
+      <p>
+        <code>MOBILEPAY NETTO</code> for &minus;85.00 matches two of your rules: "starts with
+        <code>MOBILEPAY</code> → <code>eating-out</code>" and "contains <code>NETTO</code> →
+        <code>groceries</code>". Something has to give.
+      </p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Option</th><th>Why not</th></tr></thead>
+          <tbody>
+            <tr><td>First rule in the file wins</td><td>A broad rule placed early silently shadows every narrower rule below it, so a collision can never surface. Module 02 rules that out.</td></tr>
+            <tr><td>Most specific rule wins</td><td>"More specific" between two text patterns is hard to define and harder to explain when it surprises you.</td></tr>
+            <tr><td><b>Explicit integer priority</b></td><td><b>Chosen.</b> 0 by default. The highest-priority matching rules decide.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        If the highest-priority matches all say the same thing, that is the answer. If they
+        disagree, there is no rule result: the transaction is <code>unknown</code> with a
+        <code>rule-conflict</code> review item that names the rules (scenario 4). You then settle it
+        deliberately, one of two ways:
+      </p>
+
+      <ul>
+        <li>
+          <strong>Promote the specific rule.</strong> Add "contains <code>MOBILEPAY NETTO</code> →
+          <code>groceries</code>" at priority 10, and the conflict item disappears on the next
+          build (scenario 5).
+        </li>
+        <li>
+          <strong>Demote a fallback.</strong> The bank-label rule from module 04 sits at priority
+          &minus;10, so it only ever decides rows that nothing else claims (scenario 3).
+        </li>
+      </ul>
+
+      <div class="callout">
+        <p class="callout-h">Check this one</p>
+        <p>
+          This is a deliberate trade: overlapping rules <strong>conflict loudly</strong> until you
+          set a priority, and each conflict is a row you have to come back to. The alternative is a
+          broad rule quietly eating your narrow ones, which you would never see.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 07 ============ -->
+  <section class="mod" id="m7" data-key="m7">
+    <div class="mod-head">
+      <span class="mod-n">07</span>
+      <h2>What counts as proof of a transfer</h2>
+    </div>
+    <p class="goal">After this: you can look at two rows and say whether they are allowed to pair.</p>
+    <div class="mod-body">
+      <p>
+        The exports carry no identifier for the other account. All you have is the amount, the date
+        and the text — and a fixed transfer amount recurs month after month, so the amount alone is
+        never enough. Given module 02, the bar is set high.
+      </p>
+
+      <h3>Candidates</h3>
+      <p>Two booked transactions may pair only when <em>all</em> of these hold:</p>
+      <ul>
+        <li>they are on <strong>different Gold accounts</strong> — after module 03, that means both inside the boundary;</li>
+        <li>their <strong>amounts cancel exactly</strong>: one negative, the other its positive counterpart;</li>
+        <li>their transaction dates are <strong>at most 3 days apart</strong> — enough for Friday → Monday;</li>
+        <li><strong>neither is targeted by a manual decision</strong> (module 10);</li>
+        <li>at least one leg carries a <strong>transfer claim</strong> from a rule, <strong>even on the same day</strong>. One low-priority rule on the bank&rsquo;s transfer label covers the real ones.</li>
+      </ul>
+
+      <p>
+        Matching then runs in <strong>stages by date gap</strong> — 0 days, then 1, then 2, then
+        3 — so a same-day partner is always found before a looser one.
+      </p>
+
+      <div class="scroller">
+        <table class="ledger">
+          <caption>Scenarios 8, 9 and 10.</caption>
+          <thead><tr><th>#</th><th>The two rows</th><th>Result</th><th class="note">Why</th></tr></thead>
+          <tbody>
+            <tr class="new"><td>8</td><td>joint-current 2026-01-20 &minus;3,000.00 <code>TO SAVINGS</code><br>joint-savings 2026-01-20 +3,000.00 <code>FROM CURRENT</code></td><td><code>transfer</code> ×2</td><td class="note">basis <code>same_day</code>, with the claim from <code>r-savings-transfer</code>.</td></tr>
+            <tr class="new"><td>9</td><td>joint-current Fri 2026-01-30 &minus;5,000.00 <code>TO SAVINGS</code><br>joint-savings Mon 2026-02-02 +5,000.00 <code>FROM CURRENT</code></td><td><code>transfer</code> ×2</td><td class="note">basis <code>date_gap</code>, 3 days — allowed because a rule claims both texts as transfers.</td></tr>
+            <tr class="hit"><td>10</td><td>joint-current 2026-03-10 &minus;250.00 <code>IKEA 551</code><br>anna-current 2026-03-12 +250.00 <code>MOBILEPAY CARL</code></td><td>not even candidates</td><td class="note">No rule claims either leg as a transfer, so they would not pair even on the same day. Module 02&rsquo;s trap closes on the claim requirement.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        A transfer that costs a fee — 1,000.00 out, 995.00 in — is never a candidate either, because
+        the amounts do not cancel, and a <code>pair</code> decision does not apply to it. Each leg is
+        classified on its own until splits exist (issue #47).
+      </p>
+
+      <h3>Confidence is a name, not a number</h3>
+      <p>
+        A numeric confidence score with a threshold was rejected: it is hard to explain, hard to
+        audit, and with this little evidence any threshold would be arbitrary. Instead lineage
+        records the <strong>evidence basis</strong> by name — <code>same_day</code>,
+        <code>date_gap</code>, <code>repeated_legs</code>, <code>manual_pair</code> or
+        <code>one_sided</code> — so every pair can be defended in words.
+      </p>
+
+      <div class="callout">
+        <p class="callout-h">Check this one</p>
+        <p>
+          <strong>A pair beats a rule result.</strong> Seeing both legs in your own accounts is
+          stronger evidence than a text pattern, and without this order a broad rule — "anything the
+          bank calls other income → <code>contribution</code>" — would swallow the incoming leg of
+          every transfer. It can still surprise: the rule you wrote loses to a pair you did not
+          notice forming. Module 12 shows you those pairs.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 08 ============ -->
+  <section class="mod" id="m8" data-key="m8">
+    <div class="mod-head">
+      <span class="mod-n">08</span>
+      <h2>When two legs compete for one match</h2>
+    </div>
+    <p class="goal">After this: you can tell a harmless tie from one worth stopping for.</p>
+    <div class="mod-body">
+      <p>
+        Same amount, same day, more than one possible partner. Two situations look identical from a
+        distance, and only one of them is safe to resolve automatically.
+      </p>
+
+      <div class="scroller">
+        <table class="ledger">
+          <caption>Scenario 11 — interchangeable legs.</caption>
+          <thead><tr><th>Account</th><th>Date</th><th>Text</th><th class="num">Amount</th></tr></thead>
+          <tbody>
+            <tr><td>anna-current</td><td>2026-03-02</td><td>BUDGET JOINT</td><td class="num">&minus;2,000.00</td></tr>
+            <tr><td>anna-current</td><td>2026-03-02</td><td>BUDGET JOINT</td><td class="num">&minus;2,000.00</td></tr>
+            <tr><td>joint-current</td><td>2026-03-02</td><td>BUDGET FROM ANNA</td><td class="num">+2,000.00</td></tr>
+            <tr><td>joint-current</td><td>2026-03-02</td><td>BUDGET FROM ANNA</td><td class="num">+2,000.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Which outgoing leg pairs with which incoming leg changes <em>no total whatsoever</em>. These
+        are <strong>repeated transactions</strong> of one another — same account, date, amount and
+        text, the term issue #5 already defines — so Gold pairs them in account order and records
+        the basis <code>repeated_legs</code>. Any leftover leg stays available for a later stage.
+      </p>
+
+      <div class="scroller">
+        <table class="ledger">
+          <caption>Scenario 12 — a real ambiguity.</caption>
+          <thead><tr><th>Account</th><th>Date</th><th>Text</th><th class="num">Amount</th></tr></thead>
+          <tbody>
+            <tr class="hit"><td>joint-current</td><td>2026-03-05</td><td>TO SAVINGS</td><td class="num">&minus;1,500.00</td></tr>
+            <tr class="hit"><td>joint-current</td><td>2026-03-05</td><td>DENTIST 7</td><td class="num">&minus;1,500.00</td></tr>
+            <tr class="hit"><td>joint-savings</td><td>2026-03-05</td><td>FROM CURRENT</td><td class="num">+1,500.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Here the two outgoing legs are <em>not</em> interchangeable: pick the dentist and a real
+        1,500.00 medical bill vanishes from your expenses. So Gold pairs nothing. All three rows are
+        <code>unknown</code>, and the set raises <strong>one</strong>
+        <code>ambiguous-transfer</code> review item.
+      </p>
+
+      <p>
+        You settle it with a <code>pair</code> decision on the two savings legs. On the next build
+        the dentist row falls back to its own rule and becomes <code>expense</code> ·
+        <code>health</code>, and the item is gone.
+      </p>
+
+      <div class="callout">
+        <p class="callout-h">What Gold will never do</p>
+        <p>
+          Break a tie by nearest date, or by whichever leg it saw first. Both are guesses, and a
+          wrong guess here is silent.
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 09 ============ -->
+  <section class="mod" id="m9" data-key="m9">
+    <div class="mod-head">
+      <span class="mod-n">09</span>
+      <h2>The legs that never find a partner</h2>
+    </div>
+    <p class="goal">After this: you know the difference between "wait" and "decide", and what a month boundary does.</p>
+    <div class="mod-body">
+      <p>
+        A rule claims a row as a transfer leg and nothing pairs with it. Publishing it as a transfer
+        anyway would hide money leaving the boundary, so the leg is <code>unknown</code> with an
+        <code>unmatched-transfer</code> item — and the item tells you which kind of problem it is.
+      </p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Reason</th><th>Raised when</th><th>What you do</th></tr></thead>
+          <tbody>
+            <tr><td><code>counterpart-may-not-be-imported</code></td><td>Some other Gold account has no booked transaction on or after the leg&rsquo;s last candidate date. Scenario 13: &minus;800.00 <code>TO SAVINGS</code> on 29 April, and the newest <code>joint-savings</code> row is from 20 April.</td><td><b>Probably nothing.</b> The next savings export adds the +800.00 and the rebuild pairs them same-day. It is a hint, not a verdict — a genuinely quiet account triggers it too.</td></tr>
+            <tr><td><code>no-candidate</code></td><td>Otherwise. Scenario 14: &minus;1,000.00 <code>TO SAVINGS</code>, every other account has rows after the window, and none of them is +1,000.00.</td><td><b>Decide.</b> If the money went to a savings account you do not import, a <code>classify</code> decision into <code>external-saving</code> settles it for good.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>One-sided transfers</h3>
+      <p>
+        Sometimes the other leg can <em>never</em> be in Gold — a transfer into
+        <code>joint-savings</code> in December 2025, when that account&rsquo;s imported history
+        starts in January 2026 (scenario 16). That is a <code>one-sided-transfer</code>, and it
+        comes <strong>only</strong> from a manual decision naming the counterpart account.
+      </p>
+      <p>
+        It applies only when the transaction date falls <strong>outside</strong> that
+        account&rsquo;s managed period. Inside the managed period the other leg ought to exist, so
+        the decision does not apply: pair it, or fix the import.
+      </p>
+
+      <h3>Across a month boundary</h3>
+      <p>
+        A pair may span two months (scenario 9). Each leg stays in its own month for account
+        activity, household income and expenses change in neither month, and the household&rsquo;s
+        summed month-end balance is lower by the amount in flight. That last one is not an error —
+        the money really was in transit.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 10 ============ -->
+  <section class="mod" id="m10" data-key="m10">
+    <div class="mod-head">
+      <span class="mod-n">10</span>
+      <h2>The three times you rule by hand</h2>
+    </div>
+    <p class="goal">After this: you know every way to overrule the machine, and why none of them can drift.</p>
+    <div class="mod-body">
+      <p>
+        The word is <strong>manual decision</strong>, not "override". Issue #5 already put that term
+        in the glossary for a human ruling that settles an import problem, and #7 widens the same
+        term to cover classifying a transaction: <em>a recorded human ruling that classifies a
+        transaction, settles a review item, or voids an import run. It targets transactions by their
+        identity and never edits source data.</em>
+      </p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Kind</th><th>Targets</th><th>Result</th><th>Does not apply when</th></tr></thead>
+          <tbody>
+            <tr><td><code>classify</code></td><td>one transaction</td><td>a category, type derived as in module 05, or <code>adjustment</code></td><td>the target is missing, or the derived type cannot fit the sign</td></tr>
+            <tr><td><code>pair</code></td><td>two transactions</td><td>both <code>transfer</code>, sharing one group, with any date gap</td><td>a target is missing, the amounts do not cancel, or both are on one account</td></tr>
+            <tr><td><code>one-sided-transfer</code></td><td>one transaction plus a counterpart account</td><td><code>transfer</code> with no group (module 09)</td><td>the target is missing, or the date falls inside the counterpart&rsquo;s managed period</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>What a decision points at</h3>
+      <p>
+        A decision targets the <code>transaction_id</code> from issue #5 — the identity that survives
+        re-imports, overlapping exports and rebuilds by design. When the bank rewords a
+        transaction&rsquo;s text, Silver&rsquo;s <em>same transaction</em> ruling keeps the existing
+        identifier, so the decision keeps its target.
+      </p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Rejected target</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr><td>The Gold <code>account_sequence</code></td><td>It shifts the moment an earlier row arrives, so the decision lands on a different transaction.</td></tr>
+            <tr><td>The source row: file plus position</td><td>Differs between two exports of the same purchase.</td></tr>
+            <tr><td>A text pattern</td><td>That is just a rule, and rules already exist.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>The rules around them</h3>
+      <ul>
+        <li>Each decision has a durable <code>decision_id</code> and a short reason.</li>
+        <li>
+          <strong>A transaction carries at most one decision</strong>, and a <code>pair</code>
+          counts for both of its legs.
+        </li>
+        <li>
+          To undo a wrong automatic pair, <code>classify</code> either leg. There is no separate
+          "not a transfer" kind, because a decision on one leg already displaces the pair.
+        </li>
+        <li>
+          If the target disappears — the bank withdrew the transaction — the decision raises a
+          <code>decision-not-applicable</code> item and <strong>is never moved to a similar
+          transaction</strong> (scenario 17). That is the whole point of targeting an identity.
+        </li>
+        <li>
+          Nothing has a "resolved" flag. A decision removes the <em>cause</em>, and the review item
+          is simply gone on the next build.
+        </li>
+      </ul>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 11 ============ -->
+  <section class="mod" id="m11" data-key="m11">
+    <div class="mod-head">
+      <span class="mod-n">11</span>
+      <h2>Fail the build, or raise a review item</h2>
+    </div>
+    <p class="goal">After this: you can predict which of your mistakes stops everything and which waits for you.</p>
+    <div class="mod-body">
+      <p>
+        Two very different kinds of wrong. The split is <strong>where the problem is
+        visible</strong>.
+      </p>
+
+      <h3>Visible in the configuration alone → the build fails</h3>
+      <p>
+        Nothing is published, and the error lists every offending entry at once. You just edited the
+        file, so being told immediately is the kindest thing it can do. Examples: a rule or decision
+        naming a category that does not exist (scenario 18); duplicate identifiers; a group whose
+        categories disagree about direction; a rule with no outcome, or several; an unparseable
+        pattern; an adjustment or decision with no reason; two decisions on one transaction; a
+        one-sided transfer whose counterpart is not a registered account; deleting a category
+        something still references (T4).
+      </p>
+      <p>This mirrors issue #5&rsquo;s import rule: admit the whole thing, or none of it.</p>
+
+      <h3>Depends on the data → a review item</h3>
+      <p>
+        Nothing stops. The affected transaction gets whatever the evidence supports, often
+        <code>unknown</code>, and an item explains why. Items are derived afresh on every build, so an item exists exactly while
+        its cause does. Its identifier derives from the kind plus the identifiers involved, so the
+        same situation keeps the same item across rebuilds.
+      </p>
+
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Kind</th><th>Raised when</th><th>Settled by</th></tr></thead>
+          <tbody>
+            <tr><td><code>unclassified</code></td><td>no rule matched at all</td><td>a new rule, or a <code>classify</code> decision</td></tr>
+            <tr><td><code>rule-conflict</code></td><td>the highest-priority matching rules disagree (module 06)</td><td>a priority, a narrower rule, or a decision</td></tr>
+            <tr><td><code>sign-mismatch</code></td><td>the winning category&rsquo;s direction cannot fit the sign (module 05)</td><td>a narrower rule, or a decision</td></tr>
+            <tr><td><code>ambiguous-transfer</code></td><td>a candidate set is neither one pair nor repeated legs (module 08)</td><td>a <code>pair</code> or <code>classify</code> decision</td></tr>
+            <tr><td><code>unmatched-transfer</code></td><td>a transfer claim finds no pair (module 09)</td><td>the next import, a <code>pair</code>, <code>one-sided-transfer</code> or <code>classify</code> decision, or a rule fix</td></tr>
+            <tr><td><code>decision-not-applicable</code></td><td>a decision&rsquo;s target or conditions no longer hold (module 10)</td><td>editing or removing the decision</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        These six are Gold&rsquo;s classification items. Silver&rsquo;s import review items from
+        issue #5 stay a separate list.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 12 ============ -->
+  <section class="mod" id="m12" data-key="m12">
+    <div class="mod-head">
+      <span class="mod-n">12</span>
+      <h2>What lands in front of you after a build</h2>
+    </div>
+    <p class="goal">After this: you know what the review workflow owes you, and what it deliberately leaves alone.</p>
+    <div class="mod-body">
+      <p>Gold publishes the items through its privileged lineage interface. After each build you get:</p>
+
+      <ol class="steps">
+        <li>
+          <strong>A summary.</strong> Transactions by classification source; unclassified money in,
+          money out and count per account and month; open items by kind.
+        </li>
+        <li>
+          <strong>Every open item, with what you need to decide it.</strong> Account, transaction
+          date, amount, description, the bank&rsquo;s label, the rules or candidate legs involved,
+          and which decision kinds would settle it. You should not have to go looking in the
+          exports.
+        </li>
+        <li>
+          <strong>The pairs worth eyeballing.</strong> Every pair formed on a date gap, and every
+          pair where a leg&rsquo;s own rule says something other than "transfer". This is the net
+          under module 07: a claimed leg that paired with a coincidence shows up here, and a <code>classify</code>
+          decision on either leg undoes it.
+        </li>
+      </ol>
+
+      <p>
+        This output contains real amounts, so it goes to your terminal or a private report and
+        <strong>never to routine logs</strong>.
+      </p>
+
+      <h3>What it does not touch</h3>
+      <p>
+        Coverage and the provisional-period label are unaffected by any of this. Coverage is about
+        whether a <em>balance</em> can be trusted, and an unclassified amount does not make a
+        balance wrong. Classification completeness is already visible through the unclassified
+        total and the items — the contract requires that every <code>unknown</code> transaction has
+        an open item. Keeping the two measures apart keeps both honest.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 13 ============ -->
+  <section class="mod" id="m13" data-key="m13">
+    <div class="mod-head">
+      <span class="mod-n">13</span>
+      <h2>So — what is actually being asked of you?</h2>
+    </div>
+    <p class="goal">After this: you have a decision and a short list, not a feeling.</p>
+    <div class="mod-body">
+      <p>
+        PR #20 came out of an agent-run grilling session held while you were away, with the
+        instruction to take the recommended answer every time. After review (PR #46),
+        <strong>ADR-011 and ADR-012 are Accepted</strong>. Gold contract 0.2 stays proposed until
+        the readiness review (issue #12).
+      </p>
+
+      <h3>What the PR puts in the repository</h3>
+      <ul>
+        <li>
+          <strong>A new <code>docs/architecture/classification.md</code></strong> — the whole policy
+          in this primer, with 19 numbered synthetic scenarios and 4 taxonomy changes.
+        </li>
+        <li>
+          <strong>ADR-011</strong> (precedence: decision → pair → rules → <code>unknown</code>;
+          priority with conflict detection; type derived from direction and sign; bank labels as
+          provenance) and <strong>ADR-012</strong> (strong evidence only; staged matching; ambiguity
+          and missing legs stay <code>unknown</code>; boundary = imported accounts). Each records
+          its rejected alternatives.
+        </li>
+        <li>
+          <strong>Gold contract 0.2, amended in place</strong> — there is no 0.3 because nothing has
+          shipped. Invariants 16 to 19 cover transfer groups, one-sided transfers, group direction,
+          and "every classification traces to its source, and every <code>unknown</code> has an open
+          item". Lineage gains <code>classification_source</code>, <code>rule_ids</code>,
+          <code>decision_id</code>, <code>transfer_evidence</code> and
+          <code>review_item_ids</code>, plus the <code>TransferEvidence</code> and
+          <code>ClassificationReviewItem</code> shapes and a
+          <code>classification_review_items()</code> call. Analytics still sees none of it.
+        </li>
+        <li>
+          <strong>No merchant dimension.</strong> <code>counterparty</code> does not come back in
+          the first release: normalizing merchant names needs something no source supplies, and no
+          first-release measure uses one. A later contract version can add it.
+        </li>
+      </ul>
+
+      <h3>Where the long comment on #7 is already out of date</h3>
+      <p>Three things moved after it was written. Where they differ, the document in the PR wins.</p>
+
+      <div class="issue mid">
+        <div class="issue-h">
+          <span class="issue-file">ADR numbers</span>
+          <span class="issue-t">The comment says ADR-009 and ADR-010</span>
+        </div>
+        <p>Those numbers went to issue #5&rsquo;s import ADRs. The PR renumbers these two to <b>ADR-011</b> (precedence) and <b>ADR-012</b> (transfer evidence), and updates every reference.</p>
+      </div>
+
+      <div class="issue mid">
+        <div class="issue-h">
+          <span class="issue-file">module 05</span>
+          <span class="issue-t">A negative amount in an income category</span>
+        </div>
+        <p>The comment calls it a sign mismatch. The merged document makes it a <b><code>refund</code></b>, which preserves issue #4&rsquo;s signed returned-income netting — scenario 6 is exactly that case. Only a <b>zero</b> amount is a sign mismatch now.</p>
+      </div>
+
+      <div class="issue done">
+        <div class="issue-h">
+          <span class="issue-file">module 12</span>
+          <span class="issue-t">Offsetting unknown legs cancelling to zero</span>
+        </div>
+        <p class="fixed"><b>Closed.</b> The comment flagged that a signed unclassified total lets &minus;800.00 and +800.00 read as nothing unexplained. The merged documents publish unclassified money in, money out and count separately.</p>
+      </div>
+
+      <h3>The five choices, in the order they matter</h3>
+      <ol class="qs">
+        <li>
+          <strong>The boundary is the accounts you import.</strong> So Bo&rsquo;s money is income,
+          and money sent to a savings account you do not import is an expense. This sharpens #6 and
+          it moves the most money in your real data. <em>(module 03)</em>
+        </li>
+        <li>
+          <strong>Refunds are automatic from the sign.</strong> A positive amount in an expense
+          category is a refund; a negative amount in an income category is too. No refund rules
+          anywhere. <em>(module 05)</em>
+        </li>
+        <li>
+          <strong>A transfer pair beats a rule result.</strong> The rule you wrote loses to a pair
+          you did not notice forming, and module 12&rsquo;s "pairs worth eyeballing" is the only
+          thing that shows you. <em>(modules 07, 12)</em>
+        </li>
+        <li>
+          <strong>Rules are equal by default, so collisions are loud.</strong> Overlapping rules
+          produce review items until you set a priority. <em>(module 06)</em>
+        </li>
+        <li>
+          <strong>Every pair needs a rule&rsquo;s transfer claim, even on the same day.</strong>
+          You write one rule on the bank&rsquo;s transfer label; in return, a coincidence can never
+          pass as a transfer. Changed in the #20 review: the draft let same-day pairs through with
+          no claim. <em>(module 07)</em>
+        </li>
+      </ol>
+
+      <p>
+        And one word change: <strong>"manual decision" replaces "override"</strong> everywhere, which widens a term issue #5 already had accepted
+        <em>(module 10)</em>.
+      </p>
+
+      <div class="verdict">
+        <h3>Accepted, and what is left</h3>
+        <p>
+          PR #20 flips ADR-011 and ADR-012 to <code>Accepted</code>. What remains is to close
+          issue #7 with a resolution comment and append the outcome to the map in #2.
+        </p>
+        <p>
+          <strong>To change something later:</strong> write a new ADR that supersedes the point —
+          "the boundary should include Bo&rsquo;s account", say. Each of the five above lists the
+          modules it drags with it, so you can see the size of the change first.
+        </p>
+        <p>
+          What is deliberately <em>not</em> here: versioning of rules, decisions and the taxonomy,
+          and reproducing an old report (issue #8); file formats, CLI command names and how review
+          output is presented (issue #10); whether money sent to savings you do not import should
+          count differently in the savings measure (issue #12).
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <div class="footer">
+    <span id="footnote">Progress saves automatically.</span>
+    <button class="reset" id="reset" type="button">Reset progress</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var TITLES = {
+    m1:"The one question behind all of it",
+    m2:"Why a wrong transfer is the dangerous kind",
+    m3:"What is inside the boundary",
+    m4:"Your taxonomy, and the bank's labels",
+    m5:"A rule gives a category; the sign gives the type",
+    m6:"Priority, not file order",
+    m7:"What counts as proof of a transfer",
+    m8:"When two legs compete for one match",
+    m9:"The legs that never find a partner",
+    m10:"The three times you rule by hand",
+    m11:"Fail the build, or raise a review item",
+    m12:"What lands in front of you after a build",
+    m13:"So — what is being asked of you?"
+  };
+  var KEYS = Object.keys(TITLES);
+  var LS = "budget-classification-primer-v1";
+
+  var done = {};
+  try {
+    var raw = localStorage.getItem(LS);
+    if (raw) { var p = JSON.parse(raw); if (p && typeof p === "object") done = p; }
+  } catch (e) { /* private window, blocked storage */ }
+
+  var docRef = null;          // db document, when available
+  var applyingRemote = false; // guard so a snapshot doesn't echo a write
+
+  var bar = document.getElementById("bar");
+  var tally = document.getElementById("tally");
+  var toc = document.getElementById("toc");
+
+  /* ---- build the contents list ---- */
+  KEYS.forEach(function(k, i){
+    var a = document.createElement("a");
+    a.className = "toc-item";
+    a.href = "#" + k;
+    a.id = "toc-" + k;
+    a.innerHTML = '<span class="n">' + String(i+1).padStart(2,"0") + '</span><span class="t"></span>';
+    a.querySelector(".t").textContent = TITLES[k];
+    toc.appendChild(a);
+  });
+
+  /* ---- build the check-off buttons ---- */
+  KEYS.forEach(function(k){
+    var sec = document.getElementById(k);
+    if (!sec) return;
+    var foot = sec.querySelector(".mod-foot");
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "checkoff";
+    btn.id = "chk-" + k;
+    btn.setAttribute("aria-pressed","false");
+    btn.innerHTML =
+      '<span class="box" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3.5 8.5 L6.5 11.5 L12.5 4.5"/></svg></span>' +
+      '<span class="lbl">I’ve got this</span>';
+    btn.addEventListener("click", function(){
+      done[k] = !done[k];
+      if (!done[k]) delete done[k];
+      render();
+      persist();
+    });
+    foot.appendChild(btn);
+  });
+
+  function render(){
+    var n = 0;
+    KEYS.forEach(function(k){
+      var on = !!done[k];
+      if (on) n++;
+      var sec = document.getElementById(k);
+      var btn = document.getElementById("chk-" + k);
+      var ti = document.getElementById("toc-" + k);
+      if (sec) sec.classList.toggle("done", on);
+      if (ti) ti.classList.toggle("done", on);
+      if (btn){
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+        btn.querySelector(".lbl").textContent = on ? "Understood" : "I’ve got this";
+      }
+    });
+    tally.textContent = n + " / " + KEYS.length;
+    bar.style.width = Math.round((n / KEYS.length) * 100) + "%";
+  }
+
+  function persist(){
+    try { localStorage.setItem(LS, JSON.stringify(done)); } catch (e) {}
+    if (docRef && !applyingRemote){
+      docRef.set({ done: done, updatedAt: Date.now() }).catch(function(){});
+    }
+  }
+
+  render();
+
+  /* ---- cross-device progress, when the runtime offers it ---- */
+  if (window.claude && typeof window.claude.use === "function"){
+    window.claude.use("db").then(function(db){
+      if (!db) return;
+      docRef = db.doc("progress/classification-primer");
+      docRef.onSnapshot(function(snap){
+        if (!snap || !snap.exists) return;
+        var d = snap.data();
+        var remote = d && d.done;
+        if (!remote || typeof remote !== "object") return;
+        applyingRemote = true;
+        // union: ticking on one device never un-ticks on another
+        Object.keys(remote).forEach(function(k){ if (remote[k]) done[k] = true; });
+        try { localStorage.setItem(LS, JSON.stringify(done)); } catch (e) {}
+        render();
+        applyingRemote = false;
+      }, function(){ docRef = null; });
+      // push whatever this device already had
+      if (Object.keys(done).length) persist();
+    }).catch(function(){});
+  }
+
+  document.getElementById("reset").addEventListener("click", function(){
+    done = {};
+    render();
+    try { localStorage.removeItem(LS); } catch (e) {}
+    if (docRef) docRef.set({ done: {}, updatedAt: Date.now() }).catch(function(){});
+  });
+})();
+</script>

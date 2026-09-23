@@ -9,8 +9,7 @@ Initial category attributes:
   different meaning
 - name
 - category group: every category belongs to exactly one
-- direction: `income` or `expense`
-- active state
+- direction: `income` or `expense`, shared by every category in its group
 
 The hierarchy has exactly two levels, category group → category. Only a
 category is ever allocated to a transaction; a category group exists for
@@ -29,9 +28,25 @@ transaction has exactly one allocation, for its whole amount, and no way to
 author a second exists yet; the allocations of a transaction always sum to its
 amount ([ADR-008](../decisions/ADR-008-category-allocation-grain.md)).
 
+## Taxonomy
+
+The household defines its categories in configuration; the platform ships
+none. The taxonomy and how changes to it behave are in
+[`classification.md`](../architecture/classification.md#taxonomy). A category
+can be deleted only once no rule or decision references it.
+
+## Bank Categories
+
 Bank-provided categories in the current CSV exports are useful classification
-signals but are not authoritative. They are retained as provenance in Silver;
-Gold categories are assigned by rules or manual decisions.
+signals but are not authoritative. They are retained as provenance in Silver. A
+classification rule may test them, but they are never copied into Gold and
+never used as a fallback
+([ADR-011](../decisions/ADR-011-classification-precedence.md)).
+
+## Assignment
 
 Transfers, adjustments, and unclassified transactions do not carry a category.
-A refund carries the category of the movement it reverses, including returned income.
+A refund carries the category of the movement it reverses. When a rule or
+manual decision assigns a category, the type follows from the category's
+direction and the amount's sign: a positive amount in an expense category, or
+a negative one in an income category, is a refund.
