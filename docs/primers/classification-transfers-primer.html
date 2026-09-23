@@ -430,9 +430,9 @@
   <div class="callout">
     <p class="callout-h">The short answer</p>
     <p>
-      None of PR #20 is decided yet. You need <strong>five ideas</strong> —
-      modules 02, 03, 05, 06 and 07 — and then <strong>five questions</strong> to answer, which are
-      in module 13. Everything in between is what happens at the edges: competing legs, missing
+      ADR-011 and ADR-012 are <strong>Accepted</strong>. You need <strong>five ideas</strong> —
+      modules 02, 03, 05, 06 and 07 — and module 13 lists the <strong>five choices</strong> that
+      were confirmed. Everything in between is what happens at the edges: competing legs, missing
       partners, rulings you make by hand, and what lands in front of you after a build.
     </p>
     <p>
@@ -1215,11 +1215,10 @@
     <p class="goal">After this: you have a decision and a short list, not a feeling.</p>
     <div class="mod-body">
       <p>
-        Nothing in PR #20 is decided. It came out of an agent-run grilling session held while you
-        were away, with the instruction to take the recommended answer every time.
-        <strong>ADR-011 and ADR-012 are Proposed</strong> and Gold contract 0.2 stays proposed, so
-        every tick in that session means "the agent&rsquo;s recommendation, assumed" and never
-        "agreed".
+        PR #20 came out of an agent-run grilling session held while you were away, with the
+        instruction to take the recommended answer every time. After review (PR #46),
+        <strong>ADR-011 and ADR-012 are Accepted</strong>. Gold contract 0.2 stays proposed until
+        the readiness review (issue #12).
       </p>
 
       <h3>What the PR puts in the repository</h3>
@@ -1279,7 +1278,7 @@
         <p class="fixed"><b>Closed.</b> The comment flagged that a signed unclassified total lets &minus;800.00 and +800.00 read as nothing unexplained. The merged documents publish unclassified money in, money out and count separately.</p>
       </div>
 
-      <h3>The five questions, in the order they matter</h3>
+      <h3>The five choices, in the order they matter</h3>
       <ol class="qs">
         <li>
           <strong>The boundary is the accounts you import.</strong> So Bo&rsquo;s money is income,
@@ -1309,22 +1308,20 @@
       </ol>
 
       <p>
-        And one word change to accept or reject: <strong>"manual decision" replaces
-        "override"</strong> everywhere, which widens a term issue #5 already had accepted
+        And one word change: <strong>"manual decision" replaces "override"</strong> everywhere, which widens a term issue #5 already had accepted
         <em>(module 10)</em>.
       </p>
 
       <div class="verdict">
-        <h3>To accept, or to change one thing</h3>
+        <h3>Accepted, and what is left</h3>
         <p>
-          <strong>To accept:</strong> merge PR #20, flip ADR-011 and ADR-012 to
-          <code>Accepted</code>, close issue #7 with a resolution comment, and append the outcome to
-          the map in #2.
+          PR #20 flips ADR-011 and ADR-012 to <code>Accepted</code>. What remains is to close
+          issue #7 with a resolution comment and append the outcome to the map in #2.
         </p>
         <p>
-          <strong>To change something:</strong> reply on #7 or on the PR naming the point — "the
-          boundary should include Bo&rsquo;s account", say. Each of the five above lists the modules
-          it drags with it, so you can see the size of the change before you ask for it.
+          <strong>To change something later:</strong> write a new ADR that supersedes the point —
+          "the boundary should include Bo&rsquo;s account", say. Each of the five above lists the
+          modules it drags with it, so you can see the size of the change first.
         </p>
         <p>
           What is deliberately <em>not</em> here: versioning of rules, decisions and the taxonomy,

@@ -1,6 +1,6 @@
 # ADR-012: Pair Transfers Only on Strong Evidence; Otherwise Leave Legs Unknown
 
-**Status:** Proposed
+**Status:** Accepted
 
 ## Context
 

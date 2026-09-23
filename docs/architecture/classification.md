@@ -1,6 +1,7 @@
 # Gold Classification
 
-Status: proposed with Gold contract 0.2.
+Status: accepted (ADR-011, ADR-012). The fields it produces are part of Gold
+contract 0.2, which stays proposed until the readiness review (issue #12).
 
 ## Purpose
 
