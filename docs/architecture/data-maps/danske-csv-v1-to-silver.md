@@ -2,8 +2,8 @@
 
 **Status:** Draft. It restates, column by column, what
 [`silver-layer.md`](../silver-layer.md), ADR-009 and ADR-010 already decide
-for one source format, and lists what they leave open. Where this map and
-those documents disagree, they win and this map is stale.
+for one source format. Where this map and those documents disagree, they win
+and this map is stale.
 
 This is the logical data map of Kimball's ETL toolkit (figure 3.1): for every
 target column, where it comes from and how. It is a design document, not
@@ -53,16 +53,14 @@ These apply wherever a column below names them.
 - **Decimal.** A value is an optional `-`, digits, and an optional `,` with one
   or two digits. The comma becomes a decimal point and the result is a
   `Decimal`, never a float. Nothing is trimmed first; anything else is an
-  `unparseable-decimal` error on that record. Open: the thousands separator
-  ([#49](https://github.com/ATherkel/budget/issues/49)) and the stored scale
-  ([#52](https://github.com/ATherkel/budget/issues/52)).
+  `unparseable-decimal` error on that record.
 - **Booking status.** `Status` maps exactly, with no trimming or case folding:
 
   | `Status` | `booking_status` |
   | --- | --- |
   | `Udført` | `booked` |
   | `Slettet` | `cancelled` |
-  | anything else | `unknown-status` error; pending is open ([#53](https://github.com/ATherkel/budget/issues/53)) |
+  | anything else | `unknown-status` error |
 
 - **Identity text.** `Tekst` with leading and trailing Unicode whitespace
   removed and internal runs collapsed to one space, including 0xA0 (ADR-009).
@@ -82,7 +80,7 @@ Grain: one booked transaction, after duplicates collapse. Only records whose
 | `transaction_date` | `date` | `Dato` | Date rule |
 | `amount` | `Decimal` | `Beløb` | Decimal rule |
 | `currency` | `str` | account configuration | copied; never read from the payload |
-| `description` | `str` | `Tekst` | copied exactly as delivered, padding included, from the selected export ([#50](https://github.com/ATherkel/budget/issues/50)) |
+| `description` | `str` | `Tekst` | copied exactly as delivered, padding included, from the selected export |
 | `source_system` | `str` | `ImportRun.source_format` | copied: `danske-csv-v1` |
 | `balance` | `Decimal` | `Saldo` of the selected export | Decimal rule. Never null for this format: an empty `Saldo` on a booked row is a `missing-balance` error and a `balance-break` review item (ADR-010) |
 | `source_status` | `str` | `Status` | copied verbatim |
@@ -90,8 +88,8 @@ Grain: one booked transaction, after duplicates collapse. Only records whose
 | `occurrence` | `int` | derived | *k*: 1-based count of booked rows in one export sharing account, date, quantized amount and identity text, in source order (ADR-009) |
 | `day_sequence` | `int` | `SourceRecord.record_ordinal` of the selected export | 1-based order of the date's booked rows in the selected export; transactions it does not show are appended in `transaction_id` order (`silver-layer.md`) |
 | `identity_version` | `str` | constant | the version of the ADR-009 rule in force |
-| `bank_category` | `str \| None` | `Kategori` | trimmed; null when empty ([#51](https://github.com/ATherkel/budget/issues/51)) |
-| `bank_subcategory` | `str \| None` | `Underkategori` | trimmed; null when empty ([#51](https://github.com/ATherkel/budget/issues/51)) |
+| `bank_category` | `str \| None` | `Kategori` | trimmed; null when empty |
+| `bank_subcategory` | `str \| None` | `Underkategori` | trimmed; null when empty |
 
 Not mapped: `Afstemt`, which stays in Bronze (`silver-layer.md`, *Booking
 state*).
@@ -147,7 +145,7 @@ Grain: one admitted-or-quarantined `stored` import run.
 | --- | --- | --- | --- |
 | `import_run_id` | `str` | `ImportRun.import_run_id` | copied |
 | `status` | `Literal` | derived | `quarantined` if any validation error or merge check fails, else `accepted` |
-| `covered_from` | `date` | `Dato` | the earliest `Dato` in the payload, booked or not ([#54](https://github.com/ATherkel/budget/issues/54)) |
+| `covered_from` | `date` | `Dato` | the earliest `Dato` in the payload, booked or not |
 | `covered_to` | `date` | `ImportRun.covers_through` | copied |
 | `errors` | `Sequence` | derived | every `ValidationError` raised by the rules above |
 | `review_item_ids` | `Sequence` | derived | review items raised for this run |
@@ -157,16 +155,12 @@ and the formula in `silver-layer.md` is its whole map.
 
 ## Open Questions
 
-Writing the map column by column surfaced these. Each is an issue, and each
-needs an answer before the Silver code for this format is written. Where the
-map already takes a side, it follows the proposal; when an issue is settled,
-update the affected rows and drop its line here.
+Open questions about this map live only as GitHub issues whose body names this
+file:
+[the open ones](https://github.com/ATherkel/budget/issues?q=is%3Aissue+is%3Aopen+%22danske-csv-v1-to-silver.md%22).
+Where a question is open, the rows above follow the issue's proposal. Each
+issue lists the rows its answer changes; update them when you close it.
 
-| # | Question | Proposal | Affects |
-| --- | --- | --- | --- |
-| [#49](https://github.com/ATherkel/budget/issues/49) | Does Danske write a thousands separator, such as `1.234,56`? | check a real export | Decimal rule |
-| [#50](https://github.com/ATherkel/budget/issues/50) | Two exports show one transaction's text differently in whitespace: which becomes `description`? | the selected export's | `description`, `bank_category`, `bank_subcategory` |
-| [#51](https://github.com/ATherkel/budget/issues/51) | When is `bank_category` null? | when empty after trimming | `bank_category`, `bank_subcategory` |
-| [#52](https://github.com/ATherkel/budget/issues/52) | Is `amount` stored rounded to the minor unit, and is a third decimal an error? | yes to both | Decimal rule |
-| [#53](https://github.com/ATherkel/budget/issues/53) | How does Silver learn Danske's pending status value? | quarantine, or check a real export | Booking status rule |
-| [#54](https://github.com/ATherkel/budget/issues/54) | Does `covered_from` count unbooked rows? | yes, every record | `ImportRunResult.covered_from` |
+To raise a new question, open an issue that names
+`docs/architecture/data-maps/danske-csv-v1-to-silver.md`, so the link above
+finds it.
