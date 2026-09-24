@@ -21,6 +21,11 @@ dev = [
     "ty>=0.0.1a20",
 ]
 
+[tool.uv]
+# ADR-013: a system Python's SQLite can be below the store's version floor, so
+# use only uv's managed builds.
+python-preference = "only-managed"
+
 [tool.ruff]
 target-version = "py312"
 line-length = 88
