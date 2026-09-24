@@ -236,9 +236,13 @@ tables.
 
 When the work finishes, a result that is to be kept, meaning an as-known-at
 view or a replayed as-was view, is copied into the main store in one write
-transaction, and the scratch file is deleted. A replayed result is copied only
-when its code's schema version (`user_version`) equals the main store's.
-Otherwise it stays in its own store, which only its own code version opens.
+transaction, and the scratch file is deleted. A replayed result joins the
+main store only when its code's schema version (`user_version`) equals the
+main store's. When the versions differ, the running dashboard could not open
+the result, so the replay refuses `--label`. It still checks the fingerprint,
+and the CLI shows the view from the scratch store with that code version. The
+scratch store is then deleted, the recipe remains, and invariant 7 keeps its
+single exception.
 
 ## Retention
 
@@ -397,7 +401,9 @@ Pointer history after step 9: P1, P2, P3, P4, P3, P5, P6. Results kept: P6
 | V3 | the dashboard, default | P6 | 820.00 / 0.00 / 2,400.00 / 129.00 ("Subscriptions", `housing`) | 3,349.00 |
 
 - **V1** shows exactly what the household saw on 5 March: IKEA as
-  household goods, and the old category name and group.
+  household goods, and the old category name and group. `k1` and `k2` share a
+  schema version (step 9 changed no schema), so the replayed result joins the
+  main store and the label keeps it.
 - **V2 against V3** isolates the late bookings: 300.00 of groceries reached
   February after 5 March. Everything else is the same interpretation.
 - **V1 against V2** isolates reinterpretation: the IKEA correction and the

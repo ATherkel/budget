@@ -787,7 +787,10 @@
           P1 was built by code <code>k1</code> and you now run <code>k2</code>, so the first attempt
           refuses and names <code>k1</code> as the version to replay with. You check out
           <code>k1</code> and run the same command again: the replay succeeds, its fingerprint
-          matches P1&rsquo;s, and the label keeps the result from then on. The replay keeps P1&rsquo;s
+          matches P1&rsquo;s, and, because <code>k1</code> and <code>k2</code> share a schema
+          version, the result joins the main store and the label keeps it. (Had the schema
+          changed in between, the replay could only be shown by the CLI, and
+          <code>--label</code> would be refused.) The replay keeps P1&rsquo;s
           original <code>built_at</code> (3 March) and records <code>replayed_at</code> separately,
           so the banner and the provisional label stay dated to the original build.
         </li>
