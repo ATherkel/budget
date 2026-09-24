@@ -784,8 +784,10 @@
         <li>
           <strong>It isn&rsquo;t</strong> → P1&rsquo;s recipe is replayed under the same
           <code>publication_id</code>, and the replay must match P1&rsquo;s recorded fingerprint.
-          P1 was built by code <code>k1</code> and you now run <code>k2</code>, so the CLI refuses
-          and names <code>k1</code> as the version to replay with. The replay keeps P1&rsquo;s
+          P1 was built by code <code>k1</code> and you now run <code>k2</code>, so the first attempt
+          refuses and names <code>k1</code> as the version to replay with. You check out
+          <code>k1</code> and run the same command again: the replay succeeds, its fingerprint
+          matches P1&rsquo;s, and the label keeps the result from then on. The replay keeps P1&rsquo;s
           original <code>built_at</code> (3 March) and records <code>replayed_at</code> separately,
           so the banner and the provisional label stay dated to the original build.
         </li>
