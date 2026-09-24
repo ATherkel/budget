@@ -19,8 +19,8 @@ Raw data is retained indefinitely.
 
 ## Principle 3: Deterministic Transformations
 
-Silver data must always be reproducible from Bronze and the recorded manual
-decisions.
+Silver data must always be reproducible from Bronze, the account
+configuration, and the recorded manual decisions.
 
 Gold data must always be reproducible from its recipe: the import runs, the
 household configuration, the manual decisions, and the code version it was

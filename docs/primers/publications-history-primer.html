@@ -620,12 +620,18 @@
             <tr><td>Configuration snapshot</td><td>fingerprint <code>c1</code>: accounts, taxonomy, rules, matching policy — parsed, canonical</td></tr>
             <tr><td>Decision-log position</td><td>entry 1 (IKEA → <code>gifts</code>)</td></tr>
             <tr><td>Code version</td><td>commit <code>k1</code>, with its locked dependencies</td></tr>
-            <tr><td>Result fingerprint</td><td>SHA-256 over every record the publication returns, in key order</td></tr>
           </tbody>
         </table>
       </div>
       <p>
-        The first four parts are the <em>cause</em>; the fingerprint is the <em>effect</em>. The
+        A recipe holds <strong>inputs only</strong>, so two recipes can be compared before anything
+        is built. The result&rsquo;s <strong>fingerprint</strong> belongs to the publication: a
+        SHA-256 hash over every record it returns, in key order, tagged with the version of the
+        serialization it hashes (the <em>fingerprint scheme</em>). Fingerprints are compared only
+        within one scheme.
+      </p>
+      <p>
+        So the recipe is the <em>cause</em> and the fingerprint the <em>effect</em>. The
         promise is: <strong>the same recipe, rebuilt with the same code, gives the same
         fingerprint.</strong> Three steps of the running example lean on it.
       </p>
@@ -635,7 +641,7 @@
           <thead><tr><th>When</th><th>What you did</th><th>Outcome</th></tr></thead>
           <tbody>
             <tr><td>04-12</td><td>deleted the bad rule again</td><td class="note">recipe equals the current one → <b>nothing is built</b></td></tr>
-            <tr class="new"><td>05-03</td><td><code>verify</code>: full rebuild from Bronze, in a scratch area</td><td class="note">fingerprint equals P5&rsquo;s → <b>reproducibility proven</b>, nothing published</td></tr>
+            <tr class="new"><td>05-03</td><td><code>verify</code>: full rebuild from Bronze, in a scratch store</td><td class="note">fingerprint equals P5&rsquo;s → <b>reproducibility proven</b>, nothing published</td></tr>
             <tr><td>06-01</td><td>upgraded the code, no intended behavior change</td><td class="note">new publication P6, <b>same fingerprint</b> as P5 → the upgrade provably changed nothing</td></tr>
           </tbody>
         </table>
@@ -749,7 +755,9 @@
       <p>
         Why cut data at <em>import</em> time rather than the bank&rsquo;s export date? The export
         date says when the bank made the file, not when you knew about it. An export produced
-        on 1 March that you imported on 20 March was not known on 5 March.
+        on 1 March that you imported on 20 March was not known on 5 March. And a date means the
+        <strong>end of that day, Copenhagen time</strong>: &ldquo;known at 5 March&rdquo; includes
+        an import at 21:30 that evening.
       </p>
       <details class="q">
         <summary>Check yourself: what about the fourth corner — today&rsquo;s data, March&rsquo;s rules?</summary>
@@ -777,7 +785,9 @@
           <strong>It isn&rsquo;t</strong> → P1&rsquo;s recipe is replayed under the same
           <code>publication_id</code>, and the replay must match P1&rsquo;s recorded fingerprint.
           P1 was built by code <code>k1</code> and you now run <code>k2</code>, so the CLI refuses
-          and names <code>k1</code> as the version to replay with.
+          and names <code>k1</code> as the version to replay with. The replay keeps P1&rsquo;s
+          original <code>built_at</code> (3 March) and records <code>replayed_at</code> separately,
+          so the banner and the provisional label stay dated to the original build.
         </li>
       </ol>
       <div class="scroller">
@@ -819,7 +829,7 @@
         <code>view --known-at 2026-03-05 --label "Known 5 March"</code> is a <em>new</em> build,
         P7, of kind <code>as_known_at</code>. It takes only the import runs started by 5 March
         (run-1; run-2 came on the 10th) and interprets them with today&rsquo;s configuration,
-        decisions and code. Silver is derived for that subset in a scratch area, so the live
+        decisions and code. Silver is derived for that subset in a scratch store, so the live
         Silver is untouched.
       </p>
       <div class="scroller">
@@ -892,9 +902,10 @@
         </li>
         <li>
           <strong>Schema changes.</strong> ADR-013 lets a Gold migration drop and rebuild Gold
-          tables, and those tables now hold the kept results. So a Gold migration either converts
-          them or deletes them. The recipes survive either way, but an old-contract publication
-          can then only be replayed with its own code, into a separate store.
+          tables, and those tables now hold the kept results. A migration converts them where it
+          can. One it can&rsquo;t convert survives in the <strong>backup production takes before
+          migrating</strong>, which the old code can open. The migrate command then builds a
+          fresh current publication, so undo has nothing to go back to until the next build.
         </li>
       </ul>
     </div>
@@ -921,19 +932,25 @@
           <tbody>
             <tr><td>1</td><td>04-10</td><td>d-0001</td><td>classify C → gifts</td><td>—</td><td class="note">C is gifts</td></tr>
             <tr><td>2</td><td>07-02</td><td>d-0007</td><td>classify C → household-goods</td><td>d-0001</td><td class="note">C is household-goods</td></tr>
-            <tr><td>3</td><td>07-09</td><td>d-0008</td><td>withdraw</td><td>d-0007</td><td class="note">no decision: <code>r-home</code> decides</td></tr>
+            <tr><td>3</td><td>07-09</td><td>d-0008</td><td>retract (no targets)</td><td>d-0007</td><td class="note">no decision: <code>r-home</code> decides</td></tr>
           </tbody>
         </table>
       </div>
       <p>
         The effective decisions at entry <em>n</em> are those recorded up to <em>n</em> and not
-        superseded up to <em>n</em>. That is what lets a recipe say &ldquo;decisions up to entry
+        superseded up to <em>n</em>. A <code>retract</code> entry is never effective itself, so
+        after entry 3 a fresh decision on C needs no <code>supersedes</code> at all. (It is called
+        <em>retract</em>, not <em>withdraw</em>, because Silver&rsquo;s <em>withdrawn</em> already
+        means &ldquo;the bank removed this transaction&rdquo;.) That is what lets a recipe say &ldquo;decisions up to entry
         1&rdquo; and mean something exact forever.
       </p>
       <p>
         ADR-011 says a transaction has at most one decision. With a log, a second decision on C
-        that doesn&rsquo;t name <code>supersedes</code> is <strong>rejected when you record
-        it</strong>, not discovered at the next build. That validation boundary is the one a
+        that doesn&rsquo;t list the first in <code>supersedes</code> is <strong>rejected when you
+        record it</strong>, not discovered at the next build. <code>supersedes</code> is a
+        <em>list</em>: a <code>pair</code> of two legs that each had their own
+        <code>classify</code> decision supersedes both in one entry, so there is one build, and
+        no publication where both legs sit unclassified in between. That validation boundary is the one a
         future browser editor reuses (issue #10).
       </p>
       <p>
@@ -941,8 +958,8 @@
         configuration snapshots inside recipes.
       </p>
       <details class="q">
-        <summary>Check yourself: why is a <code>withdraw</code> entry needed at all?</summary>
-        <p>Because deleting entry 2 would rewrite history: a recipe pointing at &ldquo;up to entry 2&rdquo; would silently change meaning. Withdrawing is a new fact about a new moment, so old recipes stay exact.</p>
+        <summary>Check yourself: why is a <code>retract</code> entry needed at all?</summary>
+        <p>Because deleting entry 2 would rewrite history: a recipe pointing at &ldquo;up to entry 2&rdquo; would silently change meaning. Retracting is a new fact about a new moment, so old recipes stay exact.</p>
       </details>
     </div>
     <div class="mod-foot"></div>
@@ -1012,7 +1029,7 @@
       </div>
       <div class="issue mid">
         <div class="issue-h"><span class="issue-file">module 04</span><span class="issue-t">Production refuses uncommitted code; identical recipes publish nothing</span></div>
-        <p>A development build may run from uncommitted code; its publication is marked not reproducible.</p>
+        <p>A development store makes no reproducibility promise at all; development and test keep their own stores.</p>
       </div>
       <div class="issue mid">
         <div class="issue-h"><span class="issue-file">module 06</span><span class="issue-t">Data is cut at import time, not the bank&rsquo;s export date</span></div>
@@ -1021,8 +1038,26 @@
         <div class="issue-h"><span class="issue-file">module 08</span><span class="issue-t">Past views are provisional as of their own moment</span></div>
       </div>
       <div class="issue high">
-        <div class="issue-h"><span class="issue-file">module 09</span><span class="issue-t">Gold migrations can delete kept results</span></div>
-        <p>This refines ADR-013&rsquo;s drop-and-rebuild allowance. Recipes survive; old-contract results need their own code to replay.</p>
+        <div class="issue-h"><span class="issue-file">module 09</span><span class="issue-t">A Gold migration can move kept results into the backup</span></div>
+        <p>This refines ADR-013&rsquo;s drop-and-rebuild allowance. A result the migration can&rsquo;t convert survives only in the pre-migration backup, which its own code opens.</p>
+      </div>
+
+      <h3>Tightened in the PR #57 review</h3>
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">module 06</span><span class="issue-t">A date means the end of that day, Copenhagen time</span></div>
+        <p class="fixed">&ldquo;Known at 5 March&rdquo; includes an import at 21:30 that day. Recorded moments are stored in UTC.</p>
+      </div>
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">module 07</span><span class="issue-t">A replay keeps the original <code>built_at</code></span></div>
+        <p class="fixed">A replayed P1 is still dated 3 March, and records <code>replayed_at</code> separately.</p>
+      </div>
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">module 10</span><span class="issue-t"><code>retract</code>, and <code>supersedes</code> as a list</span></div>
+        <p class="fixed">A retraction has no targets and is never effective; one entry can supersede several decisions.</p>
+      </div>
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">module 04</span><span class="issue-t">The recipe is inputs only; <code>verify</code> fails loudly on a mismatch</span></div>
+        <p class="fixed">A mismatch is a platform defect, never a review item. Views, replays and <code>verify</code> run in scratch stores that the migrate runner creates.</p>
       </div>
       <div class="issue done">
         <div class="issue-h"><span class="issue-file">module 06</span><span class="issue-t">Correction: the fourth corner is not free</span></div>

@@ -215,7 +215,7 @@ _Avoid_: Override, fix, edit
 **Decision log**:
 The append-only record of Manual decisions, each stamped with when the
 platform accepted it. A decision is never edited or deleted; a later entry
-supersedes or withdraws it.
+supersedes or retracts it.
 _Avoid_: Overrides file, decisions file (the log is not edited in place)
 
 **Voided import run**:
@@ -228,16 +228,15 @@ _Avoid_: deleted import, undone import
 
 **Publication**:
 One complete, immutable build of Gold, holding its dimensions, facts, lineage,
-and review items, built from one Recipe. A consumer reads exactly one at a
-time. The rules are in
+and review items, built from one Recipe, with a fingerprint of that result. A
+consumer reads exactly one at a time. The rules are in
 [`publications.md`](docs/architecture/publications.md).
 _Avoid_: Version, snapshot (a Monthly balance snapshot is a fact), release
 
 **Recipe**:
-The record of everything a Publication was built from: its import runs,
-configuration snapshot, Decision log position, and code version, plus a
-fingerprint of its result. Rebuilding a Recipe always yields the same
-result.
+The record of every input a Publication was built from: its import runs,
+configuration snapshot, Decision log position, and code version. Rebuilding a
+Recipe with the code version it names yields the same result.
 _Avoid_: Manifest, lineage (lineage explains one fact, not a build)
 
 **Current publication**:

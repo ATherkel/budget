@@ -262,7 +262,7 @@ it. Consumers obtain one through `GoldPublications`:
 
 ```python
 class GoldPublications(Protocol):
-    def current(self) -> GoldPublication: ...
+    def current(self) -> GoldPublication | None: ...
 
     def available(self) -> Sequence[GoldPublication]: ...
 
@@ -270,8 +270,12 @@ class GoldPublications(Protocol):
 ```
 
 `available()` lists the publications whose results are retained: the current
-one, the previous one, and every labeled one. Opening any other publication
-fails.
+one, the previous one, and every labeled one. `current()` returns `None` when
+there is no current publication: before a store's first successful build, and
+between a Gold migration that could not convert the current result and the
+build that follows it. `open()` raises `PublicationUnavailable`
+when the publication does not exist or its result is not retained, including
+one deleted after a consumer last opened it.
 
 #### `GoldPublication`
 
@@ -282,10 +286,12 @@ Publication metadata. None of it enters the result fingerprint.
 | `publication_id` | int | Yes | Increasing per store. |
 | `kind` | enum | Yes | `pipeline` for a build that became current when it was built, or `as_known_at` for a view, which is never current. |
 | `label` | string/null | No | Household-assigned name. A labeled publication's result is retained. |
-| `known_at` | datetime | Yes | The moment whose knowledge the publication represents: `built_at` for `pipeline`, and the requested cutoff for `as_known_at`. Past views take the provisional label as of this moment. |
-| `built_at` | datetime | Yes | When the build finished. Metadata only. |
+| `known_at` | datetime | Yes | The moment whose knowledge the publication represents: `built_at` for `pipeline`, and the requested cutoff for `as_known_at`. Past views take the provisional label as of this moment. A replay keeps the original value. |
+| `built_at` | datetime | Yes | When the original build finished. A replay keeps the original value. Metadata only. |
+| `replayed_at` | datetime/null | No | When the result was last re-created from its recipe; null if it never was. |
 | `contract_version` | string | Yes | Gold contract version the publication implements. |
-| `result_fingerprint` | string | Yes | SHA-256 over the canonical serialization of every consumer and lineage record. Equal fingerprints mean identical results. |
+| `fingerprint_scheme` | string | Yes | Version of the canonical serialization the fingerprint is computed over. |
+| `result_fingerprint` | string | Yes | SHA-256 over the canonical serialization of every consumer and lineage record. Under one `fingerprint_scheme`, equal fingerprints mean identical results; across schemes they are not comparable. |
 
 Anything reported by category is summed over `category_allocations`, and
 anything reported per transaction over `transactions`. Household income and

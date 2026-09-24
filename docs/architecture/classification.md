@@ -205,7 +205,7 @@ A manual decision is a recorded human ruling. Classification uses three kinds:
   decision keeps its identifier.
 - Each decision has a durable `decision_id` and a short reason.
 - Decisions are entries in an append-only decision log. A decision is never
-  edited or deleted; a later entry supersedes or withdraws it
+  edited or deleted; a later entry supersedes or retracts it
   ([`publications.md`](publications.md#the-decision-log)).
 - A transaction is targeted by at most one decision; a `pair` counts for both
   of its transactions.
@@ -267,7 +267,7 @@ identifiers involved, so it is stable across rebuilds.
 | `sign-mismatch` | the winning rule assigns a category to a zero amount | `unknown` | a narrower rule or a decision |
 | `ambiguous-transfer` | a candidate set is neither a single pair nor repeated legs | `unknown` (every leg in the set) | a `pair` or `classify` decision |
 | `unmatched-transfer` | a transfer claim finds no pair | `unknown` | the next import, a `pair`, `one-sided-transfer`, or `classify` decision, or a rule fix |
-| `decision-not-applicable` | a decision's target or conditions no longer hold | classified as if the decision did not exist | a decision that supersedes or withdraws it |
+| `decision-not-applicable` | a decision's target or conditions no longer hold | classified as if the decision did not exist | a decision that supersedes or retracts it |
 
 Silver's import review items (issue #5) are separate.
 

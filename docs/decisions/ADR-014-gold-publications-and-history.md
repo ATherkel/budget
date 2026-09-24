@@ -14,7 +14,7 @@ deferred how a build is published while the dashboard reads. Contract
 invariant 15 says a consumer reads one publication, but nothing yet defines
 one. Raised in [issue #8](https://github.com/ATherkel/budget/issues/8).
 
-The maintainer chose four things:
+The maintainer chose five things:
 
 - past reports in two forms: *as-was*, meaning exactly what was shown at a
   moment, and *as-known-at*, meaning the data known at a moment under today's
@@ -23,7 +23,8 @@ The maintainer chose four things:
   previous one, and labeled ones;
 - a successful build becomes current immediately, with a printed diff and a
   one-step undo;
-- manual decisions in an append-only log.
+- manual decisions in an append-only log;
+- past views built by the CLI and opened by the read-only dashboard.
 
 ## Decision
 
@@ -31,14 +32,17 @@ The maintainer chose four things:
   increasing `publication_id`. Every Gold table is keyed by it, and every
   consumer read is confined to one. Facts do not carry it;
   `GoldRepository.publication()` does.
-- **Every publication has a recipe.** It names the import runs, a
-  content-addressed configuration snapshot, a decision-log position, the code
-  version, and a fingerprint of the result. Recipes are kept forever.
+- **Every publication has a recipe.** It names the inputs only: the import
+  runs, a content-addressed configuration snapshot, a decision-log position,
+  and the code version. The publication carries the fingerprint of its
+  result, with the version of the serialization it hashes. Recipes are kept
+  forever.
 - **The build is a pure function of its recipe.** It never reads the clock.
   `built_at` is metadata outside the fingerprint, and anything that depends on
   today's date is computed when a report is read. The same recipe with the
   same code yields the same fingerprint. A production build refuses to run
-  when it cannot name its code version.
+  when it cannot name its code version. A development store makes no
+  reproducibility promise.
 - **Promotion is immediate.** A successful pipeline build becomes current in
   the same write transaction that stores it. The CLI prints the diff against
   the previous current publication. `undo` moves the pointer back, and the
@@ -46,7 +50,8 @@ The maintainer chose four things:
   one publishes nothing.
 - **Retention.** Results are kept for the current publication, the previous
   one, and every labeled one. Any other result can be re-created by replaying
-  its recipe with the code it names.
+  its recipe with the code it names. A result that a Gold migration cannot
+  convert survives in the backup production takes before migrating.
 - **Past views are publications too, built by the CLI.** An as-was view is the
   publication current at D, either retained or replayed and checked against
   its fingerprint. An as-known-at view is a new publication built from the
@@ -54,8 +59,9 @@ The maintainer chose four things:
   become current. The dashboard stays read-only and opens any retained
   publication.
 - **Manual decisions are an append-only log.** Each entry carries a
-  platform-set `recorded_at`, and a new entry supersedes an old one instead of
-  editing it. Rules, the taxonomy, the account registry, and the matching
+  platform-set `recorded_at`. A new entry supersedes one or more earlier
+  decisions instead of editing them, and a `retract` entry supersedes one
+  without replacing it. Rules, the taxonomy, the account registry, and the matching
   policy remain edited files, versioned through the recipes' configuration
   snapshots.
 - **No Type 2 dimensions.** As-was views give exact history, which is why
@@ -100,16 +106,22 @@ The policy, the recipe's parts, and the synthetic scenarios are in
   snapshot and the effective classification decisions.
 - Silver becomes a function of a set of import runs, so an as-known-at view
   can derive it from a subset. Silver stays one current state for pipeline
-  builds, and views derive theirs in a scratch area.
+  builds, and views derive theirs in a scratch store.
 - ADR-011's "two decisions on one transaction" becomes a rejection when the
   second entry is recorded, not only a build error.
 - ADR-013 allows a Gold-only schema change to drop and rebuild Gold tables.
-  Those tables now also hold the retained results, so such a migration either
-  converts them or deletes them. Recipes survive either way. A deleted result
-  from an older contract version can be replayed only with its own code
-  version, in a separate store.
+  Those tables now also hold the retained results, so such a migration
+  converts them where it can. A result it cannot convert survives only in the
+  pre-migration backup, which its own code version opens. The migrate command
+  then runs a pipeline build, which becomes current, and `undo` has nothing to
+  return to until the next build.
 - A recipe is only replayable while its code version can still run. A
-  publication that must outlive its code is labeled, so its result is kept.
+  publication that must outlive its code is labeled, so its result is kept in
+  the store, or in the pre-migration backup after a migration that cannot
+  convert it.
+- Views, replays, and `verify` work in scratch stores that the migrate runner
+  creates, so ADR-013's rule that only the migrate command creates a schema
+  holds.
 - The dashboard needs a publication picker and a banner for non-current
   publications (issue #11). Every page pins one publication across its
   requests.
