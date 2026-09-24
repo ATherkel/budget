@@ -257,6 +257,13 @@ raw CSV column. A month with no `MonthlyBalanceSnapshot` row for an account is
 outside that account's managed period. A requested month beyond the latest
 published month has no data and must never be read as zero.
 
+Anything reported by category is summed over `category_allocations`, and
+anything reported per transaction over `transactions`. Household income and
+expenses are transaction measures; category and category-group spending are
+allocation measures. Because allocations sum exactly to their transactions,
+the two agree today and keep agreeing once a transaction carries several
+allocations.
+
 A `GoldRepository` is bound to one publication, and every method reads from
 it. Consumers obtain one through `GoldPublications`:
 
@@ -292,13 +299,6 @@ Publication metadata. None of it enters the result fingerprint.
 | `contract_version` | string | Yes | Gold contract version the publication implements. |
 | `fingerprint_scheme` | string | Yes | Version of the canonical serialization the fingerprint is computed over. |
 | `result_fingerprint` | string | Yes | SHA-256 over the canonical serialization of every consumer and lineage record. Under one `fingerprint_scheme`, equal fingerprints mean identical results; across schemes they are not comparable. |
-
-Anything reported by category is summed over `category_allocations`, and
-anything reported per transaction over `transactions`. Household income and
-expenses are transaction measures; category and category-group spending are
-allocation measures. Because allocations sum exactly to their transactions,
-the two agree today and keep agreeing once a transaction carries several
-allocations.
 
 ## Lineage Interface (privileged)
 
