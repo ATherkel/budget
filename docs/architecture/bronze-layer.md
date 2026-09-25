@@ -120,6 +120,11 @@ operator asked the bank for.
   and no final line break.
 - The header is exactly `Dato`, `Kategori`, `Underkategori`, `Tekst`, `Beløb`,
   `Saldo`, `Status`, `Afstemt`.
+- `Dato` is exactly two day digits, two month digits and four year digits
+  (`DD-MM-YYYY`), and must be a real calendar date. A one-digit day or month, a
+  leading space, Unicode digits, the ISO order or trailing text is a malformed
+  `Dato`, so the payload gets a format failure rather than a guessed value.
+  🤖 Added by Codex (deepseek/deepseek-v4.1-flash)
 - Rows are ordered oldest first by `Dato`, the transaction date (purchase
   date). A transaction the bank books days later appears at its `Dato` in later
   exports, and `Saldo` is the running balance recalculated in that order at
