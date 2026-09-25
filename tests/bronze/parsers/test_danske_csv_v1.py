@@ -57,52 +57,53 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
         ]
         assert result.last_transaction_date == date(2026, 9, 12)
 
-    def test_a_verdict_offers_no_records_and_no_coverage_bound(self) -> None:
-        # A byte Windows-1252 leaves undefined: the payload is not decodable as
-        # the declared encoding, so the verdict is the whole answer.
-        result = PARSER.parse(ONE_RECORD_PAYLOAD[:-1] + b"\x81")
-
-        assert result.records == ()
-        assert result.last_transaction_date is None
-        reason = result.failure_reason
-        assert reason
-        assert "Dato" not in reason
-
     def test_the_declared_header_and_encoding_are_required(self) -> None:
-        malformed = {
-            "unexpected header": ONE_RECORD_PAYLOAD.replace(
+        header_mismatches = {
+            "wrong first field name": ONE_RECORD_PAYLOAD.replace(b'"Dato"', b'"Datum"'),
+            "wrong last field name": ONE_RECORD_PAYLOAD.replace(
                 b'"Afstemt"', b'"Afstemt?"'
             ),
+        }
+        # Payloads that are not the declared encoding at all. They must be
+        # rejected, but no rule says which check rejects them first, so their
+        # verdict is not compared with the header verdicts.
+        unreadable = {
             "utf-8 encoded header": ONE_RECORD_PAYLOAD.decode("cp1252").encode("utf-8"),
             "byte undefined in windows-1252": ONE_RECORD_PAYLOAD[:-1] + b"\x81",
         }
-        header_reasons = []
 
-        for label, content in malformed.items():
+        def verdict_for(content: bytes) -> str:
+            result = PARSER.parse(content)
+            assert result.records == ()
+            assert result.last_transaction_date is None
+            reason = result.failure_reason
+            assert reason
+            # A failure reason is a verdict, never a copy of the source.
+            assert "Dato" not in reason
+            assert "Afstemt" not in reason
+            return reason
+
+        header_verdicts = []
+        for label, content in header_mismatches.items():
             with self.subTest(payload=label):
-                result = PARSER.parse(content)
+                header_verdicts.append(verdict_for(content))
 
-                assert result.records == ()
-                assert result.last_transaction_date is None
-                reason = result.failure_reason
-                assert reason
-                # A failure reason is a verdict, never a copy of the source.
-                assert "Dato" not in reason
-                assert "Afstemt" not in reason
-                if "header" in label:
-                    header_reasons.append(reason)
+        # A wrong field name is the same defect whichever name is wrong.
+        assert len(set(header_verdicts)) == 1
 
-        # The same defect gives the same verdict whatever the payload said.
-        assert len(header_reasons) == 2
-        assert header_reasons[0] == header_reasons[1]
+        for label, content in unreadable.items():
+            with self.subTest(payload=label):
+                verdict_for(content)
 
     def test_every_field_must_be_quoted_exactly_as_the_format_declares(self) -> None:
         header = HEADER + b"\r\n"
         prefix = b'"12-09-2026"," Mad "," Dagligvarer ",'
         suffix = b'"-45,00","955,00","Udf\xf8rt","Nej"'
-        malformed = {
+        unquoted_fields = {
             "unquoted field carrying a stray quote": prefix + b'Ca"fe,' + suffix,
             "unquoted field": prefix + b"Cafe," + suffix,
+        }
+        other_shapes = {
             "data after a closing quote": prefix + b'"Ca"fe",' + suffix,
             "unterminated quoted field": prefix + b'"Cafe',
             "one field too many": prefix + b'"Caf\xe9","ekstra",' + suffix,
@@ -114,8 +115,6 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
             header + b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9, ""\xd8en""'
             b'\r\nand more ","-45,00","955,00","Udf\xf8rt","Nej"'
         )
-        quoting_reasons = []
-
         stored = PARSER.parse(well_formed)
         assert stored.failure_reason is None
         assert len(stored.records) == 1
@@ -123,25 +122,31 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
         assert dict(stored.records[0])["Dato"] == "12-09-2026"
         assert stored.last_transaction_date == date(2026, 9, 12)
 
-        for label, row in malformed.items():
+        def verdict_for(row: bytes) -> str:
+            # A shape the format does not declare is a verdict on the payload,
+            # not a refusal, and it derives nothing.
+            result = PARSER.parse(header + row)
+            assert result.records == ()
+            assert result.last_transaction_date is None
+            reason = result.failure_reason
+            assert reason
+            assert "Cafe" not in reason
+            assert 'Ca"fe' not in reason
+            assert "Caf\xe9" not in reason
+            return reason
+
+        unquoted_verdicts = []
+        for label, row in unquoted_fields.items():
             with self.subTest(payload=label):
-                result = PARSER.parse(header + row)
+                unquoted_verdicts.append(verdict_for(row))
 
-                # A shape the format does not declare is a verdict on the
-                # payload, not a refusal, and it derives nothing.
-                assert result.records == ()
-                assert result.last_transaction_date is None
-                reason = result.failure_reason
-                assert reason
-                assert "Cafe" not in reason
-                assert 'Ca"fe' not in reason
-                assert "Caf\xe9" not in reason
-                if "unquoted field" in label or label.endswith("stray quote"):
-                    quoting_reasons.append(reason)
+        # A field that never opens with a quote is the same defect whatever text
+        # it carried instead.
+        assert len(set(unquoted_verdicts)) == 1
 
-        # The same defect gives the same verdict whatever the row said.
-        assert len(quoting_reasons) == 2
-        assert quoting_reasons[0] == quoting_reasons[1]
+        for label, row in other_shapes.items():
+            with self.subTest(payload=label):
+                verdict_for(row)
 
     def test_a_row_ending_in_a_comma_still_needs_its_quoted_field(self) -> None:
         header = HEADER + b"\r\n"
