@@ -1,9 +1,9 @@
 # Logical Data Map: `danske-csv-v1` → Silver
 
 **Status:** Draft. The map restates, column by column, what
-[`silver-layer.md`](../silver-layer.md), ADR-009, ADR-010 and ADR-013 decide
-for one source format, and decides what they leave open. Rows and rules it
-decides itself are marked *Map decision*. Where the layer contract is silent,
+[`silver-layer.md`](../silver-layer.md), ADR-009, ADR-010, ADR-013 and
+ADR-016 decide for one source format, and decides what they leave open. Rows
+and rules it decides itself are marked *Map decision*. Where the layer contract is silent,
 the map is normative, and the Silver code for `danske-csv-v1` follows it. Where
 it conflicts with the layer contract, an ADR or `domains/`, those win and the
 map is stale.
@@ -32,7 +32,7 @@ Kimball's columns are adapted to this pipeline:
 | `ImportRun` with outcome `stored`, not voided | one presentation of a payload | account, format, admission order |
 | `ImportRun` with outcome `repeat` | one presentation of stored bytes | `AccountEvidence` only, never records |
 | account configuration | one account | currency, and through it the decimal places of the minor unit (ADR-013) |
-| manual decision, from the decision log ([`operations.md`](../operations.md#decisionsjsonl-the-decision-log)) | one recorded ruling | *same transaction*: `TransactionEvidence.transaction_id` and the `Transaction` grain. *withdrawn*: the `Transaction` grain and `ImportRunResult.status`. *accept discrepancy*: `ImportRunResult.status` and `balance`. *void import run*: excluded by "not voided" above |
+| manual decision, from the decision log ([`operations.md`](../operations.md#decisionsjsonl-the-decision-log)) | one recorded ruling | *same transaction*: `TransactionEvidence.transaction_id` and the `Transaction` grain. *withdrawn*: the `Transaction` grain and `ImportRunResult.status`. *accept discrepancy*: `ImportRunResult.status`, `balance` and `end_of_day_balance`. *void import run*: excluded by "not voided" above |
 
 The `danske-csv-v1` fields. `bronze-layer.md` declares the header; the meanings
 come from it, `domains/transaction.md`, and the sample profile in
@@ -120,7 +120,7 @@ is `booked` contribute.
 | `currency` | `str` | account configuration | copied; never read from the payload |
 | `description` | `str` | `Tekst` | Identity text rule. Every export gives the same value, so no export is chosen; Bronze keeps the text as delivered, reachable through `TransactionEvidence` |
 | `source_system` | `str` | `ImportRun.source_format` | copied: `danske-csv-v1` |
-| `balance` | `Decimal \| None` | `Saldo` of the selected export | Decimal rule. An empty `Saldo` on a booked row is a `missing-balance` error and raises a `balance-break` review item (ADR-010). *Map decision:* when *accept discrepancy* admits that run anyway, the balance is null |
+| `balance` | `Decimal \| None` | `Saldo` of the selected export | Decimal rule. An empty `Saldo` on a booked row is a `missing-balance` error and raises a `balance-break` review item (ADR-010). When *accept discrepancy* admits that run anyway, the balance is null (ADR-016) |
 | `source_status` | `str` | `Status` | copied verbatim |
 | `booking_status` | `Literal` | `Status` | Booking status rule; always `booked` here |
 | `occurrence` | `int` | derived | *k*: 1-based count of booked rows in one export sharing account, date, quantized amount and identity text, in source order (ADR-009) |
@@ -172,7 +172,7 @@ has at least one booked row.
 | --- | --- | --- | --- |
 | `account_id` | `str` | `ImportRun.declared_account_id` | copied |
 | `balance_date` | `date` | `Dato` | Date rule |
-| `end_of_day_balance` | `Decimal \| None` | `Saldo` | *Map decision.* Decimal rule, from the date's last booked row in payload order; null when *accept discrepancy* admitted an empty `Saldo` on that row |
+| `end_of_day_balance` | `Decimal \| None` | `Saldo` | Decimal rule, from the date's last booked row in payload order (*Map decision*). Null when *accept discrepancy* admitted an empty `Saldo` on that row (ADR-016) |
 | `payload_id` | `str` | `SourceRecord.payload_id` | copied |
 
 ## Target: `ImportRunResult`
