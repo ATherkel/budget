@@ -9,9 +9,15 @@ dependencies = []
 [dependency-groups]
 dev = [
     "complexipy>=4",
+    "pytest>=8",
     "ruff>=0.13",
     "ty>=0.0.1a20",
 ]
+
+[tool.uv]
+# ADR-013: a system Python's SQLite can be below the store's version floor, so
+# use only uv's managed builds.
+python-preference = "only-managed"
 
 [tool.ruff]
 target-version = "py312"

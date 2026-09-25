@@ -209,11 +209,76 @@ _Avoid_: error, warning, conflict
 **Manual decision**:
 A recorded human ruling: it classifies a transaction, settles a Review item,
 or voids an import run. It targets transactions by their identity and never
-edits source data.
+edits source data. It is an entry in the Decision log.
 _Avoid_: Override, fix, edit
+
+**Decision log**:
+The append-only record of Manual decisions, each stamped with when the
+platform accepted it. A decision is never edited or deleted; a later entry
+supersedes or retracts it.
+_Avoid_: Overrides file, decisions file (the log is not edited in place)
 
 **Voided import run**:
 An import run a person has declared mistaken, for example because it was
 declared against the wrong account. Its raw payload is retained but it
 contributes nothing downstream.
 _Avoid_: deleted import, undone import
+
+### Publications and history
+
+**Publication**:
+One complete, immutable build of Gold, holding its dimensions, facts, lineage,
+and review items, built from one Recipe, with a fingerprint of that result. A
+consumer reads exactly one at a time. The rules are in
+[`publications.md`](docs/architecture/publications.md).
+_Avoid_: Version, snapshot (a Monthly balance snapshot is a fact), release
+
+**Recipe**:
+The record of every input a Publication was built from: its import runs,
+configuration snapshot, Decision log position, and code version. Rebuilding a
+Recipe with the code version it names yields the same result.
+_Avoid_: Manifest, lineage (lineage explains one fact, not a build)
+
+**Current publication**:
+The Publication reports show by default. A successful build becomes current at
+once, and undo makes the previous one current again.
+_Avoid_: Latest publication (an As-known-at view can be newer)
+
+**As-was view**:
+The Publication that was current at a given moment, shown exactly as it was
+then.
+_Avoid_: Historical report (ambiguous with As-known-at view)
+
+**As-known-at view**:
+A Publication built from only the import runs started by a given moment,
+interpreted with today's configuration and decisions. It is never current.
+_Avoid_: As-of report (ambiguous with As-was view)
+
+**Legacy publication**:
+A labeled Publication that a Gold migration could not convert. It is kept in
+its old schema, in its own file and in the pre-migration Backup set, with the
+code version that opens it. The rules are in
+[`operations.md`](docs/architecture/operations.md#legacy-publications).
+_Avoid_: archived publication, old version
+
+### Operations
+
+**Profile**:
+One of `production`, `development`, or `test`: a configuration of the same
+code that names every path the application touches. Every store records the
+profile it belongs to. The rules are in
+[`docs/architecture/operations.md`](docs/architecture/operations.md).
+_Avoid_: environment (ambiguous with the Python environment), instance
+
+**Household inputs**:
+Everything the household authors or declares: the account registry, category
+taxonomy, and classification rules as edited files, and the decision and
+import logs, which only the application appends to. With the export archive, they are
+enough to rebuild every store.
+_Avoid_: configuration (only part of it), settings
+
+**Backup set**:
+A snapshot of every store in a profile, with a copy of its household inputs
+and a manifest, taken together. Development reads production only through
+one.
+_Avoid_: backup (when meaning a copy of one file), dump

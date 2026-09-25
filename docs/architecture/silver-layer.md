@@ -10,7 +10,8 @@ resolve which source records show the same booked transaction.
 - Bronze import runs with outcome `stored` that have not been voided, with
   their source records or format failures.
 - Account configuration: each account's currency.
-- Manual decisions that affect identity. Their file format belongs to issue #10.
+- Manual decisions that affect identity, from the decision log
+  ([`operations.md`](operations.md#decisionsjsonl-the-decision-log)).
   - *void import run*
   - *same transaction*: a source record shows an existing transaction.
   - *withdrawn*: the bank removed a transaction. It also settles a
@@ -207,6 +208,10 @@ ReviewItem(
 **Reproducibility**
 - Rebuilding from the same Bronze inputs, account configuration, and manual
   decisions yields identical output, including identifiers.
+- Silver is a function of a set of import runs. An as-known-at view derives
+  Silver from the runs started by its cutoff, in a scratch store that the
+  migrate runner creates and that leaves the current Silver untouched
+  ([`publications.md`](publications.md#scratch-stores)).
 
 ## Downstream Requirements
 

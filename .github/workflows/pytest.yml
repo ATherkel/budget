@@ -1,0 +1,44 @@
+name: Pytest
+
+# Runs the test suite with pytest, which also collects unittest-style
+# `TestCase` classes, so one runner covers both. Kept apart from the static
+# gate in quality.yml because later jobs here (a package build, for example)
+# will depend on the tests passing through `needs: pytest`, and `needs:` only
+# reaches jobs in the same workflow. Make `pytest` a required status check on
+# `main`. The job always runs, so docs-only PRs report the check too and never
+# wait on a check that cannot start.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Sync dependencies
+        run: uv sync --locked
+      - name: Run tests
+        # pytest exits 5 when it collects no tests. Accept that only while the
+        # repository has no tests/ directory; once tests exist, collecting
+        # none is a failure.
+        run: |
+          status=0
+          uv run pytest || status=$?
+          if [ "$status" -eq 5 ] && [ ! -d tests ]; then
+            echo "::notice::No tests/ directory yet; nothing to run."
+            exit 0
+          fi
+          exit "$status"
