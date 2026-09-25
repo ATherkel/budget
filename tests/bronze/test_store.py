@@ -385,7 +385,8 @@ class BronzeStoreTests(unittest.TestCase):
                     )
                 assert "synthetic" not in str(unknown_format.value)
 
-            # A refused declaration is not an import: no payload was stored.
+            # These declarations were rejected, not refused: nothing was
+            # stored, not even a refused run.
             with BronzeStore(database) as reopened, pytest.raises(KeyError):
                 reopened.get_payload(expected_payload_id)
 
@@ -483,8 +484,8 @@ class BronzeStoreTests(unittest.TestCase):
 
                 assert run.outcome == expected_outcome
                 assert run.repeat_of is None
-                # A refused declaration is recorded as declared, not moved to
-                # the nearest acceptable date.
+                # A refused run keeps the declared date, not the nearest
+                # acceptable one.
                 assert run.covers_through == declared
                 assert run.covers_through_source == "declared"
                 assert payload.content == content
