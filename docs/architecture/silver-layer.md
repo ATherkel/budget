@@ -17,7 +17,8 @@ resolve which source records show the same booked transaction.
   - *withdrawn*: the bank removed a transaction. It also settles a
     `fewer-repeats` review item and admits the export that showed fewer.
   - *accept discrepancy*: an import run's balance break is real in the source
-    and is admitted with the break recorded (ADR-010).
+    and is admitted with the break recorded (ADR-010). A booked row it admits
+    without a balance keeps a null balance (ADR-016).
 
 ## Canonical Transaction
 
@@ -54,8 +55,9 @@ delivered, reachable through `TransactionEvidence`. For each date, `balance`,
 admitted export covering that date (ADR-009). They can therefore change when a
 later export adds a late-booked transaction or relabels one; `transaction_id`
 never does.
-`balance` is null only for sources that state no balances (ADR-010). The export
-chosen for a date is the latest admitted one that shows every transaction kept
+`balance` is null only for sources that state no balances (ADR-010), and when
+the selected export is one that *accept discrepancy* admitted and it states no
+balance on the transaction's row (ADR-016). The export chosen for a date is the latest admitted one that shows every transaction kept
 for it.
 
 Within a date, `day_sequence` preserves the bank's row order in the selected
@@ -120,7 +122,7 @@ UnbookedRecord(                 # retained provenance; never a transaction
 BalanceObservation(             # bank-stated end-of-day balance per export
     account_id: str,
     balance_date: date,
-    end_of_day_balance: Decimal,
+    end_of_day_balance: Decimal | None,  # null only as for balance (ADR-016)
     payload_id: str,
 )
 
@@ -229,7 +231,9 @@ as evidence. `covered_to` is unaffected: it is always the import run's
   later bookings on an export's final date, are both explained growth. A date
   states an end-of-day balance only once it has a booked transaction, so the
   balances are compared on the dates both sides state one; ADR-009 records why
-  that is a consequence of the rules above and not an exemption from them.
+  that is a consequence of the rules above and not an exemption from them. A
+  null `end_of_day_balance` states none, so that date is not compared
+  (ADR-016).
 - An unexplained difference quarantines the later run and raises an
   `export-disagreement` review item.
 - Fewer repeated transactions on any date quarantine the run and raise a
