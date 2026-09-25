@@ -37,8 +37,8 @@ The `danske-csv-v1` fields, as `bronze-layer.md` declares them:
 | `Kategori` | ` Mad ` | bank category, space-padded |
 | `Underkategori` | ` Dagligvarer ` | bank subcategory, space-padded |
 | `Tekst` | ` Café` | transaction text |
-| `Beløb` | `-45,00` | amount, decimal comma, negative is money out |
-| `Saldo` | `955,00` | running balance after the row, recalculated at export time; empty on `Slettet` rows |
+| `Beløb` | `-1.234,56` | amount, decimal comma, `.` groups thousands, negative is money out |
+| `Saldo` | `2.955,00` | running balance after the row, recalculated at export time; empty on `Slettet` rows |
 | `Status` | `Udført` | the bank's booking status |
 | `Afstemt` | `Nej` | reconciled flag; not interpreted |
 
@@ -50,10 +50,13 @@ These apply wherever a column below names them.
   `danske_csv_v1._transaction_date` (a one-digit day or month is accepted).
   Bronze already refuses a payload with an unreadable `Dato`, so for this
   format a Silver `unparseable-date` error is a guard, not a path.
-- **Decimal.** A value is an optional `-`, digits, and an optional `,` with one
-  or two digits. The comma becomes a decimal point and the result is a
-  `Decimal`, never a float. Nothing is trimmed first; anything else is an
-  `unparseable-decimal` error on that record.
+- **Decimal.** A value is an optional `-`, an integer part, and an optional
+  `,` with one or two digits. The integer part is either digits with no `.`, or
+  one to three digits followed by groups of `.` and exactly three digits, as in
+  `1.234.567`; Danske groups thousands with `.`. The `.` separators are
+  removed, the comma becomes a decimal point, and the result is a `Decimal`,
+  never a float. Nothing is trimmed first; anything else, such as `1.23,00` or
+  `1234.567,00`, is an `unparseable-decimal` error on that record.
 - **Booking status.** `Status` maps exactly, with no trimming or case folding:
 
   | `Status` | `booking_status` |
