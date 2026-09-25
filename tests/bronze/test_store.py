@@ -243,6 +243,51 @@ class BronzeStoreTests(unittest.TestCase):
                     reopened.get_source_records(original.payload_id) == original_records
                 )
 
+    def test_bytes_only_ever_refused_for_one_account_are_free_for_another(
+        self,
+    ) -> None:
+        content = (
+            b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
+            b'"Saldo","Status","Afstemt"\r\n'
+            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"-45,00","955,00","Udf\xf8rt","Nej"'
+        )
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "bronze.sqlite3"
+            source = root / "synthetic-20260914.csv"
+            source.write_bytes(content)
+
+            # The only run for these bytes asks to cover evidence past the export
+            # date, so it is refused and never becomes an original.
+            with BronzeStore(database) as store:
+                refused = store.import_file(
+                    source,
+                    declared_account_id="daily-account",
+                    source_format="danske-csv-v1",
+                    covers_through=date(2026, 9, 20),
+                )
+            assert refused.outcome == "refused"
+
+            # A refusal is nobody's owner, so another account can still declare
+            # the same bytes correctly.
+            with BronzeStore(database) as reopened:
+                accepted = reopened.import_file(
+                    source,
+                    declared_account_id="savings-account",
+                    source_format="danske-csv-v1",
+                    covers_through=date(2026, 9, 13),
+                )
+                payload = reopened.get_payload(accepted.payload_id)
+                saved_refusal = reopened.get_import_run(refused.import_run_id)
+
+            assert accepted.outcome == "stored"
+            assert accepted.repeat_of is None
+            assert accepted.payload_id == refused.payload_id
+            assert payload.content == content
+            assert saved_refusal == refused
+
     def test_a_malformed_payload_is_recorded_as_a_verdict_with_its_bytes(
         self,
     ) -> None:
