@@ -184,7 +184,7 @@ source records.
 | --- | --- | --- | --- |
 | `import_run_id` | `str` | `ImportRun.import_run_id` | copied |
 | `status` | `Literal` | derived, and manual decisions | `accepted` when the run has no validation error and fails no merge check, or when every one it has belongs to a review item a manual decision has settled: *accept discrepancy* for a `balance-break`, *withdrawn* for a `fewer-repeats` (ADR-009, ADR-010). Otherwise `quarantined` |
-| `covered_from` | `date \| None` | `Dato` | *Map decision.* The earliest `Dato` among the payload's source records, booked or not; null when the payload has none, as with a `FormatFailure` or a header-only export |
+| `covered_from` | `date \| None` | `Dato` | the earliest `Dato` among the payload's source records, booked or not; null when the payload has none, as with a `FormatFailure` or a header-only export (`silver-layer.md`) |
 | `covered_to` | `date` | `ImportRun.covers_through` | copied |
 | `errors` | `Sequence` | derived | every `ValidationError` listed under *Validation* in `silver-layer.md`, with the codes under Error codes where this map names one. Errors a manual decision settled stay listed (ADR-010: "the import run lists it") |
 | `review_item_ids` | `Sequence` | derived | review items raised for this run, settled or not; a settled one names its decision in `ReviewItem.resolved_by` |
