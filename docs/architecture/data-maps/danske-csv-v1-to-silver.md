@@ -1,9 +1,12 @@
 # Logical Data Map: `danske-csv-v1` → Silver
 
-**Status:** Draft. It restates, column by column, what
-[`silver-layer.md`](../silver-layer.md), ADR-009 and ADR-010 already decide
-for one source format. Where this map and those documents disagree, they win
-and this map is stale.
+**Status:** Draft. The map restates, column by column, what
+[`silver-layer.md`](../silver-layer.md), ADR-009, ADR-010 and ADR-013 decide
+for one source format, and decides what they leave open. Rows and rules it
+decides itself are marked *Map decision*. Where the layer contract is silent,
+the map is normative, and the Silver code for `danske-csv-v1` follows it. Where
+it conflicts with the layer contract, an ADR or `domains/`, those win and the
+map is stale.
 
 This is the logical data map of Kimball's ETL toolkit (figure 3.1): for every
 target column, where it comes from and how. It is a design document, not
@@ -12,9 +15,9 @@ configuration. Nothing reads it at run time; the Silver code for
 
 Kimball's columns are adapted to this pipeline:
 
-- **Source** is always Bronze. A source column is either a field of
-  `SourceRecord.fields`, written as `Dato`, or a field of another Bronze or
-  configuration record, written as `ImportRun.declared_account_id`. Every
+- **Source** is Bronze, account configuration, or a manual decision. A source
+  column is either a field of `SourceRecord.fields`, written as `Dato`, or a
+  field of another record, written as `ImportRun.declared_account_id`. Every
   `SourceRecord.fields` value is a string, exactly as decoded.
 - **Table type** and **SCD type** are left out. Silver holds canonical records,
   not dimensions or facts; slowly changing dimensions are Gold's, and ADR-007
@@ -25,20 +28,24 @@ Kimball's columns are adapted to this pipeline:
 | Source | Grain | Used for |
 | --- | --- | --- |
 | `SourceRecord` of a payload with no `FormatFailure` | one row of one payload | every per-row value |
+| `FormatFailure` of a stored payload | one verdict on one payload and format | `ImportRunResult.errors` and `status`; the payload has no source records |
 | `ImportRun` with outcome `stored`, not voided | one presentation of a payload | account, format, admission order |
 | `ImportRun` with outcome `repeat` | one presentation of stored bytes | `AccountEvidence` only, never records |
-| account configuration | one account | currency |
+| account configuration | one account | currency, and through it the decimal places of the minor unit (ADR-013) |
+| manual decision, from the decision log ([`operations.md`](../operations.md#decisionsjsonl-the-decision-log)) | one recorded ruling | *same transaction*: `TransactionEvidence.transaction_id` and the `Transaction` grain. *withdrawn*: the `Transaction` grain and `ImportRunResult.status`. *accept discrepancy*: `ImportRunResult.status` and `balance`. *void import run*: excluded by "not voided" above |
 
-The `danske-csv-v1` fields, as `bronze-layer.md` declares them:
+The `danske-csv-v1` fields. `bronze-layer.md` declares the header; the meanings
+come from it, `domains/transaction.md`, and the sample profile in
+`agents/bronze-agent.md`.
 
 | Field | Example | Meaning |
 | --- | --- | --- |
-| `Dato` | `12-09-2026` | transaction date (purchase date), `DD-MM-YYYY` |
+| `Dato` | `12.09.2026` | transaction date (purchase date), `DD.MM.YYYY` |
 | `Kategori` | ` Mad ` | bank category, space-padded |
 | `Underkategori` | ` Dagligvarer ` | bank subcategory, space-padded |
 | `Tekst` | ` Café` | transaction text |
-| `Beløb` | `-45,00` | amount, decimal comma, negative is money out |
-| `Saldo` | `955,00` | running balance after the row, recalculated at export time; empty on `Slettet` rows |
+| `Beløb` | `-1.234,56` | amount, decimal comma, `.` groups thousands, negative is money out |
+| `Saldo` | `2.955,00` | running balance after the row, recalculated at export time; empty on `Slettet` rows |
 | `Status` | `Udført` | the bank's booking status |
 | `Afstemt` | `Nej` | reconciled flag; not interpreted |
 
@@ -46,15 +53,27 @@ The `danske-csv-v1` fields, as `bronze-layer.md` declares them:
 
 These apply wherever a column below names them.
 
-- **Date.** `Dato` is read with `%d-%m-%Y`, with the same leniency as Bronze's
-  `danske_csv_v1._transaction_date` (a one-digit day or month is accepted).
-  Bronze already refuses a payload with an unreadable `Dato`, so for this
-  format a Silver `unparseable-date` error is a guard, not a path.
-- **Decimal.** A value is an optional `-`, digits, and an optional `,` with one
-  or two digits. The comma becomes a decimal point and the result is a
-  `Decimal`, never a float. Nothing is trimmed first; anything else is an
-  `unparseable-decimal` error on that record.
-- **Booking status.** `Status` maps exactly, with no trimming or case folding:
+- **Date.** *Map decision.* `Dato` is exactly `DD.MM.YYYY`: a two-digit day, a
+  two-digit month and a four-digit year, separated by `.`, with no whitespace,
+  naming a real calendar date. `12.09.2026` is 12 September 2026; `1.09.2026`,
+  ` 12.09.2026`, `12-09-2026` and `31.02.2026` are `unparseable-date` errors on
+  that record. Nothing upstream promises a readable `Dato`, so this error is a
+  real path.
+- **Decimal.** *Map decision.* A value is an optional `-`, an integer part, and
+  an optional `,` followed by at least one digit and no more digits than the
+  account's currency has decimal places (ADR-013's ISO 4217 table; two for
+  DKK). The integer part is either digits with no `.`, or one to three digits
+  followed by groups of `.` and exactly three digits, as in `1.234.567`; Danske
+  groups thousands with `.`. The `.` separators are removed, the comma becomes a
+  decimal point, and the result is a `Decimal` at the currency's minor unit,
+  never a float: `-45,0` becomes `Decimal("-45.00")`. Nothing is trimmed first.
+  An empty `Saldo` on a booked row is a `missing-balance` error and never an
+  `unparseable-decimal` one (see `balance`). Anything else, such as an empty
+  `Beløb`, `1.23,00`, `1234.567,00`, or `-45,001` in DKK, is an
+  `unparseable-decimal` error on that record. More decimal places than the
+  currency allows are rejected, never rounded (ADR-013).
+- **Booking status.** `Status` maps as `silver-layer.md` states. *Map
+  decision:* the match is exact, with no trimming or case folding.
 
   | `Status` | `booking_status` |
   | --- | --- |
@@ -62,34 +81,53 @@ These apply wherever a column below names them.
   | `Slettet` | `cancelled` |
   | anything else | `unknown-status` error |
 
+  *Map decision.* No pending value is known. The first export carrying one is
+  quarantined whole with an `unknown-status` error on each such record, and its
+  new dates wait. A person then decides what the value means, adds it to this
+  table and to the Silver code, and runs `rebuild --from silver`
+  ([`operations.md`](../operations.md)) to validate the run again.
+
 - **Identity text.** `Tekst` with leading and trailing Unicode whitespace
   removed and internal runs collapsed to one space, including 0xA0 (ADR-009).
-  It is an input to `transaction_id` and *k*, never a stored column.
+  It is an input to `transaction_id` and *k*, and is stored as `description`.
+- **Label.** *Map decision.* `Kategori` or `Underkategori` with leading and
+  trailing Unicode whitespace removed, including 0xA0, as for the identity
+  text; internal whitespace is kept. A value that is empty afterwards is null.
 - **Selected export.** For each account and date, the latest admitted export
-  covering that date that shows every transaction kept for it (ADR-009).
+  covering that date that shows every transaction kept for it (ADR-009). It
+  supplies `balance`, `day_sequence`, `bank_category` and `bank_subcategory`
+  (`silver-layer.md`).
+- **Error codes.** *Map decision.* `silver-layer.md` (*Validation*) lists the
+  errors in prose and names no `ValidationError.code`. This map names the four
+  its rules raise: `unparseable-date`, `unparseable-decimal`, `unknown-status`
+  and `missing-balance`. The other errors in that list, a format failure, a
+  wrong field count and a balance-chain break, do not depend on this format and
+  are not named here.
 
 ## Target: `Transaction`
 
-Grain: one booked transaction, after duplicates collapse. Only records whose
-`booking_status` is `booked` contribute.
+Grain: one booked transaction. Booked records collapse by ADR-009 identity, a
+*same transaction* decision adds a record to an existing transaction, and a
+*withdrawn* decision removes a transaction. Only records whose `booking_status`
+is `booked` contribute.
 
 | Target column | Type | Source | Transformation |
 | --- | --- | --- | --- |
-| `transaction_id` | `str` | `ImportRun.declared_account_id`, `Dato`, `Beløb`, `Tekst` | ADR-009 hash of `identity_version`, account, date, amount quantized to the currency's minor unit, identity text, and `occurrence` |
+| `transaction_id` | `str` | `ImportRun.declared_account_id`, `Dato`, `Beløb`, `Tekst`, account configuration | ADR-009 hash of `identity_version`, account, date, amount quantized to the minor unit of the account's currency, identity text, and `occurrence` |
 | `account_id` | `str` | `ImportRun.declared_account_id` | copied |
 | `transaction_date` | `date` | `Dato` | Date rule |
 | `amount` | `Decimal` | `Beløb` | Decimal rule |
 | `currency` | `str` | account configuration | copied; never read from the payload |
-| `description` | `str` | `Tekst` | copied exactly as delivered, padding included, from the selected export |
+| `description` | `str` | `Tekst` | Identity text rule. Every export gives the same value, so no export is chosen; Bronze keeps the text as delivered, reachable through `TransactionEvidence` |
 | `source_system` | `str` | `ImportRun.source_format` | copied: `danske-csv-v1` |
-| `balance` | `Decimal` | `Saldo` of the selected export | Decimal rule. Never null for this format: an empty `Saldo` on a booked row is a `missing-balance` error and a `balance-break` review item (ADR-010) |
+| `balance` | `Decimal \| None` | `Saldo` of the selected export | Decimal rule. An empty `Saldo` on a booked row is a `missing-balance` error and raises a `balance-break` review item (ADR-010). *Map decision:* when *accept discrepancy* admits that run anyway, the balance is null |
 | `source_status` | `str` | `Status` | copied verbatim |
 | `booking_status` | `Literal` | `Status` | Booking status rule; always `booked` here |
 | `occurrence` | `int` | derived | *k*: 1-based count of booked rows in one export sharing account, date, quantized amount and identity text, in source order (ADR-009) |
 | `day_sequence` | `int` | `SourceRecord.record_ordinal` of the selected export | 1-based order of the date's booked rows in the selected export; transactions it does not show are appended in `transaction_id` order (`silver-layer.md`) |
 | `identity_version` | `str` | constant | the version of the ADR-009 rule in force |
-| `bank_category` | `str \| None` | `Kategori` | trimmed; null when empty |
-| `bank_subcategory` | `str \| None` | `Underkategori` | trimmed; null when empty |
+| `bank_category` | `str \| None` | `Kategori` of the selected export | Label rule |
+| `bank_subcategory` | `str \| None` | `Underkategori` of the selected export | Label rule |
 
 Not mapped: `Afstemt`, which stays in Bronze (`silver-layer.md`, *Booking
 state*).
@@ -120,7 +158,7 @@ transaction.
 
 | Target column | Type | Source | Transformation |
 | --- | --- | --- | --- |
-| `transaction_id` | `str` | derived | the `Transaction` this record resolves to |
+| `transaction_id` | `str` | derived, or a *same transaction* decision | the `Transaction` this record resolves to by ADR-009 identity, or the existing one a *same transaction* decision names for it |
 | `payload_id` | `str` | `SourceRecord.payload_id` | copied |
 | `record_ordinal` | `int` | `SourceRecord.record_ordinal` | copied |
 | `import_run_id` | `str` | `ImportRun.import_run_id` of the `stored` run | copied |
@@ -134,21 +172,22 @@ has at least one booked row.
 | --- | --- | --- | --- |
 | `account_id` | `str` | `ImportRun.declared_account_id` | copied |
 | `balance_date` | `date` | `Dato` | Date rule |
-| `end_of_day_balance` | `Decimal` | `Saldo` | Decimal rule, from the date's last booked row in payload order |
+| `end_of_day_balance` | `Decimal \| None` | `Saldo` | *Map decision.* Decimal rule, from the date's last booked row in payload order; null when *accept discrepancy* admitted an empty `Saldo` on that row |
 | `payload_id` | `str` | `SourceRecord.payload_id` | copied |
 
 ## Target: `ImportRunResult`
 
-Grain: one admitted-or-quarantined `stored` import run.
+Grain: one `stored`, not voided import run, whether or not its payload has
+source records.
 
 | Target column | Type | Source | Transformation |
 | --- | --- | --- | --- |
 | `import_run_id` | `str` | `ImportRun.import_run_id` | copied |
-| `status` | `Literal` | derived | `quarantined` if any validation error or merge check fails, else `accepted` |
-| `covered_from` | `date` | `Dato` | the earliest `Dato` in the payload, booked or not |
+| `status` | `Literal` | derived, and manual decisions | `accepted` when the run has no validation error and fails no merge check, or when every one it has belongs to a review item a manual decision has settled: *accept discrepancy* for a `balance-break`, *withdrawn* for a `fewer-repeats` (ADR-009, ADR-010). Otherwise `quarantined` |
+| `covered_from` | `date \| None` | `Dato` | *Map decision.* The earliest `Dato` among the payload's source records, booked or not; null when the payload has none, as with a `FormatFailure` or a header-only export |
 | `covered_to` | `date` | `ImportRun.covers_through` | copied |
-| `errors` | `Sequence` | derived | every `ValidationError` raised by the rules above |
-| `review_item_ids` | `Sequence` | derived | review items raised for this run |
+| `errors` | `Sequence` | derived | every `ValidationError` listed under *Validation* in `silver-layer.md`, with the codes under Error codes where this map names one. Errors a manual decision settled stay listed (ADR-010: "the import run lists it") |
+| `review_item_ids` | `Sequence` | derived | review items raised for this run, settled or not; a settled one names its decision in `ReviewItem.resolved_by` |
 
 `AccountEvidence` reads only `ImportRun` fields, so it is format-independent
 and the formula in `silver-layer.md` is its whole map.
