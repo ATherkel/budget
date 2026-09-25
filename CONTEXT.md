@@ -253,3 +253,32 @@ _Avoid_: Historical report (ambiguous with As-known-at view)
 A Publication built from only the import runs started by a given moment,
 interpreted with today's configuration and decisions. It is never current.
 _Avoid_: As-of report (ambiguous with As-was view)
+
+**Legacy publication**:
+A labeled Publication that a Gold migration could not convert. It is kept in
+its old schema, in its own file and in the pre-migration Backup set, with the
+code version that opens it. The rules are in
+[`operations.md`](docs/architecture/operations.md#legacy-publications).
+_Avoid_: archived publication, old version
+
+### Operations
+
+**Profile**:
+One of `production`, `development`, or `test`: a configuration of the same
+code that names every path the application touches. Every store records the
+profile it belongs to. The rules are in
+[`docs/architecture/operations.md`](docs/architecture/operations.md).
+_Avoid_: environment (ambiguous with the Python environment), instance
+
+**Household inputs**:
+Everything the household authors or declares: the account registry, category
+taxonomy, and classification rules as edited files, and the decision and
+import logs, which only the application appends to. With the export archive, they are
+enough to rebuild every store.
+_Avoid_: configuration (only part of it), settings
+
+**Backup set**:
+A snapshot of every store in a profile, with a copy of its household inputs
+and a manifest, taken together. Development reads production only through
+one.
+_Avoid_: backup (when meaning a copy of one file), dump
