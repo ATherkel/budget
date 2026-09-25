@@ -30,6 +30,14 @@ def header_payload(*rows: bytes) -> bytes:
     return b"\r\n".join([HEADER, *rows])
 
 
+def dato_row(dato: str) -> bytes:
+    """Build one data row whose Dato field carries the given source string."""
+    return (
+        b'"%s"," Mad "," Dagligvarer "," Caf\xe9",'
+        b'"-45,00","955,00","Udf\xf8rt","Nej"' % dato.encode("cp1252")
+    )
+
+
 class DanskeCsvV1ParserTests(unittest.TestCase):
     def test_a_payload_is_presented_with_its_decoded_fields_unchanged(self) -> None:
         result = PARSER.parse(ONE_RECORD_PAYLOAD)
@@ -183,21 +191,39 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
             "Udført",
         ]
 
-    def test_lenient_transaction_dates_stay_readable_and_unchanged(self) -> None:
-        # `%d-%m-%Y` accepts a one-digit day or month and a leading space, and
-        # the source's own Dato string is presented exactly as it arrived.
-        dates = ("1-9-2026", "01-9-2026", " 1-09-2026", "3-10-2026")
-        row = (
-            b'"%s"," Mad "," Dagligvarer "," Caf\xe9",'
-            b'"-45,00","955,00","Udf\xf8rt","Nej"'
+    def test_a_date_must_be_zero_padded_dd_mm_yyyy(self) -> None:
+        # The declared shape is two day digits, two month digits and four year
+        # digits. A one-digit day or month, a leading space, Unicode digits, the
+        # ISO order and trailing text are each outside it.
+        rejected = (
+            "1-9-2026",
+            "01-9-2026",
+            " 1-09-2026",
+            "3-10-2026",
+            "2026-09-12",
+            "12-09-2026 ",
+            "¹²-09-2026",
         )
-        payload = header_payload(*[row % value.encode("cp1252") for value in dates])
+        failure_reasons = []
 
-        result = PARSER.parse(payload)
+        for dato in rejected:
+            with self.subTest(dato=dato):
+                result = PARSER.parse(header_payload(dato_row(dato)))
 
-        assert result.failure_reason is None
-        assert [dict(record)["Dato"] for record in result.records] == list(dates)
-        assert result.last_transaction_date == date(2026, 10, 3)
+                assert result.records == ()
+                assert result.last_transaction_date is None
+                reason = result.failure_reason
+                assert reason
+                assert dato not in reason
+                failure_reasons.append(reason)
+
+        # Every shape defect is one verdict, whatever the text looked like.
+        assert len(set(failure_reasons)) == 1
+
+        accepted = PARSER.parse(header_payload(dato_row("12-09-2026")))
+        assert accepted.failure_reason is None
+        assert [dict(record)["Dato"] for record in accepted.records] == ["12-09-2026"]
+        assert accepted.last_transaction_date == date(2026, 9, 12)
 
     def test_an_unreadable_transaction_date_is_a_verdict_without_records(self) -> None:
         row = (
