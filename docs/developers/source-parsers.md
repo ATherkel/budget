@@ -49,8 +49,8 @@ Test directories follow the application's responsibilities, and each module
 describes observable behaviour rather than one function per implementation
 helper.
 
-- `tests/bronze/parsers/test_registry.py` - the registry: which format IDs are
-  declared, which parser each ID selects, and how an undeclared ID is refused.
+- `tests/bronze/parsers/test_registry.py` - the registry: how an ID that no
+  parser declares is refused.
 - `tests/bronze/parsers/test_danske_csv_v1.py` - the declared rules of one
   format, observed only through `parse` and `exported_on_from_filename`:
   encoding, header, quoting, the transaction-date syntax and the coverage bound
@@ -70,8 +70,7 @@ so a rule change fails in one place instead of two.
    convention in that module: the store must not learn any of them.
 2. Register it in `parsers/registry.py` under its ID.
 3. Add a format-specific suite under `tests/bronze/parsers/`, following
-   `tests/bronze/parsers/test_danske_csv_v1.py`, and its ID to the registry
-   assertions in `tests/bronze/parsers/test_registry.py`.
+   `tests/bronze/parsers/test_danske_csv_v1.py`.
 
 ## Limits These Decisions Do Not Solve
 
