@@ -35,8 +35,12 @@ resolve duplicates without assigning household financial meaning.
   `danske-csv-v1` rows.
 - `Status` maps to `booking_status` (`Udført` → `booked`, `Slettet` →
   `cancelled`); an unmapped value is a validation error.
-- `description` is the source text as delivered. The identity text is derived
-  only by trimming and collapsing whitespace, as ADR-009 documents.
+- `description` is the identity text: the source text trimmed and with
+  whitespace collapsed, as ADR-009 documents, and nothing else. Two exports
+  whose texts differ only in whitespace give one transaction one `description`.
+- `bank_category` and `bank_subcategory` come from the latest admitted export
+  covering the transaction's date; a later export that relabels a transaction
+  changes them and leaves its `transaction_id` unchanged.
 - Identical, overlapping, reordered, and reverse-order imports of exports the
   bank produced on different days produce the same transactions and identifiers,
   including when an older export is imported after a newer one: runs are
