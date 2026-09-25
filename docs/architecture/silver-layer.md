@@ -132,7 +132,7 @@ AccountEvidence(                # the account's evidence bound; see above
 ImportRunResult(
     import_run_id: str,
     status: Literal["accepted", "quarantined"],
-    covered_from: date,         # first transaction date in the export
+    covered_from: date,         # earliest transaction date in the payload, booked or not
     covered_to: date,           # the import run's covers_through (Bronze)
     errors: Sequence[ValidationError],
     review_item_ids: Sequence[str],
@@ -156,7 +156,24 @@ ReviewItem(
 )
 ```
 
+`ImportRunResult.covered_from` describes the file, not the transactions
+admitted from it: it is the earliest transaction date among all the payload's
+source records, whatever their `booking_status`. An export whose first row is
+cancelled on 28 August and whose first booked row is on 1 September has
+`covered_from` 28 August.
+
 ## Rules
+
+**Amounts**
+- Every `amount`, `balance` and `end_of_day_balance` carries exactly the
+  currency's decimal places: two for DKK. The places come from the ISO 4217
+  table keyed by the account's configured currency (ADR-013). A source value
+  with fewer places is padded, so `-45,0` and `-45,00` both become
+  `Decimal("-45.00")`. Every export that shows a transaction therefore gives it
+  the same `amount`, in the same written form, and that is the value ADR-009
+  hashes.
+- A source value with more decimal places than its currency allows is an
+  unparseable decimal. Silver never rounds it.
 
 **Booking state**
 - Each source format maps its status values to `booking_status`: `booked`,
@@ -173,7 +190,8 @@ ReviewItem(
 - Errors include:
   - a format failure;
   - a wrong field count;
-  - an unparseable date or decimal;
+  - an unparseable date or decimal, including a decimal with more places than
+    its currency allows;
   - an unknown status;
   - a booked row without a balance, or a balance-chain break within the
     export (ADR-010).
