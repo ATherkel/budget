@@ -17,12 +17,13 @@ It relies on these decisions:
 - [ADR-013](../decisions/ADR-013-sqlite-store-integer-minor-units.md): SQLite
   through `sqlite3`, `STRICT` tables, WAL mode, integer minor units, numbered
   SQL migrations, and backups through the backup API.
-- [ADR-014](../decisions/ADR-014-gold-publications-and-history.md) (proposed
-  in pull request #57): publications, recipes, immediate promotion with `undo`,
-  retention, past views, and the append-only decision log.
+- [ADR-014](../decisions/ADR-014-gold-publications-and-history.md) and
+  [`publications.md`](publications.md): publications in one Gold store,
+  recipes, immediate promotion with `undo`, retention, past views, `verify`,
+  and the append-only decision log.
 - [ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md):
-  profiles, one store per ETL stage, one file per publication, development
-  from backups, and household inputs as text.
+  profiles, one store per ETL stage, legacy publications, development from
+  backups, and household inputs as text.
 
 Three principles apply throughout:
 
@@ -44,8 +45,8 @@ Here the saved steps are the stores.
 | --- | --- | --- | --- | --- |
 | `bronze.db` | Extract | Raw payloads, import runs, source records, format failures | The export archive and the import log | Yes |
 | `silver.db` | Clean and conform | Canonical transactions, unbooked records, validation errors, import review items, evidence | Bronze and the inputs | Yes, so development can start from it |
-| `gold/catalog.db` | Deliver: control | Recipes, configuration snapshots, the current pointer and its history, labels | No: recipes are history | Yes |
-| `gold/publication-<id>.db` | Deliver | One publication's Gold tables and lineage | Its recipe, replayed with its code (ADR-014) | The retained ones |
+| `gold.db` | Deliver | The retained publications' Gold tables and lineage, recipes, configuration snapshots, the current pointer and its history, labels, legacy entries | Results: each from its recipe, replayed with its code (ADR-014). Recipes and the pointer history: no, they are history | Yes |
+| `gold/legacy/publication-<id>.db` | Deliver: legacy | One labeled publication that a Gold migration could not convert, in its old schema | Its recipe, replayed with its code | Yes |
 
 Kimball's *conform* step also builds the conformed dimensions. Here those
 (account, category, date) are built in Gold from the household inputs,
@@ -55,40 +56,56 @@ household's.
 Rules for every store:
 
 - **Created only by `migrate`.** Each store has its own numbered migrations,
-  in `migrations/bronze/`, `migrations/silver/`, `migrations/catalog/` and
-  `migrations/publication/`, and its own `PRAGMA user_version`. Opening a store
-  never creates tables and fails when the file does not exist (ADR-013).
+  in `migrations/bronze/`, `migrations/silver/` and `migrations/gold/`, and its
+  own `PRAGMA user_version`. Opening a store never creates tables and fails
+  when the file does not exist (ADR-013). The migrate runner also creates
+  scratch stores and legacy extracts, from the same migration files.
 - **It knows its profile and stage.** `migrate` writes `profile` and `stage`
   into a one-row `store_identity` table when it creates the store. Opening a
   store under another profile or as another stage is refused.
-- **A publication file keeps its schema version.** A Gold migration changes
-  the schema that new publications are written with. It does not convert the
-  retained files. The running code refuses to open a publication whose schema
-  version differs from its own and names the code version that can.
 - **A write to one store is one transaction.** Silver and Gold commit
   separately. Readers only reach Gold through the pointer, so a crash between
   the two leaves the previous publication current.
 
 ### Publishing a Gold build
 
-1. Write `publication-<id>.db` completely, compute its result fingerprint, and
-   close the file.
-2. In `catalog.db`, in one transaction, store the recipe, register the
-   publication, and move the pointer (ADR-014: promotion is immediate). **This
-   transaction is the commit point.**
-3. Delete the result files that are no longer retained: not current, not
-   previous, not labeled.
+As [`publications.md`](publications.md#pipeline-builds) defines: in one write
+transaction in `gold.db`, the new publication's result is stored, the pointer
+moves to it, and the pointer history records the move. **That transaction is
+the commit point.** A crash before it commits leaves the previous publication
+current and nothing to clean up. Results that are no longer retained (not
+current, not previous, not labeled) are deleted by a later transaction.
 
-A crash before step 2 leaves a file the catalog does not know. The next
-command deletes it. Step 3 can fail on Windows while the dashboard has the file
-open; a later command retries it.
+The dashboard reads the pointer from `gold.db` for each page and pins that
+`publication_id` across the page's requests. A page whose publication has
+since been deleted gets `PublicationUnavailable` and is offered the current
+one (ADR-014). Past views (`view --as-was`, `view --known-at`) are
+publications in `gold.db` too, and can never become current. Views, replays
+and `verify` work in scratch stores under the profile's `scratch/` folder,
+which are deleted afterwards.
 
-The dashboard reads the pointer from `catalog.db` for each page, opens the
-named file read-only, and pins that `publication_id` across the page's
-requests (ADR-014). Past views (`view --as-was`, `view --known-at`) are
-publication files too and can never become current. The Silver that an
-as-known-at view builds from a subset of import runs goes to the profile's
-`scratch/` folder and is deleted afterwards.
+Every Gold table holds every retained publication. A query typed by hand
+against `gold.db` must filter on `publication_id`, or it adds retained
+publications together. Views restricted to the current publication
+(`current_*`) are deferred: a later migration can add them if hand queries
+become routine.
+
+### Legacy publications
+
+A Gold migration converts the retained results where it can
+([`publications.md`](publications.md#retention)). For a labeled result it
+cannot convert, `migrate`, before changing the schema:
+
+1. extracts that publication, in its old schema, to
+   `gold/legacy/publication-<id>.db`;
+2. records a legacy entry in `gold.db`: the `publication_id`, its label, the
+   code version that opens it (from its recipe), the extract's path, and the
+   pre-migration backup set.
+
+`view` lists legacy entries with the code version to check out and the
+extract to open. Retention never deletes a backup set that a legacy entry
+names. `unlabel` on a legacy publication deletes its entry and extract and
+releases the backup set.
 
 ## Profiles
 
@@ -145,8 +162,8 @@ it only reads.
 %LOCALAPPDATA%\budget\production\      live stores: never cloud-synchronised (ADR-013)
     bronze.db
     silver.db
-    gold\catalog.db
-    gold\publication-000042.db
+    gold.db
+    gold\legacy\publication-000001.db  only after a Gold migration
     scratch\
     logs\
 OneDrive\Budget\                       closed files only: safe to synchronise
@@ -170,13 +187,14 @@ before it are opened from `upstream/`, read-only, and never recomputed.
 
 | What changed | Command | Reads from `upstream/` | Writes in development |
 | --- | --- | --- | --- |
-| Source parsing (Bronze code) | `rebuild --from bronze` | Raw payloads and import runs | `bronze.db` (source records re-derived), `silver.db`, `gold/` |
-| Silver mapping, identity, or a Silver decision | `rebuild --from silver` | `bronze.db` | `silver.db`, `gold/` |
-| Accounts, taxonomy, rules, a classification decision, or Gold code | `rebuild --from gold` | `bronze.db`, `silver.db` | `gold/` |
+| Source parsing (Bronze code) | `rebuild --from bronze` | Raw payloads and import runs | `bronze.db` (source records re-derived), `silver.db`, `gold.db` |
+| Silver mapping, identity, or a Silver decision | `rebuild --from silver` | `bronze.db` | `silver.db`, `gold.db` |
+| Accounts, taxonomy, rules, a classification decision, or Gold code | `rebuild --from gold` | `bronze.db`, `silver.db` | `gold.db` |
 
 Development's inputs are a working copy. `dev refresh --inputs` replaces them
-with production's; plain `dev refresh` leaves them alone. A development
-publication built from uncommitted code is marked not reproducible (ADR-014).
+with production's; plain `dev refresh` leaves them alone. A development store
+makes no reproducibility promise: it may build from uncommitted code, and
+nothing records which code that was (ADR-014).
 Production builds refuse uncommitted code, so production runs from its own
 clean checkout, separate from the one used for development.
 
@@ -297,18 +315,21 @@ application writes it: Python's standard library writes JSON, but only reads
 TOML.
 
 ```json
-{"format": 1, "entry": 1, "decision_id": "d-0001", "recorded_at": "2026-04-10T17:02:11Z", "kind": "classify", "targets": ["7c1e0b9a4d2f…"], "category": "gifts", "reason": "Wedding present", "supersedes": null}
-{"format": 1, "entry": 2, "decision_id": "d-0002", "recorded_at": "2026-04-11T08:40:37Z", "kind": "pair", "targets": ["3f9a2c1e77b0…", "a04d6e12c9f3…"], "reason": "Settles an ambiguous transfer", "supersedes": null}
-{"format": 1, "entry": 3, "decision_id": "d-0003", "recorded_at": "2026-04-12T19:15:02Z", "kind": "retract", "targets": [], "reason": "Was not a gift", "supersedes": "d-0001"}
+{"format": 1, "entry": 1, "decision_id": "d-0001", "recorded_at": "2026-04-10T17:02:11Z", "kind": "classify", "targets": ["7c1e0b9a4d2f…"], "category": "gifts", "reason": "Wedding present", "supersedes": []}
+{"format": 1, "entry": 2, "decision_id": "d-0002", "recorded_at": "2026-04-11T08:40:37Z", "kind": "pair", "targets": ["3f9a2c1e77b0…", "a04d6e12c9f3…"], "reason": "Settles an ambiguous transfer", "supersedes": []}
+{"format": 1, "entry": 3, "decision_id": "d-0003", "recorded_at": "2026-04-12T19:15:02Z", "kind": "retract", "targets": [], "reason": "Was not a gift", "supersedes": ["d-0001"]}
 ```
 
-Kinds: `classify`, `pair`, `one-sided-transfer` (ADR-011, ADR-012);
-`void-import-run`, `same-transaction`, `withdrawn`, `accept-discrepancy`
-(Silver, issue #5); and `retract`, which withdraws an earlier decision. It is
+The fields and their rules are defined in
+[`publications.md`](publications.md#the-decision-log). Kinds: `classify`,
+`pair`, `one-sided-transfer` (ADR-011, ADR-012); `void-import-run`,
+`same-transaction`, `withdrawn`, `accept-discrepancy` (Silver, issue #5); and
+`retract`, which withdraws an earlier decision without replacing it. It is
 named `retract` so it is not confused with *withdrawn*, which records that the
 bank removed a transaction. A new decision on a target that already has one
-must name the old one in `supersedes`, or the boundary rejects it. Nothing is
-edited in place.
+must list the old one in `supersedes`, or the boundary rejects it. One entry
+can supersede several decisions: a `pair` whose two legs each have their own
+`classify` decision lists both. Nothing is edited in place.
 
 Every recipe records the log position it read and a SHA-256 of the log up to
 that position. `check` fails when that prefix no longer hashes the same, so a
@@ -355,20 +376,20 @@ dashboard stays read-only: it has no route that reaches the boundary.
 
 | Command | Does | Writes | Publishes |
 | --- | --- | --- | --- |
-| `migrate [--stage <stage>]` | Creates or upgrades stores. In production, takes a backup set first. | Store schemas | No |
+| `migrate [--stage <stage>]` | Creates or upgrades stores. In production, takes a backup set first. A Gold migration converts retained results, extracts and records legacy publications, then runs a pipeline build (ADR-014). | Store schemas, legacy extracts | After a Gold migration |
 | `check` | Validates every input file and the decision-log prefix. Never builds. | Nothing | No |
 | `import` | Imports every file in the inbox, then rebuilds and publishes. | Bronze, the import log, Silver, Gold | Yes, if the build succeeds |
 | `rebuild [--from bronze\|silver\|gold]` | Rebuilds from a stage; `gold` by default. | Stages from `--from` on | Yes, if the recipe changed |
 | `review [--kind <kind>] [--account <id>]` | Lists open review items, Silver's and Gold's, with what a person needs to settle each one. | Nothing | No |
 | `decide <kind> <targets…> [options] --reason <text>` | Proposes a manual decision to the boundary, then rebuilds from the stage the decision affects. | The decision log, then stores | Yes |
 | `status` | Shows balance and classification completeness (below). | Nothing | No |
-| `undo` | Moves the pointer back (ADR-014). | Catalog | Pointer only |
-| `view --as-was <date> \| --known-at <date> --label <text>` | Builds or finds a past view (ADR-014). | Catalog, a view file | Never current |
-| `label <publication_id> <text>` / `unlabel …` | Keeps a result beyond the retention rule, or stops keeping it. | Catalog | No |
+| `undo` | Moves the pointer back (ADR-014). | `gold.db` | Pointer only |
+| `view --as-was <date> \| --known-at <date> --label <text>` | Builds or finds a past view (ADR-014). Without options, lists retained and legacy publications. | `gold.db`, through a scratch store | Never current |
+| `label <publication_id> <text>` / `unlabel …` | Keeps a result beyond the retention rule, or stops keeping it. | `gold.db` | No |
 | `backup` | Writes a backup set. Also runs automatically; see below. | The backups folder | No |
 | `restore <backup set>` | Restores into an empty profile, then runs `verify`. | Every store | No |
 | `restore --from-archive` | Last resort: rebuilds Bronze from the archive and the import log, then Silver and Gold. | Every store | Yes |
-| `verify` | Checks integrity and proves the current publication reproduces. | `scratch/` only | No |
+| `verify` | Checks integrity, and replays the current publication's recipe to prove it reproduces (ADR-014). | `scratch/` only | No |
 | `dev refresh [--inputs]` | Development only: restores production's newest backup set into `upstream/`. | Development only | No |
 | `serve` | Starts the read-only dashboard. | Nothing | No |
 | `set-passphrase` | Sets the dashboard passphrase. | The passphrase file | No |
@@ -387,7 +408,7 @@ matches more than one transaction is refused.
 | 0 | Done. Open review items and quarantined imports are results, not failures. |
 | 1 | Usage error. |
 | 2 | Refused input: a configuration error, a rejected decision, or an import run Bronze refused. Nothing was published. |
-| 3 | Refused environment: no profile, a store from another profile, a missing or newer migration, SQLite below the version floor, uncommitted code in production, or a store locked past its busy timeout. |
+| 3 | Refused environment: no profile, a store from another profile, a missing or newer migration, SQLite below the version floor, uncommitted code in production, running code other than the code version a replayed recipe names (ADR-014), or a store locked past its busy timeout. |
 
 ### Error reporting
 
@@ -491,8 +512,9 @@ rebuild there.
 
 1. In development: `dev refresh`, `migrate`, `rebuild --from <the first
    stage the migration touches>`, and `verify`.
-2. In production: `migrate`, which writes a backup set first, and then
-   `verify`.
+2. In production: `migrate`, which writes a backup set first, converts the
+   retained results, extracts and records any legacy publication, and runs a
+   pipeline build (ADR-014). Then `verify`.
 
 ### W6: the machine dies
 
@@ -506,8 +528,8 @@ already in OneDrive.
 
 `budget restore --from-archive` rebuilds Bronze from the export archive and
 `imports.jsonl`, then Silver and Gold from the inputs. Reports come back
-exactly. Recipes and past views are lost, because they live only in
-`catalog.db` and its backups.
+exactly. Recipes, past views and legacy publications are lost, because they
+live only in `gold.db`, `gold\legacy\` and their backups.
 
 ## Failure and Retry
 
@@ -517,9 +539,8 @@ exactly. Recipes and past views are lost, because they live only in
 | Refused import run (account conflict, `covers_through` out of bounds) | Recorded as refused; the file stays in the inbox; exit 2 | Move the file or correct the declaration, then rerun |
 | Format failure | Stored with its `FormatFailure`; Silver quarantines it; the file is archived | Settled by a parser fix and `rebuild --from bronze` |
 | Crash during an import | Each file is idempotent: a file whose account, original filename and payload hash already have a `stored` or `repeat` run is finished (archived and removed from the inbox) without a new run | Rerun `import` |
-| Crash during a build | The previous publication stays current; an unregistered publication file is deleted by the next command | Rerun the command |
+| Crash during a build | SQLite rolls back the uncommitted publication; the previous publication stays current | Rerun the command |
 | Store locked | Exit 3 after the busy timeout | Rerun when the other command ends |
-| A retained file cannot be deleted | Nothing; the dashboard has it open | A later command deletes it |
 | OneDrive offline | Backup sets wait in the local OneDrive folder | Nothing to do |
 
 A genuine repeat export has a new export date in its filename, so it is
@@ -534,16 +555,19 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   export archive is not copied, because Bronze holds each payload's bytes.
 - **When:** after every command that writes Bronze or publishes, and before
   every `migrate`. Only production writes backup sets.
-- **Kept:** the 30 newest sets and the newest set of each calendar month.
+- **Kept:** the 30 newest sets, the newest set of each calendar month, and
+  every set a legacy entry names.
 - **Where:** OneDrive, which is safe for them: a backup set is closed files,
   unlike a live database with its WAL files (ADR-013).
 - **`restore`** writes only into a profile with no stores, checks every
   SHA-256 against the manifest, runs `PRAGMA integrity_check`, migrates stores
   older than the code, and runs `verify`.
-- **`verify`** runs `PRAGMA integrity_check` on every store, rebuilds Silver
-  and Gold from Bronze into `scratch/`, and compares the result fingerprint
-  with the current publication's (ADR-014). It also checks that the import log
-  agrees with Bronze and that the decision-log prefix hashes match.
+- **`verify`** runs `PRAGMA integrity_check` on every store, then replays the
+  current publication's recipe from Bronze in a scratch store and compares the
+  result fingerprint with the recorded one. It refuses to run when the running
+  code is not the code version the recipe names
+  ([`publications.md`](publications.md#verify)). It also checks that the
+  import log agrees with Bronze and that the decision-log prefix hashes match.
 
 ## Dashboard Access
 
@@ -558,8 +582,8 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
 - **Plain HTTP on the home network is an accepted risk.** Someone on the same
   Wi-Fi who captures traffic could read the passphrase and pages. HTTPS with a
   locally trusted certificate is the upgrade path if that changes.
-- The dashboard opens `catalog.db` and publication files read-only and is
-  given no other path. It has no route that writes, apart from login and
+- The dashboard opens `gold.db` read-only and is given no other store's
+  path. It has no route that writes, apart from login and
   logout.
 - It runs while `budget serve` runs. Starting it with Windows is an optional
   Task Scheduler entry.
@@ -587,7 +611,8 @@ and run at least once in development against a restored production backup.
 | --- | --- | --- |
 | `migrate` | Every migration from empty, and from the previous release's fixture stores | Rehearsed on a fresh `dev refresh` before production |
 | Import and its retry | Idempotent rerun, and a crash injected after each step | Real exports' shapes, through `upstream` |
-| Publishing | Crash before and after the commit point; `undo`; orphan and retry deletion | Every `rebuild` publishes |
+| Publishing | Crash before and after the commit point; `undo`; retention deletion | Every `rebuild` publishes |
+| Legacy publications | A Gold migration that cannot convert a labeled result: extract, legacy entry, and a backup set that retention keeps | With the migration's rehearsal |
 | Backup and restore | Backup, restore into an empty profile, `verify` | Every `dev refresh` is a restore |
 | `restore --from-archive` | Rebuilds the fixtures' reports exactly | Once before it is first trusted, then yearly |
 | Log redaction | Asserted on every walkthrough | — |
@@ -606,8 +631,6 @@ and run at least once in development against a restored production backup.
 
 ## Left to Other Tickets
 
-- **Pull request #57 (issue #8):** ADR-014 must adopt one file per
-  publication, or this document's publishing section changes (ADR-015).
 - **Issue #11:** the dashboard's screens, its publication picker, and how the
   login page looks.
 - **Issue #12:** acceptance cases for restore, retry and profile separation,

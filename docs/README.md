@@ -73,9 +73,9 @@ primer is stale.
 - [`primers/operations-primer.html`](primers/operations-primer.html) — how
   the household runs the pipeline, in thirteen modules: profiles, one store
   per ETL step, development from backups, the inputs folder and its formats,
-  the monthly import, publishing and the open collision with pull request
-  #57, backup and restore, and what is left to check. Opens and stores
-  progress like the others.
+  the monthly import, publishing into one Gold store and legacy
+  publications, backup and restore, and what is left to check. Opens and
+  stores progress like the others.
 
 ## Vocabulary
 

@@ -447,17 +447,17 @@
     </p>
     <p>
       It leans on two neighbours: <code>ADR-013</code> (SQLite, whole øre) and
-      <code>ADR-014</code>, proposed in PR #57 (what a Gold publication is). Every account, date
-      and amount below is synthetic.
+      <code>ADR-014</code> (what a Gold publication is). Every account, date and amount below
+      is synthetic.
     </p>
   </div>
 
   <div class="callout">
     <p class="callout-h">The short answer</p>
     <p>
-      Everything is <strong>Proposed</strong>. You made seven of the choices; the agent made the
-      rest, and module 13 lists them for you to check. <strong>One collides with PR #57</strong>:
-      module 09.
+      Everything is <strong>Proposed</strong>. You made most of the choices; the agent made the
+      rest, and module 13 lists them for you to check. Gold follows ADR-014: one store holding
+      every kept publication, with legacy publications added for major schema changes (module 09).
     </p>
     <p>
       Budget about 30 minutes. If you only have 10, read 01, 03, 05, 09 and 13.
@@ -580,11 +580,11 @@
           <div class="ar">→</div>
           <div class="st"><b>Clean + conform</b><code>silver.db</code><span>validated, de-duplicated transactions</span></div>
           <div class="ar">→</div>
-          <div class="st"><b>Deliver</b><code>gold/</code><span>catalog + one file per publication</span></div>
+          <div class="st"><b>Deliver</b><code>gold.db</code><span>the kept publications, recipes, the pointer</span></div>
           <div class="ar">→</div>
-          <div class="st rd"><b>Dashboard</b><span>opens one Gold file, read-only</span></div>
+          <div class="st rd"><b>Dashboard</b><span>opens gold.db, read-only</span></div>
         </div>
-        <figcaption>The dashboard is handed only a Gold file&rsquo;s path. ADR-004 (&ldquo;analytics reads only Gold&rdquo;) becomes a fact about what it can open, not a rule it has to remember.</figcaption>
+        <figcaption>The dashboard is handed only <code>gold.db</code>&rsquo;s path. ADR-004 (&ldquo;analytics reads only Gold&rdquo;) becomes a fact about what it can open, not a rule it has to remember.</figcaption>
       </figure>
 
       <h3>Where the mapping bends</h3>
@@ -626,7 +626,7 @@
     <div class="mod-body">
       <pre class="term">%LOCALAPPDATA%\budget\production\      <span class="c">live databases: never synchronised</span>
     bronze.db  silver.db
-    gold\catalog.db  gold\publication-000042.db
+    gold.db  gold\legacy\              <span class="c">legacy: only after a major Gold migration</span>
     scratch\  logs\
 OneDrive\Budget\                       <span class="c">closed files only: safe to synchronise</span>
     inbox\joint-current\               <span class="c">drop new exports here</span>
@@ -766,7 +766,7 @@ then.transfer_claim = true</pre>
     <p class="goal">After this: you can say why decisions are not in TOML, how you undo one, and what the &ldquo;door&rdquo; is for.</p>
     <div class="mod-body">
       <p>
-        Rules are yours to edit. Decisions are different: PR #57 makes them an
+        Rules are yours to edit. Decisions are different: ADR-014 makes them an
         <strong>append-only log</strong>, where a new entry supersedes an old one and nothing is
         rewritten. That gives an audit trail you can read without a database.
       </p>
@@ -779,7 +779,7 @@ Recorded d-0005. Gold publication 44 is current (was 43).</pre>
       <p>That appends one line to <code>decisions.jsonl</code>:</p>
       <pre class="term">{"format": 1, "entry": 5, "decision_id": "d-0005", "recorded_at": "2026-05-03T09:12:40Z",
  "kind": "classify", "targets": ["3f9a2c1e77b0…"], "category": "external-saving",
- "reason": "To Bo's savings, not imported", "supersedes": null}</pre>
+ "reason": "To Bo's savings, not imported", "supersedes": []}</pre>
 
       <h3>Why JSON Lines and not TOML</h3>
       <p>
@@ -799,7 +799,8 @@ Recorded d-0005. Gold publication 44 is current (was 43).</pre>
 
       <h3>Undo and hand edits</h3>
       <ul>
-        <li>To withdraw a decision, record a <code>retract</code> entry naming it in <code>supersedes</code>. It is called <code>retract</code> so it is not confused with <code>withdrawn</code>, which records that the <em>bank</em> removed a transaction.</li>
+        <li>To change a decision, record a new one that lists it in <code>supersedes</code>; one entry can list several, so a <code>pair</code> replaces both legs&rsquo; decisions at once.</li>
+        <li>To withdraw a decision, record a <code>retract</code> entry listing it in <code>supersedes</code>. It is called <code>retract</code> so it is not confused with <code>withdrawn</code>, which records that the <em>bank</em> removed a transaction.</li>
         <li>Each build&rsquo;s recipe stores a hash of the log up to the entry it read. Edit an old line by hand and <code>check</code> notices.</li>
       </ul>
     </div>
@@ -865,24 +866,24 @@ Backup   2026-05-02T18-05-11Z written</pre>
   <section class="mod" id="m9" data-key="m9">
     <div class="mod-head">
       <span class="mod-n">09</span>
-      <h2>Publishing without a half-built dashboard, and the collision with #57</h2>
+      <h2>Publishing into one Gold store, and legacy publications</h2>
     </div>
-    <p class="goal">After this: you can name the commit point, and argue either side of the open collision.</p>
+    <p class="goal">After this: you can name the commit point, say why a forgotten filter double counts, and what happens to a labeled build after a major schema change.</p>
     <div class="mod-body">
-      <p>You chose <strong>one file per Gold build, behind a pointer</strong>:</p>
-      <ol class="steps">
-        <li>Write <code>publication-000043.db</code> completely, and close it.</li>
-        <li>In <code>catalog.db</code>, in <strong>one transaction</strong>: store the recipe, register publication 43, move the pointer to it. <b>This is the commit point.</b></li>
-        <li>Delete the files no longer kept: not current, not previous, not labeled (PR #57&rsquo;s retention).</li>
-      </ol>
+      <p>
+        Gold follows ADR-014: <code>gold.db</code> holds every kept publication (the current one,
+        the previous one, and any you labeled), each row tagged with its
+        <code>publication_id</code>. Publishing is <strong>one transaction</strong>: store the new
+        publication&rsquo;s rows, move the pointer to it, and record the move. <b>That transaction
+        is the commit point.</b>
+      </p>
 
       <div class="scroller">
         <table class="grid">
           <thead><tr><th>Crash</th><th>Dashboard shows</th><th>Next command</th></tr></thead>
           <tbody>
-            <tr><td>During step 1</td><td>Publication 42</td><td>Deletes the half-written file the catalog never heard of</td></tr>
-            <tr><td>During step 2</td><td>Publication 42 (SQLite rolls the transaction back)</td><td>Same as above</td></tr>
-            <tr><td>During step 3</td><td>Publication 43</td><td>Finishes the deletions</td></tr>
+            <tr><td>Before the transaction commits</td><td>Publication 42 (SQLite rolls the transaction back)</td><td>Builds again; nothing to clean up</td></tr>
+            <tr><td>After it commits</td><td>Publication 43</td><td>Deletes the rows of publications no longer kept</td></tr>
           </tbody>
         </table>
       </div>
@@ -893,41 +894,62 @@ Backup   2026-05-02T18-05-11Z written</pre>
         dashboard always has it open.
       </p>
 
-      <h3>The collision</h3>
-      <p>
-        PR #57&rsquo;s ADR-014 lists &ldquo;one database file per publication&rdquo; among its
-        <em>rejected</em> options and keeps every publication as rows in one Gold database, each
-        tagged with <code>publication_id</code>. That rejection was the agent&rsquo;s choice in #57,
-        not yours, and when asked you said you could not decide. ADR-015 follows the agent&rsquo;s
-        recommendation, labelled as such. Here is the argument, using #57&rsquo;s own example:
-      </p>
+      <h3>The one thing to remember when you query by hand</h3>
       <div class="scroller">
         <table class="ledger">
-          <caption>February expenses, with four publications kept (PR #57, scenario V1–V3).</caption>
+          <caption>February expenses, with four publications kept (ADR-014&rsquo;s scenarios V1–V3).</caption>
           <thead><tr><th>Query</th><th class="num">Result</th><th class="note">Why</th></tr></thead>
           <tbody>
             <tr class="new"><td>With the publication filter</td><td class="num">3,349.00</td><td class="note">Right</td></tr>
-            <tr class="hit"><td>Filter forgotten, rows in one database</td><td class="num">12,796.00</td><td class="note">3,349 + 3,349 + 3,049 + 3,049: four versions added together</td></tr>
-            <tr class="new"><td>One file per publication</td><td class="num">3,349.00</td><td class="note">There is nothing else in the file to add</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="scroller">
-        <table class="grid">
-          <thead><tr><th></th><th>One file per publication (ADR-015)</th><th>Rows in one database (ADR-014 draft)</th></tr></thead>
-          <tbody>
-            <tr><td>Double counting</td><td>Impossible by construction</td><td>Prevented by discipline and tests</td></tr>
-            <tr><td>Publishing</td><td>Write a file, then one pointer transaction</td><td>One transaction</td></tr>
-            <tr><td>After a Gold migration</td><td>Old files keep their schema and stay readable by their own code</td><td>Every retained result is converted or deleted</td></tr>
-            <tr><td>Housekeeping</td><td>Orphans after a crash; Windows won&rsquo;t delete an open file, so deletion retries</td><td>None</td></tr>
-            <tr><td>Workplace pattern</td><td>&ldquo;Versioned tables behind a view&rdquo;, blue-green swap</td><td>&ldquo;Partition by load id&rdquo;</td></tr>
+            <tr class="hit"><td>Filter forgotten</td><td class="num">12,796.00</td><td class="note">3,349 + 3,349 + 3,049 + 3,049: four versions added together</td></tr>
           </tbody>
         </table>
       </div>
       <p>
-        It is the same reasoning you used for module 03: when a file boundary can enforce a rule,
-        let it. Whichever of #57 and this PR is merged second needs a small edit so the two agree.
+        The dashboard cannot make this mistake: it reads only through <code>GoldRepository</code>,
+        which is bound to one publication, and a test with two kept publications catches a
+        missing filter. You could, by opening <code>gold.db</code> in a SQL tool. Views that show
+        only the current publication (<code>current_*</code>) would guard that too; they are left
+        out until hand queries become routine, because a later migration can add them.
+      </p>
+
+      <h3>Why not one file per build?</h3>
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th></th><th>One <code>gold.db</code> (chosen)</th><th>One file per build (considered)</th></tr></thead>
+          <tbody>
+            <tr><td>Double counting</td><td>Prevented by one repository and a test</td><td>Impossible by construction</td></tr>
+            <tr><td>Publishing</td><td>One transaction</td><td>Write a file, close it, then a pointer transaction</td></tr>
+            <tr><td>Crash housekeeping</td><td>None</td><td>Orphan files; deletion retried while Windows has a file open; a lock across the profile</td></tr>
+            <tr><td>After a Gold migration</td><td>Kept rows are converted where possible and stay readable by today&rsquo;s dashboard</td><td>Old files keep their schema, so today&rsquo;s code must read several versions or refuse them</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        You first chose one file per build, unless #8 collided. It did: ADR-014 rejects it for
+        having more files to place, back up and migrate. After ADR-014 was accepted you kept its
+        single store, because it has fewer moving parts. What one file per build did offer, a
+        build frozen with the release that can read it, comes back below for the one case that
+        needs it.
+      </p>
+
+      <h3>Legacy publications</h3>
+      <p>
+        Most Gold migrations can convert the kept rows: a new column, a rename, a split table.
+        Some cannot, because the new schema needs something the old build never computed. For a
+        <strong>labeled</strong> publication in that case, <code>migrate</code>, before changing
+        the schema:
+      </p>
+      <ol class="steps">
+        <li><strong>Extracts</strong> it, in its old schema, to <code>gold\legacy\publication-000001.db</code>.</li>
+        <li><strong>Records</strong> a legacy entry in <code>gold.db</code>: the publication, its label, the code version that opens it, the extract, and the backup set taken before the migration.</li>
+        <li><strong>Pins</strong> that backup set: retention never deletes it while the entry exists.</li>
+      </ol>
+      <p>
+        So a year later, <code>budget view</code> still lists &ldquo;March review&rdquo; and says
+        which release to check out and which file to open. Unlabeled publications that cannot be
+        converted follow ADR-014 unchanged: they survive in the pre-migration backup, and their
+        recipes can be replayed with their code.
       </p>
     </div>
     <div class="mod-foot"></div>
@@ -946,16 +968,17 @@ Backup   2026-05-02T18-05-11Z written</pre>
         SQLite&rsquo;s backup API (never a plain file copy of a live database), a copy of your
         inputs folder, and a manifest with each file&rsquo;s hash and schema version. It is written
         <strong>after every import or rebuild that publishes</strong>, and <strong>before every
-        migration</strong>, into OneDrive. The newest 30 are kept, plus the newest of each month.
+        migration</strong>, into OneDrive. The newest 30 are kept, plus the newest of each month, plus any set a legacy publication
+        needs (module 09).
       </p>
 
       <div class="scroller">
         <table class="grid">
           <thead><tr><th>What went wrong</th><th>You run</th><th>What comes back</th></tr></thead>
           <tbody>
-            <tr><td>A bad rule, noticed in the printed diff</td><td><code>budget undo</code></td><td>The previous publication, instantly (PR #57)</td></tr>
+            <tr><td>A bad rule, noticed in the printed diff</td><td><code>budget undo</code></td><td>The previous publication, instantly (ADR-014)</td></tr>
             <tr><td>The machine dies</td><td><code>budget restore &lt;newest set&gt;</code></td><td>Everything. At most the imports since the last set are missing, and every import writes one.</td></tr>
-            <tr><td>Every backup set is lost too</td><td><code>budget restore --from-archive</code></td><td><b>Every report, exactly</b>, from the export archive, <code>imports.jsonl</code> and your inputs. Past views and recipes are lost.</td></tr>
+            <tr><td>Every backup set is lost too</td><td><code>budget restore --from-archive</code></td><td><b>Every report, exactly</b>, from the export archive, <code>imports.jsonl</code> and your inputs. Past views, recipes and legacy publications are lost.</td></tr>
           </tbody>
         </table>
       </div>
@@ -968,7 +991,7 @@ Backup   2026-05-02T18-05-11Z written</pre>
       <h3>Two safety rules</h3>
       <ul>
         <li><code>restore</code> only writes into a profile with <strong>no stores yet</strong>. It cannot overwrite a working database by mistake.</li>
-        <li>Every restore ends with <code>verify</code>: SQLite&rsquo;s integrity check on every file, then a full rebuild into a scratch folder whose result fingerprint must equal the current publication&rsquo;s. That is PR #57&rsquo;s &ldquo;routine proof of reproducibility&rdquo;, run on the copy you just restored.</li>
+        <li>Every restore ends with <code>verify</code>: SQLite&rsquo;s integrity check on every file, then a replay of the current publication&rsquo;s recipe in a scratch store, whose result fingerprint must equal the recorded one. It refuses to run under code other than the recipe names. That is ADR-014&rsquo;s &ldquo;routine proof of reproducibility&rdquo;, run on the copy you just restored.</li>
       </ul>
     </div>
     <div class="mod-foot"></div>
@@ -1054,7 +1077,7 @@ Backup   2026-05-02T18-05-11Z written</pre>
       <ul>
         <li>It listens on the home network only; a Windows firewall rule allows the port on private networks. Nothing is reachable from the internet.</li>
         <li>One household password guards every page. Its hash lives under <code>%APPDATA%</code>, never in OneDrive or the repository.</li>
-        <li>It opens Gold files read-only, and has no route that writes, apart from logging in and out.</li>
+        <li>It opens <code>gold.db</code> read-only, and has no route that writes, apart from logging in and out.</li>
         <li><strong>Accepted risk:</strong> it runs over plain HTTP. Someone on the same Wi-Fi who captures traffic could read the password and the pages. HTTPS with a certificate trusted on each phone is the upgrade if that changes.</li>
       </ul>
     </div>
@@ -1078,19 +1101,20 @@ Backup   2026-05-02T18-05-11Z written</pre>
         <li>An inbox folder per account <em>(module 08)</em></li>
         <li>Backups to OneDrive <em>(module 10)</em></li>
         <li>TOML for what you edit <em>(module 06)</em></li>
+        <li>Gold in one store, as ADR-014 has it, rather than one file per build <em>(module 09)</em></li>
+        <li>Legacy publications: extract, record and pin a labeled build a migration cannot convert <em>(module 09)</em></li>
+        <li>No <code>current_*</code> views for now <em>(module 09)</em></li>
       </ol>
 
       <h3>The agent chose; please check</h3>
       <ul>
-        <li><strong>One file per publication</strong>, against PR #57&rsquo;s draft. You left it open. <em>(module 09)</em></li>
         <li><strong>No default profile</strong>, and every store records its profile. <em>(module 02)</em></li>
         <li><strong>Amounts in quotes</strong>; an unquoted one fails the build. <em>(module 06)</em></li>
         <li><strong>JSON Lines for the two logs</strong>, because the app writes them. <em>(module 07)</em></li>
-        <li><strong><code>retract</code></strong> instead of #57&rsquo;s <code>withdraw</code>. <em>(module 07)</em></li>
         <li><strong>The import log</strong>, so Bronze survives the loss of every backup. <em>(modules 08, 10)</em></li>
         <li><strong>No git repository for your inputs</strong>: a <code>.git</code> folder inside OneDrive risks the same inconsistent copies as a live database. History comes from recipes and OneDrive&rsquo;s version history. <em>(module 04)</em></li>
         <li><strong>Plain HTTP</strong> on the home network. <em>(module 12)</em></li>
-        <li><strong>ADR-013 flipped to Accepted</strong>, since merging #48 was your acceptance, with its location refined by ADR-015.</li>
+        <li><strong>ADR-013 and ADR-014 flipped to Accepted</strong>, since merging #48 and #57 was your acceptance, with ADR-013&rsquo;s location and ADR-014&rsquo;s retention refined by ADR-015.</li>
       </ul>
 
       <div class="verdict">
@@ -1099,11 +1123,6 @@ Backup   2026-05-02T18-05-11Z written</pre>
           ADR-015 and <code>operations.md</code> are <strong>Proposed</strong>. As with #48,
           merging the PR marks your acceptance and resolves issue #10. <strong>To change one
           thing:</strong> name the bullet above.
-        </p>
-        <p>
-          Before either merges, <strong>#57 and this PR must agree</strong> on module 09. If you keep
-          #57&rsquo;s rows-in-one-database, only the publishing section of <code>operations.md</code>
-          changes; the rest of ADR-015 stands.
         </p>
         <p>
           Deliberately <em>not</em> here: the dashboard&rsquo;s screens and login page (issue #11);
@@ -1134,7 +1153,7 @@ Backup   2026-05-02T18-05-11Z written</pre>
     m6:"TOML, and money in quotes",
     m7:"Manual decisions through one door",
     m8:"The monthly import",
-    m9:"Publishing, and the collision with #57",
+    m9:"Publishing into one Gold store, and legacy publications",
     m10:"Backups, restore, and the worst case",
     m11:"The terminal, and the log",
     m12:"Proved outside production first",

@@ -254,6 +254,13 @@ A Publication built from only the import runs started by a given moment,
 interpreted with today's configuration and decisions. It is never current.
 _Avoid_: As-of report (ambiguous with As-was view)
 
+**Legacy publication**:
+A labeled Publication that a Gold migration could not convert. It is kept in
+its old schema, in its own file and in the pre-migration Backup set, with the
+code version that opens it. The rules are in
+[`operations.md`](docs/architecture/operations.md#legacy-publications).
+_Avoid_: archived publication, old version
+
 ### Operations
 
 **Profile**:
