@@ -132,7 +132,7 @@ AccountEvidence(                # the account's evidence bound; see above
 ImportRunResult(
     import_run_id: str,
     status: Literal["accepted", "quarantined"],
-    covered_from: date,         # first transaction date in the export
+    covered_from: date,         # earliest transaction date in the payload, booked or not
     covered_to: date,           # the import run's covers_through (Bronze)
     errors: Sequence[ValidationError],
     review_item_ids: Sequence[str],
@@ -155,6 +155,12 @@ ReviewItem(
     resolved_by: str | None,    # manual decision id
 )
 ```
+
+`ImportRunResult.covered_from` describes the file, not the transactions
+admitted from it: it is the earliest transaction date among all the payload's
+source records, whatever their `booking_status`. An export whose first row is
+cancelled on 28 August and whose first booked row is on 1 September has
+`covered_from` 28 August.
 
 ## Rules
 
