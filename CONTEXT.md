@@ -209,11 +209,47 @@ _Avoid_: error, warning, conflict
 **Manual decision**:
 A recorded human ruling: it classifies a transaction, settles a Review item,
 or voids an import run. It targets transactions by their identity and never
-edits source data.
+edits source data. It is an entry in the Decision log.
 _Avoid_: Override, fix, edit
+
+**Decision log**:
+The append-only record of Manual decisions, each stamped with when the
+platform accepted it. A decision is never edited or deleted; a later entry
+supersedes or retracts it.
+_Avoid_: Overrides file, decisions file (the log is not edited in place)
 
 **Voided import run**:
 An import run a person has declared mistaken, for example because it was
 declared against the wrong account. Its raw payload is retained but it
 contributes nothing downstream.
 _Avoid_: deleted import, undone import
+
+### Publications and history
+
+**Publication**:
+One complete, immutable build of Gold, holding its dimensions, facts, lineage,
+and review items, built from one Recipe, with a fingerprint of that result. A
+consumer reads exactly one at a time. The rules are in
+[`publications.md`](docs/architecture/publications.md).
+_Avoid_: Version, snapshot (a Monthly balance snapshot is a fact), release
+
+**Recipe**:
+The record of every input a Publication was built from: its import runs,
+configuration snapshot, Decision log position, and code version. Rebuilding a
+Recipe with the code version it names yields the same result.
+_Avoid_: Manifest, lineage (lineage explains one fact, not a build)
+
+**Current publication**:
+The Publication reports show by default. A successful build becomes current at
+once, and undo makes the previous one current again.
+_Avoid_: Latest publication (an As-known-at view can be newer)
+
+**As-was view**:
+The Publication that was current at a given moment, shown exactly as it was
+then.
+_Avoid_: Historical report (ambiguous with As-known-at view)
+
+**As-known-at view**:
+A Publication built from only the import runs started by a given moment,
+interpreted with today's configuration and decisions. It is never current.
+_Avoid_: As-of report (ambiguous with As-was view)

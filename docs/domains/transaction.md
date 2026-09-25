@@ -57,8 +57,9 @@ transaction`
 
 No step mutates the record in the preceding layer. A corrected classification
 is a new manual decision or rule change that Gold applies on the next build,
-never a rewrite of the bank payload. How versions are kept is issue #8's
-concern.
+never a rewrite of the bank payload. Each build is a new publication, and
+earlier ones stay explainable and viewable
+([`publications.md`](../architecture/publications.md)).
 
 ## Identity and Deduplication
 

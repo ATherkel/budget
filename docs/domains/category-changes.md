@@ -18,8 +18,9 @@ Two rules make the log sufficient:
   on the day it is made, with the reason. An entry is never edited or removed.
 
 Reproducing a report exactly as it was read is a different matter, and needs
-the publication it was built from; that is
-[issue #8](https://github.com/ATherkel/budget/issues/8).
+the publication it was built from: an *as-was* view
+([`publications.md`](../architecture/publications.md)). The log explains why
+the categories changed; the publication shows what they were.
 
 ## Log
 

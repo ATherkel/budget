@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Publications and History Primer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,500;0,600;0,700;1,500&display=swap">
+<style>
+  :root{
+    --paper:#F5F7F9;
+    --card:#FFFFFF;
+    --sunk:#ECEFF3;
+    --ink:#161A20;
+    --ink-2:#39424F;
+    --muted:#69737F;
+    --rule:#DCE1E7;
+    --rule-2:#C6CDD6;
+    --accent:#0B6B6B;
+    --accent-soft:#E2EFEE;
+    --ok:#2C7A54;
+    --ok-soft:#E3F1E9;
+    --bad:#AB362A;
+    --bad-soft:#F8E6E3;
+    --warn:#8E6010;
+    --warn-soft:#F8EEDC;
+    --shadow:0 1px 2px rgba(22,26,32,.05), 0 8px 24px -16px rgba(22,26,32,.28);
+    --ff-serif:"IBM Plex Serif", Georgia, "Times New Roman", serif;
+    --ff-sans:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --ff-mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#111419;
+      --card:#181C23;
+      --sunk:#1F242C;
+      --ink:#E7EBF1;
+      --ink-2:#BFC7D2;
+      --muted:#8E99A7;
+      --rule:#2A3039;
+      --rule-2:#3B434E;
+      --accent:#54B5AE;
+      --accent-soft:#12302F;
+      --ok:#62BE8C;
+      --ok-soft:#142A20;
+      --bad:#E48173;
+      --bad-soft:#331C19;
+      --warn:#D7A445;
+      --warn-soft:#2E2617;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#111419;
+    --card:#181C23;
+    --sunk:#1F242C;
+    --ink:#E7EBF1;
+    --ink-2:#BFC7D2;
+    --muted:#8E99A7;
+    --rule:#2A3039;
+    --rule-2:#3B434E;
+    --accent:#54B5AE;
+    --accent-soft:#12302F;
+    --ok:#62BE8C;
+    --ok-soft:#142A20;
+    --bad:#E48173;
+    --bad-soft:#331C19;
+    --warn:#D7A445;
+    --warn-soft:#2E2617;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+    color-scheme: dark;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--ff-sans);
+    font-size:16px;
+    line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- progress bar ---------- */
+  .topbar{
+    position:sticky;
+    top:env(safe-area-inset-top, 0px);
+    z-index:40;
+    background:color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--rule);
+  }
+  .topbar-in{
+    max-width:52rem;margin:0 auto;
+    padding:.6rem 1rem;
+    display:flex;align-items:center;gap:.85rem;
+  }
+  .topbar-title{
+    font-family:var(--ff-serif);font-weight:600;font-size:.94rem;
+    letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .track{flex:1;height:5px;border-radius:99px;background:var(--rule);overflow:hidden;min-width:60px}
+  .track > i{display:block;height:100%;width:0%;background:var(--accent);border-radius:99px;transition:width .35s cubic-bezier(.4,0,.2,1)}
+  .tally{
+    font-family:var(--ff-mono);font-size:.76rem;font-variant-numeric:tabular-nums;
+    color:var(--muted);white-space:nowrap;
+  }
+
+  /* ---------- page frame ---------- */
+  .wrap{max-width:52rem;margin:0 auto;padding-inline:1rem;padding-block:2.4rem 5rem}
+
+  .eyebrow{
+    font-family:var(--ff-mono);font-size:.72rem;letter-spacing:.11em;text-transform:uppercase;
+    color:var(--accent);font-weight:500;margin:0 0 .7rem;
+  }
+  h1{
+    font-family:var(--ff-serif);font-weight:700;font-size:clamp(1.9rem,6vw,2.7rem);
+    line-height:1.12;letter-spacing:-.022em;margin:0 0 .8rem;text-wrap:balance;
+  }
+  .standfirst{
+    font-size:1.06rem;color:var(--ink-2);max-width:40rem;margin:0 0 1.5rem;
+  }
+  .standfirst strong{color:var(--ink);font-weight:600}
+
+  .callout{
+    background:var(--card);border:1px solid var(--rule);border-left:3px solid var(--accent);
+    border-radius:0 10px 10px 0;padding:1rem 1.15rem;margin:1.5rem 0;box-shadow:var(--shadow);
+  }
+  .callout p{margin:0}
+  .callout p + p{margin-top:.7rem}
+  .callout-h{
+    font-family:var(--ff-mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--accent);font-weight:600;margin:0 0 .5rem;
+  }
+
+  /* ---------- contents ---------- */
+  .toc{margin:2.2rem 0 3rem;border-top:1px solid var(--rule);padding-top:1.2rem}
+  .toc-h{
+    font-family:var(--ff-mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:0 0 .85rem;
+  }
+  .toc-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:.3rem}
+  .toc-item{
+    display:flex;align-items:baseline;gap:.6rem;
+    padding:.4rem .55rem;border-radius:7px;text-decoration:none;color:var(--ink-2);
+    font-size:.88rem;line-height:1.35;border:1px solid transparent;
+  }
+  .toc-item:hover{background:var(--sunk);color:var(--ink)}
+  .toc-item .n{
+    font-family:var(--ff-mono);font-size:.72rem;color:var(--muted);
+    font-variant-numeric:tabular-nums;flex:none;
+  }
+  .toc-item.done{color:var(--muted)}
+  .toc-item.done .n{color:var(--ok)}
+  .toc-item.done .t{text-decoration:line-through;text-decoration-color:var(--rule-2)}
+
+  /* ---------- modules ---------- */
+  .mod{
+    background:var(--card);border:1px solid var(--rule);border-radius:12px;
+    padding:1.5rem 1.35rem 1.1rem;margin:0 0 1.15rem;
+    box-shadow:var(--shadow);
+    scroll-margin-top:5rem;
+    border-left:3px solid var(--rule-2);
+    transition:border-left-color .3s ease;
+  }
+  .mod.done{border-left-color:var(--ok)}
+  .mod-head{display:flex;gap:.9rem;align-items:baseline;margin-bottom:.15rem}
+  .mod-n{
+    font-family:var(--ff-mono);font-size:.78rem;font-weight:600;color:var(--accent);
+    font-variant-numeric:tabular-nums;flex:none;padding-top:.28rem;
+  }
+  .mod.done .mod-n{color:var(--ok)}
+  .mod h2{
+    font-family:var(--ff-serif);font-weight:600;font-size:1.3rem;line-height:1.25;
+    letter-spacing:-.015em;margin:0;text-wrap:balance;
+  }
+  .goal{
+    font-size:.86rem;color:var(--muted);font-style:italic;font-family:var(--ff-serif);
+    margin:.45rem 0 1.1rem;padding-left:calc(.78rem + .9rem + 1ch);
+  }
+  .mod-body > *:first-child{margin-top:0}
+  .mod-body p{margin:0 0 .9rem;max-width:42rem}
+  .mod-body h3{
+    font-family:var(--ff-sans);font-size:.8rem;font-weight:600;letter-spacing:.04em;
+    text-transform:uppercase;color:var(--muted);margin:1.6rem 0 .6rem;
+  }
+  .mod-body ul,.mod-body ol{margin:0 0 .9rem;padding-left:1.15rem;max-width:42rem}
+  .mod-body li{margin:0 0 .4rem}
+  .mod-body li::marker{color:var(--muted)}
+  code{
+    font-family:var(--ff-mono);font-size:.855em;
+    background:var(--sunk);padding:.1em .34em;border-radius:4px;
+    border:1px solid var(--rule);
+  }
+  b,strong{font-weight:600;color:var(--ink)}
+  em{font-style:italic}
+
+  /* ---------- ledger tables ---------- */
+  .scroller{overflow-x:auto;margin:0 0 1rem;border:1px solid var(--rule);border-radius:9px;background:var(--sunk)}
+  table.ledger{
+    border-collapse:collapse;width:100%;min-width:30rem;
+    font-family:var(--ff-mono);font-size:.795rem;font-variant-numeric:tabular-nums;
+  }
+  table.ledger caption{
+    caption-side:top;text-align:left;padding:.6rem .8rem .45rem;
+    font-family:var(--ff-sans);font-size:.78rem;color:var(--muted);font-weight:500;
+    border-bottom:1px solid var(--rule);
+  }
+  table.ledger th{
+    text-align:left;font-weight:600;color:var(--muted);font-size:.72rem;
+    letter-spacing:.04em;text-transform:uppercase;padding:.5rem .7rem;
+    border-bottom:1px solid var(--rule-2);white-space:nowrap;
+  }
+  table.ledger td{padding:.38rem .7rem;border-bottom:1px solid var(--rule);white-space:nowrap;color:var(--ink-2)}
+  table.ledger tbody tr:last-child td{border-bottom:0}
+  table.ledger td.num{text-align:right}
+  table.ledger .note{
+    font-family:var(--ff-sans);font-size:.74rem;white-space:normal;color:var(--muted);
+  }
+  tr.hit td{background:var(--bad-soft)}
+  tr.hit td.num,tr.hit td{color:var(--ink)}
+  tr.new td{background:var(--ok-soft)}
+  .chk{color:var(--ok);font-weight:600}
+  .xmk{color:var(--bad);font-weight:600}
+
+  /* wide tables (comparisons) */
+  table.grid{
+    border-collapse:collapse;width:100%;min-width:34rem;
+    font-size:.84rem;font-family:var(--ff-sans);
+  }
+  table.grid th{
+    text-align:left;font-weight:600;color:var(--muted);font-size:.71rem;letter-spacing:.05em;
+    text-transform:uppercase;padding:.55rem .75rem;border-bottom:1px solid var(--rule-2);
+    vertical-align:bottom;
+  }
+  table.grid td{padding:.55rem .75rem;border-bottom:1px solid var(--rule);vertical-align:top;color:var(--ink-2);line-height:1.5}
+  table.grid tbody tr:last-child td{border-bottom:0}
+  table.grid td:first-child{color:var(--ink);font-weight:500;white-space:nowrap}
+
+  /* ---------- timeline figure ---------- */
+  figure.fig{margin:0 0 1.1rem;padding:1rem .9rem .8rem;background:var(--sunk);border:1px solid var(--rule);border-radius:9px}
+  figure.fig figcaption{
+    font-family:var(--ff-sans);font-size:.76rem;color:var(--muted);margin-top:.75rem;line-height:1.5;
+  }
+  .tl{display:grid;gap:.4rem}
+  .tl-row{display:grid;grid-template-columns:4.6rem 1fr;gap:.55rem;align-items:center}
+  .tl-lab{font-family:var(--ff-mono);font-size:.72rem;color:var(--muted);text-align:right}
+  .tl-bar{position:relative;height:1.55rem;background:var(--card);border:1px solid var(--rule);border-radius:5px;overflow:hidden}
+  .tl-bar > span{
+    position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;
+    font-family:var(--ff-mono);font-size:.68rem;color:#fff;border-radius:4px;overflow:hidden;
+  }
+  .tl-a > span{background:var(--accent)}
+  .tl-b > span{background:#6A5BA8}
+  :root[data-theme="dark"] .tl-b > span{background:#8D7DD0;color:#0E1014}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tl-b > span{background:#8D7DD0;color:#0E1014}}
+  :root[data-theme="dark"] .tl-a > span{color:#07100F}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tl-a > span{color:#07100F}}
+  .tl-ov{
+    position:absolute;top:0;bottom:0;background:repeating-linear-gradient(45deg,transparent,transparent 4px,var(--warn) 4px,var(--warn) 5px);
+    opacity:.85;
+  }
+  .tl-scale{display:grid;grid-template-columns:4.6rem 1fr;gap:.55rem;margin-top:.15rem}
+  .tl-ticks{display:flex;justify-content:space-between;font-family:var(--ff-mono);font-size:.66rem;color:var(--muted)}
+
+  /* ---------- claim cards ---------- */
+  .claims{display:grid;gap:.6rem;margin:0 0 1rem}
+  .claim{
+    border:1px solid var(--rule);border-radius:9px;background:var(--sunk);
+    padding:.8rem .9rem;
+  }
+  .claim-h{display:flex;align-items:baseline;gap:.55rem;margin-bottom:.45rem;flex-wrap:wrap}
+  .claim-id{
+    font-family:var(--ff-mono);font-size:.72rem;font-weight:600;color:#fff;background:var(--accent);
+    padding:.06rem .4rem;border-radius:4px;flex:none;
+  }
+  :root[data-theme="dark"] .claim-id{color:#07100F}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .claim-id{color:#07100F}}
+  .claim-t{font-weight:600;font-size:.94rem;color:var(--ink);line-height:1.3}
+  .claim dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:.2rem .7rem;font-size:.87rem}
+  .claim dt{
+    font-family:var(--ff-mono);font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted);padding-top:.28rem;white-space:nowrap;
+  }
+  .claim dd{margin:0;color:var(--ink-2);line-height:1.52}
+  .claim dd.fix{color:var(--ink)}
+  @media (max-width:30rem){
+    .claim dl{grid-template-columns:1fr;gap:0}
+    .claim dt{padding-top:.5rem}
+  }
+
+  /* ---------- open-issue cards ---------- */
+  .issue{border:1px solid var(--rule);border-radius:9px;padding:.8rem .9rem;margin:0 0 .6rem;background:var(--sunk)}
+  .issue.high{border-left:3px solid var(--bad)}
+  .issue.mid{border-left:3px solid var(--warn)}
+  .issue.low{border-left:3px solid var(--rule-2)}
+  .issue.done{border-left:3px solid var(--ok)}
+  .issue.done .issue-t{color:var(--ink-2)}
+  .issue .fixed{font-size:.84rem;color:var(--ink)}
+  .issue .fixed b{color:var(--ok)}
+  .issue-h{display:flex;gap:.55rem;align-items:baseline;flex-wrap:wrap;margin-bottom:.35rem}
+  .issue-file{font-family:var(--ff-mono);font-size:.71rem;color:var(--muted);background:var(--card);padding:.06rem .38rem;border-radius:4px;border:1px solid var(--rule)}
+  .issue-t{font-weight:600;font-size:.92rem;color:var(--ink);line-height:1.3;flex:1 1 14rem}
+  .issue p{margin:0 0 .5rem;font-size:.88rem;color:var(--ink-2);max-width:42rem}
+  .issue p:last-child{margin-bottom:0}
+  .issue .cost{font-size:.84rem;color:var(--ink)}
+  .issue .cost b{color:var(--bad)}
+
+  .tag{
+    display:inline-block;font-family:var(--ff-mono);font-size:.66rem;letter-spacing:.05em;
+    text-transform:uppercase;padding:.08rem .4rem;border-radius:4px;font-weight:600;
+    vertical-align:.08em;
+  }
+  .tag.t-fix{background:var(--bad-soft);color:var(--bad)}
+  .tag.t-follow{background:var(--warn-soft);color:var(--warn)}
+  .tag.t-proto{background:var(--sunk);color:var(--muted);border:1px solid var(--rule)}
+  .tag.t-done{background:var(--ok-soft);color:var(--ok)}
+
+  /* ---------- steps ---------- */
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:0 0 1rem}
+  ol.steps > li{
+    counter-increment:s;position:relative;padding-left:2rem;margin-bottom:.65rem;
+    font-size:.92rem;max-width:42rem;
+  }
+  ol.steps > li::before{
+    content:counter(s);position:absolute;left:0;top:.08rem;
+    width:1.35rem;height:1.35rem;border-radius:50%;
+    background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);
+    font-family:var(--ff-mono);font-size:.7rem;font-weight:600;
+    display:flex;align-items:center;justify-content:center;
+  }
+
+  .qs{list-style:none;padding:0;margin:0 0 1rem;counter-reset:q}
+  .qs li{
+    counter-increment:q;position:relative;padding:.55rem .8rem .55rem 2.4rem;
+    border-bottom:1px solid var(--rule);font-size:.93rem;color:var(--ink);
+  }
+  .qs li:last-child{border-bottom:0}
+  .qs li::before{
+    content:"Q" counter(q);position:absolute;left:.15rem;top:.62rem;
+    font-family:var(--ff-mono);font-size:.68rem;font-weight:600;color:var(--accent);
+  }
+
+  /* ---------- check-off footer ---------- */
+  .mod-foot{
+    margin-top:1.25rem;padding-top:.85rem;border-top:1px solid var(--rule);
+    display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;
+  }
+  .checkoff{
+    display:inline-flex;align-items:center;gap:.55rem;cursor:pointer;
+    font-size:.86rem;font-weight:500;color:var(--muted);
+    background:none;border:1px solid var(--rule-2);border-radius:99px;
+    padding:.32rem .8rem .32rem .42rem;
+    font-family:var(--ff-sans);
+    transition:color .18s ease,border-color .18s ease,background .18s ease;
+  }
+  .checkoff:hover{border-color:var(--accent);color:var(--ink)}
+  .checkoff:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .box{
+    width:1.15rem;height:1.15rem;border-radius:5px;border:1.5px solid var(--rule-2);
+    background:var(--card);flex:none;display:flex;align-items:center;justify-content:center;
+    transition:background .18s ease,border-color .18s ease;
+  }
+  .box svg{width:.75rem;height:.75rem;opacity:0;transition:opacity .18s ease}
+  .checkoff[aria-pressed="true"]{color:var(--ok);border-color:var(--ok)}
+  .checkoff[aria-pressed="true"] .box{background:var(--ok);border-color:var(--ok)}
+  .checkoff[aria-pressed="true"] .box svg{opacity:1}
+  .box svg path{stroke:#fff;stroke-width:2.6;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---------- closing ---------- */
+  .verdict{
+    background:var(--accent-soft);border:1px solid var(--accent);border-radius:12px;
+    padding:1.3rem 1.25rem;margin:1.15rem 0;
+  }
+  .verdict h3{color:var(--accent);margin-top:0}
+  .verdict p{max-width:42rem}
+  .verdict p:last-child{margin-bottom:0}
+
+  .footer{
+    margin-top:2.5rem;padding-top:1.2rem;border-top:1px solid var(--rule);
+    font-size:.8rem;color:var(--muted);display:flex;justify-content:space-between;
+    gap:1rem;flex-wrap:wrap;align-items:center;
+  }
+  .reset{
+    background:none;border:1px solid var(--rule);border-radius:7px;color:var(--muted);
+    font-family:var(--ff-sans);font-size:.78rem;padding:.25rem .6rem;cursor:pointer;
+  }
+  .reset:hover{border-color:var(--bad);color:var(--bad)}
+  .reset:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:2px}
+
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{transition-duration:.01ms !important;animation-duration:.01ms !important}
+  }
+
+  /* ---------- publication chain ---------- */
+  .chain{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;margin:0 0 1rem}
+  .pub{
+    font-family:var(--ff-mono);font-size:.76rem;font-weight:600;
+    padding:.25rem .55rem;border-radius:6px;border:1px solid var(--rule-2);
+    background:var(--card);color:var(--ink-2);
+  }
+  .pub.cur{background:var(--accent);border-color:var(--accent);color:#fff}
+  :root[data-theme="dark"] .pub.cur{color:#07100F}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .pub.cur{color:#07100F}}
+  .pub.kept{border-color:var(--ok);color:var(--ok);background:var(--ok-soft)}
+  .pub.gone{border-style:dashed;color:var(--muted);background:transparent}
+  .pub.bad{border-color:var(--bad);color:var(--bad);background:var(--bad-soft)}
+  .arrow{color:var(--muted);font-family:var(--ff-mono);font-size:.8rem}
+  .legend{font-size:.76rem;color:var(--muted);margin:-.4rem 0 1rem}
+
+  /* ---------- check yourself ---------- */
+  details.q{
+    border:1px solid var(--rule);border-radius:9px;background:var(--sunk);
+    padding:.55rem .85rem;margin:0 0 .55rem;
+  }
+  details.q summary{cursor:pointer;font-weight:600;font-size:.9rem;color:var(--ink)}
+  details.q summary::marker{color:var(--accent)}
+  details.q p{margin:.55rem 0 .2rem;font-size:.88rem;color:var(--ink-2)}
+</style>
+
+<div class="topbar">
+  <div class="topbar-in">
+    <span class="topbar-title">Publications &amp; History</span>
+    <span class="track"><i id="bar"></i></span>
+    <span class="tally" id="tally">0 / 12</span>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <p class="eyebrow">Issue #8 · ADR-014 · ATherkel/budget</p>
+  <h1>Why did February change — and can I see it as it was?</h1>
+  <p class="standfirst">
+    Issue #8 decides what one build of Gold is, which build a report reads, what is kept of past
+    builds, and what &ldquo;reproducible&rdquo; actually promises. This page walks through it in
+    twelve short modules, following one February through five builds and three views.
+    <strong>Tick a module off once you can explain it to someone else.</strong>
+    Your progress is saved.
+  </p>
+
+  <div class="callout">
+    <p class="callout-h">About this file</p>
+    <p>
+      This is a <strong>primer, not a contract.</strong> It explains what
+      <code>docs/architecture/publications.md</code>, <code>ADR-014</code> and the Gold contract
+      decide. Where they disagree with this page, they win.
+    </p>
+    <p>
+      It builds on the other three primers: <em>which rows are the same transaction</em>
+      (overlapping exports), <em>what shape Gold has</em> (dimensional Gold), and <em>what each
+      transaction means</em> (classification). This one covers <em>which version of all that a
+      report shows</em>.
+    </p>
+  </div>
+
+  <div class="callout">
+    <p class="callout-h">The short answer</p>
+    <p>
+      ADR-014 is <strong>Proposed</strong>. You need <strong>four ideas</strong> — the recipe
+      (module 04), the pointer with undo (05), the two time axes (06) and the decision log (10).
+      Module 12 separates <strong>what you chose</strong> from <strong>what the agent chose for
+      you</strong>, so you can check the second list.
+    </p>
+    <p>Budget about 25 minutes. If you only have 10, read 01, 04, 06 and 12.</p>
+  </div>
+
+  <nav class="toc">
+    <p class="toc-h">Contents</p>
+    <div class="toc-list" id="toc"></div>
+  </nav>
+
+  <!-- ============ 01 ============ -->
+  <section class="mod" id="m1" data-key="m1">
+    <div class="mod-head">
+      <span class="mod-n">01</span>
+      <h2>The one question behind all of it</h2>
+    </div>
+    <p class="goal">After this: you can state what issue #8 exists to decide, in one sentence.</p>
+    <div class="mod-body">
+      <p>
+        On 5 March you open the dashboard: February groceries <strong>520.00</strong>. On 15 June
+        you look again: <strong>820.00</strong>, and the IKEA purchase you remember as household
+        goods now sits under gifts. Nothing in your bank data was edited. Both numbers were right
+        when they were shown.
+      </p>
+      <p>
+        Two different things moved. More <em>data</em> arrived (a late booking), and your
+        <em>interpretation</em> changed (a manual decision, a rule, a renamed category). The
+        warehouse is designed to restate history — every dimension is Type 1, and classification
+        re-runs from scratch on every build. That is a feature: last year&rsquo;s numbers get
+        better when your rules do. But it raises three questions a household will eventually ask:
+      </p>
+      <ol class="steps">
+        <li>Which version of February am I looking at right now?</li>
+        <li>Can I see the version I saw on 5 March, exactly?</li>
+        <li>How much of the change was new data, and how much was me re-deciding things?</li>
+      </ol>
+      <div class="callout">
+        <p class="callout-h">The one sentence</p>
+        <p>
+          <strong>Every report is a function of recorded inputs — so record them, name each
+          result, and let the household pick which result it reads.</strong>
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 02 ============ -->
+  <section class="mod" id="m2" data-key="m2">
+    <div class="mod-head">
+      <span class="mod-n">02</span>
+      <h2>&ldquo;Gold is reproducible from Silver&rdquo; was false</h2>
+    </div>
+    <p class="goal">After this: you can list what a Gold build really reads, and name the one thing it must never read.</p>
+    <div class="mod-body">
+      <p>
+        Principle 3 used to say Gold is reproducible from Silver. Count what a Gold build actually
+        consumes:
+      </p>
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Input</th><th>Who changes it</th><th>Example change</th></tr></thead>
+          <tbody>
+            <tr><td>Silver transactions</td><td>imports</td><td>a late booking appears</td></tr>
+            <tr><td>Account registry</td><td>you, in a file</td><td>Bo&rsquo;s account gets imported</td></tr>
+            <tr><td>Category taxonomy</td><td>you, in a file</td><td>rename <code>streaming</code></td></tr>
+            <tr><td>Classification rules</td><td>you, in a file</td><td>add <code>r-net</code></td></tr>
+            <tr><td>Manual decisions</td><td>you, by command</td><td>IKEA → <code>gifts</code></td></tr>
+            <tr><td>Matching policy + code</td><td>the developer</td><td>a faster matcher</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Only one of six is Silver. So the principle now reads: <strong>Gold is reproducible from
+        its recipe</strong> — all six, each named exactly.
+      </p>
+      <h3>The one forbidden input: the clock</h3>
+      <p>
+        If a build ever asked &ldquo;what is today?&rdquo;, two builds of identical inputs could
+        differ, and you could never prove a rebuild matches. So a build never reads the clock, file
+        timestamps or environment variables. <code>built_at</code> is still recorded — as
+        <em>metadata about</em> the result, never <em>part of</em> it. That is how the ticket&rsquo;s
+        worry about <code>created_at</code> timestamps dissolves.
+      </p>
+      <p>
+        What about things that genuinely depend on today, like the <em>provisional</em> label on
+        the current month? Presentation computes them <strong>when the report is read</strong>,
+        which it already did.
+      </p>
+      <details class="q">
+        <summary>Check yourself: why can&rsquo;t the managed period end at &ldquo;this month&rdquo;?</summary>
+        <p>Because that reads the clock. The contract ends an open account&rsquo;s managed period at the latest month present in the published data instead — the same rule, applied back in #6.</p>
+      </details>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 03 ============ -->
+  <section class="mod" id="m3" data-key="m3">
+    <div class="mod-head">
+      <span class="mod-n">03</span>
+      <h2>A publication: one complete build, read one at a time</h2>
+    </div>
+    <p class="goal">After this: you can say what a publication is, and why a consumer must never read two.</p>
+    <div class="mod-body">
+      <p>
+        A <strong>publication</strong> is one complete, immutable build of Gold: every account and
+        category row, every transaction and allocation, the monthly snapshots, lineage and review
+        items. Each gets a <code>publication_id</code> — P1, P2, … — and once stored it never
+        changes.
+      </p>
+      <p>
+        Several publications can sit in the store at once (module 09 says which). That creates the
+        classic warehouse trap the ticket warns about: <strong>double counting</strong>.
+      </p>
+      <div class="scroller">
+        <table class="ledger">
+          <caption>February expenses in four retained publications (June 2026).</caption>
+          <thead><tr><th>Publication</th><th>What it is</th><th class="num">Feb expenses</th></tr></thead>
+          <tbody>
+            <tr><td>P6</td><td>current</td><td class="num">3,349.00</td></tr>
+            <tr><td>P5</td><td>previous (for undo)</td><td class="num">3,349.00</td></tr>
+            <tr><td>P1</td><td>labeled &ldquo;March review&rdquo;</td><td class="num">3,049.00</td></tr>
+            <tr><td>P7</td><td>labeled &ldquo;Known 5 March&rdquo;</td><td class="num">3,049.00</td></tr>
+            <tr class="hit"><td colspan="2">naive <code>SUM(amount)</code> over the whole table</td><td class="num">12,796.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        The defence is structural, not a coding convention. Every Gold table is keyed by
+        <code>publication_id</code> first. A <code>GoldRepository</code> is <em>bound</em> to one
+        publication when it is opened, and no method reads across two. Analytics can&rsquo;t
+        write the wrong sum because it is never handed the rows to write it with.
+      </p>
+      <p>
+        Facts do not carry <code>publication_id</code> — analytics has no business knowing it.
+        A consumer that wants to show which build it is reading calls
+        <code>repository.publication()</code>.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 04 ============ -->
+  <section class="mod" id="m4" data-key="m4">
+    <div class="mod-head">
+      <span class="mod-n">04</span>
+      <h2>The recipe, and the fingerprint that checks it</h2>
+    </div>
+    <p class="goal">After this: you can name a recipe&rsquo;s parts and say what a matching fingerprint proves.</p>
+    <div class="mod-body">
+      <p>Every publication carries a <strong>recipe</strong>: what it was built from, named exactly, never &ldquo;latest&rdquo;.</p>
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Part</th><th>For P3 in the running example</th></tr></thead>
+          <tbody>
+            <tr><td>Data</td><td>import runs run-1 and run-2, each with its payload hash</td></tr>
+            <tr><td>Configuration snapshot</td><td>fingerprint <code>c1</code>: accounts, taxonomy, rules, matching policy — parsed, canonical</td></tr>
+            <tr><td>Decision-log position</td><td>entry 1 (IKEA → <code>gifts</code>)</td></tr>
+            <tr><td>Code version</td><td>commit <code>k1</code>, with its locked dependencies</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        A recipe holds <strong>inputs only</strong>, so two recipes can be compared before anything
+        is built. The result&rsquo;s <strong>fingerprint</strong> belongs to the publication: a
+        SHA-256 hash over every record it returns, in key order, tagged with the version of the
+        serialization it hashes (the <em>fingerprint scheme</em>). Fingerprints are compared only
+        within one scheme.
+      </p>
+      <p>
+        So the recipe is the <em>cause</em> and the fingerprint the <em>effect</em>. The
+        promise is: <strong>the same recipe, rebuilt with the same code, gives the same
+        fingerprint.</strong> Three steps of the running example lean on it.
+      </p>
+      <div class="scroller">
+        <table class="ledger">
+          <caption>Three builds that test the promise.</caption>
+          <thead><tr><th>When</th><th>What you did</th><th>Outcome</th></tr></thead>
+          <tbody>
+            <tr><td>04-12</td><td>deleted the bad rule again</td><td class="note">recipe equals the current one → <b>nothing is built</b></td></tr>
+            <tr class="new"><td>05-03</td><td><code>verify</code>: full rebuild from Bronze, in a scratch store</td><td class="note">fingerprint equals P5&rsquo;s → <b>reproducibility proven</b>, nothing published</td></tr>
+            <tr><td>06-01</td><td>upgraded the code, no intended behavior change</td><td class="note">new publication P6, <b>same fingerprint</b> as P5 → the upgrade provably changed nothing</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        The snapshot is of <em>parsed</em> configuration, so reformatting a file or restoring a
+        rule you deleted gives the same fingerprint. And because the recipe names the code,
+        production refuses to build from uncommitted changes — it could not say what built the
+        result.
+      </p>
+      <details class="q">
+        <summary>Check yourself: a code change gives a different fingerprint. Is that a bug?</summary>
+        <p>Not necessarily — it is <em>attributable</em>. The recipe names both code versions, and the diff (module 05) shows exactly which numbers moved. What would be a bug is the same recipe <em>and</em> code giving two fingerprints.</p>
+      </details>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 05 ============ -->
+  <section class="mod" id="m5" data-key="m5">
+    <div class="mod-head">
+      <span class="mod-n">05</span>
+      <h2>Switch at once, print the diff, undo in one step</h2>
+    </div>
+    <p class="goal">After this: you can walk through the NETFLIX mistake from build to undo.</p>
+    <div class="mod-body">
+      <p>
+        <strong>Current</strong> is a pointer. The dashboard reads whatever it points at. A
+        successful build stores its result <em>and</em> moves the pointer in one SQLite write
+        transaction, so a reader sees the old publication or the new one, never half of each. A
+        failed build — say, a decision naming a category that doesn&rsquo;t exist — leaves
+        everything as it was.
+      </p>
+      <h3>The mistake</h3>
+      <p>
+        On 12 April you add <code>r-net</code>: <em>text contains <code>NET</code> →
+        groceries</em>. You meant NETTO. It also matches <code>NETFLIX.COM</code>, where it
+        disagrees with <code>r-streaming</code> at equal priority, so that transaction turns
+        <code>unknown</code> with a <code>rule-conflict</code> (ADR-011). The build succeeds and
+        P4 goes live — and the CLI prints:
+      </p>
+      <div class="scroller">
+        <table class="ledger">
+          <caption>Diff P3 → P4, as the terminal shows it (never written to logs).</caption>
+          <thead><tr><th>Month</th><th>Measure</th><th class="num">Change</th></tr></thead>
+          <tbody>
+            <tr class="hit"><td>2026-02</td><td>streaming</td><td class="num">&minus;129.00</td></tr>
+            <tr class="hit"><td>2026-02</td><td>Expenses</td><td class="num">&minus;129.00</td></tr>
+            <tr class="hit"><td>2026-02</td><td>unclassified out</td><td class="num">&minus;129.00 (1)</td></tr>
+            <tr><td></td><td>review items</td><td class="num">+1 rule-conflict</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>That is your cue. <code>undo</code> points current back at P3. The pointer history records both moves:</p>
+      <div class="chain">
+        <span class="pub">P1</span><span class="arrow">→</span>
+        <span class="pub">P2</span><span class="arrow">→</span>
+        <span class="pub">P3</span><span class="arrow">→</span>
+        <span class="pub bad">P4</span><span class="arrow">→</span>
+        <span class="pub cur">P3</span>
+      </div>
+      <p>
+        Undo changes no input. The bad rule is still in your file, so the next build would bring
+        it back — you still fix the rule. Undo just buys you a calm moment, and it is itself
+        undoable: after undo, P4 is &ldquo;the previous one&rdquo;.
+      </p>
+      <details class="q">
+        <summary>Check yourself: why is &ldquo;switch at once&rdquo; safe without a review gate?</summary>
+        <p>Because the previous result is always retained, so going back is instant, and the diff puts every moved number in front of you at the moment you made the change. A gate would catch the same mistake one command later, on every single import.</p>
+      </details>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 06 ============ -->
+  <section class="mod" id="m6" data-key="m6">
+    <div class="mod-head">
+      <span class="mod-n">06</span>
+      <h2>Two clocks: what you knew, and how you read it</h2>
+    </div>
+    <p class="goal">After this: you can place current, as-was and as-known-at on a two-axis grid.</p>
+    <div class="mod-body">
+      <p>
+        Every report answers two questions, and each answer is a point in time. <strong>Which
+        data?</strong> — cut at when each import ran. <strong>Which interpretation?</strong> —
+        configuration, decisions and code. Kimball&rsquo;s name for this is
+        <em>bitemporal</em>.
+      </p>
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>View</th><th>Data</th><th>Interpretation</th><th>Feb groceries</th></tr></thead>
+          <tbody>
+            <tr><td>Current</td><td>everything so far</td><td>today&rsquo;s</td><td>820.00</td></tr>
+            <tr><td>As-was 5 March</td><td>imported by 5 March</td><td>in force on 5 March</td><td>520.00</td></tr>
+            <tr><td>As-known-at 5 March</td><td>imported by 5 March</td><td>today&rsquo;s</td><td>520.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The payoff is in comparing them. Each pair differs on exactly one axis:</p>
+      <ul>
+        <li>
+          <strong>Current vs as-known-at</strong> — same interpretation, different data. The
+          300.00 difference is purely the late booking that arrived on 10 March.
+        </li>
+        <li>
+          <strong>As-was vs as-known-at</strong> — same data, different interpretation. The
+          differences (IKEA moved to gifts, streaming renamed and regrouped) are purely you
+          re-deciding things.
+        </li>
+      </ul>
+      <p>
+        Why cut data at <em>import</em> time rather than the bank&rsquo;s export date? The export
+        date says when the bank made the file, not when you knew about it. An export produced
+        on 1 March that you imported on 20 March was not known on 5 March. And a date means the
+        <strong>end of that day, Copenhagen time</strong>: &ldquo;known at 5 March&rdquo; includes
+        an import at 21:30 that evening.
+      </p>
+      <details class="q">
+        <summary>Check yourself: what about the fourth corner — today&rsquo;s data, March&rsquo;s rules?</summary>
+        <p>Not offered. Rule files are only read when a build runs, so &ldquo;the rules on some date&rdquo; is only known at the moments a publication was built. It could be offered at those points later; the first release does not.</p>
+      </details>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 07 ============ -->
+  <section class="mod" id="m7" data-key="m7">
+    <div class="mod-head">
+      <span class="mod-n">07</span>
+      <h2>As-was: exactly what you saw</h2>
+    </div>
+    <p class="goal">After this: you can explain how an as-was view is found, and when it needs old code.</p>
+    <div class="mod-body">
+      <p>
+        <code>view --as-was 2026-03-05 --label "March review"</code> looks up the pointer history:
+        which publication was current on 5 March? P1. Then one of two things happens:
+      </p>
+      <ol class="steps">
+        <li><strong>P1&rsquo;s result is still retained</strong> → it is simply labeled, and the dashboard can open it.</li>
+        <li>
+          <strong>It isn&rsquo;t</strong> → P1&rsquo;s recipe is replayed under the same
+          <code>publication_id</code>, and the replay must match P1&rsquo;s recorded fingerprint.
+          P1 was built by code <code>k1</code> and you now run <code>k2</code>, so the first attempt
+          refuses and names <code>k1</code> as the version to replay with. You check out
+          <code>k1</code> and run the same command again: the replay succeeds, its fingerprint
+          matches P1&rsquo;s, and, because <code>k1</code> and <code>k2</code> share a schema
+          version, the result joins the main store and the label keeps it. (Had the schema
+          changed in between, the replay could only be shown by the CLI, and
+          <code>--label</code> would be refused.) The replay keeps P1&rsquo;s
+          original <code>built_at</code> (3 March) and records <code>replayed_at</code> separately,
+          so the banner and the provisional label stay dated to the original build.
+        </li>
+      </ol>
+      <div class="scroller">
+        <table class="ledger">
+          <caption>February in P1, as seen on 5 March.</caption>
+          <thead><tr><th>Category</th><th>Group</th><th class="num">Amount</th></tr></thead>
+          <tbody>
+            <tr><td>groceries</td><td>food</td><td class="num">520.00</td></tr>
+            <tr><td>household-goods</td><td>home</td><td class="num">2,400.00</td></tr>
+            <tr><td>&ldquo;Streaming&rdquo;</td><td>leisure</td><td class="num">129.00</td></tr>
+            <tr><td colspan="2">Expenses</td><td class="num">3,049.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Note the old category name and group. That is why ADR-007 could choose Type 1 dimensions
+        without losing history: each publication carries the dimension rows as they were. Type 2
+        would have preserved what <code>streaming</code> was called, but not that the IKEA
+        purchase was then household goods — the reinterpretation lives in the facts, and the
+        publication keeps those too.
+      </p>
+      <p>
+        <code>category-changes.md</code> still matters: the publication shows <em>what</em> the
+        categories were; the log says <em>why</em> they changed.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 08 ============ -->
+  <section class="mod" id="m8" data-key="m8">
+    <div class="mod-head">
+      <span class="mod-n">08</span>
+      <h2>As-known-at: old data, today&rsquo;s eyes</h2>
+    </div>
+    <p class="goal">After this: you can predict what an as-known-at view shows, including its labels and review items.</p>
+    <div class="mod-body">
+      <p>
+        <code>view --known-at 2026-03-05 --label "Known 5 March"</code> is a <em>new</em> build,
+        P7, of kind <code>as_known_at</code>. It takes only the import runs started by 5 March
+        (run-1; run-2 came on the 10th) and interprets them with today&rsquo;s configuration,
+        decisions and code. Silver is derived for that subset in a scratch store, so the live
+        Silver is untouched.
+      </p>
+      <div class="scroller">
+        <table class="ledger">
+          <caption>February, as known on 5 March, read today.</caption>
+          <thead><tr><th>Category</th><th>Group</th><th class="num">Amount</th></tr></thead>
+          <tbody>
+            <tr><td>groceries</td><td>food</td><td class="num">520.00</td></tr>
+            <tr class="new"><td>gifts</td><td>personal</td><td class="num">2,400.00</td></tr>
+            <tr class="new"><td>&ldquo;Subscriptions&rdquo;</td><td>housing</td><td class="num">129.00</td></tr>
+            <tr><td colspan="2">Expenses</td><td class="num">3,049.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Three details worth predicting before you read them:</p>
+      <ul>
+        <li>
+          <strong>It can never become current.</strong> It is missing data by design.
+        </li>
+        <li>
+          <strong>February is labeled provisional.</strong> Past views take the label as of their
+          own moment — <code>known_at</code> — not today. On 5 March no export produced 7+ days
+          after February&rsquo;s end had been imported, so February was still provisional then.
+        </li>
+        <li>
+          <strong>A decision can be &ldquo;not applicable&rdquo;.</strong> Had you recorded a
+          decision about a transaction first imported on 10 March, this view raises
+          <code>decision-not-applicable</code> for it — just as a build on 5 March would have.
+        </li>
+      </ul>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 09 ============ -->
+  <section class="mod" id="m9" data-key="m9">
+    <div class="mod-head">
+      <span class="mod-n">09</span>
+      <h2>Keep the recipe, not the cake</h2>
+    </div>
+    <p class="goal">After this: you can say which results are kept, and what it costs to see one that isn&rsquo;t.</p>
+    <div class="mod-body">
+      <p>
+        A recipe is a few kilobytes. A result is every row of Gold — a few megabytes after some
+        years of data. Every recipe is kept forever. <strong>Results</strong> are kept only for:
+      </p>
+      <ul>
+        <li>the <strong>current</strong> publication;</li>
+        <li>the <strong>previous</strong> one, so undo is instant;</li>
+        <li>every <strong>labeled</strong> one, until you remove the label.</li>
+      </ul>
+      <div class="chain">
+        <span class="pub kept">P1 · label</span>
+        <span class="pub gone">P2</span>
+        <span class="pub gone">P3</span>
+        <span class="pub gone">P4</span>
+        <span class="pub kept">P5 · previous</span>
+        <span class="pub cur">P6 · current</span>
+        <span class="pub kept">P7 · label</span>
+      </div>
+      <p class="legend">Dashed: recipe only. Green: result kept. Filled: current. June 2026, after both views.</p>
+      <p>
+        Anything dashed can be re-created by replaying its recipe with the code it names. Two
+        honest limits:
+      </p>
+      <ul>
+        <li>
+          <strong>Code rots.</strong> A recipe replays only while its code still runs. If a
+          publication must outlive its code — a tax year, say — label it, so its result is kept.
+        </li>
+        <li>
+          <strong>Schema changes.</strong> ADR-013 lets a Gold migration drop and rebuild Gold
+          tables, and those tables now hold the kept results. A migration converts them where it
+          can. One it can&rsquo;t convert survives in the <strong>backup production takes before
+          migrating</strong>, which the old code can open. The migrate command then builds a
+          fresh current publication, so undo has nothing to go back to until the next build.
+        </li>
+      </ul>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 10 ============ -->
+  <section class="mod" id="m10" data-key="m10">
+    <div class="mod-head">
+      <span class="mod-n">10</span>
+      <h2>The decision log: nothing is ever edited</h2>
+    </div>
+    <p class="goal">After this: you can change and retract a decision without editing anything.</p>
+    <div class="mod-body">
+      <p>
+        Every manual decision — classifying a transaction, settling a review item, voiding an
+        import run — is an entry in one <strong>append-only</strong> log. The platform stamps
+        <code>recorded_at</code> when it accepts the entry; you never type it.
+      </p>
+      <div class="scroller">
+        <table class="ledger">
+          <caption>Changing your mind about IKEA, twice.</caption>
+          <thead><tr><th>Entry</th><th>Recorded</th><th>Decision</th><th>Kind</th><th>Supersedes</th><th class="note">Effective afterwards</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>04-10</td><td>d-0001</td><td>classify C → gifts</td><td>—</td><td class="note">C is gifts</td></tr>
+            <tr><td>2</td><td>07-02</td><td>d-0007</td><td>classify C → household-goods</td><td>d-0001</td><td class="note">C is household-goods</td></tr>
+            <tr><td>3</td><td>07-09</td><td>d-0008</td><td>retract (no targets)</td><td>d-0007</td><td class="note">no decision: <code>r-home</code> decides</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        The effective decisions at entry <em>n</em> are those recorded up to <em>n</em> and not
+        superseded up to <em>n</em>. A <code>retract</code> entry is never effective itself, so
+        after entry 3 a fresh decision on C needs no <code>supersedes</code> at all. (It is called
+        <em>retract</em>, not <em>withdraw</em>, because Silver&rsquo;s <em>withdrawn</em> already
+        means &ldquo;the bank removed this transaction&rdquo;.) That is what lets a recipe say &ldquo;decisions up to entry
+        1&rdquo; and mean something exact forever.
+      </p>
+      <p>
+        ADR-011 says a transaction has at most one decision. With a log, a second decision on C
+        that doesn&rsquo;t list the first in <code>supersedes</code> is <strong>rejected when you
+        record it</strong>, not discovered at the next build. <code>supersedes</code> is a
+        <em>list</em>: a <code>pair</code> of two legs that each had their own
+        <code>classify</code> decision supersedes both in one entry, so there is one build, and
+        no publication where both legs sit unclassified in between. That validation boundary is the one a
+        future browser editor reuses (issue #10).
+      </p>
+      <p>
+        Rules, taxonomy and accounts stay ordinary edited files. Their history is the
+        configuration snapshots inside recipes.
+      </p>
+      <details class="q">
+        <summary>Check yourself: why is a <code>retract</code> entry needed at all?</summary>
+        <p>Because deleting entry 2 would rewrite history: a recipe pointing at &ldquo;up to entry 2&rdquo; would silently change meaning. Retracting is a new fact about a new moment, so old recipes stay exact.</p>
+      </details>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 11 ============ -->
+  <section class="mod" id="m11" data-key="m11">
+    <div class="mod-head">
+      <span class="mod-n">11</span>
+      <h2>Which identifiers survive a rebuild</h2>
+    </div>
+    <p class="goal">After this: you can say what names &ldquo;the same transaction&rdquo; and what names &ldquo;one version of it&rdquo;.</p>
+    <div class="mod-body">
+      <div class="scroller">
+        <table class="grid">
+          <thead><tr><th>Identifier</th><th>Stable across publications?</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr><td><code>account_id</code>, <code>category_id</code></td><td>always</td><td>immutable household keys, never reused</td></tr>
+            <tr><td><code>transaction_id</code></td><td>while ADR-009&rsquo;s identity version holds</td><td>derived from content + occurrence</td></tr>
+            <tr><td><code>allocation_id</code>, <code>transfer_group_id</code>, <code>review_item_id</code></td><td>while the same inputs produce them</td><td>derived from the ids above</td></tr>
+            <tr><td><code>account_sequence</code></td><td>no</td><td>ordering only; shifts with late bookings</td></tr>
+            <tr><td>(<code>publication_id</code>, <code>transaction_id</code>)</td><td>names one version of one fact</td><td>the only way two versions differ</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        So the IKEA purchase is <em>the same transaction</em> in P1 and P6 — same
+        <code>transaction_id</code> — and your decision can target it forever. What differs is
+        its <em>version</em>: household goods in P1, gifts in P6.
+      </p>
+      <h3>One page, one publication</h3>
+      <p>
+        A dashboard page makes several requests (HTMX loads panels separately). If a build
+        finished between two of them, one panel could show P5 and the next P6. So the page opens
+        the current publication once and carries that <code>publication_id</code> in its
+        follow-up requests. A page never mixes two builds; reloading picks up the new one.
+      </p>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <!-- ============ 12 ============ -->
+  <section class="mod" id="m12" data-key="m12">
+    <div class="mod-head">
+      <span class="mod-n">12</span>
+      <h2>What you decided, and what was decided for you</h2>
+    </div>
+    <p class="goal">After this: you know which choices were yours, and which ones to check.</p>
+    <div class="mod-body">
+      <h3>Your five choices</h3>
+      <ol class="qs">
+        <li><strong>Past reports come as as-was and as-known-at</strong>, beside current. <em>(modules 06–08)</em></li>
+        <li><strong>Keep every recipe; keep results for current, previous and labeled.</strong> <em>(module 09)</em></li>
+        <li><strong>A successful build goes live at once</strong>, with a printed diff and one-step undo. <em>(module 05)</em></li>
+        <li><strong>Manual decisions live in an append-only log.</strong> <em>(module 10)</em></li>
+        <li><strong>Views are built by the CLI and opened by the dashboard</strong>, which stays read-only. <em>(modules 07, 08)</em></li>
+      </ol>
+
+      <h3>Decided by the agent — please check</h3>
+      <div class="issue mid">
+        <div class="issue-h"><span class="issue-file">module 03</span><span class="issue-t">One database, not a file per publication</span></div>
+        <p>Every Gold table is keyed by <code>publication_id</code>, so the pointer moves in one SQLite transaction. This answers the question ADR-013 left open for #8.</p>
+      </div>
+      <div class="issue mid">
+        <div class="issue-h"><span class="issue-file">module 02</span><span class="issue-t">The build never reads the clock</span></div>
+        <p>Anything that depends on today is computed when a report is read.</p>
+      </div>
+      <div class="issue mid">
+        <div class="issue-h"><span class="issue-file">module 04</span><span class="issue-t">Production refuses uncommitted code; identical recipes publish nothing</span></div>
+        <p>A development store makes no reproducibility promise at all; development and test keep their own stores.</p>
+      </div>
+      <div class="issue mid">
+        <div class="issue-h"><span class="issue-file">module 06</span><span class="issue-t">Data is cut at import time, not the bank&rsquo;s export date</span></div>
+      </div>
+      <div class="issue mid">
+        <div class="issue-h"><span class="issue-file">module 08</span><span class="issue-t">Past views are provisional as of their own moment</span></div>
+      </div>
+      <div class="issue high">
+        <div class="issue-h"><span class="issue-file">module 09</span><span class="issue-t">A Gold migration can move kept results into the backup</span></div>
+        <p>This refines ADR-013&rsquo;s drop-and-rebuild allowance. A result the migration can&rsquo;t convert survives only in the pre-migration backup, which its own code opens.</p>
+      </div>
+
+      <h3>Tightened in the PR #57 review</h3>
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">module 06</span><span class="issue-t">A date means the end of that day, Copenhagen time</span></div>
+        <p class="fixed">&ldquo;Known at 5 March&rdquo; includes an import at 21:30 that day. Recorded moments are stored in UTC.</p>
+      </div>
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">module 07</span><span class="issue-t">A replay keeps the original <code>built_at</code></span></div>
+        <p class="fixed">A replayed P1 is still dated 3 March, and records <code>replayed_at</code> separately.</p>
+      </div>
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">module 10</span><span class="issue-t"><code>retract</code>, and <code>supersedes</code> as a list</span></div>
+        <p class="fixed">A retraction has no targets and is never effective; one entry can supersede several decisions.</p>
+      </div>
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">module 04</span><span class="issue-t">The recipe is inputs only; <code>verify</code> fails loudly on a mismatch</span></div>
+        <p class="fixed">A mismatch is a platform defect, never a review item. Views, replays and <code>verify</code> run in scratch stores that the migrate runner creates.</p>
+      </div>
+      <div class="issue done">
+        <div class="issue-h"><span class="issue-file">module 06</span><span class="issue-t">Correction: the fourth corner is not free</span></div>
+        <p class="fixed"><b>Corrected.</b> It was first described as falling out for free. It doesn&rsquo;t, because rule files are only read at build time, so it is left out.</p>
+      </div>
+
+      <div class="verdict">
+        <h3>Proposed, and what is left</h3>
+        <p>
+          ADR-014 is <code>Proposed</code>; merging its PR marks your acceptance and closes
+          issue #8. Then append the outcome to the map in #2.
+        </p>
+        <p>
+          <strong>The Kimball exercise from #3 now has an answer.</strong> &ldquo;Reclassify a
+          purchase and compare a rebuilt report with a retained earlier publication&rdquo;: the
+          rebuilt report (current) shows IKEA under gifts; the retained publication (as-was)
+          shows it under household goods. Both are right — for different questions.
+        </p>
+        <p>
+          Deliberately <em>not</em> here: command names, the decision log&rsquo;s file format,
+          where each profile&rsquo;s store lives (issue #10); how the dashboard&rsquo;s publication
+          picker and banner look (issue #11); acceptance cases for version selection and replay
+          (issue #12).
+        </p>
+      </div>
+    </div>
+    <div class="mod-foot"></div>
+  </section>
+
+  <div class="footer">
+    <span id="footnote">Progress saves automatically.</span>
+    <button class="reset" id="reset" type="button">Reset progress</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var TITLES = {
+    m1:"The one question behind all of it",
+    m2:"“Reproducible from Silver” was false",
+    m3:"A publication, read one at a time",
+    m4:"The recipe and its fingerprint",
+    m5:"Switch at once, diff, undo",
+    m6:"Two clocks: data and interpretation",
+    m7:"As-was: exactly what you saw",
+    m8:"As-known-at: old data, today’s eyes",
+    m9:"Keep the recipe, not the cake",
+    m10:"The decision log",
+    m11:"Which identifiers survive a rebuild",
+    m12:"What you decided, and what was decided for you"
+  };
+  var KEYS = Object.keys(TITLES);
+  var LS = "budget-publications-primer-v1";
+
+  var done = {};
+  try {
+    var raw = localStorage.getItem(LS);
+    if (raw) { var p = JSON.parse(raw); if (p && typeof p === "object") done = p; }
+  } catch (e) { /* private window, blocked storage */ }
+
+  var docRef = null;          // db document, when available
+  var applyingRemote = false; // guard so a snapshot doesn't echo a write
+
+  var bar = document.getElementById("bar");
+  var tally = document.getElementById("tally");
+  var toc = document.getElementById("toc");
+
+  /* ---- build the contents list ---- */
+  KEYS.forEach(function(k, i){
+    var a = document.createElement("a");
+    a.className = "toc-item";
+    a.href = "#" + k;
+    a.id = "toc-" + k;
+    a.innerHTML = '<span class="n">' + String(i+1).padStart(2,"0") + '</span><span class="t"></span>';
+    a.querySelector(".t").textContent = TITLES[k];
+    toc.appendChild(a);
+  });
+
+  /* ---- build the check-off buttons ---- */
+  KEYS.forEach(function(k){
+    var sec = document.getElementById(k);
+    if (!sec) return;
+    var foot = sec.querySelector(".mod-foot");
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "checkoff";
+    btn.id = "chk-" + k;
+    btn.setAttribute("aria-pressed","false");
+    btn.innerHTML =
+      '<span class="box" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3.5 8.5 L6.5 11.5 L12.5 4.5"/></svg></span>' +
+      '<span class="lbl">I’ve got this</span>';
+    btn.addEventListener("click", function(){
+      done[k] = !done[k];
+      if (!done[k]) delete done[k];
+      render();
+      persist();
+    });
+    foot.appendChild(btn);
+  });
+
+  function render(){
+    var n = 0;
+    KEYS.forEach(function(k){
+      var on = !!done[k];
+      if (on) n++;
+      var sec = document.getElementById(k);
+      var btn = document.getElementById("chk-" + k);
+      var ti = document.getElementById("toc-" + k);
+      if (sec) sec.classList.toggle("done", on);
+      if (ti) ti.classList.toggle("done", on);
+      if (btn){
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+        btn.querySelector(".lbl").textContent = on ? "Understood" : "I’ve got this";
+      }
+    });
+    tally.textContent = n + " / " + KEYS.length;
+    bar.style.width = Math.round((n / KEYS.length) * 100) + "%";
+  }
+
+  function persist(){
+    try { localStorage.setItem(LS, JSON.stringify(done)); } catch (e) {}
+    if (docRef && !applyingRemote){
+      docRef.set({ done: done, updatedAt: Date.now() }).catch(function(){});
+    }
+  }
+
+  render();
+
+  /* ---- cross-device progress, when the runtime offers it ---- */
+  if (window.claude && typeof window.claude.use === "function"){
+    window.claude.use("db").then(function(db){
+      if (!db) return;
+      docRef = db.doc("progress/publications-primer");
+      docRef.onSnapshot(function(snap){
+        if (!snap || !snap.exists) return;
+        var d = snap.data();
+        var remote = d && d.done;
+        if (!remote || typeof remote !== "object") return;
+        applyingRemote = true;
+        // union: ticking on one device never un-ticks on another
+        Object.keys(remote).forEach(function(k){ if (remote[k]) done[k] = true; });
+        try { localStorage.setItem(LS, JSON.stringify(done)); } catch (e) {}
+        render();
+        applyingRemote = false;
+      }, function(){ docRef = null; });
+      // push whatever this device already had
+      if (Object.keys(done).length) persist();
+    }).catch(function(){});
+  }
+
+  document.getElementById("reset").addEventListener("click", function(){
+    done = {};
+    render();
+    try { localStorage.removeItem(LS); } catch (e) {}
+    if (docRef) docRef.set({ done: {}, updatedAt: Date.now() }).catch(function(){});
+  });
+})();
+</script>
