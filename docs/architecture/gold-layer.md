@@ -225,7 +225,8 @@ What consumers can and cannot derive:
 - Missing balances remain a separate fixture for a source that states no
   balances: its transactions have `missing_balance` and its covered months
   are partial. A balance-stating export with a missing balance is quarantined
-  under ADR-010 and never reaches this Gold example.
+  under ADR-010 and never reaches this Gold example. If *accept discrepancy*
+  admits it, that transaction has `missing_balance` too (ADR-016).
 
 ## Not in the First Release
 
