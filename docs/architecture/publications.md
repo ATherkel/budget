@@ -1,8 +1,9 @@
 # Gold Publications and History
 
-Status: proposed ([ADR-014](../decisions/ADR-014-gold-publications-and-history.md)).
-Command names below are illustrative; issue #10 names the commands and file
-formats.
+Status: accepted ([ADR-014](../decisions/ADR-014-gold-publications-and-history.md)),
+with legacy publications added by
+[ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md).
+Command names and file formats are in [`operations.md`](operations.md).
 
 ## Purpose
 
@@ -113,7 +114,8 @@ decisions.
    run when it cannot name its code version exactly, for example from
    uncommitted changes. A development store makes no reproducibility promise:
    a development build may run from uncommitted code, and nothing records
-   which code that was. Each profile keeps its own store (issue #10).
+   which code that was. Each profile keeps its own stores
+   ([`operations.md`](operations.md#profiles)).
 
 Not promised:
 
@@ -228,8 +230,8 @@ the code version the recipe names.
 
 Views, replays, and `verify` derive Silver and Gold away from the current
 state, in a **scratch store**: a temporary SQLite file in a location the
-profile configures (issue #10). The migrate runner creates it from the same
-migration files, so ADR-013's rule that only the migrate command creates a
+profile configures ([`operations.md`](operations.md#stores)). The migrate
+runner creates it from the same migration files, so ADR-013's rule that only the migrate command creates a
 schema still holds, and opening a store still never creates tables. An
 in-memory database is not used, because only the migrate runner may create
 tables.
@@ -262,6 +264,10 @@ A Gold schema migration converts the retained results where it can. A result
 it cannot convert survives only in the backup that production takes before
 migrating (ADR-013), which the code version that built it can open. Its recipe
 also remains, and can be replayed with that code version into a separate store.
+A labeled result is also extracted to its own file and recorded as a legacy
+publication, and retention keeps its backup
+([ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md),
+[`operations.md`](operations.md#legacy-publications)).
 
 After such a migration, the migrate command runs a pipeline build with the new
 code. The new publication becomes current, with `cause` `migration` in the
@@ -297,7 +303,7 @@ item, or voids an import run, is an entry in one append-only log:
   lists must be effective. Otherwise the entry is rejected when it is
   recorded, so ADR-011's "at most one decision per transaction" holds by
   construction. The same validation serves the CLI now and a browser editor
-  later (issue #10).
+  later ([`operations.md`](operations.md#the-validation-boundary-for-decisions)).
 - One entry can supersede several decisions. A `pair` of two legs that are
   each classified by their own decision supersedes both in one entry, and
   therefore in one build, never passing through a publication where both legs
@@ -434,14 +440,11 @@ Pointer history after step 9: P1, P2, P3, P4, P3, P5, P6. Results kept: P6
 7. Every recipe is retained. The results of the current publication, the
    previous one, and every labeled one are retained in the store. The one
    exception is a Gold migration that cannot convert a result: that result
-   then survives in the pre-migration backup instead.
+   then survives in the pre-migration backup instead, and, when labeled, in
+   its legacy extract (ADR-015).
 
 ## Left to Other Tickets
 
-- **Issue #10:** command names, the decision log's and configuration files'
-  formats, where the store and its backups live, how development and test
-  profiles hold their own publications, and whether configuration files are
-  also kept in a private git repository.
 - **Issue #11:** how the dashboard shows the publication picker and the banner
   for a non-current publication.
 - **Issue #12:** acceptance cases for version selection, deterministic

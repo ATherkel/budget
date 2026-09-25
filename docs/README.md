@@ -27,6 +27,8 @@ agent authority outside its boundary.
   taken on an older report can still be read.
 - `architecture/publications.md` defines what one Gold build is, which one a
   report reads, what is kept of past builds, and what reproducible promises.
+- `architecture/operations.md` says how the household runs the pipeline:
+  profiles, stores, input file formats, commands, and backup and restore.
 - `decisions/` records accepted architectural decisions. Changes require a new
   ADR; do not silently revise a decision to fit an implementation.
 
@@ -68,6 +70,12 @@ primer is stale.
   identifiers survive a rebuild. It closes with what the owner chose on
   issue #8 and what was chosen for them. Opens and stores progress like the
   others.
+- [`primers/operations-primer.html`](primers/operations-primer.html) — how
+  the household runs the pipeline, in thirteen modules: profiles, one store
+  per ETL step, development from backups, the inputs folder and its formats,
+  the monthly import, publishing into one Gold store and legacy
+  publications, backup and restore, and what is left to check. Opens and
+  stores progress like the others.
 
 ## Vocabulary
 
