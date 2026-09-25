@@ -77,12 +77,13 @@ past decision: dimension keys never change meaning, and every category rename,
 regrouping, retirement, and direction change is appended to
 [`category-changes.md`](../domains/category-changes.md) when it is made.
 Reproducing a report exactly as it was read needs the publication it was built
-from, which is issue #8's.
+from: an as-was view ([`publications.md`](publications.md)).
 
 Deliberately reclassifying old transactions is a change to the facts'
 classification, not a dimension change. Now that a category reaches a
 transaction through an allocation, that change has a row of its own to record;
-its history is still issue #8's.
+its history is the sequence of publications and the decision log
+([`publications.md`](publications.md)).
 
 Dimension keys are durable, household-assigned identifiers such as
 `joint-current` or `groceries`. They are immutable and never reused for a
@@ -233,7 +234,9 @@ several allocations, and the rule for which allocation a refund reverses. The
 allocation fact exists from the first release, always with one allocation per
 classified transaction. Also out: Type 2 dimensions, counterparty or merchant
 dimension, person dimension, account hierarchy, daily balance snapshots,
-budget facts, and audit/publication dimensions (issue #8).
+budget facts, and audit or publication dimensions. Publication metadata is
+not a dimension: it describes the whole publication
+([`publications.md`](publications.md)).
 
 ## Consumers
 

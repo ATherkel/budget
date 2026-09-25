@@ -47,6 +47,13 @@ must preserve the analytics-facing DTO boundary.
   account that *has* been imported reads `no_data` for any period its evidence
   does not reach, and a later export can still reach back and change that
   period — which is precisely what the label warns about.
+- Every screen reads exactly one Gold publication, and all requests from one
+  page read the same one. A screen showing any publication other than the
+  current one carries a visible banner naming it (its label, and whether it is
+  an as-was or as-known-at view). A past view takes the provisional label as
+  of the publication's `known_at`, not today
+  ([`publications.md`](publications.md)). How the picker and banner look
+  belongs to issue #11.
 - Account and balance views must reflect each account's coverage status from
   analytics; a `partial` or `no_data` account must never render as if its
   balance or totals are complete.

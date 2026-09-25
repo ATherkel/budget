@@ -49,7 +49,8 @@ and Alembic.
 - **Connection settings.** The database uses WAL mode, set once when it is
   created, because the setting persists in the file. Every connection sets
   `foreign_keys = ON`, a `busy_timeout`, and `synchronous = FULL`, because
-  SQLite resets these for each connection.
+  SQLite resets these for each connection. The migrate command is the one
+  exception; see Migrations.
 - **Money.** Amounts and balances are stored as `INTEGER` counts of the
   currency's minor unit: DKK 12.34 is stored as `1234`. The number of decimal
   places comes from an ISO 4217 table in code, keyed by the account's
@@ -63,14 +64,33 @@ and Alembic.
   runner that records the schema version in `PRAGMA user_version`. Only an
   explicit migrate command creates or changes the schema. Opening a store
   never creates tables, and it fails when the database file does not exist.
+  Connections use the URI form with `mode=rw`, or `mode=ro` for the dashboard,
+  because a plain `sqlite3.connect(path)` creates an empty file when none
+  exists. Only the migrate command connects with `mode=rwc`.
+  Each migration file and its `user_version` update run in one transaction,
+  so a failure leaves the schema and the version as they were. The runner
+  opens the transaction explicitly, because `executescript()` commits any
+  open transaction and then runs in autocommit mode.
   The same runner and files serve every profile. Production takes a backup
   before migrating. A schema change confined to Silver or Gold may drop and
   rebuild those tables instead of altering them.
+- **Foreign keys during migration.** The migrate command sets
+  `foreign_keys = OFF` before it begins its transaction, runs
+  `PRAGMA foreign_key_check` before committing, and fails the migration if
+  that reports any row. With foreign keys on, the `DROP TABLE` in SQLite's
+  table-rebuild procedure first deletes every row and fires
+  `ON DELETE CASCADE`, which would delete child rows in Bronze. The setting
+  cannot be changed inside a transaction, so it is set before one begins.
 - **SQLite version floor.** The application refuses to open a store when
-  `sqlite3.sqlite_version_info` is below 3.51.3, the release the research
-  cites for the WAL-reset fix. The interpreter is a uv-managed Python on the
-  household machine and in CI, so the SQLite version does not depend on the
-  operating system's build.
+  `sqlite3.sqlite_version_info` is below 3.51.3, the first release with
+  SQLite's fix for the
+  [WAL-reset bug](https://www.sqlite.org/wal.html#walresetbug). The bug
+  affects WAL databases where separate processes write or checkpoint at the
+  same instant, which a dashboard reading during an import can cause. The
+  interpreter comes from uv's managed Python builds, not the operating system:
+  the repository pins the version in `.python-version`, and
+  `python-preference = "only-managed"` in `pyproject.toml` stops uv from
+  choosing a system interpreter on the household machine or in CI.
 - **Backups.** A backup uses SQLite's backup API or `VACUUM INTO`, never a
   file copy of a live database. Raw exports keep their separate archive, and
   the store holds a second copy of each payload's exact bytes.
@@ -88,17 +108,15 @@ and Alembic.
   and the retained inputs, and negligible for the derived layers.
 - WAL alone does not give a report one consistent Gold publication. Issue #8
   still has to define how a build is published and selected.
-- The version floor rests on the research's citation. The WAL-reset fix has
-  not yet been independently checked against SQLite's release notes, and the
-  SQLite version bundled with the chosen uv-managed Python must be confirmed
-  when it is pinned.
-- The draft Bronze store in pull request #45 already uses `sqlite3` and a
-  configured path. To conform, it needs `STRICT` tables, WAL mode, its schema
-  moved into the first migration file, and the version check.
+- SQLite also backported the WAL-reset fix to 3.44.6 and 3.50.7. A plain
+  version comparison refuses those, which is deliberate: the managed builds
+  are well above the floor (CPython 3.12.14 and 3.14.7 from September 2026
+  bundle SQLite 3.53.1), and one comparison is simpler than a list of
+  backports.
+- A system Python no longer satisfies the project. The python.org 3.12.3 on
+  the household machine bundles SQLite 3.45.1, below the floor.
 - Querying the store through DuckDB as a read-only analytics engine is
   deferred, not rejected.
-- ADR-011 and ADR-012 are taken by the proposed classification and transfer
-  ADRs in pull request #20.
 - Resolves the storage part of
   [issue #10](https://github.com/ATherkel/budget/issues/10), using the evidence
   from [issue #9](https://github.com/ATherkel/budget/issues/9), once accepted.
