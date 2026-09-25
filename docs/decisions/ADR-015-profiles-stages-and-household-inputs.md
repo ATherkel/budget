@@ -1,6 +1,6 @@
 # ADR-015: Separate Profiles, One Store per ETL Stage, and Household Inputs as Text
 
-**Status:** Proposed
+**Status:** Accepted
 
 ## Context
 
@@ -143,4 +143,4 @@ access procedures are in
   must move its schema into the Bronze migrations and record its profile and
   stage.
 - Resolves the operating-stack and profile parts of
-  [issue #10](https://github.com/ATherkel/budget/issues/10) once accepted.
+  [issue #10](https://github.com/ATherkel/budget/issues/10).

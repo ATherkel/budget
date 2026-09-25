@@ -1,8 +1,7 @@
 # Operations
 
-Status: proposed ([ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md)).
-Resolves [issue #10](https://github.com/ATherkel/budget/issues/10) once
-accepted.
+Status: accepted ([ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md)).
+Resolves [issue #10](https://github.com/ATherkel/budget/issues/10).
 
 ## Purpose
 
