@@ -81,6 +81,12 @@ These apply wherever a column below names them.
   | `Slettet` | `cancelled` |
   | anything else | `unknown-status` error |
 
+  *Map decision.* No pending value is known. The first export carrying one is
+  quarantined whole with an `unknown-status` error on each such record, and its
+  new dates wait. A person then decides what the value means, adds it to this
+  table and to the Silver code, and runs `rebuild --from silver`
+  ([`operations.md`](../operations.md)) to validate the run again.
+
 - **Identity text.** `Tekst` with leading and trailing Unicode whitespace
   removed and internal runs collapsed to one space, including 0xA0 (ADR-009).
   It is an input to `transaction_id` and *k*, and is stored as `description`.
