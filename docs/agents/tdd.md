@@ -41,7 +41,7 @@ After the behavior slices are complete, review the change and refactor in a
 separate stage. Refactoring must preserve behavior; keep the tests passing and
 do not add behavior without first returning to a red test. Run the relevant
 test suite and the [code quality gate](code-quality.md) after refactoring.
-CI runs the whole suite with `uv run pytest` in `.github/workflows/tests.yml`
+CI runs the whole suite with `uv run pytest` in `.github/workflows/pytest.yml`
 and blocks the merge when it fails.
 
 Tests should assert known behavior through public interfaces and use
