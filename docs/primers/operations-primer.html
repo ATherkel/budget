@@ -549,7 +549,7 @@
       </p>
       <ol class="steps">
         <li>Every command refuses to run until a profile is named, with <code>--profile</code> or <code>BUDGET_PROFILE</code>.</li>
-        <li>Test profiles are <strong>never files</strong>. The test suite builds each one in a temporary folder, ignores <code>BUDGET_PROFILE</code>, and refuses any store path outside that folder.</li>
+        <li>Test profiles are <strong>never files</strong>. The test suite builds each one in a temporary folder, removes <code>BUDGET_PROFILE</code> from every test&rsquo;s environment, and refuses any store path outside that folder.</li>
         <li>Every database <strong>records which profile it belongs to</strong> when it is created. Opening a production store under the test profile is refused, even if a bug hands the test its path.</li>
       </ol>
       <p>
@@ -704,6 +704,12 @@ Changes  February: groceries +85.00, unclassified out −85.00; 1 rule-conflict 
         Here, every <code>dev refresh</code> restores one, so you find out it is broken on a
         Tuesday evening, not on the Sunday you need it.
       </p>
+      <p>
+        To try a <strong>migration</strong>, <code>dev refresh --writable</code> restores the set
+        into development&rsquo;s own stores instead of <code>upstream/</code>. <code>migrate</code>
+        then upgrades a year of real data, exactly as it will in production, and you read its diff
+        before production ever runs it.
+      </p>
     </div>
     <div class="mod-foot"></div>
   </section>
@@ -801,7 +807,9 @@ Recorded d-0005. Gold publication 44 is current (was 43).</pre>
       <ul>
         <li>To change a decision, record a new one that lists it in <code>supersedes</code>; one entry can list several, so a <code>pair</code> replaces both legs&rsquo; decisions at once.</li>
         <li>To withdraw a decision, record a <code>retract</code> entry listing it in <code>supersedes</code>. It is called <code>retract</code> so it is not confused with <code>withdrawn</code>, which records that the <em>bank</em> removed a transaction.</li>
+        <li>Every build re-checks every line with the door&rsquo;s rules, so a line added by hand that breaks one fails the build.</li>
         <li>Each build&rsquo;s recipe stores a hash of the log up to the entry it read. Edit an old line by hand and <code>check</code> notices.</li>
+        <li>The inputs folder holds exactly five files. A OneDrive conflict copy such as <code>decisions-LAPTOP.jsonl</code> is an error, so its decisions cannot silently go missing.</li>
       </ul>
     </div>
     <div class="mod-foot"></div>
@@ -920,7 +928,7 @@ Backup   2026-05-02T18-05-11Z written</pre>
           <tbody>
             <tr><td>Double counting</td><td>Prevented by one repository and a test</td><td>Impossible by construction</td></tr>
             <tr><td>Publishing</td><td>One transaction</td><td>Write a file, close it, then a pointer transaction</td></tr>
-            <tr><td>Crash housekeeping</td><td>None</td><td>Orphan files; deletion retried while Windows has a file open; a lock across the profile</td></tr>
+            <tr><td>Crash housekeeping</td><td>None</td><td>Orphan files; deletion retried while Windows has a file open</td></tr>
             <tr><td>After a Gold migration</td><td>Kept rows are converted where possible and stay readable by today&rsquo;s dashboard</td><td>Old files keep their schema, so today&rsquo;s code must read several versions or refuse them</td></tr>
           </tbody>
         </table>
@@ -968,8 +976,10 @@ Backup   2026-05-02T18-05-11Z written</pre>
         SQLite&rsquo;s backup API (never a plain file copy of a live database), a copy of your
         inputs folder, and a manifest with each file&rsquo;s hash and schema version. It is written
         <strong>after every import or rebuild that publishes</strong>, and <strong>before every
-        migration</strong>, into OneDrive. The newest 30 are kept, plus the newest of each month, plus any set a legacy publication
-        needs (module 09).
+        migration</strong>, into OneDrive. A set is written locally first and moved into OneDrive only once it is complete, so a crash
+        never leaves a half set that looks like the newest. By default every set from the last two
+        weeks is kept, then one a day for a year, then one a month for good, plus any set a legacy
+        publication needs (module 09). The three numbers are settings in the production profile.
       </p>
 
       <div class="scroller">
@@ -977,7 +987,7 @@ Backup   2026-05-02T18-05-11Z written</pre>
           <thead><tr><th>What went wrong</th><th>You run</th><th>What comes back</th></tr></thead>
           <tbody>
             <tr><td>A bad rule, noticed in the printed diff</td><td><code>budget undo</code></td><td>The previous publication, instantly (ADR-014)</td></tr>
-            <tr><td>The machine dies</td><td><code>budget restore &lt;newest set&gt;</code></td><td>Everything. At most the imports since the last set are missing, and every import writes one.</td></tr>
+            <tr><td>The machine dies</td><td><code>budget restore</code></td><td>Everything. It restores the newest complete set, then replays any import that <code>imports.jsonl</code> lists after it, from the archive.</td></tr>
             <tr><td>Every backup set is lost too</td><td><code>budget restore --from-archive</code></td><td><b>Every report, exactly</b>, from the export archive, <code>imports.jsonl</code> and your inputs. Past views, recipes and legacy publications are lost.</td></tr>
           </tbody>
         </table>
@@ -1011,9 +1021,11 @@ Backup   2026-05-02T18-05-11Z written</pre>
           <thead><tr><th>Code</th><th>Means</th></tr></thead>
           <tbody>
             <tr><td>0</td><td>Done. Open review items and quarantined imports are <em>results</em>, not failures: reports may be provisional as long as they say so (issue #2).</td></tr>
-            <tr><td>1</td><td>You typed the command wrong.</td></tr>
-            <tr><td>2</td><td>Your input was refused: a configuration error, a rejected decision, a refused import. Nothing was published.</td></tr>
-            <tr><td>3</td><td>The environment was refused: no profile, the wrong profile&rsquo;s store, a pending migration, SQLite too old, uncommitted code in production, a locked store.</td></tr>
+            <tr><td>1</td><td>A defect: the program crashed. Python uses 1 for that anyway.</td></tr>
+            <tr><td>2</td><td>You typed the command wrong. <code>argparse</code> uses 2 for that anyway.</td></tr>
+            <tr><td>3</td><td>Your input was refused: a configuration error, a rejected decision, a refused import. An import still publishes the files it could store.</td></tr>
+            <tr><td>4</td><td>The environment was refused: no profile, the wrong profile&rsquo;s store, a pending migration, SQLite too old, uncommitted code in production, another command running.</td></tr>
+            <tr><td>5</td><td>Something did not verify: a fingerprint mismatch, a failed integrity check, a damaged backup set.</td></tr>
           </tbody>
         </table>
       </div>
@@ -1059,7 +1071,7 @@ Backup   2026-05-02T18-05-11Z written</pre>
         <table class="grid">
           <thead><tr><th>Procedure</th><th>Test, every CI run</th><th>Development</th></tr></thead>
           <tbody>
-            <tr><td>Migrations</td><td>Every one, from empty and from last release&rsquo;s stores</td><td>Rehearsed on a fresh refresh first</td></tr>
+            <tr><td>Migrations</td><td>Every one, from empty and from last release&rsquo;s stores</td><td>Rehearsed first on real data, after <code>dev refresh --writable</code></td></tr>
             <tr><td>Import retry</td><td>A crash injected after each step</td><td>Real export shapes, via upstream</td></tr>
             <tr><td>Publishing</td><td>Crash either side of the commit point; <code>undo</code></td><td>Every rebuild publishes</td></tr>
             <tr><td>Backup and restore</td><td>Backup, restore, verify</td><td>Every refresh is a restore</td></tr>

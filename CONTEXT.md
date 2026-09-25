@@ -271,9 +271,9 @@ profile it belongs to. The rules are in
 _Avoid_: environment (ambiguous with the Python environment), instance
 
 **Household inputs**:
-Everything the household authors: the account registry, category taxonomy,
-and classification rules as edited files, and the decision and import logs,
-which only the application appends to. With the export archive, they are
+Everything the household authors or declares: the account registry, category
+taxonomy, and classification rules as edited files, and the decision and
+import logs, which only the application appends to. With the export archive, they are
 enough to rebuild every store.
 _Avoid_: configuration (only part of it), settings
 

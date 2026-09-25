@@ -62,10 +62,17 @@ Rules for every store:
   scratch stores and legacy extracts, from the same migration files.
 - **It knows its profile and stage.** `migrate` writes `profile` and `stage`
   into a one-row `store_identity` table when it creates the store. Opening a
-  store under another profile or as another stage is refused.
+  store under another profile or as another stage is refused. The one
+  exception is development's `upstream/` folder: development opens the
+  production stores there read-only, and nowhere else.
 - **A write to one store is one transaction.** Silver and Gold commit
   separately. Readers only reach Gold through the pointer, so a crash between
   the two leaves the previous publication current.
+- **One writing command at a time.** Every command that writes holds a lock on
+  `budget.lock` in the profile's stores folder for its whole run, including
+  the backup set it writes. A second writing command exits 4 at once with
+  "another command is running". Commands that only read (`status`, `review`,
+  `check`, `serve`) take no lock.
 
 ### Publishing a Gold build
 
@@ -129,11 +136,14 @@ application touches.
   default, because a default would be production, and a test run inherits the
   operator's shell.
 - Profile files live outside the repository, for example in
-  `%APPDATA%\budget\`. They hold paths only, no secrets.
+  `%APPDATA%\budget\`. They hold paths and settings, no secrets.
 - **Test profiles are never files.** The test suite builds each profile in a
   temporary directory and refuses a store path outside it. No test reads
   `imports/`, a profile file, or `BUDGET_PROFILE`
-  ([`tdd.md`](../agents/tdd.md)).
+  ([`tdd.md`](../agents/tdd.md)). The suite removes `BUDGET_PROFILE` from the
+  environment of every test, and a test that runs the CLI as a subprocess
+  passes it an explicit environment, so a value set in the operator's shell
+  never reaches a test run.
 
 ```toml
 # %APPDATA%\budget\production.toml
@@ -147,14 +157,20 @@ exports = 'C:\Users\household\OneDrive\Budget\exports'
 inputs  = 'C:\Users\household\OneDrive\Budget\inputs'
 backups = 'C:\Users\household\OneDrive\Budget\backups'
 
+[backups]
+keep_all_days   = 14          # every set from the last 14 days
+keep_daily_days = 365         # then the newest set of each day
+keep_monthly    = "forever"   # then the newest set of each month
+
 [dashboard]
-bind = "192.168.1.20"
+bind = "192.168.1.20"         # reserve this address for the PC in the router
 port = 8750
 ```
 
 A development profile has `profile = "development"`, its own `stores` and
 `inputs`, and `upstream_backups` naming production's `backups` folder, which
-it only reads.
+it only reads. It has no `[backups]` table, because only production writes
+backup sets.
 
 ### Where production lives
 
@@ -164,6 +180,8 @@ it only reads.
     silver.db
     gold.db
     gold\legacy\publication-000001.db  only after a Gold migration
+    budget.lock                        held by the command that is writing
+    backup-staging\                    a backup set until it is complete
     scratch\
     logs\
 OneDrive\Budget\                       closed files only: safe to synchronise
@@ -184,6 +202,8 @@ OneDrive\Budget\                       closed files only: safe to synchronise
 `upstream/` folder, and marks it read-only. `rebuild --from <stage>` rebuilds
 that stage and every later one into development's own stores. The stages
 before it are opened from `upstream/`, read-only, and never recomputed.
+Because a restored set never changes, those stores are opened with SQLite's
+`immutable` flag, so SQLite never tries to create files beside them.
 
 | What changed | Command | Reads from `upstream/` | Writes in development |
 | --- | --- | --- | --- |
@@ -198,6 +218,12 @@ nothing records which code that was (ADR-014).
 Production builds refuse uncommitted code, so production runs from its own
 clean checkout, separate from the one used for development.
 
+`dev refresh --writable` restores the set into development's own stores
+instead of `upstream/`, relabelled as development. It exists to rehearse a
+migration on real data: `migrate` then upgrades stores that already hold
+production's history, exactly as it will in production (W5). Until the next
+plain `dev refresh`, development reads every stage from its own stores.
+
 ## Household Inputs
 
 Everything the household authors lives in the inputs folder as text. Every
@@ -208,6 +234,11 @@ file:
   an unknown format version is refused;
 - rejects unknown keys, so a misspelt key is an error, not an ignored line;
 - uses durable, lowercase, hyphenated identifiers such as `joint-current`.
+
+The folder holds exactly the five files below. Any other file is a
+configuration error that names it: a OneDrive conflict copy such as
+`decisions-LAPTOP.jsonl` would otherwise hold decisions that no build reads,
+and a stray `rules (1).toml` would hold rules nobody applies.
 
 **Amounts are quoted decimal strings**, such as `"-1000.00"`. TOML reads an
 unquoted `1000.00` as a binary floating-point number, which the platform
@@ -331,9 +362,21 @@ must list the old one in `supersedes`, or the boundary rejects it. One entry
 can supersede several decisions: a `pair` whose two legs each have their own
 `classify` decision lists both. Nothing is edited in place.
 
-Every recipe records the log position it read and a SHA-256 of the log up to
-that position. `check` fails when that prefix no longer hashes the same, so a
-hand edit to earlier entries is caught.
+Two checks guard the log against edits that bypass `decide`:
+
+- **Every build re-validates every entry** with the boundary's rules below. A
+  line added by hand that breaks one, for example a second decision on a
+  transaction without `supersedes`, is a configuration error naming the entry.
+- **Every recipe records the log position it read** and a SHA-256 of the log
+  up to that position. `check` and every build fail when that prefix no longer
+  hashes the same, so an edit to an entry a build has read is caught.
+
+Every entry ends with a line feed. A final line without one was cut off by a
+crash while it was being written, and is treated as never written: `check` reports it, and `decide`
+refuses until the partial line is deleted. No build has read it, so deleting
+it is the one safe hand edit. If an earlier entry is ever damaged, copy the
+log back from the newest backup set, whose manifest records its length, and
+record again the decisions made since.
 
 ### `imports.jsonl`: the import log
 
@@ -363,8 +406,8 @@ class DecisionLog(Protocol):
 publication: the targets exist, the category exists, the kind applies (for
 example, a `pair`'s amounts cancel), and no other effective decision targets
 the transaction unless this one supersedes it. It then sets `entry`,
-`decision_id` and `recorded_at`, appends the line and flushes it to disk, and
-returns the entry. A rejection names every reason and records nothing.
+`decision_id` and `recorded_at`, appends the line, forces it to disk with
+`fsync`, and returns the entry. A rejection names every reason and records nothing.
 
 The boundary sits in the application layer, not in presentation. The
 dashboard stays read-only: it has no route that reaches the boundary.
@@ -378,7 +421,7 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | --- | --- | --- | --- |
 | `migrate [--stage <stage>]` | Creates or upgrades stores. In production, takes a backup set first. A Gold migration converts retained results, extracts and records legacy publications, then runs a pipeline build (ADR-014). | Store schemas, legacy extracts | After a Gold migration |
 | `check` | Validates every input file and the decision-log prefix. Never builds. | Nothing | No |
-| `import` | Imports every file in the inbox, then rebuilds and publishes. | Bronze, the import log, Silver, Gold | Yes, if the build succeeds |
+| `import` | Imports each file in the inbox on its own, then rebuilds and publishes what was stored. A refused file stays in the inbox. | Bronze, the import log, Silver, Gold | Yes, if the build succeeds |
 | `rebuild [--from bronze\|silver\|gold]` | Rebuilds from a stage; `gold` by default. | Stages from `--from` on | Yes, if the recipe changed |
 | `review [--kind <kind>] [--account <id>]` | Lists open review items, Silver's and Gold's, with what a person needs to settle each one. | Nothing | No |
 | `decide <kind> <targets…> [options] --reason <text>` | Proposes a manual decision to the boundary, then rebuilds from the stage the decision affects. | The decision log, then stores | Yes |
@@ -387,10 +430,10 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | `view --as-was <date> \| --known-at <date> --label <text>` | Builds or finds a past view (ADR-014). Without options, lists retained and legacy publications. | `gold.db`, through a scratch store | Never current |
 | `label <publication_id> <text>` / `unlabel …` | Keeps a result beyond the retention rule, or stops keeping it. | `gold.db` | No |
 | `backup` | Writes a backup set. Also runs automatically; see below. | The backups folder | No |
-| `restore <backup set>` | Restores into an empty profile, then runs `verify`. | Every store | No |
+| `restore [<backup set>]` | Restores the newest complete set, or the one named, into an empty profile, catches up with the import log, then runs `verify`. | Every store | Yes, if it caught up |
 | `restore --from-archive` | Last resort: rebuilds Bronze from the archive and the import log, then Silver and Gold. | Every store | Yes |
 | `verify` | Checks integrity, and replays the current publication's recipe to prove it reproduces (ADR-014). | `scratch/` only | No |
-| `dev refresh [--inputs]` | Development only: restores production's newest backup set into `upstream/`. | Development only | No |
+| `dev refresh [--inputs] [--writable]` | Development only: restores production's newest complete backup set into `upstream/`, or with `--writable` into development's own stores. | Development only | No |
 | `serve` | Starts the read-only dashboard. | Nothing | No |
 | `set-passphrase` | Sets the dashboard passphrase. | The passphrase file | No |
 
@@ -406,9 +449,14 @@ matches more than one transaction is refused.
 | Code | Meaning |
 | --- | --- |
 | 0 | Done. Open review items and quarantined imports are results, not failures. |
-| 1 | Usage error. |
-| 2 | Refused input: a configuration error, a rejected decision, or an import run Bronze refused. Nothing was published. |
-| 3 | Refused environment: no profile, a store from another profile, a missing or newer migration, SQLite below the version floor, uncommitted code in production, running code other than the code version a replayed recipe names (ADR-014), or a store locked past its busy timeout. |
+| 1 | Unexpected error: a defect. Python's own exit status for an unhandled exception. |
+| 2 | Usage error. `argparse`'s own exit status. |
+| 3 | Refused input: a configuration error, a rejected decision, or an import run Bronze refused. `import` still publishes the files it stored. |
+| 4 | Refused environment: no profile, a store from another profile, a missing or newer migration, SQLite below the version floor, uncommitted code in production, running code other than the code version a replayed recipe names (ADR-014), another writing command running, a store locked past its busy timeout, or `restore` into a profile that has stores. |
+| 5 | Verification failed: a fingerprint mismatch, a failed integrity check, a backup set whose checksums do not match its manifest, or an import log that disagrees with Bronze. |
+
+The codes 1 and 2 are the ones Python and `argparse` already use, so every
+path out of the program means what the table says.
 
 ### Error reporting
 
@@ -510,19 +558,23 @@ rebuild there.
 
 ### W5: a migration
 
-1. In development: `dev refresh`, `migrate`, `rebuild --from <the first
-   stage the migration touches>`, and `verify`.
+1. In development: `dev refresh --writable`, then `migrate`. The stores now
+   hold production's real history, so `migrate` upgrades existing data exactly
+   as it will in production, including any legacy extraction and the build
+   that follows. Its printed diff must show only what the migration intends.
 2. In production: `migrate`, which writes a backup set first, converts the
    retained results, extracts and records any legacy publication, and runs a
    pipeline build (ADR-014). Then `verify`.
 
 ### W6: the machine dies
 
-On the new machine: install the pinned code version, write the production
-profile, run `budget restore <newest backup set>`, which runs `verify`, then
-`budget serve`. At most the imports since the last backup set are missing,
-and every import writes one. The inputs folder and the export archive are
-already in OneDrive.
+On the new machine: install the code version the newest backup set's manifest
+names, write the production profile, run `budget restore`, then
+`budget serve`. `restore` takes the newest complete set, replays every import
+that the live `imports.jsonl` lists beyond the set, from the export archive,
+rebuilds with any decisions recorded since, and runs `verify`. Nothing is
+missing, provided OneDrive had synchronised the inputs folder and the export
+archive.
 
 ### W7: every backup set is lost
 
@@ -535,13 +587,15 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 
 | Failure | Effect | Retry |
 | --- | --- | --- |
-| Configuration error | Nothing is built; exit 2 | Fix the file and rerun |
-| Refused import run (account conflict, `covers_through` out of bounds) | Recorded as refused; the file stays in the inbox; exit 2 | Move the file or correct the declaration, then rerun |
+| Configuration error, including an unknown file in the inputs folder | Nothing is built; exit 3 | Fix or remove the file and rerun |
+| Refused import run (account conflict, `covers_through` out of bounds) | Recorded as refused; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file or correct the declaration, then rerun |
 | Format failure | Stored with its `FormatFailure`; Silver quarantines it; the file is archived | Settled by a parser fix and `rebuild --from bronze` |
 | Crash during an import | Each file is idempotent: a file whose account, original filename and payload hash already have a `stored` or `repeat` run is finished (archived and removed from the inbox) without a new run | Rerun `import` |
 | Crash during a build | SQLite rolls back the uncommitted publication; the previous publication stays current | Rerun the command |
-| Store locked | Exit 3 after the busy timeout | Rerun when the other command ends |
-| OneDrive offline | Backup sets wait in the local OneDrive folder | Nothing to do |
+| Another writing command is running | Exit 4 at once; nothing is written | Rerun when the other command ends |
+| A decision-log line cut off by a crash | `check` reports it; `decide` refuses | Delete the partial last line |
+| Crash while writing a backup set | The set stays in `backup-staging\`, is never used, and is deleted by the next backup | Nothing to do |
+| OneDrive offline | Complete backup sets wait in the local OneDrive folder | Nothing to do |
 
 A genuine repeat export has a new export date in its filename, so it is
 presented to Bronze as a new `repeat` run, as the Bronze rules require.
@@ -555,13 +609,26 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   export archive is not copied, because Bronze holds each payload's bytes.
 - **When:** after every command that writes Bronze or publishes, and before
   every `migrate`. Only production writes backup sets.
-- **Kept:** the 30 newest sets, the newest set of each calendar month, and
-  every set a legacy entry names.
+- **Written whole or not at all.** A set is written into the profile's local
+  `backup-staging\` folder, `manifest.json` last, and only then moved into
+  the backups folder. A set without a manifest, or whose files do not match
+  its checksums, is incomplete: `restore` and `dev refresh` skip it and take
+  the next newest.
+- **Kept**, by the `[backups]` keys in the production profile: every set from
+  the last `keep_all_days` (14), then the newest set of each day for
+  `keep_daily_days` (365), then the newest set of each month for
+  `keep_monthly` (`"forever"`). A set that a legacy entry names is always
+  kept. Each set is a full copy of every store, so a year of daily sets can
+  take a few gigabytes; the keys are there to tune that.
 - **Where:** OneDrive, which is safe for them: a backup set is closed files,
   unlike a live database with its WAL files (ADR-013).
-- **`restore`** writes only into a profile with no stores, checks every
-  SHA-256 against the manifest, runs `PRAGMA integrity_check`, migrates stores
-  older than the code, and runs `verify`.
+- **`restore`** writes only into a profile with no stores. It takes the newest
+  complete set unless one is named, checks every SHA-256 against the
+  manifest, runs `PRAGMA integrity_check`, and migrates stores older than the
+  code. It then catches up: it uses the live inputs folder, or the set's copy
+  when the live one is missing, replays every `imports.jsonl` line beyond the
+  length the manifest recorded, taking each file from the export archive, and
+  rebuilds if anything was replayed or decided since. Finally it runs `verify`.
 - **`verify`** runs `PRAGMA integrity_check` on every store, then replays the
   current publication's recipe from Bronze in a scratch store and compares the
   result fingerprint with the recorded one. It refuses to run when the running
@@ -583,8 +650,10 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   Wi-Fi who captures traffic could read the passphrase and pages. HTTPS with a
   locally trusted certificate is the upgrade path if that changes.
 - The dashboard opens `gold.db` read-only and is given no other store's
-  path. It has no route that writes, apart from login and
-  logout.
+  path. It has no route that writes, apart from login and logout.
+- The production address is fixed in the profile, so reserve it for the PC in
+  the router; otherwise `serve` fails to start when the router hands out
+  another one.
 - It runs while `budget serve` runs. Starting it with Windows is an optional
   Task Scheduler entry.
 
@@ -609,14 +678,15 @@ and run at least once in development against a restored production backup.
 
 | Procedure | Test profile, every CI run | Development |
 | --- | --- | --- |
-| `migrate` | Every migration from empty, and from the previous release's fixture stores | Rehearsed on a fresh `dev refresh` before production |
+| `migrate` | Every migration from empty, and from the previous release's fixture stores | Rehearsed after `dev refresh --writable`, on production's real data, before production |
 | Import and its retry | Idempotent rerun, and a crash injected after each step | Real exports' shapes, through `upstream` |
 | Publishing | Crash before and after the commit point; `undo`; retention deletion | Every `rebuild` publishes |
 | Legacy publications | A Gold migration that cannot convert a labeled result: extract, legacy entry, and a backup set that retention keeps | With the migration's rehearsal |
-| Backup and restore | Backup, restore into an empty profile, `verify` | Every `dev refresh` is a restore |
+| Backup and restore | Backup, restore into an empty profile, `verify`; a set cut off before its manifest is skipped; `restore` replays imports logged after the set | Every `dev refresh` is a restore |
 | `restore --from-archive` | Rebuilds the fixtures' reports exactly | Once before it is first trusted, then yearly |
 | Log redaction | Asserted on every walkthrough | — |
-| Profile guards | Every refusal: no profile, wrong profile, test path outside the temporary directory | — |
+| Profile guards | Every refusal: no profile, wrong profile, a production store outside `upstream/`, test path outside the temporary directory, a second writing command | — |
+| Decision log | A hand-added line that breaks a rule; an edited prefix; a cut-off last line | — |
 
 ## Tooling
 

@@ -52,7 +52,8 @@ The maintainer chose:
 - **Every store knows its profile and stage.** `migrate` writes both into the
   store when it creates it. Opening a store under another profile, or as
   another stage, is refused. A test therefore cannot open a production store
-  even when handed its path.
+  even when handed its path. The one exception is development's `upstream/`
+  folder, where development opens restored production stores read-only.
 - **One SQLite store per ETL stage.** Each stage persists its output, so a
   failure restarts from the last completed stage, and the stores are the
   divergence points development needs.
@@ -76,7 +77,9 @@ The maintainer chose:
   restores production's latest backup set into development's read-only
   `upstream` folder. `rebuild --from <stage>` writes development's own stores
   from that stage onward and reads the stages before it from `upstream`.
-  Development never opens a production store.
+  Development never opens a production store. To rehearse a migration,
+  `dev refresh --writable` restores the set into development's own stores, so
+  `migrate` upgrades production's real data before production does.
 - **Household inputs are text.** The account registry, category taxonomy and
   classification rules are hand-edited TOML files. The decision log and the
   import log are append-only JSON Lines files, written only through the
@@ -95,8 +98,8 @@ access procedures are in
   nothing physical would stop the dashboard reading Silver.
 - **One database file per Gold publication.** Rejected, as in ADR-014. It
   makes double counting impossible, but it adds orphan files after a crash,
-  deletion retried while Windows has a file open, a lock across the whole
-  profile, and publication files whose schema versions differ. In one Gold
+  deletion retried while Windows has a file open, and publication files whose
+  schema versions differ. In one Gold
   store SQLite commits a publication in one transaction, and `GoldRepository`
   confines every read to one publication.
 - **Legacy results only in the pre-migration backup** (ADR-014's retention
@@ -132,9 +135,10 @@ access procedures are in
   only Gold through the pointer, so a crash between them leaves the previous
   publication current, and the next command resumes.
 - The inputs folder is an input to every build, so a change to it is a change
-  to a recipe. Hand edits to either log are detected. Every recipe records the
-  hash of the decision-log prefix it read, and `verify` compares the import
-  log with Bronze.
+  to a recipe. Edits that bypass the application are caught: every build
+  re-validates every decision-log entry, every recipe records the hash of the
+  decision-log prefix it read, and `verify` compares the import log with
+  Bronze.
 - Pull request #45's Bronze store opens and creates tables in one step. It
   must move its schema into the Bronze migrations and record its profile and
   stage.
