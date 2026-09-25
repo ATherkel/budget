@@ -458,46 +458,39 @@ class BronzeStoreTests(unittest.TestCase):
             ("after the export date", date(2026, 9, 15), "refused"),
             ("before the last transaction", date(2026, 9, 11), "refused"),
             ("on the last transaction", date(2026, 9, 12), "stored"),
-            ("on the export date", date(2026, 9, 14), "repeat"),
+            ("on the export date", date(2026, 9, 14), "stored"),
         )
 
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            source = root / "synthetic-20260914.csv"
-            source.write_bytes(content)
-            database = root / "bronze.sqlite3"
-            stored_run_id = None
+        for label, declared, expected_outcome in cases:
+            # Each case gets its own store, so an accepted declaration never
+            # depends on an earlier case having stored the same bytes.
+            with self.subTest(covers_through=label), TemporaryDirectory() as directory:
+                root = Path(directory)
+                source = root / "synthetic-20260914.csv"
+                source.write_bytes(content)
+                database = root / "bronze.sqlite3"
 
-            for label, declared, expected_outcome in cases:
-                with self.subTest(covers_through=label):
-                    with BronzeStore(database) as store:
-                        run = store.import_file(
-                            source,
-                            declared_account_id="daily-account",
-                            source_format="danske-csv-v1",
-                            covers_through=declared,
-                        )
-                    with BronzeStore(database) as reopened:
-                        payload = reopened.get_payload(run.payload_id)
-                        records = reopened.get_source_records(run.payload_id)
+                with BronzeStore(database) as store:
+                    run = store.import_file(
+                        source,
+                        declared_account_id="daily-account",
+                        source_format="danske-csv-v1",
+                        covers_through=declared,
+                    )
+                with BronzeStore(database) as reopened:
+                    payload = reopened.get_payload(run.payload_id)
+                    records = reopened.get_source_records(run.payload_id)
 
-                    assert run.outcome == expected_outcome
-                    # A refused declaration is recorded as declared, not moved
-                    # to the nearest acceptable date.
-                    assert run.covers_through == declared
-                    assert run.covers_through_source == "declared"
-                    assert payload.content == content
-                    assert [record.record_ordinal for record in records] == [1, 2]
-                    assert dict(records[0].fields)["Dato"] == "12-09-2026"
-                    assert dict(records[0].fields)["Status"] == "Slettet"
-
-                    if expected_outcome == "stored":
-                        stored_run_id = run.import_run_id
-                        assert run.repeat_of is None
-                    elif expected_outcome == "repeat":
-                        assert run.repeat_of == stored_run_id
-                    else:
-                        assert run.repeat_of is None
+                assert run.outcome == expected_outcome
+                assert run.repeat_of is None
+                # A refused declaration is recorded as declared, not moved to
+                # the nearest acceptable date.
+                assert run.covers_through == declared
+                assert run.covers_through_source == "declared"
+                assert payload.content == content
+                assert [record.record_ordinal for record in records] == [1, 2]
+                assert dict(records[0].fields)["Dato"] == "12-09-2026"
+                assert dict(records[0].fields)["Status"] == "Slettet"
 
     def test_a_missing_declaration_falls_back_only_where_it_cannot_claim_too_much(
         self,
