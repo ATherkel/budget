@@ -472,20 +472,43 @@ class BronzeStoreTests(unittest.TestCase):
             return b"\r\n".join(lines)
 
         cases = (
-            ("quiet tail in the last transaction's month", ("12-09-2026",), "stored"),
-            ("fallback lands in a later month", ("31-08-2026",), "refused"),
-            ("payload states no transactions", (), "refused"),
-            ("fallback before the last transaction", ("20-09-2026",), "refused"),
+            (
+                "quiet tail in the last transaction's month",
+                ("12-09-2026",),
+                date(2026, 9, 14),
+                "stored",
+            ),
+            (
+                "fallback lands in a later month",
+                ("31-08-2026",),
+                date(2026, 9, 14),
+                "refused",
+            ),
+            ("payload states no transactions", (), date(2026, 9, 14), "refused"),
+            (
+                "fallback before the last transaction",
+                ("20-09-2026",),
+                date(2026, 9, 14),
+                "refused",
+            ),
+            (
+                "fallback lands on the day before a later export date",
+                ("30-09-2026",),
+                date(2026, 10, 1),
+                "stored",
+            ),
         )
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
             database = root / "bronze.sqlite3"
 
-            for index, (label, dates, expected_outcome) in enumerate(cases):
+            for index, (label, dates, exported_on, expected_outcome) in enumerate(
+                cases
+            ):
                 with self.subTest(declaration=label):
                     content = payload(dates)
-                    source = root / f"synthetic-{index}-20260914.csv"
+                    source = root / f"synthetic-{index}-{exported_on:%Y%m%d}.csv"
                     source.write_bytes(content)
                     with BronzeStore(database) as store:
                         run = store.import_file(
@@ -500,11 +523,11 @@ class BronzeStoreTests(unittest.TestCase):
 
                     assert run.outcome == expected_outcome
                     assert run.repeat_of is None
-                    assert run.exported_on == date(2026, 9, 14)
+                    assert run.exported_on == exported_on
                     assert run.exported_on_source == "filename"
                     # The attempted fallback is recorded, not a date invented
                     # from the payload: covers_through is the export date.
-                    assert run.covers_through == date(2026, 9, 14)
+                    assert run.covers_through == exported_on
                     assert run.covers_through_source == "exported_on"
                     assert stored_payload.content == content
                     assert [record.record_ordinal for record in records] == list(
