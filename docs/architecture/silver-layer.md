@@ -30,7 +30,7 @@ Transaction(
     transaction_date: date,     # the source's transaction date (Danske: purchase date)
     amount: Decimal,
     currency: str,              # from account configuration
-    description: str,           # source text exactly as delivered
+    description: str,           # ADR-009 identity text
     source_system: str,         # source format, e.g. "danske-csv-v1"
     balance: Decimal | None,
     source_status: str,
@@ -45,9 +45,15 @@ Transaction(
 
 `balance` is the bank-stated account balance immediately after this
 transaction. `source_status` is the source's own status value, carried
-verbatim. For each date, `balance` and `day_sequence` come from the latest
+verbatim. `description` is the identity text defined in ADR-009: the source
+text with leading and trailing whitespace removed and internal runs collapsed
+to one space. Every export that shows a transaction therefore gives it the same
+`description`, and a later export never changes it; Bronze keeps the text as
+delivered, reachable through `TransactionEvidence`. For each date, `balance`,
+`day_sequence`, `bank_category` and `bank_subcategory` come from the latest
 admitted export covering that date (ADR-009). They can therefore change when a
-later export adds a late-booked transaction; `transaction_id` never does.
+later export adds a late-booked transaction or relabels one; `transaction_id`
+never does.
 `balance` is null only for sources that state no balances (ADR-010). The export
 chosen for a date is the latest admitted one that shows every transaction kept
 for it.
