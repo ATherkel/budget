@@ -40,7 +40,7 @@ come from it, `domains/transaction.md`, and the sample profile in
 
 | Field | Example | Meaning |
 | --- | --- | --- |
-| `Dato` | `12-09-2026` | transaction date (purchase date), `DD-MM-YYYY` |
+| `Dato` | `12.09.2026` | transaction date (purchase date), `DD.MM.YYYY` |
 | `Kategori` | ` Mad ` | bank category, space-padded |
 | `Underkategori` | ` Dagligvarer ` | bank subcategory, space-padded |
 | `Tekst` | ` Café` | transaction text |
@@ -53,11 +53,12 @@ come from it, `domains/transaction.md`, and the sample profile in
 
 These apply wherever a column below names them.
 
-- **Date.** *Map decision.* `Dato` is exactly `DD-MM-YYYY`: a two-digit day, a
-  two-digit month and a four-digit year, separated by `-`, with no whitespace,
-  naming a real calendar date. `12-09-2026` is 12 September 2026; `1-09-2026`,
-  ` 12-09-2026` and `31-02-2026` are `unparseable-date` errors on that record.
-  Nothing upstream promises a readable `Dato`, so this error is a real path.
+- **Date.** *Map decision.* `Dato` is exactly `DD.MM.YYYY`: a two-digit day, a
+  two-digit month and a four-digit year, separated by `.`, with no whitespace,
+  naming a real calendar date. `12.09.2026` is 12 September 2026; `1.09.2026`,
+  ` 12.09.2026`, `12-09-2026` and `31.02.2026` are `unparseable-date` errors on
+  that record. Nothing upstream promises a readable `Dato`, so this error is a
+  real path.
 - **Decimal.** *Map decision.* A value is an optional `-`, an integer part, and
   an optional `,` followed by at least one digit and no more digits than the
   account's currency has decimal places (ADR-013's ISO 4217 table; two for
