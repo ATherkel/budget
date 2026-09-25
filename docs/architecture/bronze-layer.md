@@ -117,7 +117,8 @@ operator asked the bank for.
 ## Danske CSV Format (`danske-csv-v1`)
 
 - Windows-1252, comma-delimited, every field double-quoted, CRLF line endings,
-  and no final line break.
+  and at most one final line break.
+  🤖 Added by Codex (deepseek/deepseek-v4.1-flash)
 - The header is exactly `Dato`, `Kategori`, `Underkategori`, `Tekst`, `Beløb`,
   `Saldo`, `Status`, `Afstemt`.
 - `Dato` is exactly two day digits, two month digits and four year digits

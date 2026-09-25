@@ -155,9 +155,8 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
             b'"-45,00","955,00","Udf\xf8rt",'
         )
 
-        # An empty final field is legal when it is quoted, and a trailing line
-        # break after it stays legal too.
-        quoted_empty = PARSER.parse(header + seven_fields + b'""\r\n')
+        # An empty final field is legal when it is quoted.
+        quoted_empty = PARSER.parse(header + seven_fields + b'""')
 
         assert quoted_empty.failure_reason is None
         assert len(quoted_empty.records) == 1
@@ -172,6 +171,27 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
         reason = trailing_comma.failure_reason
         assert reason
         assert "Udf\xf8rt" not in reason
+
+    def test_one_trailing_line_break_is_accepted(self) -> None:
+        # A single final line break carries no data, so an export an editor has
+        # touched still reads. A blank line after the last record would be a
+        # record of its own and stays invalid.
+        for ending in (b"\r\n", b"\n"):
+            with self.subTest(ending=ending):
+                result = PARSER.parse(ONE_RECORD_PAYLOAD + ending)
+
+                assert result.failure_reason is None
+                assert len(result.records) == 1
+                assert dict(result.records[0])["Dato"] == "12-09-2026"
+                assert result.last_transaction_date == date(2026, 9, 12)
+
+        for ending in (b"\r\n\r\n", b"\n\n"):
+            with self.subTest(ending=ending):
+                result = PARSER.parse(ONE_RECORD_PAYLOAD + ending)
+
+                assert result.records == ()
+                assert result.last_transaction_date is None
+                assert result.failure_reason
 
     def test_the_coverage_bound_is_the_latest_date_whatever_the_row_order(self) -> None:
         # The row carrying the maximum Dato comes first and is cancelled, so a

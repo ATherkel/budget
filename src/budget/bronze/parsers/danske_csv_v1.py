@@ -82,9 +82,9 @@ def _field_quoting_error(text: str) -> str | None:
 
     `danske-csv-v1` quotes every field, and a quote inside a field is doubled.
     So a field opens with a quote, and only a comma, a line break or the end of
-    the payload may follow its closing quote. Line endings themselves are not
-    checked: the declared CRLF and no-final-line-break rules stay the
-    prototype's notes, and a quoted field may carry line breaks of its own.
+    the payload may follow its closing quote. Line endings are not otherwise
+    checked: LF endings and one optional final line break read normally, and a
+    quoted field may carry line breaks of its own.
     """
     index = 0
     length = len(text)
