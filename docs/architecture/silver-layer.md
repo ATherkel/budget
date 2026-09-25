@@ -132,7 +132,8 @@ AccountEvidence(                # the account's evidence bound; see above
 ImportRunResult(
     import_run_id: str,
     status: Literal["accepted", "quarantined"],
-    covered_from: date,         # earliest transaction date in the payload, booked or not
+    covered_from: date | None,  # earliest transaction date in the payload, booked or not;
+                                # None when the payload has no source records
     covered_to: date,           # the import run's covers_through (Bronze)
     errors: Sequence[ValidationError],
     review_item_ids: Sequence[str],
@@ -161,6 +162,14 @@ admitted from it: it is the earliest transaction date among all the payload's
 source records, whatever their `booking_status`. An export whose first row is
 cancelled on 28 August and whose first booked row is on 1 September has
 `covered_from` 28 August.
+
+A payload with no source records has no transaction date to read, and
+`covered_from` is null. That happens for a payload with a `FormatFailure`,
+which Bronze yields with no source records, and for a header-only export,
+whose `covers_through` the operator must declare (`bronze-layer.md`). Silver
+does not invent a start date: Bronze records none, and a made-up one would read
+as evidence. `covered_to` is unaffected: it is always the import run's
+`covers_through`.
 
 ## Rules
 
