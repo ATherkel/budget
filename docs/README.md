@@ -25,6 +25,8 @@ agent authority outside its boundary.
   definition: because the category dimension carries only the current
   interpretation, it logs when the taxonomy changed and why, so a decision
   taken on an older report can still be read.
+- `architecture/publications.md` defines what one Gold build is, which one a
+  report reads, what is kept of past builds, and what reproducible promises.
 - `decisions/` records accepted architectural decisions. Changes require a new
   ADR; do not silently revise a decision to fit an implementation.
 
@@ -58,6 +60,14 @@ primer is stale.
   — how each transaction gets its household meaning, in thirteen modules:
   the reporting boundary, rules and priority, transfer evidence, manual
   decisions, and review items. Opens and stores progress like the others.
+- [`primers/publications-history-primer.html`](primers/publications-history-primer.html)
+  — which version of Gold a report shows, in twelve modules following one
+  February through five builds and three views: publications and double
+  counting, the recipe and its fingerprint, undo, the two time axes behind
+  as-was and as-known-at views, retention, the decision log, and which
+  identifiers survive a rebuild. It closes with what the owner chose on
+  issue #8 and what was chosen for them. Opens and stores progress like the
+  others.
 
 ## Vocabulary
 
