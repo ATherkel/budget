@@ -35,6 +35,15 @@ class Profile:
     stores: Path
     root: Path | None = None
 
+    def __post_init__(self) -> None:
+        """Resolve the paths, refusing a test profile that escapes its root."""
+        stores = Path(self.stores).resolve()
+        root = None if self.root is None else Path(self.root).resolve()
+        if root is not None and not stores.is_relative_to(root):
+            raise ProfilePathOutsideRootError
+        object.__setattr__(self, "stores", stores)
+        object.__setattr__(self, "root", root)
+
     @property
     def bronze_store(self) -> Path:
         """The Bronze stage store inside this profile's stores folder."""
