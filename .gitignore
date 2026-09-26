@@ -3,3 +3,7 @@ imports/
 __pycache__/
 .claude/worktrees/
 /.tmp/
+*.py[cod]
+.venv/
+dist/
+build/

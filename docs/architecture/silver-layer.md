@@ -218,10 +218,32 @@ as evidence. `covered_to` is unaffected: it is always the import run's
   an *accept discrepancy* decision is prompted by and attaches to through
   `resolved_by` (ADR-010). Without it the quarantine is the only signal, and
   nothing in the operator's work list says there is a way back.
+- `ValidationError.code` names the error. The codes that do not depend on the
+  source format are `format-failure` (payload-level, so `record_ordinal` is
+  null), `wrong-field-count` (the record's fields are not exactly the format's
+  header) and `balance-chain-break`. Each source format's data map names the
+  rest.
 
 **Identity and merging**
 - Per ADR-009: content plus occurrence identity, and the highest count per
   export when exports overlap.
+- `transaction_id` is the lowercase hexadecimal SHA-256 of the UTF-8 encoding
+  of the compact JSON array `[identity_version, account_id, transaction_date,
+  amount, description, occurrence]`:
+  - `transaction_date` is written in ISO 8601;
+  - `amount` is written with exactly the currency's decimal places, for
+    example `"-45.00"`;
+  - `occurrence` is an integer;
+  - `identity_version` is `"1"`.
+
+  The array's element boundaries keep any two different inputs from
+  serializing alike. `account_id` is an input, so identical purchases on two
+  accounts get two identifiers.
+- `review_item_id` is the same hash over `[kind, import_run_id]`, the run that
+  raised the item. While
+  [issue #80](https://github.com/ATherkel/budget/issues/80) is open, a
+  `dropped-transactions` item follows its proposal: one item per dropped
+  transaction, with that `transaction_id` appended to the array.
 
 **Merge verification**
 - Import runs are admitted in `exported_on` order, then `started_at` for runs
