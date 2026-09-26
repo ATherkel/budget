@@ -50,7 +50,7 @@ class ReadRun:
     @property
     def end_of_day(self) -> dict[date, Decimal | None]:
         """Each date's balance from its last booked row in payload order."""
-        return {row.key[0]: row.record.balance for row in self.booked}
+        return {row.record.transaction_date: row.record.balance for row in self.booked}
 
     def covers(self, day: date) -> bool:
         """Whether `day` lies within the dates this export covers."""

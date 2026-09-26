@@ -2,40 +2,25 @@
 """The Silver build: canonical records from a set of Bronze import runs."""
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
 from datetime import date, timedelta
 
 from budget.bronze.models import FormatFailure, ImportRun, SourceRecord
-from budget.silver.balances import BALANCE_BREAK_CODES
+from budget.silver.admission import Admission, Decisions, admit, judge
 from budget.silver.decisions import (
-    AcceptDiscrepancy,
-    SameTransaction,
     SilverDecision,
-    VoidImportRun,
-    Withdrawn,
 )
-from budget.silver.identity import IDENTITY_VERSION, review_item_id
+from budget.silver.identity import IDENTITY_VERSION
 from budget.silver.merge import Ledger
 from budget.silver.models import (
     AccountEvidence,
     BalanceObservation,
     ImportRunResult,
-    ReviewItem,
     SilverResult,
     Transaction,
     TransactionEvidence,
     UnbookedRecord,
 )
-from budget.silver.reading import Key, ReadRun, Row, read_run
-
-
-@dataclass(frozen=True)
-class _Judged:
-    """A run with the review items it raised and whether it is admitted."""
-
-    each: ReadRun
-    review_items: tuple[ReviewItem, ...]
-    admitted: bool
+from budget.silver.reading import ReadRun, Row, read_run
 
 
 def build(
@@ -47,20 +32,14 @@ def build(
     decisions: Sequence[SilverDecision] = (),
 ) -> SilverResult:
     """Derive Silver from import runs, their payloads' records and currencies."""
-    accepted = {
-        d.import_run_id: d.decision_id
-        for d in decisions
-        if isinstance(d, AcceptDiscrepancy)
-    }
-    voided = {d.import_run_id for d in decisions if isinstance(d, VoidImportRun)}
-    runs = [r for r in runs if r.import_run_id not in voided]
-    settlements = _Settlements.of(decisions)
+    indexed = Decisions.of(decisions)
+    runs = [r for r in runs if r.import_run_id not in indexed.voided]
     stored = sorted(
         (r for r in runs if r.outcome == "stored"),
         key=lambda r: (r.exported_on, r.started_at, r.import_run_id),
     )
     ledgers: dict[str, Ledger] = {}
-    judged: list[_Judged] = []
+    judged: list[Admission] = []
     for run in stored:
         each = read_run(
             run,
@@ -69,7 +48,7 @@ def build(
             currencies,
         )
         ledger = ledgers.setdefault(each.account_id, Ledger(each.account_id))
-        judged.append(_admit(_judge(each, accepted), ledger, settlements))
+        judged.append(admit(judge(each, indexed), ledger, indexed))
     admitted = [j.each for j in judged if j.admitted]
     return SilverResult(
         transactions=tuple(
@@ -101,166 +80,25 @@ def build(
     )
 
 
-def _judge(each: ReadRun, accepted: Mapping[str, str]) -> _Judged:
-    """Raise the run's own review items and admit it if they settle its errors."""
-    if not each.break_dates:
-        return _Judged(each=each, review_items=(), admitted=not each.errors)
-    resolved_by = accepted.get(each.run.import_run_id)
-    item = ReviewItem(
-        review_item_id=review_item_id("balance-break", each.run.import_run_id),
-        kind="balance-break",
-        account_id=each.account_id,
-        date_from=min(each.break_dates),
-        date_to=max(each.break_dates),
-        payload_ids=(each.run.payload_id,),
-        resolved_by=resolved_by,
-    )
-    settled = BALANCE_BREAK_CODES if resolved_by is not None else frozenset()
-    return _Judged(
-        each=each,
-        review_items=(item,),
-        admitted=all(error.code in settled for error in each.errors),
-    )
-
-
-@dataclass(frozen=True)
-class _Settlements:
-    """The effective decisions that settle a merge's review items."""
-
-    withdrawn: Mapping[str, str]  # transaction_id -> decision_id
-    same: Mapping[tuple[str, str], SameTransaction]  # (transaction, payload)
-
-    @classmethod
-    def of(cls, decisions: Sequence[SilverDecision]) -> "_Settlements":
-        """Index `decisions` by what they target."""
-        return cls(
-            withdrawn={
-                d.transaction_id: d.decision_id
-                for d in decisions
-                if isinstance(d, Withdrawn)
-            },
-            same={
-                (d.transaction_id, d.payload_id): d
-                for d in decisions
-                if isinstance(d, SameTransaction)
-            },
-        )
-
-    def settling(self, transaction_id: str, payload_id: str) -> str | None:
-        """Name the decision that settles dropping `transaction_id` here."""
-        same = self.same.get((transaction_id, payload_id))
-        if same is not None:
-            return same.decision_id
-        return self.withdrawn.get(transaction_id)
-
-
-@dataclass(frozen=True)
-class _Drop:
-    """One transaction a run drops, its review item and any remap."""
-
-    key: Key
-    occurrence: int
-    item: ReviewItem
-    same: SameTransaction | None
-
-
-def _admit(judged: _Judged, ledger: Ledger, settlements: _Settlements) -> _Judged:
-    """Admit a valid run whose merge verifies, or whose drops are all decided."""
-    if not judged.admitted:
-        return judged
-    each = judged.each
-    verdict = ledger.verdict(each)
-    drops = [_drop(each, ledger, key, k, settlements) for key, k in verdict.dropped]
-    items = (*judged.review_items, *(drop.item for drop in drops))
-    if verdict.disagreements:
-        items = (*items, _disagreement(each, verdict.disagreements))
-    if verdict.disagreements or any(drop.item.resolved_by is None for drop in drops):
-        return _Judged(each=each, review_items=items, admitted=False)
-    admitted = _remapped(each, drops)
-    ledger.admit(
-        admitted,
-        withdrawn=[(drop.key, drop.occurrence) for drop in drops if drop.same is None],
-    )
-    return _Judged(each=admitted, review_items=items, admitted=True)
-
-
-def _drop(
-    each: ReadRun, ledger: Ledger, key: Key, k: int, settlements: _Settlements
-) -> _Drop:
-    """Raise the item for one dropped transaction, with its settlement."""
-    transaction_id = ledger.identify(key, k)
-    payload_id = each.run.payload_id
-    item = ReviewItem(
-        review_item_id=review_item_id(
-            "dropped-transactions", each.run.import_run_id, transaction_id
-        ),
-        kind="dropped-transactions",
-        account_id=each.account_id,
-        date_from=key[0],
-        date_to=key[0],
-        payload_ids=(payload_id, ledger.selected[key[0]].run.payload_id),
-        resolved_by=settlements.settling(transaction_id, payload_id),
-        transaction_id=transaction_id,
-    )
-    same = settlements.same.get((transaction_id, payload_id))
-    return _Drop(key=key, occurrence=k, item=item, same=same)
-
-
-def _remapped(each: ReadRun, drops: Iterable[_Drop]) -> ReadRun:
-    """Make each record a *same transaction* decision names show its target."""
-    targets = {
-        drop.same.record_ordinal: (drop.key, drop.occurrence)
-        for drop in drops
-        if drop.same is not None
-    }
-    return replace(
-        each,
-        booked=tuple(
-            replace(row, key=target[0], occurrence=target[1])
-            if (target := targets.get(row.record.record.record_ordinal))
-            else row
-            for row in each.booked
-        ),
-    )
-
-
-def _disagreement(
-    each: ReadRun, disagreements: Sequence[tuple[date, str]]
-) -> ReviewItem:
-    """Raise the item for balances unexplained by every added and dropped amount."""
-    days = [day for day, _ in disagreements]
-    compared = sorted({payload_id for _, payload_id in disagreements})
-    return ReviewItem(
-        review_item_id=review_item_id("export-disagreement", each.run.import_run_id),
-        kind="export-disagreement",
-        account_id=each.account_id,
-        date_from=min(days),
-        date_to=max(days),
-        payload_ids=(each.run.payload_id, *compared),
-        resolved_by=None,
-    )
-
-
 def _sorted(ledgers: Mapping[str, Ledger]) -> list[Ledger]:
     return [ledgers[account_id] for account_id in sorted(ledgers)]
 
 
 def _transactions(ledger: Ledger) -> list[Transaction]:
-    """One transaction per admitted identity, valued from its date's export."""
+    """One transaction per kept identity, valued from its date's export."""
     return [
-        _transaction(ledger, identifier, row, day_sequence)
-        for identifier, row, day_sequence in ledger.kept()
+        _transaction(ledger.account_id, identifier, run, row, day_sequence)
+        for identifier, run, row, day_sequence in ledger.kept()
     ]
 
 
 def _transaction(
-    ledger: Ledger, identifier: str, row: Row, day_sequence: int
+    account_id: str, identifier: str, run: ReadRun, row: Row, day_sequence: int
 ) -> Transaction:
-    run = next(r for r in ledger.admitted if row in r.booked)
     transaction_date, amount, description = row.key
     return Transaction(
         transaction_id=identifier,
-        account_id=ledger.account_id,
+        account_id=account_id,
         transaction_date=transaction_date,
         amount=amount,
         currency=run.currency,
@@ -361,7 +199,7 @@ def _evidence_through(run: ImportRun) -> date:
     return run.covers_through
 
 
-def _result(judged: _Judged) -> ImportRunResult:
+def _result(judged: Admission) -> ImportRunResult:
     each = judged.each
     return ImportRunResult(
         import_run_id=each.run.import_run_id,

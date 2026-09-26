@@ -10,6 +10,10 @@ from decimal import Decimal
 from budget.silver.identity import transaction_id
 from budget.silver.reading import Key, ReadRun, Row
 
+# A kept transaction: its identifier, the export and row that value it, and
+# its day sequence.
+type Kept = tuple[str, ReadRun, Row, int]
+
 
 @dataclass(frozen=True)
 class Verdict:
@@ -104,39 +108,43 @@ class Ledger:
                 found.append((day, selected.run.payload_id))
         return tuple(found)
 
-    def kept(self) -> list[tuple[str, Row, int]]:
-        """Every admitted transaction in order: identifier, row, day sequence.
+    def kept(self) -> list[Kept]:
+        """Every kept transaction in order, with the export and row valuing it.
 
         Each date's order and values come from its selected export. A kept
         transaction that export does not show is appended after the date's
-        rows in `transaction_id` order, with the row of the latest admitted
-        export that shows it (`silver-layer.md`, *Canonical Transaction*).
+        rows in `transaction_id` order, valued from the latest admitted export
+        that shows it (`silver-layer.md`, *Canonical Transaction*).
         """
+        by_day: dict[date, set[tuple[Key, int]]] = {}
+        for key, count in self.counts.items():
+            for k in range(1, count + 1):
+                if (key, k) not in self.withdrawn:
+                    by_day.setdefault(key[0], set()).add((key, k))
         return [
             entry
             for day, run in sorted(self.selected.items())
-            for entry in self._kept_on(day, run)
+            for entry in self._kept_on(day, run, by_day.get(day, set()))
         ]
 
-    def _kept_on(self, day: date, run: ReadRun) -> list[tuple[str, Row, int]]:
+    def _kept_on(
+        self, day: date, run: ReadRun, identities: set[tuple[Key, int]]
+    ) -> list[Kept]:
         rows = [
             row
             for row in run.booked
-            if row.key[0] == day and self.is_kept(row.key, row.occurrence)
+            if row.key[0] == day and (row.key, row.occurrence) in identities
         ]
-        shown = {(row.key, row.occurrence) for row in rows}
-        unshown = sorted(
-            (self.identify(key, k), self._latest_row(key, k))
-            for key, count in self.counts.items()
-            if key[0] == day
-            for k in range(1, count + 1)
-            if (key, k) not in shown and self.is_kept(key, k)
+        unshown = identities - {(row.key, row.occurrence) for row in rows}
+        appended = sorted(
+            (self.identify(key, k), self._latest_row(key, k)) for key, k in unshown
         )
+        ordered = [(self.identify(row.key, row.occurrence), (run, row)) for row in rows]
         return [
-            (self.identify(row.key, row.occurrence), row, row.position) for row in rows
-        ] + [
-            (identifier, row, len(rows) + n)
-            for n, (identifier, row) in enumerate(unshown, start=1)
+            (identifier, source, row, day_sequence)
+            for day_sequence, (identifier, (source, row)) in enumerate(
+                [*ordered, *appended], start=1
+            )
         ]
 
     def identify(self, key: Key, occurrence: int) -> str:
@@ -146,9 +154,9 @@ class Ledger:
             self.account_id, transaction_date, amount, description, occurrence
         )
 
-    def _latest_row(self, key: Key, occurrence: int) -> Row:
+    def _latest_row(self, key: Key, occurrence: int) -> tuple[ReadRun, Row]:
         return next(
-            row
+            (run, row)
             for run in reversed(self.admitted)
             for row in run.booked
             if (row.key, row.occurrence) == (key, occurrence)
