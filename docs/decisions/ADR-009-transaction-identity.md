@@ -1,6 +1,10 @@
 # ADR-009: Identify Transactions by Content and Occurrence, Verified by Balances
 
-**Status:** Accepted
+**Status:** Accepted. Amended by
+[ADR-017](ADR-017-dropped-transactions.md): the `fewer-repeats` review item is
+now `dropped-transactions` and also covers a transaction that was never
+repeated, so the same-day case and the text-change consequence below raise it
+rather than `export-disagreement`.
 
 ## Context
 

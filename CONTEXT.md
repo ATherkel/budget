@@ -190,6 +190,13 @@ One of several distinct booked transactions that look identical: same account,
 date, amount, and text. Each one is kept.
 _Avoid_: duplicate
 
+**Dropped transaction**:
+A transaction already admitted that a later export covering its date no longer
+shows, such as one of two Repeated transactions when the export shows one.
+Either the bank removed it, or the bank changed its text so it reads as a new
+transaction. The balances cannot tell which, so a person decides (ADR-017).
+_Avoid_: missing transaction (reads as a Late booking), deleted transaction
+
 ### Review
 
 **Quarantine**:
@@ -199,8 +206,8 @@ _Avoid_: rejected, held, failed import
 
 **Review item**:
 An ambiguity the platform cannot settle by rule and a person must decide, such
-as overlapping exports that disagree, a later export showing fewer repeated
-transactions, a source that keeps stating a broken balance chain,
+as overlapping exports that disagree, a later export that drops a transaction
+already admitted, a source that keeps stating a broken balance chain,
 Classification rules that conflict, or Transfer legs that compete for the same
 match. Every decision that settles a quarantine is raised by one, so none has
 to be known about in advance.
