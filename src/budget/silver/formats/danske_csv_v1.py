@@ -6,9 +6,21 @@ from datetime import date
 from decimal import Decimal
 
 from budget.bronze.models import SourceRecord
-from budget.silver.formats.record import ReadRecord
+from budget.silver.formats.record import ReadRecord, ReadResult, RecordError
 from budget.silver.models import BookingStatus
 
+_HEADER = frozenset(
+    (
+        "Dato",
+        "Kategori",
+        "Underkategori",
+        "Tekst",
+        "Beløb",
+        "Saldo",
+        "Status",
+        "Afstemt",
+    )
+)
 # `[0-9]`, not `\d`: `\d` also matches digits from other scripts.
 _DATE = re.compile(r"(?P<day>[0-9]{2})\.(?P<month>[0-9]{2})\.(?P<year>[0-9]{4})")
 _DECIMAL = re.compile(
@@ -20,37 +32,64 @@ _BOOKING_STATUS: dict[str, BookingStatus] = {
 }
 
 
-def read_record(record: SourceRecord, places: int) -> ReadRecord:
+def read_record(record: SourceRecord, places: int) -> ReadResult:
     """Read one record whose amounts carry `places` decimal places."""
     fields = record.fields
-    saldo = fields["Saldo"]
-    return ReadRecord(
+    if fields.keys() != _HEADER:
+        error = RecordError("wrong-field-count", "fields are not the format's header")
+        return ReadResult(transaction_date=None, read=None, errors=(error,))
+    errors: list[RecordError] = []
+    transaction_date = _read_date(fields["Dato"], errors)
+    amount = _read_decimal("Beløb", fields["Beløb"], places, errors)
+    booking_status = _BOOKING_STATUS.get(fields["Status"])
+    balance = None
+    if booking_status == "booked" and fields["Saldo"] != "":
+        balance = _read_decimal("Saldo", fields["Saldo"], places, errors)
+    if booking_status is None:
+        errors.append(RecordError("unknown-status", "Status has no booking status"))
+    if errors or transaction_date is None or amount is None or booking_status is None:
+        return ReadResult(
+            transaction_date=transaction_date, read=None, errors=(*errors,)
+        )
+    read = ReadRecord(
         record=record,
-        transaction_date=_read_date(fields["Dato"]),
-        amount=_read_decimal(fields["Beløb"], places),
-        balance=None if saldo == "" else _read_decimal(saldo, places),
+        transaction_date=transaction_date,
+        amount=amount,
+        balance=balance,
         text=fields["Tekst"],
         category=_label(fields["Kategori"]),
         subcategory=_label(fields["Underkategori"]),
         source_status=fields["Status"],
-        booking_status=_BOOKING_STATUS[fields["Status"]],
+        booking_status=booking_status,
     )
+    return ReadResult(transaction_date=transaction_date, read=read, errors=())
 
 
-def _read_date(value: str) -> date:
-    """Read `DD.MM.YYYY`."""
+def _read_date(value: str, errors: list[RecordError]) -> date | None:
+    """Read `DD.MM.YYYY`, a real calendar date, or record why not."""
     match = _DATE.fullmatch(value)
-    if match is None:
-        raise ValueError(value)
-    return date(int(match["year"]), int(match["month"]), int(match["day"]))
+    try:
+        if match is not None:
+            return date(int(match["year"]), int(match["month"]), int(match["day"]))
+    except ValueError:
+        pass
+    errors.append(RecordError("unparseable-date", "Dato is not a DD.MM.YYYY date"))
+    return None
 
 
-def _read_decimal(value: str, places: int) -> Decimal:
-    """Read a Danske decimal, padded to exactly `places` decimal places."""
+def _read_decimal(
+    name: str, value: str, places: int, errors: list[RecordError]
+) -> Decimal | None:
+    """Read a Danske decimal padded to exactly `places` places, or record why not."""
     match = _DECIMAL.fullmatch(value)
-    if match is None:
-        raise ValueError(value)
-    fraction = match["fraction"] or ""
+    fraction = "" if match is None else match["fraction"] or ""
+    if match is None or len(fraction) > places:
+        errors.append(
+            RecordError(
+                "unparseable-decimal", f"{name} is not a decimal in its currency"
+            )
+        )
+        return None
     digits = match["whole"].replace(".", "") + fraction.ljust(places, "0")
     return Decimal(f"{match['sign']}{digits}").scaleb(-places)
 

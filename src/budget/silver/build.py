@@ -19,6 +19,7 @@ from budget.silver.models import (
     Transaction,
     TransactionEvidence,
     UnbookedRecord,
+    ValidationError,
 )
 
 if TYPE_CHECKING:
@@ -27,11 +28,13 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class _Run:
-    """One stored import run with its payload's records read."""
+    """One stored import run with its payload's records read and validated."""
 
     run: ImportRun
     currency: str
     records: tuple[ReadRecord, ...]
+    covered_from: date | None
+    errors: tuple[ValidationError, ...]
 
     @property
     def booked(self) -> tuple[ReadRecord, ...]:
@@ -47,15 +50,20 @@ def build(
     currencies: Mapping[str, str],
 ) -> SilverResult:
     """Derive Silver from import runs, their payloads' records and currencies."""
-    del format_failures  # Validation (#91) reads them.
     read = [
-        _read_run(run, source_records[run.payload_id], currencies)
+        _read_run(
+            run,
+            source_records.get(run.payload_id, ()),
+            format_failures.get(run.payload_id, ()),
+            currencies,
+        )
         for run in runs
         if run.outcome == "stored"
     ]
+    admitted = [each for each in read if not each.errors]
     transactions: list[Transaction] = []
     evidence: list[TransactionEvidence] = []
-    for each in read:
+    for each in admitted:
         found, shown = _transactions(each)
         transactions.extend(found)
         evidence.extend(shown)
@@ -69,24 +77,45 @@ def build(
         transaction_evidence=tuple(
             sorted(evidence, key=lambda e: (e.payload_id, e.record_ordinal))
         ),
-        unbooked_records=tuple(u for each in read for u in _unbooked(each)),
-        balance_observations=tuple(o for each in read for o in _observations(each)),
-        account_evidence=_account_evidence(each.run for each in read),
+        unbooked_records=tuple(u for each in admitted for u in _unbooked(each)),
+        balance_observations=tuple(o for each in admitted for o in _observations(each)),
+        account_evidence=_account_evidence(each.run for each in admitted),
         import_run_results=tuple(_result(each) for each in read),
         review_items=(),
     )
 
 
 def _read_run(
-    run: ImportRun, records: Sequence[SourceRecord], currencies: Mapping[str, str]
+    run: ImportRun,
+    records: Sequence[SourceRecord],
+    failures: Sequence[FormatFailure],
+    currencies: Mapping[str, str],
 ) -> _Run:
+    """Read every record of a run, keeping each error against its record."""
     currency = currencies[run.declared_account_id]
     places = minor_unit_places(currency)
     reader = READERS[run.source_format]
+    errors = [
+        ValidationError(run.payload_id, None, "format-failure", failure.reason)
+        for failure in failures
+    ]
+    results = [(record, reader(record, places)) for record in records]
+    errors.extend(
+        ValidationError(
+            run.payload_id, record.record_ordinal, error.code, error.message
+        )
+        for record, result in results
+        for error in result.errors
+    )
     return _Run(
         run=run,
         currency=currency,
-        records=tuple(reader(record, places) for record in records),
+        records=tuple(result.read for _, result in results if result.read is not None),
+        covered_from=min(
+            (d for _, r in results if (d := r.transaction_date) is not None),
+            default=None,
+        ),
+        errors=tuple(errors),
     )
 
 
@@ -191,11 +220,9 @@ def _evidence_through(run: ImportRun) -> date:
 def _result(each: _Run) -> ImportRunResult:
     return ImportRunResult(
         import_run_id=each.run.import_run_id,
-        status="accepted",
-        covered_from=min(
-            (record.transaction_date for record in each.records), default=None
-        ),
+        status="quarantined" if each.errors else "accepted",
+        covered_from=each.covered_from,
         covered_to=each.run.covers_through,
-        errors=(),
+        errors=each.errors,
         review_item_ids=(),
     )
