@@ -15,7 +15,8 @@ class Verdict:
     """What admitting a run would drop, and where its balances disagree."""
 
     dropped: tuple[tuple[Key, int], ...]  # (key, occurrence) of each drop
-    disagreements: tuple[date, ...]
+    # Each disagreeing date, with the admitted payload it was compared to.
+    disagreements: tuple[tuple[date, str], ...]
 
     @property
     def clean(self) -> bool:
@@ -65,7 +66,7 @@ class Ledger:
 
     def _disagreements(
         self, run: ReadRun, changes: dict[date, Decimal]
-    ) -> tuple[date, ...]:
+    ) -> tuple[tuple[date, str], ...]:
         """Dates both sides state a balance whose difference is unexplained.
 
         The difference on a date must equal every change on or before it:
@@ -73,18 +74,17 @@ class Ledger:
         """
         stated = run.end_of_day
         cumulative = Decimal(0)
-        found: list[date] = []
+        found: list[tuple[date, str]] = []
         for day in sorted(changes.keys() | stated.keys()):
             cumulative += changes.get(day, Decimal(0))
             theirs = stated.get(day)
-            ours = self._balance(day)
-            if theirs is not None and ours is not None and theirs - ours != cumulative:
-                found.append(day)
+            selected = self.selected.get(day)
+            ours = None if selected is None else selected.end_of_day.get(day)
+            if theirs is None or ours is None or selected is None:
+                continue
+            if theirs - ours != cumulative:
+                found.append((day, selected.run.payload_id))
         return tuple(found)
-
-    def _balance(self, day: date) -> Decimal | None:
-        selected = self.selected.get(day)
-        return None if selected is None else selected.end_of_day.get(day)
 
     def kept(self) -> list[tuple[str, Row, int]]:
         """Every admitted transaction in order: identifier, row, day sequence.

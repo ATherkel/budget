@@ -115,12 +115,31 @@ def _admit(judged: _Judged, ledger: Ledger) -> _Judged:
     """Admit a valid run whose merge with what is admitted verifies."""
     if not judged.admitted:
         return judged
-    if not ledger.verdict(judged.each).clean:
-        return _Judged(
-            each=judged.each, review_items=judged.review_items, admitted=False
-        )
-    ledger.admit(judged.each)
-    return judged
+    verdict = ledger.verdict(judged.each)
+    if verdict.clean:
+        ledger.admit(judged.each)
+        return judged
+    items = judged.review_items
+    if verdict.disagreements:
+        items = (*items, _disagreement(judged.each, verdict.disagreements))
+    return _Judged(each=judged.each, review_items=items, admitted=False)
+
+
+def _disagreement(
+    each: ReadRun, disagreements: Sequence[tuple[date, str]]
+) -> ReviewItem:
+    """Raise the item for balances unexplained by every added and dropped amount."""
+    days = [day for day, _ in disagreements]
+    compared = sorted({payload_id for _, payload_id in disagreements})
+    return ReviewItem(
+        review_item_id=review_item_id("export-disagreement", each.run.import_run_id),
+        kind="export-disagreement",
+        account_id=each.account_id,
+        date_from=min(days),
+        date_to=max(days),
+        payload_ids=(each.run.payload_id, *compared),
+        resolved_by=None,
+    )
 
 
 def _sorted(ledgers: Mapping[str, Ledger]) -> list[Ledger]:
