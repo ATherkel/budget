@@ -16,4 +16,22 @@ class AcceptDiscrepancy:
     import_run_id: str
 
 
-type SilverDecision = AcceptDiscrepancy
+@dataclass(frozen=True)
+class Withdrawn:
+    """The bank removed an admitted transaction (ADR-017)."""
+
+    decision_id: str
+    transaction_id: str
+
+
+@dataclass(frozen=True)
+class SameTransaction:
+    """A source record shows an existing transaction under new text (ADR-017)."""
+
+    decision_id: str
+    transaction_id: str
+    payload_id: str
+    record_ordinal: int
+
+
+type SilverDecision = AcceptDiscrepancy | Withdrawn | SameTransaction

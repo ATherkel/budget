@@ -106,6 +106,8 @@ class ReviewItem:
     date_to: date
     payload_ids: Sequence[str]
     resolved_by: str | None
+    # The dropped transaction, for `dropped-transactions`; issue #80, option A.
+    transaction_id: str | None = None
 
 
 @dataclass(frozen=True)

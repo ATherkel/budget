@@ -119,9 +119,9 @@ def _hash(inputs: list[str | int]) -> str:
     return hashlib.sha256(written.encode()).hexdigest()
 
 
-def review_item_id(kind: str, import_run_id: str) -> str:
+def review_item_id(kind: str, import_run_id: str, *transaction_id: str) -> str:
     """The `review_item_id` `silver-layer.md` defines for a run's item."""
-    return _hash([kind, import_run_id])
+    return _hash([kind, import_run_id, *transaction_id])
 
 
 def identity(

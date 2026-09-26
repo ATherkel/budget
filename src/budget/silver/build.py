@@ -7,7 +7,7 @@ from datetime import date, timedelta
 
 from budget.bronze.models import FormatFailure, ImportRun, SourceRecord
 from budget.silver.balances import BALANCE_BREAK_CODES
-from budget.silver.decisions import SilverDecision
+from budget.silver.decisions import AcceptDiscrepancy, SilverDecision
 from budget.silver.identity import IDENTITY_VERSION, review_item_id
 from budget.silver.merge import Ledger
 from budget.silver.models import (
@@ -41,8 +41,11 @@ def build(
     decisions: Sequence[SilverDecision] = (),
 ) -> SilverResult:
     """Derive Silver from import runs, their payloads' records and currencies."""
-    # Every Silver decision so far is *accept discrepancy*; later kinds filter.
-    accepted = {d.import_run_id: d.decision_id for d in decisions}
+    accepted = {
+        d.import_run_id: d.decision_id
+        for d in decisions
+        if isinstance(d, AcceptDiscrepancy)
+    }
     stored = sorted(
         (r for r in runs if r.outcome == "stored"),
         key=lambda r: (r.exported_on, r.started_at, r.import_run_id),
