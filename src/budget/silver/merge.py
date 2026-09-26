@@ -2,6 +2,7 @@
 """Merging one account's exports, verified by their balances (ADR-009)."""
 
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -32,6 +33,8 @@ class Ledger:
     counts: dict[Key, int] = field(default_factory=dict)
     selected: dict[date, ReadRun] = field(default_factory=dict)
     admitted: list[ReadRun] = field(default_factory=list)
+    # Transactions a *withdrawn* decision removed, as (key, occurrence).
+    withdrawn: set[tuple[Key, int]] = field(default_factory=set)
 
     def verdict(self, run: ReadRun) -> Verdict:
         """Check `run` against what is admitted, without admitting it."""
@@ -41,19 +44,34 @@ class Ledger:
             for key, admitted in sorted(self.counts.items())
             if run.covers(key[0])
             for k in range(shown[key] + 1, admitted + 1)
+            if (key, k) not in self.withdrawn
         )
         changes = self._added(shown)
         for key, _ in dropped:
             changes[key[0]] = changes.get(key[0], Decimal(0)) - key[1]
         return Verdict(dropped=dropped, disagreements=self._disagreements(run, changes))
 
-    def admit(self, run: ReadRun) -> None:
-        """Keep the highest count per key; `run` becomes its dates' export."""
+    def admit(self, run: ReadRun, withdrawn: Iterable[tuple[Key, int]] = ()) -> None:
+        """Keep the highest count per key; `run` becomes its dates' export.
+
+        `run` shows every transaction kept on the dates it covers, so it is
+        the selected export for each of them, including a date whose
+        transactions it all dropped (ADR-017). `withdrawn` leave the ledger.
+        """
         for key, shown in Counter(row.key for row in run.booked).items():
             self.counts[key] = max(self.counts.get(key, 0), shown)
-        for day in run.end_of_day:
+        covered = [day for day in self.selected if run.covers(day)]
+        for day in [*covered, *run.end_of_day]:
             self.selected[day] = run
+        self.withdrawn.update(withdrawn)
         self.admitted.append(run)
+
+    def is_kept(self, key: Key, occurrence: int) -> bool:
+        """Whether the transaction is admitted and not withdrawn."""
+        return (
+            occurrence <= self.counts.get(key, 0)
+            and (key, occurrence) not in self.withdrawn
+        )
 
     def _added(self, shown: Counter[Key]) -> dict[date, Decimal]:
         """Sum, per date, the amounts `shown` adds to what is admitted."""
@@ -101,14 +119,18 @@ class Ledger:
         ]
 
     def _kept_on(self, day: date, run: ReadRun) -> list[tuple[str, Row, int]]:
-        rows = [row for row in run.booked if row.key[0] == day]
+        rows = [
+            row
+            for row in run.booked
+            if row.key[0] == day and self.is_kept(row.key, row.occurrence)
+        ]
         shown = {(row.key, row.occurrence) for row in rows}
         unshown = sorted(
             (self.identify(key, k), self._latest_row(key, k))
             for key, count in self.counts.items()
             if key[0] == day
             for k in range(1, count + 1)
-            if (key, k) not in shown
+            if (key, k) not in shown and self.is_kept(key, k)
         )
         return [
             (self.identify(row.key, row.occurrence), row, row.position) for row in rows

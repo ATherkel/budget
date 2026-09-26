@@ -36,9 +36,9 @@ def transaction_id(
     )
 
 
-def review_item_id(kind: str, import_run_id: str) -> str:
-    """Hash a review item's kind and the import run that raised it."""
-    return _hash([kind, import_run_id])
+def review_item_id(kind: str, import_run_id: str, *transaction_id: str) -> str:
+    """Hash a review item's kind, the run that raised it, and what it drops."""
+    return _hash([kind, import_run_id, *transaction_id])
 
 
 def _hash(inputs: list[str | int]) -> str:
