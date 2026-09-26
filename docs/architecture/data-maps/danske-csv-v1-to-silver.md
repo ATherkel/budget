@@ -59,19 +59,20 @@ These apply wherever a column below names them.
   ` 12.09.2026`, `12-09-2026` and `31.02.2026` are `unparseable-date` errors on
   that record. Nothing upstream promises a readable `Dato`, so this error is a
   real path.
-- **Decimal.** *Map decision.* A value is an optional `-`, an integer part, and
-  an optional `,` followed by at least one digit and no more digits than the
-  account's currency has decimal places (ADR-013's ISO 4217 table; two for
-  DKK). The integer part is either digits with no `.`, or one to three digits
-  followed by groups of `.` and exactly three digits, as in `1.234.567`; Danske
-  groups thousands with `.`. The `.` separators are removed, the comma becomes a
-  decimal point, and the result is a `Decimal` at the currency's minor unit,
-  never a float: `-45,0` becomes `Decimal("-45.00")`. Nothing is trimmed first.
-  An empty `Saldo` on a booked row is a `missing-balance` error and never an
-  `unparseable-decimal` one (see `balance`). Anything else, such as an empty
-  `Beløb`, `1.23,00`, `1234.567,00`, or `-45,001` in DKK, is an
-  `unparseable-decimal` error on that record. More decimal places than the
-  currency allows are rejected, never rounded (ADR-013).
+- **Decimal.** The value's places follow `silver-layer.md` (*Amounts*): the
+  result carries exactly the decimal places of the account's currency (ADR-013's
+  ISO 4217 table; two for DKK), fewer are padded, and more are rejected, never
+  rounded. *Map decision:* the syntax. A value is an optional `-`, an integer
+  part, and an optional `,` followed by at least one digit. The integer part is
+  either digits with no `.`, or one to three digits followed by groups of `.`
+  and exactly three digits, as in `1.234.567`; Danske groups thousands with
+  `.`. The `.` separators are removed, the comma becomes a decimal point, and
+  the result is a `Decimal`, never a float: `-45,0` becomes `Decimal("-45.00")`.
+  Nothing is trimmed first. An empty `Saldo` on a booked row is a
+  `missing-balance` error and never an `unparseable-decimal` one (see
+  `balance`). Anything else, such as an empty `Beløb`, `1.23,00`,
+  `1234.567,00`, or `-45,001` in DKK, is an `unparseable-decimal` error on that
+  record.
 - **Booking status.** `Status` maps as `silver-layer.md` states. *Map
   decision:* the match is exact, with no trimming or case folding.
 
