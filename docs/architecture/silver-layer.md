@@ -13,9 +13,11 @@ resolve which source records show the same booked transaction.
 - Manual decisions that affect identity, from the decision log
   ([`operations.md`](operations.md#decisionsjsonl-the-decision-log)).
   - *void import run*
-  - *same transaction*: a source record shows an existing transaction.
-  - *withdrawn*: the bank removed a transaction. It also settles a
-    `fewer-repeats` review item and admits the export that showed fewer.
+  - *same transaction*: a source record shows an existing transaction, such as
+    one whose text the bank changed.
+  - *withdrawn*: the bank removed a transaction. With *same transaction*, it is
+    one of the two decisions that settle a transaction a later export dropped
+    (ADR-017).
   - *accept discrepancy*: an import run's balance break is real in the source
     and is admitted with the break recorded (ADR-010). A booked row it admits
     without a balance keeps a null balance (ADR-016).
@@ -150,7 +152,7 @@ ValidationError(
 
 ReviewItem(
     review_item_id: str,        # deterministic
-    kind: Literal["export-disagreement", "fewer-repeats", "balance-break"],
+    kind: Literal["export-disagreement", "dropped-transactions", "balance-break"],
     account_id: str,
     date_from: date,
     date_to: date,
@@ -231,14 +233,19 @@ as evidence. `covered_to` is unaffected: it is always the import run's
   later bookings on an export's final date, are both explained growth. A date
   states an end-of-day balance only once it has a booked transaction, so the
   balances are compared on the dates both sides state one; ADR-009 records why
-  that is a consequence of the rules above and not an exemption from them. A
-  null `end_of_day_balance` states none, so that date is not compared
-  (ADR-016).
+  that is a consequence of the rules above and not an exemption from them, and
+  ADR-017 covers a date whose transactions the run all drops. A null
+  `end_of_day_balance` states none, so that date is not compared (ADR-016).
+- A run *drops* a transaction when, on a date it covers, it shows fewer booked
+  transactions with that amount and identity text than are admitted, whether
+  two became one or one became none. Any drop quarantines the run and raises
+  one `dropped-transactions` review item; the amounts of the dropped
+  transactions count as an explained difference, so a drop alone raises no
+  `export-disagreement`. The item is settled once each dropped transaction has
+  a *withdrawn* or *same transaction* decision, and the run is then admitted
+  unless another review item holds it (ADR-017).
 - An unexplained difference quarantines the later run and raises an
   `export-disagreement` review item.
-- Fewer repeated transactions on any date quarantine the run and raise a
-  `fewer-repeats` review item; the amounts of the missing repeats count as an
-  explained difference, so the same date raises no `export-disagreement`.
 - Silver uses balances only to verify its own merge. Coverage and
   reconciliation for reporting belong to Gold and analytics (ADR-006).
 

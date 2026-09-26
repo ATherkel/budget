@@ -1,8 +1,8 @@
 # Logical Data Map: `danske-csv-v1` → Silver
 
 **Status:** Accepted. The map restates, column by column, what
-[`silver-layer.md`](../silver-layer.md), ADR-009, ADR-010, ADR-013 and
-ADR-016 decide for one source format, and decides what they leave open. Rows
+[`silver-layer.md`](../silver-layer.md), ADR-009, ADR-010, ADR-013, ADR-016 and
+ADR-017 decide for one source format, and decides what they leave open. Rows
 and rules it decides itself are marked *Map decision*. Where the layer contract
 is silent, the map is normative, and the Silver code for `danske-csv-v1`
 follows it. Where it conflicts with the layer contract, an ADR or `domains/`,
@@ -184,7 +184,7 @@ source records.
 | Target column | Type | Source | Transformation |
 | --- | --- | --- | --- |
 | `import_run_id` | `str` | `ImportRun.import_run_id` | copied |
-| `status` | `Literal` | derived, and manual decisions | `accepted` when the run has no validation error and fails no merge check, or when every one it has belongs to a review item a manual decision has settled: *accept discrepancy* for a `balance-break`, *withdrawn* for a `fewer-repeats`, and *same transaction* for the item a bank-side text change raises (ADR-009, ADR-010). Otherwise `quarantined` |
+| `status` | `Literal` | derived, and manual decisions | `accepted` when the run has no validation error and fails no merge check, or when every one it has belongs to a review item manual decisions have settled: *accept discrepancy* for a `balance-break`, and for a `dropped-transactions` a *withdrawn* or *same transaction* for each transaction the run dropped (ADR-010, ADR-017). Otherwise `quarantined` |
 | `covered_from` | `date \| None` | `Dato` | the earliest `Dato` among the payload's source records, booked or not; null when the payload has none, as with a `FormatFailure` or a header-only export (`silver-layer.md`) |
 | `covered_to` | `date` | `ImportRun.covers_through` | copied |
 | `errors` | `Sequence` | derived | every `ValidationError` listed under *Validation* in `silver-layer.md`, with the codes under Error codes where this map names one. Errors a manual decision settled stay listed (ADR-010: "the import run lists it") |
