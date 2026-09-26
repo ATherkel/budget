@@ -9,7 +9,7 @@ Silver over one or more such exports through `budget.silver.build`.
 import hashlib
 import json
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 
 from budget.bronze.models import FormatFailure, ImportRun, SourceRecord
@@ -55,8 +55,12 @@ def export(
     run_id: str = "run-0001",
     exported_on: date = date(2026, 3, 5),
     covers_through: date | None = None,
+    started_at: datetime | None = None,
 ) -> Export:
-    """Present `rows` as the payload of one stored import run."""
+    """Present `rows` as the payload of one stored import run.
+
+    Without `started_at`, the run is imported at midnight on `exported_on`.
+    """
     payload_id = f"payload-{run_id}"
     run = ImportRun(
         import_run_id=run_id,
@@ -68,7 +72,8 @@ def export(
         exported_on_source="filename",
         covers_through=covers_through or exported_on,
         covers_through_source="exported_on" if covers_through is None else "declared",
-        started_at=datetime.combine(exported_on, datetime.min.time(), UTC),
+        started_at=started_at
+        or datetime.combine(exported_on, datetime.min.time(), UTC),
         outcome="stored",
         repeat_of=None,
     )
@@ -77,6 +82,23 @@ def export(
         for ordinal, fields in enumerate(rows, start=1)
     )
     return Export(run=run, records=records)
+
+
+def repeat(
+    of: Export, *, run_id: str, exported_on: date, covers_through: date | None = None
+) -> Export:
+    """Present `of`'s payload again: a `repeat` run with its own dates."""
+    run = replace(
+        of.run,
+        import_run_id=run_id,
+        exported_on=exported_on,
+        covers_through=covers_through or exported_on,
+        covers_through_source="exported_on" if covers_through is None else "declared",
+        started_at=datetime.combine(exported_on, datetime.min.time(), UTC),
+        outcome="repeat",
+        repeat_of=of.run.import_run_id,
+    )
+    return replace(of, run=run)
 
 
 def build_from(
