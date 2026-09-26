@@ -1,4 +1,4 @@
 imports/
 /Chat.md
 __pycache__/
-.claude/
+/.claude/worktrees/
