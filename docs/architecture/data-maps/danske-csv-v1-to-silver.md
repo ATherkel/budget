@@ -91,9 +91,10 @@ These apply wherever a column below names them.
 - **Identity text.** `Tekst` with leading and trailing Unicode whitespace
   removed and internal runs collapsed to one space, including 0xA0 (ADR-009).
   It is an input to `transaction_id` and *k*, and is stored as `description`.
-- **Label.** *Map decision.* `Kategori` or `Underkategori` with leading and
-  trailing Unicode whitespace removed, including 0xA0, as for the identity
-  text; internal whitespace is kept. A value that is empty afterwards is null.
+- **Label.** `Kategori` or `Underkategori` with leading and trailing Unicode
+  whitespace removed, including 0xA0, as for the identity text; internal
+  whitespace is kept. A value that is empty afterwards is null
+  (`silver-layer.md`).
 - **Selected export.** For each account and date, the latest admitted export
   covering that date that shows every transaction kept for it (ADR-009). It
   supplies `balance`, `day_sequence`, `bank_category` and `bank_subcategory`
