@@ -8,14 +8,21 @@ from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
 from budget.bronze.models import FormatFailure, ImportRun, SourceRecord
+from budget.silver.balances import BALANCE_BREAK_CODES, chain_errors
 from budget.silver.currencies import minor_unit_places
 from budget.silver.decisions import SilverDecision
-from budget.silver.formats import READERS, ReadRecord
-from budget.silver.identity import IDENTITY_VERSION, identity_text, transaction_id
+from budget.silver.formats import FORMATS, ReadRecord, RecordError
+from budget.silver.identity import (
+    IDENTITY_VERSION,
+    identity_text,
+    review_item_id,
+    transaction_id,
+)
 from budget.silver.models import (
     AccountEvidence,
     BalanceObservation,
     ImportRunResult,
+    ReviewItem,
     SilverResult,
     Transaction,
     TransactionEvidence,
@@ -36,11 +43,22 @@ class _Run:
     records: tuple[ReadRecord, ...]
     covered_from: date | None
     errors: tuple[ValidationError, ...]
+    # The transaction dates of the rows with a balance break, if any.
+    break_dates: tuple[date, ...]
 
     @property
     def booked(self) -> tuple[ReadRecord, ...]:
         """The records that are booked transactions, in payload order."""
         return tuple(r for r in self.records if r.booking_status == "booked")
+
+
+@dataclass(frozen=True)
+class _Judged:
+    """A run with the review items it raised and whether it is admitted."""
+
+    each: _Run
+    review_items: tuple[ReviewItem, ...]
+    admitted: bool
 
 
 def build(
@@ -52,18 +70,22 @@ def build(
     decisions: Sequence[SilverDecision] = (),
 ) -> SilverResult:
     """Derive Silver from import runs, their payloads' records and currencies."""
-    del decisions  # Balance breaks (#92) read them.
-    read = [
-        _read_run(
-            run,
-            source_records.get(run.payload_id, ()),
-            format_failures.get(run.payload_id, ()),
-            currencies,
+    # Every Silver decision so far is *accept discrepancy*; later kinds filter.
+    accepted = {d.import_run_id: d.decision_id for d in decisions}
+    judged = [
+        _judge(
+            _read_run(
+                run,
+                source_records.get(run.payload_id, ()),
+                format_failures.get(run.payload_id, ()),
+                currencies,
+            ),
+            accepted,
         )
         for run in runs
         if run.outcome == "stored"
     ]
-    admitted = [each for each in read if not each.errors]
+    admitted = [j.each for j in judged if j.admitted]
     transactions: list[Transaction] = []
     evidence: list[TransactionEvidence] = []
     for each in admitted:
@@ -83,8 +105,13 @@ def build(
         unbooked_records=tuple(u for each in admitted for u in _unbooked(each)),
         balance_observations=tuple(o for each in admitted for o in _observations(each)),
         account_evidence=_account_evidence(each.run for each in admitted),
-        import_run_results=tuple(_result(each) for each in read),
-        review_items=(),
+        import_run_results=tuple(_result(j) for j in judged),
+        review_items=tuple(
+            sorted(
+                (item for j in judged for item in j.review_items),
+                key=lambda item: item.review_item_id,
+            )
+        ),
     )
 
 
@@ -96,29 +123,60 @@ def _read_run(
 ) -> _Run:
     """Read every record of a run, keeping each error against its record."""
     currency = currencies[run.declared_account_id]
+    source_format = FORMATS[run.source_format]
     places = minor_unit_places(currency)
-    reader = READERS[run.source_format]
-    errors = [
-        ValidationError(run.payload_id, None, "format-failure", failure.reason)
-        for failure in failures
+    results = [source_format.read(record, places) for record in records]
+    found: list[tuple[int | None, RecordError]] = [
+        (None, RecordError("format-failure", failure.reason)) for failure in failures
     ]
-    results = [(record, reader(record, places)) for record in records]
-    errors.extend(
-        ValidationError(
-            run.payload_id, record.record_ordinal, error.code, error.message
-        )
-        for record, result in results
+    found.extend(
+        (record.record_ordinal, error)
+        for record, result in zip(records, results, strict=True)
         for error in result.errors
     )
+    breaks = (
+        chain_errors(result.read for result in results)
+        if source_format.states_balances
+        else []
+    )
+    found.extend((record.record.record_ordinal, error) for record, error in breaks)
+    # Payload-level errors first, then by record; each record's in field order.
+    found.sort(key=lambda pair: -1 if pair[0] is None else pair[0])
     return _Run(
         run=run,
         currency=currency,
-        records=tuple(result.read for _, result in results if result.read is not None),
+        records=tuple(r.read for r in results if r.read is not None),
         covered_from=min(
-            (d for _, r in results if (d := r.transaction_date) is not None),
+            (d for r in results if (d := r.transaction_date) is not None),
             default=None,
         ),
-        errors=tuple(errors),
+        errors=tuple(
+            ValidationError(run.payload_id, ordinal, error.code, error.message)
+            for ordinal, error in found
+        ),
+        break_dates=tuple(record.transaction_date for record, _ in breaks),
+    )
+
+
+def _judge(each: _Run, accepted: Mapping[str, str]) -> _Judged:
+    """Raise the run's review items and admit it if they settle every error."""
+    if not each.break_dates:
+        return _Judged(each=each, review_items=(), admitted=not each.errors)
+    resolved_by = accepted.get(each.run.import_run_id)
+    item = ReviewItem(
+        review_item_id=review_item_id("balance-break", each.run.import_run_id),
+        kind="balance-break",
+        account_id=each.run.declared_account_id,
+        date_from=min(each.break_dates),
+        date_to=max(each.break_dates),
+        payload_ids=(each.run.payload_id,),
+        resolved_by=resolved_by,
+    )
+    settled = BALANCE_BREAK_CODES if resolved_by is not None else frozenset()
+    return _Judged(
+        each=each,
+        review_items=(item,),
+        admitted=all(error.code in settled for error in each.errors),
     )
 
 
@@ -220,12 +278,13 @@ def _evidence_through(run: ImportRun) -> date:
     return run.covers_through
 
 
-def _result(each: _Run) -> ImportRunResult:
+def _result(judged: _Judged) -> ImportRunResult:
+    each = judged.each
     return ImportRunResult(
         import_run_id=each.run.import_run_id,
-        status="quarantined" if each.errors else "accepted",
+        status="accepted" if judged.admitted else "quarantined",
         covered_from=each.covered_from,
         covered_to=each.run.covers_through,
         errors=each.errors,
-        review_item_ids=(),
+        review_item_ids=tuple(item.review_item_id for item in judged.review_items),
     )

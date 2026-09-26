@@ -23,14 +23,25 @@ def transaction_id(
     description: str,
     occurrence: int,
 ) -> str:
-    """Hash the identity inputs, serialised as a compact JSON array, with SHA-256."""
-    inputs = [
-        IDENTITY_VERSION,
-        account_id,
-        transaction_date.isoformat(),
-        written(amount),
-        description,
-        occurrence,
-    ]
+    """Hash the ADR-009 identity inputs."""
+    return _hash(
+        [
+            IDENTITY_VERSION,
+            account_id,
+            transaction_date.isoformat(),
+            written(amount),
+            description,
+            occurrence,
+        ]
+    )
+
+
+def review_item_id(kind: str, import_run_id: str) -> str:
+    """Hash a review item's kind and the import run that raised it."""
+    return _hash([kind, import_run_id])
+
+
+def _hash(inputs: list[str | int]) -> str:
+    """Hash inputs serialised as a compact JSON array with SHA-256."""
     serialised = json.dumps(inputs, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(serialised.encode()).hexdigest()
