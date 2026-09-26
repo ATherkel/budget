@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from budget.bronze.models import FormatFailure, ImportRun, SourceRecord
 from budget.silver.currencies import minor_unit_places
+from budget.silver.decisions import SilverDecision
 from budget.silver.formats import READERS, ReadRecord
 from budget.silver.identity import IDENTITY_VERSION, identity_text, transaction_id
 from budget.silver.models import (
@@ -48,8 +49,10 @@ def build(
     source_records: Mapping[str, Sequence[SourceRecord]],
     format_failures: Mapping[str, Sequence[FormatFailure]],
     currencies: Mapping[str, str],
+    decisions: Sequence[SilverDecision] = (),
 ) -> SilverResult:
     """Derive Silver from import runs, their payloads' records and currencies."""
+    del decisions  # Balance breaks (#92) read them.
     read = [
         _read_run(
             run,

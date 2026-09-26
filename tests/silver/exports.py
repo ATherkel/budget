@@ -8,11 +8,12 @@ Silver over one or more such exports through `budget.silver.build`.
 
 import hashlib
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
 from budget.bronze.models import FormatFailure, ImportRun, SourceRecord
-from budget.silver import SilverResult, build
+from budget.silver import SilverDecision, SilverResult, build
 
 ACCOUNT = "joint-current"
 FORMAT = "danske-csv-v1"
@@ -78,23 +79,33 @@ def export(
     return Export(run=run, records=records)
 
 
-def build_from(*exports: Export) -> SilverResult:
+def build_from(
+    *exports: Export, decisions: Sequence[SilverDecision] = ()
+) -> SilverResult:
     """Run Silver over `exports`, for one DKK account."""
     return build(
         runs=[each.run for each in exports],
         source_records={each.run.payload_id: each.records for each in exports},
         format_failures={each.run.payload_id: each.failures for each in exports},
         currencies={ACCOUNT: "DKK"},
+        decisions=decisions,
     )
+
+
+def _hash(inputs: list[str | int]) -> str:
+    written = json.dumps(inputs, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(written.encode()).hexdigest()
+
+
+def review_item_id(kind: str, import_run_id: str) -> str:
+    """The `review_item_id` `silver-layer.md` defines for a run's item."""
+    return _hash([kind, import_run_id])
 
 
 def identity(
     transaction_date: date, amount: str, description: str, occurrence: int
 ) -> str:
     """The `transaction_id` `silver-layer.md` defines, for this module's account."""
-    written = json.dumps(
-        ["1", ACCOUNT, transaction_date.isoformat(), amount, description, occurrence],
-        ensure_ascii=False,
-        separators=(",", ":"),
+    return _hash(
+        ["1", ACCOUNT, transaction_date.isoformat(), amount, description, occurrence]
     )
-    return hashlib.sha256(written.encode()).hexdigest()

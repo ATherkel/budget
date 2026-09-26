@@ -6,6 +6,7 @@ Bronze import runs into validated, source-neutral canonical records.
 """
 
 from budget.silver.build import build
+from budget.silver.decisions import AcceptDiscrepancy, SilverDecision
 from budget.silver.models import (
     AccountEvidence,
     BalanceObservation,
@@ -19,10 +20,12 @@ from budget.silver.models import (
 )
 
 __all__ = [
+    "AcceptDiscrepancy",
     "AccountEvidence",
     "BalanceObservation",
     "ImportRunResult",
     "ReviewItem",
+    "SilverDecision",
     "SilverResult",
     "Transaction",
     "TransactionEvidence",
