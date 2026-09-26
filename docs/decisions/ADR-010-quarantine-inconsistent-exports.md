@@ -1,6 +1,9 @@
 # ADR-010: Quarantine Exports Whose Stated Balances Are Inconsistent
 
-**Status:** Accepted. Supersedes part of ADR-006.
+**Status:** Accepted. Supersedes part of ADR-006. Its first consequence is
+amended by [ADR-016](ADR-016-null-balance-for-accepted-discrepancies.md): a
+booked row that *accept discrepancy* admits without a balance keeps a null
+balance.
 
 ## Context
 

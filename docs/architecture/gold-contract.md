@@ -106,7 +106,7 @@ is a separate fact at its own grain
 | `description` | string | Yes | Normalized human-readable transaction text. |
 | `transaction_type` | `TransactionType` | Yes | Household interpretation. |
 | `transfer_group_id` | string/null | No | Shared by the two legs of a paired transfer, derived from their `transaction_id`s so it is stable across rebuilds. Null for a one-sided transfer and every other type. |
-| `balance_after` | `Decimal`/null | No | Bank-stated balance from the latest admitted export covering this date (ADR-009). Null only for sources that state no balances; inconsistent balance-stating exports are quarantined under ADR-010. |
+| `balance_after` | `Decimal`/null | No | Bank-stated balance from the latest admitted export covering this date (ADR-009). Null only for sources that state no balances, and for a row that states no balance in a balance-stating export admitted by *accept discrepancy* (ADR-016). Other inconsistent balance-stating exports are quarantined under ADR-010. |
 | `balance_check` | `BalanceCheck` | Yes | Result of the balance-chain check for this transaction (see `gold-layer.md`). |
 
 ### `GoldCategoryAllocation`

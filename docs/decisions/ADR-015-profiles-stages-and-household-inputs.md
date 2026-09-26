@@ -30,7 +30,7 @@ Three requirements shape the answer:
 The maintainer chose:
 
 - stage each layer as its own store, following the extract, clean, conform,
-  deliver steps of Kimball's ETL subsystems;
+  deliver steps of Kimball and Caserta's *The Data Warehouse ETL Toolkit*;
 - development reads production only through production's latest backup;
 - accounts, categories, rules and manual decisions live as text files in a
   folder, not in the database;

@@ -13,11 +13,14 @@ resolve which source records show the same booked transaction.
 - Manual decisions that affect identity, from the decision log
   ([`operations.md`](operations.md#decisionsjsonl-the-decision-log)).
   - *void import run*
-  - *same transaction*: a source record shows an existing transaction.
-  - *withdrawn*: the bank removed a transaction. It also settles a
-    `fewer-repeats` review item and admits the export that showed fewer.
+  - *same transaction*: a source record shows an existing transaction, such as
+    one whose text the bank changed.
+  - *withdrawn*: the bank removed a transaction. With *same transaction*, it is
+    one of the two decisions that settle a transaction a later export dropped
+    (ADR-017).
   - *accept discrepancy*: an import run's balance break is real in the source
-    and is admitted with the break recorded (ADR-010).
+    and is admitted with the break recorded (ADR-010). A booked row it admits
+    without a balance keeps a null balance (ADR-016).
 
 ## Canonical Transaction
 
@@ -30,7 +33,7 @@ Transaction(
     transaction_date: date,     # the source's transaction date (Danske: purchase date)
     amount: Decimal,
     currency: str,              # from account configuration
-    description: str,           # source text exactly as delivered
+    description: str,           # ADR-009 identity text
     source_system: str,         # source format, e.g. "danske-csv-v1"
     balance: Decimal | None,
     source_status: str,
@@ -38,18 +41,29 @@ Transaction(
     occurrence: int,            # k among visibly identical transactions
     day_sequence: int,          # order within transaction_date
     identity_version: str,
-    bank_category: str | None,  # provenance only; trimmed
+    bank_category: str | None,  # provenance only; trimmed, null when empty
     bank_subcategory: str | None,
 )
 ```
 
 `balance` is the bank-stated account balance immediately after this
 transaction. `source_status` is the source's own status value, carried
-verbatim. For each date, `balance` and `day_sequence` come from the latest
+verbatim. `description` is the identity text defined in ADR-009: the source
+text with leading and trailing whitespace removed and internal runs collapsed
+to one space. Every export that shows a transaction therefore gives it the same
+`description`, and a later export never changes it; Bronze keeps the text as
+delivered, reachable through `TransactionEvidence`. `bank_category` and
+`bank_subcategory` are the source's category labels with leading and trailing
+Unicode whitespace removed, including 0xA0, as for `description`; internal
+whitespace is kept. A label that is empty afterwards is null, as it is for a
+source that supplies no labels. For each date, `balance`,
+`day_sequence`, `bank_category` and `bank_subcategory` come from the latest
 admitted export covering that date (ADR-009). They can therefore change when a
-later export adds a late-booked transaction; `transaction_id` never does.
-`balance` is null only for sources that state no balances (ADR-010). The export
-chosen for a date is the latest admitted one that shows every transaction kept
+later export adds a late-booked transaction or relabels one; `transaction_id`
+never does.
+`balance` is null only for sources that state no balances (ADR-010), and when
+the selected export is one that *accept discrepancy* admitted and it states no
+balance on the transaction's row (ADR-016). The export chosen for a date is the latest admitted one that shows every transaction kept
 for it.
 
 Within a date, `day_sequence` preserves the bank's row order in the selected
@@ -114,7 +128,7 @@ UnbookedRecord(                 # retained provenance; never a transaction
 BalanceObservation(             # bank-stated end-of-day balance per export
     account_id: str,
     balance_date: date,
-    end_of_day_balance: Decimal,
+    end_of_day_balance: Decimal | None,  # null only as for balance (ADR-016)
     payload_id: str,
 )
 
@@ -126,7 +140,8 @@ AccountEvidence(                # the account's evidence bound; see above
 ImportRunResult(
     import_run_id: str,
     status: Literal["accepted", "quarantined"],
-    covered_from: date,         # first transaction date in the export
+    covered_from: date | None,  # earliest transaction date in the payload, booked or not;
+                                # None when the payload has no source records
     covered_to: date,           # the import run's covers_through (Bronze)
     errors: Sequence[ValidationError],
     review_item_ids: Sequence[str],
@@ -141,7 +156,7 @@ ValidationError(
 
 ReviewItem(
     review_item_id: str,        # deterministic
-    kind: Literal["export-disagreement", "fewer-repeats", "balance-break"],
+    kind: Literal["export-disagreement", "dropped-transactions", "balance-break"],
     account_id: str,
     date_from: date,
     date_to: date,
@@ -150,7 +165,32 @@ ReviewItem(
 )
 ```
 
+`ImportRunResult.covered_from` describes the file, not the transactions
+admitted from it: it is the earliest transaction date among all the payload's
+source records, whatever their `booking_status`. An export whose first row is
+cancelled on 28 August and whose first booked row is on 1 September has
+`covered_from` 28 August.
+
+A payload with no source records has no transaction date to read, and
+`covered_from` is null. That happens for a payload with a `FormatFailure`,
+which Bronze yields with no source records, and for a header-only export,
+whose `covers_through` the operator must declare (`bronze-layer.md`). Silver
+does not invent a start date: Bronze records none, and a made-up one would read
+as evidence. `covered_to` is unaffected: it is always the import run's
+`covers_through`.
+
 ## Rules
+
+**Amounts**
+- Every `amount`, `balance` and `end_of_day_balance` carries exactly the
+  currency's decimal places: two for DKK. The places come from the ISO 4217
+  table keyed by the account's configured currency (ADR-013). A source value
+  with fewer places is padded, so `-45,0` and `-45,00` both become
+  `Decimal("-45.00")`. Every export that shows a transaction therefore gives it
+  the same `amount`, in the same written form, and that is the value ADR-009
+  hashes.
+- A source value with more decimal places than its currency allows is an
+  unparseable decimal. Silver never rounds it.
 
 **Booking state**
 - Each source format maps its status values to `booking_status`: `booked`,
@@ -167,7 +207,8 @@ ReviewItem(
 - Errors include:
   - a format failure;
   - a wrong field count;
-  - an unparseable date or decimal;
+  - an unparseable date or decimal, including a decimal with more places than
+    its currency allows;
   - an unknown status;
   - a booked row without a balance, or a balance-chain break within the
     export (ADR-010).
@@ -196,12 +237,19 @@ ReviewItem(
   later bookings on an export's final date, are both explained growth. A date
   states an end-of-day balance only once it has a booked transaction, so the
   balances are compared on the dates both sides state one; ADR-009 records why
-  that is a consequence of the rules above and not an exemption from them.
+  that is a consequence of the rules above and not an exemption from them, and
+  ADR-017 covers a date whose transactions the run all drops. A null
+  `end_of_day_balance` states none, so that date is not compared (ADR-016).
+- A run *drops* a transaction when, on a date it covers, it shows fewer booked
+  transactions with that amount and identity text than are admitted, whether
+  two became one or one became none. Any drop quarantines the run and raises
+  one `dropped-transactions` review item; the amounts of the dropped
+  transactions count as an explained difference, so a drop alone raises no
+  `export-disagreement`. The item is settled once each dropped transaction has
+  a *withdrawn* or *same transaction* decision, and the run is then admitted
+  unless another review item holds it (ADR-017).
 - An unexplained difference quarantines the later run and raises an
   `export-disagreement` review item.
-- Fewer repeated transactions on any date quarantine the run and raise a
-  `fewer-repeats` review item; the amounts of the missing repeats count as an
-  explained difference, so the same date raises no `export-disagreement`.
 - Silver uses balances only to verify its own merge. Coverage and
   reconciliation for reporting belong to Gold and analytics (ADR-006).
 
