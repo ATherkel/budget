@@ -35,10 +35,15 @@ Three principles apply throughout:
 
 ## Stores
 
-Each ETL stage persists its output in its own SQLite store. Kimball's ETL
-subsystems name the steps *extract*, *clean*, *conform* and *deliver*, and
-save the data after each so a failure restarts from the last completed step.
-Here the saved steps are the stores.
+Each ETL stage persists its output in its own SQLite store. Kimball and
+Caserta's *The Data Warehouse ETL Toolkit* names four steps, *extract*,
+*clean*, *conform* and *deliver*, and recommends saving the data after each so
+a failure restarts from the last completed step. Here the saved steps are the
+stores, and clean and conform share Silver's. Kimball's list of ETL subsystems
+groups those two as one, *Cleaning and Conforming*, and Kimball Group leaves
+the number of saved copies to the design. The one copy it insists on, the
+untransformed extract, is Bronze
+([research note](../research/kimball-eccd-and-medallion-layers.md)).
 
 | Store | Step | Holds | Rebuildable from | In a backup set |
 | --- | --- | --- | --- | --- |
@@ -47,10 +52,11 @@ Here the saved steps are the stores.
 | `gold.db` | Deliver | The retained publications' Gold tables and lineage, recipes, configuration snapshots, the current pointer and its history, labels, legacy entries | Results: each from its recipe, replayed with its code (ADR-014). Recipes and the pointer history: no, they are history | Yes |
 | `gold/legacy/publication-<id>.db` | Deliver: legacy | One labeled publication that a Gold migration could not convert, in its old schema | Its recipe, replayed with its code | Yes |
 
-Kimball's *conform* step also builds the conformed dimensions. Here those
-(account, category, date) are built in Gold from the household inputs,
-because Silver's conforming is per source and Gold's dimensions are the
-household's.
+Silver's conforming makes the sources agree: it produces source-neutral
+canonical records and resolves duplicates. Building and publishing the
+conformed dimensions (account, category, date) belongs to Kimball's
+*Delivering* group, as the work of its dimension manager. Here Gold builds
+them, because they describe the household, not any source.
 
 Rules for every store:
 
