@@ -1,5 +1,101 @@
 # #11 — confirmed direction and handoff
 
+## Status as of 26 September 2026
+
+🤖 Added by Claude Code (Claude Opus 5.5)
+
+The maintainer will run a second prototype round before #11 closes. This
+section records what changed after the freeze and what that round needs to
+settle. The 17 September record below is unchanged; where the two disagree,
+this section is current. Document links point at `main` as of
+[`b1285e5`](https://github.com/ATherkel/budget/tree/b1285e5431995cec838da888364ac2925b4c3fe5).
+
+### Stale statements in the 17 September record
+
+- #16, #18 and #20 are merged (17, 18 and 23 September), and their ADRs are
+  accepted.
+- #10 is closed, resolved by #58 (ADR-015 and `operations.md`). Missing
+  categories are settled outside the dashboard with `budget review` and
+  `budget decide`, so the dashboard can name that route instead of saying the
+  workflow is undecided.
+
+### Resolution evidence
+
+| #11 asks for | Status |
+| --- | --- |
+| A linked throwaway prototype | Done: this branch, UI at `78efa47`. |
+| Live maintainer feedback | Done: [SESSION.md](SESSION.md). Neither participant has completed the three tasks on their own, and the second participant's feedback is relayed. |
+| Agreed screen behavior | Partly: the direction is agreed. Simple/Advanced is untested, and the missing-category section is unclear. |
+| Analytics-facing interface requirements | Open: [REPORT-SHAPE.md](REPORT-SHAPE.md) is a proposal and predates Gold 0.2. |
+
+### Decisions merged after the freeze
+
+- **Gold contract 0.2** (#18; ADR-007, ADR-008): a `refund` type; `adjustment`
+  transactions carry no category; `transfer_group_id` joins the two legs of a
+  paired transfer; `GoldAccount.evidence_through`; Gold publishes coverage on
+  each monthly balance snapshot ([gold-contract.md]).
+- **Classification and transfers** (#20; ADR-011, ADR-012): a transfer claim
+  with no counterpart stays `unknown` with an `unmatched-transfer` review item.
+  A one-sided transfer is a `transfer` with no group and comes only from a
+  manual decision ([classification.md]).
+- **Publications** (#57; ADR-014): every page reads exactly one Gold
+  publication, and past reports come as *as-was* or *as-known-at*
+  ([publications.md]).
+- **Operations** (#58; ADR-015): `budget serve` runs on the home network behind
+  one household passphrase and opens `gold.db` read-only ([operations.md]).
+
+### Work the later docs assign to #11
+
+- The publication picker, and a banner on any non-current publication naming
+  its label and whether it is as-was or as-known-at. A past view takes the
+  provisional label as of the publication's `known_at` ([presentation-layer.md],
+  [publications.md], ADR-014).
+- The login page ([operations.md]).
+- Coverage on every household-level measure, where a `partial` total names its
+  incomplete accounts. The provisional label is always on the current month,
+  and stays on a closed month until every imported account has an admitted
+  export produced at least 7 days after month end that covers its last day
+  ([presentation-layer.md]).
+- The styling of negative category spending, a net refund
+  ([analytics-layer.md]).
+
+The frozen prototype has neither a picker, a banner nor a login page. It shows
+coverage and a provisional flag, but those rules were written after it.
+
+### Scenario gaps
+
+The synthetic data has one paired transfer and no other transfer case. Add:
+
+- A one-sided transfer: a `transfer` with no `transfer_group_id`.
+- An unmatched transfer claim. It reaches the dashboard as `unknown`, because
+  its review item lives in Gold's privileged lineage interface, which analytics
+  may not read. Whether the Unclassified section can explain a leg that waits
+  for the next import is open. If it needs a contract change, it belongs to
+  #12.
+
+### Second round
+
+1. Reconcile REPORT-SHAPE.md with Gold 0.2 and [analytics-layer.md], and ask
+   the maintainer to accept it as the analytics interface requirements.
+2. Add the publication picker and banner, the login page and the transfer cases
+   above, and point the missing-category section at `budget review`.
+3. Add Simple/Advanced, and have both participants run the three original
+   tasks in both modes.
+4. Post the resolution comment on #11, close it, and add a pointer to #2's
+   Decisions so far.
+
+Budgeting and earmarked savings stay out: #2 excludes budget targets, so they
+need a separate scope decision rather than a #11 closure. If the maintainer
+instead closes #11 on the 17 September confirmation, the picker, banner and
+login page must first move explicitly to #12 or an implementation ticket.
+
+[analytics-layer.md]: https://github.com/ATherkel/budget/blob/b1285e5431995cec838da888364ac2925b4c3fe5/docs/architecture/analytics-layer.md
+[classification.md]: https://github.com/ATherkel/budget/blob/b1285e5431995cec838da888364ac2925b4c3fe5/docs/architecture/classification.md
+[gold-contract.md]: https://github.com/ATherkel/budget/blob/b1285e5431995cec838da888364ac2925b4c3fe5/docs/architecture/gold-contract.md
+[operations.md]: https://github.com/ATherkel/budget/blob/b1285e5431995cec838da888364ac2925b4c3fe5/docs/architecture/operations.md#dashboard-access
+[presentation-layer.md]: https://github.com/ATherkel/budget/blob/b1285e5431995cec838da888364ac2925b4c3fe5/docs/architecture/presentation-layer.md#data-trust-display
+[publications.md]: https://github.com/ATherkel/budget/blob/b1285e5431995cec838da888364ac2925b4c3fe5/docs/architecture/publications.md#past-views
+
 ## Status as of 17 September 2026
 
 The maintainer confirms that the current prototype is a good direction and
