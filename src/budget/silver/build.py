@@ -11,6 +11,7 @@ from budget.silver.decisions import (
     AcceptDiscrepancy,
     SameTransaction,
     SilverDecision,
+    VoidImportRun,
     Withdrawn,
 )
 from budget.silver.identity import IDENTITY_VERSION, review_item_id
@@ -51,6 +52,8 @@ def build(
         for d in decisions
         if isinstance(d, AcceptDiscrepancy)
     }
+    voided = {d.import_run_id for d in decisions if isinstance(d, VoidImportRun)}
+    runs = [r for r in runs if r.import_run_id not in voided]
     settlements = _Settlements.of(decisions)
     stored = sorted(
         (r for r in runs if r.outcome == "stored"),
@@ -335,10 +338,12 @@ def _account_evidence(
 
     Admitted runs count, and so do `repeat` runs of an admitted payload.
     """
-    payloads = {each.run.payload_id for each in admitted}
+    payloads = {(each.account_id, each.run.payload_id) for each in admitted}
     through: dict[str, date] = {}
     for run in runs:
-        if run.outcome == "refused" or run.payload_id not in payloads:
+        if run.outcome == "refused":
+            continue
+        if (run.declared_account_id, run.payload_id) not in payloads:
             continue
         bound = _evidence_through(run)
         account_id = run.declared_account_id
