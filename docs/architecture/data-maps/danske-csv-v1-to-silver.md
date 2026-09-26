@@ -103,8 +103,8 @@ These apply wherever a column below names them.
   errors in prose and names no `ValidationError.code`. This map names the four
   its rules raise: `unparseable-date`, `unparseable-decimal`, `unknown-status`
   and `missing-balance`. The other errors in that list, a format failure, a
-  wrong field count and a balance-chain break, do not depend on this format and
-  are not named here.
+  wrong field count and a balance-chain break, do not depend on this format;
+  `silver-layer.md` names them.
 
 ## Target: `Transaction`
 
