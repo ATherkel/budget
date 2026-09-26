@@ -32,7 +32,7 @@ Kimball's columns are adapted to this pipeline:
 | `ImportRun` with outcome `stored`, not voided | one presentation of a payload | account, format, admission order |
 | `ImportRun` with outcome `repeat` | one presentation of stored bytes | `AccountEvidence` only, never records |
 | account configuration | one account | currency, and through it the decimal places of the minor unit (ADR-013) |
-| manual decision, from the decision log ([`operations.md`](../operations.md#decisionsjsonl-the-decision-log)) | one recorded ruling | *same transaction*: `TransactionEvidence.transaction_id` and the `Transaction` grain. *withdrawn*: the `Transaction` grain and `ImportRunResult.status`. *accept discrepancy*: `ImportRunResult.status`, `balance` and `end_of_day_balance`. *void import run*: excluded by "not voided" above |
+| manual decision, from the decision log ([`operations.md`](../operations.md#decisionsjsonl-the-decision-log)) | one recorded ruling | *same transaction*: `TransactionEvidence.transaction_id`, the `Transaction` grain and `ImportRunResult.status`. *withdrawn*: the `Transaction` grain and `ImportRunResult.status`. *accept discrepancy*: `ImportRunResult.status`, `balance` and `end_of_day_balance`. *void import run*: excluded by "not voided" above |
 
 The `danske-csv-v1` fields. `bronze-layer.md` declares the header; the meanings
 come from it, `domains/transaction.md`, and the sample profile in
@@ -183,7 +183,7 @@ source records.
 | Target column | Type | Source | Transformation |
 | --- | --- | --- | --- |
 | `import_run_id` | `str` | `ImportRun.import_run_id` | copied |
-| `status` | `Literal` | derived, and manual decisions | `accepted` when the run has no validation error and fails no merge check, or when every one it has belongs to a review item a manual decision has settled: *accept discrepancy* for a `balance-break`, *withdrawn* for a `fewer-repeats` (ADR-009, ADR-010). Otherwise `quarantined` |
+| `status` | `Literal` | derived, and manual decisions | `accepted` when the run has no validation error and fails no merge check, or when every one it has belongs to a review item a manual decision has settled: *accept discrepancy* for a `balance-break`, *withdrawn* for a `fewer-repeats`, and *same transaction* for the item a bank-side text change raises (ADR-009, ADR-010). Otherwise `quarantined` |
 | `covered_from` | `date \| None` | `Dato` | the earliest `Dato` among the payload's source records, booked or not; null when the payload has none, as with a `FormatFailure` or a header-only export (`silver-layer.md`) |
 | `covered_to` | `date` | `ImportRun.covers_through` | copied |
 | `errors` | `Sequence` | derived | every `ValidationError` listed under *Validation* in `silver-layer.md`, with the codes under Error codes where this map names one. Errors a manual decision settled stay listed (ADR-010: "the import run lists it") |
