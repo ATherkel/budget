@@ -39,7 +39,7 @@ Transaction(
     occurrence: int,            # k among visibly identical transactions
     day_sequence: int,          # order within transaction_date
     identity_version: str,
-    bank_category: str | None,  # provenance only; trimmed
+    bank_category: str | None,  # provenance only; trimmed, null when empty
     bank_subcategory: str | None,
 )
 ```
@@ -50,7 +50,11 @@ verbatim. `description` is the identity text defined in ADR-009: the source
 text with leading and trailing whitespace removed and internal runs collapsed
 to one space. Every export that shows a transaction therefore gives it the same
 `description`, and a later export never changes it; Bronze keeps the text as
-delivered, reachable through `TransactionEvidence`. For each date, `balance`,
+delivered, reachable through `TransactionEvidence`. `bank_category` and
+`bank_subcategory` are the source's category labels with leading and trailing
+Unicode whitespace removed, including 0xA0, as for `description`; internal
+whitespace is kept. A label that is empty afterwards is null, as it is for a
+source that supplies no labels. For each date, `balance`,
 `day_sequence`, `bank_category` and `bank_subcategory` come from the latest
 admitted export covering that date (ADR-009). They can therefore change when a
 later export adds a late-booked transaction or relabels one; `transaction_id`
