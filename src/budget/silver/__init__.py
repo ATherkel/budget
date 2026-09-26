@@ -10,6 +10,7 @@ from budget.silver.decisions import (
     AcceptDiscrepancy,
     SameTransaction,
     SilverDecision,
+    VoidImportRun,
     Withdrawn,
 )
 from budget.silver.models import (
@@ -37,6 +38,7 @@ __all__ = [
     "TransactionEvidence",
     "UnbookedRecord",
     "ValidationError",
+    "VoidImportRun",
     "Withdrawn",
     "build",
 ]

@@ -84,6 +84,13 @@ def export(
     return Export(run=run, records=records)
 
 
+def presented(of: Export, *, account_id: str, payload_id: str) -> Export:
+    """Present `of`'s rows as `payload_id`, declared for `account_id`."""
+    run = replace(of.run, declared_account_id=account_id, payload_id=payload_id)
+    records = tuple(replace(r, payload_id=payload_id) for r in of.records)
+    return replace(of, run=run, records=records)
+
+
 def repeat(
     of: Export, *, run_id: str, exported_on: date, covers_through: date | None = None
 ) -> Export:
@@ -104,12 +111,12 @@ def repeat(
 def build_from(
     *exports: Export, decisions: Sequence[SilverDecision] = ()
 ) -> SilverResult:
-    """Run Silver over `exports`, for one DKK account."""
+    """Run Silver over `exports`, every account in DKK."""
     return build(
         runs=[each.run for each in exports],
         source_records={each.run.payload_id: each.records for each in exports},
         format_failures={each.run.payload_id: each.failures for each in exports},
-        currencies={ACCOUNT: "DKK"},
+        currencies={each.run.declared_account_id: "DKK" for each in exports},
         decisions=decisions,
     )
 

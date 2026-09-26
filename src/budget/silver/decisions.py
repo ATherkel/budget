@@ -34,4 +34,12 @@ class SameTransaction:
     record_ordinal: int
 
 
-type SilverDecision = AcceptDiscrepancy | Withdrawn | SameTransaction
+@dataclass(frozen=True)
+class VoidImportRun:
+    """An import run is mistaken, e.g. declared for the wrong account."""
+
+    decision_id: str
+    import_run_id: str
+
+
+type SilverDecision = AcceptDiscrepancy | Withdrawn | SameTransaction | VoidImportRun
