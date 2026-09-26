@@ -1,6 +1,6 @@
 # Logical Data Map: `danske-csv-v1` → Silver
 
-**Status:** Draft. The map restates, column by column, what
+**Status:** Accepted. The map restates, column by column, what
 [`silver-layer.md`](../silver-layer.md), ADR-009, ADR-010, ADR-013 and
 ADR-016 decide for one source format, and decides what they leave open. Rows
 and rules it decides itself are marked *Map decision*. Where the layer contract
