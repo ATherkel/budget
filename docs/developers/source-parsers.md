@@ -37,6 +37,12 @@ parser. There is no auto-detection, no entry-point discovery, and no mutable
 registration API: an ID that is not in the map is refused by name before the
 store reads the file.
 
+A format's own rules may still accept a small, declared set of variants that
+the payload names itself: `danske-csv-v1` accepts a comma or a semicolon and
+reads which one from the header. That is part of one format, not a choice
+between formats, and it is never inferred from how often a character appears.
+🤖 Added by Claude Code (Claude Opus 5.5)
+
 A format ID names a **source, a representation, and a version** -
 `danske-csv-v1`. Exactly one ID is declared today. `nordea-csv-v1`,
 `danske-api-v1`, and `danske-csv-v2` are shapes the naming leaves room for, not
@@ -61,7 +67,7 @@ helper.
   parser declares is refused.
 - `tests/bronze/parsers/test_danske_csv_v1.py` - the declared rules of one
   format, observed only through `parse` and `exported_on_from_filename`:
-  encoding, header, quoting, the transaction-date syntax and the coverage bound
+  encoding, header, delimiters, quoting, the transaction-date syntax and the coverage bound
   it feeds, and the filename convention.
 - `tests/bronze/test_store.py` - the store: exact bytes, provenance, reopening,
   repeats, account conflicts, coverage and refusals, and the recording of a

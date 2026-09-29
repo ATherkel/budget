@@ -25,8 +25,8 @@ financial business logic.
 ## Sample CSV Profile
 
 The current files match `danske-csv-v1` in `architecture/bronze-layer.md`:
-Windows-1252, comma-delimited, quoted fields, CRLF line endings, rows oldest
-first. The only values observed in `Status` are `Udført` and `Slettet`, and
+Windows-1252, comma- or semicolon-delimited (🤖 semicolon added by Claude Code
+(Claude Opus 5.5)), quoted fields, CRLF line endings, rows oldest first. The only values observed in `Status` are `Udført` and `Slettet`, and
 `Afstemt` is always `Nej`. The single blank `Saldo` in the samples is on a
 `Slettet` row, which the balance chain skips.
 
