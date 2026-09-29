@@ -156,12 +156,14 @@ ValidationError(
 
 ReviewItem(
     review_item_id: str,        # deterministic
-    kind: Literal["export-disagreement", "dropped-transactions", "balance-break"],
+    kind: Literal["export-disagreement", "dropped-transaction", "balance-break"],
     account_id: str,
     date_from: date,
     date_to: date,
     payload_ids: Sequence[str],
     resolved_by: str | None,    # manual decision id
+    transaction_id: str | None, # the dropped transaction, for `dropped-transaction`;
+                                # None for every other kind (ADR-018)
 )
 ```
 
@@ -240,10 +242,9 @@ as evidence. `covered_to` is unaffected: it is always the import run's
   serializing alike. `account_id` is an input, so identical purchases on two
   accounts get two identifiers.
 - `review_item_id` is the same hash over `[kind, import_run_id]`, the run that
-  raised the item. While
-  [issue #80](https://github.com/ATherkel/budget/issues/80) is open, a
-  `dropped-transactions` item follows its proposal: one item per dropped
-  transaction, with that `transaction_id` appended to the array.
+  raised the item. A `dropped-transaction` item appends its `transaction_id`,
+  hashing `[kind, import_run_id, transaction_id]`, so two drops by one run give
+  two items (ADR-018).
 
 **Merge verification**
 - Import runs are admitted in `exported_on` order, then `started_at` for runs
@@ -265,11 +266,12 @@ as evidence. `covered_to` is unaffected: it is always the import run's
 - A run *drops* a transaction when, on a date it covers, it shows fewer booked
   transactions with that amount and identity text than are admitted, whether
   two became one or one became none. Any drop quarantines the run and raises
-  one `dropped-transactions` review item; the amounts of the dropped
-  transactions count as an explained difference, so a drop alone raises no
-  `export-disagreement`. The item is settled once each dropped transaction has
-  a *withdrawn* or *same transaction* decision, and the run is then admitted
-  unless another review item holds it (ADR-017).
+  one `dropped-transaction` review item for each transaction dropped; the
+  amounts of the dropped transactions count as an explained difference, so a
+  drop alone raises no `export-disagreement`. A *withdrawn* or *same
+  transaction* decision settles an item, and the run is admitted once each of
+  its items is settled, unless another review item holds it (ADR-017,
+  ADR-018).
 - An unexplained difference quarantines the later run and raises an
   `export-disagreement` review item.
 - Silver uses balances only to verify its own merge. Coverage and

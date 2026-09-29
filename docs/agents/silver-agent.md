@@ -47,10 +47,11 @@ resolve duplicates without assigning household financial meaning.
   admitted in `exported_on` order. Runs sharing an `exported_on` fall back to
   import order; ADR-009 records what that can and cannot change.
 - A later export that drops an admitted transaction, repeated or not,
-  quarantines that run with a `dropped-transactions` review item; a drop alone
-  raises no `export-disagreement`. A *withdrawn* or *same transaction* decision
-  for each dropped transaction admits it unless another review item holds it
-  (ADR-017). A missing balance or a within-export chain break quarantines the
+  quarantines that run with a `dropped-transaction` review item for each
+  transaction dropped; a drop alone raises no `export-disagreement`. A
+  *withdrawn* or *same transaction* decision settles each item, and the run is
+  admitted once all are settled unless another review item holds it (ADR-017,
+  ADR-018). A missing balance or a within-export chain break quarantines the
   run with a `balance-break` review item; an *accept discrepancy* decision
   admits it and settles that item through `resolved_by`.
 - A late booking in a later export is admitted as explained growth: identifiers
@@ -59,5 +60,5 @@ resolve duplicates without assigning household financial meaning.
 - Reprocessing the same Bronze inputs, configuration, and manual decisions
   produces the same Silver results.
 - The synthetic scenarios in issue #5's resolution pass, using synthetic data
-  only. Scenarios 7 and 9 expect a `dropped-transactions` review item
-  (ADR-017).
+  only. Scenarios 7 and 9 expect a `dropped-transaction` review item
+  for each dropped transaction (ADR-017, ADR-018).

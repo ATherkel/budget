@@ -185,11 +185,11 @@ source records.
 | Target column | Type | Source | Transformation |
 | --- | --- | --- | --- |
 | `import_run_id` | `str` | `ImportRun.import_run_id` | copied |
-| `status` | `Literal` | derived, and manual decisions | `accepted` when the run has no validation error and fails no merge check, or when every one it has belongs to a review item manual decisions have settled: *accept discrepancy* for a `balance-break`, and for a `dropped-transactions` a *withdrawn* or *same transaction* for each transaction the run dropped (ADR-010, ADR-017). Otherwise `quarantined` |
+| `status` | `Literal` | derived, and manual decisions | `accepted` when the run has no validation error and fails no merge check, or when every one it has belongs to a review item manual decisions have settled: *accept discrepancy* for a `balance-break`, and for each `dropped-transaction`, one per transaction the run dropped, a *withdrawn* or *same transaction* (ADR-010, ADR-017, ADR-018). Otherwise `quarantined` |
 | `covered_from` | `date \| None` | `Dato` | the earliest `Dato` among the payload's source records, booked or not; null when the payload has none, as with a `FormatFailure` or a header-only export (`silver-layer.md`) |
 | `covered_to` | `date` | `ImportRun.covers_through` | copied |
 | `errors` | `Sequence` | derived | every `ValidationError` listed under *Validation* in `silver-layer.md`, with the codes under Error codes where this map names one. Errors a manual decision settled stay listed (ADR-010: "the import run lists it") |
-| `review_item_ids` | `Sequence` | derived | review items raised for this run, settled or not; a settled one names its decision in `ReviewItem.resolved_by` |
+| `review_item_ids` | `Sequence` | derived | review items raised for this run, settled or not, one `dropped-transaction` item per transaction it dropped (ADR-018); a settled one names its decision in `ReviewItem.resolved_by` |
 
 `AccountEvidence` reads only `ImportRun` fields, so it is format-independent
 and the formula in `silver-layer.md` is its whole map.
