@@ -1,7 +1,7 @@
 # Copyright 2026 Therkel
 """``danske-csv-v1``: one bank's CSV export, exactly as it declares itself.
 
-Everything format-specific lives here - the encoding, the declared header, the
+Everything format-specific lives here - the encoding, the declared headers, the
 delimiters, the quoting shape, and the transaction-date syntax. The store knows
 none of it, and a future format gets its own module and its own ID rather than a
 change to this one's meaning.
@@ -16,17 +16,22 @@ from budget.bronze.parsers.base import ParserResult, SourceParser
 
 SOURCE_FORMAT_ID = "danske-csv-v1"
 
-# The declared header of `danske-csv-v1`, in order. A payload is split against
-# exactly this, and no other field name is ever interpreted.
-_HEADER = (
-    "Dato",
-    "Kategori",
-    "Underkategori",
-    "Tekst",
-    "Beløb",
-    "Saldo",
-    "Status",
-    "Afstemt",
+# The declared headers of `danske-csv-v1`, in order. An account with bank
+# categories exports all eight fields; one without them leaves out Kategori and
+# Underkategori entirely. A payload's header must be exactly one of these, it is
+# split against that one, and no other field name is ever interpreted.
+_HEADERS = (
+    (
+        "Dato",
+        "Kategori",
+        "Underkategori",
+        "Tekst",
+        "Beløb",
+        "Saldo",
+        "Status",
+        "Afstemt",
+    ),
+    ("Dato", "Tekst", "Beløb", "Saldo", "Status", "Afstemt"),
 )
 
 # The delimiters this format accepts. The bank's export dialog offers a comma
@@ -161,16 +166,17 @@ def _split_payload(content: bytes) -> tuple[list[dict[str, str]], str | None]:
     rows, failure_reason = _split_rows(content)
     if failure_reason is not None:
         return [], failure_reason
-    header, *data = rows
-    if tuple(header) != _HEADER:
+    first, *data = rows
+    header = tuple(first)
+    if header not in _HEADERS:
         return [], "payload header does not match danske-csv-v1"
     records = []
     for ordinal, values in enumerate(data, start=1):
-        if len(values) != len(_HEADER):
+        if len(values) != len(header):
             return [], (
-                f"record {ordinal} has {len(values)} fields, expected {len(_HEADER)}"
+                f"record {ordinal} has {len(values)} fields, expected {len(header)}"
             )
-        records.append(dict(zip(_HEADER, values, strict=True)))
+        records.append(dict(zip(header, values, strict=True)))
     return records, None
 
 
