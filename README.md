@@ -59,3 +59,41 @@ made.
 Parsing is separated by source, representation, and version:
 [docs/developers/source-parsers.md](docs/developers/source-parsers.md) describes
 the contract, how to register a format, and what is deliberately not solved yet.
+
+## Storage and profiles
+
+A profile is an immutable value that names the folder its stage stores live in.
+Nothing is selected implicitly, and a test profile refuses any path outside the
+temporary directory it was built from:
+
+```python
+from budget.bronze import BronzeStore, migrate_bronze
+from budget.profiles import Profile
+
+profile = Profile(name="development", stores=Path("dev-stores"))
+migrate_bronze(profile)
+
+with BronzeStore(profile) as store:
+    run = store.import_file(
+        source,
+        declared_account_id="daily-account",
+        source_format="danske-csv-v1",
+        covers_through=date(2026, 9, 13),
+    )
+```
+
+`migrate_bronze` is the only operation that creates or upgrades a store. It
+applies the numbered SQL files in `src/budget/migrations/bronze/`, which ship
+inside the installed wheel and sdist so an installation can migrate without a
+source checkout, and it records both `PRAGMA user_version` and a one-row
+`store_identity` naming the profile and stage. Opening a store never creates or
+changes the schema: it requires an existing file, `mode=rw`, a version this code
+knows, and a matching identity, and it sets `foreign_keys = ON`,
+`busy_timeout = 5000` and `synchronous = FULL`. A new store is created in WAL
+mode.
+
+The production profile refuses to migrate until the backup and command work
+lands (issue #120), so these commands are for development and test profiles
+today. `BronzeStore(profile, parsers=...)` accepts an optional mapping for
+tests that need two versions of one format; the mapping is copied, and a parser
+registered under an ID it does not name is refused.
