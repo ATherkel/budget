@@ -8,10 +8,18 @@ inherit the operator's shell.
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 BRONZE_STORE_NAME = "bronze.db"
 STORES_FOLDER = "stores"
+DEVELOPMENT_PROFILE_NAME = "development"
+PRODUCTION_PROFILE_NAME = "production"
 TEST_PROFILE_NAME = "test"
+PROFILE_NAMES: Final = (
+    DEVELOPMENT_PROFILE_NAME,
+    PRODUCTION_PROFILE_NAME,
+    TEST_PROFILE_NAME,
+)
 
 
 class ProfilePathOutsideRootError(ValueError):
@@ -20,6 +28,24 @@ class ProfilePathOutsideRootError(ValueError):
     def __init__(self) -> None:
         """State the rule without repeating the operator's own paths."""
         super().__init__("a test profile path must stay inside its temporary root")
+
+
+class UnknownProfileNameError(ValueError):
+    """A profile name is not one of the declared profiles."""
+
+    def __init__(self, name: str) -> None:
+        """Name the unknown value and the profiles that exist."""
+        super().__init__(
+            f"unknown profile {name!r}: expected one of {', '.join(PROFILE_NAMES)}"
+        )
+
+
+class TestProfileRootRequiredError(ValueError):
+    """A test profile must carry the temporary root it stays inside."""
+
+    def __init__(self) -> None:
+        """State the rule a test profile cannot opt out of."""
+        super().__init__("a test profile must name the temporary root it stays inside")
 
 
 @dataclass(frozen=True)
@@ -37,6 +63,10 @@ class Profile:
 
     def __post_init__(self) -> None:
         """Resolve the paths, refusing a test profile that escapes its root."""
+        if self.name not in PROFILE_NAMES:
+            raise UnknownProfileNameError(self.name)
+        if self.name == TEST_PROFILE_NAME and self.root is None:
+            raise TestProfileRootRequiredError
         stores = Path(self.stores).resolve()
         root = None if self.root is None else Path(self.root).resolve()
         if root is not None and not stores.is_relative_to(root):
@@ -44,10 +74,22 @@ class Profile:
         object.__setattr__(self, "stores", stores)
         object.__setattr__(self, "root", root)
 
+    def _guarded_path(self, path: Path) -> Path:
+        """Resolve one derived path and re-check it against a test root.
+
+        The filesystem is not frozen when a profile is built: the stores folder
+        or the store file can be replaced by a symlink afterwards, so every
+        access resolves the path again instead of trusting the construction.
+        """
+        resolved = Path(path).resolve()
+        if self.root is not None and not resolved.is_relative_to(self.root):
+            raise ProfilePathOutsideRootError
+        return resolved
+
     @property
     def bronze_store(self) -> Path:
-        """The Bronze stage store inside this profile's stores folder."""
-        return Path(self.stores) / BRONZE_STORE_NAME
+        """The Bronze stage store, re-checked against the test root each time."""
+        return self._guarded_path(Path(self.stores) / BRONZE_STORE_NAME)
 
 
 def test_profile(root: str | Path) -> Profile:
