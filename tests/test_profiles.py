@@ -12,6 +12,8 @@ from budget.profiles import (
     BRONZE_STORE_NAME,
     Profile,
     ProfilePathOutsideRootError,
+    TestProfileRootRequiredError,
+    UnknownProfileNameError,
 )
 from budget.profiles import (
     test_profile as make_test_profile,
@@ -75,6 +77,51 @@ class ProfileTests(unittest.TestCase):
 
             assert profile.name == "test"
             assert profile.stores.is_relative_to((root / "run").resolve())
+
+    def test_an_unknown_profile_name_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            for name in ("Production", "staging", ""):
+                with self.subTest(name=name), pytest.raises(UnknownProfileNameError):
+                    Profile(name=name, stores=root / "stores")
+
+    def test_a_test_profile_must_carry_its_temporary_root(self) -> None:
+        with TemporaryDirectory() as directory:
+            with pytest.raises(TestProfileRootRequiredError):
+                Profile(name="test", stores=Path(directory) / "stores")
+
+    def test_a_bronze_store_replaced_by_a_symlink_is_refused(self) -> None:
+        with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
+            root = Path(directory)
+            profile = make_test_profile(root)
+            profile.stores.mkdir(parents=True)
+            outside_file = Path(outside) / "bronze.db"
+            outside_file.write_bytes(b"not ours")
+            try:
+                profile.bronze_store.symlink_to(outside_file)
+            except OSError as error:  # Windows may refuse without a privilege
+                self.skipTest(f"symlinks are unavailable here: {error}")
+
+            with pytest.raises(ProfilePathOutsideRootError):
+                _ = profile.bronze_store
+
+            assert outside_file.read_bytes() == b"not ours"
+
+    def test_a_stores_folder_replaced_by_a_symlink_is_refused(self) -> None:
+        with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
+            root = Path(directory)
+            profile = make_test_profile(root)
+            stores = profile.stores
+            stores.mkdir(parents=True)
+            stores.rmdir()
+            try:
+                stores.symlink_to(Path(outside), target_is_directory=True)
+            except OSError as error:  # Windows may refuse without a privilege
+                self.skipTest(f"symlinks are unavailable here: {error}")
+
+            with pytest.raises(ProfilePathOutsideRootError):
+                _ = profile.bronze_store
 
 
 if __name__ == "__main__":
