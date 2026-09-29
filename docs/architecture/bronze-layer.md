@@ -133,6 +133,12 @@ operator asked the bank for.
   🤖 Added by Claude Code (Claude Opus 5.5)
 - The header is exactly `Dato`, `Kategori`, `Underkategori`, `Tekst`, `Beløb`,
   `Saldo`, `Status`, `Afstemt`.
+  An account without bank categories instead exports exactly `Dato`, `Tekst`,
+  `Beløb`, `Saldo`, `Status`, `Afstemt`, with no `Kategori` or `Underkategori`
+  at all. The header names the payload's layout, and every record must have
+  that layout's fields. Bronze presents only the fields a payload has and
+  never adds the missing two; Silver reads their absence as null labels.
+  🤖 Added by Claude Code (Claude Opus 5.5)
 - `Dato` is exactly two day digits, two month digits and four year digits,
   separated by periods (`DD.MM.YYYY`, as in `12.09.2026`), and must be a real
   calendar date. A one-digit day or month, a leading space, Unicode digits, the
@@ -147,6 +153,7 @@ operator asked the bank for.
   export time.
 - `Kategori` and `Underkategori` are space-padded. The padding is preserved
   in source records.
+  🤖 Claude Code (Claude Opus 5.5): this applies where a payload has them.
 - The file contains no account, currency, or transaction identifier.
 
 ## Responsibilities
