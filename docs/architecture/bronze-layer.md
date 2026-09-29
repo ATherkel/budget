@@ -121,8 +121,6 @@ operator asked the bank for.
 
 - Windows-1252, comma- or semicolon-delimited, every field double-quoted, CRLF
   line endings, and at most one final line break.
-  🤖 Added by Codex (deepseek/deepseek-v4.1-flash); semicolon added by Claude
-  Code (Claude Opus 5.5)
 - The bank's export dialog offers a comma, a semicolon (its default), a blank
   or a tab as the delimiter, and the two exports are otherwise byte for byte
   the same. The character after `"Dato"` in the header is the payload's
@@ -130,7 +128,6 @@ operator asked the bank for.
   or is blank- or tab-delimited, gets a format failure. Because repeats compare
   exact bytes, the same export saved once with each delimiter is two payloads,
   not a `repeat`.
-  🤖 Added by Claude Code (Claude Opus 5.5)
 - The header is exactly `Dato`, `Kategori`, `Underkategori`, `Tekst`, `Beløb`,
   `Saldo`, `Status`, `Afstemt`.
   An account without bank categories instead exports exactly `Dato`, `Tekst`,
@@ -138,7 +135,6 @@ operator asked the bank for.
   at all. The header names the payload's layout, and every record must have
   that layout's fields. Bronze presents only the fields a payload has and
   never adds the missing two; Silver reads their absence as null labels.
-  🤖 Added by Claude Code (Claude Opus 5.5)
 - `Dato` is exactly two day digits, two month digits and four year digits,
   separated by periods (`DD.MM.YYYY`, as in `12.09.2026`), and must be a real
   calendar date. A one-digit day or month, a leading space, Unicode digits, the
@@ -153,7 +149,7 @@ operator asked the bank for.
   export time.
 - `Kategori` and `Underkategori` are space-padded. The padding is preserved
   in source records.
-  🤖 Claude Code (Claude Opus 5.5): this applies where a payload has them.
+  This applies where a payload has them.
 - The file contains no account, currency, or transaction identifier.
 
 ## Responsibilities

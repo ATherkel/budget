@@ -43,7 +43,11 @@ an eight- or six-field header, and reads both from the header. That is part of
 one format, not a choice between formats, and it is never inferred from how
 often a character appears.
 🤖 Added by Claude Code (Claude Opus 5.5)
-
+A format's own rules may still accept a small, declared set of variants that
+the payload names itself: `danske-csv-v1` accepts a comma or a semicolon, and
+an eight- or six-field header, and reads both from the header. That is part of
+one format, not a choice between formats, and it is never inferred from how
+often a character appears.
 A format ID names a **source, a representation, and a version** -
 `danske-csv-v1`. Exactly one ID is declared today. `nordea-csv-v1`,
 `danske-api-v1`, and `danske-csv-v2` are shapes the naming leaves room for, not
