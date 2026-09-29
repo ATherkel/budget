@@ -12,8 +12,10 @@ from budget.profiles import (
     BRONZE_STORE_NAME,
     Profile,
     ProfilePathOutsideRootError,
-    TestProfileRootRequiredError,
     UnknownProfileNameError,
+)
+from budget.profiles import (
+    TestProfileRootRequiredError as RootRequiredError,
 )
 from budget.profiles import (
     test_profile as make_test_profile,
@@ -89,7 +91,7 @@ class ProfileTests(unittest.TestCase):
     def test_a_test_profile_must_carry_its_temporary_root(self) -> None:
         with (
             TemporaryDirectory() as directory,
-            pytest.raises(TestProfileRootRequiredError),
+            pytest.raises(RootRequiredError),
         ):
             Profile(name="test", stores=Path(directory) / "stores")
 

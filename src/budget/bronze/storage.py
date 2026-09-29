@@ -140,33 +140,14 @@ class ForeignKeyViolationError(BronzeStorageError):
 
 
 @dataclass(frozen=True)
-class MigrationStep:
+class _MigrationStep:
     """One numbered SQL migration, read from the packaged resources."""
 
     version: int
     sql: str
 
 
-def __migration_steps() -> tuple[MigrationStep, ...]:
-    """Return the packaged Bronze migrations, oldest first."""
-    folder = _MIGRATIONS_FOLDER
-    steps = []
-    for path in sorted(folder.glob("*.sql")):
-        try:
-            version = int(path.name.split("_", 1)[0])
-        except ValueError:
-            raise MigrationResourceError.unmet_naming_rule(path.name) from None
-        steps.append(MigrationStep(version=version, sql=path.read_text("utf-8")))
-    expected = list(range(1, len(steps) + 1))
-    if [step.version for step in steps] != expected:
-        found = [step.version for step in steps]
-        raise MigrationResourceError.not_contiguous(expected, found)
-    if not steps:
-        raise MigrationResourceError.empty()
-    return tuple(steps)
-
-
-def _migration_steps() -> tuple[MigrationStep, ...]:
+def _migration_steps() -> tuple[_MigrationStep, ...]:
     """Return the packaged Bronze migrations, oldest first."""
     steps = []
     for path in sorted(_MIGRATIONS_FOLDER.glob("*.sql")):
@@ -174,7 +155,7 @@ def _migration_steps() -> tuple[MigrationStep, ...]:
             version = int(path.name.split("_", 1)[0])
         except ValueError:
             raise MigrationResourceError.unmet_naming_rule(path.name) from None
-        steps.append(MigrationStep(version=version, sql=path.read_text("utf-8")))
+        steps.append(_MigrationStep(version=version, sql=path.read_text("utf-8")))
     expected = list(range(1, len(steps) + 1))
     if [step.version for step in steps] != expected:
         found = [step.version for step in steps]
@@ -247,10 +228,24 @@ def _require_identity(
 
 
 def _is_only_comments(text: str) -> bool:
-    """Report whether every non-empty line of text is an SQL comment."""
-    return all(
-        not line.strip() or line.lstrip().startswith("--") for line in text.splitlines()
-    )
+    """Report whether text holds nothing but SQL comments and whitespace."""
+    remaining = text
+    while remaining.strip():
+        stripped = remaining.lstrip()
+        if stripped.startswith("--"):
+            newline = stripped.find(chr(10))
+            if newline == -1:
+                return True
+            remaining = stripped[newline + 1 :]
+            continue
+        if stripped.startswith("/*"):
+            end = stripped.find("*/")
+            if end == -1:
+                return False
+            remaining = stripped[end + 2 :]
+            continue
+        return False
+    return True
 
 
 def _statements(sql: str) -> list[str]:
@@ -291,7 +286,7 @@ def _require_no_foreign_key_violations(
 def _apply_step(
     connection: sqlite3.Connection,
     profile: Profile,
-    step: MigrationStep,
+    step: _MigrationStep,
 ) -> None:
     """Apply one migration and its version bump in one transaction."""
     try:

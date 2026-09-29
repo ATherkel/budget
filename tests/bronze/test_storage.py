@@ -39,6 +39,30 @@ def _tables(path: Path) -> set[str]:
         return {row[0] for row in rows}
 
 
+@contextmanager
+def _patched_resources(suffix: str) -> Iterator[None]:
+    """Patch the stdlib read boundary so the real resource gains a suffix.
+
+    Discovery, the loader, the runner, the transaction and the foreign-key check
+    all stay the real code; only `pathlib.Path.read_text` is replaced, and only
+    for the packaged `0001` file, which is returned with `suffix` appended.
+    """
+    original = Path.read_text
+
+    def read_text(
+        path: Path,
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> str:
+        text = original(path, encoding, errors)
+        if path.name.startswith("0001_"):
+            return text + suffix
+        return text
+
+    with mock.patch.object(Path, "read_text", autospec=True, side_effect=read_text):
+        yield
+
+
 class BronzeStorageTests(unittest.TestCase):
     def test_migrate_creates_a_strict_store_that_records_its_identity(self) -> None:
         with TemporaryDirectory() as directory:
@@ -275,6 +299,66 @@ class BronzeStorageTests(unittest.TestCase):
                     BronzeStore(profile)
                 with pytest.raises(storage.StoreIdentityError):
                     migrate_bronze(profile)
+
+    def test_a_failing_statement_rolls_back_and_a_retry_succeeds(self) -> None:
+        suffix = (
+            "CREATE TABLE marker (x TEXT);\n"
+            "INSERT INTO marker (x) VALUES (this is not valid sql);\n"
+        )
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+
+            with _patched_resources(suffix), pytest.raises(sqlite3.OperationalError):
+                migrate_bronze(profile)
+
+            with _connected(profile.bronze_store) as connection:
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 0
+            assert _tables(profile.bronze_store) == set()
+
+            migrate_bronze(profile)
+            with BronzeStore(profile) as store:
+                assert store.get_format_failures("absent") == ()
+
+    def test_a_foreign_key_violation_rolls_back_and_a_retry_succeeds(self) -> None:
+        suffix = (
+            "INSERT INTO source_records (payload_id, record_ordinal, fields)"
+            " VALUES ('missing-payload', 1, '{}');\n"
+        )
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+
+            with (
+                _patched_resources(suffix),
+                pytest.raises(storage.ForeignKeyViolationError),
+            ):
+                migrate_bronze(profile)
+
+            with _connected(profile.bronze_store) as connection:
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 0
+            assert _tables(profile.bronze_store) == set()
+
+            migrate_bronze(profile)
+            with BronzeStore(profile) as store:
+                assert store.get_source_records("missing-payload") == ()
+
+    def test_a_resource_suffix_may_use_ordinary_sql_layout(self) -> None:
+        suffix = (
+            "CREATE TABLE first (x TEXT); CREATE TABLE second (y TEXT);\n"
+            "INSERT INTO first (x) VALUES ('a;b'); -- trailing line comment\n"
+            "/* trailing block\n   comment */\n"
+        )
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+
+            with _patched_resources(suffix):
+                migrate_bronze(profile)
+
+            with _connected(profile.bronze_store) as connection:
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+                assert connection.execute("SELECT x FROM first").fetchall() == [
+                    ("a;b",)
+                ]
+            assert _tables(profile.bronze_store) >= {"first", "second"}
 
 
 if __name__ == "__main__":
