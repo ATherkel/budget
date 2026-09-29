@@ -70,7 +70,6 @@ operator asked the bank for.
   guessed. A format that accepts more than one delimiter reads a payload's
   delimiter from its declared header, never by sniffing the data. A payload
   that does not match yields a `FormatFailure` and no source records.
-  🤖 Delimiter wording added by Claude Code (Claude Opus 5.5)
 - **Repeat payloads.** Presenting bytes already stored for the same account
   records a new `repeat` import run and stores nothing new. It still records
   its own `exported_on` and `covers_through` and names the run it repeats: an
@@ -141,8 +140,6 @@ operator asked the bank for.
   ISO order, another separator such as `12-09-2026`, or trailing text is a
   malformed `Dato`, so the payload gets a format failure rather than a guessed
   value.
-  🤖 Added by Codex (deepseek/deepseek-v4.1-flash); separator corrected by
-  Claude Code (Claude Opus 5.5)
 - Rows are ordered oldest first by `Dato`, the transaction date (purchase
   date). A transaction the bank books days later appears at its `Dato` in later
   exports, and `Saldo` is the running balance recalculated in that order at
