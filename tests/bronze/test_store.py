@@ -36,15 +36,21 @@ class LineParser:
 
     source_format = "synthetic-lines-v1"
 
-    def __init__(self, field: str | None, limit: int | None = None) -> None:
+    def __init__(
+        self,
+        field: str | None,
+        limit: int | None = None,
+        failure: str = "this version reads no lines",
+    ) -> None:
         """Hold the field each record carries, or fail every payload."""
         self._field = field
         self._limit = limit
+        self._failure = failure
 
     def parse(self, content: bytes) -> ParserResult:
         """Present one record per line under this version's field name."""
         if self._field is None:
-            return ParserResult.failed("this version reads no lines")
+            return ParserResult.failed(self._failure)
         lines = [line for line in content.decode("ascii").splitlines() if line]
         if self._limit is not None:
             lines = lines[: self._limit]
@@ -786,6 +792,78 @@ class BronzeStoreTests(unittest.TestCase):
             assert again.payload_id == failed.payload_id
             assert failed_records == ()
             assert len(failures) == 1
+
+    def test_a_later_failure_refreshes_the_reason_and_keeps_every_run(self) -> None:
+        content = b"12-09-2026\n05-09-2026\n"
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "synthetic-lines.csv"
+            source.write_bytes(content)
+            profile = migrated_profile(root)
+            reader = LineParser("datum")
+            first_failure = LineParser(None, failure="the first version refuses this")
+            second_failure = LineParser(None, failure="the second version refuses this")
+
+            with BronzeStore(
+                profile, parsers={LineParser.source_format: reader}
+            ) as store:
+                stored_run = store.import_file(
+                    source,
+                    declared_account_id="daily-account",
+                    source_format=LineParser.source_format,
+                    exported_on=date(2026, 9, 14),
+                    covers_through=date(2026, 9, 13),
+                )
+
+            with BronzeStore(
+                profile, parsers={LineParser.source_format: first_failure}
+            ) as store:
+                failed_run = store.import_file(
+                    source,
+                    declared_account_id="daily-account",
+                    source_format=LineParser.source_format,
+                    exported_on=date(2026, 9, 14),
+                    covers_through=date(2026, 9, 13),
+                )
+                reasons = [
+                    failure.reason
+                    for failure in store.get_format_failures(stored_run.payload_id)
+                ]
+                assert reasons == ["the first version refuses this"]
+
+            with BronzeStore(
+                profile, parsers={LineParser.source_format: second_failure}
+            ) as store:
+                store.import_file(
+                    source,
+                    declared_account_id="daily-account",
+                    source_format=LineParser.source_format,
+                    exported_on=date(2026, 9, 14),
+                    covers_through=date(2026, 9, 13),
+                )
+                refreshed = [
+                    failure.reason
+                    for failure in store.get_format_failures(stored_run.payload_id)
+                ]
+                assert refreshed == ["the second version refuses this"]
+                assert store.get_source_records(stored_run.payload_id) == ()
+                assert store.get_import_run(stored_run.import_run_id) == stored_run
+                assert store.get_import_run(failed_run.import_run_id) == failed_run
+
+            with BronzeStore(
+                profile, parsers={LineParser.source_format: reader}
+            ) as store:
+                final_run = store.import_file(
+                    source,
+                    declared_account_id="daily-account",
+                    source_format=LineParser.source_format,
+                    exported_on=date(2026, 9, 14),
+                    covers_through=date(2026, 9, 13),
+                )
+                assert store.get_format_failures(stored_run.payload_id) == ()
+                for earlier in (stored_run, failed_run, final_run):
+                    assert store.get_import_run(earlier.import_run_id) == earlier
 
 
 if __name__ == "__main__":
