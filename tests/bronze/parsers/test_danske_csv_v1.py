@@ -246,6 +246,93 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
                 assert reason
                 assert "Caf" not in reason
 
+    def test_an_account_without_bank_categories_exports_six_fields(self) -> None:
+        # Some accounts carry no bank categories, and their exports leave out
+        # Kategori and Underkategori entirely. The header names which of the
+        # two declared layouts a payload uses, and its records present only the
+        # fields it has: Bronze never invents the missing two.
+        for delimiter in (b",", b";"):
+            with self.subTest(delimiter=delimiter):
+                header = delimiter.join(
+                    (
+                        b'"Dato"',
+                        b'"Tekst"',
+                        b'"Bel\xf8b"',
+                        b'"Saldo"',
+                        b'"Status"',
+                        b'"Afstemt"',
+                    )
+                )
+                rows = (
+                    delimiter.join(
+                        (
+                            b'"05.09.2026"',
+                            b'"Fra l\xf8nkonto"',
+                            b'"1.000,00"',
+                            b'"1.000,00"',
+                            b'"Udf\xf8rt"',
+                            b'"Nej"',
+                        )
+                    ),
+                    delimiter.join(
+                        (
+                            b'"30.09.2026"',
+                            b'"Rente"',
+                            b'"16,45"',
+                            b'"1.016,45"',
+                            b'"Udf\xf8rt"',
+                            b'"Nej"',
+                        )
+                    ),
+                )
+
+                result = PARSER.parse(b"\r\n".join((header, *rows)))
+
+                assert result.failure_reason is None
+                assert [dict(record) for record in result.records] == [
+                    {
+                        "Dato": "05.09.2026",
+                        "Tekst": "Fra lønkonto",
+                        "Beløb": "1.000,00",
+                        "Saldo": "1.000,00",
+                        "Status": "Udført",
+                        "Afstemt": "Nej",
+                    },
+                    {
+                        "Dato": "30.09.2026",
+                        "Tekst": "Rente",
+                        "Beløb": "16,45",
+                        "Saldo": "1.016,45",
+                        "Status": "Udført",
+                        "Afstemt": "Nej",
+                    },
+                ]
+                assert result.last_transaction_date == date(2026, 9, 30)
+
+        six_field_header = b'"Dato","Tekst","Bel\xf8b","Saldo","Status","Afstemt"'
+        six_field_row = b'"12.09.2026","Caf\xe9","-45,00","955,00","Udf\xf8rt","Nej"'
+        rejected = {
+            "six-field header, eight-field record": (
+                six_field_header + b"\r\n" + ONE_RECORD_ROW
+            ),
+            "eight-field header, six-field record": HEADER + b"\r\n" + six_field_row,
+            "only one of the two category fields": (
+                HEADER.replace(b'"Underkategori",', b"")
+                + b"\r\n"
+                + ONE_RECORD_ROW.replace(b'" Dagligvarer ",', b"")
+            ),
+        }
+
+        for label, content in rejected.items():
+            with self.subTest(payload=label):
+                refused = PARSER.parse(content)
+
+                assert refused.records == ()
+                assert refused.last_transaction_date is None
+                reason = refused.failure_reason
+                assert reason
+                assert "Caf" not in reason
+
     def test_the_coverage_bound_is_the_latest_date_whatever_the_row_order(self) -> None:
         # The row carrying the maximum Dato comes first and is cancelled, so a
         # bound read from row order or Status would land somewhere else.
