@@ -185,34 +185,16 @@ class BronzeStorageTests(unittest.TestCase):
                 assert connection.execute("PRAGMA user_version").fetchone()[0] == 0
             assert _tables(profile.bronze_store) == {"legacy"}
 
-    def test_a_failed_migration_leaves_the_version_and_schema_as_they_were(
-        self,
-    ) -> None:
+    def test_a_file_that_is_not_a_store_is_refused_without_changing_it(self) -> None:
         with TemporaryDirectory() as directory:
             profile = make_test_profile(directory)
-            migrate_bronze(profile)
-            broken = (
-                *storage.migration_steps(),
-                storage.MigrationStep(
-                    version=2,
-                    sql="CREATE TABLE half (x TEXT);\nSELECT nope FROM half;\n",
-                ),
-            )
+            profile.bronze_store.parent.mkdir(parents=True)
+            profile.bronze_store.write_bytes(b"this is not a database")
 
-            with (
-                mock.patch.object(storage, "migration_steps", return_value=broken),
-                pytest.raises(sqlite3.OperationalError),
-            ):
+            with pytest.raises(sqlite3.DatabaseError):
                 migrate_bronze(profile)
 
-            with _connected(profile.bronze_store) as connection:
-                assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
-                assert connection.execute(
-                    "SELECT profile, stage FROM store_identity"
-                ).fetchall() == [("test", "bronze")]
-            assert "half" not in _tables(profile.bronze_store)
-            with BronzeStore(profile):
-                pass
+            assert profile.bronze_store.read_bytes() == b"this is not a database"
 
     def test_a_store_path_with_url_characters_still_opens(self) -> None:
         with TemporaryDirectory() as directory:

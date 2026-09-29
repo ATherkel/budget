@@ -147,11 +147,29 @@ class MigrationStep:
     sql: str
 
 
-def migration_steps(directory: Path | None = None) -> tuple[MigrationStep, ...]:
+def __migration_steps() -> tuple[MigrationStep, ...]:
     """Return the packaged Bronze migrations, oldest first."""
-    folder = _MIGRATIONS_FOLDER if directory is None else Path(directory)
+    folder = _MIGRATIONS_FOLDER
     steps = []
     for path in sorted(folder.glob("*.sql")):
+        try:
+            version = int(path.name.split("_", 1)[0])
+        except ValueError:
+            raise MigrationResourceError.unmet_naming_rule(path.name) from None
+        steps.append(MigrationStep(version=version, sql=path.read_text("utf-8")))
+    expected = list(range(1, len(steps) + 1))
+    if [step.version for step in steps] != expected:
+        found = [step.version for step in steps]
+        raise MigrationResourceError.not_contiguous(expected, found)
+    if not steps:
+        raise MigrationResourceError.empty()
+    return tuple(steps)
+
+
+def _migration_steps() -> tuple[MigrationStep, ...]:
+    """Return the packaged Bronze migrations, oldest first."""
+    steps = []
+    for path in sorted(_MIGRATIONS_FOLDER.glob("*.sql")):
         try:
             version = int(path.name.split("_", 1)[0])
         except ValueError:
@@ -228,21 +246,34 @@ def _require_identity(
         )
 
 
+def _is_only_comments(text: str) -> bool:
+    """Report whether every non-empty line of text is an SQL comment."""
+    return all(
+        not line.strip() or line.lstrip().startswith("--") for line in text.splitlines()
+    )
+
+
 def _statements(sql: str) -> list[str]:
     """Split one migration file into complete statements.
 
-    `executescript` commits whatever transaction is open, so the runner sends
-    each statement through `execute` instead. Comments and blank lines stay
-    attached to the statement that follows them.
+    The runner sends each statement through execute, because executescript
+    commits whatever transaction is open. Statements end where SQLite itself
+    reports one complete, so semicolons inside strings and triggers stay in
+    their statement and several statements may share a line; comments stay
+    attached to the statement that follows, and a trailing comment after the
+    last statement is not a statement at all.
     """
     statements = []
-    buffer = ""
-    for line in sql.splitlines(keepends=True):
-        buffer += line
-        if sqlite3.complete_statement(buffer):
-            statements.append(buffer)
-            buffer = ""
-    if buffer.strip():
+    start = 0
+    for index, character in enumerate(sql):
+        if character != ";":
+            continue
+        candidate = sql[start : index + 1]
+        if sqlite3.complete_statement(candidate):
+            statements.append(candidate)
+            start = index + 1
+    remainder = sql[start:]
+    if remainder.strip() and not _is_only_comments(remainder):
         raise MigrationResourceError.incomplete_statement()
     return statements
 
@@ -291,7 +322,7 @@ def migrate_bronze(profile: Profile) -> None:
     if profile.name == PRODUCTION_PROFILE_NAME:
         raise ProductionMigrationBlockedError
 
-    steps = migration_steps()
+    steps = _migration_steps()
     latest = steps[-1].version
     path = profile.bronze_store
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -330,7 +361,7 @@ def migrate_bronze(profile: Profile) -> None:
 def _require_current_version(connection: sqlite3.Connection, path: Path) -> None:
     """Refuse a store this code cannot open at its own version."""
     version = _read_version(connection)
-    latest = migration_steps()[-1].version
+    latest = _migration_steps()[-1].version
     if version < latest:
         raise MigrationRequiredError(path, version, latest)
     if version > latest:
