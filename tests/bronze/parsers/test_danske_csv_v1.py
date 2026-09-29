@@ -193,6 +193,59 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
                 assert result.last_transaction_date is None
                 assert result.failure_reason
 
+    def test_a_comma_or_a_semicolon_delimits_a_whole_payload(self) -> None:
+        # The bank's export dialog offers either delimiter and defaults to the
+        # semicolon, so both read the same. One payload uses one of them
+        # throughout; any other delimiter is not this format.
+        semicolon_header = (
+            b'"Dato";"Kategori";"Underkategori";"Tekst";'
+            b'"Bel\xf8b";"Saldo";"Status";"Afstemt"'
+        )
+        semicolon_row = (
+            b'"12.09.2026";" Mad ";" Dagligvarer ";" Caf\xe9, bar; k\xf8kken";'
+            b'"-45,00";"955,00";"Udf\xf8rt";"Nej"'
+        )
+        semicolon_payload = semicolon_header + b"\r\n" + semicolon_row
+
+        result = PARSER.parse(semicolon_payload + b"\r\n")
+
+        assert result.failure_reason is None
+        assert [dict(record) for record in result.records] == [
+            {
+                "Dato": "12.09.2026",
+                "Kategori": " Mad ",
+                "Underkategori": " Dagligvarer ",
+                "Tekst": " Café, bar; køkken",
+                "Beløb": "-45,00",
+                "Saldo": "955,00",
+                "Status": "Udført",
+                "Afstemt": "Nej",
+            }
+        ]
+        assert result.last_transaction_date == date(2026, 9, 12)
+
+        rejected = {
+            "semicolon header, comma record": (
+                semicolon_header + b"\r\n" + ONE_RECORD_ROW
+            ),
+            "comma header, semicolon record": HEADER + b"\r\n" + semicolon_row,
+            "both within one record": HEADER
+            + b"\r\n"
+            + ONE_RECORD_ROW.replace(b'","-45,00"', b'";"-45,00"'),
+            "tab-delimited": semicolon_payload.replace(b'";"', b'"\t"'),
+            "space-delimited": semicolon_payload.replace(b'";"', b'" "'),
+        }
+
+        for label, content in rejected.items():
+            with self.subTest(payload=label):
+                refused = PARSER.parse(content)
+
+                assert refused.records == ()
+                assert refused.last_transaction_date is None
+                reason = refused.failure_reason
+                assert reason
+                assert "Caf" not in reason
+
     def test_the_coverage_bound_is_the_latest_date_whatever_the_row_order(self) -> None:
         # The row carrying the maximum Dato comes first and is cancelled, so a
         # bound read from row order or Status would land somewhere else.
