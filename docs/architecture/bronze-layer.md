@@ -65,9 +65,12 @@ operator asked the bank for.
 - **No interpretation.** Splitting a payload into source records is allowed.
   Typing, trimming, normalizing, status mapping, deduplication, and
   categorization are not.
-- **Declared formats.** Each source format fixes its encoding, delimiter, and
-  expected header, and decodes strictly. Encoding is never guessed. A payload
+- **Declared formats.** Each source format fixes its encoding, the delimiters
+  it accepts, and expected header, and decodes strictly. Encoding is never
+  guessed. A format that accepts more than one delimiter reads a payload's
+  delimiter from its declared header, never by sniffing the data. A payload
   that does not match yields a `FormatFailure` and no source records.
+  🤖 Delimiter wording added by Claude Code (Claude Opus 5.5)
 - **Repeat payloads.** Presenting bytes already stored for the same account
   records a new `repeat` import run and stores nothing new. It still records
   its own `exported_on` and `covers_through` and names the run it repeats: an
@@ -116,11 +119,22 @@ operator asked the bank for.
 
 ## Danske CSV Format (`danske-csv-v1`)
 
-- Windows-1252, comma-delimited, every field double-quoted, CRLF line endings,
-  and at most one final line break.
-  🤖 Added by Codex (deepseek/deepseek-v4.1-flash)
+- Windows-1252, comma- or semicolon-delimited, every field double-quoted, CRLF
+  line endings, and at most one final line break.
+- The bank's export dialog offers a comma, a semicolon (its default), a blank
+  or a tab as the delimiter, and the two exports are otherwise byte for byte
+  the same. The character after `"Dato"` in the header is the payload's
+  delimiter, and every record must use it too. A payload that mixes the two,
+  or is blank- or tab-delimited, gets a format failure. Because repeats compare
+  exact bytes, the same export saved once with each delimiter is two payloads,
+  not a `repeat`.
 - The header is exactly `Dato`, `Kategori`, `Underkategori`, `Tekst`, `Beløb`,
   `Saldo`, `Status`, `Afstemt`.
+  An account without bank categories instead exports exactly `Dato`, `Tekst`,
+  `Beløb`, `Saldo`, `Status`, `Afstemt`, with no `Kategori` or `Underkategori`
+  at all. The header names the payload's layout, and every record must have
+  that layout's fields. Bronze presents only the fields a payload has and
+  never adds the missing two; Silver reads their absence as null labels.
 - `Dato` is exactly two day digits, two month digits and four year digits,
   separated by periods (`DD.MM.YYYY`, as in `12.09.2026`), and must be a real
   calendar date. A one-digit day or month, a leading space, Unicode digits, the
@@ -135,6 +149,7 @@ operator asked the bank for.
   export time.
 - `Kategori` and `Underkategori` are space-padded. The padding is preserved
   in source records.
+  This applies where a payload has them.
 - The file contains no account, currency, or transaction identifier.
 
 ## Responsibilities
