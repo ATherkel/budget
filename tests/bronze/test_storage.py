@@ -238,6 +238,62 @@ class BronzeStorageTests(unittest.TestCase):
             finally:
                 connection.close()
 
+    def test_an_empty_file_with_a_future_version_is_not_touched(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            profile.bronze_store.parent.mkdir(parents=True)
+            with _connected(profile.bronze_store) as connection:
+                connection.execute("PRAGMA user_version = 99")
+
+            with pytest.raises(storage.UnsupportedStoreVersionError):
+                migrate_bronze(profile)
+
+            with _connected(profile.bronze_store) as connection:
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 99
+                assert connection.execute("PRAGMA journal_mode").fetchone()[0] != "wal"
+            assert _tables(profile.bronze_store) == set()
+
+    def test_an_empty_file_with_a_negative_version_is_not_adopted(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            profile.bronze_store.parent.mkdir(parents=True)
+            with _connected(profile.bronze_store) as connection:
+                connection.execute("PRAGMA user_version = -1")
+
+            with pytest.raises(storage.UnsupportedStoreVersionError):
+                migrate_bronze(profile)
+
+            with _connected(profile.bronze_store) as connection:
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == -1
+            assert _tables(profile.bronze_store) == set()
+
+    def test_identity_read_guards_refuse_corrupt_identity_fixtures(self) -> None:
+        fixtures = {
+            "missing": (),
+            "duplicate": (("test", "bronze"), ("test", "bronze")),
+            "wrong stage": (("test", "silver"),),
+            "wrong profile": (("development", "bronze"),),
+        }
+
+        for label, rows in fixtures.items():
+            with self.subTest(fixture=label), TemporaryDirectory() as directory:
+                profile = make_test_profile(directory)
+                profile.bronze_store.parent.mkdir(parents=True)
+                with _connected(profile.bronze_store) as connection:
+                    connection.execute(
+                        "CREATE TABLE store_identity (profile TEXT, stage TEXT)"
+                    )
+                    connection.executemany(
+                        "INSERT INTO store_identity (profile, stage) VALUES (?, ?)",
+                        rows,
+                    )
+                    connection.execute("PRAGMA user_version = 1")
+
+                with pytest.raises(storage.StoreIdentityError):
+                    BronzeStore(profile)
+                with pytest.raises(storage.StoreIdentityError):
+                    migrate_bronze(profile)
+
 
 if __name__ == "__main__":
     unittest.main()
