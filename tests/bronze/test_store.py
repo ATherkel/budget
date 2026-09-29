@@ -1,11 +1,12 @@
 # Copyright 2026 Therkel
 """The Bronze store: exact bytes, provenance, and run outcomes.
 
-Every test here goes through `BronzeStore`, with synthetic `danske-csv-v1`
-payloads as fixtures and one representative payload per outcome. The rules of
-the format itself live in `tests/bronze/parsers/test_danske_csv_v1.py` and the
-registry's selection in `tests/bronze/parsers/test_registry.py`, so the store
-does not repeat those matrices.
+Every test here opens `BronzeStore` on a migrated test profile, with synthetic
+`danske-csv-v1` payloads as fixtures and one representative payload per
+outcome. The rules of the format itself live in
+`tests/bronze/parsers/test_danske_csv_v1.py`, the registry's selection in
+`tests/bronze/parsers/test_registry.py`, and the store file's migrations and
+guards in `tests/bronze/test_storage.py`.
 """
 
 import json
@@ -18,44 +19,16 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from budget.bronze import BronzeStore
+from budget.bronze import BronzeStore, migrate_bronze
+from budget.profiles import Profile
+from budget.profiles import test_profile as make_test_profile
 
-# The on-disk shape the baseline BronzeStore wrote, copied verbatim. A test that
-# models a store left behind by that code pins what it has to keep reading; the
-# baseline module itself is deliberately not a test dependency.
-_LEGACY_BRONZE_SCHEMA = """
-CREATE TABLE raw_payloads (
-    payload_id TEXT PRIMARY KEY,
-    byte_length INTEGER NOT NULL,
-    content BLOB NOT NULL
-);
-CREATE TABLE import_runs (
-    import_run_id TEXT PRIMARY KEY,
-    payload_id TEXT NOT NULL REFERENCES raw_payloads(payload_id),
-    declared_account_id TEXT NOT NULL,
-    source_format TEXT NOT NULL,
-    original_filename TEXT NOT NULL,
-    exported_on TEXT NOT NULL,
-    exported_on_source TEXT NOT NULL,
-    covers_through TEXT NOT NULL,
-    covers_through_source TEXT NOT NULL,
-    started_at TEXT NOT NULL,
-    outcome TEXT NOT NULL,
-    repeat_of TEXT REFERENCES import_runs(import_run_id)
-);
-CREATE TABLE source_records (
-    payload_id TEXT NOT NULL REFERENCES raw_payloads(payload_id),
-    record_ordinal INTEGER NOT NULL,
-    fields TEXT NOT NULL,
-    PRIMARY KEY (payload_id, record_ordinal)
-);
-CREATE TABLE format_failures (
-    payload_id TEXT NOT NULL REFERENCES raw_payloads(payload_id),
-    source_format TEXT NOT NULL,
-    reason TEXT NOT NULL,
-    PRIMARY KEY (payload_id, source_format)
-);
-"""
+
+def migrated_profile(directory: str | Path) -> Profile:
+    """Build the test profile for one temporary directory and migrate it."""
+    profile = make_test_profile(directory)
+    migrate_bronze(profile)
+    return profile
 
 
 class BronzeStoreTests(unittest.TestCase):
@@ -78,10 +51,10 @@ class BronzeStoreTests(unittest.TestCase):
             root = Path(directory)
             source = root / "synthetic-20260914.csv"
             source.write_bytes(content)
-            database = root / "bronze.sqlite3"
+            profile = migrated_profile(root)
 
             before_import = datetime.now(UTC)
-            with BronzeStore(database) as store:
+            with BronzeStore(profile) as store:
                 run = store.import_file(
                     source,
                     declared_account_id="daily-account",
@@ -93,7 +66,7 @@ class BronzeStoreTests(unittest.TestCase):
             # A retained import must not depend on the original file remaining.
             source.unlink()
 
-            with BronzeStore(database) as reopened:
+            with BronzeStore(profile) as reopened:
                 saved_run = reopened.get_import_run(run.import_run_id)
                 payload = reopened.get_payload(saved_run.payload_id)
                 records = reopened.get_source_records(saved_run.payload_id)
@@ -150,9 +123,9 @@ class BronzeStoreTests(unittest.TestCase):
             later_source = root / "synthetic-20260916.csv"
             original_source.write_bytes(content)
             later_source.write_bytes(content)
-            database = root / "bronze.sqlite3"
+            profile = migrated_profile(root)
 
-            with BronzeStore(database) as store:
+            with BronzeStore(profile) as store:
                 original_run = store.import_file(
                     original_source,
                     declared_account_id="daily-account",
@@ -163,7 +136,7 @@ class BronzeStoreTests(unittest.TestCase):
                 original_records = store.get_source_records(original_run.payload_id)
 
             before_repeat = datetime.now(UTC)
-            with BronzeStore(database) as reopened:
+            with BronzeStore(profile) as reopened:
                 repeat = reopened.import_file(
                     later_source,
                     declared_account_id="daily-account",
@@ -172,7 +145,7 @@ class BronzeStoreTests(unittest.TestCase):
                 )
             after_repeat = datetime.now(UTC)
 
-            with BronzeStore(database) as reopened:
+            with BronzeStore(profile) as reopened:
                 saved_repeat = reopened.get_import_run(repeat.import_run_id)
                 assert saved_repeat == repeat
                 assert saved_repeat.import_run_id != original_run.import_run_id
@@ -210,9 +183,9 @@ class BronzeStoreTests(unittest.TestCase):
             root = Path(directory)
             source = root / "synthetic-20260914.csv"
             source.write_bytes(content)
-            database = root / "bronze.sqlite3"
+            profile = migrated_profile(root)
 
-            with BronzeStore(database) as store:
+            with BronzeStore(profile) as store:
                 original = store.import_file(
                     source,
                     declared_account_id="daily-account",
@@ -221,7 +194,7 @@ class BronzeStoreTests(unittest.TestCase):
                 )
                 original_records = store.get_source_records(original.payload_id)
 
-            with BronzeStore(database) as reopened:
+            with BronzeStore(profile) as reopened:
                 refused = reopened.import_file(
                     source,
                     declared_account_id="savings-account",
@@ -229,7 +202,7 @@ class BronzeStoreTests(unittest.TestCase):
                     covers_through=date(2026, 9, 13),
                 )
 
-            with BronzeStore(database) as reopened:
+            with BronzeStore(profile) as reopened:
                 saved = reopened.get_import_run(refused.import_run_id)
                 assert saved == refused
                 assert saved.import_run_id != original.import_run_id
@@ -255,13 +228,13 @@ class BronzeStoreTests(unittest.TestCase):
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            database = root / "bronze.sqlite3"
+            profile = migrated_profile(root)
             source = root / "synthetic-20260914.csv"
             source.write_bytes(content)
 
             # The only run for these bytes asks to cover evidence past the export
             # date, so it is refused and never becomes an original.
-            with BronzeStore(database) as store:
+            with BronzeStore(profile) as store:
                 refused = store.import_file(
                     source,
                     declared_account_id="daily-account",
@@ -272,7 +245,7 @@ class BronzeStoreTests(unittest.TestCase):
 
             # A refusal is nobody's owner, so another account can still declare
             # the same bytes correctly.
-            with BronzeStore(database) as reopened:
+            with BronzeStore(profile) as reopened:
                 accepted = reopened.import_file(
                     source,
                     declared_account_id="savings-account",
@@ -303,18 +276,18 @@ class BronzeStoreTests(unittest.TestCase):
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            database = root / "bronze.sqlite3"
+            profile = migrated_profile(root)
             source = root / "synthetic-20260914.csv"
             source.write_bytes(content)
 
-            with BronzeStore(database) as store:
+            with BronzeStore(profile) as store:
                 run = store.import_file(
                     source,
                     declared_account_id="daily-account",
                     source_format="danske-csv-v1",
                     covers_through=date(2026, 9, 13),
                 )
-            with BronzeStore(database) as reopened:
+            with BronzeStore(profile) as reopened:
                 payload = reopened.get_payload(run.payload_id)
                 records = reopened.get_source_records(run.payload_id)
                 failures = reopened.get_format_failures(run.payload_id)
@@ -347,13 +320,13 @@ class BronzeStoreTests(unittest.TestCase):
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            database = root / "bronze.sqlite3"
+            profile = migrated_profile(root)
             no_suffix = root / "synthetic.csv"
             impossible_suffix = root / "synthetic-20260931.csv"
             no_suffix.write_bytes(content)
             impossible_suffix.write_bytes(content)
 
-            with BronzeStore(database) as store:
+            with BronzeStore(profile) as store:
                 with pytest.raises(
                     ValueError, match="Declare exported_on"
                 ) as missing_export_date:
@@ -387,12 +360,12 @@ class BronzeStoreTests(unittest.TestCase):
 
             # These declarations were rejected, not refused: nothing was
             # stored, not even a refused run.
-            with BronzeStore(database) as reopened, pytest.raises(KeyError):
+            with BronzeStore(profile) as reopened, pytest.raises(KeyError):
                 reopened.get_payload(expected_payload_id)
 
             # A declared export date is the run's date, whatever the filename
             # cannot say: the impossible suffix is never read as a date.
-            with BronzeStore(database) as store:
+            with BronzeStore(profile) as store:
                 declared = store.import_file(
                     impossible_suffix,
                     declared_account_id="daily-account",
@@ -416,18 +389,18 @@ class BronzeStoreTests(unittest.TestCase):
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            database = root / "bronze.sqlite3"
+            profile = migrated_profile(root)
             source = root / "synthetic-20260914.csv"
             source.write_bytes(content)
 
-            with BronzeStore(database) as store:
+            with BronzeStore(profile) as store:
                 run = store.import_file(
                     source,
                     declared_account_id="daily-account",
                     source_format="danske-csv-v1",
                     covers_through=date(2026, 9, 13),
                 )
-            with BronzeStore(database) as reopened:
+            with BronzeStore(profile) as reopened:
                 payload = reopened.get_payload(run.payload_id)
                 records = reopened.get_source_records(run.payload_id)
                 failures = reopened.get_format_failures(run.payload_id)
@@ -469,16 +442,16 @@ class BronzeStoreTests(unittest.TestCase):
                 root = Path(directory)
                 source = root / "synthetic-20260914.csv"
                 source.write_bytes(content)
-                database = root / "bronze.sqlite3"
+                profile = migrated_profile(root)
 
-                with BronzeStore(database) as store:
+                with BronzeStore(profile) as store:
                     run = store.import_file(
                         source,
                         declared_account_id="daily-account",
                         source_format="danske-csv-v1",
                         covers_through=declared,
                     )
-                with BronzeStore(database) as reopened:
+                with BronzeStore(profile) as reopened:
                     payload = reopened.get_payload(run.payload_id)
                     records = reopened.get_source_records(run.payload_id)
 
@@ -540,7 +513,7 @@ class BronzeStoreTests(unittest.TestCase):
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            database = root / "bronze.sqlite3"
+            profile = migrated_profile(root)
 
             for index, (label, dates, exported_on, expected_outcome) in enumerate(
                 cases
@@ -549,13 +522,13 @@ class BronzeStoreTests(unittest.TestCase):
                     content = payload(dates)
                     source = root / f"synthetic-{index}-{exported_on:%Y%m%d}.csv"
                     source.write_bytes(content)
-                    with BronzeStore(database) as store:
+                    with BronzeStore(profile) as store:
                         run = store.import_file(
                             source,
                             declared_account_id="daily-account",
                             source_format="danske-csv-v1",
                         )
-                    with BronzeStore(database) as reopened:
+                    with BronzeStore(profile) as reopened:
                         stored_payload = reopened.get_payload(run.payload_id)
                         records = reopened.get_source_records(run.payload_id)
                         failures = reopened.get_format_failures(run.payload_id)
@@ -587,11 +560,11 @@ class BronzeStoreTests(unittest.TestCase):
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            database = root / "bronze.sqlite3"
+            profile = migrated_profile(root)
             source = root / "synthetic-20260914.csv"
             source.write_bytes(content)
 
-            with BronzeStore(database) as store:
+            with BronzeStore(profile) as store:
                 refused = store.import_file(
                     source,
                     declared_account_id="daily-account",
@@ -600,7 +573,7 @@ class BronzeStoreTests(unittest.TestCase):
                 )
             assert refused.outcome == "refused"
 
-            with BronzeStore(database) as reopened:
+            with BronzeStore(profile) as reopened:
                 # A refusal still retains the payload and its parsed records.
                 assert reopened.get_payload(refused.payload_id).content == content
                 refused_records = reopened.get_source_records(refused.payload_id)
@@ -609,7 +582,7 @@ class BronzeStoreTests(unittest.TestCase):
 
             # The same bytes declared correctly afterwards are a new import, not
             # a repeat of the refusal, and the refusal is left as it was.
-            with BronzeStore(database) as reopened:
+            with BronzeStore(profile) as reopened:
                 corrected = reopened.import_file(
                     source,
                     declared_account_id="daily-account",
@@ -621,7 +594,7 @@ class BronzeStoreTests(unittest.TestCase):
             assert corrected.import_run_id != refused.import_run_id
             assert corrected.payload_id == refused.payload_id
 
-            with BronzeStore(database) as reopened:
+            with BronzeStore(profile) as reopened:
                 assert reopened.get_import_run(refused.import_run_id) == refused
                 # A refusal never seeds ownership: the same bytes stay refused
                 # for another account, and still repeat the stored run only.
@@ -646,7 +619,7 @@ class BronzeStoreTests(unittest.TestCase):
             # again records its own repeat run and keeps the one failure.
             malformed_source = root / "synthetic-20260915.csv"
             malformed_source.write_bytes(malformed)
-            with BronzeStore(database) as reopened:
+            with BronzeStore(profile) as reopened:
                 failed = reopened.import_file(
                     malformed_source,
                     declared_account_id="daily-account",
@@ -689,12 +662,11 @@ class BronzeStoreTests(unittest.TestCase):
             root = Path(directory)
             source = root / "synthetic-20260914.csv"
             source.write_bytes(content)
-            database = root / "bronze.sqlite3"
+            profile = migrated_profile(root)
 
             # A store the baseline wrote: it split a payload whose header did not
             # match the declared format and derived one record from it.
-            connection = sqlite3.connect(database)
-            connection.executescript(_LEGACY_BRONZE_SCHEMA)
+            connection = sqlite3.connect(profile.bronze_store)
             connection.execute(
                 "INSERT INTO raw_payloads (payload_id, byte_length, content)"
                 " VALUES (?, ?, ?)",
@@ -744,7 +716,7 @@ class BronzeStoreTests(unittest.TestCase):
             connection.commit()
             connection.close()
 
-            with BronzeStore(database) as reopened:
+            with BronzeStore(profile) as reopened:
                 run = reopened.import_file(
                     source,
                     declared_account_id="daily-account",
@@ -777,7 +749,7 @@ class BronzeStoreTests(unittest.TestCase):
                 legacy_run.started_at.isoformat() == "2026-09-22T09:33:11.931353+00:00"
             )
 
-            with BronzeStore(database) as reopened_again:
+            with BronzeStore(profile) as reopened_again:
                 assert reopened_again.get_source_records(payload_id) == ()
                 assert len(reopened_again.get_format_failures(payload_id)) == 1
 

@@ -9,7 +9,7 @@ declared `source_format`.
 """
 
 import json
-import sqlite3
+from collections.abc import Mapping
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -19,7 +19,14 @@ from uuid import uuid4
 
 from budget.bronze.coverage import covers_through_for
 from budget.bronze.models import FormatFailure, ImportRun, RawPayload, SourceRecord
-from budget.bronze.parsers.registry import source_parser
+from budget.bronze.parsers.base import SourceParser
+from budget.bronze.parsers.registry import (
+    UnsupportedSourceFormatError,
+    source_formats,
+    source_parser,
+)
+from budget.bronze.storage import open_bronze_connection
+from budget.profiles import Profile
 
 
 class MissingExportDateError(ValueError):
@@ -31,6 +38,34 @@ class MissingExportDateError(ValueError):
             "Declare exported_on: the declared source format "
             f"{source_format} reads no export date from this filename"
         )
+
+
+class ParserFormatMismatchError(ValueError):
+    """A parser was registered under a format ID it does not name."""
+
+    def __init__(self, source_format: str, parser_format: str) -> None:
+        """Name both IDs, so the mislabelled provenance is obvious."""
+        super().__init__(
+            f"parser {parser_format!r} cannot be registered as {source_format!r}"
+        )
+
+
+def _parsers_for(
+    parsers: Mapping[str, SourceParser] | None,
+) -> Mapping[str, SourceParser]:
+    """Copy the caller's parsers into a frozen map, or use the built-in ones."""
+    if parsers is None:
+        built_in = {
+            source_format: source_parser(source_format)
+            for source_format in source_formats()
+        }
+        return MappingProxyType(built_in)
+    chosen: dict[str, SourceParser] = {}
+    for source_format, parser in parsers.items():
+        if parser.source_format != source_format:
+            raise ParserFormatMismatchError(source_format, parser.source_format)
+        chosen[source_format] = parser
+    return MappingProxyType(chosen)
 
 
 def _outcome_for(
@@ -49,46 +84,16 @@ def _outcome_for(
 class BronzeStore:
     """Import and retrieve Bronze provenance in a local SQLite store."""
 
-    def __init__(self, database: str | Path) -> None:
-        """Open the store, creating the Bronze tables in this database."""
-        self._connection = sqlite3.connect(database)
-        self._connection.row_factory = sqlite3.Row
-        self._connection.execute("PRAGMA foreign_keys = ON")
-        self._connection.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS raw_payloads (
-                payload_id TEXT PRIMARY KEY,
-                byte_length INTEGER NOT NULL,
-                content BLOB NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS import_runs (
-                import_run_id TEXT PRIMARY KEY,
-                payload_id TEXT NOT NULL REFERENCES raw_payloads(payload_id),
-                declared_account_id TEXT NOT NULL,
-                source_format TEXT NOT NULL,
-                original_filename TEXT NOT NULL,
-                exported_on TEXT NOT NULL,
-                exported_on_source TEXT NOT NULL,
-                covers_through TEXT NOT NULL,
-                covers_through_source TEXT NOT NULL,
-                started_at TEXT NOT NULL,
-                outcome TEXT NOT NULL,
-                repeat_of TEXT REFERENCES import_runs(import_run_id)
-            );
-            CREATE TABLE IF NOT EXISTS source_records (
-                payload_id TEXT NOT NULL REFERENCES raw_payloads(payload_id),
-                record_ordinal INTEGER NOT NULL,
-                fields TEXT NOT NULL,
-                PRIMARY KEY (payload_id, record_ordinal)
-            );
-            CREATE TABLE IF NOT EXISTS format_failures (
-                payload_id TEXT NOT NULL REFERENCES raw_payloads(payload_id),
-                source_format TEXT NOT NULL,
-                reason TEXT NOT NULL,
-                PRIMARY KEY (payload_id, source_format)
-            );
-            """
-        )
+    def __init__(
+        self,
+        profile: Profile,
+        *,
+        parsers: Mapping[str, SourceParser] | None = None,
+    ) -> None:
+        """Open the migrated Bronze store that one profile names."""
+        selected = _parsers_for(parsers)
+        self._connection = open_bronze_connection(profile)
+        self._parsers = selected
 
     def __enter__(self) -> Self:
         """Return the open store for a `with` block."""
@@ -107,6 +112,13 @@ class BronzeStore:
         """Release resources when the store is closed."""
         self._connection.close()
 
+    def _parser_for(self, source_format: str) -> SourceParser:
+        """Return the parser this store uses for one declared format."""
+        try:
+            return self._parsers[source_format]
+        except KeyError:
+            raise UnsupportedSourceFormatError(source_format) from None
+
     def import_file(
         self,
         path: str | Path,
@@ -118,7 +130,7 @@ class BronzeStore:
     ) -> ImportRun:
         """Retain a file's bytes, provenance, and decoded source records."""
         started_at = datetime.now(UTC)
-        parser = source_parser(source_format)
+        parser = self._parser_for(source_format)
 
         source = Path(path)
         content = source.read_bytes()

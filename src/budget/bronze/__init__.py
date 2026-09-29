@@ -7,6 +7,7 @@ else in the package is an implementation detail: parsing lives behind
 """
 
 from budget.bronze.models import FormatFailure, ImportRun, RawPayload, SourceRecord
+from budget.bronze.storage import migrate_bronze
 from budget.bronze.store import BronzeStore
 
 __all__ = [
@@ -15,4 +16,5 @@ __all__ = [
     "ImportRun",
     "RawPayload",
     "SourceRecord",
+    "migrate_bronze",
 ]

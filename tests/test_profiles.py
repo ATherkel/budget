@@ -12,7 +12,9 @@ from budget.profiles import (
     BRONZE_STORE_NAME,
     Profile,
     ProfilePathOutsideRootError,
-    test_profile,
+)
+from budget.profiles import (
+    test_profile as make_test_profile,
 )
 
 
@@ -33,7 +35,7 @@ class ProfileTests(unittest.TestCase):
     def test_a_test_profile_stays_inside_its_temporary_root(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            profile = test_profile(root)
+            profile = make_test_profile(root)
 
             assert profile.name == "test"
             assert profile.stores.is_relative_to(root.resolve())
@@ -58,7 +60,7 @@ class ProfileTests(unittest.TestCase):
                 self.skipTest(f"symlinks are unavailable here: {error}")
 
             with pytest.raises(ProfilePathOutsideRootError):
-                test_profile(root)
+                make_test_profile(root)
 
     def test_a_profile_is_never_read_from_the_environment(self) -> None:
         with TemporaryDirectory() as directory:
@@ -67,7 +69,7 @@ class ProfileTests(unittest.TestCase):
             profile_file.write_text("profile = 'production'\n", encoding="utf-8")
             os.environ["BUDGET_PROFILE"] = str(profile_file)
             try:
-                profile = test_profile(root / "run")
+                profile = make_test_profile(root / "run")
             finally:
                 os.environ.pop("BUDGET_PROFILE", None)
 
