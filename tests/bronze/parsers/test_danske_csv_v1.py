@@ -19,7 +19,7 @@ HEADER = (
     b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b","Saldo","Status","Afstemt"'
 )
 ONE_RECORD_ROW = (
-    b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+    b'"12.09.2026"," Mad "," Dagligvarer "," Caf\xe9",'
     b'"-45,00","955,00","Udf\xf8rt","Nej"'
 )
 ONE_RECORD_PAYLOAD = HEADER + b"\r\n" + ONE_RECORD_ROW
@@ -45,7 +45,7 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
         assert result.failure_reason is None
         assert [dict(record) for record in result.records] == [
             {
-                "Dato": "12-09-2026",
+                "Dato": "12.09.2026",
                 "Kategori": " Mad ",
                 "Underkategori": " Dagligvarer ",
                 "Tekst": " Café",
@@ -97,7 +97,7 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
 
     def test_every_field_must_be_quoted_exactly_as_the_format_declares(self) -> None:
         header = HEADER + b"\r\n"
-        prefix = b'"12-09-2026"," Mad "," Dagligvarer ",'
+        prefix = b'"12.09.2026"," Mad "," Dagligvarer ",'
         suffix = b'"-45,00","955,00","Udf\xf8rt","Nej"'
         unquoted_fields = {
             "unquoted field carrying a stray quote": prefix + b'Ca"fe,' + suffix,
@@ -112,14 +112,14 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
         # A field may hold an escaped quote and a line break of its own; the
         # format allows both inside a quoted field.
         well_formed = (
-            header + b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9, ""\xd8en""'
+            header + b'"12.09.2026"," Mad "," Dagligvarer "," Caf\xe9, ""\xd8en""'
             b'\r\nand more ","-45,00","955,00","Udf\xf8rt","Nej"'
         )
         stored = PARSER.parse(well_formed)
         assert stored.failure_reason is None
         assert len(stored.records) == 1
         assert dict(stored.records[0])["Tekst"] == ' Café, "Øen"\r\nand more '
-        assert dict(stored.records[0])["Dato"] == "12-09-2026"
+        assert dict(stored.records[0])["Dato"] == "12.09.2026"
         assert stored.last_transaction_date == date(2026, 9, 12)
 
         def verdict_for(row: bytes) -> str:
@@ -151,7 +151,7 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
     def test_a_row_ending_in_a_comma_still_needs_its_quoted_field(self) -> None:
         header = HEADER + b"\r\n"
         seven_fields = (
-            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"12.09.2026"," Mad "," Dagligvarer "," Caf\xe9",'
             b'"-45,00","955,00","Udf\xf8rt",'
         )
 
@@ -182,7 +182,7 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
 
                 assert result.failure_reason is None
                 assert len(result.records) == 1
-                assert dict(result.records[0])["Dato"] == "12-09-2026"
+                assert dict(result.records[0])["Dato"] == "12.09.2026"
                 assert result.last_transaction_date == date(2026, 9, 12)
 
         for ending in (b"\r\n\r\n", b"\n\n"):
@@ -197,9 +197,9 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
         # The row carrying the maximum Dato comes first and is cancelled, so a
         # bound read from row order or Status would land somewhere else.
         payload = header_payload(
-            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"12.09.2026"," Mad "," Dagligvarer "," Caf\xe9",'
             b'"-45,00","955,00","Slettet","Nej"',
-            b'"05-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"05.09.2026"," Mad "," Dagligvarer "," Caf\xe9",'
             b'"-45,00","1000,00","Udf\xf8rt","Nej"',
         )
 
@@ -208,8 +208,8 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
         assert result.failure_reason is None
         assert result.last_transaction_date == date(2026, 9, 12)
         assert [dict(record)["Dato"] for record in result.records] == [
-            "12-09-2026",
-            "05-09-2026",
+            "12.09.2026",
+            "05.09.2026",
         ]
         assert [dict(record)["Status"] for record in result.records] == [
             "Slettet",
@@ -218,16 +218,19 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
 
     def test_a_date_must_be_zero_padded_dd_mm_yyyy(self) -> None:
         # The declared shape is two day digits, two month digits and four year
-        # digits. A one-digit day or month, a leading space, Unicode digits, the
-        # ISO order and trailing text are each outside it.
+        # digits, separated by periods. A one-digit day or month, a leading
+        # space, Unicode digits, the ISO order, trailing text and any other
+        # separator are each outside it.
         rejected = (
-            "1-9-2026",
-            "01-9-2026",
-            " 1-09-2026",
-            "3-10-2026",
+            "1.9.2026",
+            "01.9.2026",
+            " 1.09.2026",
+            "3.10.2026",
             "2026-09-12",
-            "12-09-2026 ",
-            "¹²-09-2026",
+            "12.09.2026 ",
+            "¹².09.2026",
+            "12-09-2026",
+            "12/09/2026",
         )
         failure_reasons = []
 
@@ -245,9 +248,9 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
         # Every shape defect is one verdict, whatever the text looked like.
         assert len(set(failure_reasons)) == 1
 
-        accepted = PARSER.parse(header_payload(dato_row("12-09-2026")))
+        accepted = PARSER.parse(header_payload(dato_row("12.09.2026")))
         assert accepted.failure_reason is None
-        assert [dict(record)["Dato"] for record in accepted.records] == ["12-09-2026"]
+        assert [dict(record)["Dato"] for record in accepted.records] == ["12.09.2026"]
         assert accepted.last_transaction_date == date(2026, 9, 12)
 
     def test_an_unreadable_transaction_date_is_a_verdict_without_records(self) -> None:
@@ -255,7 +258,7 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
             b'%s," Mad "," Dagligvarer "," Caf\xe9","-45,00","955,00","Udf\xf8rt","Nej"'
         )
         malformed = {
-            "impossible date": b'"31-02-2026"',
+            "impossible date": b'"31.02.2026"',
             "unexpected date shape": b'"2026-09-12"',
         }
         failure_reasons = []

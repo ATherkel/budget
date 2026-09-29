@@ -30,7 +30,7 @@ _HEADER = (
 )
 
 # The transaction date is the only value this parser reads rather than presents.
-_TRANSACTION_DATE = re.compile(r"[0-9]{2}-[0-9]{2}-[0-9]{4}")
+_TRANSACTION_DATE = re.compile(r"\d{2}\.\d{2}\.\d{4}")
 
 # The export date convention of this format: `…-YYYYMMDD.csv`.
 _EXPORT_DATE_SUFFIX = re.compile(r"-([0-9]{8})\.csv$", re.IGNORECASE)
@@ -150,12 +150,13 @@ def _split_payload(content: bytes) -> tuple[list[dict[str, str]], str | None]:
 
 
 def _transaction_date(value: str) -> date | None:
-    """Read one zero-padded `DD-MM-YYYY` transaction date, or None.
+    """Read one zero-padded `DD.MM.YYYY` transaction date, or None.
 
     The declared shape is exact: two ASCII day digits, two month digits and four
-    year digits, and the result must be a real calendar date. A one-digit day or
-    month, a leading space, Unicode digits, the ISO order or trailing text is a
-    malformed `Dato`, so the payload gets a format failure instead of a guess.
+    year digits, separated by periods, and the result must be a real calendar
+    date. A one-digit day or month, a leading space, Unicode digits, the ISO
+    order, another separator or trailing text is a malformed `Dato`, so the
+    payload gets a format failure instead of a guess.
     """
     if _TRANSACTION_DATE.fullmatch(value) is None:
         return None
