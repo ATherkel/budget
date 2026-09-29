@@ -2,7 +2,7 @@
 """Dropped transactions, *withdrawn* and *same transaction* (#95, ADR-017).
 
 Issue #5's scenarios 7, 9 and 13. Each dropped transaction raises its own
-review item, following issue #80's option A while that issue is open.
+review item (ADR-018).
 Opening balance 1000,00 throughout.
 """
 
@@ -53,8 +53,8 @@ def _dropped_item(
     transaction_id: str, day: date, resolved_by: str | None
 ) -> ReviewItem:
     return ReviewItem(
-        review_item_id=review_item_id("dropped-transactions", "run-b", transaction_id),
-        kind="dropped-transactions",
+        review_item_id=review_item_id("dropped-transaction", "run-b", transaction_id),
+        kind="dropped-transaction",
         account_id=ACCOUNT,
         date_from=day,
         date_to=day,
@@ -114,7 +114,7 @@ def test_a_reworded_transaction_is_dropped_not_a_disagreement() -> None:
     admitted = build_from(before, reworded, decisions=[same])
 
     assert _statuses(quarantined) == {"run-a": "accepted", "run-b": "quarantined"}
-    assert [i.kind for i in quarantined.review_items] == ["dropped-transactions"]
+    assert [i.kind for i in quarantined.review_items] == ["dropped-transaction"]
     assert _statuses(admitted) == {"run-a": "accepted", "run-b": "accepted"}
     assert [(t.description, t.transaction_id) for t in admitted.transactions] == [
         ("NETTO", identity(date(2026, 3, 1), "-45.00", "NETTO", 1)),
@@ -181,6 +181,6 @@ def test_an_export_under_the_wrong_account_drops_and_disagrees() -> None:
 
     assert _statuses(result) == {"run-a": "accepted", "run-b": "quarantined"}
     assert {i.kind for i in result.review_items} == {
-        "dropped-transactions",
+        "dropped-transaction",
         "export-disagreement",
     }
