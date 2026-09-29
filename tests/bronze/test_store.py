@@ -20,6 +20,9 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from budget.bronze import BronzeStore, migrate_bronze
+from budget.bronze.parsers.base import ParserResult
+from budget.bronze.parsers.registry import UnsupportedSourceFormatError
+from budget.bronze.store import ParserFormatMismatchError
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 
@@ -31,7 +34,145 @@ def migrated_profile(directory: str | Path) -> Profile:
     return profile
 
 
+class LineParser:
+    """A real, tiny format: one source record per non-empty line."""
+
+    source_format = "synthetic-lines-v1"
+
+    def __init__(self, names: tuple[str, ...] | None) -> None:
+        """Hold the field names this version presents, or fail every payload."""
+        self._names = names
+
+    def parse(self, content: bytes) -> ParserResult:
+        """Present one record per line under this version's field names."""
+        if self._names is None:
+            return ParserResult.failed("this version reads no lines")
+        lines = [line for line in content.decode("ascii").splitlines() if line]
+        if len(lines) != len(self._names):
+            return ParserResult.failed("the payload has the wrong number of lines")
+        fields = dict(zip(self._names, lines, strict=True))
+        return ParserResult.matched((fields,), None)
+
+    def exported_on_from_filename(self, _filename: str) -> date | None:
+        """Declare no filename convention, so callers must declare the date."""
+        return None
+
+
 class BronzeStoreTests(unittest.TestCase):
+    def test_a_presentation_replaces_the_whole_derived_cache(self) -> None:
+        content = b"12-09-2026\n05-09-2026\n"
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "synthetic-lines.csv"
+            source.write_bytes(content)
+            profile = migrated_profile(root)
+            first = LineParser(("first", "second"))
+            shorter = LineParser(("only",))
+            failing = LineParser(None)
+
+            with BronzeStore(
+                profile, parsers={LineParser.source_format: first}
+            ) as store:
+                run = store.import_file(
+                    source,
+                    declared_account_id="daily-account",
+                    source_format=LineParser.source_format,
+                    exported_on=date(2026, 9, 14),
+                    covers_through=date(2026, 9, 13),
+                )
+                assert [
+                    dict(r.fields) for r in store.get_source_records(run.payload_id)
+                ] == [{"first": "12-09-2026", "second": "05-09-2026"}]
+
+            # A later version of the same format reads fewer fields, so the
+            # cache must hold what the current parser presents, not the union.
+            with BronzeStore(
+                profile, parsers={LineParser.source_format: shorter}
+            ) as store:
+                store.import_file(
+                    source,
+                    declared_account_id="daily-account",
+                    source_format=LineParser.source_format,
+                    exported_on=date(2026, 9, 14),
+                    covers_through=date(2026, 9, 13),
+                )
+                records = store.get_source_records(run.payload_id)
+                assert [dict(record.fields) for record in records] == [
+                    {"only": "12-09-2026"}
+                ]
+                assert store.get_format_failures(run.payload_id) == ()
+
+            # A version that fails the payload deletes the records and records
+            # its reason; the bytes and every earlier run stay.
+            with BronzeStore(
+                profile, parsers={LineParser.source_format: failing}
+            ) as store:
+                store.import_file(
+                    source,
+                    declared_account_id="daily-account",
+                    source_format=LineParser.source_format,
+                    exported_on=date(2026, 9, 14),
+                    covers_through=date(2026, 9, 13),
+                )
+                failures = store.get_format_failures(run.payload_id)
+                assert store.get_source_records(run.payload_id) == ()
+                assert len(failures) == 1
+                assert store.get_payload(run.payload_id).content == content
+                assert store.get_import_run(run.import_run_id) == run
+
+            # And a later version that reads again clears the failure.
+            with BronzeStore(
+                profile, parsers={LineParser.source_format: first}
+            ) as store:
+                store.import_file(
+                    source,
+                    declared_account_id="daily-account",
+                    source_format=LineParser.source_format,
+                    exported_on=date(2026, 9, 14),
+                    covers_through=date(2026, 9, 13),
+                )
+                assert len(store.get_source_records(run.payload_id)) == 1
+                assert store.get_format_failures(run.payload_id) == ()
+
+    def test_a_parser_mapping_is_copied_and_validated(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = migrated_profile(directory)
+            provided = {LineParser.source_format: LineParser(("only",))}
+            store = BronzeStore(profile, parsers=provided)
+            try:
+                provided.clear()
+                source = Path(directory) / "synthetic-lines.csv"
+                source.write_bytes(b"12-09-2026\n")
+                run = store.import_file(
+                    source,
+                    declared_account_id="daily-account",
+                    source_format=LineParser.source_format,
+                    exported_on=date(2026, 9, 14),
+                    covers_through=date(2026, 9, 13),
+                )
+                assert len(store.get_source_records(run.payload_id)) == 1
+            finally:
+                store.close()
+
+            empty = BronzeStore(profile, parsers={})
+            try:
+                with pytest.raises(UnsupportedSourceFormatError):
+                    empty.import_file(
+                        source,
+                        declared_account_id="daily-account",
+                        source_format=LineParser.source_format,
+                        exported_on=date(2026, 9, 14),
+                    )
+            finally:
+                empty.close()
+
+            with pytest.raises(ParserFormatMismatchError):
+                BronzeStore(
+                    profile,
+                    parsers={"other-format": LineParser(("only",))},
+                )
+
     def test_import_preserves_payload_provenance_and_fields_after_reopening(
         self,
     ) -> None:
