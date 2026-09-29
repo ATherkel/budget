@@ -19,6 +19,9 @@ SQLITE_VERSION_FLOOR: Final = (3, 51, 3)
 BRONZE_STAGE: Final = "bronze"
 PRODUCTION_PROFILE_NAME: Final = "production"
 BUSY_TIMEOUT_MS: Final = 5000
+_MIGRATIONS_FOLDER: Final = (
+    Path(__file__).resolve().parent.parent / "migrations" / "bronze"
+)
 
 
 class BronzeStorageError(RuntimeError):
@@ -146,14 +149,202 @@ class MigrationStep:
 
 def migration_steps(directory: Path | None = None) -> tuple[MigrationStep, ...]:
     """Return the packaged Bronze migrations, oldest first."""
-    raise NotImplementedError
+    folder = _MIGRATIONS_FOLDER if directory is None else Path(directory)
+    steps = []
+    for path in sorted(folder.glob("*.sql")):
+        try:
+            version = int(path.name.split("_", 1)[0])
+        except ValueError:
+            raise MigrationResourceError.unmet_naming_rule(path.name) from None
+        steps.append(MigrationStep(version=version, sql=path.read_text("utf-8")))
+    expected = list(range(1, len(steps) + 1))
+    if [step.version for step in steps] != expected:
+        found = [step.version for step in steps]
+        raise MigrationResourceError.not_contiguous(expected, found)
+    if not steps:
+        raise MigrationResourceError.empty()
+    return tuple(steps)
+
+
+def _require_supported_sqlite() -> None:
+    """Refuse this interpreter before any file is touched."""
+    if sqlite3.sqlite_version_info < SQLITE_VERSION_FLOOR:
+        raise UnsupportedSQLiteVersionError(sqlite3.sqlite_version_info)
+
+
+def _connect(path: Path, *, mode: str) -> sqlite3.Connection:
+    """Connect through a URI, so a path's spaces and symbols stay literal."""
+    connection = sqlite3.connect(f"{path.as_uri()}?mode={mode}", uri=True)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def _apply_connection_settings(connection: sqlite3.Connection) -> None:
+    """Set the per-connection pragmas ADR-013 requires."""
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+    connection.execute("PRAGMA synchronous = FULL")
+
+
+def _read_version(connection: sqlite3.Connection) -> int:
+    """Return the store's schema version."""
+    row = connection.execute("PRAGMA user_version").fetchone()
+    return int(row[0])
+
+
+def _has_objects(connection: sqlite3.Connection) -> bool:
+    """Report whether the file holds any table, view, index or trigger."""
+    row = connection.execute(
+        """
+        SELECT 1 FROM sqlite_master
+        WHERE type IN ('table', 'view', 'index', 'trigger')
+            AND name NOT LIKE 'sqlite_%'
+        LIMIT 1
+        """
+    ).fetchone()
+    return row is not None
+
+
+def _require_identity(
+    connection: sqlite3.Connection,
+    path: Path,
+    profile: Profile,
+) -> None:
+    """Refuse a store that belongs to another profile or stage."""
+    try:
+        rows = connection.execute(
+            "SELECT profile, stage FROM store_identity"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        raise StoreIdentityError(path, "it has no store_identity table") from None
+    if len(rows) != 1:
+        raise StoreIdentityError(path, "its store_identity is not one row")
+    found_profile = rows[0]["profile"]
+    found_stage = rows[0]["stage"]
+    if found_profile != profile.name or found_stage != BRONZE_STAGE:
+        raise StoreIdentityError(
+            path,
+            f"it belongs to profile {found_profile!r} stage {found_stage!r}",
+        )
+
+
+def _statements(sql: str) -> list[str]:
+    """Split one migration file into complete statements.
+
+    `executescript` commits whatever transaction is open, so the runner sends
+    each statement through `execute` instead. Comments and blank lines stay
+    attached to the statement that follows them.
+    """
+    statements = []
+    buffer = ""
+    for line in sql.splitlines(keepends=True):
+        buffer += line
+        if sqlite3.complete_statement(buffer):
+            statements.append(buffer)
+            buffer = ""
+    if buffer.strip():
+        raise MigrationResourceError.incomplete_statement()
+    return statements
+
+
+def _require_no_foreign_key_violations(
+    connection: sqlite3.Connection,
+    version: int,
+) -> None:
+    """Fail a migration that would commit rows breaking a foreign key."""
+    violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        raise ForeignKeyViolationError(version, len(violations))
+
+
+def _apply_step(
+    connection: sqlite3.Connection,
+    profile: Profile,
+    step: MigrationStep,
+) -> None:
+    """Apply one migration and its version bump in one transaction."""
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _statements(step.sql):
+            connection.execute(statement)
+        if step.version == 1:
+            connection.execute(
+                "INSERT INTO store_identity (profile, stage) VALUES (?, ?)",
+                (profile.name, BRONZE_STAGE),
+            )
+        _require_no_foreign_key_violations(connection, step.version)
+        connection.execute(f"PRAGMA user_version = {step.version}")
+        connection.commit()
+    except BaseException:
+        connection.rollback()
+        raise
 
 
 def migrate_bronze(profile: Profile) -> None:
-    """Create or upgrade the Bronze store that one profile names."""
-    raise NotImplementedError
+    """Create or upgrade the Bronze store that one profile names.
+
+    The production profile is refused before any folder or file is touched:
+    production migration waits for the backup and command work.
+    """
+    _require_supported_sqlite()
+    if profile.name == PRODUCTION_PROFILE_NAME:
+        raise ProductionMigrationBlockedError
+
+    steps = migration_steps()
+    latest = steps[-1].version
+    path = profile.bronze_store
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = _connect(path, mode="rwc")
+    try:
+        connection.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+        connection.execute("PRAGMA synchronous = FULL")
+        version = _read_version(connection)
+        if not _has_objects(connection):
+            connection.execute("PRAGMA journal_mode = WAL")
+        elif version == 0:
+            raise UnversionedStoreError(path)
+        elif version > latest:
+            raise UnsupportedStoreVersionError(path, version, latest)
+        if version >= 1:
+            _require_identity(connection, path, profile)
+
+        pending = [step for step in steps if step.version > version]
+        if pending:
+            # The pragma cannot change inside a transaction, and a table
+            # rebuild must be free to drop rows before the check below.
+            connection.execute("PRAGMA foreign_keys = OFF")
+            try:
+                for step in pending:
+                    _apply_step(connection, profile, step)
+            finally:
+                connection.execute("PRAGMA foreign_keys = ON")
+    finally:
+        connection.close()
+
+
+def _require_current_version(connection: sqlite3.Connection, path: Path) -> None:
+    """Refuse a store this code cannot open at its own version."""
+    version = _read_version(connection)
+    latest = migration_steps()[-1].version
+    if version < latest:
+        raise MigrationRequiredError(path, version, latest)
+    if version > latest:
+        raise UnsupportedStoreVersionError(path, version, latest)
 
 
 def open_bronze_connection(profile: Profile) -> sqlite3.Connection:
     """Open an existing Bronze store, refusing anything it cannot vouch for."""
-    raise NotImplementedError
+    _require_supported_sqlite()
+    path = profile.bronze_store
+    if not path.exists():
+        raise StoreNotFoundError(path)
+
+    connection = _connect(path, mode="rw")
+    try:
+        _apply_connection_settings(connection)
+        _require_current_version(connection, path)
+        _require_identity(connection, path, profile)
+    except BaseException:
+        connection.close()
+        raise
+    return connection
