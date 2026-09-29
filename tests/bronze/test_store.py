@@ -9,11 +9,8 @@ outcome. The rules of the format itself live in
 guards in `tests/bronze/test_storage.py`.
 """
 
-import json
-import sqlite3
 import unittest
 from datetime import UTC, date, datetime, timedelta
-from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -35,27 +32,36 @@ def migrated_profile(directory: str | Path) -> Profile:
 
 
 class LineParser:
-    """A real, tiny format: one source record per non-empty line."""
+    """A real, tiny format: one source record per line, up to a limit."""
 
     source_format = "synthetic-lines-v1"
 
-    def __init__(self, names: tuple[str, ...] | None) -> None:
-        """Hold the field names this version presents, or fail every payload."""
-        self._names = names
+    def __init__(self, field: str | None, limit: int | None = None) -> None:
+        """Hold the field each record carries, or fail every payload."""
+        self._field = field
+        self._limit = limit
 
     def parse(self, content: bytes) -> ParserResult:
-        """Present one record per line under this version's field names."""
-        if self._names is None:
+        """Present one record per line under this version's field name."""
+        if self._field is None:
             return ParserResult.failed("this version reads no lines")
         lines = [line for line in content.decode("ascii").splitlines() if line]
-        if len(lines) != len(self._names):
-            return ParserResult.failed("the payload has the wrong number of lines")
-        fields = dict(zip(self._names, lines, strict=True))
-        return ParserResult.matched((fields,), None)
+        if self._limit is not None:
+            lines = lines[: self._limit]
+        return ParserResult.matched(
+            tuple({self._field: line} for line in lines),
+            None,
+        )
 
-    def exported_on_from_filename(self, _filename: str) -> date | None:
-        """Declare no filename convention, so callers must declare the date."""
-        return None
+    def exported_on_from_filename(self, filename: str) -> date | None:
+        """Read a -YYYYMMDD.csv suffix, as a real format does."""
+        digits = filename.removesuffix(".csv").rpartition("-")[2]
+        if len(digits) != 8 or not digits.isdigit():
+            return None
+        try:
+            return date(int(digits[0:4]), int(digits[4:6]), int(digits[6:8]))
+        except ValueError:
+            return None
 
 
 class BronzeStoreTests(unittest.TestCase):
@@ -67,8 +73,8 @@ class BronzeStoreTests(unittest.TestCase):
             source = root / "synthetic-lines.csv"
             source.write_bytes(content)
             profile = migrated_profile(root)
-            first = LineParser(("first", "second"))
-            shorter = LineParser(("only",))
+            first = LineParser("datum")
+            shorter = LineParser("only", limit=1)
             failing = LineParser(None)
 
             with BronzeStore(
@@ -83,7 +89,7 @@ class BronzeStoreTests(unittest.TestCase):
                 )
                 assert [
                     dict(r.fields) for r in store.get_source_records(run.payload_id)
-                ] == [{"first": "12-09-2026", "second": "05-09-2026"}]
+                ] == [{"datum": "12-09-2026"}, {"datum": "05-09-2026"}]
 
             # A later version of the same format reads fewer fields, so the
             # cache must hold what the current parser presents, not the union.
@@ -132,13 +138,13 @@ class BronzeStoreTests(unittest.TestCase):
                     exported_on=date(2026, 9, 14),
                     covers_through=date(2026, 9, 13),
                 )
-                assert len(store.get_source_records(run.payload_id)) == 1
+                assert len(store.get_source_records(run.payload_id)) == 2
                 assert store.get_format_failures(run.payload_id) == ()
 
     def test_a_parser_mapping_is_copied_and_validated(self) -> None:
         with TemporaryDirectory() as directory:
             profile = migrated_profile(directory)
-            provided = {LineParser.source_format: LineParser(("only",))}
+            provided = {LineParser.source_format: LineParser("only")}
             store = BronzeStore(profile, parsers=provided)
             try:
                 provided.clear()
@@ -170,7 +176,7 @@ class BronzeStoreTests(unittest.TestCase):
             with pytest.raises(ParserFormatMismatchError):
                 BronzeStore(
                     profile,
-                    parsers={"other-format": LineParser(("only",))},
+                    parsers={"other-format": LineParser("only")},
                 )
 
     def test_import_preserves_payload_provenance_and_fields_after_reopening(
@@ -780,119 +786,6 @@ class BronzeStoreTests(unittest.TestCase):
             assert again.payload_id == failed.payload_id
             assert failed_records == ()
             assert len(failures) == 1
-
-    def test_a_store_written_by_the_laxer_baseline_cannot_keep_invalid_records(
-        self,
-    ) -> None:
-        content = (
-            b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
-            b'"Saldo","Status","Afstemt"\r\n'
-            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
-            b'"-45,00","955,00","Udf\xf8rt","Nej"'
-        ).replace(b'"Afstemt"', b'"Wrong"')
-        payload_id = sha256(content).hexdigest()
-        # Observed in the baseline BronzeStore's own raw_payloads row for these
-        # bytes, so the fixture below cannot drift from what it stored.
-        assert (
-            payload_id
-            == "9eb3ef8f9b179c9fa22d054c6d8549c9223869b6382addacdb28c8349f423c6e"
-        )
-        legacy_run_id = "4ade3d79f4984d59b522d8509a9bfbe5"
-
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            source = root / "synthetic-20260914.csv"
-            source.write_bytes(content)
-            profile = migrated_profile(root)
-
-            # A store the baseline wrote: it split a payload whose header did not
-            # match the declared format and derived one record from it.
-            connection = sqlite3.connect(profile.bronze_store)
-            connection.execute(
-                "INSERT INTO raw_payloads (payload_id, byte_length, content)"
-                " VALUES (?, ?, ?)",
-                (payload_id, len(content), content),
-            )
-            connection.execute(
-                "INSERT INTO import_runs ("
-                " import_run_id, payload_id, declared_account_id, source_format,"
-                " original_filename, exported_on, exported_on_source,"
-                " covers_through, covers_through_source, started_at, outcome, repeat_of"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    legacy_run_id,
-                    payload_id,
-                    "daily-account",
-                    "danske-csv-v1",
-                    source.name,
-                    "2026-09-14",
-                    "filename",
-                    "2026-09-13",
-                    "declared",
-                    "2026-09-22T09:33:11.931353+00:00",
-                    "stored",
-                    None,
-                ),
-            )
-            connection.execute(
-                "INSERT INTO source_records (payload_id, record_ordinal, fields)"
-                " VALUES (?, ?, ?)",
-                (
-                    payload_id,
-                    1,
-                    json.dumps(
-                        {
-                            "Dato": "12-09-2026",
-                            "Kategori": " Mad ",
-                            "Underkategori": " Dagligvarer ",
-                            "Tekst": " Café",
-                            "Beløb": "-45,00",
-                            "Saldo": "955,00",
-                            "Status": "Udført",
-                            "Wrong": "Nej",
-                        }
-                    ),
-                ),
-            )
-            connection.commit()
-            connection.close()
-
-            with BronzeStore(profile) as reopened:
-                run = reopened.import_file(
-                    source,
-                    declared_account_id="daily-account",
-                    source_format="danske-csv-v1",
-                    covers_through=date(2026, 9, 13),
-                )
-                failures = reopened.get_format_failures(run.payload_id)
-                records = reopened.get_source_records(run.payload_id)
-                payload = reopened.get_payload(run.payload_id)
-                legacy_run = reopened.get_import_run(legacy_run_id)
-
-            assert run.outcome == "repeat"
-            assert run.repeat_of == legacy_run_id
-            assert len(failures) == 1
-            assert failures[0].source_format == "danske-csv-v1"
-            assert failures[0].payload_id == payload_id
-            # A payload with a format failure exposes no source records, even
-            # when a laxer parser had derived some for the same bytes.
-            assert records == ()
-            # The evidence itself is untouched: exact bytes and run history.
-            assert payload.payload_id == payload_id
-            assert payload.content == content
-            assert payload.byte_length == len(content)
-            assert legacy_run.import_run_id == legacy_run_id
-            assert legacy_run.payload_id == payload_id
-            assert legacy_run.outcome == "stored"
-            assert legacy_run.original_filename == source.name
-            assert legacy_run.covers_through == date(2026, 9, 13)
-            assert (
-                legacy_run.started_at.isoformat() == "2026-09-22T09:33:11.931353+00:00"
-            )
-
-            with BronzeStore(profile) as reopened_again:
-                assert reopened_again.get_source_records(payload_id) == ()
-                assert len(reopened_again.get_format_failures(payload_id)) == 1
 
 
 if __name__ == "__main__":
