@@ -2,9 +2,9 @@
 """``danske-csv-v1``: one bank's CSV export, exactly as it declares itself.
 
 Everything format-specific lives here - the encoding, the declared header, the
-quoting shape, and the transaction-date syntax. The store knows none of it, and
-a future format gets its own module and its own ID rather than a change to this
-one's meaning.
+delimiters, the quoting shape, and the transaction-date syntax. The store knows
+none of it, and a future format gets its own module and its own ID rather than a
+change to this one's meaning.
 """
 
 import csv
@@ -28,6 +28,10 @@ _HEADER = (
     "Status",
     "Afstemt",
 )
+
+# The delimiters this format accepts. The bank's export dialog offers a comma
+# or a semicolon (the default); its blank and tab choices are not this format.
+_DELIMITERS = (",", ";")
 
 # The transaction date is the only value this parser reads rather than presents.
 _TRANSACTION_DATE = re.compile(r"\d{2}\.\d{2}\.\d{4}")
@@ -59,16 +63,18 @@ def _quoted_field_end(text: str, start: int) -> tuple[int, str | None]:
     return index, "a quoted field is never closed"
 
 
-def _record_separator_end(text: str, index: int) -> tuple[int, str | None]:
+def _record_separator_end(
+    text: str, index: int, delimiter: str
+) -> tuple[int, str | None]:
     """Return the index after a separator, or why that position is not one."""
     length = len(text)
     if index >= length:
         return index, None
-    if text[index] == ",":
-        # A comma promises another field, and every field is quoted: a bare
+    if text[index] == delimiter:
+        # A delimiter promises another field, and every field is quoted: a bare
         # trailing delimiter is an unquoted empty field.
         if index + 1 >= length:
-            return index, "a record ends with a comma and no quoted field"
+            return index, "a record ends with a delimiter and no quoted field"
         return index + 1, None
     if text[index] == "\r" and text[index + 1 : index + 2] == "\n":
         return index + 2, None
@@ -77,14 +83,32 @@ def _record_separator_end(text: str, index: int) -> tuple[int, str | None]:
     return index, "a quoted field is followed by unquoted data"
 
 
-def _field_quoting_error(text: str) -> str | None:
+def _payload_delimiter(text: str) -> str:
+    """Return the delimiter the header writes after its first field.
+
+    The header names the payload's delimiter, so nothing is sniffed from the
+    data. A header that shows no accepted delimiter there is read with the
+    comma, and the quoting check then rejects it: a tab or a blank, like any
+    other character, is unquoted data after a closing quote.
+    """
+    if text.startswith('"'):
+        index, _ = _quoted_field_end(text, 1)
+        found = text[index : index + 1]
+        if found in _DELIMITERS:
+            return found
+    return _DELIMITERS[0]
+
+
+def _field_quoting_error(text: str, delimiter: str) -> str | None:
     """Return why the payload's quoting is not the declared shape, if it is not.
 
     `danske-csv-v1` quotes every field, and a quote inside a field is doubled.
-    So a field opens with a quote, and only a comma, a line break or the end of
-    the payload may follow its closing quote. Line endings are not otherwise
-    checked: LF endings and one optional final line break read normally, and a
-    quoted field may carry line breaks of its own.
+    So a field opens with a quote, and only the payload's delimiter, a line
+    break or the end of the payload may follow its closing quote. One payload
+    keeps one delimiter, so a record written with the other one fails here.
+    Line endings are not otherwise checked: LF endings and one optional final
+    line break read normally, and a quoted field may carry line breaks of its
+    own.
     """
     index = 0
     length = len(text)
@@ -94,7 +118,7 @@ def _field_quoting_error(text: str) -> str | None:
         index, error = _quoted_field_end(text, index + 1)
         if error is not None:
             return error
-        index, error = _record_separator_end(text, index)
+        index, error = _record_separator_end(text, index, delimiter)
         if error is not None:
             return error
     return None
@@ -108,14 +132,15 @@ def _split_rows(content: bytes) -> tuple[list[list[str]], str | None]:
         return [], "payload is not strict Windows-1252"
     if not text:
         return [], "payload is empty"
-    quoting_error = _field_quoting_error(text)
+    delimiter = _payload_delimiter(text)
+    quoting_error = _field_quoting_error(text, delimiter)
     if quoting_error is not None:
         return [], f"payload quoting does not match danske-csv-v1: {quoting_error}"
     try:
         rows = list(
             csv.reader(
                 StringIO(text, newline=""),
-                delimiter=",",
+                delimiter=delimiter,
                 quotechar='"',
                 strict=True,
             )
