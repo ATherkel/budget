@@ -72,7 +72,7 @@ class LineParser:
 
 class BronzeStoreTests(unittest.TestCase):
     def test_a_presentation_replaces_the_whole_derived_cache(self) -> None:
-        content = b"12-09-2026\n05-09-2026\n"
+        content = b"12.09.2026\n05.09.2026\n"
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -95,7 +95,7 @@ class BronzeStoreTests(unittest.TestCase):
                 )
                 assert [
                     dict(r.fields) for r in store.get_source_records(run.payload_id)
-                ] == [{"datum": "12-09-2026"}, {"datum": "05-09-2026"}]
+                ] == [{"datum": "12.09.2026"}, {"datum": "05.09.2026"}]
 
             # A later version of the same format reads fewer fields, so the
             # cache must hold what the current parser presents, not the union.
@@ -111,7 +111,7 @@ class BronzeStoreTests(unittest.TestCase):
                 )
                 records = store.get_source_records(run.payload_id)
                 assert [dict(record.fields) for record in records] == [
-                    {"only": "12-09-2026"}
+                    {"only": "12.09.2026"}
                 ]
                 assert store.get_format_failures(run.payload_id) == ()
 
@@ -155,7 +155,7 @@ class BronzeStoreTests(unittest.TestCase):
             try:
                 provided.clear()
                 source = Path(directory) / "synthetic-lines.csv"
-                source.write_bytes(b"12-09-2026\n")
+                source.write_bytes(b"12.09.2026\n")
                 run = store.import_file(
                     source,
                     declared_account_id="daily-account",
@@ -192,12 +192,12 @@ class BronzeStoreTests(unittest.TestCase):
         content = (
             b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
             b'"Saldo","Status","Afstemt"\r\n'
-            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9, ""\xd8en""  ",'
+            b'"12.09.2026"," Mad "," Dagligvarer "," Caf\xe9, ""\xd8en""  ",'
             b'"-45,00","955,00","Udf\xf8rt","Nej"'
         )
-        # Independently calculated with .NET SHA256, not the Bronze code.
+        # Independently calculated with coreutils sha256sum, not the Bronze code.
         expected_payload_id = (
-            "46677a064218cc78e114e60ba2a01525fe2c28f5de0e594284e34914b7be895a"
+            "f046dc4b35d7b22fa8f02fa0b091ec8110f83f2fb191b36f6c5289065196e4b0"
         )
 
         with TemporaryDirectory() as directory:
@@ -250,7 +250,7 @@ class BronzeStoreTests(unittest.TestCase):
             assert records[0].payload_id == expected_payload_id
             assert records[0].record_ordinal == 1
             assert dict(records[0].fields) == {
-                "Dato": "12-09-2026",
+                "Dato": "12.09.2026",
                 "Kategori": " Mad ",
                 "Underkategori": " Dagligvarer ",
                 "Tekst": ' Café, "Øen"  ',
@@ -266,7 +266,7 @@ class BronzeStoreTests(unittest.TestCase):
         content = (
             b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
             b'"Saldo","Status","Afstemt"\r\n'
-            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9, ""\xd8en""  ",'
+            b'"12.09.2026"," Mad "," Dagligvarer "," Caf\xe9, ""\xd8en""  ",'
             b'"-45,00","955,00","Udf\xf8rt","Nej"'
         )
 
@@ -328,7 +328,7 @@ class BronzeStoreTests(unittest.TestCase):
         content = (
             b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
             b'"Saldo","Status","Afstemt"\r\n'
-            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9, ""\xd8en""  ",'
+            b'"12.09.2026"," Mad "," Dagligvarer "," Caf\xe9, ""\xd8en""  ",'
             b'"-45,00","955,00","Udf\xf8rt","Nej"'
         )
 
@@ -375,7 +375,7 @@ class BronzeStoreTests(unittest.TestCase):
         content = (
             b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
             b'"Saldo","Status","Afstemt"\r\n'
-            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"12.09.2026"," Mad "," Dagligvarer "," Caf\xe9",'
             b'"-45,00","955,00","Udf\xf8rt","Nej"'
         )
 
@@ -423,7 +423,7 @@ class BronzeStoreTests(unittest.TestCase):
         content = (
             b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
             b'"Saldo","Status","Afstemt"\r\n'
-            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"12.09.2026"," Mad "," Dagligvarer "," Caf\xe9",'
             b'"-45,00","955,00","Udf\xf8rt","Nej"'
         ).replace(b'"Afstemt"', b'"Afstemt?"')
 
@@ -464,11 +464,11 @@ class BronzeStoreTests(unittest.TestCase):
         content = (
             b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
             b'"Saldo","Status","Afstemt"\r\n'
-            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9, ""\xd8en""  ",'
+            b'"12.09.2026"," Mad "," Dagligvarer "," Caf\xe9, ""\xd8en""  ",'
             b'"-45,00","955,00","Udf\xf8rt","Nej"'
         )
         expected_payload_id = (
-            "46677a064218cc78e114e60ba2a01525fe2c28f5de0e594284e34914b7be895a"
+            "f046dc4b35d7b22fa8f02fa0b091ec8110f83f2fb191b36f6c5289065196e4b0"
         )
 
         with TemporaryDirectory() as directory:
@@ -536,7 +536,7 @@ class BronzeStoreTests(unittest.TestCase):
         content = (
             b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
             b'"Saldo","Status","Afstemt"\r\n'
-            b'"31-02-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"31.02.2026"," Mad "," Dagligvarer "," Caf\xe9",'
             b'"-45,00","955,00","Udf\xf8rt","Nej"'
         )
 
@@ -567,7 +567,7 @@ class BronzeStoreTests(unittest.TestCase):
             assert records == ()
             assert len(failures) == 1
             assert failures[0].reason
-            assert "31-02-2026" not in failures[0].reason
+            assert "31.02.2026" not in failures[0].reason
             assert source.name not in failures[0].reason
 
     def test_a_declared_covers_through_is_bounded_and_never_clamped(self) -> None:
@@ -576,9 +576,9 @@ class BronzeStoreTests(unittest.TestCase):
         content = (
             b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
             b'"Saldo","Status","Afstemt"\r\n'
-            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"12.09.2026"," Mad "," Dagligvarer "," Caf\xe9",'
             b'"-45,00","955,00","Slettet","Nej"\r\n'
-            b'"05-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"05.09.2026"," Mad "," Dagligvarer "," Caf\xe9",'
             b'"-45,00","1000,00","Udf\xf8rt","Nej"'
         )
         cases = (
@@ -616,7 +616,7 @@ class BronzeStoreTests(unittest.TestCase):
                 assert run.covers_through_source == "declared"
                 assert payload.content == content
                 assert [record.record_ordinal for record in records] == [1, 2]
-                assert dict(records[0].fields)["Dato"] == "12-09-2026"
+                assert dict(records[0].fields)["Dato"] == "12.09.2026"
                 assert dict(records[0].fields)["Status"] == "Slettet"
 
     def test_a_missing_declaration_falls_back_only_where_it_cannot_claim_too_much(
@@ -639,26 +639,26 @@ class BronzeStoreTests(unittest.TestCase):
         cases = (
             (
                 "quiet tail in the last transaction's month",
-                ("12-09-2026",),
+                ("12.09.2026",),
                 date(2026, 9, 14),
                 "stored",
             ),
             (
                 "fallback lands in a later month",
-                ("31-08-2026",),
+                ("31.08.2026",),
                 date(2026, 9, 14),
                 "refused",
             ),
             ("payload states no transactions", (), date(2026, 9, 14), "refused"),
             (
                 "fallback before the last transaction",
-                ("20-09-2026",),
+                ("20.09.2026",),
                 date(2026, 9, 14),
                 "refused",
             ),
             (
                 "fallback lands on the day before a later export date",
-                ("30-09-2026",),
+                ("30.09.2026",),
                 date(2026, 10, 1),
                 "stored",
             ),
@@ -706,7 +706,7 @@ class BronzeStoreTests(unittest.TestCase):
         content = (
             b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
             b'"Saldo","Status","Afstemt"\r\n'
-            b'"12-09-2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"12.09.2026"," Mad "," Dagligvarer "," Caf\xe9",'
             b'"-45,00","955,00","Udf\xf8rt","Nej"'
         )
         malformed = content[:-1] + b"\x81"
@@ -731,7 +731,7 @@ class BronzeStoreTests(unittest.TestCase):
                 assert reopened.get_payload(refused.payload_id).content == content
                 refused_records = reopened.get_source_records(refused.payload_id)
                 assert len(refused_records) == 1
-                assert dict(refused_records[0].fields)["Dato"] == "12-09-2026"
+                assert dict(refused_records[0].fields)["Dato"] == "12.09.2026"
 
             # The same bytes declared correctly afterwards are a new import, not
             # a repeat of the refusal, and the refusal is left as it was.
@@ -794,7 +794,7 @@ class BronzeStoreTests(unittest.TestCase):
             assert len(failures) == 1
 
     def test_a_later_failure_refreshes_the_reason_and_keeps_every_run(self) -> None:
-        content = b"12-09-2026\n05-09-2026\n"
+        content = b"12.09.2026\n05.09.2026\n"
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
