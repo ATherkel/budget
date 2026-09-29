@@ -129,9 +129,9 @@ def _drop(
     payload_id = each.run.payload_id
     item = ReviewItem(
         review_item_id=review_item_id(
-            "dropped-transactions", each.run.import_run_id, transaction_id
+            "dropped-transaction", each.run.import_run_id, transaction_id
         ),
-        kind="dropped-transactions",
+        kind="dropped-transaction",
         account_id=each.account_id,
         date_from=key[0],
         date_to=key[0],

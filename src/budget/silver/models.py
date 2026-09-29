@@ -100,13 +100,13 @@ class ReviewItem:
     """An ambiguity a person must decide."""
 
     review_item_id: str
-    kind: Literal["export-disagreement", "dropped-transactions", "balance-break"]
+    kind: Literal["export-disagreement", "dropped-transaction", "balance-break"]
     account_id: str
     date_from: date
     date_to: date
     payload_ids: Sequence[str]
     resolved_by: str | None
-    # The dropped transaction, for `dropped-transactions`; issue #80, option A.
+    # The dropped transaction, for `dropped-transaction` (ADR-018).
     transaction_id: str | None = None
 
 
