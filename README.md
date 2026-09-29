@@ -67,10 +67,14 @@ Nothing is selected implicitly, and a test profile refuses any path outside the
 temporary directory it was built from:
 
 ```python
+from datetime import date
+from pathlib import Path
+
 from budget.bronze import BronzeStore, migrate_bronze
 from budget.profiles import Profile
 
 profile = Profile(name="development", stores=Path("dev-stores"))
+source = Path("exports/danske-20260914.csv")
 migrate_bronze(profile)
 
 with BronzeStore(profile) as store:
@@ -81,6 +85,12 @@ with BronzeStore(profile) as store:
         covers_through=date(2026, 9, 13),
     )
 ```
+
+A profile name is one of `development`, `production` or `test`; a test profile
+must name the temporary root it stays inside, and every path it derives,
+including the store file itself, is resolved and re-checked against that root on
+each access, so a folder or file replaced by a symlink is refused instead of
+followed. Nothing reads `BUDGET_PROFILE` or a profile file yet.
 
 `migrate_bronze` is the only operation that creates or upgrades a store. It
 applies the numbered SQL files in `src/budget/migrations/bronze/`, which ship

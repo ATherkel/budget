@@ -43,6 +43,14 @@ A format ID names a **source, a representation, and a version** -
 implementations. A new layout gets a new ID; an existing ID never quietly
 changes meaning.
 
+`BronzeStore(profile, parsers={...})` accepts an optional mapping from format
+ID to parser. It is copied when the store opens, each parser must name the ID it
+is registered under, and `None` keeps the built-in registry; passing an empty
+mapping means this store accepts no format at all. The mapping exists so a test
+can present the same bytes under two versions of one format and observe that
+the derived cache is replaced; ordinary callers keep the declared registry, and
+the one-format scope above is unchanged.
+
 ## Where The Tests Live
 
 Test directories follow the application's responsibilities, and each module
