@@ -269,7 +269,8 @@ def _apply_step(
             connection.execute(statement)
         if step.version == 1:
             connection.execute(
-                "INSERT INTO store_identity (profile, stage) VALUES (?, ?)",
+                "INSERT INTO store_identity (singleton, profile, stage)"
+                " VALUES (1, ?, ?)",
                 (profile.name, BRONZE_STAGE),
             )
         _require_no_foreign_key_violations(connection, step.version)
@@ -299,14 +300,18 @@ def migrate_bronze(profile: Profile) -> None:
         connection.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
         connection.execute("PRAGMA synchronous = FULL")
         version = _read_version(connection)
-        if not _has_objects(connection):
-            connection.execute("PRAGMA journal_mode = WAL")
-        elif version == 0:
-            raise UnversionedStoreError(path)
-        elif version > latest:
+        has_objects = _has_objects(connection)
+        # Validate the store before any persistent write: a journal-mode change
+        # is a write, and an unsupported or unversioned store must stay exactly
+        # as it was found.
+        if version < 0 or version > latest:
             raise UnsupportedStoreVersionError(path, version, latest)
+        if version == 0 and has_objects:
+            raise UnversionedStoreError(path)
         if version >= 1:
             _require_identity(connection, path, profile)
+        elif not has_objects:
+            connection.execute("PRAGMA journal_mode = WAL")
 
         pending = [step for step in steps if step.version > version]
         if pending:

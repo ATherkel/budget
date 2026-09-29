@@ -39,6 +39,7 @@ CREATE TABLE format_failures (
 ) STRICT;
 
 CREATE TABLE store_identity (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     profile TEXT NOT NULL,
     stage TEXT NOT NULL CHECK (stage = 'bronze')
 ) STRICT;
