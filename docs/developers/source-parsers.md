@@ -23,7 +23,7 @@ Two rules the contract exists to keep:
 
 - **Decoded fields stay as they are.** Records are `Mapping[str, str]` keyed by
   the format's own field names. Nothing is trimmed, typed, or mapped: `" Mad "`
-  and `"12-09-2026"` are presented exactly as they arrived. The only value read
+  and `"12.09.2026"` are presented exactly as they arrived. The only value read
   rather than presented is the transaction date used for the coverage bound
   below.
 - **`last_transaction_date` has one job.** It bounds a declared
