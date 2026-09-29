@@ -30,7 +30,7 @@ _HEADER = (
 )
 
 # The transaction date is the only value this parser reads rather than presents.
-_TRANSACTION_DATE = re.compile(r"[0-9]{2}\.[0-9]{2}\.[0-9]{4}")
+_TRANSACTION_DATE = re.compile(r"\d{2}\.\d{2}\.\d{4}")
 
 # The export date convention of this format: `…-YYYYMMDD.csv`.
 _EXPORT_DATE_SUFFIX = re.compile(r"-([0-9]{8})\.csv$", re.IGNORECASE)
