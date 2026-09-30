@@ -70,7 +70,7 @@ temporary directory it was built from:
 from datetime import date
 from pathlib import Path
 
-from budget.bronze import BronzeStore, migrate_bronze
+from budget.bronze import BronzeStore, ImportDeclaration, migrate_bronze
 from budget.profiles import Profile
 
 profile = Profile(name="development", stores=Path("dev-stores"))
@@ -80,9 +80,12 @@ migrate_bronze(profile)
 with BronzeStore(profile) as store:
     run = store.import_file(
         source,
-        declared_account_id="daily-account",
-        source_format="danske-csv-v1",
-        covers_through=date(2026, 9, 13),
+        ImportDeclaration(
+            declared_account_id="daily-account",
+            source_format="danske-csv-v1",
+            covers_from=date(2026, 6, 14),
+            covers_through=date(2026, 9, 13),
+        ),
     )
 ```
 

@@ -11,12 +11,21 @@ guards in `tests/bronze/test_storage.py`.
 
 import unittest
 from datetime import UTC, date, datetime, timedelta
+from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 
 import pytest
 
-from budget.bronze import BronzeStore, migrate_bronze
+from budget.bronze import (
+    BronzeStore,
+    FormatFailure,
+    ImportDeclaration,
+    ImportRun,
+    SourceRecord,
+    migrate_bronze,
+)
 from budget.bronze.parsers.base import ParserResult
 from budget.bronze.parsers.registry import UnsupportedSourceFormatError
 from budget.bronze.store import ParserFormatMismatchError
@@ -70,6 +79,59 @@ class LineParser:
             return None
 
 
+def danske_payload(*datos: str) -> bytes:
+    """Build a `danske-csv-v1` payload with one record per given Dato string."""
+    lines = [
+        (
+            b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
+            b'"Saldo","Status","Afstemt"'
+        )
+    ]
+    lines.extend(
+        b'"%s"," Mad "," Dagligvarer "," Caf\xe9",'
+        b'"-45,00","955,00","Udf\xf8rt","Nej"' % dato.encode("ascii")
+        for dato in datos
+    )
+    return b"\r\n".join(lines)
+
+
+def import_into_new_store(
+    content: bytes,
+    *,
+    covers_from: date,
+    covers_through: date,
+) -> tuple[ImportRun, tuple[SourceRecord, ...], tuple[FormatFailure, ...]]:
+    """Import one payload exported on 2026-09-14 into its own new store.
+
+    Every call gets a fresh store, so an accepted declaration never depends on
+    an earlier call having stored the same bytes. What comes back is read from
+    the reopened store.
+    """
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        source = root / "synthetic-20260914.csv"
+        source.write_bytes(content)
+        profile = migrated_profile(root)
+
+        with BronzeStore(profile) as store:
+            run = store.import_file(
+                source,
+                ImportDeclaration(
+                    declared_account_id="daily-account",
+                    source_format="danske-csv-v1",
+                    covers_from=covers_from,
+                    covers_through=covers_through,
+                ),
+            )
+        with BronzeStore(profile) as reopened:
+            saved = reopened.get_import_run(run.import_run_id)
+            records = reopened.get_source_records(run.payload_id)
+            failures = reopened.get_format_failures(run.payload_id)
+
+    assert saved == run
+    return saved, records, failures
+
+
 class BronzeStoreTests(unittest.TestCase):
     def test_a_presentation_replaces_the_whole_derived_cache(self) -> None:
         content = b"12.09.2026\n05.09.2026\n"
@@ -88,10 +150,13 @@ class BronzeStoreTests(unittest.TestCase):
             ) as store:
                 run = store.import_file(
                     source,
-                    declared_account_id="daily-account",
-                    source_format=LineParser.source_format,
-                    exported_on=date(2026, 9, 14),
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format=LineParser.source_format,
+                        exported_on=date(2026, 9, 14),
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
                 assert [
                     dict(r.fields) for r in store.get_source_records(run.payload_id)
@@ -104,10 +169,13 @@ class BronzeStoreTests(unittest.TestCase):
             ) as store:
                 store.import_file(
                     source,
-                    declared_account_id="daily-account",
-                    source_format=LineParser.source_format,
-                    exported_on=date(2026, 9, 14),
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format=LineParser.source_format,
+                        exported_on=date(2026, 9, 14),
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
                 records = store.get_source_records(run.payload_id)
                 assert [dict(record.fields) for record in records] == [
@@ -122,10 +190,13 @@ class BronzeStoreTests(unittest.TestCase):
             ) as store:
                 store.import_file(
                     source,
-                    declared_account_id="daily-account",
-                    source_format=LineParser.source_format,
-                    exported_on=date(2026, 9, 14),
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format=LineParser.source_format,
+                        exported_on=date(2026, 9, 14),
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
                 failures = store.get_format_failures(run.payload_id)
                 assert store.get_source_records(run.payload_id) == ()
@@ -139,10 +210,13 @@ class BronzeStoreTests(unittest.TestCase):
             ) as store:
                 store.import_file(
                     source,
-                    declared_account_id="daily-account",
-                    source_format=LineParser.source_format,
-                    exported_on=date(2026, 9, 14),
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format=LineParser.source_format,
+                        exported_on=date(2026, 9, 14),
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
                 assert len(store.get_source_records(run.payload_id)) == 2
                 assert store.get_format_failures(run.payload_id) == ()
@@ -158,10 +232,13 @@ class BronzeStoreTests(unittest.TestCase):
                 source.write_bytes(b"12.09.2026\n")
                 run = store.import_file(
                     source,
-                    declared_account_id="daily-account",
-                    source_format=LineParser.source_format,
-                    exported_on=date(2026, 9, 14),
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format=LineParser.source_format,
+                        exported_on=date(2026, 9, 14),
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
                 assert len(store.get_source_records(run.payload_id)) == 1
             finally:
@@ -172,9 +249,13 @@ class BronzeStoreTests(unittest.TestCase):
                 with pytest.raises(UnsupportedSourceFormatError):
                     empty.import_file(
                         source,
-                        declared_account_id="daily-account",
-                        source_format=LineParser.source_format,
-                        exported_on=date(2026, 9, 14),
+                        ImportDeclaration(
+                            declared_account_id="daily-account",
+                            source_format=LineParser.source_format,
+                            exported_on=date(2026, 9, 14),
+                            covers_from=date(2026, 9, 1),
+                            covers_through=date(2026, 9, 13),
+                        ),
                     )
             finally:
                 empty.close()
@@ -210,9 +291,12 @@ class BronzeStoreTests(unittest.TestCase):
             with BronzeStore(profile) as store:
                 run = store.import_file(
                     source,
-                    declared_account_id="daily-account",
-                    source_format="danske-csv-v1",
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format="danske-csv-v1",
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
             after_import = datetime.now(UTC)
 
@@ -234,8 +318,8 @@ class BronzeStoreTests(unittest.TestCase):
             assert saved_run.original_filename == "synthetic-20260914.csv"
             assert saved_run.exported_on == date(2026, 9, 14)
             assert saved_run.exported_on_source == "filename"
+            assert saved_run.covers_from == date(2026, 9, 1)
             assert saved_run.covers_through == date(2026, 9, 13)
-            assert saved_run.covers_through_source == "declared"
             assert saved_run.started_at.utcoffset() == timedelta(0)
             assert before_import <= saved_run.started_at
             assert saved_run.started_at <= after_import
@@ -281,9 +365,12 @@ class BronzeStoreTests(unittest.TestCase):
             with BronzeStore(profile) as store:
                 original_run = store.import_file(
                     original_source,
-                    declared_account_id="daily-account",
-                    source_format="danske-csv-v1",
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format="danske-csv-v1",
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
                 original_payload = store.get_payload(original_run.payload_id)
                 original_records = store.get_source_records(original_run.payload_id)
@@ -292,9 +379,12 @@ class BronzeStoreTests(unittest.TestCase):
             with BronzeStore(profile) as reopened:
                 repeat = reopened.import_file(
                     later_source,
-                    declared_account_id="daily-account",
-                    source_format="danske-csv-v1",
-                    covers_through=date(2026, 9, 15),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format="danske-csv-v1",
+                        covers_from=date(2026, 8, 15),
+                        covers_through=date(2026, 9, 15),
+                    ),
                 )
             after_repeat = datetime.now(UTC)
 
@@ -310,8 +400,9 @@ class BronzeStoreTests(unittest.TestCase):
                 assert saved_repeat.original_filename == "synthetic-20260916.csv"
                 assert saved_repeat.exported_on == date(2026, 9, 16)
                 assert saved_repeat.exported_on_source == "filename"
+                # A repeat records its own declared range, not the original's.
+                assert saved_repeat.covers_from == date(2026, 8, 15)
                 assert saved_repeat.covers_through == date(2026, 9, 15)
-                assert saved_repeat.covers_through_source == "declared"
                 assert before_repeat <= saved_repeat.started_at
                 assert saved_repeat.started_at <= after_repeat
                 assert (
@@ -323,6 +414,21 @@ class BronzeStoreTests(unittest.TestCase):
                     == original_records
                 )
                 assert reopened.get_format_failures(saved_repeat.payload_id) == ()
+
+                # The same bounds apply to a repeat: a range that leaves out the
+                # payload's transaction is refused, never recorded as a repeat.
+                out_of_range = reopened.import_file(
+                    later_source,
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format="danske-csv-v1",
+                        covers_from=date(2026, 9, 13),
+                        covers_through=date(2026, 9, 15),
+                    ),
+                )
+                assert out_of_range.outcome == "refused"
+                assert out_of_range.repeat_of is None
+                assert out_of_range.covers_from == date(2026, 9, 13)
 
     def test_same_bytes_for_another_account_record_a_refused_run(self) -> None:
         content = (
@@ -341,18 +447,24 @@ class BronzeStoreTests(unittest.TestCase):
             with BronzeStore(profile) as store:
                 original = store.import_file(
                     source,
-                    declared_account_id="daily-account",
-                    source_format="danske-csv-v1",
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format="danske-csv-v1",
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
                 original_records = store.get_source_records(original.payload_id)
 
             with BronzeStore(profile) as reopened:
                 refused = reopened.import_file(
                     source,
-                    declared_account_id="savings-account",
-                    source_format="danske-csv-v1",
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="savings-account",
+                        source_format="danske-csv-v1",
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
 
             with BronzeStore(profile) as reopened:
@@ -390,9 +502,12 @@ class BronzeStoreTests(unittest.TestCase):
             with BronzeStore(profile) as store:
                 refused = store.import_file(
                     source,
-                    declared_account_id="daily-account",
-                    source_format="danske-csv-v1",
-                    covers_through=date(2026, 9, 20),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format="danske-csv-v1",
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 20),
+                    ),
                 )
             assert refused.outcome == "refused"
 
@@ -401,9 +516,12 @@ class BronzeStoreTests(unittest.TestCase):
             with BronzeStore(profile) as reopened:
                 accepted = reopened.import_file(
                     source,
-                    declared_account_id="savings-account",
-                    source_format="danske-csv-v1",
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="savings-account",
+                        source_format="danske-csv-v1",
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
                 payload = reopened.get_payload(accepted.payload_id)
                 saved_refusal = reopened.get_import_run(refused.import_run_id)
@@ -436,9 +554,12 @@ class BronzeStoreTests(unittest.TestCase):
             with BronzeStore(profile) as store:
                 run = store.import_file(
                     source,
-                    declared_account_id="daily-account",
-                    source_format="danske-csv-v1",
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format="danske-csv-v1",
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
             with BronzeStore(profile) as reopened:
                 payload = reopened.get_payload(run.payload_id)
@@ -446,8 +567,8 @@ class BronzeStoreTests(unittest.TestCase):
                 failures = reopened.get_format_failures(run.payload_id)
 
             assert run.outcome == "stored"
+            assert run.covers_from == date(2026, 9, 1)
             assert run.covers_through == date(2026, 9, 13)
-            assert run.covers_through_source == "declared"
             assert payload.content == content
             assert payload.byte_length == len(content)
             assert records == ()
@@ -485,9 +606,12 @@ class BronzeStoreTests(unittest.TestCase):
                 ) as missing_export_date:
                     store.import_file(
                         no_suffix,
-                        declared_account_id="daily-account",
-                        source_format="danske-csv-v1",
-                        covers_through=date(2026, 9, 13),
+                        ImportDeclaration(
+                            declared_account_id="daily-account",
+                            source_format="danske-csv-v1",
+                            covers_from=date(2026, 9, 1),
+                            covers_through=date(2026, 9, 13),
+                        ),
                     )
                 assert "synthetic" not in str(missing_export_date.value)
                 with pytest.raises(
@@ -495,9 +619,12 @@ class BronzeStoreTests(unittest.TestCase):
                 ) as impossible_export_date:
                     store.import_file(
                         impossible_suffix,
-                        declared_account_id="daily-account",
-                        source_format="danske-csv-v1",
-                        covers_through=date(2026, 9, 13),
+                        ImportDeclaration(
+                            declared_account_id="daily-account",
+                            source_format="danske-csv-v1",
+                            covers_from=date(2026, 9, 1),
+                            covers_through=date(2026, 9, 13),
+                        ),
                     )
                 assert "synthetic" not in str(impossible_export_date.value)
                 with pytest.raises(
@@ -505,9 +632,12 @@ class BronzeStoreTests(unittest.TestCase):
                 ) as unknown_format:
                     store.import_file(
                         no_suffix,
-                        declared_account_id="daily-account",
-                        source_format="nordea-csv-v1",
-                        covers_through=date(2026, 9, 13),
+                        ImportDeclaration(
+                            declared_account_id="daily-account",
+                            source_format="nordea-csv-v1",
+                            covers_from=date(2026, 9, 1),
+                            covers_through=date(2026, 9, 13),
+                        ),
                     )
                 assert "synthetic" not in str(unknown_format.value)
 
@@ -521,10 +651,13 @@ class BronzeStoreTests(unittest.TestCase):
             with BronzeStore(profile) as store:
                 declared = store.import_file(
                     impossible_suffix,
-                    declared_account_id="daily-account",
-                    source_format="danske-csv-v1",
-                    exported_on=date(2026, 9, 14),
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format="danske-csv-v1",
+                        exported_on=date(2026, 9, 14),
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
             assert declared.exported_on == date(2026, 9, 14)
             assert declared.exported_on_source == "declared"
@@ -549,9 +682,12 @@ class BronzeStoreTests(unittest.TestCase):
             with BronzeStore(profile) as store:
                 run = store.import_file(
                     source,
-                    declared_account_id="daily-account",
-                    source_format="danske-csv-v1",
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format="danske-csv-v1",
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
             with BronzeStore(profile) as reopened:
                 payload = reopened.get_payload(run.payload_id)
@@ -561,8 +697,8 @@ class BronzeStoreTests(unittest.TestCase):
             # The declaration was acceptable, so the run is stored with a
             # verdict rather than refused.
             assert run.outcome == "stored"
+            assert run.covers_from == date(2026, 9, 1)
             assert run.covers_through == date(2026, 9, 13)
-            assert run.covers_through_source == "declared"
             assert payload.content == content
             assert records == ()
             assert len(failures) == 1
@@ -570,135 +706,174 @@ class BronzeStoreTests(unittest.TestCase):
             assert "31.02.2026" not in failures[0].reason
             assert source.name not in failures[0].reason
 
-    def test_a_declared_covers_through_is_bounded_and_never_clamped(self) -> None:
-        # The row carrying the maximum Dato comes first and is cancelled, so a
-        # bound read from row order or Status would land somewhere else.
+    def test_the_covered_range_is_a_required_declaration(self) -> None:
+        content = danske_payload("12.09.2026")
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "synthetic-20260914.csv"
+            source.write_bytes(content)
+            profile = migrated_profile(root)
+            complete: dict[str, Any] = {
+                "declared_account_id": "daily-account",
+                "source_format": "danske-csv-v1",
+                "covers_from": date(2026, 9, 1),
+                "covers_through": date(2026, 9, 13),
+            }
+
+            with BronzeStore(profile) as store:
+                for missing in ("covers_from", "covers_through"):
+                    with self.subTest(missing=missing):
+                        arguments = {
+                            name: value
+                            for name, value in complete.items()
+                            if name != missing
+                        }
+                        # Unpacked, so the declaration can leave out a required
+                        # field the way an untyped caller could.
+                        with pytest.raises(TypeError, match=missing):
+                            store.import_file(source, ImportDeclaration(**arguments))
+
+            # A usage error is not a refusal: not even the bytes were kept.
+            with BronzeStore(profile) as reopened, pytest.raises(KeyError):
+                reopened.get_payload(sha256(content).hexdigest())
+
+    def test_a_declared_range_is_bounded_and_never_clamped(self) -> None:
+        # The row carrying the maximum Dato comes first and is cancelled, and
+        # the minimum sits between two later dates, so a bound read from row
+        # order or Status would land somewhere else. The export date is
+        # 2026-09-14, from the filename.
         content = (
             b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
             b'"Saldo","Status","Afstemt"\r\n'
             b'"12.09.2026"," Mad "," Dagligvarer "," Caf\xe9",'
             b'"-45,00","955,00","Slettet","Nej"\r\n'
             b'"05.09.2026"," Mad "," Dagligvarer "," Caf\xe9",'
-            b'"-45,00","1000,00","Udf\xf8rt","Nej"'
+            b'"-45,00","1000,00","Udf\xf8rt","Nej"\r\n'
+            b'"08.09.2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"-45,00","955,00","Udf\xf8rt","Nej"'
         )
         cases = (
-            ("after the export date", date(2026, 9, 15), "refused"),
-            ("before the last transaction", date(2026, 9, 11), "refused"),
-            ("on the last transaction", date(2026, 9, 12), "stored"),
-            ("on the export date", date(2026, 9, 14), "stored"),
+            (
+                "ends after the export date",
+                date(2026, 9, 1),
+                date(2026, 9, 15),
+                "refused",
+            ),
+            (
+                "starts after the earliest transaction",
+                date(2026, 9, 6),
+                date(2026, 9, 13),
+                "refused",
+            ),
+            (
+                "ends before the latest transaction",
+                date(2026, 9, 1),
+                date(2026, 9, 11),
+                "refused",
+            ),
+            (
+                "starts on the earliest transaction",
+                date(2026, 9, 5),
+                date(2026, 9, 13),
+                "stored",
+            ),
+            (
+                "ends on the latest transaction",
+                date(2026, 9, 1),
+                date(2026, 9, 12),
+                "stored",
+            ),
+            (
+                "ends on the export date",
+                date(2026, 9, 1),
+                date(2026, 9, 14),
+                "stored",
+            ),
         )
 
-        for label, declared, expected_outcome in cases:
-            # Each case gets its own store, so an accepted declaration never
-            # depends on an earlier case having stored the same bytes.
-            with self.subTest(covers_through=label), TemporaryDirectory() as directory:
-                root = Path(directory)
-                source = root / "synthetic-20260914.csv"
-                source.write_bytes(content)
-                profile = migrated_profile(root)
-
-                with BronzeStore(profile) as store:
-                    run = store.import_file(
-                        source,
-                        declared_account_id="daily-account",
-                        source_format="danske-csv-v1",
-                        covers_through=declared,
-                    )
-                with BronzeStore(profile) as reopened:
-                    payload = reopened.get_payload(run.payload_id)
-                    records = reopened.get_source_records(run.payload_id)
+        for label, covers_from, covers_through, expected_outcome in cases:
+            with self.subTest(range=label):
+                run, records, failures = import_into_new_store(
+                    content, covers_from=covers_from, covers_through=covers_through
+                )
 
                 assert run.outcome == expected_outcome
                 assert run.repeat_of is None
-                # A refused run keeps the declared date, not the nearest
+                # A refused run keeps the declared range, not the nearest
                 # acceptable one.
-                assert run.covers_through == declared
-                assert run.covers_through_source == "declared"
-                assert payload.content == content
-                assert [record.record_ordinal for record in records] == [1, 2]
+                assert run.covers_from == covers_from
+                assert run.covers_through == covers_through
+                assert failures == ()
+                assert [record.record_ordinal for record in records] == [1, 2, 3]
                 assert dict(records[0].fields)["Dato"] == "12.09.2026"
                 assert dict(records[0].fields)["Status"] == "Slettet"
 
-    def test_a_missing_declaration_falls_back_only_where_it_cannot_claim_too_much(
-        self,
-    ) -> None:
-        def payload(dates: tuple[str, ...]) -> bytes:
-            lines = [
-                (
-                    b'"Dato","Kategori","Underkategori","Tekst","Bel\xf8b",'
-                    b'"Saldo","Status","Afstemt"'
-                )
-            ]
-            lines.extend(
-                b'"%s"," Mad "," Dagligvarer "," Caf\xe9",'
-                b'"-45,00","955,00","Udf\xf8rt","Nej"' % dato.encode("ascii")
-                for dato in dates
-            )
-            return b"\r\n".join(lines)
-
+    def test_a_quiet_account_declares_a_range_without_transactions(self) -> None:
+        # A readable payload that states no transactions shows the account was
+        # quiet over the declared range; only the range itself can be wrong.
+        content = danske_payload()
         cases = (
+            ("a valid range", date(2026, 9, 1), date(2026, 9, 13), "stored"),
             (
-                "quiet tail in the last transaction's month",
-                ("12.09.2026",),
-                date(2026, 9, 14),
-                "stored",
-            ),
-            (
-                "fallback lands in a later month",
-                ("31.08.2026",),
-                date(2026, 9, 14),
-                "refused",
-            ),
-            ("payload states no transactions", (), date(2026, 9, 14), "refused"),
-            (
-                "fallback before the last transaction",
-                ("20.09.2026",),
-                date(2026, 9, 14),
+                "starts after it ends",
+                date(2026, 9, 13),
+                date(2026, 9, 1),
                 "refused",
             ),
             (
-                "fallback lands on the day before a later export date",
-                ("30.09.2026",),
-                date(2026, 10, 1),
-                "stored",
+                "ends after the export date",
+                date(2026, 9, 1),
+                date(2026, 9, 15),
+                "refused",
             ),
         )
 
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            profile = migrated_profile(root)
+        for label, covers_from, covers_through, expected_outcome in cases:
+            with self.subTest(range=label):
+                run, records, failures = import_into_new_store(
+                    content, covers_from=covers_from, covers_through=covers_through
+                )
 
-            for index, (label, dates, exported_on, expected_outcome) in enumerate(
-                cases
-            ):
-                with self.subTest(declaration=label):
-                    content = payload(dates)
-                    source = root / f"synthetic-{index}-{exported_on:%Y%m%d}.csv"
-                    source.write_bytes(content)
-                    with BronzeStore(profile) as store:
-                        run = store.import_file(
-                            source,
-                            declared_account_id="daily-account",
-                            source_format="danske-csv-v1",
-                        )
-                    with BronzeStore(profile) as reopened:
-                        stored_payload = reopened.get_payload(run.payload_id)
-                        records = reopened.get_source_records(run.payload_id)
-                        failures = reopened.get_format_failures(run.payload_id)
+                assert run.outcome == expected_outcome
+                assert run.covers_from == covers_from
+                assert run.covers_through == covers_through
+                assert records == ()
+                assert failures == ()
 
-                    assert run.outcome == expected_outcome
-                    assert run.repeat_of is None
-                    assert run.exported_on == exported_on
-                    assert run.exported_on_source == "filename"
-                    # The attempted fallback is recorded, not a date invented
-                    # from the payload: covers_through is the export date.
-                    assert run.covers_through == exported_on
-                    assert run.covers_through_source == "exported_on"
-                    assert stored_payload.content == content
-                    assert [record.record_ordinal for record in records] == list(
-                        range(1, len(dates) + 1)
-                    )
-                    assert failures == ()
+    def test_an_unreadable_payload_keeps_its_declared_range(self) -> None:
+        # The payload has no dates Bronze can read, so only the range's own
+        # bounds apply: it must not start after it ends or reach past the
+        # export date.
+        content = danske_payload("12.09.2026").replace(b'"Afstemt"', b'"Afstemt?"')
+        cases = (
+            ("a valid range", date(2026, 9, 1), date(2026, 9, 13), "stored"),
+            (
+                "starts after it ends",
+                date(2026, 9, 13),
+                date(2026, 9, 1),
+                "refused",
+            ),
+            (
+                "ends after the export date",
+                date(2026, 9, 1),
+                date(2026, 9, 15),
+                "refused",
+            ),
+        )
+
+        for label, covers_from, covers_through, expected_outcome in cases:
+            with self.subTest(range=label):
+                run, records, failures = import_into_new_store(
+                    content, covers_from=covers_from, covers_through=covers_through
+                )
+
+                assert run.outcome == expected_outcome
+                assert run.covers_from == covers_from
+                assert run.covers_through == covers_through
+                assert records == ()
+                assert len(failures) == 1
+                assert failures[0].source_format == "danske-csv-v1"
 
     def test_a_refused_or_failed_presentation_is_evidence_never_an_original(
         self,
@@ -720,9 +895,12 @@ class BronzeStoreTests(unittest.TestCase):
             with BronzeStore(profile) as store:
                 refused = store.import_file(
                     source,
-                    declared_account_id="daily-account",
-                    source_format="danske-csv-v1",
-                    covers_through=date(2026, 9, 20),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format="danske-csv-v1",
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 20),
+                    ),
                 )
             assert refused.outcome == "refused"
 
@@ -738,9 +916,12 @@ class BronzeStoreTests(unittest.TestCase):
             with BronzeStore(profile) as reopened:
                 corrected = reopened.import_file(
                     source,
-                    declared_account_id="daily-account",
-                    source_format="danske-csv-v1",
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format="danske-csv-v1",
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
             assert corrected.outcome == "stored"
             assert corrected.repeat_of is None
@@ -753,17 +934,23 @@ class BronzeStoreTests(unittest.TestCase):
                 # for another account, and still repeat the stored run only.
                 foreign = reopened.import_file(
                     source,
-                    declared_account_id="savings-account",
-                    source_format="danske-csv-v1",
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="savings-account",
+                        source_format="danske-csv-v1",
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
                 assert foreign.outcome == "refused"
                 assert foreign.repeat_of is None
                 repeated = reopened.import_file(
                     source,
-                    declared_account_id="daily-account",
-                    source_format="danske-csv-v1",
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format="danske-csv-v1",
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
                 assert repeated.outcome == "repeat"
                 assert repeated.repeat_of == corrected.import_run_id
@@ -775,13 +962,21 @@ class BronzeStoreTests(unittest.TestCase):
             with BronzeStore(profile) as reopened:
                 failed = reopened.import_file(
                     malformed_source,
-                    declared_account_id="daily-account",
-                    source_format="danske-csv-v1",
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format="danske-csv-v1",
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 14),
+                    ),
                 )
                 again = reopened.import_file(
                     malformed_source,
-                    declared_account_id="daily-account",
-                    source_format="danske-csv-v1",
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format="danske-csv-v1",
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 14),
+                    ),
                 )
                 failures = reopened.get_format_failures(failed.payload_id)
                 failed_records = reopened.get_source_records(failed.payload_id)
@@ -810,10 +1005,13 @@ class BronzeStoreTests(unittest.TestCase):
             ) as store:
                 stored_run = store.import_file(
                     source,
-                    declared_account_id="daily-account",
-                    source_format=LineParser.source_format,
-                    exported_on=date(2026, 9, 14),
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format=LineParser.source_format,
+                        exported_on=date(2026, 9, 14),
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
 
             with BronzeStore(
@@ -821,10 +1019,13 @@ class BronzeStoreTests(unittest.TestCase):
             ) as store:
                 failed_run = store.import_file(
                     source,
-                    declared_account_id="daily-account",
-                    source_format=LineParser.source_format,
-                    exported_on=date(2026, 9, 14),
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format=LineParser.source_format,
+                        exported_on=date(2026, 9, 14),
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
                 reasons = [
                     failure.reason
@@ -837,10 +1038,13 @@ class BronzeStoreTests(unittest.TestCase):
             ) as store:
                 store.import_file(
                     source,
-                    declared_account_id="daily-account",
-                    source_format=LineParser.source_format,
-                    exported_on=date(2026, 9, 14),
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format=LineParser.source_format,
+                        exported_on=date(2026, 9, 14),
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
                 refreshed = [
                     failure.reason
@@ -856,10 +1060,13 @@ class BronzeStoreTests(unittest.TestCase):
             ) as store:
                 final_run = store.import_file(
                     source,
-                    declared_account_id="daily-account",
-                    source_format=LineParser.source_format,
-                    exported_on=date(2026, 9, 14),
-                    covers_through=date(2026, 9, 13),
+                    ImportDeclaration(
+                        declared_account_id="daily-account",
+                        source_format=LineParser.source_format,
+                        exported_on=date(2026, 9, 14),
+                        covers_from=date(2026, 9, 1),
+                        covers_through=date(2026, 9, 13),
+                    ),
                 )
                 assert store.get_format_failures(stored_run.payload_id) == ()
                 for earlier in (stored_run, failed_run, final_run):

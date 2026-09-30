@@ -6,13 +6,20 @@ else in the package is an implementation detail: parsing lives behind
 `budget.bronze.parsers`, which is where a new source format is added.
 """
 
-from budget.bronze.models import FormatFailure, ImportRun, RawPayload, SourceRecord
+from budget.bronze.models import (
+    FormatFailure,
+    ImportDeclaration,
+    ImportRun,
+    RawPayload,
+    SourceRecord,
+)
 from budget.bronze.storage import migrate_bronze
 from budget.bronze.store import BronzeStore
 
 __all__ = [
     "BronzeStore",
     "FormatFailure",
+    "ImportDeclaration",
     "ImportRun",
     "RawPayload",
     "SourceRecord",

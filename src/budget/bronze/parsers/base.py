@@ -35,6 +35,7 @@ class ParserResult:
     """
 
     records: tuple[Mapping[str, str], ...] = ()
+    first_transaction_date: date | None = None
     last_transaction_date: date | None = None
     failure_reason: str | None = None
 

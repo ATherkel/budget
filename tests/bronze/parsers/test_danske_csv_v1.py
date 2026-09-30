@@ -333,28 +333,43 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
                 assert reason
                 assert "Caf" not in reason
 
-    def test_the_coverage_bound_is_the_latest_date_whatever_the_row_order(self) -> None:
-        # The row carrying the maximum Dato comes first and is cancelled, so a
-        # bound read from row order or Status would land somewhere else.
+    def test_the_coverage_bounds_are_the_date_span_whatever_the_row_order(
+        self,
+    ) -> None:
+        # The row carrying the maximum Dato comes first and is cancelled, and
+        # the minimum sits between two later dates, so a bound read from row
+        # order or Status would land somewhere else.
         payload = header_payload(
             b'"12.09.2026"," Mad "," Dagligvarer "," Caf\xe9",'
             b'"-45,00","955,00","Slettet","Nej"',
             b'"05.09.2026"," Mad "," Dagligvarer "," Caf\xe9",'
             b'"-45,00","1000,00","Udf\xf8rt","Nej"',
+            b'"08.09.2026"," Mad "," Dagligvarer "," Caf\xe9",'
+            b'"-45,00","955,00","Udf\xf8rt","Nej"',
         )
 
         result = PARSER.parse(payload)
 
         assert result.failure_reason is None
+        assert result.first_transaction_date == date(2026, 9, 5)
         assert result.last_transaction_date == date(2026, 9, 12)
         assert [dict(record)["Dato"] for record in result.records] == [
             "12.09.2026",
             "05.09.2026",
+            "08.09.2026",
         ]
         assert [dict(record)["Status"] for record in result.records] == [
             "Slettet",
             "Udført",
+            "Udført",
         ]
+
+        # A payload that states no transactions is readable and bounds nothing.
+        quiet = PARSER.parse(header_payload())
+        assert quiet.failure_reason is None
+        assert quiet.records == ()
+        assert quiet.first_transaction_date is None
+        assert quiet.last_transaction_date is None
 
     def test_a_date_must_be_zero_padded_dd_mm_yyyy(self) -> None:
         # The declared shape is two day digits, two month digits and four year

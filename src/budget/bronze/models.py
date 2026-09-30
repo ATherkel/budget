@@ -17,6 +17,24 @@ class RawPayload:
 
 
 @dataclass(frozen=True)
+class ImportDeclaration:
+    """What the operator states about one file before Bronze reads it.
+
+    Every field is taken as declared. The declaration never checks itself: a
+    range that starts after it ends, or reaches past the export date, is still
+    a declaration, and the import run records it as refused rather than
+    raising. `exported_on` alone may be left out, when the source format reads
+    it from the filename.
+    """
+
+    declared_account_id: str
+    source_format: str
+    covers_from: date
+    covers_through: date
+    exported_on: date | None = None
+
+
+@dataclass(frozen=True)
 class ImportRun:
     """One presentation of a payload, with the operator's declarations."""
 
@@ -27,6 +45,7 @@ class ImportRun:
     original_filename: str = field(repr=False)
     exported_on: date
     exported_on_source: Literal["filename", "declared"]
+    covers_from: date
     covers_through: date
     covers_through_source: Literal["declared", "exported_on"]
     started_at: datetime
