@@ -34,9 +34,10 @@ Kimball's columns are adapted to this pipeline:
 | account configuration | one account | currency, and through it the decimal places of the minor unit (ADR-013) |
 | manual decision, from the decision log ([`operations.md`](../operations.md#decisionsjsonl-the-decision-log)) | one recorded ruling | *same transaction*: `TransactionEvidence.transaction_id`, the `Transaction` grain and `ImportRunResult.status`. *withdrawn*: the `Transaction` grain and `ImportRunResult.status`. *accept discrepancy*: `ImportRunResult.status`, `balance` and `end_of_day_balance`. *void import run*: excluded by "not voided" above |
 
-The `danske-csv-v1` fields. `bronze-layer.md` declares the header; the meanings
-come from it, `domains/transaction.md`, and the sample profile in
-`agents/bronze-agent.md`.
+The `danske-csv-v1` fields. `bronze-layer.md` declares the headers; the
+meanings come from it, `domains/transaction.md`, and the sample profile in
+`agents/bronze-agent.md`. An account without bank categories exports no
+`Kategori` or `Underkategori`, so its source records have neither field.
 
 | Field | Example | Meaning |
 | --- | --- | --- |
@@ -94,11 +95,14 @@ These apply wherever a column below names them.
 - **Label.** `Kategori` or `Underkategori` with leading and trailing Unicode
   whitespace removed, including 0xA0, as for the identity text; internal
   whitespace is kept. A value that is empty afterwards is null
-  (`silver-layer.md`).
+  (`silver-layer.md`), and so is a field the source record does not have.
 - **Selected export.** For each account and date, the latest admitted export
   covering that date that shows every transaction kept for it (ADR-009). It
   supplies `balance`, `day_sequence`, `bank_category` and `bank_subcategory`
-  (`silver-layer.md`).
+  (`silver-layer.md`). An account's layout is not expected to change. If the
+  bank ever adds categories to one, exports from then on supply labels for
+  every date they cover, and dates that only older exports cover keep null
+  labels.
 - **Error codes.** *Map decision.* `silver-layer.md` (*Validation*) lists the
   errors in prose and names no `ValidationError.code`. This map names the four
   its rules raise: `unparseable-date`, `unparseable-decimal`, `unknown-status`
