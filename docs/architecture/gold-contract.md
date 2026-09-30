@@ -61,7 +61,7 @@ current household interpretation.
 | `ownership_scope` | `OwnershipScope` | Yes | `household` or `person`. |
 | `currency` | ISO 4217 string | Yes | Currency of every amount and balance on this account. `DKK` in the first release. |
 | `closed_on` | `date`/null | No | Date the account closed; null while open. Ends the account's managed period. |
-| `coverage_start` | `date`/null | No | First booked transaction date; null for an account with no transactions. |
+| `coverage_start` | `date`/null | No | Earliest `covers_from` over the account's admitted import runs: the first day its declared export ranges cover, so a quiet account can be `complete` from the start of its first range. Null when the account has no admitted import run. |
 | `evidence_through` | `date`/null | No | Last date the account's imported exports are known to cover. Computed by Silver (`silver-layer.md`, *Evidence Through*) and carried through unchanged; Gold does not derive it. Null when no export of the account has been imported. |
 
 ### `GoldCategory`

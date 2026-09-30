@@ -62,8 +62,9 @@ reconciliation flag (`Afstemt` in the Danske export) is not used for anything.
 
 - `GoldTransaction` gains `balance` and `day_sequence`; Silver's canonical
   transaction gains `balance`, `day_sequence`, and `booking_status`. Bronze
-  records each import run's export date and how far it reaches
-  (`exported_on` and `covers_through`).
+  records each import run's export date and the range its evidence covers
+  (`exported_on`, and the declared, inclusive `covers_from` and
+  `covers_through`).
 - A new connector adds only a Silver status mapping; Gold never sees a bank's
   status vocabulary.
 - The Gold contract gains `GoldAccount`, `list_accounts()`, and
@@ -72,8 +73,13 @@ reconciliation flag (`Afstemt` in the Danske export) is not used for anything.
   per-period measure derived from this evidence, instead of an implicit gap.
 - The chain cannot detect missing rows whose amounts sum to zero between two
   linked rows. This ADR originally also trusted the export date as the extent
-  of an export; `covers_through` supersedes that, and the formula in
-  `architecture/silver-layer.md` is now the only reading.
+  of an export; the declared `covers_through` supersedes that, with no
+  adjustment for the export day, and the formula in
+  `architecture/silver-layer.md` is now the only reading. Likewise the
+  account's evidence now starts at the earliest declared `covers_from` over its
+  admitted import runs rather than at its first transaction
+  (`architecture/gold-contract.md`, `coverage_start`), so a quiet account can
+  be `complete` from the start of its first declared range.
 - A computed-only balance would have drifted silently on any missed or
   duplicated import; a snapshot-only balance would have given no way to
   detect that drift. Neither alone satisfies "trustworthy... and

@@ -108,8 +108,9 @@ The rules are in [`gold-layer.md`](docs/architecture/gold-layer.md#coverage).
 A quiet month can be complete; absent evidence cannot be read as zero.
 
 **Evidence through**:
-The last date an account's imported exports are known to cover, computed from
-its admitted exports by the formula in
+The last date an account's imported exports are known to cover: the latest
+*covers through* over its admitted exports, with no adjustment for the export
+day. The rule is in
 [`docs/architecture/silver-layer.md`](docs/architecture/silver-layer.md#evidence-through).
 _Avoid_: last import date (the export, not the import, bounds the evidence)
 
@@ -139,12 +140,20 @@ import. It says when the file was made, not how far it reaches; the
 late-booking window is counted from it.
 _Avoid_: import date, range end
 
+**Covers from**:
+The first date one export's evidence covers: the start of the range the
+operator asked the bank for, declared at import and inclusive. Every
+transaction in the export falls on or after it. An export of the last three
+months and one of the last two years, made on the same day, differ only here.
+_Avoid_: export start, from-date
+
 **Covers through**:
-The last date one export's evidence reaches: the end of the range the operator
-asked the bank for, declared at import. Distinct from the *export date*, so a
-year of history exported today is not read as covering today. It falls back to
-the export date only where that cannot reach past the payload's last reporting
-period; see
+The last date one export's evidence covers: the end of the range the operator
+asked the bank for, declared at import and inclusive. It is never later than
+the *export date*, and every transaction in the export falls on or before it.
+Distinct from the *export date*, so a year of history exported today is not
+read as covering today. Both ends of the range are required on every import
+and never inferred; see
 [`docs/architecture/bronze-layer.md`](docs/architecture/bronze-layer.md).
 _Avoid_: export range, to-date
 
