@@ -13,6 +13,7 @@ from budget.silver import ReviewItem, SameTransaction, SilverResult, Withdrawn
 from tests.silver.exports import (
     ACCOUNT,
     build_from,
+    declared,
     export,
     identity,
     review_item_id,
@@ -184,3 +185,31 @@ def test_an_export_under_the_wrong_account_drops_and_disagrees() -> None:
         "dropped-transaction",
         "export-disagreement",
     }
+
+
+def test_a_declared_range_covers_dates_before_the_exports_first_row() -> None:
+    admitted = export(
+        [
+            row("01.03.2026", "NETTO", "-45,00", "955,00"),
+            row("05.03.2026", "BOG", "-25,00", "930,00"),
+        ],
+        run_id="run-a",
+        exported_on=date(2026, 3, 6),
+    )
+    # The bank removed NETTO: the later export's range still starts on 1 March,
+    # and its balances are 45,00 higher.
+    later = declared(
+        export(
+            [row("05.03.2026", "BOG", "-25,00", "975,00")],
+            run_id="run-b",
+            exported_on=date(2026, 3, 9),
+        ),
+        covers_from=date(2026, 3, 1),
+    )
+
+    result = build_from(admitted, later)
+
+    assert _statuses(result) == {"run-a": "accepted", "run-b": "quarantined"}
+    assert [i.kind for i in result.review_items] == ["dropped-transaction"]
+    [item] = result.review_items
+    assert item.transaction_id == identity(date(2026, 3, 1), "-45.00", "NETTO", 1)

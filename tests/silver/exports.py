@@ -99,6 +99,11 @@ def _earliest(rows: list[dict[str, str]], otherwise: date) -> date:
     return min(dates, default=otherwise)
 
 
+def declared(of: Export, *, covers_from: date) -> Export:
+    """Present `of` with the operator's range starting on `covers_from`."""
+    return replace(of, run=replace(of.run, covers_from=covers_from))
+
+
 def presented(of: Export, *, account_id: str, payload_id: str) -> Export:
     """Present `of`'s rows as `payload_id`, declared for `account_id`."""
     run = replace(of.run, declared_account_id=account_id, payload_id=payload_id)

@@ -19,7 +19,14 @@ from budget.silver import (
     TransactionEvidence,
     UnbookedRecord,
 )
-from tests.silver.exports import ACCOUNT, build_from, export, identity, row
+from tests.silver.exports import (
+    ACCOUNT,
+    build_from,
+    declared,
+    export,
+    identity,
+    row,
+)
 
 MARCH_1 = date(2026, 3, 1)
 MARCH_2 = date(2026, 3, 2)
@@ -189,17 +196,20 @@ def test_a_clean_run_is_accepted_with_the_dates_it_covers() -> None:
     assert result.review_items == ()
 
 
-def test_covered_from_counts_unbooked_rows() -> None:
-    deleted_first = export(
-        [
-            row("28.02.2026", "BIO", "-100,00", "", Status="Slettet"),
-            row("01.03.2026", "NETTO", "-45,00", "955,00"),
-        ]
+def test_covered_from_is_the_declared_covers_from() -> None:
+    quiet_start = declared(
+        export(
+            [
+                row("28.02.2026", "BIO", "-100,00", "", Status="Slettet"),
+                row("01.03.2026", "NETTO", "-45,00", "955,00"),
+            ]
+        ),
+        covers_from=date(2026, 2, 20),
     )
 
-    [result] = build_from(deleted_first).import_run_results
+    [result] = build_from(quiet_start).import_run_results
 
-    assert result.covered_from == date(2026, 2, 28)
+    assert result.covered_from == date(2026, 2, 20)
 
 
 @pytest.mark.parametrize(

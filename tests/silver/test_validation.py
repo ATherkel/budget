@@ -12,7 +12,7 @@ import pytest
 
 from budget.bronze.models import FormatFailure
 from budget.silver import SilverResult
-from tests.silver.exports import FORMAT, build_from, export, row
+from tests.silver.exports import FORMAT, build_from, declared, export, row
 
 VALID = row("01.03.2026", "NETTO", "-45,00", "955,00")
 
@@ -33,8 +33,10 @@ def _assert_contributes_nothing(result: SilverResult) -> None:
     assert result.account_evidence == ()
 
 
-def test_a_format_failure_quarantines_the_run_with_no_covered_from() -> None:
-    empty = export([], covers_through=date(2026, 3, 4))
+def test_a_format_failure_quarantines_the_run_and_keeps_its_declared_range() -> None:
+    empty = declared(
+        export([], covers_through=date(2026, 3, 4)), covers_from=date(2026, 2, 1)
+    )
     failed = replace(
         empty,
         failures=(
@@ -52,7 +54,7 @@ def test_a_format_failure_quarantines_the_run_with_no_covered_from() -> None:
     assert _errors(result) == [(None, "format-failure")]
     [run] = result.import_run_results
     assert run.errors[0].payload_id == failed.run.payload_id
-    assert run.covered_from is None
+    assert run.covered_from == date(2026, 2, 1)
     assert run.covered_to == date(2026, 3, 4)
 
 
