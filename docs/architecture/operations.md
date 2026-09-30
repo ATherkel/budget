@@ -387,13 +387,13 @@ record again the decisions made since.
 
 One line per Bronze import run, mirroring Bronze's `ImportRun` plus the
 archive path. It is what makes Bronze rebuildable from the archive, because
-the declarations (account, `covers_through`, `started_at`) exist nowhere
-outside Bronze.
+the declarations (account, `covers_from`, `covers_through`, `started_at`)
+exist nowhere outside Bronze.
 Every command that writes Bronze brings it up to date before it finishes, and
 `verify` checks that the two agree.
 
 ```json
-{"format": 1, "import_run_id": "run-0001", "account_id": "joint-current", "source_format": "danske-csv-v1", "archive_path": "joint-current/export-20260402.csv", "payload_sha256": "c0ffee…", "exported_on": "2026-04-02", "exported_on_source": "filename", "covers_through": "2026-04-02", "covers_through_source": "exported_on", "started_at": "2026-04-02T18:03:44Z", "outcome": "stored", "repeat_of": null}
+{"format": 1, "import_run_id": "run-0001", "account_id": "joint-current", "source_format": "danske-csv-v1", "archive_path": "joint-current/export-20260402.csv", "payload_sha256": "c0ffee…", "exported_on": "2026-04-02", "exported_on_source": "filename", "covers_from": "2026-03-01", "covers_through": "2026-04-02", "started_at": "2026-04-02T18:03:44Z", "outcome": "stored", "repeat_of": null}
 ```
 
 ## The Validation Boundary for Decisions
@@ -504,13 +504,12 @@ declaration (ADR-009).
 > budget import
 joint-current   export-20260502.csv
   exported on   2026-05-02 (from filename)
-  covers through 2026-05-02 (falls back to exported on)
   transactions  2026-04-01 … 2026-05-01, 58 source records
+  Enter the range you asked the bank for, from: 2026-04-01  through: 2026-05-02
 joint-savings   export-20260502.csv
   exported on   2026-05-02 (from filename)
-  covers through? The payload's last transaction is 2026-01-31, in an earlier
-                 month than 2026-05-01, so it must be declared.
-  Enter the last date you asked the bank for: 2026-04-30
+  transactions  2026-01-31 … 2026-01-31, 1 source record
+  Enter the range you asked the bank for, from: 2026-01-01  through: 2026-04-30
 Import both? [y/N] y
 Bronze   2 import runs stored
 Silver   2 admitted, 0 quarantined
@@ -520,10 +519,12 @@ Review   1 unmatched-transfer, 0 other
 Backup   2026-05-02T18-05-11Z written
 ```
 
-Bronze requires the `covers_through` declaration for the savings export
-because the fallback would claim evidence into a later month than its last
-transaction ([`bronze-layer.md`](bronze-layer.md)). Each file then moves to
-`exports\<account_id>\` under its original name, which carries the export
+Bronze requires the declared range on every export, and never infers it from
+the filename, the payload or the export date
+([`bronze-layer.md`](bronze-layer.md)). It matters most for the savings
+export: its last transaction is in January, and only the declaration says that
+February to April were quiet rather than never exported. Each file then moves
+to `exports\<account_id>\` under its original name, which carries the export
 date. When that name is already taken by different bytes, it goes to
 `exports\<account_id>\<first 12 characters of the payload hash>\` instead.
 
@@ -593,7 +594,7 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | Failure | Effect | Retry |
 | --- | --- | --- |
 | Configuration error, including an unknown file in the inputs folder | Nothing is built; exit 3 | Fix or remove the file and rerun |
-| Refused import run (account conflict, `covers_through` out of bounds) | Recorded as refused; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file or correct the declaration, then rerun |
+| Refused import run (account conflict, or a declared range that starts after it ends, ends after the export date, or leaves out one of the payload's transactions) | Recorded as refused; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file or correct the declaration, then rerun |
 | Format failure | Stored with its `FormatFailure`; Silver quarantines it; the file is archived | Settled by a parser fix and `rebuild --from bronze` |
 | Crash during an import | Each file is idempotent: a file whose account, original filename and payload hash already have a `stored` or `repeat` run is finished (archived and removed from the inbox) without a new run | Rerun `import` |
 | Crash during a build | SQLite rolls back the uncommitted publication; the previous publication stays current | Rerun the command |
