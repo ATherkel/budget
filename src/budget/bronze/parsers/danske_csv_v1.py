@@ -4,7 +4,9 @@
 Everything format-specific lives here - the encoding, the declared headers, the
 delimiters, the quoting shape, and the transaction-date syntax. The store knows
 none of it, and a future format gets its own module and its own ID rather than a
-change to this one's meaning.
+change to this one's meaning. A declared variant the payload names itself, such
+as its delimiter or its header layout, is part of this format (see
+`docs/developers/source-parsers.md`).
 """
 
 import csv
