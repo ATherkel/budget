@@ -77,32 +77,41 @@ rules below the selected export always does show every transaction kept for its
 dates, so this is a guard and not a path — but it is
 written down because the obvious numbering is the colliding one.
 
-## Evidence Through
+## Evidence Ranges
 
-Silver computes each account's evidence bound and passes it forward as
-`AccountEvidence`. This is the single definition of the rule; `gold-contract.md`,
-ADR-006 and `CONTEXT.md` cite it instead of restating it, and Gold carries the
-value through to `GoldAccount.evidence_through` unchanged rather than deriving
-it again.
+Silver computes the days each account's admitted exports are known to cover
+and passes them forward as `AccountEvidence`, one row per stretch of
+consecutive covered days. This is the single definition of the rule;
+`gold-contract.md`, `gold-layer.md`, ADR-006 and `CONTEXT.md` cite it instead
+of restating it, and Gold reads the ranges rather than deriving them again.
 
 ```text
-evidence_through(account) = max over that account's admitted import runs of
-    covers_through
+evidence(account) = the union, over that account's admitted import runs, of
+    [covers_from, covers_through]
+written as maximal stretches of consecutive days
 ```
 
-Each run's `covers_through` is the inclusive end of the range the operator
-declared for it (`bronze-layer.md`, *Covers from and covers through*), so no
-run is adjusted, including one whose range ends on its own export date. How far
-the most recent days can be trusted, while late bookings may still arrive, is
-decided by the late-booking window
+Each run's `covers_from` and `covers_through` are the inclusive range the
+operator declared for it (`bronze-layer.md`, *Covers from and covers
+through*), so no run is adjusted, including one whose range ends on its own
+export date. How far the most recent days can be trusted, while late bookings
+may still arrive, is decided by the late-booking window
 ([`presentation-layer.md`](presentation-layer.md#data-trust-display)), not
 here.
+
+Ranges that overlap, or touch because one ends the day before the next begins,
+form one stretch: exports declared for 1–15 March and 16–31 March give a single
+range, 1–31 March. A day that no admitted run declares is not evidence, so it
+falls in a gap between two ranges and is never read as covered. Exports
+declared for January–March and May–June give two ranges, and April is the gap
+between them. The union depends only on the set of declared ranges, never on
+import order.
 
 `repeat` runs of an already admitted payload count here: they carry their own
 `exported_on`, `covers_from` and `covers_through` without contributing source
 records, which is how an account with no new activity extends its evidence. An
 account with no admitted import run produces no `AccountEvidence`, and
-`GoldAccount.evidence_through` is null.
+`GoldAccount.coverage_start` and `evidence_through` are null.
 
 ## Other Outputs
 
@@ -132,9 +141,10 @@ BalanceObservation(             # bank-stated end-of-day balance per export
     payload_id: str,
 )
 
-AccountEvidence(                # the account's evidence bound; see above
+AccountEvidence(                # one evidence range; see Evidence Ranges
     account_id: str,
-    evidence_through: date,     # computed by the formula in Evidence Through
+    covers_from: date,          # first day of the range, inclusive
+    covers_through: date,       # last day of the range, inclusive
 )
 
 ImportRunResult(
