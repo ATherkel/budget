@@ -197,24 +197,27 @@ def _transaction_date(value: str) -> date | None:
         return None
 
 
-def _last_transaction_date(
+def _transaction_date_span(
     records: list[dict[str, str]],
-) -> tuple[date | None, str | None]:
-    """Read Dato for one purpose only: bounding a covers_through declaration.
+) -> tuple[tuple[date | None, date | None], str | None]:
+    """Read Dato for one purpose only: bounding a declared covered range.
 
-    Every record counts, whatever its row order or Status, and the value is
-    never stored anywhere: the source record keeps its original string. A
-    payload whose Dato cannot be read yields a verdict instead, so a missing
-    bound can never pass for a satisfied one.
+    Every record counts, whatever its row order or Status, and neither value is
+    stored anywhere: the source record keeps its original string. A payload
+    whose Dato cannot be read yields a verdict instead, so a missing bound can
+    never pass for a satisfied one.
     """
+    first: date | None = None
     last: date | None = None
     for ordinal, fields in enumerate(records, start=1):
         value = _transaction_date(fields["Dato"])
         if value is None:
-            return None, f"record {ordinal} has an unreadable transaction date"
+            return (None, None), f"record {ordinal} has an unreadable transaction date"
+        if first is None or value < first:
+            first = value
         if last is None or value > last:
             last = value
-    return last, None
+    return (first, last), None
 
 
 class DanskeCsvV1Parser:
@@ -227,10 +230,10 @@ class DanskeCsvV1Parser:
         records, failure_reason = _split_payload(content)
         if failure_reason is not None:
             return ParserResult.failed(failure_reason)
-        last_transaction_date, failure_reason = _last_transaction_date(records)
+        (first, last), failure_reason = _transaction_date_span(records)
         if failure_reason is not None:
             return ParserResult.failed(failure_reason)
-        return ParserResult.matched(tuple(records), last_transaction_date)
+        return ParserResult.matched(tuple(records), first, last)
 
     def exported_on_from_filename(self, filename: str) -> date | None:
         """Read the `-YYYYMMDD.csv` export date, if the name carries one."""

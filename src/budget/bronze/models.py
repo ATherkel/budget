@@ -47,7 +47,6 @@ class ImportRun:
     exported_on_source: Literal["filename", "declared"]
     covers_from: date
     covers_through: date
-    covers_through_source: Literal["declared", "exported_on"]
     started_at: datetime
     outcome: Literal["stored", "repeat", "refused"]
     repeat_of: str | None

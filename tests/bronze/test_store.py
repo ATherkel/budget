@@ -66,6 +66,7 @@ class LineParser:
         return ParserResult.matched(
             tuple({self._field: line} for line in lines),
             None,
+            None,
         )
 
     def exported_on_from_filename(self, filename: str) -> date | None:

@@ -6,9 +6,9 @@ its layout, its field names, and the syntax of any date it has to read. It
 takes the exact bytes of one raw payload and returns one `ParserResult`. It
 never touches storage, never guesses which format it is looking at, and leaves
 every decoded field as it arrived. The one value a parser reads rather than
-presents is the transaction date that bounds a declared `covers_through`;
-`danske_csv_v1` is today's example, and nothing else may be trimmed, typed, or
-mapped.
+presents is the transaction date, whose earliest and latest values bound a
+declared range from `covers_from` through `covers_through`; `danske_csv_v1` is
+today's example, and nothing else may be trimmed, typed, or mapped.
 """
 
 from collections.abc import Mapping
@@ -22,11 +22,13 @@ class ParserResult:
     """One payload's source records, or the reason it does not match.
 
     `records` are keyed by the format's own field names and keep their decoded
-    strings untouched: no trimming, typing, or mapping. `last_transaction_date`
-    exists for one purpose, bounding a declared `covers_through`; it is never
-    stored in place of the source value. `failure_reason` is a verdict on the
-    payload as a whole, safe to show or log because it repeats neither source
-    content nor the filename.
+    strings untouched: no trimming, typing, or mapping.
+    `first_transaction_date` and `last_transaction_date` are the earliest and
+    latest values of the same source date field over every record, and exist
+    for one purpose, bounding a declared range; they are never stored in place
+    of the source value, and both are `None` when there are no records.
+    `failure_reason` is a verdict on the payload as a whole, safe to show or
+    log because it repeats neither source content nor the filename.
 
     A parser reports either records or a failure, never both. `matched` and
     `failed` are convenience constructors for those two cases; this dataclass
@@ -43,10 +45,15 @@ class ParserResult:
     def matched(
         cls,
         records: tuple[Mapping[str, str], ...],
+        first_transaction_date: date | None,
         last_transaction_date: date | None,
     ) -> "ParserResult":
-        """Present a payload the parser recognised in full."""
-        return cls(records=records, last_transaction_date=last_transaction_date)
+        """Present a payload the parser recognised in full, and its date span."""
+        return cls(
+            records=records,
+            first_transaction_date=first_transaction_date,
+            last_transaction_date=last_transaction_date,
+        )
 
     @classmethod
     def failed(cls, reason: str) -> "ParserResult":
