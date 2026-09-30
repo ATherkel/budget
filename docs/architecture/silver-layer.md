@@ -86,22 +86,22 @@ value through to `GoldAccount.evidence_through` unchanged rather than deriving
 it again.
 
 ```text
-evidence_through(account) = max over that account's admitted import runs of:
-    covers_through - 1 day   when covers_through == exported_on
-    covers_through           otherwise
+evidence_through(account) = max over that account's admitted import runs of
+    covers_through
 ```
 
-The adjustment is applied **per run, before the maximum**, never to the maximum
-afterwards. An export that reaches its own production day proves nothing about
-that day, because the day may still be booking; an export whose range ended
-earlier proves its whole range. Taking the maximum first would let one run's
-production-day adjustment truncate another run's fully proven range, or hide a
-production-day run behind an earlier one.
+Each run's `covers_through` is the inclusive end of the range the operator
+declared for it (`bronze-layer.md`, *Covers from and covers through*), so no
+run is adjusted, including one whose range ends on its own export date. How far
+the most recent days can be trusted, while late bookings may still arrive, is
+decided by the late-booking window
+([`presentation-layer.md`](presentation-layer.md#data-trust-display)), not
+here.
 
 `repeat` runs of an already admitted payload count here: they carry their own
-`exported_on` and `covers_through` without contributing source records, which is
-how an account with no new activity extends its evidence. An account with no
-admitted import run produces no `AccountEvidence`, and
+`exported_on`, `covers_from` and `covers_through` without contributing source
+records, which is how an account with no new activity extends its evidence. An
+account with no admitted import run produces no `AccountEvidence`, and
 `GoldAccount.evidence_through` is null.
 
 ## Other Outputs
@@ -140,8 +140,7 @@ AccountEvidence(                # the account's evidence bound; see above
 ImportRunResult(
     import_run_id: str,
     status: Literal["accepted", "quarantined"],
-    covered_from: date | None,  # earliest transaction date in the payload, booked or not;
-                                # None when the payload has no source records
+    covered_from: date,         # the import run's covers_from (Bronze)
     covered_to: date,           # the import run's covers_through (Bronze)
     errors: Sequence[ValidationError],
     review_item_ids: Sequence[str],
@@ -167,19 +166,14 @@ ReviewItem(
 )
 ```
 
-`ImportRunResult.covered_from` describes the file, not the transactions
-admitted from it: it is the earliest transaction date among all the payload's
-source records, whatever their `booking_status`. An export whose first row is
-cancelled on 28 August and whose first booked row is on 1 September has
-`covered_from` 28 August.
-
-A payload with no source records has no transaction date to read, and
-`covered_from` is null. That happens for a payload with a `FormatFailure`,
-which Bronze yields with no source records, and for a header-only export,
-whose `covers_through` the operator must declare (`bronze-layer.md`). Silver
-does not invent a start date: Bronze records none, and a made-up one would read
-as evidence. `covered_to` is unaffected: it is always the import run's
-`covers_through`.
+`ImportRunResult.covered_from` and `covered_to` describe the file, not the
+transactions admitted from it: they are the range the operator declared for
+the import run, copied from Bronze. Bronze has already refused any run whose
+transactions fall outside that range, so every source record's date lies
+within it, whatever its `booking_status`. A payload with no source records,
+whether a header-only export of a quiet account or one with a `FormatFailure`,
+still has its declared range. Silver never derives a range from the
+transaction dates.
 
 ## Rules
 

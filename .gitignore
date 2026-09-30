@@ -1,6 +1,10 @@
 imports/
 /Chat.md
 __pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
 .claude/worktrees/
 /.tmp/
 *.py[cod]

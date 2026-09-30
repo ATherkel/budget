@@ -59,8 +59,11 @@ def export(
 ) -> Export:
     """Present `rows` as the payload of one stored import run.
 
-    Without `started_at`, the run is imported at midnight on `exported_on`.
+    The declared range runs from the rows' earliest `Dato` through
+    `covers_through`, else `exported_on`. Without `started_at`, the run is
+    imported at midnight on `exported_on`.
     """
+    through = covers_through or exported_on
     payload_id = f"payload-{run_id}"
     run = ImportRun(
         import_run_id=run_id,
@@ -70,8 +73,8 @@ def export(
         original_filename=f"export-{exported_on:%Y%m%d}.csv",
         exported_on=exported_on,
         exported_on_source="filename",
-        covers_through=covers_through or exported_on,
-        covers_through_source="exported_on" if covers_through is None else "declared",
+        covers_from=_earliest(rows, through),
+        covers_through=through,
         started_at=started_at
         or datetime.combine(exported_on, datetime.min.time(), UTC),
         outcome="stored",
@@ -82,6 +85,18 @@ def export(
         for ordinal, fields in enumerate(rows, start=1)
     )
     return Export(run=run, records=records)
+
+
+def _earliest(rows: list[dict[str, str]], otherwise: date) -> date:
+    """The earliest `Dato` among `rows` that reads as a date."""
+    dates = []
+    for fields in rows:
+        day, month, year = ([*fields.get("Dato", "").split("."), "", ""])[:3]
+        try:
+            dates.append(date(int(year), int(month), int(day)))
+        except ValueError:
+            continue
+    return min(dates, default=otherwise)
 
 
 def presented(of: Export, *, account_id: str, payload_id: str) -> Export:
@@ -100,7 +115,6 @@ def repeat(
         import_run_id=run_id,
         exported_on=exported_on,
         covers_through=covers_through or exported_on,
-        covers_through_source="exported_on" if covers_through is None else "declared",
         started_at=datetime.combine(exported_on, datetime.min.time(), UTC),
         outcome="repeat",
         repeat_of=of.run.import_run_id,
