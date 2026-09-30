@@ -7,7 +7,9 @@ dist/
 build/
 .claude/worktrees/
 /.tmp/
-*.py[cod]
-.venv/
-dist/
-build/
+
+# SQLite stores hold real bank data and never belong in the repository.
+*.db
+*.db-wal
+*.db-shm
+*.db-journal

@@ -67,14 +67,16 @@ Nothing is selected implicitly, and a test profile refuses any path outside the
 temporary directory it was built from:
 
 ```python
+import os
 from datetime import date
 from pathlib import Path
 
 from budget.bronze import BronzeStore, ImportDeclaration, migrate_bronze
 from budget.profiles import Profile
 
-profile = Profile(name="development", stores=Path("dev-stores"))
-source = Path("exports/danske-20260914.csv")
+local = Path(os.environ["LOCALAPPDATA"]) / "budget"
+profile = Profile(name="development", stores=local / "dev")
+source = local / "dev-household" / "inbox" / "daily-account" / "danske-20260914.csv"
 migrate_bronze(profile)
 
 with BronzeStore(profile) as store:
@@ -88,6 +90,12 @@ with BronzeStore(profile) as store:
         ),
     )
 ```
+
+A store holds real bank data, so keep it outside the checkout, where
+`git add` could pick it up, and outside a synchronised folder such as OneDrive,
+where a live SQLite file can be corrupted (ADR-013). The example follows
+[operations.md](docs/architecture/operations.md), which puts every profile's
+stores under `%LOCALAPPDATA%\budget\`.
 
 A profile name is one of `development`, `production` or `test`; a test profile
 must name the temporary root it stays inside, and every path it derives,
