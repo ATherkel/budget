@@ -67,10 +67,11 @@ class BalanceObservation:
 
 @dataclass(frozen=True)
 class AccountEvidence:
-    """The last date an account's admitted exports are known to cover."""
+    """A stretch of consecutive days an account's admitted exports cover."""
 
     account_id: str
-    evidence_through: date
+    covers_from: date
+    covers_through: date
 
 
 @dataclass(frozen=True)

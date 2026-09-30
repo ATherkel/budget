@@ -2,7 +2,8 @@
 """The Silver build: canonical records from a set of Bronze import runs."""
 
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import date, timedelta
+from dataclasses import replace
+from datetime import timedelta
 
 from budget.bronze.models import FormatFailure, ImportRun, SourceRecord
 from budget.silver.admission import Admission, Decisions, admit, judge
@@ -172,31 +173,30 @@ def _observations(each: ReadRun) -> list[BalanceObservation]:
 def _account_evidence(
     runs: Iterable[ImportRun], admitted: Iterable[ReadRun]
 ) -> tuple[AccountEvidence, ...]:
-    """Maximise the per-run formula of `silver-layer.md` (*Evidence Through*).
+    """Union the declared ranges, as `silver-layer.md` (*Evidence Ranges*) says.
 
     Admitted runs count, and so do `repeat` runs of an admitted payload.
     """
     payloads = {(each.account_id, each.run.payload_id) for each in admitted}
-    through: dict[str, date] = {}
-    for run in runs:
-        if run.outcome == "refused":
-            continue
-        if (run.declared_account_id, run.payload_id) not in payloads:
-            continue
-        bound = _evidence_through(run)
-        account_id = run.declared_account_id
-        through[account_id] = max(bound, through.get(account_id, bound))
-    return tuple(
-        AccountEvidence(account_id=account_id, evidence_through=bound)
-        for account_id, bound in sorted(through.items())
+    declared = sorted(
+        (run.declared_account_id, run.covers_from, run.covers_through)
+        for run in runs
+        if run.outcome != "refused"
+        and (run.declared_account_id, run.payload_id) in payloads
     )
-
-
-def _evidence_through(run: ImportRun) -> date:
-    """Bound one run; an export proves nothing about its own production day."""
-    if run.covers_through == run.exported_on:
-        return run.covers_through - timedelta(days=1)
-    return run.covers_through
+    ranges: list[AccountEvidence] = []
+    for account_id, covers_from, covers_through in declared:
+        last = ranges[-1] if ranges else None
+        if (
+            last is not None
+            and last.account_id == account_id
+            and covers_from <= last.covers_through + timedelta(days=1)
+        ):
+            through = max(last.covers_through, covers_through)
+            ranges[-1] = replace(last, covers_through=through)
+        else:
+            ranges.append(AccountEvidence(account_id, covers_from, covers_through))
+    return tuple(ranges)
 
 
 def _result(judged: Admission) -> ImportRunResult:
