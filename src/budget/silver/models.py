@@ -89,7 +89,7 @@ class ImportRunResult:
 
     import_run_id: str
     status: Literal["accepted", "quarantined"]
-    covered_from: date | None
+    covered_from: date
     covered_to: date
     errors: Sequence[ValidationError]
     review_item_ids: Sequence[str]

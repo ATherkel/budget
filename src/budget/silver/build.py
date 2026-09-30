@@ -204,7 +204,7 @@ def _result(judged: Admission) -> ImportRunResult:
     return ImportRunResult(
         import_run_id=each.run.import_run_id,
         status="accepted" if judged.admitted else "quarantined",
-        covered_from=each.covered_from,
+        covered_from=each.run.covers_from,
         covered_to=each.run.covers_through,
         errors=each.errors,
         review_item_ids=tuple(item.review_item_id for item in judged.review_items),

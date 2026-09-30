@@ -37,7 +37,6 @@ class ReadRun:
     currency: str
     records: tuple[ReadRecord, ...]
     booked: tuple[Row, ...]
-    covered_from: date | None
     errors: tuple[ValidationError, ...]
     # The transaction dates of the rows with a balance break, if any.
     break_dates: tuple[date, ...]
@@ -54,9 +53,7 @@ class ReadRun:
 
     def covers(self, day: date) -> bool:
         """Whether `day` lies within the dates this export covers."""
-        return self.covered_from is not None and (
-            self.covered_from <= day <= self.run.covers_through
-        )
+        return self.run.covers_from <= day <= self.run.covers_through
 
 
 def read_run(
@@ -92,10 +89,6 @@ def read_run(
         currency=currency,
         records=read,
         booked=_rows(read),
-        covered_from=min(
-            (d for r in results if (d := r.transaction_date) is not None),
-            default=None,
-        ),
         errors=tuple(
             ValidationError(run.payload_id, ordinal, error.code, error.message)
             for ordinal, error in found
