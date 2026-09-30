@@ -9,7 +9,15 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from budget.silver import AccountEvidence, SilverResult, Transaction
-from tests.silver.exports import ACCOUNT, build_from, export, identity, repeat, row
+from tests.silver.exports import (
+    ACCOUNT,
+    build_from,
+    declared,
+    export,
+    identity,
+    repeat,
+    row,
+)
 
 MARCH_1 = date(2026, 3, 1)
 MARCH_3 = date(2026, 3, 3)
@@ -91,7 +99,9 @@ def test_a_repeat_run_adds_nothing_but_extends_evidence() -> None:
     assert result.transactions == build_from(A).transactions
     assert [r.import_run_id for r in result.import_run_results] == ["run-a"]
     assert result.account_evidence == (
-        AccountEvidence(account_id=ACCOUNT, evidence_through=date(2026, 3, 19)),
+        AccountEvidence(
+            account_id=ACCOUNT, covers_from=MARCH_1, covers_through=date(2026, 3, 20)
+        ),
     )
 
 
@@ -102,11 +112,58 @@ def test_a_repeat_of_a_quarantined_payload_is_no_evidence() -> None:
     assert build_from(broken, again).account_evidence == ()
 
 
-def test_evidence_through_is_the_maximum_over_admitted_runs() -> None:
+def test_overlapping_declared_ranges_form_one_evidence_range() -> None:
     result = build_from(A, B)
 
     assert result.account_evidence == (
-        AccountEvidence(account_id=ACCOUNT, evidence_through=MARCH_8),
+        AccountEvidence(
+            account_id=ACCOUNT, covers_from=MARCH_1, covers_through=date(2026, 3, 9)
+        ),
+    )
+
+
+def test_touching_declared_ranges_form_one_evidence_range() -> None:
+    quiet = declared(
+        export(
+            [],
+            run_id="run-q",
+            exported_on=date(2026, 3, 31),
+            covers_through=date(2026, 3, 20),
+        ),
+        covers_from=date(2026, 3, 7),
+    )
+
+    result = build_from(A, quiet)
+
+    assert result.account_evidence == (
+        AccountEvidence(
+            account_id=ACCOUNT, covers_from=MARCH_1, covers_through=date(2026, 3, 20)
+        ),
+    )
+
+
+def test_a_day_no_export_declares_is_a_gap_between_evidence_ranges() -> None:
+    quiet = declared(
+        export(
+            [],
+            run_id="run-q",
+            exported_on=date(2026, 3, 31),
+            covers_through=date(2026, 3, 20),
+        ),
+        covers_from=date(2026, 3, 10),
+    )
+
+    result = build_from(A, quiet)
+
+    assert result.account_evidence == (
+        AccountEvidence(
+            account_id=ACCOUNT, covers_from=MARCH_1, covers_through=date(2026, 3, 6)
+        ),
+        AccountEvidence(
+            account_id=ACCOUNT,
+            covers_from=date(2026, 3, 10),
+            covers_through=date(2026, 3, 20),
+        ),
     )
 
 

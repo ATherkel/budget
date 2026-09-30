@@ -213,25 +213,29 @@ def test_covered_from_is_the_declared_covers_from() -> None:
 
 
 @pytest.mark.parametrize(
-    ("exported_on", "covers_through", "evidence_through"),
+    "covers_through",
     [
-        # An export whose range ended earlier proves its whole range.
-        (date(2026, 3, 10), date(2026, 3, 6), date(2026, 3, 6)),
-        # An export reaching its own production day proves nothing about it.
-        (date(2026, 3, 10), date(2026, 3, 10), date(2026, 3, 9)),
+        date(2026, 3, 6),
+        # A range reaching the export date counts in full.
+        date(2026, 3, 10),
     ],
 )
-def test_evidence_through_follows_the_per_run_formula(
-    exported_on: date, covers_through: date, evidence_through: date
-) -> None:
-    run = export(
-        [row("01.03.2026", "NETTO", "-45,00", "955,00")],
-        exported_on=exported_on,
-        covers_through=covers_through,
+def test_the_whole_declared_range_is_evidence(covers_through: date) -> None:
+    run = declared(
+        export(
+            [row("01.03.2026", "NETTO", "-45,00", "955,00")],
+            exported_on=date(2026, 3, 10),
+            covers_through=covers_through,
+        ),
+        covers_from=date(2026, 2, 20),
     )
 
     assert build_from(run).account_evidence == (
-        AccountEvidence(account_id=ACCOUNT, evidence_through=evidence_through),
+        AccountEvidence(
+            account_id=ACCOUNT,
+            covers_from=date(2026, 2, 20),
+            covers_through=covers_through,
+        ),
     )
 
 

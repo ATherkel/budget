@@ -141,5 +141,7 @@ def test_a_quarantined_run_does_not_count_toward_account_evidence() -> None:
     result = build_from(admitted, quarantined)
 
     assert [r.status for r in result.import_run_results] == ["accepted", "quarantined"]
-    assert [e.evidence_through for e in result.account_evidence] == [date(2026, 3, 4)]
+    assert [(e.covers_from, e.covers_through) for e in result.account_evidence] == [
+        (date(2026, 3, 1), date(2026, 3, 4))
+    ]
     assert [t.transaction_date for t in result.transactions] == [date(2026, 3, 1)]
