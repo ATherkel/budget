@@ -37,7 +37,7 @@ def read_record(record: SourceRecord, places: int) -> ReadResult:
     fields = record.fields
     if fields.keys() != _HEADER:
         error = RecordError("wrong-field-count", "fields are not the format's header")
-        return ReadResult(transaction_date=None, read=None, errors=(error,))
+        return ReadResult(read=None, errors=(error,))
     errors: list[RecordError] = []
     transaction_date = _read_date(fields["Dato"], errors)
     amount = _read_decimal("Beløb", fields["Beløb"], places, errors)
@@ -48,9 +48,7 @@ def read_record(record: SourceRecord, places: int) -> ReadResult:
     if booking_status is None:
         errors.append(RecordError("unknown-status", "Status has no booking status"))
     if errors or transaction_date is None or amount is None or booking_status is None:
-        return ReadResult(
-            transaction_date=transaction_date, read=None, errors=(*errors,)
-        )
+        return ReadResult(read=None, errors=(*errors,))
     read = ReadRecord(
         record=record,
         transaction_date=transaction_date,
@@ -62,7 +60,7 @@ def read_record(record: SourceRecord, places: int) -> ReadResult:
         source_status=fields["Status"],
         booking_status=booking_status,
     )
-    return ReadResult(transaction_date=transaction_date, read=read, errors=())
+    return ReadResult(read=read, errors=())
 
 
 def _read_date(value: str, errors: list[RecordError]) -> date | None:

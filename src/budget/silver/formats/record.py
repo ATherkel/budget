@@ -34,12 +34,7 @@ class RecordError:
 
 @dataclass(frozen=True)
 class ReadResult:
-    """A record read, or every reason it could not be.
+    """A record read, or every reason it could not be."""
 
-    `transaction_date` is kept whenever it reads, even if the record has
-    other errors, because a run's `covered_from` counts every record.
-    """
-
-    transaction_date: date | None
     read: ReadRecord | None
     errors: tuple[RecordError, ...]
