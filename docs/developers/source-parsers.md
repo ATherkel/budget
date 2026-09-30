@@ -24,11 +24,15 @@ Two rules the contract exists to keep:
 - **Decoded fields stay as they are.** Records are `Mapping[str, str]` keyed by
   the format's own field names. Nothing is trimmed, typed, or mapped: `" Mad "`
   and `"12.09.2026"` are presented exactly as they arrived. The only value read
-  rather than presented is the transaction date used for the coverage bound
+  rather than presented is the transaction date used for the coverage bounds
   below.
-- **`last_transaction_date` has one job.** It bounds a declared
-  `covers_through` (`architecture/bronze-layer.md`, *Covers through*). It is
-  never stored in place of the source value.
+- **`first_transaction_date` and `last_transaction_date` have one job.** Both
+  come from the same source date field, the earliest and the latest over every
+  record whatever its order or status, and they bound the declared range from
+  `covers_from` through `covers_through` (`architecture/bronze-layer.md`,
+  *Covers from and covers through*). Both are `None` for a payload with no
+  records. Neither is ever stored in place of the source value, and neither is
+  a default for the range.
 
 ## Selecting a Parser
 

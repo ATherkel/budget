@@ -42,13 +42,15 @@ chain skips.
 - A UTF-8 file, a byte undefined in Windows-1252, or an unexpected header
   yields a `FormatFailure` and no source records.
 - The export date comes from a `…-YYYYMMDD.csv` filename suffix, or else must be
-  declared; no other part of the filename is interpreted. How far the export
-  reaches (`covers_through`) is declared separately. A `repeat` run records both
-  dates and the run it repeats.
-- A declared `covers_through` outside `[last transaction date, exported_on]` is
-  refused, never clamped. The declaration is required when falling back would
-  claim evidence in a later reporting period than the payload's last transaction
-  date, or when the payload states no transactions; otherwise it falls back to
-  `exported_on` and records that it did. An undecodable payload yields a
-  `FormatFailure` rather than a refusal for a missing declaration.
+  declared; no other part of the filename is interpreted. The range the export
+  covers, `covers_from` through `covers_through` (both inclusive), is declared
+  separately on every import, with no default and no fallback; leaving either
+  out is a usage error that records no run. A `repeat` run records its own
+  export date and range, and the run it repeats.
+- A declared range is refused, never clamped, when `covers_from` is after
+  `covers_through`, when `covers_through` is after `exported_on`, or when a
+  readable payload has a transaction dated outside the range. A readable
+  payload with no transactions and a valid range is stored. An undecodable
+  payload yields a `FormatFailure`, still records its declared range, and is
+  refused only by the first two bounds.
 - Bronze has no dependency on Silver, Gold, analytics, or UI modules.

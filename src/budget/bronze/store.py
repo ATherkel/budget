@@ -18,8 +18,14 @@ from types import MappingProxyType, TracebackType
 from typing import Literal, Self
 from uuid import uuid4
 
-from budget.bronze.coverage import covers_through_for
-from budget.bronze.models import FormatFailure, ImportRun, RawPayload, SourceRecord
+from budget.bronze.coverage import declared_range_refused
+from budget.bronze.models import (
+    FormatFailure,
+    ImportDeclaration,
+    ImportRun,
+    RawPayload,
+    SourceRecord,
+)
 from budget.bronze.parsers.base import ParserResult, SourceParser
 from budget.bronze.parsers.registry import (
     UnsupportedSourceFormatError,
@@ -209,20 +215,18 @@ class BronzeStore:
     def import_file(
         self,
         path: str | Path,
-        *,
-        declared_account_id: str,
-        source_format: str,
-        exported_on: date | None = None,
-        covers_through: date | None = None,
+        declaration: ImportDeclaration,
     ) -> ImportRun:
         """Retain a file's bytes, provenance, and decoded source records."""
         started_at = datetime.now(UTC)
+        source_format = declaration.source_format
         parser = self._parser_for(source_format)
 
         source = Path(path)
         content = source.read_bytes()
         payload_id = sha256(content).hexdigest()
 
+        exported_on = declaration.exported_on
         exported_on_source = "declared"
         if exported_on is None:
             inferred = parser.exported_on_from_filename(source.name)
@@ -232,12 +236,12 @@ class BronzeStore:
             exported_on_source = "filename"
 
         result = parser.parse(content)
-        failure_reason = result.failure_reason
-        covers_through, covers_through_source, declaration_refused = covers_through_for(
-            covers_through,
-            exported_on,
-            result.last_transaction_date,
-            payload_readable=failure_reason is None,
+        declaration_refused = declared_range_refused(
+            covers_from=declaration.covers_from,
+            covers_through=declaration.covers_through,
+            exported_on=exported_on,
+            first_transaction_date=result.first_transaction_date,
+            last_transaction_date=result.last_transaction_date,
         )
         import_run_id = uuid4().hex
 
@@ -247,7 +251,7 @@ class BronzeStore:
             refused, repeat_of = _decide_outcome(
                 self._connection,
                 payload_id=payload_id,
-                declared_account_id=declared_account_id,
+                declared_account_id=declaration.declared_account_id,
                 declaration_refused=declaration_refused,
             )
 
@@ -264,20 +268,19 @@ class BronzeStore:
                 INSERT INTO import_runs (
                     import_run_id, payload_id, declared_account_id, source_format,
                     original_filename, exported_on, exported_on_source,
-                    covers_through, covers_through_source, started_at, outcome,
-                    repeat_of
+                    covers_from, covers_through, started_at, outcome, repeat_of
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     import_run_id,
                     payload_id,
-                    declared_account_id,
+                    declaration.declared_account_id,
                     source_format,
                     source.name,
                     exported_on.isoformat(),
                     exported_on_source,
-                    covers_through.isoformat(),
-                    covers_through_source,
+                    declaration.covers_from.isoformat(),
+                    declaration.covers_through.isoformat(),
                     started_at.isoformat(),
                     _outcome_for(refused=refused, repeat_of=repeat_of),
                     repeat_of,
@@ -307,8 +310,8 @@ class BronzeStore:
             original_filename=row["original_filename"],
             exported_on=date.fromisoformat(row["exported_on"]),
             exported_on_source=row["exported_on_source"],
+            covers_from=date.fromisoformat(row["covers_from"]),
             covers_through=date.fromisoformat(row["covers_through"]),
-            covers_through_source=row["covers_through_source"],
             started_at=datetime.fromisoformat(row["started_at"]),
             outcome=row["outcome"],
             repeat_of=row["repeat_of"],

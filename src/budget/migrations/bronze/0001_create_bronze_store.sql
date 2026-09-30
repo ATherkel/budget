@@ -17,8 +17,8 @@ CREATE TABLE import_runs (
     original_filename TEXT NOT NULL,
     exported_on TEXT NOT NULL,
     exported_on_source TEXT NOT NULL,
+    covers_from TEXT NOT NULL,
     covers_through TEXT NOT NULL,
-    covers_through_source TEXT NOT NULL,
     started_at TEXT NOT NULL,
     outcome TEXT NOT NULL,
     repeat_of TEXT REFERENCES import_runs(import_run_id)

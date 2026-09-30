@@ -119,7 +119,8 @@ adjacent link verified.
 
 For each account and month of its managed period:
 
-- **`complete`**: `coverage_start` is before the month's first day,
+- **`complete`**: `coverage_start` (the earliest declared `covers_from` over
+  the account's admitted import runs) is on or before the month's first day,
   `evidence_through` reaches its last day, and every link whose span overlaps
   the month is verified, including links into and out of the month.
 - **`no_data`**: the account's admitted export evidence does not reach into
@@ -141,10 +142,12 @@ Two open DKK household accounts: `joint-current` (current) and
 `income`, direction `income`), `rent` and `utilities` (group `housing`),
 `groceries` (group `food`), all three with direction `expense`. The latest
 published month is 2026-04. Both accounts have an admitted export dated
-2026-05-08 whose declared `covers_through` is 2026-05-08 as well, so by the
-formula in [`silver-layer.md`](silver-layer.md#evidence-through) evidence
-reaches through 2026-05-07 and April is past the provisional window. Gold
-carries that value; it never derives it from an export date itself.
+2026-05-08 whose declared range runs from 2026-01-01 through 2026-05-08, so
+`coverage_start` is 2026-01-01 and, by the rule in
+[`silver-layer.md`](silver-layer.md#evidence-through), evidence reaches through
+2026-05-08. The export was produced more than 7 days after April ended and
+its range covers April's last day, so April is past the provisional window.
+Gold carries both values; it never derives them from an export date itself.
 
 `joint-current` transactions. The `category` column is each transaction's
 single allocation, shown inline to keep the example readable; in the model it is
