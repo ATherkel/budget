@@ -36,6 +36,12 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# Owner-approved throwaway scripts retain their non-package launch paths.
+# INP001: standalone prototype scripts, deliberately not an importable package.
+# CPY001: no copyright notice is invented; licensing is unchanged.
+"prototypes/dashboard-11/serve.py" = ["INP001", "CPY001"]
+"prototypes/dashboard-11/build_example.py" = ["INP001", "CPY001"]
+"prototypes/dashboard-11/check_fixtures.py" = ["INP001", "CPY001"]
 "tests/**" = [
     "S101",    # pytest uses bare `assert`
     "D",       # test names document the behaviour
