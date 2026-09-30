@@ -224,19 +224,35 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
         ]
         assert result.last_transaction_date == date(2026, 9, 12)
 
+        # Mixing the two accepted delimiters is named as a delimiter mismatch,
+        # not a quoting defect. A tab or a blank is no accepted delimiter, so
+        # it is only unquoted data after a quoted field.
+        mismatch = "different delimiter"
+        unquoted = "unquoted data"
         rejected = {
             "semicolon header, comma record": (
-                semicolon_header + b"\r\n" + ONE_RECORD_ROW
+                semicolon_header + b"\r\n" + ONE_RECORD_ROW,
+                mismatch,
             ),
-            "comma header, semicolon record": HEADER + b"\r\n" + semicolon_row,
-            "both within one record": HEADER
-            + b"\r\n"
-            + ONE_RECORD_ROW.replace(b'","-45,00"', b'";"-45,00"'),
-            "tab-delimited": semicolon_payload.replace(b'";"', b'"\t"'),
-            "space-delimited": semicolon_payload.replace(b'";"', b'" "'),
+            "comma header, semicolon record": (
+                HEADER + b"\r\n" + semicolon_row,
+                mismatch,
+            ),
+            "both within one record": (
+                HEADER + b"\r\n" + ONE_RECORD_ROW.replace(b'","-45,00"', b'";"-45,00"'),
+                mismatch,
+            ),
+            "tab-delimited": (
+                semicolon_payload.replace(b'";"', b'"\t"'),
+                unquoted,
+            ),
+            "space-delimited": (
+                semicolon_payload.replace(b'";"', b'" "'),
+                unquoted,
+            ),
         }
 
-        for label, content in rejected.items():
+        for label, (content, named_defect) in rejected.items():
             with self.subTest(payload=label):
                 refused = PARSER.parse(content)
 
@@ -244,6 +260,7 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
                 assert refused.last_transaction_date is None
                 reason = refused.failure_reason
                 assert reason
+                assert named_defect in reason
                 assert "Caf" not in reason
 
     def test_an_account_without_bank_categories_exports_six_fields(self) -> None:
