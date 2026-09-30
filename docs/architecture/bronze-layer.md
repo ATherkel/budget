@@ -68,11 +68,11 @@ for.
 - **No interpretation.** Splitting a payload into source records is allowed.
   Typing, trimming, normalizing, status mapping, deduplication, and
   categorization are not.
-- **Declared formats.** Each source format fixes its encoding, the delimiters
-  it accepts, and expected header, and decodes strictly. Encoding is never
-  guessed. A format that accepts more than one delimiter reads a payload's
-  delimiter from its declared header, never by sniffing the data. A payload
-  that does not match yields a `FormatFailure` and no source records.
+- **Declared formats.** Each source format fixes its encoding and the
+  delimiters and headers it accepts, and decodes strictly. Encoding is never
+  guessed. A format that accepts more than one delimiter or header reads the
+  payload's choice from its declared header, never by sniffing the data. A
+  payload that does not match yields a `FormatFailure` and no source records.
 - **Repeat payloads.** Presenting bytes already stored for the same account
   records a new `repeat` import run and stores nothing new. It still records
   its own `exported_on`, `covers_from` and `covers_through` and names the run it
@@ -128,12 +128,12 @@ for.
 - Windows-1252, comma- or semicolon-delimited, every field double-quoted, CRLF
   line endings, and at most one final line break.
 - The bank's export dialog offers a comma, a semicolon (its default), a blank
-  or a tab as the delimiter, and the two exports are otherwise byte for byte
-  the same. The character after `"Dato"` in the header is the payload's
-  delimiter, and every record must use it too. A payload that mixes the two,
-  or is blank- or tab-delimited, gets a format failure. Because repeats compare
-  exact bytes, the same export saved once with each delimiter is two payloads,
-  not a `repeat`.
+  or a tab as the delimiter. A comma export and a semicolon export of the same
+  data are otherwise byte for byte the same. The character after `"Dato"` in
+  the header is the payload's delimiter, and every record must use it too. A
+  payload that mixes the two, or is blank- or tab-delimited, gets a format
+  failure. Because repeats compare exact bytes, the same export saved once with
+  each delimiter is two payloads, not a `repeat`.
 - The header is exactly `Dato`, `Kategori`, `Underkategori`, `Tekst`, `Beløb`,
   `Saldo`, `Status`, `Afstemt`.
   An account without bank categories instead exports exactly `Dato`, `Tekst`,
@@ -151,9 +151,8 @@ for.
   date). A transaction the bank books days later appears at its `Dato` in later
   exports, and `Saldo` is the running balance recalculated in that order at
   export time.
-- `Kategori` and `Underkategori` are space-padded. The padding is preserved
-  in source records.
-  This applies where a payload has them.
+- `Kategori` and `Underkategori`, where a payload has them, are space-padded.
+  The padding is preserved in source records.
 - The file contains no account, currency, or transaction identifier.
 
 ## Responsibilities
