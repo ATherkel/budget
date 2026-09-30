@@ -4,7 +4,9 @@
 Everything format-specific lives here - the encoding, the declared headers, the
 delimiters, the quoting shape, and the transaction-date syntax. The store knows
 none of it, and a future format gets its own module and its own ID rather than a
-change to this one's meaning.
+change to this one's meaning. A declared variant the payload names itself, such
+as its delimiter or its header layout, is part of this format (see
+`docs/developers/source-parsers.md`).
 """
 
 import csv
@@ -83,10 +85,11 @@ def _record_separator_end(
         if index + 1 >= length:
             return index, "a record ends with a delimiter and no quoted field"
         return index + 1, None
-    if text[index] == "\r" and text[index + 1 : index + 2] == "\n":
-        return index + 2, None
     if text[index] in "\r\n":
-        return index + 1, None
+        # A CRLF is one line break, not two.
+        return index + (2 if text.startswith("\r\n", index) else 1), None
+    if text[index] in _DELIMITERS:
+        return index, "a record uses a different delimiter than the header"
     return index, "a quoted field is followed by unquoted data"
 
 
