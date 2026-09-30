@@ -39,7 +39,9 @@ _HEADERS = (
 _DELIMITERS = (",", ";")
 
 # The transaction date is the only value this parser reads rather than presents.
-_TRANSACTION_DATE = re.compile(r"\d{2}\.\d{2}\.\d{4}")
+# `re.ASCII` keeps `\d` to 0-9: otherwise it also matches other scripts'
+# digits, such as Arabic-Indic ones, which `int()` then reads as numbers.
+_TRANSACTION_DATE = re.compile(r"\d{2}\.\d{2}\.\d{4}", re.ASCII)
 
 # The export date convention of this format: `…-YYYYMMDD.csv`.
 _EXPORT_DATE_SUFFIX = re.compile(r"-([0-9]{8})\.csv$", re.IGNORECASE)
