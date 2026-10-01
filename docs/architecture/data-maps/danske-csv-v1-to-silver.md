@@ -103,8 +103,8 @@ These apply wherever a column below names them.
   bank ever adds categories to one, exports from then on supply labels for
   every date they cover, and dates that only older exports cover keep null
   labels. The opposite is checked, not assumed: an export without categories
-  is held back with `label-layout-regressed` when one with categories has
-  already been admitted for a date it covers (#138).
+  is held back with `label-layout-regressed` when one with categories already
+  supplies the labels for a date it covers (#138).
 - **Error codes.** *Map decision.* `silver-layer.md` (*Validation*) lists the
   errors in prose and names no `ValidationError.code`. This map names the five
   its rules raise: `unparseable-date`, `unparseable-decimal`, `unknown-status`
@@ -115,7 +115,9 @@ These apply wherever a column below names them.
 - **Label layout.** *Map decision* (#138). A run whose source records have no
   `Kategori` and no `Underkategori` gets `label-layout-regressed`, with a null
   `record_ordinal`, when an admitted export of the same account whose records
-  have them already covers a date the run covers. Runs are judged in
+  have them is already the selected export for a date the run covers: a date
+  it supplies labels for. A date with no transactions has no labels to lose,
+  so it never triggers the error. Runs are judged in
   admission order (`silver-layer.md`, *Merge verification*), so an older
   export without categories is admitted, and a newer one with them still
   supplies labels. The error quarantines the run, and no decision settles it:
