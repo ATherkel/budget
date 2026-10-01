@@ -6,6 +6,7 @@ implicitly: the caller builds the profile it means, so a test run cannot
 inherit the operator's shell.
 """
 
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -90,6 +91,13 @@ class Profile:
     def bronze_store(self) -> Path:
         """The Bronze stage store, re-checked against the test root each time."""
         return self._guarded_path(Path(self.stores) / BRONZE_STORE_NAME)
+
+
+def load_profile_file(path: Path) -> Profile:
+    """Build the profile that one operator's profile file describes."""
+    with path.open("rb") as file:
+        document = tomllib.load(file)
+    return Profile(name=document["profile"], stores=Path(document["paths"]["stores"]))
 
 
 def test_profile(root: str | Path) -> Profile:

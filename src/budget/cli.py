@@ -12,6 +12,9 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Final
 
+from budget.bronze import migrate_bronze
+from budget.profiles import load_profile_file
+
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
 EXIT_REFUSED_ENVIRONMENT: Final = 4
 
@@ -41,4 +44,6 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
     if arguments.profile is None and PROFILE_VARIABLE not in environ:
         sys.stderr.write(f"budget: {NoProfileSelectedError()}\n")
         return EXIT_REFUSED_ENVIRONMENT
+    if arguments.profile is not None:
+        migrate_bronze(load_profile_file(arguments.profile))
     return 0
