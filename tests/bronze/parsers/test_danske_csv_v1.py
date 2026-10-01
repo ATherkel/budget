@@ -1,10 +1,10 @@
 # Copyright 2026 Therkel
 """The declared rules of `danske-csv-v1`, through its public parser seam.
 
-Every test here uses `parse`, `exported_on_from_filename` and
-`account_number_from_filename` only, so a rule change is observed where a caller
-sees it. What the store does with these
-payloads - retaining bytes, recording verdicts, refusing runs - lives in
+Every test here uses `parse`, `exported_on_from_filename`,
+`account_number_from_filename` and `is_account_number` only, so a rule change is
+observed where a caller sees it. What the store does with these payloads -
+retaining bytes, recording verdicts, refusing runs - lives in
 `tests/bronze/test_store.py`, which keeps one representative payload per outcome
 instead of repeating these matrices.
 """
@@ -500,6 +500,21 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
         ):
             with self.subTest(filename=filename):
                 assert PARSER.account_number_from_filename(filename) is None
+
+    def test_a_declared_account_number_is_ten_ascii_digits(self) -> None:
+        assert PARSER.is_account_number("0012345678")
+        arabic_indic = "".join(chr(0x0660 + int(digit)) for digit in "0012345678")
+        for value in (
+            "3456 0012345678",
+            "3456-0012345678",
+            " 0012345678",
+            "0012345678 ",
+            "12345678",
+            "00123456789",
+            arabic_indic,
+        ):
+            with self.subTest(value=value):
+                assert not PARSER.is_account_number(value)
 
 
 if __name__ == "__main__":
