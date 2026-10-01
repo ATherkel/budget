@@ -5,37 +5,22 @@ Every test passes `main` an explicit environment, so a `BUDGET_PROFILE` set in
 the operator's shell never reaches a test.
 """
 
-import io
 import sqlite3
 import subprocess
 import sys
 import unittest
-from contextlib import closing, redirect_stderr
+from contextlib import closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from budget.bronze import BronzeStore
-from budget.cli import main
 from budget.locking import writer_lock
-from budget.profiles import Profile
+from tests.cli.commands import migrate
 from tests.cli.processes import explicit_environment
-from tests.cli.profile_files import write_profile
+from tests.cli.profile_files import development_profile, write_profile
 
 EXIT_OK = 0
 EXIT_REFUSED_ENVIRONMENT = 4
-
-
-def _development(folder: Path) -> Profile:
-    """The development profile `write_profile` describes inside `folder`."""
-    return Profile(name="development", stores=folder / "stores")
-
-
-def _migrate(profile_file: Path) -> tuple[int, str]:
-    """Run `budget migrate` with one profile file; return status and stderr."""
-    stderr = io.StringIO()
-    with redirect_stderr(stderr):
-        status = main(["--profile", str(profile_file), "migrate"], environ={})
-    return status, stderr.getvalue()
 
 
 class WriterLockTests(unittest.TestCase):
@@ -44,15 +29,15 @@ class WriterLockTests(unittest.TestCase):
             folder = Path(directory)
             profile_file = write_profile(folder)
 
-            with writer_lock(_development(folder)):
-                status, stderr = _migrate(profile_file)
+            with writer_lock(development_profile(folder)):
+                status, stderr = migrate(profile_file)
 
             assert status == EXIT_REFUSED_ENVIRONMENT
             assert "another command is running" in stderr
-            assert not _development(folder).bronze_store.exists()
+            assert not development_profile(folder).bronze_store.exists()
 
-            assert _migrate(profile_file)[0] == EXIT_OK
-            with BronzeStore(_development(folder)):
+            assert migrate(profile_file)[0] == EXIT_OK
+            with BronzeStore(development_profile(folder)):
                 pass
 
 
@@ -74,14 +59,14 @@ class WriterLockReleaseTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             folder = Path(directory)
             profile_file = write_profile(folder)
-            assert _migrate(profile_file)[0] == EXIT_OK
-            store = _development(folder).bronze_store
+            assert migrate(profile_file)[0] == EXIT_OK
+            store = development_profile(folder).bronze_store
             with closing(sqlite3.connect(store)) as connection:
                 connection.execute("PRAGMA user_version = 99")
 
-            assert _migrate(profile_file)[0] == EXIT_REFUSED_ENVIRONMENT
+            assert migrate(profile_file)[0] == EXIT_REFUSED_ENVIRONMENT
 
-            with writer_lock(_development(folder)):
+            with writer_lock(development_profile(folder)):
                 pass
 
     def test_a_killed_command_releases_the_lock(self) -> None:
@@ -98,12 +83,12 @@ class WriterLockReleaseTests(unittest.TestCase):
                 try:
                     assert holder.stdout is not None
                     assert holder.stdout.readline().strip() == "held"
-                    assert _migrate(profile_file)[0] == EXIT_REFUSED_ENVIRONMENT
+                    assert migrate(profile_file)[0] == EXIT_REFUSED_ENVIRONMENT
 
                     holder.kill()
                     holder.wait(timeout=30)
 
-                    assert _migrate(profile_file)[0] == EXIT_OK
+                    assert migrate(profile_file)[0] == EXIT_OK
                 finally:
                     holder.kill()
 

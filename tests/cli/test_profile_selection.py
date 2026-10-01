@@ -16,16 +16,10 @@ import pytest
 from budget.bronze import BronzeStore
 from budget.bronze.storage import StoreNotFoundError
 from budget.cli import main
-from budget.profiles import Profile
-from tests.cli.profile_files import write_profile
+from tests.cli.profile_files import development_profile, write_profile
 
 EXIT_OK = 0
 EXIT_REFUSED_ENVIRONMENT = 4
-
-
-def _development(folder: Path) -> Profile:
-    """The development profile `write_profile` describes inside `folder`."""
-    return Profile(name="development", stores=folder / "stores")
 
 
 class ProfileSelectionTests(unittest.TestCase):
@@ -52,14 +46,14 @@ class ProfileSelectionTests(unittest.TestCase):
 
             assert main(argv, environ=environ) == EXIT_OK
 
-            with BronzeStore(_development(from_argument)):
+            with BronzeStore(development_profile(from_argument)):
                 pass
             with pytest.raises(StoreNotFoundError):
-                BronzeStore(_development(from_variable))
+                BronzeStore(development_profile(from_variable))
 
             assert main(["migrate"], environ=environ) == EXIT_OK
 
-            with BronzeStore(_development(from_variable)):
+            with BronzeStore(development_profile(from_variable)):
                 pass
 
 

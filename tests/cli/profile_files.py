@@ -7,6 +7,8 @@ Test profiles are never files (ADR-015), so these files say
 
 from pathlib import Path
 
+from budget.profiles import Profile
+
 
 def write_profile(
     folder: Path,
@@ -22,3 +24,8 @@ def write_profile(
         encoding="utf-8",
     )
     return path
+
+
+def development_profile(folder: Path) -> Profile:
+    """The development profile `write_profile` describes inside `folder`."""
+    return Profile(name="development", stores=folder / "stores")
