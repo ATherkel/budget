@@ -50,7 +50,12 @@ _EXPORT_DATE_SUFFIX = re.compile(r"-([0-9]{8})\.csv$", re.IGNORECASE)
 
 # The account number convention of this format: `<name>-<10 digits>-YYYYMMDD.csv`.
 # Only the ten digits right before the date suffix count, and only after a name.
-_ACCOUNT_NUMBER = re.compile(r".-([0-9]{10})-[0-9]{8}\.csv$", re.IGNORECASE)
+# A declared number must have that same shape, or it could never match.
+_ACCOUNT_NUMBER_DIGITS = "[0-9]{10}"
+_ACCOUNT_NUMBER = re.compile(
+    rf".-({_ACCOUNT_NUMBER_DIGITS})-[0-9]{{8}}\.csv$", re.IGNORECASE
+)
+_DECLARED_ACCOUNT_NUMBER = re.compile(_ACCOUNT_NUMBER_DIGITS)
 
 
 class ExportDateSuffixError(ValueError):
@@ -264,7 +269,7 @@ class DanskeCsvV1Parser:
 
     def is_account_number(self, value: str) -> bool:
         """Accept the ten ASCII digits a `danske-csv-v1` filename carries."""
-        raise NotImplementedError
+        return _DECLARED_ACCOUNT_NUMBER.fullmatch(value) is not None
 
 
 # The one parser instance the registry declares for this format ID.
