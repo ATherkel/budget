@@ -38,12 +38,25 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _selected_profile_file(
+    argument: Path | None,
+    environ: Mapping[str, str],
+) -> Path:
+    """Return the profile file named by `--profile`, else by `BUDGET_PROFILE`."""
+    if argument is not None:
+        return argument
+    if PROFILE_VARIABLE in environ:
+        return Path(environ[PROFILE_VARIABLE])
+    raise NoProfileSelectedError
+
+
 def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
     """Run one command and return its exit status."""
     arguments = _parser().parse_args(argv)
-    if arguments.profile is None and PROFILE_VARIABLE not in environ:
-        sys.stderr.write(f"budget: {NoProfileSelectedError()}\n")
+    try:
+        profile_file = _selected_profile_file(arguments.profile, environ)
+    except NoProfileSelectedError as error:
+        sys.stderr.write(f"budget: {error}\n")
         return EXIT_REFUSED_ENVIRONMENT
-    if arguments.profile is not None:
-        migrate_bronze(load_profile_file(arguments.profile))
+    migrate_bronze(load_profile_file(profile_file))
     return 0
