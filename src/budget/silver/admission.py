@@ -15,7 +15,7 @@ from budget.silver.decisions import (
 )
 from budget.silver.identity import review_item_id
 from budget.silver.merge import Ledger
-from budget.silver.models import ReviewItem
+from budget.silver.models import ReviewItem, ValidationError
 from budget.silver.reading import Key, ReadRun
 
 
@@ -106,6 +106,15 @@ def admit(judged: Admission, ledger: Ledger, decisions: Decisions) -> Admission:
     if not judged.admitted:
         return judged
     each = judged.each
+    if each.labelled is False and _labelled_before(each, ledger):
+        regressed = ValidationError(
+            each.run.payload_id,
+            None,
+            "label-layout-regressed",
+            "the account's admitted exports carry bank categories; this one has none",
+        )
+        each = replace(each, errors=(regressed, *each.errors))
+        return Admission(each=each, review_items=judged.review_items, admitted=False)
     verdict = ledger.verdict(each)
     drops = [_drop(each, ledger, key, k, decisions) for key, k in verdict.dropped]
     items = (*judged.review_items, *(drop.item for drop in drops))
@@ -119,6 +128,14 @@ def admit(judged: Admission, ledger: Ledger, decisions: Decisions) -> Admission:
         withdrawn=[(drop.key, drop.occurrence) for drop in drops if drop.same is None],
     )
     return Admission(each=admitted, review_items=items, admitted=True)
+
+
+def _labelled_before(each: ReadRun, ledger: Ledger) -> bool:
+    """Whether an export with bank labels supplies a date `each` covers."""
+    return any(
+        selected.labelled and each.covers(day)
+        for day, selected in ledger.selected.items()
+    )
 
 
 def _drop(

@@ -24,6 +24,11 @@ _BOOKING_STATUS: dict[str, BookingStatus] = {
 }
 
 
+def has_labels(record: SourceRecord) -> bool:
+    """Whether the record is in the layout with bank categories."""
+    return record.fields.keys() >= _LABELS
+
+
 def read_record(record: SourceRecord, places: int) -> ReadResult:
     """Read one record whose amounts carry `places` decimal places."""
     fields = record.fields

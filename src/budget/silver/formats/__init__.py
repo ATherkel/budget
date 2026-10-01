@@ -9,6 +9,7 @@ from budget.silver.formats import danske_csv_v1
 from budget.silver.formats.record import ReadRecord, ReadResult, RecordError
 
 type RecordReader = Callable[[SourceRecord, int], ReadResult]
+type LayoutTest = Callable[[SourceRecord], bool]
 
 
 @dataclass(frozen=True)
@@ -16,13 +17,19 @@ class SourceFormat:
     """How Silver reads one source format."""
 
     read: RecordReader
+    # Whether a record is in a layout that carries bank labels.
+    has_labels: LayoutTest
     # A format that states a balance on every booked row has its balance
     # chain verified within each export (ADR-010).
     states_balances: bool
 
 
 FORMATS: Mapping[str, SourceFormat] = {
-    "danske-csv-v1": SourceFormat(read=danske_csv_v1.read_record, states_balances=True),
+    "danske-csv-v1": SourceFormat(
+        read=danske_csv_v1.read_record,
+        has_labels=danske_csv_v1.has_labels,
+        states_balances=True,
+    ),
 }
 
 __all__ = ["FORMATS", "ReadRecord", "ReadResult", "RecordError", "SourceFormat"]
