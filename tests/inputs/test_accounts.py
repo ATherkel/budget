@@ -10,7 +10,9 @@ from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from budget.inputs import Account, load_accounts
+import pytest
+
+from budget.inputs import Account, ConfigurationError, load_accounts
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 
@@ -79,6 +81,74 @@ class LoadAccountsTests(unittest.TestCase):
 
         assert "0012345678" not in repr(accounts["joint-current"])
         assert "0012345678" not in repr(accounts)
+
+    def test_a_file_with_no_accounts_is_an_empty_registry(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = profile_with_accounts(directory, "format = 1\n")
+
+            assert dict(load_accounts(profile)) == {}
+
+    def test_a_missing_file_is_a_configuration_error(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+
+            with pytest.raises(ConfigurationError) as refusal:
+                load_accounts(profile)
+
+        assert refusal.value.problems == ("accounts.toml: the file is missing",)
+
+    def test_a_file_that_is_not_utf8_toml_is_a_configuration_error(self) -> None:
+        for content, expected in (
+            (b"format = 1\n# \xe6\n", "accounts.toml: the file is not UTF-8"),
+            (
+                "format = 1\n[account.joint-current\n",
+                "accounts.toml: the file is not valid TOML: ",
+            ),
+        ):
+            with self.subTest(content=content), TemporaryDirectory() as directory:
+                profile = profile_with_accounts(directory, content)
+
+                with pytest.raises(ConfigurationError) as refusal:
+                    load_accounts(profile)
+
+                (problem,) = refusal.value.problems
+                assert problem.startswith(expected)
+
+    def test_an_unknown_format_version_is_refused_before_anything_else(self) -> None:
+        for content, expected in (
+            ("", "accounts.toml: format is missing"),
+            ("format = 2\n", "accounts.toml: format must be 1"),
+            ('format = "1"\n', "accounts.toml: format must be 1"),
+            ("format = true\n", "accounts.toml: format must be 1"),
+            # An unknown version's other keys mean nothing yet: none is reported.
+            ("format = 2\ncolour = 1\n", "accounts.toml: format must be 1"),
+        ):
+            with self.subTest(content=content), TemporaryDirectory() as directory:
+                profile = profile_with_accounts(directory, content)
+
+                with pytest.raises(ConfigurationError) as refusal:
+                    load_accounts(profile)
+
+                assert refusal.value.problems == (expected,)
+
+    def test_an_unknown_top_level_key_is_a_configuration_error(self) -> None:
+        for content, expected in (
+            (
+                '[accounts.joint-current]\ndisplay_name = "Joint current"\n',
+                'accounts.toml: unknown key "accounts"',
+            ),
+            (
+                "account = 1\n",
+                "accounts.toml: account must hold one [account.<id>] table per account",
+            ),
+        ):
+            with self.subTest(content=content), TemporaryDirectory() as directory:
+                profile = profile_with_accounts(directory, f"format = 1\n{content}")
+
+                with pytest.raises(ConfigurationError) as refusal:
+                    load_accounts(profile)
+
+                assert refusal.value.problems == (expected,)
 
 
 if __name__ == "__main__":
