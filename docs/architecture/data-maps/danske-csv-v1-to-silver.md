@@ -103,6 +103,17 @@ These apply wherever a column below names them.
   bank ever adds categories to one, exports from then on supply labels for
   every date they cover, and dates that only older exports cover keep null
   labels.
+
+  *Map decision.* The reverse, an export without `Kategori` and `Underkategori`
+  for an account whose earlier exports had them, is out of scope. Silver does
+  not check for it: the labels of every date that export is selected for turn
+  null, and no error is raised. It can arise in two ways, and neither needs a
+  Silver check. An export misfiled under the wrong account is caught at import
+  by the account-number check of
+  [#149](https://github.com/ATherkel/budget/issues/149), when the account
+  declares its bank account number. The bank changing the layout is not
+  expected, because Danske only adds categories to an account and never
+  removes them.
 - **Error codes.** *Map decision.* `silver-layer.md` (*Validation*) lists the
   errors in prose and names no `ValidationError.code`. This map names the four
   its rules raise: `unparseable-date`, `unparseable-decimal`, `unknown-status`
