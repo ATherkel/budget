@@ -7,18 +7,23 @@ it, which is checked against an export's filename and never stored as Bronze
 evidence.
 """
 
+import re
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal
 
+from budget.bronze.parsers import source_formats
 from budget.profiles import ACCOUNTS_FILE_NAME, Profile
 
 _FORMAT_VERSION = 1
 _TOP_LEVEL_KEYS = ("format", "account")
+
+# A durable account ID: lowercase ASCII words joined by single hyphens.
+_ACCOUNT_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 
 class ConfigurationError(ValueError):
@@ -50,6 +55,52 @@ class Account:
     source_format: str
     bank_account_number: str | None = field(default=None, repr=False)
     closed_on: date | None = None
+
+
+@dataclass(frozen=True)
+class _FieldRule:
+    """What one `[account.<id>]` key must hold, and how a problem says so."""
+
+    accepts: Callable[[object], bool]
+    rule: str
+    required: bool = True
+
+
+def _is_text(value: object) -> bool:
+    """Accept a non-empty TOML string."""
+    return isinstance(value, str) and value != ""
+
+
+def _is_date(value: object) -> bool:
+    """Accept a TOML local date; a date-time is a different value."""
+    return isinstance(value, date) and not isinstance(value, datetime)
+
+
+def _one_of(*choices: str) -> _FieldRule:
+    """Accept exactly one of the given strings."""
+    return _FieldRule(
+        accepts=lambda value: value in choices,
+        rule=f"must be one of {', '.join(choices)}",
+    )
+
+
+# Every key an account may carry, required ones first, in the order a missing
+# one is reported.
+_FIELDS: Mapping[str, _FieldRule] = MappingProxyType(
+    {
+        "display_name": _FieldRule(_is_text, "must be a non-empty string"),
+        "account_type": _one_of("current", "savings"),
+        "ownership_scope": _one_of("household", "person"),
+        "currency": _FieldRule(_is_text, "must be a non-empty string"),
+        "source_format": _one_of(*source_formats()),
+        "bank_account_number": _FieldRule(
+            _is_text, "must be a quoted string", required=False
+        ),
+        "closed_on": _FieldRule(
+            _is_date, "must be a date such as 2027-06-30", required=False
+        ),
+    }
+)
 
 
 def _problem(text: str) -> str:
@@ -92,6 +143,52 @@ def _require_known_format(document: Mapping[str, object]) -> None:
     raise ConfigurationError((problem,))
 
 
+def _entry_problem(account_id: str, text: str) -> str:
+    """Name the file and the entry a problem is in."""
+    return _problem(f'account "{account_id}": {text}')
+
+
+def _entry_problems(account_id: str, entry: object) -> list[str]:
+    """List one entry's problems: its ID, then its keys, then what is missing."""
+    if not isinstance(entry, dict):
+        return [_entry_problem(account_id, "must be a table of keys")]
+    problems = []
+    if _ACCOUNT_ID.fullmatch(account_id) is None:
+        problems.append(
+            _entry_problem(
+                account_id,
+                "the ID must be lowercase words joined by hyphens, "
+                "such as joint-current",
+            )
+        )
+    for key, value in entry.items():
+        field_rule = _FIELDS.get(key)
+        if field_rule is None:
+            problems.append(_entry_problem(account_id, f'unknown key "{key}"'))
+        elif not field_rule.accepts(value):
+            problems.append(_entry_problem(account_id, f"{key} {field_rule.rule}"))
+    problems.extend(
+        _entry_problem(account_id, f"{key} is missing")
+        for key, field_rule in _FIELDS.items()
+        if field_rule.required and key not in entry
+    )
+    return problems
+
+
+def _account(account_id: str, entry: Mapping[str, Any]) -> Account:
+    """Build one account from an entry that has passed every rule."""
+    return Account(
+        account_id=account_id,
+        display_name=entry["display_name"],
+        account_type=entry["account_type"],
+        ownership_scope=entry["ownership_scope"],
+        currency=entry["currency"],
+        source_format=entry["source_format"],
+        bank_account_number=entry.get("bank_account_number"),
+        closed_on=entry.get("closed_on"),
+    )
+
+
 def load_accounts(profile: Profile) -> Mapping[str, Account]:
     """Load and validate the profile's `accounts.toml`, keyed by account ID."""
     document = _read_document(profile.accounts_file)
@@ -107,20 +204,13 @@ def load_accounts(profile: Profile) -> Mapping[str, Account]:
             _problem("account must hold one [account.<id>] table per account")
         )
         entries = {}
+    for account_id, entry in entries.items():
+        problems.extend(_entry_problems(account_id, entry))
     if problems:
         raise ConfigurationError(tuple(problems))
     return MappingProxyType(
         {
-            account_id: Account(
-                account_id=account_id,
-                display_name=entry["display_name"],
-                account_type=entry["account_type"],
-                ownership_scope=entry["ownership_scope"],
-                currency=entry["currency"],
-                source_format=entry["source_format"],
-                bank_account_number=entry.get("bank_account_number"),
-                closed_on=entry.get("closed_on"),
-            )
+            account_id: _account(account_id, entry)
             for account_id, entry in entries.items()
         }
     )
