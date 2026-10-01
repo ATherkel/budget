@@ -71,18 +71,21 @@ class Profile:
         if self.name == TEST_PROFILE_NAME and self.root is None:
             raise TestProfileRootRequiredError
         stores = Path(self.stores).resolve()
+        inputs = Path(self.inputs).resolve()
         root = None if self.root is None else Path(self.root).resolve()
-        if root is not None and not stores.is_relative_to(root):
+        if root is not None and not all(
+            folder.is_relative_to(root) for folder in (stores, inputs)
+        ):
             raise ProfilePathOutsideRootError
         object.__setattr__(self, "stores", stores)
-        object.__setattr__(self, "inputs", Path(self.inputs).resolve())
+        object.__setattr__(self, "inputs", inputs)
         object.__setattr__(self, "root", root)
 
     def _guarded_path(self, path: Path) -> Path:
         """Resolve one derived path and re-check it against a test root.
 
-        The filesystem is not frozen when a profile is built: the stores folder
-        or the store file can be replaced by a symlink afterwards, so every
+        The filesystem is not frozen when a profile is built: a folder or a file
+        the profile names can be replaced by a symlink afterwards, so every
         access resolves the path again instead of trusting the construction.
         """
         resolved = Path(path).resolve()
@@ -97,8 +100,8 @@ class Profile:
 
     @property
     def accounts_file(self) -> Path:
-        """The account registry the household authors in its inputs folder."""
-        return Path(self.inputs) / ACCOUNTS_FILE_NAME
+        """The account registry, re-checked against the test root each time."""
+        return self._guarded_path(Path(self.inputs) / ACCOUNTS_FILE_NAME)
 
 
 def test_profile(root: str | Path) -> Profile:
