@@ -16,7 +16,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal
 
-from budget.bronze.parsers import source_formats
+from budget.bronze.parsers import source_formats, source_parser
 from budget.profiles import ACCOUNTS_FILE_NAME, Profile
 
 _FORMAT_VERSION = 1
@@ -81,7 +81,12 @@ class Account:
         source format reads one from the filename; otherwise nothing is
         checked. A mismatch never chooses another account for the file.
         """
-        raise NotImplementedError
+        if self.bank_account_number is None:
+            return
+        parser = source_parser(self.source_format)
+        number = parser.account_number_from_filename(filename)
+        if number is not None and number != self.bank_account_number:
+            raise MisfiledExportError(self.account_id)
 
 
 @dataclass(frozen=True)
