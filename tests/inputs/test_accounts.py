@@ -268,6 +268,24 @@ ownership_scope = "family"
                 (problem,) = refusal.value.problems
                 assert problem.startswith(entry_problem(account_id, ""))
 
+    def test_two_accounts_may_not_declare_one_bank_account_number(self) -> None:
+        content = ACCOUNTS.replace(
+            "closed_on = 2027-06-30", 'bank_account_number = "0012345678"'
+        )
+        with TemporaryDirectory() as directory:
+            profile = profile_with_accounts(directory, content)
+
+            with pytest.raises(ConfigurationError) as refusal:
+                load_accounts(profile)
+
+        assert refusal.value.problems == (
+            entry_problem(
+                "joint-savings",
+                'bank_account_number is already declared by account "joint-current"',
+            ),
+        )
+        assert "0012345678" not in str(refusal.value)
+
 
 if __name__ == "__main__":
     unittest.main()
