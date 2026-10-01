@@ -39,6 +39,24 @@ class ConfigurationError(ValueError):
         super().__init__("\n".join(problems))
 
 
+class MisfiledExportError(ValueError):
+    """An export's filename names another bank account than its folder's account.
+
+    This refuses one file, not the configuration: the caller leaves the file in
+    the inbox and goes on with the others. The message names the account ID
+    only, never the number or the filename, so it is safe to show or log.
+    """
+
+    def __init__(self, account_id: str) -> None:
+        """Name the account whose inbox folder holds the file."""
+        self.account_id = account_id
+        super().__init__(
+            f'account "{account_id}": the export\'s filename carries another bank '
+            "account number than accounts.toml declares; move the file to its "
+            "account's inbox folder, or correct the declaration"
+        )
+
+
 @dataclass(frozen=True)
 class Account:
     """One account the household imports, as `accounts.toml` declares it.
@@ -55,6 +73,15 @@ class Account:
     source_format: str
     bank_account_number: str | None = field(default=None, repr=False)
     closed_on: date | None = None
+
+    def check_export_filename(self, filename: str) -> None:
+        """Refuse an export whose filename names another bank account.
+
+        The check applies only when this account declares a number and its
+        source format reads one from the filename; otherwise nothing is
+        checked. A mismatch never chooses another account for the file.
+        """
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)

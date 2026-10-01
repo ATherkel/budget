@@ -8,6 +8,11 @@ naming the file, the entry and the problem (`operations.md`, *Household
 Inputs*).
 """
 
-from budget.inputs.accounts import Account, ConfigurationError, load_accounts
+from budget.inputs.accounts import (
+    Account,
+    ConfigurationError,
+    MisfiledExportError,
+    load_accounts,
+)
 
-__all__ = ["Account", "ConfigurationError", "load_accounts"]
+__all__ = ["Account", "ConfigurationError", "MisfiledExportError", "load_accounts"]
