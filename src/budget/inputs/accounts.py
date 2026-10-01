@@ -175,6 +175,28 @@ def _entry_problems(account_id: str, entry: object) -> list[str]:
     return problems
 
 
+def _shared_number_problems(entries: Mapping[str, object]) -> list[str]:
+    """Name each account declaring a bank account number an earlier one declared.
+
+    The problem names both accounts and never the number itself.
+    """
+    declared_by: dict[str, str] = {}
+    problems = []
+    for account_id, entry in entries.items():
+        number = entry.get("bank_account_number") if isinstance(entry, dict) else None
+        if not isinstance(number, str) or not number:
+            continue
+        earlier = declared_by.setdefault(number, account_id)
+        if earlier != account_id:
+            problems.append(
+                _entry_problem(
+                    account_id,
+                    f'bank_account_number is already declared by account "{earlier}"',
+                )
+            )
+    return problems
+
+
 def _account(account_id: str, entry: Mapping[str, Any]) -> Account:
     """Build one account from an entry that has passed every rule."""
     return Account(
@@ -206,6 +228,7 @@ def load_accounts(profile: Profile) -> Mapping[str, Account]:
         entries = {}
     for account_id, entry in entries.items():
         problems.extend(_entry_problems(account_id, entry))
+    problems.extend(_shared_number_problems(entries))
     if problems:
         raise ConfigurationError(tuple(problems))
     return MappingProxyType(
