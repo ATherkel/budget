@@ -21,6 +21,21 @@ PROFILE_NAMES: Final = (
     PRODUCTION_PROFILE_NAME,
     TEST_PROFILE_NAME,
 )
+PROFILE_FILE_FORMAT: Final = 1
+# Test profiles are never files: the test suite builds each one (ADR-015).
+_FILE_PROFILE_NAMES: Final = (DEVELOPMENT_PROFILE_NAME, PRODUCTION_PROFILE_NAME)
+_FILE_KEYS: Final = frozenset({"format", "profile", "paths", "backups", "dashboard"})
+_PATH_KEYS: Final = frozenset(
+    {"stores", "inbox", "exports", "inputs", "backups", "upstream_backups"}
+)
+
+
+class ProfileFileError(ValueError):
+    """A profile file the application cannot use: a configuration error."""
+
+    def __init__(self, path: Path, problem: str) -> None:
+        """Name the file and what is wrong with it."""
+        super().__init__(f"{path}: {problem}")
 
 
 class ProfilePathOutsideRootError(ValueError):
@@ -93,11 +108,83 @@ class Profile:
         return self._guarded_path(Path(self.stores) / BRONZE_STORE_NAME)
 
 
+def _read_profile_document(path: Path) -> dict[str, object]:
+    """Parse the file as TOML, turning every read failure into a refusal."""
+    try:
+        with path.open("rb") as file:
+            # Rebuilt from its items, so the values are typed `object`, not
+            # the `Any` that `tomllib` returns; every check below narrows them.
+            document: dict[str, object] = dict(tomllib.load(file).items())
+    except OSError as error:
+        reason = error.strerror or type(error).__name__
+        raise ProfileFileError(path, f"cannot be read: {reason}") from None
+    except tomllib.TOMLDecodeError as error:
+        raise ProfileFileError(path, f"is not valid TOML: {error}") from None
+    return document
+
+
+def _require_format(path: Path, document: dict[str, object]) -> None:
+    """Refuse a file without the one format version this code reads."""
+    if "format" not in document:
+        raise ProfileFileError(path, "has no format version")
+    version = document["format"]
+    # `bool` is an `int` in Python, so `format = true` must not pass as 1.
+    if type(version) is not int or version != PROFILE_FILE_FORMAT:
+        raise ProfileFileError(
+            path,
+            f"format {version!r} is not supported: this code reads "
+            f"format {PROFILE_FILE_FORMAT}",
+        )
+
+
+def _require_known_keys(
+    path: Path, table: dict[str, object], *, known: frozenset[str], prefix: str
+) -> None:
+    """Refuse a key the documented profile schema does not have."""
+    unknown = sorted(set(table) - known)
+    if unknown:
+        names = ", ".join(f"{prefix}{key}" for key in unknown)
+        raise ProfileFileError(path, f"unknown key {names}")
+
+
+def _profile_name(path: Path, document: dict[str, object]) -> str:
+    """Return the file's profile name, refusing `test` and unknown names."""
+    name = document.get("profile")
+    if name == TEST_PROFILE_NAME:
+        raise ProfileFileError(
+            path, "a test profile is never a file: the test suite builds it"
+        )
+    if not isinstance(name, str) or name not in _FILE_PROFILE_NAMES:
+        expected = " or ".join(_FILE_PROFILE_NAMES)
+        raise ProfileFileError(path, f"profile {name!r} is not {expected}")
+    return name
+
+
+def _stores_path(path: Path, document: dict[str, object]) -> Path:
+    """Return `[paths].stores`, which must be an absolute path."""
+    paths = document.get("paths")
+    if not isinstance(paths, dict):
+        raise ProfileFileError(path, "has no [paths] table")
+    _require_known_keys(path, paths, known=_PATH_KEYS, prefix="paths.")
+    stores = paths.get("stores")
+    if not isinstance(stores, str):
+        raise ProfileFileError(path, "paths.stores must be a path in quotes")
+    if not Path(stores).is_absolute():
+        raise ProfileFileError(path, "paths.stores must be an absolute path")
+    return Path(stores)
+
+
 def load_profile_file(path: Path) -> Profile:
-    """Build the profile that one operator's profile file describes."""
-    with path.open("rb") as file:
-        document = tomllib.load(file)
-    return Profile(name=document["profile"], stores=Path(document["paths"]["stores"]))
+    """Build the profile that one operator's profile file describes.
+
+    The file is versioned TOML with only the keys `operations.md` documents.
+    Every problem is a `ProfileFileError` naming the file.
+    """
+    document = _read_profile_document(path)
+    _require_format(path, document)
+    _require_known_keys(path, document, known=_FILE_KEYS, prefix="")
+    name = _profile_name(path, document)
+    return Profile(name=name, stores=_stores_path(path, document))
 
 
 def test_profile(root: str | Path) -> Profile:

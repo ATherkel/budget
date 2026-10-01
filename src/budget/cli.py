@@ -13,9 +13,10 @@ from pathlib import Path
 from typing import Final
 
 from budget.bronze import migrate_bronze
-from budget.profiles import load_profile_file
+from budget.profiles import ProfileFileError, load_profile_file
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
+EXIT_REFUSED_INPUT: Final = 3
 EXIT_REFUSED_ENVIRONMENT: Final = 4
 
 
@@ -58,5 +59,10 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
     except NoProfileSelectedError as error:
         sys.stderr.write(f"budget: {error}\n")
         return EXIT_REFUSED_ENVIRONMENT
-    migrate_bronze(load_profile_file(profile_file))
+    try:
+        profile = load_profile_file(profile_file)
+    except ProfileFileError as error:
+        sys.stderr.write(f"budget: {error}\n")
+        return EXIT_REFUSED_INPUT
+    migrate_bronze(profile)
     return 0
