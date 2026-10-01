@@ -7,10 +7,11 @@ passes the environment in, so a test never inherits the operator's shell.
 """
 
 import argparse
+import os
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Final
+from typing import Final, NoReturn
 
 from budget.bronze import (
     BronzeStorageError,
@@ -120,3 +121,12 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
     ) as error:
         return _refuse(error, EXIT_REFUSED_ENVIRONMENT)
     return EXIT_OK
+
+
+def run() -> NoReturn:
+    """Run the installed `budget` command with this process's own environment.
+
+    This is the only place that reads `os.environ` or `sys.argv`; `main` is
+    given both, so a test never inherits the operator's shell.
+    """
+    sys.exit(main(sys.argv[1:], environ=os.environ))
