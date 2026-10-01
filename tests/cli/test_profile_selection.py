@@ -1,9 +1,8 @@
 # Copyright 2026 Therkel
-"""The `budget` command line: profile selection, migration and exit statuses.
+"""Selecting a profile: `--profile`, `BUDGET_PROFILE`, and no default.
 
 Every test passes `main` an explicit environment, so a `BUDGET_PROFILE` set in
-the operator's shell never reaches a test. Profile files are synthetic TOML
-written into the test's own temporary folder.
+the operator's shell never reaches a test.
 """
 
 import io
