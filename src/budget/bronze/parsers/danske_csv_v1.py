@@ -262,6 +262,10 @@ class DanskeCsvV1Parser:
         match = _ACCOUNT_NUMBER.search(filename)
         return None if match is None else str(match.group(1))
 
+    def is_account_number(self, value: str) -> bool:
+        """Accept the ten ASCII digits a `danske-csv-v1` filename carries."""
+        raise NotImplementedError
+
 
 # The one parser instance the registry declares for this format ID.
 PARSER: SourceParser = DanskeCsvV1Parser()

@@ -89,3 +89,12 @@ class SourceParser(Protocol):
         recognises, so no check applies.
         """
         ...
+
+    def is_account_number(self, value: str) -> bool:
+        """Say whether a declared number has the shape this format's filenames carry.
+
+        A declaration of another shape could never match a filename, so every
+        export for the account would be refused as misfiled. The account
+        registry refuses it instead, where the household can see the cause.
+        """
+        ...

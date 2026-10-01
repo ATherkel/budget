@@ -83,6 +83,10 @@ class LineParser:
         """Fail loudly if called: Bronze never reads an account number."""
         raise NotImplementedError
 
+    def is_account_number(self, value: str) -> bool:
+        """Fail loudly if called: Bronze never checks an account number."""
+        raise NotImplementedError
+
 
 def danske_payload(*datos: str) -> bytes:
     """Build a `danske-csv-v1` payload with one record per given Dato string."""
