@@ -6,13 +6,19 @@ folder; no real `accounts.toml` is read.
 """
 
 import unittest
+from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pytest
 
-from budget.inputs import Account, ConfigurationError, load_accounts
+from budget.inputs import (
+    Account,
+    ConfigurationError,
+    MisfiledExportError,
+    load_accounts,
+)
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 
@@ -285,6 +291,48 @@ ownership_scope = "family"
             ),
         )
         assert "0012345678" not in str(refusal.value)
+
+
+def loaded_accounts(content: str = ACCOUNTS) -> Mapping[str, Account]:
+    """Load a synthetic accounts.toml through a throwaway test profile."""
+    with TemporaryDirectory() as directory:
+        return load_accounts(profile_with_accounts(directory, content))
+
+
+class CheckExportFilenameTests(unittest.TestCase):
+    def test_an_export_naming_its_account_number_is_accepted(self) -> None:
+        loaded_accounts()["joint-current"].check_export_filename(
+            "synthetic-0012345678-20260914.csv"
+        )
+
+    def test_no_check_applies_without_both_numbers(self) -> None:
+        # joint-savings declares no number; the second name carries none.
+        loaded_accounts()["joint-savings"].check_export_filename(
+            "synthetic-0099999999-20260914.csv"
+        )
+        loaded_accounts()["joint-current"].check_export_filename(
+            "synthetic-20260914.csv"
+        )
+
+    def test_an_export_naming_another_account_number_is_misfiled(self) -> None:
+        # Even when another account declares the filename's number, the file is
+        # refused for its folder's account, never moved to that one.
+        accounts = loaded_accounts(
+            ACCOUNTS.replace(
+                "closed_on = 2027-06-30", 'bank_account_number = "0099999999"'
+            )
+        )
+
+        with pytest.raises(MisfiledExportError) as refusal:
+            accounts["joint-current"].check_export_filename(
+                "synthetic-0099999999-20260914.csv"
+            )
+
+        assert refusal.value.account_id == "joint-current"
+        message = str(refusal.value)
+        assert "joint-current" in message
+        for private in ("0012345678", "0099999999", "synthetic", "joint-savings"):
+            assert private not in message
 
 
 if __name__ == "__main__":
