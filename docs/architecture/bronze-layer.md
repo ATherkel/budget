@@ -88,8 +88,12 @@ for.
   from the payload.
 - **Export date.** The export date is when the bank produced the file. It is
   read from the date suffix of a Danske-style filename (`…-YYYYMMDD.csv`);
-  without one, the operator must declare it. No other part of the filename is
-  interpreted.
+  without one, the operator must declare it. The only other part of the
+  filename that is read is the account number in a Danske-style name
+  (`<name>-<10 digits>-YYYYMMDD.csv`). It is read only to check it against the
+  account's declared `bank_account_number` before Bronze
+  ([`operations.md`](operations.md#accountstoml)), and it is never stored as
+  Bronze evidence.
 - **Covers from and covers through.** What an export covers is declared by the
   operator as the range they asked the bank for, from `covers_from` through
   `covers_through`, both inclusive. Both are required on every import and

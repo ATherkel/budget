@@ -267,6 +267,7 @@ account_type = "current"         # current | savings
 ownership_scope = "household"    # household | person
 currency = "DKK"
 source_format = "danske-csv-v1"  # what its inbox folder receives
+bank_account_number = "1234567890"   # optional; checked against the export filename
 
 [account.joint-savings]
 display_name = "Joint savings"
@@ -276,6 +277,16 @@ currency = "DKK"
 source_format = "danske-csv-v1"
 # closed_on = 2027-06-30         # set when the account closes
 ```
+
+`bank_account_number` is optional. It is a quoted string, so leading zeros
+survive, and two accounts may not declare the same number. It catches an export
+saved to the wrong inbox folder. When an account declares a number and its
+source format reads one from the export's filename (`danske-csv-v1`:
+`<name>-<10 digits>-<YYYYMMDD>.csv`), the two must match. A mismatch refuses
+that file before Bronze, and the file is never moved to another account
+(see [Failure and Retry](#failure-and-retry)). The check reads the filename,
+not the content: it does not catch an export the bank labelled with the wrong
+account.
 
 ### `taxonomy.toml`
 
@@ -456,7 +467,7 @@ matches more than one transaction is refused.
 | 0 | Done. Open review items and quarantined imports are results, not failures. |
 | 1 | Unexpected error: a defect. Python's own exit status for an unhandled exception. |
 | 2 | Usage error. `argparse`'s own exit status. |
-| 3 | Refused input: a configuration error, a rejected decision, or an import run Bronze refused. `import` still publishes the files it stored. |
+| 3 | Refused input: a configuration error, a rejected decision, a misfiled export, or an import run Bronze refused. `import` still publishes the files it stored. |
 | 4 | Refused environment: no profile, a store from another profile, a missing or newer migration, SQLite below the version floor, uncommitted code in production, running code other than the code version a replayed recipe names (ADR-014), another writing command running, a store locked past its busy timeout, or `restore` into a profile that has stores. |
 | 5 | Verification failed: a fingerprint mismatch, a failed integrity check, a backup set whose checksums do not match its manifest, or an import log that disagrees with Bronze. |
 
@@ -595,6 +606,7 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | --- | --- | --- |
 | Configuration error, including an unknown file in the inputs folder | Nothing is built; exit 3 | Fix or remove the file and rerun |
 | Refused import run (account conflict, or a declared range that starts after it ends, ends after the export date, or leaves out one of the payload's transactions) | Recorded as refused; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file or correct the declaration, then rerun |
+| Misfiled export (the filename's account number is not the account's declared `bank_account_number`) | Rejected before Bronze: no import run is recorded and nothing reaches the import log; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file to the right account's folder, or fix the declaration, then rerun |
 | Format failure | Stored with its `FormatFailure`; Silver quarantines it; the file is archived | Settled by a parser fix and `rebuild --from bronze` |
 | Crash during an import | Each file is idempotent: a file whose account, original filename and payload hash already have a `stored` or `repeat` run is finished (archived and removed from the inbox) without a new run | Rerun `import` |
 | Crash during a build | SQLite rolls back the uncommitted publication; the previous publication stays current | Rerun the command |
