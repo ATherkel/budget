@@ -13,10 +13,11 @@ from budget.bronze.models import (
     RawPayload,
     SourceRecord,
 )
-from budget.bronze.storage import migrate_bronze
+from budget.bronze.storage import BronzeStorageError, migrate_bronze
 from budget.bronze.store import BronzeStore
 
 __all__ = [
+    "BronzeStorageError",
     "BronzeStore",
     "FormatFailure",
     "ImportDeclaration",
