@@ -46,6 +46,11 @@ def profile_with_accounts(root: str | Path, content: str | bytes) -> Profile:
     return profile
 
 
+def entry_problem(account_id: str, text: str) -> str:
+    """Spell one entry's problem the way the loader reports it."""
+    return f'accounts.toml: account "{account_id}": {text}'
+
+
 class LoadAccountsTests(unittest.TestCase):
     def test_accounts_load_keyed_by_account_id(self) -> None:
         with TemporaryDirectory() as directory:
@@ -149,6 +154,119 @@ class LoadAccountsTests(unittest.TestCase):
                     load_accounts(profile)
 
                 assert refusal.value.problems == (expected,)
+
+    def test_every_broken_entry_is_named_with_its_problems_in_file_order(
+        self,
+    ) -> None:
+        content = """\
+format = 1
+account.loose = "Joint current"
+
+[account.Joint-Current]
+display_name = "Joint current"
+account_type = "current"
+ownership_scope = "household"
+currency = "DKK"
+source_format = "danske-csv-v1"
+
+[account.joint-savings]
+display_name = "Joint savings"
+account_type = "credit"
+ownership_scope = "household"
+currency = "DKK"
+source_format = "nordea-csv-v1"
+colour = "blue"
+bank_account_number = 1234567890
+closed_on = "2027-06-30"
+
+[account.card]
+display_name = ""
+ownership_scope = "family"
+"""
+        with TemporaryDirectory() as directory:
+            profile = profile_with_accounts(directory, content)
+
+            with pytest.raises(ConfigurationError) as refusal:
+                load_accounts(profile)
+
+        assert refusal.value.problems == (
+            entry_problem("loose", "must be a table of keys"),
+            entry_problem(
+                "Joint-Current",
+                "the ID must be lowercase words joined by hyphens, "
+                "such as joint-current",
+            ),
+            entry_problem(
+                "joint-savings", "account_type must be one of current, savings"
+            ),
+            entry_problem(
+                "joint-savings", "source_format must be one of danske-csv-v1"
+            ),
+            entry_problem("joint-savings", 'unknown key "colour"'),
+            entry_problem(
+                "joint-savings", "bank_account_number must be a quoted string"
+            ),
+            entry_problem(
+                "joint-savings", "closed_on must be a date such as 2027-06-30"
+            ),
+            entry_problem("card", "display_name must be a non-empty string"),
+            entry_problem("card", "ownership_scope must be one of household, person"),
+            entry_problem("card", "account_type is missing"),
+            entry_problem("card", "currency is missing"),
+            entry_problem("card", "source_format is missing"),
+        )
+
+    def test_every_value_has_its_declared_type(self) -> None:
+        for line, expected in (
+            ("display_name = 5", "display_name must be a non-empty string"),
+            ('currency = ""', "currency must be a non-empty string"),
+            ('bank_account_number = ""', "bank_account_number must be a quoted string"),
+            (
+                "closed_on = 2027-06-30T12:00:00Z",
+                "closed_on must be a date such as 2027-06-30",
+            ),
+            (
+                "closed_on = 2027-06-30T12:00:00",
+                "closed_on must be a date such as 2027-06-30",
+            ),
+        ):
+            key = line.partition(" ")[0]
+            entry = "\n".join(
+                kept for kept in ACCOUNTS.splitlines()[2:9] if not kept.startswith(key)
+            )
+            content = f"format = 1\n{entry}\n{line}\n"
+            with self.subTest(line=line), TemporaryDirectory() as directory:
+                profile = profile_with_accounts(directory, content)
+
+                with pytest.raises(ConfigurationError) as refusal:
+                    load_accounts(profile)
+
+                assert refusal.value.problems == (
+                    entry_problem("joint-current", expected),
+                )
+
+    def test_an_account_id_is_lowercase_words_joined_by_hyphens(self) -> None:
+        entry = ACCOUNTS.splitlines()[3:9]
+        for account_id, accepted in (
+            ("joint", True),
+            ("card-2", True),
+            ("joint_current", False),
+            ("joint--current", False),
+            ("-joint", False),
+            ("joint-", False),
+            ("kørsel", False),
+        ):
+            content = "\n".join(["format = 1", f'[account."{account_id}"]', *entry])
+            with self.subTest(account_id=account_id), TemporaryDirectory() as directory:
+                profile = profile_with_accounts(directory, content)
+
+                if accepted:
+                    assert list(load_accounts(profile)) == [account_id]
+                    continue
+                with pytest.raises(ConfigurationError) as refusal:
+                    load_accounts(profile)
+                (problem,) = refusal.value.problems
+                assert problem.startswith(entry_problem(account_id, ""))
 
 
 if __name__ == "__main__":
