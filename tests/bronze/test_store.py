@@ -79,6 +79,10 @@ class LineParser:
         except ValueError:
             return None
 
+    def account_number_from_filename(self, filename: str) -> str | None:
+        """Fail loudly if called: Bronze never reads an account number."""
+        raise NotImplementedError
+
 
 def danske_payload(*datos: str) -> bytes:
     """Build a `danske-csv-v1` payload with one record per given Dato string."""

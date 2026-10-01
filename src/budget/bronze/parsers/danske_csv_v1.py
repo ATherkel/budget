@@ -253,6 +253,10 @@ class DanskeCsvV1Parser:
             # never repeats the digits it came from.
             raise ExportDateSuffixError from None
 
+    def account_number_from_filename(self, filename: str) -> str | None:
+        """Read the account number of a `<name>-<10 digits>-YYYYMMDD.csv` name."""
+        raise NotImplementedError
+
 
 # The one parser instance the registry declares for this format ID.
 PARSER: SourceParser = DanskeCsvV1Parser()

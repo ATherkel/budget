@@ -79,3 +79,13 @@ class SourceParser(Protocol):
         than a missing declaration. The message never repeats the filename.
         """
         ...
+
+    def account_number_from_filename(self, filename: str) -> str | None:
+        """Read the bank account number a filename carries, if this format has one.
+
+        The number exists only to be checked against the account's declared
+        `bank_account_number`: it is never stored as Bronze evidence and never
+        selects an account. `None` means the name carries no number this format
+        recognises, so no check applies.
+        """
+        ...
