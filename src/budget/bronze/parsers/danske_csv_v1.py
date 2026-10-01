@@ -48,6 +48,10 @@ _TRANSACTION_DATE = re.compile(r"\d{2}\.\d{2}\.\d{4}", re.ASCII)
 # The export date convention of this format: `…-YYYYMMDD.csv`.
 _EXPORT_DATE_SUFFIX = re.compile(r"-([0-9]{8})\.csv$", re.IGNORECASE)
 
+# The account number convention of this format: `<name>-<10 digits>-YYYYMMDD.csv`.
+# Only the ten digits right before the date suffix count, and only after a name.
+_ACCOUNT_NUMBER = re.compile(r".-([0-9]{10})-[0-9]{8}\.csv$", re.IGNORECASE)
+
 
 class ExportDateSuffixError(ValueError):
     """A recognised export-date suffix is not a real date."""
@@ -255,7 +259,8 @@ class DanskeCsvV1Parser:
 
     def account_number_from_filename(self, filename: str) -> str | None:
         """Read the account number of a `<name>-<10 digits>-YYYYMMDD.csv` name."""
-        raise NotImplementedError
+        match = _ACCOUNT_NUMBER.search(filename)
+        return None if match is None else str(match.group(1))
 
 
 # The one parser instance the registry declares for this format ID.
