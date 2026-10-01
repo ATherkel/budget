@@ -40,6 +40,15 @@ def row(
     return fields | overrides
 
 
+def uncategorised(fields: dict[str, str]) -> dict[str, str]:
+    """`fields` in the layout of an account without bank categories."""
+    return {
+        name: value
+        for name, value in fields.items()
+        if name not in {"Kategori", "Underkategori"}
+    }
+
+
 @dataclass(frozen=True)
 class Export:
     """One stored import run and what Bronze derived from its payload."""
