@@ -12,8 +12,11 @@ from contextlib import chdir, redirect_stderr
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from budget.bronze import BronzeStore
 from budget.cli import main
+from budget.profiles import Profile
 
+EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
 
 VALID_HEADER = 'format = 1\nprofile = "development"\n'
@@ -93,6 +96,29 @@ class ProfileFileTests(unittest.TestCase):
                 main(["--profile", str(profile_file), "migrate"], environ={})
 
             assert "format 2" in stderr.getvalue()
+
+    def test_every_documented_key_is_accepted(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = folder / "development.toml"
+            profile_file.write_text(
+                VALID_HEADER
+                + _paths(str(folder / "stores"))
+                + f"inbox = '{folder / 'inbox'}'\n"
+                + f"exports = '{folder / 'exports'}'\n"
+                + f"inputs = '{folder / 'inputs'}'\n"
+                + f"backups = '{folder / 'backups'}'\n"
+                + f"upstream_backups = '{folder / 'upstream'}'\n"
+                + "\n[backups]\nkeep_all_days = 14\n"
+                + '\n[dashboard]\nbind = "127.0.0.1"\nport = 8750\n',
+                encoding="utf-8",
+            )
+
+            status = main(["--profile", str(profile_file), "migrate"], environ={})
+
+            assert status == EXIT_OK
+            with BronzeStore(Profile(name="development", stores=folder / "stores")):
+                pass
 
 
 if __name__ == "__main__":
