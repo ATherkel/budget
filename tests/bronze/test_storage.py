@@ -106,7 +106,11 @@ class BronzeStorageTests(unittest.TestCase):
     ) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            profile = Profile(name="production", stores=root / "production")
+            profile = Profile(
+                name="production",
+                stores=root / "production",
+                inputs=root / "inputs",
+            )
 
             with pytest.raises(storage.ProductionMigrationBlockedError):
                 migrate_bronze(profile)
@@ -146,7 +150,12 @@ class BronzeStorageTests(unittest.TestCase):
             root = Path(directory)
             profile = make_test_profile(root)
             migrate_bronze(profile)
-            other = Profile(name="development", stores=profile.stores, root=root)
+            other = Profile(
+                name="development",
+                stores=profile.stores,
+                inputs=profile.inputs,
+                root=root,
+            )
 
             with pytest.raises(storage.StoreIdentityError):
                 BronzeStore(other)
@@ -223,7 +232,12 @@ class BronzeStorageTests(unittest.TestCase):
     def test_a_store_path_with_url_characters_still_opens(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            profile = Profile(name="test", stores=root / "store #1 & more", root=root)
+            profile = Profile(
+                name="test",
+                stores=root / "store #1 & more",
+                inputs=root / "inputs",
+                root=root,
+            )
 
             migrate_bronze(profile)
 

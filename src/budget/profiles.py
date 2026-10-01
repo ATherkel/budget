@@ -10,7 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+ACCOUNTS_FILE_NAME = "accounts.toml"
 BRONZE_STORE_NAME = "bronze.db"
+INPUTS_FOLDER = "inputs"
 STORES_FOLDER = "stores"
 DEVELOPMENT_PROFILE_NAME = "development"
 PRODUCTION_PROFILE_NAME = "production"
@@ -50,7 +52,7 @@ class TestProfileRootRequiredError(ValueError):
 
 @dataclass(frozen=True)
 class Profile:
-    """One profile: the name a store records and the folder holding its stores.
+    """One profile: the name a store records, and its stores and inputs folders.
 
     `root` is the temporary directory a test profile must stay inside. It is
     `None` for the development and production profiles, whose paths the
@@ -59,6 +61,7 @@ class Profile:
 
     name: str
     stores: Path
+    inputs: Path
     root: Path | None = None
 
     def __post_init__(self) -> None:
@@ -72,6 +75,7 @@ class Profile:
         if root is not None and not stores.is_relative_to(root):
             raise ProfilePathOutsideRootError
         object.__setattr__(self, "stores", stores)
+        object.__setattr__(self, "inputs", Path(self.inputs).resolve())
         object.__setattr__(self, "root", root)
 
     def _guarded_path(self, path: Path) -> Path:
@@ -91,11 +95,17 @@ class Profile:
         """The Bronze stage store, re-checked against the test root each time."""
         return self._guarded_path(Path(self.stores) / BRONZE_STORE_NAME)
 
+    @property
+    def accounts_file(self) -> Path:
+        """The account registry the household authors in its inputs folder."""
+        return Path(self.inputs) / ACCOUNTS_FILE_NAME
+
 
 def test_profile(root: str | Path) -> Profile:
     """Build the test profile whose stores live inside one temporary root."""
     return Profile(
         name=TEST_PROFILE_NAME,
         stores=Path(root) / STORES_FOLDER,
+        inputs=Path(root) / INPUTS_FOLDER,
         root=Path(root),
     )

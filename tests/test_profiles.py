@@ -28,7 +28,11 @@ class ProfileTests(unittest.TestCase):
     ) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            profile = Profile(name="development", stores=root / "stores")
+            profile = Profile(
+                name="development",
+                stores=root / "stores",
+                inputs=root / "inputs",
+            )
 
             assert profile.name == "development"
             assert (
@@ -51,7 +55,7 @@ class ProfileTests(unittest.TestCase):
             escape = root / ".." / "elsewhere"
 
             with pytest.raises(ProfilePathOutsideRootError):
-                Profile(name="test", stores=escape, root=root)
+                Profile(name="test", stores=escape, inputs=root / "inputs", root=root)
 
             assert not (root.parent / "elsewhere").exists()
 
@@ -86,14 +90,18 @@ class ProfileTests(unittest.TestCase):
 
             for name in ("Production", "staging", ""):
                 with self.subTest(name=name), pytest.raises(UnknownProfileNameError):
-                    Profile(name=name, stores=root / "stores")
+                    Profile(name=name, stores=root / "stores", inputs=root / "inputs")
 
     def test_a_test_profile_must_carry_its_temporary_root(self) -> None:
         with (
             TemporaryDirectory() as directory,
             pytest.raises(RootRequiredError),
         ):
-            Profile(name="test", stores=Path(directory) / "stores")
+            Profile(
+                name="test",
+                stores=Path(directory) / "stores",
+                inputs=Path(directory) / "inputs",
+            )
 
     def test_a_bronze_store_replaced_by_a_symlink_is_refused(self) -> None:
         with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
