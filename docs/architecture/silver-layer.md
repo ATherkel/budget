@@ -226,8 +226,8 @@ transaction dates.
   nothing in the operator's work list says there is a way back.
 - `ValidationError.code` names the error. The codes that do not depend on the
   source format are `format-failure` (payload-level, so `record_ordinal` is
-  null), `wrong-field-count` (the record's fields are not exactly the format's
-  header) and `balance-chain-break`. Each source format's data map names the
+  null), `wrong-field-count` (the record's fields are not exactly one of the
+  format's headers) and `balance-chain-break`. Each source format's data map names the
   rest.
 
 **Identity and merging**

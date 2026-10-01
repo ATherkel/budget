@@ -102,13 +102,27 @@ These apply wherever a column below names them.
   (`silver-layer.md`). An account's layout is not expected to change. If the
   bank ever adds categories to one, exports from then on supply labels for
   every date they cover, and dates that only older exports cover keep null
-  labels.
+  labels. The opposite is checked, not assumed: an export without categories
+  is held back with `label-layout-regressed` when one with categories has
+  already been admitted for a date it covers (#138).
 - **Error codes.** *Map decision.* `silver-layer.md` (*Validation*) lists the
-  errors in prose and names no `ValidationError.code`. This map names the four
+  errors in prose and names no `ValidationError.code`. This map names the five
   its rules raise: `unparseable-date`, `unparseable-decimal`, `unknown-status`
-  and `missing-balance`. The other errors in that list, a format failure, a
+  and `missing-balance` against a record, and `label-layout-regressed`
+  against the payload. The other errors in that list, a format failure, a
   wrong field count and a balance-chain break, do not depend on this format;
   `silver-layer.md` names them.
+- **Label layout.** *Map decision* (#138). A run whose source records have no
+  `Kategori` and no `Underkategori` gets `label-layout-regressed`, with a null
+  `record_ordinal`, when an admitted export of the same account whose records
+  have them already covers a date the run covers. Runs are judged in
+  admission order (`silver-layer.md`, *Merge verification*), so an older
+  export without categories is admitted, and a newer one with them still
+  supplies labels. The error quarantines the run, and no decision settles it:
+  the likely cause is an export declared for the wrong account, which *void
+  import run* removes. If the bank ever does drop an account's categories,
+  every later export is held back, which is the signal to revisit this rule.
+  A run with no source records has no layout and is never held back by it.
 
 ## Target: `Transaction`
 
