@@ -9,18 +9,10 @@ from budget.bronze.models import SourceRecord
 from budget.silver.formats.record import ReadRecord, ReadResult, RecordError
 from budget.silver.models import BookingStatus
 
-_HEADER = frozenset(
-    (
-        "Dato",
-        "Kategori",
-        "Underkategori",
-        "Tekst",
-        "Beløb",
-        "Saldo",
-        "Status",
-        "Afstemt",
-    )
-)
+_LABELS = frozenset(("Kategori", "Underkategori"))
+_UNLABELLED = frozenset(("Dato", "Tekst", "Beløb", "Saldo", "Status", "Afstemt"))
+# An account without bank categories exports no `Kategori` or `Underkategori`.
+_HEADERS = (_UNLABELLED | _LABELS, _UNLABELLED)
 # `[0-9]`, not `\d`: `\d` also matches digits from other scripts.
 _DATE = re.compile(r"(?P<day>[0-9]{2})\.(?P<month>[0-9]{2})\.(?P<year>[0-9]{4})")
 _DECIMAL = re.compile(
@@ -35,7 +27,7 @@ _BOOKING_STATUS: dict[str, BookingStatus] = {
 def read_record(record: SourceRecord, places: int) -> ReadResult:
     """Read one record whose amounts carry `places` decimal places."""
     fields = record.fields
-    if fields.keys() != _HEADER:
+    if fields.keys() not in _HEADERS:
         error = RecordError("wrong-field-count", "fields are not the format's header")
         return ReadResult(read=None, errors=(error,))
     errors: list[RecordError] = []
@@ -55,8 +47,8 @@ def read_record(record: SourceRecord, places: int) -> ReadResult:
         amount=amount,
         balance=balance,
         text=fields["Tekst"],
-        category=_label(fields["Kategori"]),
-        subcategory=_label(fields["Underkategori"]),
+        category=_label(fields.get("Kategori", "")),
+        subcategory=_label(fields.get("Underkategori", "")),
         source_status=fields["Status"],
         booking_status=booking_status,
     )
