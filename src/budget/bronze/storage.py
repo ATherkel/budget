@@ -307,15 +307,24 @@ def _apply_step(
         raise
 
 
-def migrate_bronze(profile: Profile) -> None:
-    """Create or upgrade the Bronze store that one profile names.
+def require_migration_allowed(profile: Profile) -> None:
+    """Refuse a migration this interpreter or profile cannot run.
 
-    The production profile is refused before any folder or file is touched:
-    production migration waits for the backup and command work.
+    These checks touch no folder or file, so a command can run them before it
+    takes the profile's writer lock: production migration waits for the
+    backup and command work.
     """
     _require_supported_sqlite()
     if profile.name == PRODUCTION_PROFILE_NAME:
         raise ProductionMigrationBlockedError
+
+
+def migrate_bronze(profile: Profile) -> None:
+    """Create or upgrade the Bronze store that one profile names.
+
+    The production profile is refused before any folder or file is touched.
+    """
+    require_migration_allowed(profile)
 
     steps = _migration_steps()
     latest = steps[-1].version

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Final
 
 BRONZE_STORE_NAME = "bronze.db"
+WRITER_LOCK_NAME = "budget.lock"
 STORES_FOLDER = "stores"
 DEVELOPMENT_PROFILE_NAME = "development"
 PRODUCTION_PROFILE_NAME = "production"
@@ -106,6 +107,11 @@ class Profile:
     def bronze_store(self) -> Path:
         """The Bronze stage store, re-checked against the test root each time."""
         return self._guarded_path(Path(self.stores) / BRONZE_STORE_NAME)
+
+    @property
+    def writer_lock_file(self) -> Path:
+        """The file a writing command locks, re-checked like every store path."""
+        return self._guarded_path(Path(self.stores) / WRITER_LOCK_NAME)
 
 
 def _read_profile_document(path: Path) -> dict[str, object]:

@@ -12,8 +12,13 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Final
 
-from budget.bronze import BronzeStorageError, migrate_bronze
+from budget.bronze import (
+    BronzeStorageError,
+    migrate_bronze,
+    require_migration_allowed,
+)
 from budget.bronze.storage import BRONZE_STAGE
+from budget.locking import WriterLockHeldError, writer_lock
 from budget.profiles import Profile, ProfileFileError, load_profile_file
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
@@ -72,7 +77,10 @@ def _migrate(profile: Profile, stage: str | None) -> None:
     """Create or upgrade the stores this code has: Bronze, for now."""
     if stage not in {None, BRONZE_STAGE}:
         raise StageNotBuiltError(stage)
-    migrate_bronze(profile)
+    # Refusals that touch nothing come first; the lock guards the mutation.
+    require_migration_allowed(profile)
+    with writer_lock(profile):
+        migrate_bronze(profile)
 
 
 def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> None:
@@ -104,6 +112,11 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         _run(arguments, environ)
     except ProfileFileError as error:
         return _refuse(error, EXIT_REFUSED_INPUT)
-    except (NoProfileSelectedError, StageNotBuiltError, BronzeStorageError) as error:
+    except (
+        NoProfileSelectedError,
+        StageNotBuiltError,
+        BronzeStorageError,
+        WriterLockHeldError,
+    ) as error:
         return _refuse(error, EXIT_REFUSED_ENVIRONMENT)
     return EXIT_OK
