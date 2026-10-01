@@ -19,6 +19,7 @@ from budget.profiles import Profile, ProfileFileError, load_profile_file
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
 STAGES: Final = (BRONZE_STAGE, "silver", "gold")
 EXIT_OK: Final = 0
+EXIT_USAGE: Final = 2
 EXIT_REFUSED_INPUT: Final = 3
 EXIT_REFUSED_ENVIRONMENT: Final = 4
 
@@ -93,7 +94,12 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
     A refusal is reported on stderr with its exit status. Anything else
     propagates: an unexpected error is a defect, and Python exits 1.
     """
-    arguments = _parser().parse_args(argv)
+    try:
+        arguments = _parser().parse_args(argv)
+    except SystemExit as usage:
+        # argparse has already printed the usage or help; return its status
+        # (2 for a usage error, 0 for --help) instead of leaving the process.
+        return usage.code if isinstance(usage.code, int) else EXIT_USAGE
     try:
         _run(arguments, environ)
     except ProfileFileError as error:
