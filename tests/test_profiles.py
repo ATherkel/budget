@@ -135,6 +135,42 @@ class ProfileTests(unittest.TestCase):
             with pytest.raises(ProfilePathOutsideRootError):
                 _ = profile.bronze_store
 
+    def test_a_test_profile_reads_its_inputs_inside_its_root(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile = make_test_profile(root)
+
+            assert (
+                profile.accounts_file == (root / "inputs" / "accounts.toml").resolve()
+            )
+
+    def test_a_test_profile_inputs_folder_may_not_escape_its_root(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            with pytest.raises(ProfilePathOutsideRootError):
+                Profile(
+                    name="test",
+                    stores=root / "stores",
+                    inputs=root / ".." / "elsewhere",
+                    root=root,
+                )
+
+    def test_an_accounts_file_replaced_by_a_symlink_is_refused(self) -> None:
+        with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
+            root = Path(directory)
+            profile = make_test_profile(root)
+            profile.inputs.mkdir(parents=True)
+            outside_file = Path(outside) / "accounts.toml"
+            outside_file.write_text("format = 1\n", encoding="utf-8")
+            try:
+                profile.accounts_file.symlink_to(outside_file)
+            except OSError as error:  # Windows may refuse without a privilege
+                self.skipTest(f"symlinks are unavailable here: {error}")
+
+            with pytest.raises(ProfilePathOutsideRootError):
+                _ = profile.accounts_file
+
 
 if __name__ == "__main__":
     unittest.main()
