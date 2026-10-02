@@ -10,6 +10,7 @@ import sqlite3
 import subprocess
 import sys
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import AbstractContextManager, closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -91,6 +92,19 @@ with writer_lock(Profile(name="development", stores=Path(sys.argv[1]))):
 """
 
 
+def _first_line(holder: subprocess.Popen[str], *, timeout: float) -> str:
+    """Read the child's first line, failing rather than hanging past `timeout`.
+
+    The caller kills the child on failure, which ends the pending read.
+    """
+    assert holder.stdout is not None
+    reader = ThreadPoolExecutor(max_workers=1)
+    try:
+        return reader.submit(holder.stdout.readline).result(timeout=timeout)
+    finally:
+        reader.shutdown(wait=False)
+
+
 class WriterLockReleaseTests(unittest.TestCase):
     def test_a_refused_command_releases_the_lock(self) -> None:
         with TemporaryDirectory() as directory:
@@ -118,8 +132,7 @@ class WriterLockReleaseTests(unittest.TestCase):
                 text=True,
             ) as holder:
                 try:
-                    assert holder.stdout is not None
-                    assert holder.stdout.readline().strip() == "held"
+                    assert _first_line(holder, timeout=30).strip() == "held"
                     assert migrate(profile_file)[0] == EXIT_REFUSED_ENVIRONMENT
 
                     holder.kill()
