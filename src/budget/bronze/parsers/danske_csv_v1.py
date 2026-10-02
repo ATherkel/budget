@@ -45,15 +45,20 @@ _DELIMITERS = (",", ";")
 # digits, such as Arabic-Indic ones, which `int()` then reads as numbers.
 _TRANSACTION_DATE = re.compile(r"\d{2}\.\d{2}\.\d{4}", re.ASCII)
 
+# The end of every name this format reads: `.csv`, after at most one browser
+# copy suffix such as `(1)` or ` (1)`, which a browser adds when it saves a second
+# download under a name it has already used.
+_NAME_END = r"(?: ?\([0-9]+\))?\.csv$"
+
 # The export date convention of this format: `…-YYYYMMDD.csv`.
-_EXPORT_DATE_SUFFIX = re.compile(r"-([0-9]{8})\.csv$", re.IGNORECASE)
+_EXPORT_DATE_SUFFIX = re.compile(rf"-([0-9]{{8}}){_NAME_END}", re.IGNORECASE)
 
 # The account number convention of this format: `<name>-<10 digits>-YYYYMMDD.csv`.
 # Only the ten digits right before the date suffix count, and only after a name.
 # A declared number must have that same shape, or it could never match.
 _ACCOUNT_NUMBER_DIGITS = "[0-9]{10}"
 _ACCOUNT_NUMBER = re.compile(
-    rf".-({_ACCOUNT_NUMBER_DIGITS})-[0-9]{{8}}\.csv$", re.IGNORECASE
+    rf".-({_ACCOUNT_NUMBER_DIGITS})-[0-9]{{8}}{_NAME_END}", re.IGNORECASE
 )
 _DECLARED_ACCOUNT_NUMBER = re.compile(_ACCOUNT_NUMBER_DIGITS)
 
