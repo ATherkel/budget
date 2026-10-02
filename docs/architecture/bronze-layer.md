@@ -93,7 +93,10 @@ for.
   (`<name>-<10 digits>-YYYYMMDD.csv`). It is read only to check it against the
   account's declared `bank_account_number` before Bronze
   ([`operations.md`](operations.md#accountstoml)), and it is never stored as
-  Bronze evidence.
+  Bronze evidence. Both readings allow one browser copy suffix before `.csv`,
+  such as `…-YYYYMMDD(1).csv` or `…-YYYYMMDD (1).csv`, which a browser adds
+  when it saves a second download under the same name. The recorded original
+  filename keeps the suffix.
 - **Covers from and covers through.** What an export covers is declared by the
   operator as the range they asked the bank for, from `covers_from` through
   `covers_through`, both inclusive. Both are required on every import and

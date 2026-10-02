@@ -45,7 +45,8 @@ chain skips.
   declared. The only other part of the filename that is read is the account
   number in a `<name>-<10 digits>-YYYYMMDD.csv` name. It is read only to check it
   against the account's declared `bank_account_number` before Bronze, and it is
-  never stored as Bronze evidence. The range the export
+  never stored as Bronze evidence. Both readings allow one browser copy suffix
+  such as `(1)` before `.csv`. The range the export
   covers, `covers_from` through `covers_through` (both inclusive), is declared
   separately on every import, with no default and no fallback; leaving either
   out is a usage error that records no run. A `repeat` run records its own
