@@ -131,9 +131,9 @@ def admit(judged: Admission, ledger: Ledger, decisions: Decisions) -> Admission:
 
 
 def _labelled_before(each: ReadRun, ledger: Ledger) -> bool:
-    """Whether an export with bank labels supplies a date `each` covers."""
+    """Whether an export with bank labels supplies transactions `each` covers."""
     return any(
-        selected.labelled and each.covers(day)
+        selected.labelled and day in selected.end_of_day and each.covers(day)
         for day, selected in ledger.selected.items()
     )
 
