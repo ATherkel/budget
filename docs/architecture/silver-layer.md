@@ -72,7 +72,7 @@ that the selected export does not show is appended after that export's rows, in
 `transaction_id` order. It is never numbered from its occurrence *k*: two
 appended transactions on one date can share a *k*, and `(account_id,
 transaction_date, day_sequence)` has to stay unique, because Gold numbers
-`account_sequence` from that order (`gold-contract.md` invariant 7). Under the
+`account_sequence` from that order (`gold-contract.md` invariant 10). Under the
 rules below the selected export always does show every transaction kept for its
 dates, so this is a guard and not a path — but it is
 written down because the obvious numbering is the colliding one.

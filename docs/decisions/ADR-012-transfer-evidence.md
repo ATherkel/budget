@@ -1,6 +1,8 @@
 # ADR-012: Pair Transfers Only on Strong Evidence; Otherwise Leave Legs Unknown
 
-**Status:** Accepted
+**Status:** Accepted. The question this ADR left open for issue #12 is
+settled: money moved to an account that is not imported stays an expense in
+the first release ([`gold-contract.md`](../architecture/gold-contract.md#settled-by-the-readiness-review)).
 
 ## Context
 

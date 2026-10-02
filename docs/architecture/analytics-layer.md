@@ -8,6 +8,9 @@ Produce reproducible reporting datasets from the Gold contract.
 
 - `GoldRepository` (accounts, categories, transactions, category allocations,
   monthly balance snapshots)
+- `GoldPublications`, to open the publication a report reads. Presentation
+  never opens one itself: it names a publication in the report context, and
+  analytics opens it.
 - Gold contract fixtures
 - Configuration for report date range and household presentation
 
@@ -27,9 +30,11 @@ category's `GoldCategory.direction`. Every sum below uses signed `amount`s.
 - **Expenses:** −(Σ `expense` + Σ refunds with direction `expense`). A
   refunded purchase therefore reduces Expenses as well as its category.
 - **Net cash flow:** Income − Expenses.
-- **Savings:** Income − Expenses, equal to net cash flow in this release;
-  document later treatment of investments and debt repayment rather than
-  assuming they are savings.
+- **Savings:** Income − Expenses, equal to net cash flow in this release.
+  Money moved to a savings, investment, or loan account that is not imported
+  is an expense, and the household may give it a Category of its own; importing
+  the account turns it into Transfers (issue #12). Document any later treatment
+  of investments and debt repayment rather than assuming they are savings.
 - **Savings rate:** `savings / income`, null when income is not positive.
 - **Category spending:** summed over category allocations, not transactions:
   for each expense-direction category, −(Σ allocations of `expense`
@@ -77,6 +82,15 @@ Every household-level measure carries combined coverage: `complete` only
 when every contributing account-month is complete, `no_data` when none has
 evidence, and `partial` otherwise. A partial measure names its incomplete
 accounts. An account without transactions still contributes a coverage status.
+
+## Provisional Periods
+
+Analytics applies the provisional rule in
+[`presentation-layer.md`](presentation-layer.md#data-trust-display) and returns
+the label with the report. Its inputs are the contributing snapshot rows'
+`late_bookings_settled` and a reference date: today in Europe/Copenhagen for
+the current publication, and the publication's `known_at` for a past view.
+Analytics never reads export dates itself.
 
 ## Outputs
 
