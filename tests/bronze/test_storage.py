@@ -20,6 +20,7 @@ import pytest
 from budget.bronze import BronzeStore, migrate_bronze, storage
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
+from tests.bronze.migration_resources import patched_resources
 
 
 @contextmanager
@@ -37,30 +38,6 @@ def _tables(path: Path) -> set[str]:
     with _connected(path) as connection:
         rows = connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
         return {row[0] for row in rows}
-
-
-@contextmanager
-def _patched_resources(suffix: str) -> Iterator[None]:
-    """Patch the stdlib read boundary so the real resource gains a suffix.
-
-    Discovery, the loader, the runner, the transaction and the foreign-key check
-    all stay the real code; only `pathlib.Path.read_text` is replaced, and only
-    for the packaged `0001` file, which is returned with `suffix` appended.
-    """
-    original = Path.read_text
-
-    def read_text(
-        path: Path,
-        encoding: str | None = None,
-        errors: str | None = None,
-    ) -> str:
-        text = original(path, encoding, errors)
-        if path.name.startswith("0001_"):
-            return text + suffix
-        return text
-
-    with mock.patch.object(Path, "read_text", autospec=True, side_effect=read_text):
-        yield
 
 
 class BronzeStorageTests(unittest.TestCase):
@@ -308,7 +285,7 @@ class BronzeStorageTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             profile = make_test_profile(directory)
 
-            with _patched_resources(suffix), pytest.raises(sqlite3.OperationalError):
+            with patched_resources(suffix), pytest.raises(sqlite3.OperationalError):
                 migrate_bronze(profile)
 
             with _connected(profile.bronze_store) as connection:
@@ -328,7 +305,7 @@ class BronzeStorageTests(unittest.TestCase):
             profile = make_test_profile(directory)
 
             with (
-                _patched_resources(suffix),
+                patched_resources(suffix),
                 pytest.raises(storage.ForeignKeyViolationError),
             ):
                 migrate_bronze(profile)
@@ -350,7 +327,7 @@ class BronzeStorageTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             profile = make_test_profile(directory)
 
-            with _patched_resources(suffix):
+            with patched_resources(suffix):
                 migrate_bronze(profile)
 
             with _connected(profile.bronze_store) as connection:
