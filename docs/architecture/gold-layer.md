@@ -119,14 +119,14 @@ adjacent link verified.
 
 For each account and month of its managed period:
 
-- **`complete`**: `coverage_start` (the earliest declared `covers_from` over
-  the account's admitted import runs) is on or before the month's first day,
-  `evidence_through` reaches its last day, and every link whose span overlaps
-  the month is verified, including links into and out of the month.
-- **`no_data`**: the account's admitted export evidence does not reach into
-  the month at all.
+- **`complete`**: one of the account's evidence ranges
+  ([`silver-layer.md`](silver-layer.md#evidence-ranges)) starts on or before
+  the month's first day and reaches its last day, and every link whose span
+  overlaps the month is verified, including links into and out of the month.
+- **`no_data`**: none of the account's evidence ranges reaches into the month.
 - **`partial`**: otherwise. This includes the first managed month, evidence
-  ending inside a month, and every month overlapped by a broken link.
+  starting or ending inside a month, a gap between two ranges inside a month,
+  and every month overlapped by a broken link.
 
 A quiet month inside verified evidence is `complete` with zero activity; carry
 the last bank-stated balance into its opening and closing snapshot fields.
@@ -158,11 +158,12 @@ the provisional label
 Two open DKK household accounts: `joint-current` (current) and
 `joint-savings` (savings). Categories: `salary` and `interest` (group
 `income`, direction `income`), `rent` and `utilities` (group `housing`),
-`groceries` (group `food`), all three with direction `expense`. Both
-accounts have an admitted export dated 2026-05-08 whose declared range runs from 2026-01-01 through 2026-05-08, so
-`coverage_start` is 2026-01-01 and, by the rule in
-[`silver-layer.md`](silver-layer.md#evidence-through), evidence reaches through
-2026-05-08. The export was produced more than 7 days after April ended and
+`groceries` (group `food`), all three with direction `expense`. The latest
+published month is 2026-04. Both accounts have an admitted export dated
+2026-05-08 whose declared range runs from 2026-01-01 through 2026-05-08, so
+by the rule in [`silver-layer.md`](silver-layer.md#evidence-ranges) each
+account has one evidence range, 2026-01-01 through 2026-05-08:
+`coverage_start` is 2026-01-01 and `evidence_through` is 2026-05-08. The export was produced more than 7 days after April ended and
 its range covers April's last day, so April is past the provisional window.
 Gold carries both values; it never derives them from an export date itself.
 The latest published month is therefore 2026-05, the month of the latest

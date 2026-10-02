@@ -108,11 +108,17 @@ saying whether the balance evidence shows that the whole period is covered.
 The rules are in [`gold-layer.md`](docs/architecture/gold-layer.md#coverage).
 A quiet month can be complete; absent evidence cannot be read as zero.
 
+**Evidence range**:
+A stretch of consecutive days an account's admitted exports are known to
+cover: the union of their declared *covers from*–*covers through* ranges, with
+no adjustment for the export day. A day no admitted export declares falls in a
+gap between two ranges. The rule is in
+[`docs/architecture/silver-layer.md`](docs/architecture/silver-layer.md#evidence-ranges).
+_Avoid_: coverage (that is Gold's per-period status)
+
 **Evidence through**:
-The last date an account's imported exports are known to cover: the latest
-*covers through* over its admitted exports, with no adjustment for the export
-day. The rule is in
-[`docs/architecture/silver-layer.md`](docs/architecture/silver-layer.md#evidence-through).
+The last day of an account's latest *evidence range*. Earlier days can still
+fall in a gap between ranges.
 _Avoid_: last import date (the export, not the import, bounds the evidence)
 
 **Monthly balance snapshot**:

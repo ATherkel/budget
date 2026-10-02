@@ -367,6 +367,15 @@ must list the old one in `supersedes`, or the boundary rejects it. One entry
 can supersede several decisions: a `pair` whose two legs each have their own
 `classify` decision lists both. Nothing is edited in place.
 
+The Silver kinds target these:
+
+| Kind | `targets` | Other fields |
+| --- | --- | --- |
+| `void-import-run` | one `import_run_id` | none |
+| `accept-discrepancy` | one `import_run_id` | none |
+| `withdrawn` | one `transaction_id` | none |
+| `same-transaction` | the existing `transaction_id` | `record`: `{"payload_id": …, "record_ordinal": …}`, the source record that shows it under new text |
+
 Two checks guard the log against edits that bypass `decide`:
 
 - **Every build re-validates every entry** with the boundary's rules below. A
