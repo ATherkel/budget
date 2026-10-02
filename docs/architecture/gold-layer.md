@@ -139,13 +139,18 @@ managed period. No account may disappear merely because it has no transactions.
 
 A transaction can be booked days after its transaction date, so a month can
 still change after it ends. For each account and month of its managed period,
-`late_bookings_settled` is true when one of the account's admitted import runs
-has an export date at least 7 days after the month's last day *and* a declared
-range from `covers_from` through `covers_through` that includes that day. An
-export whose range starts after the month cannot show its late bookings,
-however late it was produced. The flag depends only on recorded export dates
-and ranges, so a rebuild of the same recipe gives the same flags. Analytics
-combines it with the reference date to decide the provisional label
+`late_bookings_settled` is true when one of the import runs counted in the
+account's evidence has an export date at least 7 days after the month's last
+day *and* a declared range from `covers_from` through `covers_through` that
+includes that day. The runs counted are exactly those behind the evidence
+ranges: admitted runs, and `repeat` runs of an admitted payload. A quiet
+account whose monthly export repeats the same bytes therefore settles its
+months like any other. Silver passes each counted run's export date and range
+on, so Gold never reads Bronze. An export whose range starts after the month
+cannot show its late bookings, however late it was produced. The flag depends
+only on recorded export dates and ranges, so a rebuild of the same recipe
+gives the same flags. Analytics combines it with the reference date to decide
+the provisional label
 ([`presentation-layer.md`](presentation-layer.md#data-trust-display)).
 
 ## Worked Example (synthetic)
@@ -153,8 +158,8 @@ combines it with the reference date to decide the provisional label
 Two open DKK household accounts: `joint-current` (current) and
 `joint-savings` (savings). Categories: `salary` and `interest` (group
 `income`, direction `income`), `rent` and `utilities` (group `housing`),
-`groceries` (group `food`), all three with direction `expense`. Both accounts have an admitted export dated
-2026-05-08 whose declared range runs from 2026-01-01 through 2026-05-08, so
+`groceries` (group `food`), all three with direction `expense`. Both
+accounts have an admitted export dated 2026-05-08 whose declared range runs from 2026-01-01 through 2026-05-08, so
 `coverage_start` is 2026-01-01 and, by the rule in
 [`silver-layer.md`](silver-layer.md#evidence-through), evidence reaches through
 2026-05-08. The export was produced more than 7 days after April ended and
@@ -163,8 +168,8 @@ Gold carries both values; it never derives them from an export date itself.
 The latest published month is therefore 2026-05, the month of the latest
 `evidence_through`, and both accounts have a May row although neither has a May
 transaction. Every row through April has `late_bookings_settled` true. The May
-rows do not: May has not ended, so no export can yet have been produced 7 days
-after it.
+rows do not: the only export was produced on 2026-05-08, and settling May needs
+one produced on or after 2026-06-07 whose range covers 2026-05-31.
 
 `joint-current` transactions. The `category` column is each transaction's
 single allocation, shown inline to keep the example readable; in the model it is

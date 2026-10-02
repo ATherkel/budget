@@ -134,9 +134,10 @@ reporting slices by account and month without joining the transaction fact.
 
 Grain: one account for one reporting month of its managed period. The managed
 period runs from the month of the account's first booked transaction to the
-month of `closed_on`, or to the latest published month if the account is open.
-The **latest published month** is the month of the latest `evidence_through`
-over every `GoldAccount`. No transaction falls after its account's
+latest published month, or to the month of `closed_on` if that is earlier, so
+a closing date recorded ahead of time never produces a row beyond the
+published data. The **latest published month** is the month of the latest
+`evidence_through` over every `GoldAccount`. No transaction falls after its account's
 `evidence_through`, so no transaction falls after that month either. An open
 account whose own exports lag behind therefore still has a row for each later
 month, which its coverage reports as `partial` or `no_data`. There is exactly
@@ -146,10 +147,10 @@ one row per month in that range, including months with no transactions.
 | --- | --- | --- | --- |
 | `account_id` | string | Yes | References `GoldAccount`. |
 | `month` | `ReportingMonth` | Yes | The reporting month. |
-| `opening_balance` | `Decimal`/null | No | Balance immediately before the month's first transaction: that transaction's `balance_after` minus its `amount`. For a complete quiet month, carry the last bank-stated balance into both opening and closing. Null when the required balance is missing or the month is `no_data`. |
-| `closing_balance` | `Decimal`/null | No | `balance_after` of the month's last transaction by `account_sequence`, bank-stated only. For a complete quiet month, carry the last bank-stated balance into both opening and closing. Null when the required balance is missing or the month is `no_data`. |
+| `opening_balance` | `Decimal`/null | No | Balance immediately before the month's first transaction: that transaction's `balance_after` minus its `amount`. For a complete quiet month, carry the last bank-stated balance into both opening and closing. Null when the required balance is missing, the month is `no_data`, or the month is quiet and not `complete`. |
+| `closing_balance` | `Decimal`/null | No | `balance_after` of the month's last transaction by `account_sequence`, bank-stated only. For a complete quiet month, carry the last bank-stated balance into both opening and closing. Null when the required balance is missing, the month is `no_data`, or the month is quiet and not `complete`. |
 | `coverage` | `Coverage` | Yes | Trust status for this account and month (see `gold-layer.md`). |
-| `late_bookings_settled` | bool | Yes | True when one of the account's admitted import runs was exported at least 7 days after the month's last day and its declared range covers that day, so late bookings into the month have had time to appear (see `gold-layer.md`, *Late bookings settled*). Computed at build from recorded export dates and ranges, never from the clock. |
+| `late_bookings_settled` | bool | Yes | True when one of the import runs counted in the account's evidence (admitted runs, and `repeat` runs of an admitted payload) was exported at least 7 days after the month's last day and its declared range covers that day, so late bookings into the month have had time to appear (see `gold-layer.md`, *Late bookings settled*). Computed at build from recorded export dates and ranges, never from the clock. |
 
 Additivity: `amount` is additive across every dimension within one currency,
 on both the transaction and the allocation fact. The two are never summed
@@ -263,11 +264,9 @@ outside that account's managed period. A requested month beyond the latest
 published month has no data and must never be read as zero.
 
 Whether a period is provisional is decided when a report is read, not
-published: the period is provisional when it contains the reference date's
-month (today in Europe/Copenhagen, or the publication's `known_at` for a past
-view) or when any contributing row has `late_bookings_settled` false. An
-account never imported has no rows, so it never holds a period provisional
-([`presentation-layer.md`](presentation-layer.md#data-trust-display)).
+published. Gold supplies only `late_bookings_settled`; the rule that combines
+it with the reference date is in
+[`presentation-layer.md`](presentation-layer.md#data-trust-display).
 
 Anything reported by category is summed over `category_allocations`, and
 anything reported per transaction over `transactions`. Household income and

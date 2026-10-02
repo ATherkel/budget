@@ -85,14 +85,12 @@ accounts. An account without transactions still contributes a coverage status.
 
 ## Provisional Periods
 
-Analytics decides whether a report's period is provisional, by the rule in
-[`presentation-layer.md`](presentation-layer.md#data-trust-display), and
-returns it with the report. A period is provisional when it contains the
-reference date's month, or when any contributing snapshot row has
-`late_bookings_settled` false. The reference date is today in
-Europe/Copenhagen for the current publication, and the publication's
-`known_at` for a past view. Gold computes the flag from recorded exports;
-analytics adds only the reference date, and never reads export dates itself.
+Analytics applies the provisional rule in
+[`presentation-layer.md`](presentation-layer.md#data-trust-display) and returns
+the label with the report. Its inputs are the contributing snapshot rows'
+`late_bookings_settled` and a reference date: today in Europe/Copenhagen for
+the current publication, and the publication's `known_at` for a past view.
+Analytics never reads export dates itself.
 
 ## Outputs
 
