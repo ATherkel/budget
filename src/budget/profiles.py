@@ -124,6 +124,8 @@ def _read_profile_document(path: Path) -> dict[str, object]:
     except OSError as error:
         reason = error.strerror or type(error).__name__
         raise ProfileFileError(path, f"cannot be read: {reason}") from None
+    except UnicodeDecodeError:
+        raise ProfileFileError(path, "is not UTF-8 text") from None
     except tomllib.TOMLDecodeError as error:
         raise ProfileFileError(path, f"is not valid TOML: {error}") from None
     return document
