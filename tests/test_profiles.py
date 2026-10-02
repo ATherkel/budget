@@ -1,6 +1,7 @@
 # Copyright 2026 Therkel
 """Profiles: what one names, and the guards around a test profile."""
 
+import inspect
 import os
 import unittest
 from pathlib import Path
@@ -39,6 +40,17 @@ class ProfileTests(unittest.TestCase):
                 profile.bronze_store == (root / "stores" / BRONZE_STORE_NAME).resolve()
             )
             assert profile.bronze_store.name == "bronze.db"
+
+    def test_a_profile_takes_every_field_by_name(self) -> None:
+        # Its folders are all paths, so a positional call could put one folder
+        # in another's place without any type error.
+        positional = [
+            parameter.name
+            for parameter in inspect.signature(Profile).parameters.values()
+            if parameter.kind is not inspect.Parameter.KEYWORD_ONLY
+        ]
+
+        assert positional == []
 
     def test_a_test_profile_stays_inside_its_temporary_root(self) -> None:
         with TemporaryDirectory() as directory:
