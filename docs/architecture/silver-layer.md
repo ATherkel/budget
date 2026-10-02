@@ -217,7 +217,9 @@ transaction dates.
     its currency allows;
   - an unknown status;
   - a booked row without a balance, or a balance-chain break within the
-    export (ADR-010).
+    export (ADR-010);
+  - an export without bank labels that would replace labelled transactions
+    (*Label layout*).
 - A booked row without a balance, or a chain break within the export, also
   raises a `balance-break` review item for that run alongside the validation
   errors. The errors say what is wrong with the file; the review item is what
@@ -225,10 +227,35 @@ transaction dates.
   `resolved_by` (ADR-010). Without it the quarantine is the only signal, and
   nothing in the operator's work list says there is a way back.
 - `ValidationError.code` names the error. The codes that do not depend on the
-  source format are `format-failure` (payload-level, so `record_ordinal` is
-  null), `wrong-field-count` (the record's fields are not exactly one of the
-  format's headers) and `balance-chain-break`. Each source format's data map names the
-  rest.
+  source format are `format-failure` and `label-layout-regressed`
+  (payload-level, so `record_ordinal` is null), `wrong-field-count` (the
+  record's fields are not exactly one of the format's headers) and
+  `balance-chain-break`. Each source format's data map names the rest.
+
+**Label layout**
+- Each source format says which of its layouts carry bank labels, and its
+  data map says which those are. An account's layout is not expected to
+  change.
+- A run none of whose records is in a layout with labels gets
+  `label-layout-regressed` when an admitted export with labels is the
+  selected export for a date the run covers and has transactions on it.
+  Admitting the run would replace those transactions' labels with nulls. A
+  date without transactions has no labels to lose, so it never triggers the
+  error, and neither does a run with no source records, which has no layout.
+- The message names each conflicting export by `payload_id`, with the first
+  and last date on which it supplies labels the run would replace.
+- Runs are judged in admission order (*Merge verification*), so an older
+  export without labels is admitted, and a newer one with them still
+  supplies labels. An export without labels is also admitted when no export
+  with labels has transactions on its dates. The rule keeps Silver from
+  losing labels it has; it does not notice an account whose labels stop. If
+  the bank ever drops an account's labels, only an export overlapping dates
+  with labelled transactions is held back. One that starts after them is
+  admitted, and later exports build on it.
+- The error quarantines the run, and no decision settles it. The likely
+  cause is an export declared for the wrong account, which may be the run or
+  the older export with labels. *Void import run* on whichever of the two
+  was declared for the wrong account removes the conflict (#138).
 
 **Identity and merging**
 - Per ADR-009: content plus occurrence identity, and the highest count per
