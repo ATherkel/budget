@@ -240,7 +240,7 @@ def _shared_number_problems(entries: Mapping[str, object]) -> list[str]:
     problems = []
     for account_id, entry in entries.items():
         number = entry.get("bank_account_number") if isinstance(entry, dict) else None
-        if not isinstance(number, str) or not number:
+        if not _is_text(number):
             continue
         earlier = declared_by.setdefault(number, account_id)
         if earlier != account_id:
