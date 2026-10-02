@@ -7,9 +7,11 @@ refuses at once. It is the operating system's own file lock, which the system
 releases when the process ends, however it ends.
 """
 
+import errno
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from typing import BinaryIO
 
 from budget.profiles import Profile
@@ -25,6 +27,15 @@ class WriterLockHeldError(RuntimeError):
         )
 
 
+class StoresFolderUnavailableError(RuntimeError):
+    """The stores folder cannot hold the writer lock: a rerun will not help."""
+
+    def __init__(self, folder: Path, error: OSError) -> None:
+        """Name the folder and the operating system's reason."""
+        reason = error.strerror or type(error).__name__
+        super().__init__(f"the stores folder {folder} cannot be used: {reason}")
+
+
 if sys.platform == "win32":
     import msvcrt
 
@@ -33,8 +44,11 @@ if sys.platform == "win32":
         file.seek(0)
         try:
             msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, 1)
-        except OSError:
-            return False
+        except OSError as error:
+            # Contention is EACCES; any other failure is not another command.
+            if error.errno == errno.EACCES:
+                return False
+            raise
         return True
 
     def _unlock(file: BinaryIO) -> None:
@@ -62,13 +76,22 @@ else:
 def writer_lock(profile: Profile) -> Iterator[None]:
     """Hold the profile's writer lock for the length of a `with` block.
 
-    Raises `WriterLockHeldError` at once when another command holds it.
+    Raises `WriterLockHeldError` at once when another command holds it, and
+    `StoresFolderUnavailableError` when the folder cannot hold the lock at all.
     """
     path = profile.writer_lock_file
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Append mode creates the file without truncating one another holds.
-    with path.open("a+b") as file:
-        if not _try_lock(file):
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Append mode creates the file without truncating one another holds.
+        file = path.open("a+b")
+    except OSError as error:
+        raise StoresFolderUnavailableError(path.parent, error) from None
+    with file:
+        try:
+            locked = _try_lock(file)
+        except OSError as error:
+            raise StoresFolderUnavailableError(path.parent, error) from None
+        if not locked:
             raise WriterLockHeldError
         try:
             yield

@@ -24,7 +24,11 @@ from budget.bronze.storage import (
     UnsupportedStoreVersionError,
     UnversionedStoreError,
 )
-from budget.locking import WriterLockHeldError, writer_lock
+from budget.locking import (
+    StoresFolderUnavailableError,
+    WriterLockHeldError,
+    writer_lock,
+)
 from budget.profiles import Profile, ProfileFileError, load_profile_file
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
@@ -137,6 +141,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         NoProfileSelectedError,
         StageNotBuiltError,
         WriterLockHeldError,
+        StoresFolderUnavailableError,
         *_BRONZE_ENVIRONMENT_REFUSALS,
     ) as error:
         return _refuse(error, EXIT_REFUSED_ENVIRONMENT)
