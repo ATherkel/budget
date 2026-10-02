@@ -99,6 +99,20 @@ class ProfileFileTests(unittest.TestCase):
             assert "UTF-8" in stderr.getvalue()
             assert not (folder / "stores").exists()
 
+    def test_a_profile_file_with_a_byte_order_mark_is_accepted(self) -> None:
+        # Windows PowerShell 5.1's `Set-Content -Encoding UTF8` writes a BOM.
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = folder / "development.toml"
+            text = VALID_HEADER + _paths(str(folder / "stores"))
+            profile_file.write_bytes(text.encode("utf-8-sig"))
+
+            status = main(["--profile", str(profile_file), "migrate"], environ={})
+
+            assert status == EXIT_OK
+            with BronzeStore(Profile(name="development", stores=folder / "stores")):
+                pass
+
     def test_an_unsupported_format_version_is_named(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
