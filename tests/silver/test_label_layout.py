@@ -161,3 +161,17 @@ def test_a_date_left_without_transactions_by_withdrawn_loses_no_labels() -> None
         "run-b": "accepted",
         "run-c": "accepted",
     }
+
+
+def test_a_run_with_no_source_records_has_no_layout_to_hold_back() -> None:
+    labelled = export(OLDER, run_id="run-a", exported_on=date(2026, 3, 6))
+    empty = declared(
+        export([], run_id="run-b", exported_on=date(2026, 3, 9)),
+        covers_from=date(2026, 3, 5),
+    )
+
+    result = build_from(labelled, empty)
+
+    # It goes on to merge verification, which finds 5 March's BOG dropped.
+    assert _errors(result, "run-b") == []
+    assert [item.kind for item in result.review_items] == ["dropped-transaction"]

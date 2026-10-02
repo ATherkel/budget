@@ -122,11 +122,21 @@ def test_status_matches_exactly(status: str) -> None:
 def test_a_record_without_exactly_the_format_fields_has_a_wrong_field_count() -> None:
     missing = {name: value for name, value in VALID.items() if name != "Afstemt"}
     extra = VALID | {"Valør": "01.03.2026"}
+    # Each label without the other is neither of the format's two headers.
+    no_category = {name: value for name, value in VALID.items() if name != "Kategori"}
+    no_subcategory = {
+        name: value for name, value in VALID.items() if name != "Underkategori"
+    }
 
-    result = build_from(export([VALID, missing, extra]))
+    result = build_from(export([VALID, missing, extra, no_category, no_subcategory]))
 
     _assert_contributes_nothing(result)
-    assert _errors(result) == [(2, "wrong-field-count"), (3, "wrong-field-count")]
+    assert _errors(result) == [
+        (2, "wrong-field-count"),
+        (3, "wrong-field-count"),
+        (4, "wrong-field-count"),
+        (5, "wrong-field-count"),
+    ]
 
 
 def test_a_quarantined_run_does_not_count_toward_account_evidence() -> None:
