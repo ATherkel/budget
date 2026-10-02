@@ -279,16 +279,16 @@ source_format = "danske-csv-v1"
 # closed_on = 2027-06-30         # set when the account closes
 ```
 
-`bank_account_number` is optional. It is a quoted string, so leading zeros
-survive, and two accounts may not declare the same number. It must have the
-shape the account's source format reads from a filename (`danske-csv-v1`: ten
-digits, without the sort code). A number of any other shape could never match,
-so it is a configuration error rather than a refusal of every export. It catches
-an export saved to the wrong inbox folder. When an account declares a number and
-its source format reads one from the export's filename (`danske-csv-v1`:
-`<name>-<10 digits>-<YYYYMMDD>.csv`, also with a browser copy suffix such as
-`(1)` before `.csv`; see [the Bronze rules](bronze-layer.md#rules)), the two
-must match. A mismatch refuses
+`bank_account_number` is optional: the account's number as the bank writes it
+in the filenames of its exports. It catches an export saved to the wrong inbox
+folder. It is a quoted string, so leading zeros survive, and two accounts may
+not declare the same number. Each source format states whether its filenames
+carry an account number, where, and in what shape, in its own section of the
+Bronze layer (for example
+[`danske-csv-v1`](bronze-layer.md#danske-csv-format-danske-csv-v1)). A declared
+number of a shape the format's filenames never carry could never match, so it
+is a configuration error rather than a refusal of every export. When an export's
+filename carries a number, it must match the declared one. A mismatch refuses
 that file before Bronze, and the file is never moved to another account
 (see [Failure and Retry](#failure-and-retry)). The check reads the filename,
 not the content: it does not catch an export the bank labelled with the wrong

@@ -41,12 +41,13 @@ chain skips.
   earlier import run is voided.
 - A UTF-8 file, a byte undefined in Windows-1252, or an unexpected header
   yields a `FormatFailure` and no source records.
-- The export date comes from a `…-YYYYMMDD.csv` filename suffix, or else must be
-  declared. The only other part of the filename that is read is the account
-  number in a `<name>-<10 digits>-YYYYMMDD.csv` name. It is read only to check it
-  against the account's declared `bank_account_number` before Bronze, and it is
-  never stored as Bronze evidence. Both readings allow one browser copy suffix
-  such as `(1)` before `.csv`. The range the export
+- The export date comes from the filename when the source format's filename
+  convention carries one, or else must be declared. The only other part of the
+  filename a format may read is the bank's account number. It is read only to
+  check it against the account's declared `bank_account_number` before Bronze,
+  and it is never stored as Bronze evidence. Each format's convention is in its
+  section of `architecture/bronze-layer.md`, such as *Danske CSV Format*. The
+  range the export
   covers, `covers_from` through `covers_through` (both inclusive), is declared
   separately on every import, with no default and no fallback; leaving either
   out is a usage error that records no run. A `repeat` run records its own

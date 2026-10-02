@@ -87,16 +87,13 @@ for.
 - **Currency.** The account's currency comes from account configuration, never
   from the payload.
 - **Export date.** The export date is when the bank produced the file. It is
-  read from the date suffix of a Danske-style filename (`…-YYYYMMDD.csv`);
-  without one, the operator must declare it. The only other part of the
-  filename that is read is the account number in a Danske-style name
-  (`<name>-<10 digits>-YYYYMMDD.csv`). It is read only to check it against the
-  account's declared `bank_account_number` before Bronze
+  read from the filename when the source format's filename convention carries
+  one; otherwise the operator must declare it. The only other part of the
+  filename a format may read is the bank's account number. It is read only to
+  check it against the account's declared `bank_account_number` before Bronze
   ([`operations.md`](operations.md#accountstoml)), and it is never stored as
-  Bronze evidence. Both readings allow one browser copy suffix before `.csv`,
-  such as `…-YYYYMMDD(1).csv` or `…-YYYYMMDD (1).csv`, which a browser adds
-  when it saves a second download under the same name. The recorded original
-  filename keeps the suffix.
+  Bronze evidence. Each format states its filename convention in its own
+  section below. The original filename is recorded exactly as received.
 - **Covers from and covers through.** What an export covers is declared by the
   operator as the range they asked the bank for, from `covers_from` through
   `covers_through`, both inclusive. Both are required on every import and
@@ -160,7 +157,18 @@ for.
   export time.
 - `Kategori` and `Underkategori`, where a payload has them, are space-padded.
   The padding is preserved in source records.
-- The file contains no account, currency, or transaction identifier.
+- The file's content contains no account, currency, or transaction
+  identifier. Only its filename can carry the account number.
+- The filename can carry the export date and the account number:
+  - The export date is the eight digits of a `…-YYYYMMDD.csv` suffix. A suffix
+    that is not a real calendar date is refused, not treated as missing.
+  - The account number is the ten digits right before that suffix, in a
+    `<name>-<10 digits>-YYYYMMDD.csv` name: the account number without the sort
+    code. A declared `bank_account_number` for a `danske-csv-v1` account must be
+    those ten digits.
+  - Both readings allow one browser copy suffix before `.csv`, such as
+    `…-YYYYMMDD(1).csv` or `…-YYYYMMDD (1).csv`, which a browser adds when it
+    saves a second download under the same name.
 
 ## Responsibilities
 
