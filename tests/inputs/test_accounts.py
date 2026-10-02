@@ -93,6 +93,17 @@ class LoadAccountsTests(unittest.TestCase):
         assert "0012345678" not in repr(accounts["joint-current"])
         assert "0012345678" not in repr(accounts)
 
+    def test_a_utf8_byte_order_mark_is_still_utf8(self) -> None:
+        # Windows PowerShell 5.1's `Set-Content -Encoding UTF8` writes one.
+        with TemporaryDirectory() as directory:
+            plain = load_accounts(profile_with_accounts(directory, ACCOUNTS))
+        with TemporaryDirectory() as directory:
+            profile = profile_with_accounts(
+                directory, b"\xef\xbb\xbf" + ACCOUNTS.encode()
+            )
+
+            assert dict(load_accounts(profile)) == dict(plain)
+
     def test_a_file_with_no_accounts_is_an_empty_registry(self) -> None:
         with TemporaryDirectory() as directory:
             profile = profile_with_accounts(directory, "format = 1\n")
