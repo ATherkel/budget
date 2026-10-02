@@ -292,6 +292,39 @@ ownership_scope = "family"
         )
         assert "0012345678" not in str(refusal.value)
 
+    def test_a_number_its_source_format_never_carries_is_refused(self) -> None:
+        content = ACCOUNTS.replace('"0012345678"', '"3456 0012345678"')
+        with TemporaryDirectory() as directory:
+            profile = profile_with_accounts(directory, content)
+
+            with pytest.raises(ConfigurationError) as refusal:
+                load_accounts(profile)
+
+        assert refusal.value.problems == (
+            entry_problem(
+                "joint-current",
+                "bank_account_number is not a danske-csv-v1 account number",
+            ),
+        )
+        assert "0012345678" not in str(refusal.value)
+
+    def test_an_unknown_source_format_does_not_judge_the_number(self) -> None:
+        content = ACCOUNTS.replace(
+            'source_format = "danske-csv-v1"\nbank_account_number = "0012345678"',
+            'source_format = "nordea-csv-v1"\nbank_account_number = "12-34"',
+        )
+        with TemporaryDirectory() as directory:
+            profile = profile_with_accounts(directory, content)
+
+            with pytest.raises(ConfigurationError) as refusal:
+                load_accounts(profile)
+
+        assert refusal.value.problems == (
+            entry_problem(
+                "joint-current", "source_format must be one of danske-csv-v1"
+            ),
+        )
+
 
 def loaded_accounts(content: str = ACCOUNTS) -> Mapping[str, Account]:
     """Load a synthetic accounts.toml through a throwaway test profile."""
