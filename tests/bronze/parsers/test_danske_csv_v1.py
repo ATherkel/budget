@@ -460,11 +460,18 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
         assert PARSER.exported_on_from_filename("synthetic-20260914.txt") is None
 
     def test_an_unreadable_date_suffix_is_refused_without_naming_the_file(self) -> None:
-        with pytest.raises(ValueError, match="not a real date") as refusal:
-            PARSER.exported_on_from_filename("synthetic-20260931.csv")
+        # A browser copy suffix does not turn a refusal into a missing date.
+        for filename in (
+            "synthetic-20260931.csv",
+            "synthetic-20260931(3).csv",
+            "synthetic-20260931 (3).csv",
+        ):
+            with self.subTest(filename=filename):
+                with pytest.raises(ValueError, match="not a real date") as refusal:
+                    PARSER.exported_on_from_filename(filename)
 
-        assert "synthetic" not in str(refusal.value)
-        assert "20260931" not in str(refusal.value)
+                assert "synthetic" not in str(refusal.value)
+                assert "20260931" not in str(refusal.value)
 
     def test_the_parser_reads_the_account_number_before_the_date_suffix(
         self,
