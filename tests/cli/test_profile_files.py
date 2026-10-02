@@ -7,6 +7,7 @@ synthetic and written into each test's temporary folder.
 """
 
 import io
+import shutil
 import unittest
 from contextlib import chdir, redirect_stderr
 from pathlib import Path
@@ -26,6 +27,19 @@ VALID_HEADER = 'format = 1\nprofile = "development"\n'
 def _paths(stores: str) -> str:
     """A `[paths]` table naming only the stores folder."""
     return f"\n[paths]\nstores = '{stores}'\n"
+
+
+def _assert_refused(profile_file: Path, text: str, stores: Path) -> None:
+    """Write the file, run `migrate`, and expect exit 3 with nothing created."""
+    profile_file.write_text(text, encoding="utf-8")
+    stderr = io.StringIO()
+
+    with redirect_stderr(stderr):
+        status = main(["--profile", str(profile_file), "migrate"], environ={})
+
+    assert status == EXIT_REFUSED_INPUT
+    assert profile_file.name in stderr.getvalue()
+    assert not stores.exists()
 
 
 class ProfileFileTests(unittest.TestCase):
@@ -59,18 +73,11 @@ class ProfileFileTests(unittest.TestCase):
             stores = folder / "stores"
             for problem, text in self._refusals(stores).items():
                 with self.subTest(problem):
-                    profile_file = folder / "development.toml"
-                    profile_file.write_text(text, encoding="utf-8")
-                    stderr = io.StringIO()
-
-                    with redirect_stderr(stderr):
-                        status = main(
-                            ["--profile", str(profile_file), "migrate"], environ={}
-                        )
-
-                    assert status == EXIT_REFUSED_INPUT
-                    assert "development.toml" in stderr.getvalue()
-                    assert not stores.exists()
+                    try:
+                        _assert_refused(folder / "development.toml", text, stores)
+                    finally:
+                        # A case that wrongly migrates must not fail the next.
+                        shutil.rmtree(stores, ignore_errors=True)
 
     def test_a_missing_profile_file_is_refused(self) -> None:
         with TemporaryDirectory() as directory:
