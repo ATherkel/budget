@@ -69,6 +69,26 @@ def test_an_export_that_loses_its_categories_is_held_back() -> None:
     assert [t.description for t in result.transactions] == ["NETTO", "BOG"]
 
 
+def test_the_error_names_the_export_with_categories_and_the_dates() -> None:
+    labelled = export(OLDER, run_id="run-a", exported_on=date(2026, 3, 6))
+    unlabelled = declared(
+        export(
+            [uncategorised(fields) for fields in NEWER],
+            run_id="run-b",
+            exported_on=date(2026, 3, 9),
+        ),
+        covers_from=date(2026, 3, 1),
+    )
+
+    result = build_from(labelled, unlabelled)
+
+    [run] = [r for r in result.import_run_results if r.import_run_id == "run-b"]
+    [error] = run.errors
+    assert "payload-run-a" in error.message
+    assert "2026-03-01" in error.message
+    assert "2026-03-05" in error.message
+
+
 def test_an_older_export_without_categories_lets_a_newer_one_add_them() -> None:
     unlabelled = export(
         [uncategorised(fields) for fields in OLDER],
