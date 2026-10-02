@@ -57,6 +57,17 @@ class ProfileFileTests(unittest.TestCase):
             "no profile name": "format = 1\n" + absolute,
             "an unknown top-level key": VALID_HEADER + "colour = 1\n" + absolute,
             "an unknown paths key": VALID_HEADER + absolute + "archive = 'x'\n",
+            "a backups table in development": (
+                VALID_HEADER + absolute + "\n[backups]\nkeep_all_days = 14\n"
+            ),
+            "a backups path in development": VALID_HEADER
+            + absolute
+            + "backups = 'x'\n",
+            "upstream backups in production": (
+                'format = 1\nprofile = "production"\n'
+                + absolute
+                + "upstream_backups = 'x'\n"
+            ),
             "no paths table": VALID_HEADER,
             "no stores path": VALID_HEADER + "\n[paths]\ninbox = 'x'\n",
             "a relative stores path": VALID_HEADER + _paths("stores"),
