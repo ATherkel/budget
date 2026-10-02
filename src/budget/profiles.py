@@ -50,9 +50,12 @@ class TestProfileRootRequiredError(ValueError):
         super().__init__("a test profile must name the temporary root it stays inside")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Profile:
     """One profile: the name a store records, and its stores and inputs folders.
+
+    Every field is passed by name: they are mostly paths, so a positional call
+    could put one folder in another's place without a type error.
 
     `root` is the temporary directory a test profile must stay inside. It is
     `None` for the development and production profiles, whose paths the
