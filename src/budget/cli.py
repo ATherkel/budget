@@ -53,7 +53,8 @@ class NoProfileSelectedError(Exception):
 def _parser() -> argparse.ArgumentParser:
     """Build the command-line grammar."""
     parser = argparse.ArgumentParser(prog="budget")
-    parser.add_argument("--profile", type=Path, help="the profile file to use")
+    # Kept as text: `Path("")` is `.`, which would hide an empty argument.
+    parser.add_argument("--profile", help="the profile file to use")
     commands = parser.add_subparsers(dest="command", required=True)
     migrate = commands.add_parser(
         "migrate", help="create or upgrade the profile's stores"
@@ -63,15 +64,18 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _selected_profile_file(
-    argument: Path | None,
+    argument: str | None,
     environ: Mapping[str, str],
 ) -> Path:
-    """Return the profile file named by `--profile`, else by `BUDGET_PROFILE`."""
-    if argument is not None:
-        return argument
-    if PROFILE_VARIABLE in environ:
-        return Path(environ[PROFILE_VARIABLE])
-    raise NoProfileSelectedError
+    """Return the profile file named by `--profile`, else by `BUDGET_PROFILE`.
+
+    An empty name selects nothing, and an empty `--profile` is still the
+    operator's choice, so it does not fall through to the variable.
+    """
+    name = environ.get(PROFILE_VARIABLE) if argument is None else argument
+    if not name:
+        raise NoProfileSelectedError
+    return Path(name)
 
 
 def _migrate(profile: Profile, stage: str | None) -> None:
