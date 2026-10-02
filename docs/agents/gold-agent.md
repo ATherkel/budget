@@ -22,8 +22,9 @@ and the model in [gold-layer.md](../architecture/gold-layer.md).
   `account_sequence` and `balance_check`.
 - One category allocation per classified transaction, for its whole amount,
   with the allocation sum and sign invariants enforced.
-- Monthly balance snapshots with coverage for every month of each account's
-  managed period.
+- Monthly balance snapshots with coverage and `late_bookings_settled` for
+  every month of each account's managed period, which for an open account
+  runs to the latest published month.
 - Lineage through `GoldLineageRepository`: parent Silver record,
   classification source, rule or manual decision, classification version, and
   transfer evidence.

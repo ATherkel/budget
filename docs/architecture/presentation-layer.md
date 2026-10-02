@@ -7,7 +7,9 @@ Render household financial information for phone and desktop browsers.
 ## Boundary
 
 Presentation consumes analytics report DTOs only. It does not classify
-transactions, calculate financial totals, or access source data.
+transactions, calculate financial totals, or access source data. It never
+reads Gold either: it names the publication in the report context, and
+analytics opens it.
 
 ## Initial Technology Direction
 
@@ -34,11 +36,18 @@ must preserve the analytics-facing DTO boundary.
   `transaction_date` itself is never converted. A household that is behind on
   its imports has *more* reason to see the label, not less, so no coverage
   status withholds it here.
-- A period that is already closed carries the same label until every account in
-  the report has an admitted export that was produced at least 7 days after the
-  period ends *and* whose range covers the period's last day, because late
-  bookings land on their transaction date: an export starting after the period
-  cannot show them, however late it was produced.
+- A period that is already closed carries the same label until, for every
+  account in the report and *every month* in the period, one of the exports
+  counted in the account's evidence ranges was produced at least 7 days after
+  that month ended *and* its range covers that month's last day. Late bookings
+  land on their transaction date, so an export starting after a month cannot
+  show them, however late it was produced. Checking every month, not only the
+  period's last, keeps a year-to-date total provisional while one of its
+  months can still change (issue #12). Gold publishes the per-account, per-month
+  half of this rule as `MonthlyBalanceSnapshot.late_bookings_settled`;
+  analytics adds the current month and returns the label with the report.
+  This bullet and the one above are the only statement of the rule; other
+  documents cite them.
 - Exactly one account is exempt from holding the label on a closed period: one
   that has never been imported, meaning its `GoldAccount.evidence_through` is
   null. It already reports `no_data` on its own line, and no export of it is
@@ -47,6 +56,10 @@ must preserve the analytics-facing DTO boundary.
   account that *has* been imported reads `no_data` for any period its evidence
   does not reach, and a later export can still reach back and change that
   period — which is precisely what the label warns about.
+- Known first-release limitation: an imported account with no booked
+  transaction yet has no managed period, so no snapshot rows carry its flag
+  and it cannot hold the label either. Its first booked transaction creates
+  its rows, and reports restate.
 - Every screen reads exactly one Gold publication, and all requests from one
   page read the same one. A screen showing any publication other than the
   current one carries a visible banner naming it (its label, and whether it is

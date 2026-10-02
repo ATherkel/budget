@@ -443,9 +443,16 @@ Pointer history after step 9: P1, P2, P3, P4, P3, P5, P6. Results kept: P6
    then survives in the pre-migration backup instead, and, when labeled, in
    its legacy extract (ADR-015).
 
+## First Release Scope
+
+The readiness review (issue #12) scoped the first dashboard release to the
+recipe, pipeline builds, the pointer history, `undo`, the printed diff, and
+retention of the current and previous results. Changed rules and manual
+inputs are tested there, from the lifecycle scenarios above. `verify`, past
+views, labels, scratch stores and legacy publications, with their replay and
+version-selection cases, come later.
+
 ## Left to Other Tickets
 
 - **Issue #11:** how the dashboard shows the publication picker and the banner
   for a non-current publication.
-- **Issue #12:** acceptance cases for version selection, deterministic
-  replay, and changed rules and manual inputs, taken from the scenarios above.

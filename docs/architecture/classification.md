@@ -1,7 +1,7 @@
 # Gold Classification
 
 Status: accepted (ADR-011, ADR-012). The fields it produces are part of Gold
-contract 0.2, which stays proposed until the readiness review (issue #12).
+contract 0.2, which the readiness review (issue #12) accepted.
 
 ## Purpose
 
@@ -371,7 +371,4 @@ A zero-amount `INTEREST ADJ` matched by `r-interest` is `unknown`, with a
 
 ## Left to Other Tickets
 
-- **Issue #12:** whether money moved to savings, investment, or loan accounts
-  that are not imported should count differently in the savings measure. It is
-  an expense today.
 - **Issue #47:** pairing transfers that lose a fee, once splits exist.

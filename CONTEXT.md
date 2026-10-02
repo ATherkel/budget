@@ -19,8 +19,9 @@ transfer-eligible account (same set)
 **Managed period**:
 The span of reporting months in which an account is part of the household's
 history: from the month of its first Booked transaction until the month it
-closes, or the latest reported month if it is still open. A month outside it
-is outside the reported history; a quiet month inside it is judged by Coverage.
+closes, or, while it is open, the latest month any account's exports reach. A
+month outside it is outside the reported history; a quiet month inside it is
+judged by Coverage.
 _Avoid_: Active period, account lifetime (the bank account may predate the
 household's data)
 
