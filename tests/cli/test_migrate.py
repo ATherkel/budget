@@ -15,15 +15,25 @@ from unittest import mock
 import pytest
 
 from budget.bronze import BronzeStore, migrate_bronze
-from budget.bronze.storage import StoreIdentityError
+from budget.bronze.storage import (
+    ForeignKeyViolationError,
+    MigrationResourceError,
+    StoreIdentityError,
+)
 from budget.cli import main
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
+from tests.bronze.migration_resources import patched_resources
 from tests.cli.commands import migrate
 from tests.cli.profile_files import development_profile, write_profile
 
 EXIT_OK = 0
 EXIT_REFUSED_ENVIRONMENT = 4
+
+_ORPHAN_SOURCE_RECORD = (
+    "INSERT INTO source_records (payload_id, record_ordinal, fields)"
+    " VALUES ('missing-payload', 1, '{}');\n"
+)
 
 
 def _user_version(path: Path) -> int:
@@ -118,6 +128,29 @@ class MigrateRefusalTests(unittest.TestCase):
             assert status == EXIT_REFUSED_ENVIRONMENT
             assert "3.51.2" in stderr
             assert not (folder / "stores").exists()
+
+
+class MigrateDefectTests(unittest.TestCase):
+    def test_a_broken_packaged_migration_is_a_defect_not_a_refusal(self) -> None:
+        # A defect propagates out of `main`, so Python reports it and exits 1.
+        cases = {
+            "an incomplete statement": (
+                "CREATE TABLE marker (x TEXT)\n",
+                MigrationResourceError,
+            ),
+            "a foreign-key violation": (
+                _ORPHAN_SOURCE_RECORD,
+                ForeignKeyViolationError,
+            ),
+        }
+        for case, (suffix, defect) in cases.items():
+            with (
+                self.subTest(case),
+                TemporaryDirectory() as directory,
+                patched_resources(suffix),
+                pytest.raises(defect),
+            ):
+                migrate(write_profile(Path(directory)))
 
 
 if __name__ == "__main__":
