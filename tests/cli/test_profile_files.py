@@ -82,6 +82,23 @@ class ProfileFileTests(unittest.TestCase):
             assert status == EXIT_REFUSED_INPUT
             assert "development.toml" in stderr.getvalue()
 
+    def test_a_profile_file_that_is_not_utf8_is_refused(self) -> None:
+        # Windows PowerShell 5.1's `>` and `Out-File` write UTF-16.
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = folder / "development.toml"
+            text = VALID_HEADER + _paths(str(folder / "stores"))
+            profile_file.write_bytes(text.encode("utf-16"))
+            stderr = io.StringIO()
+
+            with redirect_stderr(stderr):
+                status = main(["--profile", str(profile_file), "migrate"], environ={})
+
+            assert status == EXIT_REFUSED_INPUT
+            assert "development.toml" in stderr.getvalue()
+            assert "UTF-8" in stderr.getvalue()
+            assert not (folder / "stores").exists()
+
     def test_an_unsupported_format_version_is_named(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
