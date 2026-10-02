@@ -41,12 +41,12 @@ transaction is trusted as its opening balance, since there is nothing earlier
 to check it against.
 
 Coverage is judged over the whole reporting period, not only the rows inside
-it. An account's evidence runs from its first transaction to its
-`evidence_through`, which Silver computes from its admitted import runs by the
-formula in [`silver-layer.md`](../architecture/silver-layer.md#evidence-through).
-That formula is the single definition and this ADR deliberately does not restate
-it. A period is `complete` only when that evidence starts before the period, reaches its
-end, and every link overlapping the period is verified. A period with no
+it. An account's evidence is the set of day ranges its admitted import runs
+declare, which Silver computes by the rule in
+[`silver-layer.md`](../architecture/silver-layer.md#evidence-ranges). That rule
+is the single definition and this ADR deliberately does not restate it. A
+period is `complete` only when one evidence range starts before the period and
+reaches its end, and every link overlapping the period is verified. A period with no
 transactions inside verified evidence is a confirmed zero. A broken link makes
 every period it spans `partial`. Gold exposes each account's `coverage_start`
 and `evidence_through` through `list_accounts()`, so an account with no
