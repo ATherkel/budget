@@ -1,9 +1,10 @@
 # Copyright 2026 Therkel
 """The declared rules of `danske-csv-v1`, through its public parser seam.
 
-Every test here uses `parse` and `exported_on_from_filename` only, so a rule
-change is observed where a caller sees it. What the store does with these
-payloads - retaining bytes, recording verdicts, refusing runs - lives in
+Every test here uses `parse`, `exported_on_from_filename`,
+`account_number_from_filename` and `is_account_number` only, so a rule change is
+observed where a caller sees it. What the store does with these payloads -
+retaining bytes, recording verdicts, refusing runs - lives in
 `tests/bronze/test_store.py`, which keeps one representative payload per outcome
 instead of repeating these matrices.
 """
@@ -459,11 +460,88 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
         assert PARSER.exported_on_from_filename("synthetic-20260914.txt") is None
 
     def test_an_unreadable_date_suffix_is_refused_without_naming_the_file(self) -> None:
-        with pytest.raises(ValueError, match="not a real date") as refusal:
-            PARSER.exported_on_from_filename("synthetic-20260931.csv")
+        # A browser copy suffix does not turn a refusal into a missing date.
+        for filename in (
+            "synthetic-20260931.csv",
+            "synthetic-20260931(3).csv",
+            "synthetic-20260931 (3).csv",
+        ):
+            with self.subTest(filename=filename):
+                with pytest.raises(ValueError, match="not a real date") as refusal:
+                    PARSER.exported_on_from_filename(filename)
 
-        assert "synthetic" not in str(refusal.value)
-        assert "20260931" not in str(refusal.value)
+                assert "synthetic" not in str(refusal.value)
+                assert "20260931" not in str(refusal.value)
+
+    def test_the_parser_reads_the_account_number_before_the_date_suffix(
+        self,
+    ) -> None:
+        # A string, so the leading zeros survive.
+        assert (
+            PARSER.account_number_from_filename("synthetic-0012345678-20260914.csv")
+            == "0012345678"
+        )
+        assert (
+            PARSER.account_number_from_filename("SYNTHETIC-0012345678-20260914.CSV")
+            == "0012345678"
+        )
+        # Only the ten digits right before the date suffix are the number.
+        assert (
+            PARSER.account_number_from_filename(
+                "synthetic-9999999999-0012345678-20260914.csv"
+            )
+            == "0012345678"
+        )
+
+    def test_a_name_without_a_ten_digit_account_number_carries_none(self) -> None:
+        # No number means no check, never a failure.
+        arabic_indic = "".join(chr(0x0660 + int(digit)) for digit in "0012345678")
+        for filename in (
+            "synthetic-20260914.csv",
+            "synthetic-123456789-20260914.csv",
+            "synthetic-12345678901-20260914.csv",
+            "0012345678-20260914.csv",
+            "synthetic-0012345678.csv",
+            "synthetic-0012345678-20260914.txt",
+            f"synthetic-{arabic_indic}-20260914.csv",
+        ):
+            with self.subTest(filename=filename):
+                assert PARSER.account_number_from_filename(filename) is None
+
+    def test_a_browser_copy_suffix_keeps_the_filename_convention(self) -> None:
+        # A browser saves a second download of one name as "…(1).csv".
+        for filename in (
+            "synthetic-0012345678-20260914(1).csv",
+            "synthetic-0012345678-20260914 (2).csv",
+            "synthetic-0012345678-20260914(12).CSV",
+        ):
+            with self.subTest(filename=filename):
+                assert PARSER.exported_on_from_filename(filename) == date(2026, 9, 14)
+                assert PARSER.account_number_from_filename(filename) == "0012345678"
+        for filename in (
+            "synthetic-0012345678-20260914().csv",
+            "synthetic-0012345678-20260914(a).csv",
+            "synthetic-0012345678-20260914  (1).csv",
+            "synthetic-0012345678-20260914(1)(2).csv",
+        ):
+            with self.subTest(filename=filename):
+                assert PARSER.exported_on_from_filename(filename) is None
+                assert PARSER.account_number_from_filename(filename) is None
+
+    def test_a_declared_account_number_is_ten_ascii_digits(self) -> None:
+        assert PARSER.is_account_number("0012345678")
+        arabic_indic = "".join(chr(0x0660 + int(digit)) for digit in "0012345678")
+        for value in (
+            "3456 0012345678",
+            "3456-0012345678",
+            " 0012345678",
+            "0012345678 ",
+            "12345678",
+            "00123456789",
+            arabic_indic,
+        ):
+            with self.subTest(value=value):
+                assert not PARSER.is_account_number(value)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+ACCOUNTS_FILE_NAME = "accounts.toml"
 BRONZE_STORE_NAME = "bronze.db"
+INPUTS_FOLDER = "inputs"
 STORES_FOLDER = "stores"
 DEVELOPMENT_PROFILE_NAME = "development"
 PRODUCTION_PROFILE_NAME = "production"
@@ -48,9 +50,12 @@ class TestProfileRootRequiredError(ValueError):
         super().__init__("a test profile must name the temporary root it stays inside")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Profile:
-    """One profile: the name a store records and the folder holding its stores.
+    """One profile: the name a store records, and its stores and inputs folders.
+
+    Every field is passed by name: they are mostly paths, so a positional call
+    could put one folder in another's place without a type error.
 
     `root` is the temporary directory a test profile must stay inside. It is
     `None` for the development and production profiles, whose paths the
@@ -59,6 +64,7 @@ class Profile:
 
     name: str
     stores: Path
+    inputs: Path
     root: Path | None = None
 
     def __post_init__(self) -> None:
@@ -68,17 +74,21 @@ class Profile:
         if self.name == TEST_PROFILE_NAME and self.root is None:
             raise TestProfileRootRequiredError
         stores = Path(self.stores).resolve()
+        inputs = Path(self.inputs).resolve()
         root = None if self.root is None else Path(self.root).resolve()
-        if root is not None and not stores.is_relative_to(root):
+        if root is not None and not all(
+            folder.is_relative_to(root) for folder in (stores, inputs)
+        ):
             raise ProfilePathOutsideRootError
         object.__setattr__(self, "stores", stores)
+        object.__setattr__(self, "inputs", inputs)
         object.__setattr__(self, "root", root)
 
     def _guarded_path(self, path: Path) -> Path:
         """Resolve one derived path and re-check it against a test root.
 
-        The filesystem is not frozen when a profile is built: the stores folder
-        or the store file can be replaced by a symlink afterwards, so every
+        The filesystem is not frozen when a profile is built: a folder or a file
+        the profile names can be replaced by a symlink afterwards, so every
         access resolves the path again instead of trusting the construction.
         """
         resolved = Path(path).resolve()
@@ -91,11 +101,17 @@ class Profile:
         """The Bronze stage store, re-checked against the test root each time."""
         return self._guarded_path(Path(self.stores) / BRONZE_STORE_NAME)
 
+    @property
+    def accounts_file(self) -> Path:
+        """The account registry, re-checked against the test root each time."""
+        return self._guarded_path(Path(self.inputs) / ACCOUNTS_FILE_NAME)
+
 
 def test_profile(root: str | Path) -> Profile:
     """Build the test profile whose stores live inside one temporary root."""
     return Profile(
         name=TEST_PROFILE_NAME,
         stores=Path(root) / STORES_FOLDER,
+        inputs=Path(root) / INPUTS_FOLDER,
         root=Path(root),
     )
