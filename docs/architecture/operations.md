@@ -234,7 +234,8 @@ plain `dev refresh`, development reads every stage from its own stores.
 Everything the household authors lives in the inputs folder as text. Every
 file:
 
-- is UTF-8;
+- is UTF-8, with or without a leading byte-order mark, which some Windows tools
+  write;
 - carries `format = 1` (TOML) or `"format": 1` on each line (JSON Lines), and
   an unknown format version is refused;
 - rejects unknown keys, so a misspelt key is an error, not an ignored line;
@@ -279,9 +280,12 @@ source_format = "danske-csv-v1"
 ```
 
 `bank_account_number` is optional. It is a quoted string, so leading zeros
-survive, and two accounts may not declare the same number. It catches an export
-saved to the wrong inbox folder. When an account declares a number and its
-source format reads one from the export's filename (`danske-csv-v1`:
+survive, and two accounts may not declare the same number. It must have the
+shape the account's source format reads from a filename (`danske-csv-v1`: ten
+digits, without the sort code). A number of any other shape could never match,
+so it is a configuration error rather than a refusal of every export. It catches
+an export saved to the wrong inbox folder. When an account declares a number and
+its source format reads one from the export's filename (`danske-csv-v1`:
 `<name>-<10 digits>-<YYYYMMDD>.csv`), the two must match. A mismatch refuses
 that file before Bronze, and the file is never moved to another account
 (see [Failure and Retry](#failure-and-retry)). The check reads the filename,

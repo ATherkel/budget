@@ -17,11 +17,14 @@ and never guesses from a bank, an account, a filename, or a header.
   whole and repeats neither source content nor the file's private name, which
   keeps it safe to show or log.
 - `SourceParser` is `source_format`, `parse(content: bytes) -> ParserResult`,
-  `exported_on_from_filename(filename) -> date | None`, and
-  `account_number_from_filename(filename) -> str | None`. The account number
-  is read only so the account's declared `bank_account_number` can be checked
-  before Bronze (`architecture/operations.md`, *`accounts.toml`*). The store
-  never calls it, and `None` means no check applies.
+  `exported_on_from_filename(filename) -> date | None`,
+  `account_number_from_filename(filename) -> str | None`, and
+  `is_account_number(value) -> bool`. The account number is read only so the
+  account's declared `bank_account_number` can be checked before Bronze
+  (`architecture/operations.md`, *`accounts.toml`*), and `None` means no check
+  applies. `is_account_number` lets the account registry refuse a declared
+  number of a shape the filename convention can never carry. The store calls
+  neither.
 
 Two rules the contract exists to keep:
 
@@ -78,10 +81,10 @@ helper.
 - `tests/bronze/parsers/test_registry.py` - the registry: how an ID that no
   parser declares is refused.
 - `tests/bronze/parsers/test_danske_csv_v1.py` - the declared rules of one
-  format, observed only through `parse`, `exported_on_from_filename` and
-  `account_number_from_filename`: encoding, headers, delimiters, quoting, the
-  transaction-date syntax and the coverage bound it feeds, and the filename
-  conventions.
+  format, observed only through `parse`, `exported_on_from_filename`,
+  `account_number_from_filename` and `is_account_number`: encoding, headers,
+  delimiters, quoting, the transaction-date syntax and the coverage bound it
+  feeds, and the filename conventions.
 - `tests/bronze/test_store.py` - the store: exact bytes, provenance, reopening,
   repeats, account conflicts, coverage and refusals, and the recording of a
   format failure, with representative `danske-csv-v1` payloads as fixtures.

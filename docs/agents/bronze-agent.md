@@ -42,7 +42,10 @@ chain skips.
 - A UTF-8 file, a byte undefined in Windows-1252, or an unexpected header
   yields a `FormatFailure` and no source records.
 - The export date comes from a `…-YYYYMMDD.csv` filename suffix, or else must be
-  declared; no other part of the filename is interpreted. The range the export
+  declared. The only other part of the filename that is read is the account
+  number in a `<name>-<10 digits>-YYYYMMDD.csv` name. It is read only to check it
+  against the account's declared `bank_account_number` before Bronze, and it is
+  never stored as Bronze evidence. The range the export
   covers, `covers_from` through `covers_through` (both inclusive), is declared
   separately on every import, with no default and no fallback; leaving either
   out is a usage error that records no run. A `repeat` run records its own
