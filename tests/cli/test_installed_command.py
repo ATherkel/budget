@@ -44,6 +44,9 @@ class InstalledCommandTests(unittest.TestCase):
             )
 
             assert completed.returncode == EXIT_OK, completed.stderr
+            # Routine output holds no filenames or values: on success, none.
+            assert completed.stdout == ""
+            assert completed.stderr == ""
             with BronzeStore(Profile(name="development", stores=folder / "stores")):
                 pass
 
@@ -62,6 +65,9 @@ class InstalledCommandTests(unittest.TestCase):
             )
 
             assert completed.returncode == EXIT_OK, completed.stderr
+            # Routine output holds no filenames or values: on success, none.
+            assert completed.stdout == ""
+            assert completed.stderr == ""
             with BronzeStore(Profile(name="development", stores=folder / "stores")):
                 pass
 
