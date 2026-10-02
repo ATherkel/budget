@@ -33,6 +33,30 @@ class ProfileSelectionTests(unittest.TestCase):
         assert "--profile" in stderr.getvalue()
         assert "BUDGET_PROFILE" in stderr.getvalue()
 
+    def test_an_empty_selection_refuses_like_no_selection(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            variable_file = write_profile(folder)
+            cases = {
+                "an empty BUDGET_PROFILE": (["migrate"], {"BUDGET_PROFILE": ""}),
+                # An explicit but empty argument is a mistake; it must not
+                # quietly fall through to the variable.
+                "an empty --profile": (
+                    ["--profile", "", "migrate"],
+                    {"BUDGET_PROFILE": str(variable_file)},
+                ),
+            }
+            for case, (argv, environ) in cases.items():
+                with self.subTest(case):
+                    stderr = io.StringIO()
+
+                    with redirect_stderr(stderr):
+                        status = main(argv, environ=environ)
+
+                    assert status == EXIT_REFUSED_ENVIRONMENT
+                    assert "no profile selected" in stderr.getvalue()
+                    assert not (folder / "stores").exists()
+
     def test_budget_profile_selects_and_the_argument_takes_precedence(self) -> None:
         with TemporaryDirectory() as directory:
             from_argument = Path(directory) / "argument"
