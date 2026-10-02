@@ -14,14 +14,12 @@ from budget.bronze.models import (
     SourceRecord,
 )
 from budget.bronze.storage import (
-    BronzeStorageError,
     migrate_bronze,
     require_migration_allowed,
 )
 from budget.bronze.store import BronzeStore
 
 __all__ = [
-    "BronzeStorageError",
     "BronzeStore",
     "FormatFailure",
     "ImportDeclaration",

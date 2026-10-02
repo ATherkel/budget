@@ -13,12 +13,17 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Final, NoReturn
 
-from budget.bronze import (
-    BronzeStorageError,
-    migrate_bronze,
-    require_migration_allowed,
+from budget.bronze import migrate_bronze, require_migration_allowed
+from budget.bronze.storage import (
+    BRONZE_STAGE,
+    MigrationRequiredError,
+    ProductionMigrationBlockedError,
+    StoreIdentityError,
+    StoreNotFoundError,
+    UnsupportedSQLiteVersionError,
+    UnsupportedStoreVersionError,
+    UnversionedStoreError,
 )
-from budget.bronze.storage import BRONZE_STAGE
 from budget.locking import WriterLockHeldError, writer_lock
 from budget.profiles import Profile, ProfileFileError, load_profile_file
 
@@ -28,6 +33,17 @@ EXIT_OK: Final = 0
 EXIT_USAGE: Final = 2
 EXIT_REFUSED_INPUT: Final = 3
 EXIT_REFUSED_ENVIRONMENT: Final = 4
+# The Bronze errors operations.md lists as a refused environment. Any other
+# Bronze error, such as a broken packaged migration, is a defect: exit 1.
+_BRONZE_ENVIRONMENT_REFUSALS: Final = (
+    UnsupportedSQLiteVersionError,
+    ProductionMigrationBlockedError,
+    StoreNotFoundError,
+    UnversionedStoreError,
+    StoreIdentityError,
+    MigrationRequiredError,
+    UnsupportedStoreVersionError,
+)
 
 
 class StageNotBuiltError(Exception):
@@ -120,8 +136,8 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
     except (
         NoProfileSelectedError,
         StageNotBuiltError,
-        BronzeStorageError,
         WriterLockHeldError,
+        *_BRONZE_ENVIRONMENT_REFUSALS,
     ) as error:
         return _refuse(error, EXIT_REFUSED_ENVIRONMENT)
     return EXIT_OK
