@@ -6,8 +6,15 @@ Opening balance 1000,00 throughout.
 
 from datetime import date
 
-from budget.silver import SilverResult
-from tests.silver.exports import build_from, declared, export, row, uncategorised
+from budget.silver import SilverResult, Withdrawn
+from tests.silver.exports import (
+    build_from,
+    declared,
+    export,
+    identity,
+    row,
+    uncategorised,
+)
 
 # Two exports of one account, each balanced against its own rows.
 OLDER = [
@@ -94,3 +101,43 @@ def test_an_export_without_categories_on_dates_no_labelled_export_covers() -> No
     result = build_from(labelled, later)
 
     assert _statuses(result) == {"run-a": "accepted", "run-b": "accepted"}
+
+
+def test_a_date_left_without_transactions_by_withdrawn_loses_no_labels() -> None:
+    labelled = export(
+        [
+            row("01.03.2026", "NETTO", "-45,00", "955,00"),
+            row("03.03.2026", "KAFFE", "-30,00", "925,00"),
+        ],
+        run_id="run-a",
+        exported_on=date(2026, 3, 3),
+    )
+    # The bank no longer shows the coffee, so 3 March is left without rows.
+    without_coffee = export(
+        [
+            row("01.03.2026", "NETTO", "-45,00", "955,00"),
+            row("02.03.2026", "BOG", "-25,00", "930,00"),
+        ],
+        run_id="run-b",
+        exported_on=date(2026, 3, 4),
+    )
+    withdrawn = Withdrawn(
+        decision_id="d-0001",
+        transaction_id=identity(date(2026, 3, 3), "-30.00", "KAFFE", 1),
+    )
+    unlabelled = declared(
+        export(
+            [uncategorised(row("04.03.2026", "LØN", "500,00", "1.430,00"))],
+            run_id="run-c",
+            exported_on=date(2026, 3, 5),
+        ),
+        covers_from=date(2026, 3, 3),
+    )
+
+    result = build_from(labelled, without_coffee, unlabelled, decisions=[withdrawn])
+
+    assert _statuses(result) == {
+        "run-a": "accepted",
+        "run-b": "accepted",
+        "run-c": "accepted",
+    }
