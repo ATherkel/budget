@@ -148,7 +148,8 @@ def _read_document(path: Path) -> dict[str, Any]:
         problem = _problem("the file is missing")
         raise ConfigurationError((problem,)) from None
     try:
-        text = content.decode("utf-8")
+        # A leading byte-order mark is still UTF-8, and is dropped.
+        text = content.decode("utf-8-sig")
     except UnicodeDecodeError:
         problem = _problem("the file is not UTF-8")
         raise ConfigurationError((problem,)) from None
