@@ -137,10 +137,12 @@ profile = "development"
 stores = 'C:\Users\household\AppData\Local\budget\dev'
 ```
 
-The file may hold only the keys
+The file is UTF-8 text, with or without a byte-order mark, and may hold only
+the keys
 [operations.md](docs/architecture/operations.md#selecting-a-profile)
-documents; `[paths].stores` is required and must be absolute. `profile` is
-`development` or `production`.
+documents for its profile: `[backups]` and `paths.backups` belong to
+production, and `paths.upstream_backups` to development. `[paths].stores` is
+required and must be absolute. `profile` is `development` or `production`.
 
 ```powershell
 budget --profile "$env:APPDATA\budget\development.toml" migrate
@@ -156,7 +158,7 @@ needs.
 | Exit | Meaning |
 | --- | --- |
 | 0 | Done |
-| 1 | Unexpected error: a defect |
+| 1 | Unexpected error: a defect, such as a broken packaged migration |
 | 2 | Usage error, including a command that is not built yet |
-| 3 | The profile file is missing, unreadable, invalid or of an unknown format |
-| 4 | Refused environment: no profile, production, a stage not built yet, a store of another profile or schema version, SQLite below the floor, or another command running |
+| 3 | The profile file is missing, unreadable, not UTF-8, invalid or of an unknown format |
+| 4 | Refused environment: no profile, production, a stage not built yet, a store of another profile or schema version, SQLite below the floor, a stores folder that cannot be used, or another command running |
