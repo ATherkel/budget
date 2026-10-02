@@ -501,6 +501,26 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
             with self.subTest(filename=filename):
                 assert PARSER.account_number_from_filename(filename) is None
 
+    def test_a_browser_copy_suffix_keeps_the_filename_convention(self) -> None:
+        # A browser saves a second download of one name as "…(1).csv".
+        for filename in (
+            "synthetic-0012345678-20260914(1).csv",
+            "synthetic-0012345678-20260914 (2).csv",
+            "synthetic-0012345678-20260914(12).CSV",
+        ):
+            with self.subTest(filename=filename):
+                assert PARSER.exported_on_from_filename(filename) == date(2026, 9, 14)
+                assert PARSER.account_number_from_filename(filename) == "0012345678"
+        for filename in (
+            "synthetic-0012345678-20260914().csv",
+            "synthetic-0012345678-20260914(a).csv",
+            "synthetic-0012345678-20260914  (1).csv",
+            "synthetic-0012345678-20260914(1)(2).csv",
+        ):
+            with self.subTest(filename=filename):
+                assert PARSER.exported_on_from_filename(filename) is None
+                assert PARSER.account_number_from_filename(filename) is None
+
     def test_a_declared_account_number_is_ten_ascii_digits(self) -> None:
         assert PARSER.is_account_number("0012345678")
         arabic_indic = "".join(chr(0x0660 + int(digit)) for digit in "0012345678")
