@@ -7,7 +7,9 @@ Render household financial information for phone and desktop browsers.
 ## Boundary
 
 Presentation consumes analytics report DTOs only. It does not classify
-transactions, calculate financial totals, or access source data.
+transactions, calculate financial totals, or access source data. It never
+reads Gold either: it names the publication in the report context, and
+analytics opens it.
 
 ## Initial Technology Direction
 

@@ -709,8 +709,9 @@ and run at least once in development against a restored production backup.
 
 - **Issue #11:** the dashboard's screens, its publication picker, and how the
   login page looks.
-- **Issue #12:** acceptance cases for restore, retry and profile separation,
-  taken from the tables above, and the implementation order.
+- **Restore and `dev refresh`:** their acceptance cases, taken from the tables
+  above, belong to the issue that builds them; the readiness review (issue
+  #12) moved them out of the first dashboard release.
 - **Pull request #45:** the Bronze store moves its schema into
   `migrations/bronze/`, records its profile and stage, and is opened through
   the profile.

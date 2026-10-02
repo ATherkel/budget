@@ -135,19 +135,36 @@ GoldAccount retains `coverage_start` and `evidence_through`, so consumers can
 report an account with no transactions as `no_data` even before it has a
 managed period. No account may disappear merely because it has no transactions.
 
+### Late bookings settled
+
+A transaction can be booked days after its transaction date, so a month can
+still change after it ends. For each account and month of its managed period,
+`late_bookings_settled` is true when one of the account's admitted import runs
+has an export date at least 7 days after the month's last day *and* a declared
+range from `covers_from` through `covers_through` that includes that day. An
+export whose range starts after the month cannot show its late bookings,
+however late it was produced. The flag depends only on recorded export dates
+and ranges, so a rebuild of the same recipe gives the same flags. Analytics
+combines it with the reference date to decide the provisional label
+([`presentation-layer.md`](presentation-layer.md#data-trust-display)).
+
 ## Worked Example (synthetic)
 
 Two open DKK household accounts: `joint-current` (current) and
 `joint-savings` (savings). Categories: `salary` and `interest` (group
 `income`, direction `income`), `rent` and `utilities` (group `housing`),
-`groceries` (group `food`), all three with direction `expense`. The latest
-published month is 2026-04. Both accounts have an admitted export dated
+`groceries` (group `food`), all three with direction `expense`. Both accounts have an admitted export dated
 2026-05-08 whose declared range runs from 2026-01-01 through 2026-05-08, so
 `coverage_start` is 2026-01-01 and, by the rule in
 [`silver-layer.md`](silver-layer.md#evidence-through), evidence reaches through
 2026-05-08. The export was produced more than 7 days after April ended and
 its range covers April's last day, so April is past the provisional window.
 Gold carries both values; it never derives them from an export date itself.
+The latest published month is therefore 2026-05, the month of the latest
+`evidence_through`, and both accounts have a May row although neither has a May
+transaction. Every row through April has `late_bookings_settled` true. The May
+rows do not: May has not ended, so no export can yet have been produced 7 days
+after it.
 
 `joint-current` transactions. The `category` column is each transaction's
 single allocation, shown inline to keep the example readable; in the model it is
@@ -199,10 +216,12 @@ Monthly balance snapshots:
 | joint-current | 2026-02 | 21,557.50 | 37,537.50 | partial | Every check is consistent, but the March break's span starts at seq 7. |
 | joint-current | 2026-03 | 37,037.50 | 35,587.50 | partial | Break at seq 8. The opening is 500.00 below February's closing, which shows the gap. |
 | joint-current | 2026-04 | 35,587.50 | 52,087.50 | complete | 35,587.50 − 8,500.00 + 25,000.00 = 52,087.50. |
+| joint-current | 2026-05 | | | partial | Evidence ends on 2026-05-08, inside the month. A quiet month with partial evidence has null balances. |
 | joint-savings | 2026-01 | 50,000.00 | 53,000.00 | partial | First managed month. |
 | joint-savings | 2026-02 | 53,000.00 | 53,000.00 | complete | Quiet month inside verified export evidence. |
 | joint-savings | 2026-03 | 53,000.00 | 53,000.00 | complete | Quiet month inside verified export evidence. |
 | joint-savings | 2026-04 | 53,000.00 | 53,012.40 | complete | Consistent with the January anchor. |
+| joint-savings | 2026-05 | | | partial | As for `joint-current`. |
 
 What consumers can and cannot derive:
 
@@ -222,6 +241,10 @@ What consumers can and cannot derive:
   ([`classification.md`](classification.md)).
 - `joint-savings` February and March are verified quiet months. A requested
   June beyond the publication has no data and must not be read as zero.
+- A May report is provisional because its rows have `late_bookings_settled`
+  false, and it is `partial` because the evidence ends inside May. May's zero
+  activity is not a confirmed zero. An April report is not provisional, unless
+  the reference date falls in April.
 - The DKK 500.00 break is between admitted exports, so ADR-010 does not
   quarantine either internally consistent export. It still makes February
   and March partial under ADR-006.
@@ -244,8 +267,9 @@ not a dimension: it describes the whole publication
 
 ## Consumers
 
-Analytics, forecasting, and API services, through `GoldRepository` only.
-Review and audit tooling may also use `GoldLineageRepository`.
+Analytics and forecasting, through `GoldRepository` and `GoldPublications`
+only. Presentation and APIs read analytics reports, never Gold. Review and
+audit tooling may also use `GoldLineageRepository`.
 
 ## Ownership
 

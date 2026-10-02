@@ -2,20 +2,20 @@
 
 ## Status
 
-Version `0.2`, proposed for the CSV MVP. The dimensional model amends the
-still-proposed 0.2 contract in place, retaining the accepted reporting evidence
-from issue #4; see [Changes in 0.2](#changes-in-02), which lists every change
-since 0.1, including the ones made by the earlier 0.2 draft. Changes are
-backward-incompatible unless a new contract version is introduced and
-downstream consumers migrate. The contract stays proposed until the readiness
-review (issue #12) approves it.
+Version `0.2`, accepted by the readiness review (issue #12) for the CSV MVP.
+The dimensional model amended the earlier 0.2 draft in place, retaining the
+accepted reporting evidence from issue #4; see [Changes in 0.2](#changes-in-02),
+which lists every change since 0.1, including the ones made by the earlier 0.2
+draft. From here on, a backward-incompatible change needs a new contract
+version, and downstream consumers migrate to it.
 
 ## Purpose
 
 Gold is the stable business-facing representation of household financial facts.
-Analytics, forecasting, APIs, and presentation may read Gold only through this
-contract. They must not import a connector, parse CSV, or query Bronze/Silver
-storage.
+Analytics and forecasting read Gold only through this contract. Presentation
+and APIs read analytics reports and never Gold itself: analytics also opens the
+publication a report reads. No consumer imports a connector, parses CSV, or
+queries Bronze/Silver storage.
 
 Gold is derived from Silver, the household account and category registries,
 and classification inputs. It is not the original bank record, and it can be
@@ -98,7 +98,7 @@ is a separate fact at its own grain
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
-| `transaction_id` | string | Yes | Stable identifier, derived deterministically from the Silver canonical transaction identity, so a rebuild yields the same value. |
+| `transaction_id` | string | Yes | The Silver canonical `transaction_id`, unchanged (ADR-009), so a rebuild yields the same value and Silver review output, Gold, lineage and the decision log name a transaction by one identifier. |
 | `account_id` | string | Yes | References `GoldAccount`. |
 | `transaction_date` | `date` | Yes | Source transaction date (Danske: purchase date), exactly as supplied; the reporting month derives from it (ADR-009). |
 | `account_sequence` | int | Yes | Position in the account's booked history, starting at 1, following `(transaction_date, day_sequence)` from Silver (ADR-009). Used only for ordering; it is not an identity and may shift when earlier transactions are imported. |
@@ -134,9 +134,13 @@ reporting slices by account and month without joining the transaction fact.
 
 Grain: one account for one reporting month of its managed period. The managed
 period runs from the month of the account's first booked transaction to the
-month of `closed_on`, or to the latest reporting month present in the
-published Gold data if the account is open. There is exactly one row per
-month in that range, including months with no transactions.
+month of `closed_on`, or to the latest published month if the account is open.
+The **latest published month** is the month of the latest `evidence_through`
+over every `GoldAccount`. No transaction falls after its account's
+`evidence_through`, so no transaction falls after that month either. An open
+account whose own exports lag behind therefore still has a row for each later
+month, which its coverage reports as `partial` or `no_data`. There is exactly
+one row per month in that range, including months with no transactions.
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
@@ -145,6 +149,7 @@ month in that range, including months with no transactions.
 | `opening_balance` | `Decimal`/null | No | Balance immediately before the month's first transaction: that transaction's `balance_after` minus its `amount`. For a complete quiet month, carry the last bank-stated balance into both opening and closing. Null when the required balance is missing or the month is `no_data`. |
 | `closing_balance` | `Decimal`/null | No | `balance_after` of the month's last transaction by `account_sequence`, bank-stated only. For a complete quiet month, carry the last bank-stated balance into both opening and closing. Null when the required balance is missing or the month is `no_data`. |
 | `coverage` | `Coverage` | Yes | Trust status for this account and month (see `gold-layer.md`). |
+| `late_bookings_settled` | bool | Yes | True when one of the account's admitted import runs was exported at least 7 days after the month's last day and its declared range covers that day, so late bookings into the month have had time to appear (see `gold-layer.md`, *Late bookings settled*). Computed at build from recorded export dates and ranges, never from the clock. |
 
 Additivity: `amount` is additive across every dimension within one currency,
 on both the transaction and the allocation fact. The two are never summed
@@ -256,6 +261,13 @@ records. They may not assume a table name, a source-system identifier, or a
 raw CSV column. A month with no `MonthlyBalanceSnapshot` row for an account is
 outside that account's managed period. A requested month beyond the latest
 published month has no data and must never be read as zero.
+
+Whether a period is provisional is decided when a report is read, not
+published: the period is provisional when it contains the reference date's
+month (today in Europe/Copenhagen, or the publication's `known_at` for a past
+view) or when any contributing row has `late_bookings_settled` false. An
+account never imported has no rows, so it never holds a period provisional
+([`presentation-layer.md`](presentation-layer.md#data-trust-display)).
 
 Anything reported by category is summed over `category_allocations`, and
 anything reported per transaction over `transactions`. Household income and
@@ -374,9 +386,11 @@ a classified transaction and its single allocation summing to its amount; a
 transaction type that must carry no allocation; manual classification decision
 (visible through lineage); missing balance; chain break that demotes the
 previous month; first managed month (`partial`); complete quiet month; partial
-quiet month crossed by a broken link; `no_data` month beyond evidence; closed
-account; and two categories sharing a group. The worked example in
-`gold-layer.md` covers most of these.
+quiet month crossed by a broken link; `no_data` month beyond evidence; an
+account whose exports lag behind the latest published month; a month whose
+late bookings are settled and one whose covering export was produced fewer
+than 7 days after it ended; closed account; and two categories sharing a
+group. The worked example in `gold-layer.md` covers most of these.
 
 Classification fixtures reproduce every synthetic scenario and taxonomy change
 in [`classification.md`](classification.md) exactly. Publication fixtures
@@ -409,12 +423,15 @@ migrating from either version finds the whole path in one place.
 | `day_sequence` on the transaction *(0.2 draft)* | `account_sequence` | Ordering within a date is Silver's (ADR-009). Gold publishes one account-wide order instead, so a consumer never reconstructs it from two fields. |
 | `category_direction` on the transaction *(0.2 draft)* | `GoldCategory.direction` | Direction is an attribute of the category. Copying it onto every fact row lets the two disagree. |
 | `GoldAccount.active` *(0.2 draft)* | `closed_on`, alongside the new `display_name`, `account_type`, `ownership_scope`, and `currency` | A boolean cannot bound the managed period: a closed account would keep producing snapshot rows. The other attributes make the account a real dimension rather than a key with a flag. |
+| No export dates in Gold | `MonthlyBalanceSnapshot.late_bookings_settled` | The provisional label needs each account's export dates, which analytics may not read from Silver. Gold publishes the part that depends only on recorded exports; the part that depends on today stays with the reader (issue #12). |
 
 Silver identity and within-date order are defined by ADR-009. Coverage uses
 the admitted export evidence from ADR-006, including verified quiet months.
 
-## Open Decisions
+## Settled by the Readiness Review
 
-- Whether money moved to savings, investment, or loan accounts that are not
-  imported should count differently in the savings measure; it is an expense
-  today (issue #12).
+Issue #12 settled the contract's last open decision: money moved to a savings,
+investment, or loan account that is not imported stays an expense in the first
+release. The household can give it a Category of its own so it reads as a
+separate line, and importing the account later turns those movements into
+Transfers and restates history.
