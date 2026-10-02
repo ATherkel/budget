@@ -13,9 +13,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from budget.bronze import BronzeStore
-from budget.profiles import Profile
 from tests.cli.processes import explicit_environment
-from tests.cli.profile_files import write_profile
+from tests.cli.profile_files import development_profile, write_profile
 
 EXIT_OK = 0
 
@@ -47,7 +46,7 @@ class InstalledCommandTests(unittest.TestCase):
             # Routine output holds no filenames or values: on success, none.
             assert completed.stdout == ""
             assert completed.stderr == ""
-            with BronzeStore(Profile(name="development", stores=folder / "stores")):
+            with BronzeStore(development_profile(folder)):
                 pass
 
     def test_the_console_script_reads_budget_profile(self) -> None:
@@ -68,7 +67,7 @@ class InstalledCommandTests(unittest.TestCase):
             # Routine output holds no filenames or values: on success, none.
             assert completed.stdout == ""
             assert completed.stderr == ""
-            with BronzeStore(Profile(name="development", stores=folder / "stores")):
+            with BronzeStore(development_profile(folder)):
                 pass
 
 

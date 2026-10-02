@@ -87,7 +87,9 @@ import sys, time
 from pathlib import Path
 from budget.locking import writer_lock
 from budget.profiles import Profile
-with writer_lock(Profile(name="development", stores=Path(sys.argv[1]))):
+stores = Path(sys.argv[1])
+profile = Profile(name="development", stores=stores, inputs=stores.parent / "inputs")
+with writer_lock(profile):
     print("held", flush=True)
     time.sleep(60)
 """

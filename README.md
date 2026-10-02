@@ -63,9 +63,10 @@ the contract, how to register a format, and what is deliberately not solved yet.
 
 ## Storage and profiles
 
-A profile is an immutable value that names the folder its stage stores live in.
-Nothing is selected implicitly, and a test profile refuses any path outside the
-temporary directory it was built from:
+A profile is an immutable value that names the folder its stage stores live in
+and the inputs folder the household authors. Nothing is selected implicitly,
+and a test profile refuses any path outside the temporary directory it was
+built from:
 
 ```python
 import os
@@ -76,7 +77,11 @@ from budget.bronze import BronzeStore, ImportDeclaration, migrate_bronze
 from budget.profiles import Profile
 
 local = Path(os.environ["LOCALAPPDATA"]) / "budget"
-profile = Profile(name="development", stores=local / "dev")
+profile = Profile(
+    name="development",
+    stores=local / "dev",
+    inputs=local / "dev-household" / "inputs",
+)
 source = local / "dev-household" / "inbox" / "daily-account" / "danske-20260914.csv"
 migrate_bronze(profile)
 
@@ -135,14 +140,15 @@ profile = "development"
 
 [paths]
 stores = 'C:\Users\household\AppData\Local\budget\dev'
+inputs = 'C:\Users\household\AppData\Local\budget\dev-household\inputs'
 ```
 
 The file is UTF-8 text, with or without a byte-order mark, and may hold only
 the keys
 [operations.md](docs/architecture/operations.md#selecting-a-profile)
 documents for its profile: `[backups]` and `paths.backups` belong to
-production, and `paths.upstream_backups` to development. `[paths].stores` is
-required and must be absolute. `profile` is `development` or `production`.
+production, and `paths.upstream_backups` to development. `[paths].stores` and
+`[paths].inputs` are required and must be absolute. `profile` is `development` or `production`.
 
 ```powershell
 budget --profile "$env:APPDATA\budget\development.toml" migrate

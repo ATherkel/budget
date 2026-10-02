@@ -21,7 +21,6 @@ from budget.bronze.storage import (
     StoreIdentityError,
 )
 from budget.cli import main
-from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 from tests.bronze.migration_resources import patched_resources
 from tests.cli.commands import migrate
@@ -50,7 +49,7 @@ class MigrateTests(unittest.TestCase):
             status = main(["--profile", str(profile_file), "migrate"], environ={})
 
             assert status == EXIT_OK
-            development = Profile(name="development", stores=folder / "stores")
+            development = development_profile(folder)
             with BronzeStore(development):
                 pass
             with pytest.raises(StoreIdentityError):

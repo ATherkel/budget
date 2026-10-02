@@ -102,13 +102,19 @@ These apply wherever a column below names them.
   (`silver-layer.md`). An account's layout is not expected to change. If the
   bank ever adds categories to one, exports from then on supply labels for
   every date they cover, and dates that only older exports cover keep null
-  labels.
+  labels. The opposite is checked, not assumed: an export without categories
+  is held back with `label-layout-regressed` when one with categories already
+  supplies transactions on a date it covers (`silver-layer.md`, *Label
+  layout*).
 - **Error codes.** *Map decision.* `silver-layer.md` (*Validation*) lists the
-  errors in prose and names no `ValidationError.code`. This map names the four
-  its rules raise: `unparseable-date`, `unparseable-decimal`, `unknown-status`
-  and `missing-balance`. The other errors in that list, a format failure, a
-  wrong field count and a balance-chain break, do not depend on this format and
-  are not named here.
+  errors in prose and names the codes that do not depend on the source
+  format. This map names the four its rules raise against a record:
+  `unparseable-date`, `unparseable-decimal`, `unknown-status` and
+  `missing-balance`.
+- **Label layout.** *Map decision* (#138). The header with `Kategori` and
+  `Underkategori` is the layout with bank labels, and the header without
+  them is the layout without. `silver-layer.md` (*Label layout*) gives the
+  rule that holds back an export without labels.
 
 ## Target: `Transaction`
 
@@ -189,11 +195,11 @@ source records.
 | Target column | Type | Source | Transformation |
 | --- | --- | --- | --- |
 | `import_run_id` | `str` | `ImportRun.import_run_id` | copied |
-| `status` | `Literal` | derived, and manual decisions | `accepted` when the run has no validation error and fails no merge check, or when every one it has belongs to a review item manual decisions have settled: *accept discrepancy* for a `balance-break`, and for a `dropped-transactions` a *withdrawn* or *same transaction* for each transaction the run dropped (ADR-010, ADR-017). Otherwise `quarantined` |
+| `status` | `Literal` | derived, and manual decisions | `accepted` when the run has no validation error and fails no merge check, or when every one it has belongs to a review item manual decisions have settled: *accept discrepancy* for a `balance-break`, and for each `dropped-transaction`, one per transaction the run dropped, a *withdrawn* or *same transaction* (ADR-010, ADR-017, ADR-018). Otherwise `quarantined` |
 | `covered_from` | `date` | `ImportRun.covers_from` | copied |
 | `covered_to` | `date` | `ImportRun.covers_through` | copied |
 | `errors` | `Sequence` | derived | every `ValidationError` listed under *Validation* in `silver-layer.md`, with the codes under Error codes where this map names one. Errors a manual decision settled stay listed (ADR-010: "the import run lists it") |
-| `review_item_ids` | `Sequence` | derived | review items raised for this run, settled or not; a settled one names its decision in `ReviewItem.resolved_by` |
+| `review_item_ids` | `Sequence` | derived | review items raised for this run, settled or not, one `dropped-transaction` item per transaction it dropped (ADR-018); a settled one names its decision in `ReviewItem.resolved_by` |
 
 `AccountEvidence` reads only `ImportRun` fields, so it is format-independent
 and the formula in `silver-layer.md` is its whole map.

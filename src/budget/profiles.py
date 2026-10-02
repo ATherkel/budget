@@ -11,9 +11,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+ACCOUNTS_FILE_NAME = "accounts.toml"
 BRONZE_STORE_NAME = "bronze.db"
-WRITER_LOCK_NAME = "budget.lock"
+INPUTS_FOLDER = "inputs"
 STORES_FOLDER = "stores"
+WRITER_LOCK_NAME = "budget.lock"
 DEVELOPMENT_PROFILE_NAME = "development"
 PRODUCTION_PROFILE_NAME = "production"
 TEST_PROFILE_NAME = "test"
@@ -72,9 +74,12 @@ class TestProfileRootRequiredError(ValueError):
         super().__init__("a test profile must name the temporary root it stays inside")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Profile:
-    """One profile: the name a store records and the folder holding its stores.
+    """One profile: the name a store records, and its stores and inputs folders.
+
+    Every field is passed by name: they are mostly paths, so a positional call
+    could put one folder in another's place without a type error.
 
     `root` is the temporary directory a test profile must stay inside. It is
     `None` for the development and production profiles, whose paths the
@@ -83,6 +88,7 @@ class Profile:
 
     name: str
     stores: Path
+    inputs: Path
     root: Path | None = None
 
     def __post_init__(self) -> None:
@@ -92,17 +98,21 @@ class Profile:
         if self.name == TEST_PROFILE_NAME and self.root is None:
             raise TestProfileRootRequiredError
         stores = Path(self.stores).resolve()
+        inputs = Path(self.inputs).resolve()
         root = None if self.root is None else Path(self.root).resolve()
-        if root is not None and not stores.is_relative_to(root):
+        if root is not None and not all(
+            folder.is_relative_to(root) for folder in (stores, inputs)
+        ):
             raise ProfilePathOutsideRootError
         object.__setattr__(self, "stores", stores)
+        object.__setattr__(self, "inputs", inputs)
         object.__setattr__(self, "root", root)
 
     def _guarded_path(self, path: Path) -> Path:
         """Resolve one derived path and re-check it against a test root.
 
-        The filesystem is not frozen when a profile is built: the stores folder
-        or the store file can be replaced by a symlink afterwards, so every
+        The filesystem is not frozen when a profile is built: a folder or a file
+        the profile names can be replaced by a symlink afterwards, so every
         access resolves the path again instead of trusting the construction.
         """
         resolved = Path(path).resolve()
@@ -114,6 +124,11 @@ class Profile:
     def bronze_store(self) -> Path:
         """The Bronze stage store, re-checked against the test root each time."""
         return self._guarded_path(Path(self.stores) / BRONZE_STORE_NAME)
+
+    @property
+    def accounts_file(self) -> Path:
+        """The account registry, re-checked against the test root each time."""
+        return self._guarded_path(Path(self.inputs) / ACCOUNTS_FILE_NAME)
 
     @property
     def writer_lock_file(self) -> Path:
@@ -181,20 +196,30 @@ def _profile_name(path: Path, document: dict[str, object]) -> str:
     return name
 
 
-def _stores_path(path: Path, document: dict[str, object], profile: str) -> Path:
-    """Return `[paths].stores`, which must be an absolute path."""
-    paths = document.get("paths")
-    if not isinstance(paths, dict):
+def _paths_table(
+    path: Path, document: dict[str, object], profile: str
+) -> dict[str, object]:
+    """Return the `[paths]` table, refusing a key this profile does not have."""
+    table = document.get("paths")
+    if not isinstance(table, dict):
         raise ProfileFileError(path, "has no [paths] table")
+    # Rebuilt so the values are typed `object`, as in `_read_profile_document`;
+    # TOML keys are always strings, so `str` changes nothing.
+    paths: dict[str, object] = {str(key): value for key, value in table.items()}
     _require_known_keys(
         path, paths, known=_PATH_KEYS[profile], prefix="paths.", profile=profile
     )
-    stores = paths.get("stores")
-    if not isinstance(stores, str):
-        raise ProfileFileError(path, "paths.stores must be a path in quotes")
-    if not Path(stores).is_absolute():
-        raise ProfileFileError(path, "paths.stores must be an absolute path")
-    return Path(stores)
+    return paths
+
+
+def _folder_path(path: Path, paths: dict[str, object], key: str) -> Path:
+    """Return `[paths].<key>`, which must be an absolute path."""
+    folder = paths.get(key)
+    if not isinstance(folder, str):
+        raise ProfileFileError(path, f"paths.{key} must be a path in quotes")
+    if not Path(folder).is_absolute():
+        raise ProfileFileError(path, f"paths.{key} must be an absolute path")
+    return Path(folder)
 
 
 def load_profile_file(path: Path) -> Profile:
@@ -207,7 +232,12 @@ def load_profile_file(path: Path) -> Profile:
     _require_format(path, document)
     name = _profile_name(path, document)
     _require_known_keys(path, document, known=_FILE_KEYS[name], prefix="", profile=name)
-    return Profile(name=name, stores=_stores_path(path, document, name))
+    paths = _paths_table(path, document, name)
+    return Profile(
+        name=name,
+        stores=_folder_path(path, paths, "stores"),
+        inputs=_folder_path(path, paths, "inputs"),
+    )
 
 
 def test_profile(root: str | Path) -> Profile:
@@ -215,5 +245,6 @@ def test_profile(root: str | Path) -> Profile:
     return Profile(
         name=TEST_PROFILE_NAME,
         stores=Path(root) / STORES_FOLDER,
+        inputs=Path(root) / INPUTS_FOLDER,
         root=Path(root),
     )

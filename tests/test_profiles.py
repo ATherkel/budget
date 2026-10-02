@@ -1,6 +1,7 @@
 # Copyright 2026 Therkel
 """Profiles: what one names, and the guards around a test profile."""
 
+import inspect
 import os
 import unittest
 from pathlib import Path
@@ -28,13 +29,28 @@ class ProfileTests(unittest.TestCase):
     ) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            profile = Profile(name="development", stores=root / "stores")
+            profile = Profile(
+                name="development",
+                stores=root / "stores",
+                inputs=root / "inputs",
+            )
 
             assert profile.name == "development"
             assert (
                 profile.bronze_store == (root / "stores" / BRONZE_STORE_NAME).resolve()
             )
             assert profile.bronze_store.name == "bronze.db"
+
+    def test_a_profile_takes_every_field_by_name(self) -> None:
+        # Its folders are all paths, so a positional call could put one folder
+        # in another's place without any type error.
+        positional = [
+            parameter.name
+            for parameter in inspect.signature(Profile).parameters.values()
+            if parameter.kind is not inspect.Parameter.KEYWORD_ONLY
+        ]
+
+        assert positional == []
 
     def test_a_test_profile_stays_inside_its_temporary_root(self) -> None:
         with TemporaryDirectory() as directory:
@@ -51,7 +67,7 @@ class ProfileTests(unittest.TestCase):
             escape = root / ".." / "elsewhere"
 
             with pytest.raises(ProfilePathOutsideRootError):
-                Profile(name="test", stores=escape, root=root)
+                Profile(name="test", stores=escape, inputs=root / "inputs", root=root)
 
             assert not (root.parent / "elsewhere").exists()
 
@@ -86,14 +102,18 @@ class ProfileTests(unittest.TestCase):
 
             for name in ("Production", "staging", ""):
                 with self.subTest(name=name), pytest.raises(UnknownProfileNameError):
-                    Profile(name=name, stores=root / "stores")
+                    Profile(name=name, stores=root / "stores", inputs=root / "inputs")
 
     def test_a_test_profile_must_carry_its_temporary_root(self) -> None:
         with (
             TemporaryDirectory() as directory,
             pytest.raises(RootRequiredError),
         ):
-            Profile(name="test", stores=Path(directory) / "stores")
+            Profile(
+                name="test",
+                stores=Path(directory) / "stores",
+                inputs=Path(directory) / "inputs",
+            )
 
     def test_a_bronze_store_replaced_by_a_symlink_is_refused(self) -> None:
         with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
@@ -126,6 +146,42 @@ class ProfileTests(unittest.TestCase):
 
             with pytest.raises(ProfilePathOutsideRootError):
                 _ = profile.bronze_store
+
+    def test_a_test_profile_reads_its_inputs_inside_its_root(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile = make_test_profile(root)
+
+            assert (
+                profile.accounts_file == (root / "inputs" / "accounts.toml").resolve()
+            )
+
+    def test_a_test_profile_inputs_folder_may_not_escape_its_root(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            with pytest.raises(ProfilePathOutsideRootError):
+                Profile(
+                    name="test",
+                    stores=root / "stores",
+                    inputs=root / ".." / "elsewhere",
+                    root=root,
+                )
+
+    def test_an_accounts_file_replaced_by_a_symlink_is_refused(self) -> None:
+        with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
+            root = Path(directory)
+            profile = make_test_profile(root)
+            profile.inputs.mkdir(parents=True)
+            outside_file = Path(outside) / "accounts.toml"
+            outside_file.write_text("format = 1\n", encoding="utf-8")
+            try:
+                profile.accounts_file.symlink_to(outside_file)
+            except OSError as error:  # Windows may refuse without a privilege
+                self.skipTest(f"symlinks are unavailable here: {error}")
+
+            with pytest.raises(ProfilePathOutsideRootError):
+                _ = profile.accounts_file
 
 
 if __name__ == "__main__":

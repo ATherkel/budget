@@ -15,7 +15,7 @@ from tempfile import TemporaryDirectory
 
 from budget.bronze import BronzeStore
 from budget.cli import main
-from budget.profiles import Profile
+from tests.cli.profile_files import development_profile
 
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
@@ -24,9 +24,9 @@ EXIT_REFUSED_ENVIRONMENT = 4
 VALID_HEADER = 'format = 1\nprofile = "development"\n'
 
 
-def _paths(stores: str) -> str:
-    """A `[paths]` table naming only the stores folder."""
-    return f"\n[paths]\nstores = '{stores}'\n"
+def _paths(stores: str, inputs: Path) -> str:
+    """A `[paths]` table naming only the stores and inputs folders."""
+    return f"\n[paths]\nstores = '{stores}'\ninputs = '{inputs}'\n"
 
 
 def _assert_refused(profile_file: Path, text: str, stores: Path) -> None:
@@ -45,7 +45,8 @@ def _assert_refused(profile_file: Path, text: str, stores: Path) -> None:
 class ProfileFileTests(unittest.TestCase):
     def _refusals(self, stores: Path) -> dict[str, str]:
         """Profile file contents that must each be refused, by what is wrong."""
-        absolute = _paths(str(stores))
+        inputs = stores.parent / "inputs"
+        absolute = _paths(str(stores), inputs)
         return {
             "not TOML": "format = = 1\n",
             "an unsupported format version": (
@@ -69,10 +70,15 @@ class ProfileFileTests(unittest.TestCase):
                 + "upstream_backups = 'x'\n"
             ),
             "no paths table": VALID_HEADER,
-            "no stores path": VALID_HEADER + "\n[paths]\ninbox = 'x'\n",
-            "a relative stores path": VALID_HEADER + _paths("stores"),
+            "no stores path": VALID_HEADER + f"\n[paths]\ninputs = '{inputs}'\n",
+            "a relative stores path": VALID_HEADER + _paths("stores", inputs),
             "a stores path that is not text": (
-                VALID_HEADER + "\n[paths]\nstores = 1\n"
+                VALID_HEADER + f"\n[paths]\nstores = 1\ninputs = '{inputs}'\n"
+            ),
+            "no inputs path": VALID_HEADER + f"\n[paths]\nstores = '{stores}'\n",
+            "a relative inputs path": VALID_HEADER + _paths(str(stores), Path("in")),
+            "an inputs path that is not text": (
+                VALID_HEADER + f"\n[paths]\nstores = '{stores}'\ninputs = 1\n"
             ),
         }
 
@@ -106,7 +112,7 @@ class ProfileFileTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             folder = Path(directory)
             profile_file = folder / "development.toml"
-            text = VALID_HEADER + _paths(str(folder / "stores"))
+            text = VALID_HEADER + _paths(str(folder / "stores"), folder / "inputs")
             profile_file.write_bytes(text.encode("utf-16"))
             stderr = io.StringIO()
 
@@ -123,13 +129,13 @@ class ProfileFileTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             folder = Path(directory)
             profile_file = folder / "development.toml"
-            text = VALID_HEADER + _paths(str(folder / "stores"))
+            text = VALID_HEADER + _paths(str(folder / "stores"), folder / "inputs")
             profile_file.write_bytes(text.encode("utf-8-sig"))
 
             status = main(["--profile", str(profile_file), "migrate"], environ={})
 
             assert status == EXIT_OK
-            with BronzeStore(Profile(name="development", stores=folder / "stores")):
+            with BronzeStore(development_profile(folder)):
                 pass
 
     def test_an_unsupported_format_version_is_named(self) -> None:
@@ -137,7 +143,8 @@ class ProfileFileTests(unittest.TestCase):
             folder = Path(directory)
             profile_file = folder / "development.toml"
             profile_file.write_text(
-                'format = 2\nprofile = "development"\n' + _paths(str(folder)),
+                'format = 2\nprofile = "development"\n'
+                + _paths(str(folder), folder / "inputs"),
                 encoding="utf-8",
             )
             stderr = io.StringIO()
@@ -153,10 +160,9 @@ class ProfileFileTests(unittest.TestCase):
             profile_file = folder / "development.toml"
             profile_file.write_text(
                 VALID_HEADER
-                + _paths(str(folder / "stores"))
+                + _paths(str(folder / "stores"), folder / "inputs")
                 + f"inbox = '{folder / 'inbox'}'\n"
                 + f"exports = '{folder / 'exports'}'\n"
-                + f"inputs = '{folder / 'inputs'}'\n"
                 + f"upstream_backups = '{folder / 'upstream'}'\n"
                 + '\n[dashboard]\nbind = "127.0.0.1"\nport = 8750\n',
                 encoding="utf-8",
@@ -165,7 +171,7 @@ class ProfileFileTests(unittest.TestCase):
             status = main(["--profile", str(profile_file), "migrate"], environ={})
 
             assert status == EXIT_OK
-            with BronzeStore(Profile(name="development", stores=folder / "stores")):
+            with BronzeStore(development_profile(folder)):
                 pass
 
     def test_every_key_documented_for_production_is_accepted(self) -> None:
@@ -174,10 +180,9 @@ class ProfileFileTests(unittest.TestCase):
             profile_file = folder / "production.toml"
             profile_file.write_text(
                 'format = 1\nprofile = "production"\n'
-                + _paths(str(folder / "stores"))
+                + _paths(str(folder / "stores"), folder / "inputs")
                 + f"inbox = '{folder / 'inbox'}'\n"
                 + f"exports = '{folder / 'exports'}'\n"
-                + f"inputs = '{folder / 'inputs'}'\n"
                 + f"backups = '{folder / 'backups'}'\n"
                 + "\n[backups]\nkeep_all_days = 14\nkeep_daily_days = 365\n"
                 + 'keep_monthly = "forever"\n'

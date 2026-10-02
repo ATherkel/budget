@@ -4,7 +4,9 @@
 [ADR-017](ADR-017-dropped-transactions.md): the `fewer-repeats` review item is
 now `dropped-transactions` and also covers a transaction that was never
 repeated, so the same-day case and the text-change consequence below raise it
-rather than `export-disagreement`.
+rather than `export-disagreement`. [ADR-018](ADR-018-one-review-item-per-dropped-transaction.md)
+then splits that item into one `dropped-transaction` item per dropped
+transaction.
 
 ## Context
 
