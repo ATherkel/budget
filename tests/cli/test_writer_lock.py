@@ -5,13 +5,15 @@ Every test passes `main` an explicit environment, so a `BUDGET_PROFILE` set in
 the operator's shell never reaches a test.
 """
 
+import errno
 import sqlite3
 import subprocess
 import sys
 import unittest
-from contextlib import closing
+from contextlib import AbstractContextManager, closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 from budget.bronze import BronzeStore
 from budget.locking import writer_lock
@@ -39,6 +41,41 @@ class WriterLockTests(unittest.TestCase):
             assert migrate(profile_file)[0] == EXIT_OK
             with BronzeStore(development_profile(folder)):
                 pass
+
+
+def _patched_platform_lock(error: OSError) -> AbstractContextManager[object]:
+    """Make the operating system's lock call fail with `error`."""
+    target = "msvcrt.locking" if sys.platform == "win32" else "fcntl.flock"
+    return mock.patch(target, side_effect=error)
+
+
+class UnusableStoresFolderTests(unittest.TestCase):
+    def test_a_stores_folder_that_cannot_be_created_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            not_a_folder = folder / "not-a-folder"
+            not_a_folder.write_text("", encoding="utf-8")
+            profile_file = write_profile(folder, stores=not_a_folder / "stores")
+
+            status, stderr = migrate(profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "cannot be used" in stderr
+
+    def test_a_lock_failure_that_is_not_contention_is_not_reported_as_one(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            no_locks = OSError(errno.ENOLCK, "No locks available")
+
+            with _patched_platform_lock(no_locks):
+                status, stderr = migrate(write_profile(folder))
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "cannot be used" in stderr
+            assert "another command" not in stderr
+            assert not development_profile(folder).bronze_store.exists()
 
 
 # Guards rather than red tests: the operating system and the `with` block
