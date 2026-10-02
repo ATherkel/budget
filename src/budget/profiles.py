@@ -25,10 +25,17 @@ PROFILE_NAMES: Final = (
 PROFILE_FILE_FORMAT: Final = 1
 # Test profiles are never files: the test suite builds each one (ADR-015).
 _FILE_PROFILE_NAMES: Final = (DEVELOPMENT_PROFILE_NAME, PRODUCTION_PROFILE_NAME)
-_FILE_KEYS: Final = frozenset({"format", "profile", "paths", "backups", "dashboard"})
-_PATH_KEYS: Final = frozenset(
-    {"stores", "inbox", "exports", "inputs", "backups", "upstream_backups"}
-)
+_SHARED_FILE_KEYS: Final = frozenset({"format", "profile", "paths", "dashboard"})
+_SHARED_PATH_KEYS: Final = frozenset({"stores", "inbox", "exports", "inputs"})
+# Only production writes backup sets; development only reads production's.
+_FILE_KEYS: Final = {
+    DEVELOPMENT_PROFILE_NAME: _SHARED_FILE_KEYS,
+    PRODUCTION_PROFILE_NAME: _SHARED_FILE_KEYS | {"backups"},
+}
+_PATH_KEYS: Final = {
+    DEVELOPMENT_PROFILE_NAME: _SHARED_PATH_KEYS | {"upstream_backups"},
+    PRODUCTION_PROFILE_NAME: _SHARED_PATH_KEYS | {"backups"},
+}
 
 
 class ProfileFileError(ValueError):
@@ -147,13 +154,18 @@ def _require_format(path: Path, document: dict[str, object]) -> None:
 
 
 def _require_known_keys(
-    path: Path, table: dict[str, object], *, known: frozenset[str], prefix: str
+    path: Path,
+    table: dict[str, object],
+    *,
+    known: frozenset[str],
+    prefix: str,
+    profile: str,
 ) -> None:
-    """Refuse a key the documented profile schema does not have."""
+    """Refuse a key the documented schema of this profile does not have."""
     unknown = sorted(set(table) - known)
     if unknown:
         names = ", ".join(f"{prefix}{key}" for key in unknown)
-        raise ProfileFileError(path, f"unknown key {names}")
+        raise ProfileFileError(path, f"unknown key {names} for a {profile} profile")
 
 
 def _profile_name(path: Path, document: dict[str, object]) -> str:
@@ -169,12 +181,14 @@ def _profile_name(path: Path, document: dict[str, object]) -> str:
     return name
 
 
-def _stores_path(path: Path, document: dict[str, object]) -> Path:
+def _stores_path(path: Path, document: dict[str, object], profile: str) -> Path:
     """Return `[paths].stores`, which must be an absolute path."""
     paths = document.get("paths")
     if not isinstance(paths, dict):
         raise ProfileFileError(path, "has no [paths] table")
-    _require_known_keys(path, paths, known=_PATH_KEYS, prefix="paths.")
+    _require_known_keys(
+        path, paths, known=_PATH_KEYS[profile], prefix="paths.", profile=profile
+    )
     stores = paths.get("stores")
     if not isinstance(stores, str):
         raise ProfileFileError(path, "paths.stores must be a path in quotes")
@@ -186,14 +200,14 @@ def _stores_path(path: Path, document: dict[str, object]) -> Path:
 def load_profile_file(path: Path) -> Profile:
     """Build the profile that one operator's profile file describes.
 
-    The file is versioned TOML with only the keys `operations.md` documents.
-    Every problem is a `ProfileFileError` naming the file.
+    The file is versioned TOML with only the keys `operations.md` documents
+    for its profile. Every problem is a `ProfileFileError` naming the file.
     """
     document = _read_profile_document(path)
     _require_format(path, document)
-    _require_known_keys(path, document, known=_FILE_KEYS, prefix="")
     name = _profile_name(path, document)
-    return Profile(name=name, stores=_stores_path(path, document))
+    _require_known_keys(path, document, known=_FILE_KEYS[name], prefix="", profile=name)
+    return Profile(name=name, stores=_stores_path(path, document, name))
 
 
 def test_profile(root: str | Path) -> Profile:
