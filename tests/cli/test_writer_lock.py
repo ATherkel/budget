@@ -9,6 +9,7 @@ import errno
 import sqlite3
 import subprocess
 import sys
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import AbstractContextManager, closing
@@ -105,6 +106,20 @@ def _first_line(holder: subprocess.Popen[str], *, timeout: float) -> str:
         reader.shutdown(wait=False)
 
 
+def _migrate_once_released(profile_file: Path, *, within: float) -> int:
+    """Run `migrate`, retrying only while the lock is still reported held.
+
+    Windows releases a dead process's locks asynchronously: `wait()` can
+    return before the lock is free, so one immediate retry is a race.
+    """
+    deadline = time.monotonic() + within
+    while True:
+        status, stderr = migrate(profile_file)
+        if "another command is running" not in stderr or time.monotonic() > deadline:
+            return status
+        time.sleep(0.05)
+
+
 class WriterLockReleaseTests(unittest.TestCase):
     def test_a_refused_command_releases_the_lock(self) -> None:
         with TemporaryDirectory() as directory:
@@ -138,7 +153,7 @@ class WriterLockReleaseTests(unittest.TestCase):
                     holder.kill()
                     holder.wait(timeout=30)
 
-                    assert migrate(profile_file)[0] == EXIT_OK
+                    assert _migrate_once_released(profile_file, within=10) == EXIT_OK
                 finally:
                     holder.kill()
 
