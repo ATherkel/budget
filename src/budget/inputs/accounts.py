@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Literal
+from typing import Any, Literal, TypeGuard
 
 from budget.bronze.parsers import source_formats, source_parser
 from budget.profiles import ACCOUNTS_FILE_NAME, Profile
@@ -98,7 +98,7 @@ class _FieldRule:
     required: bool = True
 
 
-def _is_text(value: object) -> bool:
+def _is_text(value: object) -> TypeGuard[str]:
     """Accept a non-empty TOML string."""
     return isinstance(value, str) and value != ""
 
@@ -207,6 +207,29 @@ def _entry_problems(account_id: str, entry: object) -> list[str]:
     return problems
 
 
+def _number_shape_problems(account_id: str, entry: object) -> list[str]:
+    """Name a declared number the account's source format never carries.
+
+    Such a number could never match a filename, so every export for the
+    account would be refused as misfiled. Without a known format or a
+    well-formed number there is nothing to judge: those have their own problems.
+    """
+    if not isinstance(entry, dict):
+        return []
+    source_format = entry.get("source_format")
+    number = entry.get("bank_account_number")
+    if source_format not in source_formats() or not _is_text(number):
+        return []
+    if source_parser(source_format).is_account_number(number):
+        return []
+    return [
+        _entry_problem(
+            account_id,
+            f"bank_account_number is not a {source_format} account number",
+        )
+    ]
+
+
 def _shared_number_problems(entries: Mapping[str, object]) -> list[str]:
     """Name each account declaring a bank account number an earlier one declared.
 
@@ -260,6 +283,7 @@ def load_accounts(profile: Profile) -> Mapping[str, Account]:
         entries = {}
     for account_id, entry in entries.items():
         problems.extend(_entry_problems(account_id, entry))
+        problems.extend(_number_shape_problems(account_id, entry))
     problems.extend(_shared_number_problems(entries))
     if problems:
         raise ConfigurationError(tuple(problems))
