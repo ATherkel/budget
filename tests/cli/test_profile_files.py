@@ -18,6 +18,7 @@ from budget.profiles import Profile
 
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
+EXIT_REFUSED_ENVIRONMENT = 4
 
 VALID_HEADER = 'format = 1\nprofile = "development"\n'
 
@@ -128,7 +129,7 @@ class ProfileFileTests(unittest.TestCase):
 
             assert "format 2" in stderr.getvalue()
 
-    def test_every_documented_key_is_accepted(self) -> None:
+    def test_every_key_documented_for_development_is_accepted(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
             profile_file = folder / "development.toml"
@@ -138,9 +139,7 @@ class ProfileFileTests(unittest.TestCase):
                 + f"inbox = '{folder / 'inbox'}'\n"
                 + f"exports = '{folder / 'exports'}'\n"
                 + f"inputs = '{folder / 'inputs'}'\n"
-                + f"backups = '{folder / 'backups'}'\n"
                 + f"upstream_backups = '{folder / 'upstream'}'\n"
-                + "\n[backups]\nkeep_all_days = 14\n"
                 + '\n[dashboard]\nbind = "127.0.0.1"\nport = 8750\n',
                 encoding="utf-8",
             )
@@ -150,6 +149,32 @@ class ProfileFileTests(unittest.TestCase):
             assert status == EXIT_OK
             with BronzeStore(Profile(name="development", stores=folder / "stores")):
                 pass
+
+    def test_every_key_documented_for_production_is_accepted(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = folder / "production.toml"
+            profile_file.write_text(
+                'format = 1\nprofile = "production"\n'
+                + _paths(str(folder / "stores"))
+                + f"inbox = '{folder / 'inbox'}'\n"
+                + f"exports = '{folder / 'exports'}'\n"
+                + f"inputs = '{folder / 'inputs'}'\n"
+                + f"backups = '{folder / 'backups'}'\n"
+                + "\n[backups]\nkeep_all_days = 14\nkeep_daily_days = 365\n"
+                + 'keep_monthly = "forever"\n'
+                + '\n[dashboard]\nbind = "192.168.1.20"\nport = 8750\n',
+                encoding="utf-8",
+            )
+            stderr = io.StringIO()
+
+            with redirect_stderr(stderr):
+                status = main(["--profile", str(profile_file), "migrate"], environ={})
+
+            # The file loads; the refusal is production's, not the file's.
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "production" in stderr.getvalue()
+            assert "production.toml" not in stderr.getvalue()
 
 
 if __name__ == "__main__":
