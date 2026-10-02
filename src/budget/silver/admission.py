@@ -15,7 +15,7 @@ from budget.silver.decisions import (
 )
 from budget.silver.identity import review_item_id
 from budget.silver.merge import Ledger
-from budget.silver.models import ReviewItem
+from budget.silver.models import ReviewItem, ValidationError
 from budget.silver.reading import Key, ReadRun
 
 
@@ -106,6 +106,13 @@ def admit(judged: Admission, ledger: Ledger, decisions: Decisions) -> Admission:
     if not judged.admitted:
         return judged
     each = judged.each
+    lost = _would_lose_labels(each, ledger) if each.labelled is False else {}
+    if lost:
+        regressed = ValidationError(
+            each.run.payload_id, None, "label-layout-regressed", _regressed(lost)
+        )
+        each = replace(each, errors=(regressed, *each.errors))
+        return Admission(each=each, review_items=judged.review_items, admitted=False)
     verdict = ledger.verdict(each)
     drops = [_drop(each, ledger, key, k, decisions) for key, k in verdict.dropped]
     items = (*judged.review_items, *(drop.item for drop in drops))
@@ -119,6 +126,24 @@ def admit(judged: Admission, ledger: Ledger, decisions: Decisions) -> Admission:
         withdrawn=[(drop.key, drop.occurrence) for drop in drops if drop.same is None],
     )
     return Admission(each=admitted, review_items=items, admitted=True)
+
+
+def _would_lose_labels(each: ReadRun, ledger: Ledger) -> dict[str, list[date]]:
+    """List, by payload, the dates of labelled transactions `each` replaces."""
+    lost: dict[str, list[date]] = {}
+    for day, selected in sorted(ledger.selected.items()):
+        if selected.labelled and day in selected.end_of_day and each.covers(day):
+            lost.setdefault(selected.run.payload_id, []).append(day)
+    return lost
+
+
+def _regressed(lost: dict[str, list[date]]) -> str:
+    """Name the exports with bank labels, and the dates, that `lost` holds."""
+    supplied = "; ".join(
+        f"{payload_id} from {days[0]} through {days[-1]}"
+        for payload_id, days in lost.items()
+    )
+    return f"this export has no bank categories; exports that have them: {supplied}"
 
 
 def _drop(

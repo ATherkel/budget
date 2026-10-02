@@ -40,6 +40,8 @@ class ReadRun:
     errors: tuple[ValidationError, ...]
     # The transaction dates of the rows with a balance break, if any.
     break_dates: tuple[date, ...]
+    # Whether the payload's layout carries bank labels; None with no records.
+    labelled: bool | None
 
     @property
     def account_id(self) -> str:
@@ -94,6 +96,7 @@ def read_run(
             for ordinal, error in found
         ),
         break_dates=tuple(record.transaction_date for record, _ in breaks),
+        labelled=any(map(source_format.has_labels, records)) if records else None,
     )
 
 

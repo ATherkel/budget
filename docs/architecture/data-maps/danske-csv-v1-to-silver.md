@@ -102,13 +102,19 @@ These apply wherever a column below names them.
   (`silver-layer.md`). An account's layout is not expected to change. If the
   bank ever adds categories to one, exports from then on supply labels for
   every date they cover, and dates that only older exports cover keep null
-  labels.
+  labels. The opposite is checked, not assumed: an export without categories
+  is held back with `label-layout-regressed` when one with categories already
+  supplies transactions on a date it covers (`silver-layer.md`, *Label
+  layout*).
 - **Error codes.** *Map decision.* `silver-layer.md` (*Validation*) lists the
-  errors in prose and names no `ValidationError.code`. This map names the four
-  its rules raise: `unparseable-date`, `unparseable-decimal`, `unknown-status`
-  and `missing-balance`. The other errors in that list, a format failure, a
-  wrong field count and a balance-chain break, do not depend on this format;
-  `silver-layer.md` names them.
+  errors in prose and names the codes that do not depend on the source
+  format. This map names the four its rules raise against a record:
+  `unparseable-date`, `unparseable-decimal`, `unknown-status` and
+  `missing-balance`.
+- **Label layout.** *Map decision* (#138). The header with `Kategori` and
+  `Underkategori` is the layout with bank labels, and the header without
+  them is the layout without. `silver-layer.md` (*Label layout*) gives the
+  rule that holds back an export without labels.
 
 ## Target: `Transaction`
 
