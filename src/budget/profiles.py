@@ -117,10 +117,11 @@ class Profile:
 def _read_profile_document(path: Path) -> dict[str, object]:
     """Parse the file as TOML, turning every read failure into a refusal."""
     try:
-        with path.open("rb") as file:
-            # Rebuilt from its items, so the values are typed `object`, not
-            # the `Any` that `tomllib` returns; every check below narrows them.
-            document: dict[str, object] = dict(tomllib.load(file).items())
+        # `utf-8-sig` skips the byte-order mark some Windows editors write.
+        text = path.read_text(encoding="utf-8-sig")
+        # Rebuilt from its items, so the values are typed `object`, not
+        # the `Any` that `tomllib` returns; every check below narrows them.
+        document: dict[str, object] = dict(tomllib.loads(text).items())
     except OSError as error:
         reason = error.strerror or type(error).__name__
         raise ProfileFileError(path, f"cannot be read: {reason}") from None
