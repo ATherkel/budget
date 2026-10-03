@@ -53,15 +53,18 @@ class ArchiveConflictError(RuntimeError):
 class ImportLogDamagedError(RuntimeError):
     """`imports.jsonl` holds what no recorded import run accounts for.
 
-    Nothing was written. The log is never repaired by guessing: an operator
-    restores it from the newest backup set, as for the decision log.
+    That is a line that is not the one entry of a run Bronze recorded, or a
+    cut-off final line no archived run proves. Nothing was written. The log is
+    never repaired by guessing: an operator restores it from the newest backup
+    set, as for the decision log.
     """
 
     def __init__(self) -> None:
         """State the problem without quoting the log's content."""
         super().__init__(
-            "imports.jsonl holds an entry no recorded import run accounts for; "
-            "nothing was written. Restore the log from the newest backup set."
+            "imports.jsonl holds a line that is not the one entry of a recorded "
+            "import run; nothing was written. Restore the log from the newest "
+            "backup set."
         )
 
 
@@ -222,17 +225,31 @@ class _LogState:
     cut_off: bytes
 
 
+def _logged_run_id(line: bytes) -> str:
+    """Return the run one complete line mirrors; any other line is damage."""
+    try:
+        run_id = json.loads(line)["import_run_id"]
+    except (ValueError, KeyError, TypeError):
+        raise ImportLogDamagedError from None
+    if not isinstance(run_id, str):
+        raise ImportLogDamagedError
+    return run_id
+
+
 def _read_log(path: Path) -> _LogState:
-    """Read the log's complete entries apart from a final line without a feed."""
+    """Read the log's complete entries apart from a final line without a feed.
+
+    Every complete line, blank ones included, must be the one entry of a run.
+    """
     if not path.exists():
         return _LogState(logged=frozenset(), cut_off=b"")
-    complete, _, cut_off = path.read_bytes().rpartition(b"\n")
-    logged = set()
-    for line in complete.splitlines():
-        try:
-            logged.add(json.loads(line)["import_run_id"])
-        except (ValueError, KeyError, TypeError):
-            raise ImportLogDamagedError from None
+    complete, feed, cut_off = path.read_bytes().rpartition(b"\n")
+    logged: set[str] = set()
+    for line in complete.split(b"\n") if feed else []:
+        run_id = _logged_run_id(line)
+        if run_id in logged:
+            raise ImportLogDamagedError
+        logged.add(run_id)
     return _LogState(logged=frozenset(logged), cut_off=cut_off)
 
 
@@ -260,9 +277,12 @@ def _recovered_log(profile: Profile, store: BronzeStore) -> frozenset[str]:
     A cut-off final entry is completed only when an unlogged run that is
     already archived proves what it was going to say: the entry is written
     after the archive, so no other run can be the one it began. Anything else
-    is refused, and the log is left exactly as it was found.
+    is refused, and the log is left exactly as it was found. So is an entry
+    for a run Bronze never recorded, such as when Bronze is older than the log.
     """
     state = _read_log(profile.import_log_file)
+    if not state.logged <= {run.import_run_id for run in store.import_runs()}:
+        raise ImportLogDamagedError
     if not state.cut_off:
         return state.logged
     entry = _proving_entry(profile, store, state)
