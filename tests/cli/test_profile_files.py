@@ -15,7 +15,8 @@ from tempfile import TemporaryDirectory
 
 from budget.bronze import BronzeStore
 from budget.cli import main
-from tests.cli.profile_files import development_profile
+from budget.profiles import load_profile_file
+from tests.cli.profile_files import development_profile, write_profile
 
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
@@ -60,6 +61,10 @@ class ProfileFileTests(unittest.TestCase):
         inputs = stores.parent / "inputs"
         absolute = _paths(str(stores), inputs)
         others = _inbox_and_exports(stores.parent)
+        inbox = stores.parent.absolute() / "inbox"
+        exports = stores.parent.absolute() / "exports"
+        assert f"inbox = '{inbox}'" in absolute
+        assert f"exports = '{exports}'" in absolute
         return {
             "not TOML": "format = = 1\n",
             "an unsupported format version": (
@@ -97,6 +102,15 @@ class ProfileFileTests(unittest.TestCase):
             "an inputs path that is not text": (
                 VALID_HEADER + f"\n[paths]\nstores = '{stores}'\ninputs = 1\n" + others
             ),
+            "no inbox path": VALID_HEADER + absolute.replace(f"inbox = '{inbox}'", ""),
+            "a relative inbox path": (
+                VALID_HEADER + absolute.replace(f"inbox = '{inbox}'", "inbox = 'in'")
+            ),
+            "no exports path": (
+                VALID_HEADER + absolute.replace(f"exports = '{exports}'", "")
+            ),
+            "a relative exports path": VALID_HEADER
+            + absolute.replace(f"exports = '{exports}'", "exports = 'ex'"),
         }
 
     def test_a_profile_file_the_command_cannot_use_is_refused(self) -> None:
@@ -112,6 +126,15 @@ class ProfileFileTests(unittest.TestCase):
                     finally:
                         # A case that wrongly migrates must not fail the next.
                         shutil.rmtree(stores, ignore_errors=True)
+
+    def test_a_profile_file_names_the_inbox_and_export_archive(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+
+            profile = load_profile_file(write_profile(folder))
+
+            assert profile.inbox == (folder / "inbox").resolve()
+            assert profile.exports == (folder / "exports").resolve()
 
     def test_a_missing_profile_file_is_refused(self) -> None:
         with TemporaryDirectory() as directory:
