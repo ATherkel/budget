@@ -567,6 +567,32 @@ class InjectedCrashTests(unittest.TestCase):
                 assert not source.exists()
 
 
+class ChangedSourceTests(unittest.TestCase):
+    def test_a_file_saved_over_during_its_import_stays_in_the_inbox(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            replacement = payload("01.04.2026", "02.04.2026")
+            source = drop(profile, "joint-current", EXPORT, content)
+            real_fsync = os.fsync
+
+            def fsync_then_save_over(descriptor: int) -> None:
+                # The household saves a new download over the file mid-import.
+                real_fsync(descriptor)
+                source.write_bytes(replacement)
+
+            with (
+                writer_lock(profile) as lock,
+                patch("os.fsync", fsync_then_save_over),
+            ):
+                result = import_inbox_file(lock, source, APRIL)
+
+            assert result.import_run.payload_id == sha256(content).hexdigest()
+            assert (profile.exports / result.archive_path).read_bytes() == content
+            assert result.left_in_inbox
+            assert source.read_bytes() == replacement
+
+
 class WriterLockTests(unittest.TestCase):
     def test_a_released_lock_is_refused_before_writing(self) -> None:
         with TemporaryDirectory() as directory:
