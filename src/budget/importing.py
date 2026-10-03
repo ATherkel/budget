@@ -27,7 +27,21 @@ REFUSED_FOLDER: Final = "refused"
 
 
 class ArchiveConflictError(RuntimeError):
-    """The archive already holds different bytes where this export must go."""
+    """The archive already holds different bytes where this export must go.
+
+    Nothing is overwritten. The import run is recorded in Bronze and the file
+    stays in the inbox, so the import resumes once the archive is put right.
+    The message names the account only, never a filename.
+    """
+
+    def __init__(self, account_id: str) -> None:
+        """Name the account whose archive folder holds the conflicting bytes."""
+        self.account_id = account_id
+        super().__init__(
+            f'account "{account_id}": the export archive already holds other '
+            "bytes under this export's name and under its hash folder; nothing "
+            "was overwritten, and the file stays in the inbox"
+        )
 
 
 @dataclass(frozen=True)
@@ -57,18 +71,37 @@ class InboxImport:
     left_in_inbox: bool
 
 
-def _archive_path(run: ImportRun) -> str:
-    """Name where a run's bytes are archived, relative to the export archive.
+def _archive_candidates(run: ImportRun) -> tuple[str, ...]:
+    """Name where a run's bytes may be archived, relative to the export archive.
 
-    An accepted export keeps its original name in its account's folder. A
-    refused run's bytes are copied apart, under `refused/`, so the archive's
-    own folder holds only accepted exports while replay can still find them.
+    An accepted export keeps its original name in its account's folder, or,
+    when other bytes already hold that name, the same name in a folder named
+    by its hash. A refused run's bytes are copied apart, under `refused/`, so
+    the account's folder holds only accepted exports while replay can still
+    find them.
     """
     account_id = run.declared_account_id
+    name = run.original_filename
+    hash_prefix = run.payload_id[:HASH_PREFIX_LENGTH]
     if run.outcome == "refused":
-        hash_prefix = run.payload_id[:HASH_PREFIX_LENGTH]
-        return f"{account_id}/{REFUSED_FOLDER}/{hash_prefix}/{run.original_filename}"
-    return f"{account_id}/{run.original_filename}"
+        return (f"{account_id}/{REFUSED_FOLDER}/{hash_prefix}/{name}",)
+    return (f"{account_id}/{name}", f"{account_id}/{hash_prefix}/{name}")
+
+
+def _archive(exports: Path, run: ImportRun, content: bytes) -> str:
+    """Archive the bytes where they are, or where nothing is yet.
+
+    A candidate that already holds these bytes is reused, so a retry finds the
+    same place. One that holds anything else is never overwritten.
+    """
+    for archive_path in _archive_candidates(run):
+        target = exports / archive_path
+        if not target.exists():
+            _write_durably(target, content)
+            return archive_path
+        if target.is_file() and target.read_bytes() == content:
+            return archive_path
+    raise ArchiveConflictError(run.declared_account_id)
 
 
 def _write_durably(path: Path, content: bytes) -> None:
@@ -130,8 +163,7 @@ def import_inbox_file(
         run = store.import_file(source, declaration)
         content = store.get_payload(run.payload_id).content
 
-    archive_path = _archive_path(run)
-    _write_durably(profile.exports / archive_path, content)
+    archive_path = _archive(profile.exports, run, content)
     _append_to_log(profile.import_log_file, _log_entry(run, archive_path))
     refused = run.outcome == "refused"
     if not refused:
