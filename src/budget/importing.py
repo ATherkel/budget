@@ -44,6 +44,14 @@ class ArchiveConflictError(RuntimeError):
         )
 
 
+class NotAnInboxFileError(ValueError):
+    """The file is not directly inside one account's inbox folder."""
+
+
+class UnknownInboxAccountError(ValueError):
+    """The file's inbox folder names no account in `accounts.toml`."""
+
+
 @dataclass(frozen=True)
 class Coverage:
     """What the operator declares about one inbox file's export.

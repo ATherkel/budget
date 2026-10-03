@@ -15,8 +15,16 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from budget.bronze import BronzeStore
-from budget.importing import ArchiveConflictError, Coverage, import_inbox_file
+from budget.importing import (
+    ArchiveConflictError,
+    Coverage,
+    NotAnInboxFileError,
+    UnknownInboxAccountError,
+    import_inbox_file,
+)
+from budget.inputs import ConfigurationError, MisfiledExportError
 from budget.locking import writer_lock
+from budget.profiles import Profile
 from tests.importing.households import drop, household, log_entries, payload
 
 APRIL = Coverage(covers_from=date(2026, 4, 1), covers_through=date(2026, 5, 2))
@@ -189,6 +197,87 @@ class ArchiveNameTests(unittest.TestCase):
             assert (hash_folder / EXPORT).read_bytes() == b"yet other bytes"
             assert source.read_bytes() == content
             assert not profile.import_log_file.exists()
+
+
+def assert_nothing_written(profile: Profile, source: Path, content: bytes) -> None:
+    """The file is still in the inbox, and no store, archive or log has it."""
+    assert source.read_bytes() == content
+    with BronzeStore(profile) as store, pytest.raises(KeyError):
+        store.get_payload(sha256(content).hexdigest())
+    assert not profile.exports.exists()
+    assert not profile.import_log_file.exists()
+
+
+class RefusedBeforeBronzeTests(unittest.TestCase):
+    def test_a_folder_that_names_no_account_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            source = drop(profile, "joint-checking", EXPORT, content)
+
+            with (
+                writer_lock(profile) as lock,
+                pytest.raises(UnknownInboxAccountError),
+            ):
+                import_inbox_file(lock, source, APRIL)
+
+            assert_nothing_written(profile, source, content)
+
+    def test_a_file_outside_an_account_inbox_folder_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            places = {
+                "the inbox itself": profile.inbox,
+                "a subfolder of an account's folder": profile.inbox
+                / "joint-current"
+                / "old",
+                "the inputs folder": profile.inputs / "joint-current",
+            }
+            for place, folder in places.items():
+                with self.subTest(place):
+                    folder.mkdir(parents=True, exist_ok=True)
+                    source = folder / EXPORT
+                    source.write_bytes(content)
+
+                    with (
+                        writer_lock(profile) as lock,
+                        pytest.raises(NotAnInboxFileError),
+                    ):
+                        import_inbox_file(lock, source, APRIL)
+
+                    assert_nothing_written(profile, source, content)
+
+    def test_a_misfiled_export_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            # joint-current declares 0012345678; this name carries another.
+            misfiled = "Konto-0099999999-20260502.csv"
+            source = drop(profile, "joint-current", misfiled, content)
+
+            with (
+                writer_lock(profile) as lock,
+                pytest.raises(MisfiledExportError),
+            ):
+                import_inbox_file(lock, source, APRIL)
+
+            assert_nothing_written(profile, source, content)
+
+    def test_an_accounts_file_with_problems_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            profile.accounts_file.write_text("format = 2\n", encoding="utf-8")
+            content = payload("01.04.2026")
+            source = drop(profile, "joint-current", EXPORT, content)
+
+            with (
+                writer_lock(profile) as lock,
+                pytest.raises(ConfigurationError),
+            ):
+                import_inbox_file(lock, source, APRIL)
+
+            assert_nothing_written(profile, source, content)
 
 
 class RefusedImportTests(unittest.TestCase):
