@@ -232,6 +232,35 @@ class ArchiveNameTests(unittest.TestCase):
             assert source.read_bytes() == content
             assert not profile.import_log_file.exists()
 
+    def test_an_earlier_run_with_no_free_archive_place_stops_the_next_import_early(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            blocked = payload("01.04.2026")
+            record_in_bronze_only(
+                profile, drop(profile, "joint-current", EXPORT, blocked), APRIL
+            )
+            account_folder = profile.exports / "joint-current"
+            hash_folder = account_folder / sha256(blocked).hexdigest()[:12]
+            hash_folder.mkdir(parents=True)
+            (account_folder / EXPORT).write_bytes(b"other bytes")
+            (hash_folder / EXPORT).write_bytes(b"yet other bytes")
+            content = payload("02.04.2026")
+            source = drop(profile, "joint-savings", EXPORT, content)
+
+            with (
+                writer_lock(profile) as lock,
+                pytest.raises(ArchiveConflictError),
+            ):
+                import_inbox_file(lock, source, APRIL)
+
+            assert source.read_bytes() == content
+            with BronzeStore(profile) as store, pytest.raises(KeyError):
+                store.get_payload(sha256(content).hexdigest())
+            assert not (profile.exports / "joint-savings").exists()
+            assert not profile.import_log_file.exists()
+
 
 def assert_nothing_written(profile: Profile, source: Path, content: bytes) -> None:
     """The file is still in the inbox, and no store, archive or log has it."""
