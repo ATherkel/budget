@@ -131,24 +131,34 @@ registered under an ID it does not name is refused.
 `uv sync` installs a `budget` command; `python -m budget` runs the same thing.
 Every command needs a profile file, named by `--profile` or, failing that, the
 `BUDGET_PROFILE` environment variable. There is no default profile. Keep
-profile files outside the repository, for example in `%APPDATA%\budget\`:
+profile files outside the repository, for example in `%APPDATA%\budget\`. This
+PowerShell writes a development profile there, and refuses to replace one that
+already exists:
 
-```toml
-# %APPDATA%\budget\development.toml
+```powershell
+$local = "$env:LOCALAPPDATA\budget"
+New-Item -ItemType Directory -Force "$env:APPDATA\budget" | Out-Null
+@"
 format = 1
 profile = "development"
 
 [paths]
-stores = 'C:\Users\household\AppData\Local\budget\dev'
-inputs = 'C:\Users\household\AppData\Local\budget\dev-household\inputs'
+stores = '$local\dev'
+inputs = '$local\dev-household\inputs'
+"@ | Out-File -NoClobber -Encoding utf8 "$env:APPDATA\budget\development.toml"
 ```
+
+PowerShell fills in `$env:LOCALAPPDATA` as it writes, so the file holds absolute
+paths such as `C:\Users\<you>\AppData\Local\budget\dev`: the application never
+expands variables in a profile file.
 
 The file is UTF-8 text, with or without a byte-order mark, and may hold only
 the keys
 [operations.md](docs/architecture/operations.md#selecting-a-profile)
 documents for its profile: `[backups]` and `paths.backups` belong to
 production, and `paths.upstream_backups` to development. `[paths].stores` and
-`[paths].inputs` are required and must be absolute. `profile` is `development` or `production`.
+`[paths].inputs` are required and must be absolute. `profile` is `development`
+or `production`.
 
 ```powershell
 budget --profile "$env:APPDATA\budget\development.toml" migrate
