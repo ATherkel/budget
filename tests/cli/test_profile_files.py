@@ -24,9 +24,21 @@ EXIT_REFUSED_ENVIRONMENT = 4
 VALID_HEADER = 'format = 1\nprofile = "development"\n'
 
 
+def _inbox_and_exports(folder: Path) -> str:
+    """The `[paths]` lines naming the inbox and export archive inside `folder`.
+
+    They are absolute even when a case's stores path is not, so each refusal
+    case below is refused for its own problem only.
+    """
+    folder = folder.absolute()
+    return f"inbox = '{folder / 'inbox'}'\nexports = '{folder / 'exports'}'\n"
+
+
 def _paths(stores: str, inputs: Path) -> str:
-    """A `[paths]` table naming only the stores and inputs folders."""
-    return f"\n[paths]\nstores = '{stores}'\ninputs = '{inputs}'\n"
+    """A `[paths]` table naming the stores and inputs folders, then the rest."""
+    return f"\n[paths]\nstores = '{stores}'\ninputs = '{inputs}'\n" + (
+        _inbox_and_exports(Path(stores).parent)
+    )
 
 
 def _assert_refused(profile_file: Path, text: str, stores: Path) -> None:
@@ -47,6 +59,7 @@ class ProfileFileTests(unittest.TestCase):
         """Profile file contents that must each be refused, by what is wrong."""
         inputs = stores.parent / "inputs"
         absolute = _paths(str(stores), inputs)
+        others = _inbox_and_exports(stores.parent)
         return {
             "not TOML": "format = = 1\n",
             "an unsupported format version": (
@@ -70,15 +83,19 @@ class ProfileFileTests(unittest.TestCase):
                 + "upstream_backups = 'x'\n"
             ),
             "no paths table": VALID_HEADER,
-            "no stores path": VALID_HEADER + f"\n[paths]\ninputs = '{inputs}'\n",
+            "no stores path": (
+                VALID_HEADER + f"\n[paths]\ninputs = '{inputs}'\n" + others
+            ),
             "a relative stores path": VALID_HEADER + _paths("stores", inputs),
             "a stores path that is not text": (
-                VALID_HEADER + f"\n[paths]\nstores = 1\ninputs = '{inputs}'\n"
+                VALID_HEADER + f"\n[paths]\nstores = 1\ninputs = '{inputs}'\n" + others
             ),
-            "no inputs path": VALID_HEADER + f"\n[paths]\nstores = '{stores}'\n",
+            "no inputs path": (
+                VALID_HEADER + f"\n[paths]\nstores = '{stores}'\n" + others
+            ),
             "a relative inputs path": VALID_HEADER + _paths(str(stores), Path("in")),
             "an inputs path that is not text": (
-                VALID_HEADER + f"\n[paths]\nstores = '{stores}'\ninputs = 1\n"
+                VALID_HEADER + f"\n[paths]\nstores = '{stores}'\ninputs = 1\n" + others
             ),
         }
 
@@ -161,8 +178,6 @@ class ProfileFileTests(unittest.TestCase):
             profile_file.write_text(
                 VALID_HEADER
                 + _paths(str(folder / "stores"), folder / "inputs")
-                + f"inbox = '{folder / 'inbox'}'\n"
-                + f"exports = '{folder / 'exports'}'\n"
                 + f"upstream_backups = '{folder / 'upstream'}'\n"
                 + '\n[dashboard]\nbind = "127.0.0.1"\nport = 8750\n',
                 encoding="utf-8",
@@ -181,8 +196,6 @@ class ProfileFileTests(unittest.TestCase):
             profile_file.write_text(
                 'format = 1\nprofile = "production"\n'
                 + _paths(str(folder / "stores"), folder / "inputs")
-                + f"inbox = '{folder / 'inbox'}'\n"
-                + f"exports = '{folder / 'exports'}'\n"
                 + f"backups = '{folder / 'backups'}'\n"
                 + "\n[backups]\nkeep_all_days = 14\nkeep_daily_days = 365\n"
                 + 'keep_monthly = "forever"\n'

@@ -13,6 +13,9 @@ from typing import Final
 
 ACCOUNTS_FILE_NAME = "accounts.toml"
 BRONZE_STORE_NAME = "bronze.db"
+EXPORTS_FOLDER = "exports"
+IMPORT_LOG_FILE_NAME = "imports.jsonl"
+INBOX_FOLDER = "inbox"
 INPUTS_FOLDER = "inputs"
 STORES_FOLDER = "stores"
 WRITER_LOCK_NAME = "budget.lock"
@@ -76,7 +79,7 @@ class TestProfileRootRequiredError(ValueError):
 
 @dataclass(frozen=True, kw_only=True)
 class Profile:
-    """One profile: the name a store records, and its stores and inputs folders.
+    """One profile: the name a store records, and every folder it touches.
 
     Every field is passed by name: they are mostly paths, so a positional call
     could put one folder in another's place without a type error.
@@ -89,6 +92,8 @@ class Profile:
     name: str
     stores: Path
     inputs: Path
+    inbox: Path
+    exports: Path
     root: Path | None = None
 
     def __post_init__(self) -> None:
@@ -129,6 +134,11 @@ class Profile:
     def accounts_file(self) -> Path:
         """The account registry, re-checked against the test root each time."""
         return self._guarded_path(Path(self.inputs) / ACCOUNTS_FILE_NAME)
+
+    @property
+    def import_log_file(self) -> Path:
+        """The append-only import log, re-checked against the test root each time."""
+        raise NotImplementedError
 
     @property
     def writer_lock_file(self) -> Path:
@@ -237,6 +247,8 @@ def load_profile_file(path: Path) -> Profile:
         name=name,
         stores=_folder_path(path, paths, "stores"),
         inputs=_folder_path(path, paths, "inputs"),
+        inbox=_folder_path(path, paths, "inbox"),
+        exports=_folder_path(path, paths, "exports"),
     )
 
 
@@ -246,5 +258,7 @@ def test_profile(root: str | Path) -> Profile:
         name=TEST_PROFILE_NAME,
         stores=Path(root) / STORES_FOLDER,
         inputs=Path(root) / INPUTS_FOLDER,
+        inbox=Path(root) / INBOX_FOLDER,
+        exports=Path(root) / EXPORTS_FOLDER,
         root=Path(root),
     )
