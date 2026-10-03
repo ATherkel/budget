@@ -6,11 +6,15 @@ writer lock, then reads the outcome back from the reopened Bronze store, the
 export archive, `imports.jsonl` and the inbox.
 """
 
+import os
 import unittest
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import date
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import pytest
 
@@ -19,6 +23,7 @@ from budget.importing import (
     ArchiveConflictError,
     Coverage,
     ImportLogDamagedError,
+    InboxImport,
     NotAnInboxFileError,
     UnknownInboxAccountError,
     import_inbox_file,
@@ -467,6 +472,78 @@ class CutOffLogTests(unittest.TestCase):
             with BronzeStore(profile) as store, pytest.raises(KeyError):
                 store.get_payload(sha256(content).hexdigest())
             assert not (profile.exports / "joint-savings").exists()
+
+
+class InjectedCrashError(Exception):
+    """Stands in for the process dying at one file step."""
+
+
+@contextmanager
+def crash_at(step: int) -> Iterator[None]:
+    """Fail the `step`-th file step: an fsync, a rename or an unlink.
+
+    These are the system calls that make an import's file work durable or
+    final, so failing each in turn leaves every state a crash can.
+    """
+    calls = 0
+
+    def failing(original: Callable[..., object]) -> Callable[..., object]:
+        def step_or_crash(*args: object, **kwargs: object) -> object:
+            nonlocal calls
+            calls += 1
+            if calls == step:
+                raise InjectedCrashError
+            return original(*args, **kwargs)
+
+        return step_or_crash
+
+    with (
+        patch("os.fsync", failing(os.fsync)),
+        patch.object(Path, "rename", failing(Path.rename)),
+        patch.object(Path, "unlink", failing(Path.unlink)),
+    ):
+        yield
+
+
+def import_with_crash_at(
+    profile: Profile, source: Path, step: int
+) -> tuple[InboxImport, bool]:
+    """Import with a crash at one step, then rerun without it if it crashed.
+
+    Returns the import that finished, and whether the crash happened.
+    """
+    with writer_lock(profile) as lock:
+        try:
+            with crash_at(step):
+                return import_inbox_file(lock, source, APRIL), False
+        except InjectedCrashError:
+            return import_inbox_file(lock, source, APRIL), True
+
+
+class InjectedCrashTests(unittest.TestCase):
+    # A guard: the retry slices above built each state by hand; this reaches
+    # them by failing each file step of a real import in turn.
+    def test_a_crash_at_any_file_step_is_finished_by_a_rerun(self) -> None:
+        content = payload("01.04.2026")
+        # The archive's fsync and rename, the log's fsync, and the unlink; the
+        # fifth pass crashes nowhere.
+        for step in range(1, 6):
+            with self.subTest(step=step), TemporaryDirectory() as directory:
+                profile = household(Path(directory))
+                source = drop(profile, "joint-current", EXPORT, content)
+
+                result, crashed = import_with_crash_at(profile, source, step)
+
+                assert crashed == (step < 5)
+                with BronzeStore(profile) as store:
+                    assert store.import_runs() == (result.import_run,)
+                assert result.import_run.outcome == "stored"
+                assert [entry["import_run_id"] for entry in log_entries(profile)] == [
+                    result.import_run.import_run_id
+                ]
+                archived = profile.exports / result.archive_path
+                assert archived.read_bytes() == content
+                assert not source.exists()
 
 
 class WriterLockTests(unittest.TestCase):
