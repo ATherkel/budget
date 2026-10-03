@@ -267,6 +267,23 @@ def _recovered_log(profile: Profile, store: BronzeStore) -> frozenset[str]:
     return _read_log(profile.import_log_file).logged
 
 
+def _bring_log_up_to_date(
+    profile: Profile, store: BronzeStore, logged: frozenset[str]
+) -> None:
+    """Archive and log every run Bronze holds that the log does not, oldest first.
+
+    A crash can leave a run in Bronze and nowhere else. A refused run's file
+    stays in the inbox, so no retry of that file would finish it; this does,
+    from the bytes Bronze retains.
+    """
+    for run in store.import_runs():
+        if run.import_run_id in logged:
+            continue
+        content = store.get_payload(run.payload_id).content
+        archive_path = _archive(profile.exports, run, content)
+        _append_to_log(profile.import_log_file, _log_entry(run, archive_path))
+
+
 def _earlier_run(store: BronzeStore, account_id: str, source: Path) -> ImportRun | None:
     """Return the accepted run an interrupted import of this file left behind.
 
@@ -302,10 +319,9 @@ def import_inbox_file(
         if run is None:
             run = store.import_file(source, declaration)
         content = store.get_payload(run.payload_id).content
+        archive_path = _archive(profile.exports, run, content)
+        _bring_log_up_to_date(profile, store, logged)
 
-    archive_path = _archive(profile.exports, run, content)
-    if run.import_run_id not in logged:
-        _append_to_log(profile.import_log_file, _log_entry(run, archive_path))
     refused = run.outcome == "refused"
     if not refused:
         source.unlink()
