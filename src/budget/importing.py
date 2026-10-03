@@ -17,8 +17,9 @@ from pathlib import Path
 from typing import Final
 
 from budget.bronze import BronzeStore, ImportDeclaration, ImportRun
-from budget.inputs import load_accounts
+from budget.inputs import Account, load_accounts
 from budget.locking import WriterLock
+from budget.profiles import Profile
 
 IMPORT_LOG_FORMAT: Final = 1
 # How much of the payload hash names an archive folder (operations.md, W1).
@@ -45,11 +46,28 @@ class ArchiveConflictError(RuntimeError):
 
 
 class NotAnInboxFileError(ValueError):
-    """The file is not directly inside one account's inbox folder."""
+    """The file is not directly inside one account's inbox folder.
+
+    The folder is the account declaration, so a file anywhere else has none.
+    The message never names the file.
+    """
+
+    def __init__(self) -> None:
+        """State the rule, without the operator's paths."""
+        super().__init__(
+            "only a file directly inside inbox/<account_id>/ can be imported"
+        )
 
 
 class UnknownInboxAccountError(ValueError):
     """The file's inbox folder names no account in `accounts.toml`."""
+
+    def __init__(self, account_id: str) -> None:
+        """Name the folder, which is the account ID it declares."""
+        self.account_id = account_id
+        super().__init__(
+            f'inbox folder "{account_id}" names no account in accounts.toml'
+        )
 
 
 @dataclass(frozen=True)
@@ -77,6 +95,22 @@ class InboxImport:
     import_run: ImportRun
     archive_path: str
     left_in_inbox: bool
+
+
+def _inbox_account(profile: Profile, source: Path) -> Account:
+    """Return the account a file's inbox folder declares, before any write.
+
+    Refuses a file outside `inbox/<account_id>/`, a folder `accounts.toml`
+    does not name, and an export whose filename names another bank account.
+    """
+    folder = source.resolve().parent
+    if folder.parent != profile.inbox:
+        raise NotAnInboxFileError
+    account = load_accounts(profile).get(folder.name)
+    if account is None:
+        raise UnknownInboxAccountError(folder.name)
+    account.check_export_filename(source.name)
+    return account
 
 
 def _archive_candidates(run: ImportRun) -> tuple[str, ...]:
@@ -158,10 +192,9 @@ def import_inbox_file(
 ) -> InboxImport:
     """Import one inbox file under the held writer lock."""
     profile = lock.profile
-    account_id = source.parent.name
-    account = load_accounts(profile)[account_id]
+    account = _inbox_account(profile, source)
     declaration = ImportDeclaration(
-        declared_account_id=account_id,
+        declared_account_id=account.account_id,
         source_format=account.source_format,
         covers_from=coverage.covers_from,
         covers_through=coverage.covers_through,
