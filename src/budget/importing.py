@@ -148,7 +148,7 @@ def _archive_candidates(run: ImportRun) -> tuple[str, ...]:
     return (f"{account_id}/{name}", f"{account_id}/{hash_prefix}/{name}")
 
 
-def _archived_at(exports: Path, run: ImportRun, content: bytes) -> tuple[str, bool]:
+def _archived_at(profile: Profile, run: ImportRun, content: bytes) -> tuple[str, bool]:
     """Return where the run's bytes belong, and whether they are there already.
 
     The first candidate that already holds these bytes is the place, so a
@@ -156,7 +156,7 @@ def _archived_at(exports: Path, run: ImportRun, content: bytes) -> tuple[str, bo
     holds anything else is never overwritten.
     """
     for archive_path in _archive_candidates(run):
-        target = exports / archive_path
+        target = profile.archive_file(archive_path)
         if not target.exists():
             return archive_path, False
         if target.is_file() and target.read_bytes() == content:
@@ -164,11 +164,11 @@ def _archived_at(exports: Path, run: ImportRun, content: bytes) -> tuple[str, bo
     raise ArchiveConflictError(run.declared_account_id)
 
 
-def _archive(exports: Path, run: ImportRun, content: bytes) -> str:
+def _archive(profile: Profile, run: ImportRun, content: bytes) -> str:
     """Archive the run's bytes, unless they are archived already."""
-    archive_path, archived = _archived_at(exports, run, content)
+    archive_path, archived = _archived_at(profile, run, content)
     if not archived:
-        _write_durably(exports / archive_path, content)
+        _write_durably(profile.archive_file(archive_path), content)
     return archive_path
 
 
@@ -233,14 +233,16 @@ def _read_log(path: Path) -> _LogState:
     return _LogState(logged=frozenset(logged), cut_off=cut_off)
 
 
-def _proving_entry(exports: Path, store: BronzeStore, state: _LogState) -> bytes | None:
+def _proving_entry(
+    profile: Profile, store: BronzeStore, state: _LogState
+) -> bytes | None:
     """Return the entry of an unlogged, archived run that the cut-off begins."""
     for run in store.import_runs():
         if run.import_run_id in state.logged:
             continue
         content = store.get_payload(run.payload_id).content
         try:
-            archive_path, archived = _archived_at(exports, run, content)
+            archive_path, archived = _archived_at(profile, run, content)
         except ArchiveConflictError:
             continue
         entry = _log_entry(run, archive_path)
@@ -260,7 +262,7 @@ def _recovered_log(profile: Profile, store: BronzeStore) -> frozenset[str]:
     state = _read_log(profile.import_log_file)
     if not state.cut_off:
         return state.logged
-    entry = _proving_entry(profile.exports, store, state)
+    entry = _proving_entry(profile, store, state)
     if entry is None:
         raise ImportLogDamagedError
     _append_to_log(profile.import_log_file, entry[len(state.cut_off) :])
@@ -280,7 +282,7 @@ def _bring_log_up_to_date(
         if run.import_run_id in logged:
             continue
         content = store.get_payload(run.payload_id).content
-        archive_path = _archive(profile.exports, run, content)
+        archive_path = _archive(profile, run, content)
         _append_to_log(profile.import_log_file, _log_entry(run, archive_path))
 
 
@@ -319,7 +321,7 @@ def import_inbox_file(
         if run is None:
             run = store.import_file(source, declaration)
         content = store.get_payload(run.payload_id).content
-        archive_path = _archive(profile.exports, run, content)
+        archive_path = _archive(profile, run, content)
         _bring_log_up_to_date(profile, store, logged)
 
     refused = run.outcome == "refused"

@@ -139,6 +139,13 @@ class Profile:
         """The account registry, re-checked against the test root each time."""
         return self._guarded_path(Path(self.inputs) / ACCOUNTS_FILE_NAME)
 
+    def archive_file(self, archive_path: str) -> Path:
+        """One file in the export archive, re-checked against the test root.
+
+        `archive_path` is relative to the archive, as the import log records it.
+        """
+        return self._guarded_path(Path(self.exports) / archive_path)
+
     @property
     def import_log_file(self) -> Path:
         """The append-only import log, re-checked against the test root each time."""
