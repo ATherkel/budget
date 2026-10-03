@@ -14,7 +14,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from budget.bronze import BronzeStore
+from budget.bronze import BronzeStore, ImportDeclaration
 from budget.importing import (
     ArchiveConflictError,
     Coverage,
@@ -278,6 +278,90 @@ class RefusedBeforeBronzeTests(unittest.TestCase):
                 import_inbox_file(lock, source, APRIL)
 
             assert_nothing_written(profile, source, content)
+
+
+class RetryTests(unittest.TestCase):
+    """A rerun after a crash finishes the earlier run instead of adding one.
+
+    Each test builds the state a crash leaves after one step, through public
+    interfaces, and puts the file back where the household left it.
+    """
+
+    def test_a_run_stored_before_a_crash_is_archived_logged_and_not_repeated(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            source = drop(profile, "joint-current", EXPORT, content)
+            # The crash came after Bronze committed, before the archive.
+            with BronzeStore(profile) as store:
+                earlier = store.import_file(
+                    source,
+                    ImportDeclaration(
+                        declared_account_id="joint-current",
+                        source_format="danske-csv-v1",
+                        covers_from=APRIL.covers_from,
+                        covers_through=APRIL.covers_through,
+                    ),
+                )
+
+            with writer_lock(profile) as lock:
+                result = import_inbox_file(lock, source, APRIL)
+
+            assert result.import_run == earlier
+            assert (profile.exports / "joint-current" / EXPORT).read_bytes() == content
+            assert [entry["import_run_id"] for entry in log_entries(profile)] == [
+                earlier.import_run_id
+            ]
+            assert not source.exists()
+
+    def test_a_logged_run_whose_file_stayed_in_the_inbox_is_only_finished(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            with writer_lock(profile) as lock:
+                first = import_inbox_file(
+                    lock, drop(profile, "joint-current", EXPORT, content), APRIL
+                )
+            # The crash came after the log, before the file left the inbox.
+            source = drop(profile, "joint-current", EXPORT, content)
+
+            with writer_lock(profile) as lock:
+                again = import_inbox_file(lock, source, APRIL)
+
+            assert again.import_run == first.import_run
+            assert again.archive_path == first.archive_path
+            assert [entry["import_run_id"] for entry in log_entries(profile)] == [
+                first.import_run.import_run_id
+            ]
+            assert not source.exists()
+
+    def test_a_refused_run_is_not_finished_by_a_corrected_rerun(self) -> None:
+        # A guard: a corrected declaration is a new presentation, never a retry.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            source = drop(profile, "joint-current", EXPORT, content)
+            past_the_export = Coverage(
+                covers_from=date(2026, 4, 1), covers_through=date(2026, 5, 3)
+            )
+
+            with writer_lock(profile) as lock:
+                refused = import_inbox_file(lock, source, past_the_export)
+                corrected = import_inbox_file(lock, source, APRIL)
+
+            assert corrected.import_run.outcome == "stored"
+            assert (
+                corrected.import_run.import_run_id != refused.import_run.import_run_id
+            )
+            assert [entry["outcome"] for entry in log_entries(profile)] == [
+                "refused",
+                "stored",
+            ]
+            assert not source.exists()
 
 
 class RefusedImportTests(unittest.TestCase):
