@@ -26,6 +26,10 @@ HASH_PREFIX_LENGTH: Final = 12
 REFUSED_FOLDER: Final = "refused"
 
 
+class ArchiveConflictError(RuntimeError):
+    """The archive already holds different bytes where this export must go."""
+
+
 @dataclass(frozen=True)
 class Coverage:
     """What the operator declares about one inbox file's export.

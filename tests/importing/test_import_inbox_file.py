@@ -12,8 +12,10 @@ from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pytest
+
 from budget.bronze import BronzeStore
-from budget.importing import Coverage, import_inbox_file
+from budget.importing import ArchiveConflictError, Coverage, import_inbox_file
 from budget.locking import writer_lock
 from tests.importing.households import drop, household, log_entries, payload
 
@@ -139,6 +141,54 @@ class OrdinaryImportTests(unittest.TestCase):
             assert entries[1]["outcome"] == "repeat"
             assert entries[1]["repeat_of"] == first.import_run.import_run_id
             assert entries[1]["covers_through"] == "2026-05-03"
+
+
+class ArchiveNameTests(unittest.TestCase):
+    def test_a_name_taken_by_other_bytes_is_archived_under_the_hash_folder(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            earlier = payload("01.04.2026")
+            corrected = payload("01.04.2026", "02.04.2026")
+
+            with writer_lock(profile) as lock:
+                import_inbox_file(
+                    lock, drop(profile, "joint-current", EXPORT, earlier), APRIL
+                )
+                result = import_inbox_file(
+                    lock, drop(profile, "joint-current", EXPORT, corrected), APRIL
+                )
+
+            hash_folder = sha256(corrected).hexdigest()[:12]
+            assert result.archive_path == f"joint-current/{hash_folder}/{EXPORT}"
+            assert (profile.exports / result.archive_path).read_bytes() == corrected
+            assert (profile.exports / "joint-current" / EXPORT).read_bytes() == earlier
+            assert log_entries(profile)[1]["archive_path"] == result.archive_path
+
+    def test_conflicting_bytes_in_the_hash_folder_are_never_overwritten(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            source = drop(profile, "joint-current", EXPORT, content)
+            account_folder = profile.exports / "joint-current"
+            hash_folder = account_folder / sha256(content).hexdigest()[:12]
+            hash_folder.mkdir(parents=True)
+            (account_folder / EXPORT).write_bytes(b"other bytes")
+            (hash_folder / EXPORT).write_bytes(b"yet other bytes")
+
+            with (
+                writer_lock(profile) as lock,
+                pytest.raises(ArchiveConflictError),
+            ):
+                import_inbox_file(lock, source, APRIL)
+
+            assert (account_folder / EXPORT).read_bytes() == b"other bytes"
+            assert (hash_folder / EXPORT).read_bytes() == b"yet other bytes"
+            assert source.read_bytes() == content
+            assert not profile.import_log_file.exists()
 
 
 class RefusedImportTests(unittest.TestCase):
