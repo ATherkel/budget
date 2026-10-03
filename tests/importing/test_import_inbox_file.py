@@ -18,6 +18,7 @@ from budget.bronze import BronzeStore, ImportDeclaration
 from budget.importing import (
     ArchiveConflictError,
     Coverage,
+    ImportLogDamagedError,
     NotAnInboxFileError,
     UnknownInboxAccountError,
     import_inbox_file,
@@ -362,6 +363,69 @@ class RetryTests(unittest.TestCase):
                 "stored",
             ]
             assert not source.exists()
+
+
+class CutOffLogTests(unittest.TestCase):
+    """A crash while an entry is appended leaves it without its line feed."""
+
+    def test_an_entry_cut_off_by_a_crash_is_completed_from_its_run(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            later = "export-20260503.csv"
+            second = payload("02.04.2026")
+            through_may_3 = Coverage(
+                covers_from=date(2026, 4, 1), covers_through=date(2026, 5, 3)
+            )
+            with writer_lock(profile) as lock:
+                import_inbox_file(
+                    lock,
+                    drop(profile, "joint-current", EXPORT, payload("01.04.2026")),
+                    APRIL,
+                )
+                import_inbox_file(
+                    lock, drop(profile, "joint-current", later, second), through_may_3
+                )
+            complete = profile.import_log_file.read_bytes()
+            first_entry_end = complete.index(b"\n") + 1
+            cut_off = first_entry_end + (len(complete) - first_entry_end) // 2
+            profile.import_log_file.write_bytes(complete[:cut_off])
+            source = drop(profile, "joint-current", later, second)
+
+            with writer_lock(profile) as lock:
+                import_inbox_file(lock, source, through_may_3)
+
+            assert profile.import_log_file.read_bytes() == complete
+            assert not source.exists()
+
+    def test_a_cut_off_entry_no_run_accounts_for_is_refused_before_writing(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            with writer_lock(profile) as lock:
+                import_inbox_file(
+                    lock,
+                    drop(profile, "joint-current", EXPORT, payload("01.04.2026")),
+                    APRIL,
+                )
+            damaged = profile.import_log_file.read_bytes() + (
+                b'{"format": 1, "import_run_id": "no-such-run"'
+            )
+            profile.import_log_file.write_bytes(damaged)
+            content = payload("02.04.2026")
+            source = drop(profile, "joint-savings", EXPORT, content)
+
+            with (
+                writer_lock(profile) as lock,
+                pytest.raises(ImportLogDamagedError),
+            ):
+                import_inbox_file(lock, source, APRIL)
+
+            assert profile.import_log_file.read_bytes() == damaged
+            assert source.read_bytes() == content
+            with BronzeStore(profile) as store, pytest.raises(KeyError):
+                store.get_payload(sha256(content).hexdigest())
+            assert not (profile.exports / "joint-savings").exists()
 
 
 class RefusedImportTests(unittest.TestCase):

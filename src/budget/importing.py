@@ -48,6 +48,10 @@ class ArchiveConflictError(RuntimeError):
         )
 
 
+class ImportLogDamagedError(RuntimeError):
+    """`imports.jsonl` holds what no recorded import run accounts for."""
+
+
 class NotAnInboxFileError(ValueError):
     """The file is not directly inside one account's inbox folder.
 
