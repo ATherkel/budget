@@ -556,7 +556,7 @@ def crash_at(step: int) -> Iterator[None]:
 
 
 def import_with_crash_at(
-    profile: Profile, source: Path, step: int
+    profile: Profile, source: Path, coverage: Coverage, step: int
 ) -> tuple[InboxImport, bool]:
     """Import with a crash at one step, then rerun without it if it crashed.
 
@@ -565,35 +565,79 @@ def import_with_crash_at(
     with writer_lock(profile) as lock:
         try:
             with crash_at(step):
-                return import_inbox_file(lock, source, APRIL), False
+                return import_inbox_file(lock, source, coverage), False
         except InjectedCrashError:
-            return import_inbox_file(lock, source, APRIL), True
+            return import_inbox_file(lock, source, coverage), True
+
+
+CRASHED_CONTENT = payload("01.04.2026")
+# More file steps than an import has, so a defect cannot loop forever.
+MOST_FILE_STEPS = 20
 
 
 class InjectedCrashTests(unittest.TestCase):
-    # A guard: the retry slices above built each state by hand; this reaches
-    # them by failing each file step of a real import in turn.
-    def test_a_crash_at_any_file_step_is_finished_by_a_rerun(self) -> None:
-        content = payload("01.04.2026")
-        # The archive's fsync and rename, the log's fsync, and the unlink; the
-        # fifth pass crashes nowhere.
-        for step in range(1, 6):
+    """Guards: the retry tests built each crash state by hand; these reach them
+    by failing each file step of a real import in turn, then rerunning.
+    """
+
+    def _crash_at_every_step(
+        self,
+        coverage: Coverage,
+        check: Callable[[Profile, Path, InboxImport], None],
+    ) -> int:
+        """Crash at step 1, 2, … until an import crashes nowhere; check each.
+
+        Returns the number of passes, the last of which did not crash.
+        """
+        step = 0
+        crashed = True
+        while crashed and step < MOST_FILE_STEPS:
+            step += 1
             with self.subTest(step=step), TemporaryDirectory() as directory:
                 profile = household(Path(directory))
-                source = drop(profile, "joint-current", EXPORT, content)
+                source = drop(profile, "joint-current", EXPORT, CRASHED_CONTENT)
+                result, crashed = import_with_crash_at(profile, source, coverage, step)
+                check(profile, source, result)
+        return step
 
-                result, crashed = import_with_crash_at(profile, source, step)
+    def test_a_crash_at_any_file_step_is_finished_by_a_rerun(self) -> None:
+        def finished_once(profile: Profile, source: Path, result: InboxImport) -> None:
+            with BronzeStore(profile) as store:
+                assert store.import_runs() == (result.import_run,)
+            assert result.import_run.outcome == "stored"
+            assert [entry["import_run_id"] for entry in log_entries(profile)] == [
+                result.import_run.import_run_id
+            ]
+            archived = profile.exports / result.archive_path
+            assert archived.read_bytes() == CRASHED_CONTENT
+            assert not source.exists()
 
-                assert crashed == (step < 5)
-                with BronzeStore(profile) as store:
-                    assert store.import_runs() == (result.import_run,)
-                assert result.import_run.outcome == "stored"
-                assert [entry["import_run_id"] for entry in log_entries(profile)] == [
-                    result.import_run.import_run_id
-                ]
-                archived = profile.exports / result.archive_path
-                assert archived.read_bytes() == content
-                assert not source.exists()
+        passes = self._crash_at_every_step(APRIL, finished_once)
+
+        # The archive's fsync and rename, the log's fsync, and the unlink.
+        assert passes > 4
+
+    def test_a_crash_while_refusing_leaves_every_refused_run_logged(self) -> None:
+        def every_run_logged(
+            profile: Profile, source: Path, result: InboxImport
+        ) -> None:
+            # A refused run is never retried, so a rerun after a crash adds
+            # its own refused run; both must reach the log, in Bronze's order.
+            with BronzeStore(profile) as store:
+                runs = store.import_runs()
+            assert result.import_run in runs
+            assert {run.outcome for run in runs} == {"refused"}
+            assert [entry["import_run_id"] for entry in log_entries(profile)] == [
+                run.import_run_id for run in runs
+            ]
+            archived = profile.exports / result.archive_path
+            assert archived.read_bytes() == CRASHED_CONTENT
+            assert source.read_bytes() == CRASHED_CONTENT
+
+        passes = self._crash_at_every_step(THROUGH_MAY_3, every_run_logged)
+
+        # The refused copy's fsync and rename, and the log's fsync.
+        assert passes > 3
 
 
 class ChangedSourceTests(unittest.TestCase):
@@ -637,17 +681,47 @@ class WriterLockTests(unittest.TestCase):
             assert_nothing_written(profile, source, content)
 
 
+class CutOffProofTests(unittest.TestCase):
+    def test_a_cut_off_entry_is_never_completed_from_a_run_not_yet_archived(
+        self,
+    ) -> None:
+        # A guard: an entry is written only after its run is archived, so an
+        # unarchived run cannot be the one a cut-off entry began.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            record_in_bronze_only(
+                profile,
+                drop(profile, "joint-current", EXPORT, payload("01.04.2026")),
+                APRIL,
+            )
+            profile.import_log_file.write_bytes(b"{")
+            content = payload("02.04.2026")
+            source = drop(profile, "joint-savings", EXPORT, content)
+
+            with (
+                writer_lock(profile) as lock,
+                pytest.raises(ImportLogDamagedError),
+            ):
+                import_inbox_file(lock, source, APRIL)
+
+            assert profile.import_log_file.read_bytes() == b"{"
+            assert source.read_bytes() == content
+            assert not profile.exports.exists()
+
+
 class DamagedLogTests(unittest.TestCase):
     def test_a_log_line_no_run_accounts_for_is_refused_before_writing(self) -> None:
-        damages = {
-            "a blank line": b"\n",
-            "an entry for a run Bronze never recorded": (
+        damages: dict[str, Callable[[bytes], bytes]] = {
+            "a blank line": lambda _: b"\n",
+            "an entry for a run Bronze never recorded": lambda _: (
                 b'{"format": 1, "import_run_id": "no-such-run"}\n'
             ),
-            "a line that is not JSON": b"not an entry\n",
-            "an entry that names no run": b'{"format": 1}\n',
+            "a line that is not JSON": lambda _: b"not an entry\n",
+            "an entry that names no run": lambda _: b'{"format": 1}\n',
+            # A guard: added with the check that every line is a run's entry.
+            "a second entry for one run": lambda log: log,
         }
-        for problem, damage in damages.items():
+        for problem, damage_to in damages.items():
             with self.subTest(problem), TemporaryDirectory() as directory:
                 profile = household(Path(directory))
                 with writer_lock(profile) as lock:
@@ -656,7 +730,8 @@ class DamagedLogTests(unittest.TestCase):
                         drop(profile, "joint-current", EXPORT, payload("01.04.2026")),
                         APRIL,
                     )
-                damaged = profile.import_log_file.read_bytes() + damage
+                log = profile.import_log_file.read_bytes()
+                damaged = log + damage_to(log)
                 profile.import_log_file.write_bytes(damaged)
                 content = payload("02.04.2026")
                 source = drop(profile, "joint-savings", EXPORT, content)
