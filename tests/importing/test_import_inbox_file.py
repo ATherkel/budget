@@ -637,6 +637,42 @@ class WriterLockTests(unittest.TestCase):
             assert_nothing_written(profile, source, content)
 
 
+class DamagedLogTests(unittest.TestCase):
+    def test_a_log_line_no_run_accounts_for_is_refused_before_writing(self) -> None:
+        damages = {
+            "a blank line": b"\n",
+            "an entry for a run Bronze never recorded": (
+                b'{"format": 1, "import_run_id": "no-such-run"}\n'
+            ),
+            "a line that is not JSON": b"not an entry\n",
+            "an entry that names no run": b'{"format": 1}\n',
+        }
+        for problem, damage in damages.items():
+            with self.subTest(problem), TemporaryDirectory() as directory:
+                profile = household(Path(directory))
+                with writer_lock(profile) as lock:
+                    import_inbox_file(
+                        lock,
+                        drop(profile, "joint-current", EXPORT, payload("01.04.2026")),
+                        APRIL,
+                    )
+                damaged = profile.import_log_file.read_bytes() + damage
+                profile.import_log_file.write_bytes(damaged)
+                content = payload("02.04.2026")
+                source = drop(profile, "joint-savings", EXPORT, content)
+
+                with (
+                    writer_lock(profile) as lock,
+                    pytest.raises(ImportLogDamagedError),
+                ):
+                    import_inbox_file(lock, source, APRIL)
+
+                assert profile.import_log_file.read_bytes() == damaged
+                assert source.read_bytes() == content
+                with BronzeStore(profile) as store, pytest.raises(KeyError):
+                    store.get_payload(sha256(content).hexdigest())
+
+
 class RefusedImportTests(unittest.TestCase):
     def test_a_refused_run_is_logged_with_a_refused_copy_and_stays_in_the_inbox(
         self,
