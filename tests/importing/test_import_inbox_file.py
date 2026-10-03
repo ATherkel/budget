@@ -141,5 +141,37 @@ class OrdinaryImportTests(unittest.TestCase):
             assert entries[1]["covers_through"] == "2026-05-03"
 
 
+class RefusedImportTests(unittest.TestCase):
+    def test_a_refused_run_is_logged_with_a_refused_copy_and_stays_in_the_inbox(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            source = drop(profile, "joint-current", EXPORT, content)
+            # The declared range ends after the export date, so Bronze refuses.
+            past_the_export = Coverage(
+                covers_from=date(2026, 4, 1), covers_through=date(2026, 5, 3)
+            )
+
+            with writer_lock(profile) as lock:
+                result = import_inbox_file(lock, source, past_the_export)
+
+            refused_copy = (
+                f"joint-current/refused/{sha256(content).hexdigest()[:12]}/{EXPORT}"
+            )
+            assert result.import_run.outcome == "refused"
+            assert result.left_in_inbox
+            assert source.read_bytes() == content
+            assert result.archive_path == refused_copy
+            assert (profile.exports / refused_copy).read_bytes() == content
+            assert not (profile.exports / "joint-current" / EXPORT).exists()
+            [entry] = log_entries(profile)
+            assert entry["import_run_id"] == result.import_run.import_run_id
+            assert entry["outcome"] == "refused"
+            assert entry["archive_path"] == refused_copy
+            assert entry["covers_through"] == "2026-05-03"
+
+
 if __name__ == "__main__":
     unittest.main()
