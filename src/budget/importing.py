@@ -13,6 +13,7 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import date
+from hashlib import sha256
 from pathlib import Path
 from typing import Final
 
@@ -25,6 +26,8 @@ IMPORT_LOG_FORMAT: Final = 1
 # How much of the payload hash names an archive folder (operations.md, W1).
 HASH_PREFIX_LENGTH: Final = 12
 REFUSED_FOLDER: Final = "refused"
+# The outcomes a rerun finishes rather than presenting the file again.
+RETRIED_OUTCOMES: Final = frozenset({"stored", "repeat"})
 
 
 class ArchiveConflictError(RuntimeError):
@@ -185,6 +188,28 @@ def _append_to_log(path: Path, entry: dict[str, object]) -> None:
         os.fsync(file.fileno())
 
 
+def _logged_run_ids(path: Path) -> set[str]:
+    """Return the import runs `imports.jsonl` already mirrors."""
+    if not path.exists():
+        return set()
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return {json.loads(line)["import_run_id"] for line in lines}
+
+
+def _earlier_run(store: BronzeStore, account_id: str, source: Path) -> ImportRun | None:
+    """Return the accepted run an interrupted import of this file left behind.
+
+    The retry identity is the account, the original filename and the payload
+    hash. A refused run never matches: presenting the file again is new.
+    """
+    identity = (account_id, source.name, sha256(source.read_bytes()).hexdigest())
+    for run in store.import_runs():
+        found = (run.declared_account_id, run.original_filename, run.payload_id)
+        if found == identity and run.outcome in RETRIED_OUTCOMES:
+            return run
+    return None
+
+
 def import_inbox_file(
     lock: WriterLock,
     source: Path,
@@ -201,11 +226,14 @@ def import_inbox_file(
         exported_on=coverage.exported_on,
     )
     with BronzeStore(profile) as store:
-        run = store.import_file(source, declaration)
+        run = _earlier_run(store, account.account_id, source)
+        if run is None:
+            run = store.import_file(source, declaration)
         content = store.get_payload(run.payload_id).content
 
     archive_path = _archive(profile.exports, run, content)
-    _append_to_log(profile.import_log_file, _log_entry(run, archive_path))
+    if run.import_run_id not in _logged_run_ids(profile.import_log_file):
+        _append_to_log(profile.import_log_file, _log_entry(run, archive_path))
     refused = run.outcome == "refused"
     if not refused:
         source.unlink()
