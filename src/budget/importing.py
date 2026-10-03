@@ -31,20 +31,22 @@ RETRIED_OUTCOMES: Final = frozenset({"stored", "repeat"})
 
 
 class ArchiveConflictError(RuntimeError):
-    """The archive already holds different bytes where this export must go.
+    """The archive already holds other bytes everywhere a run's export may go.
 
-    Nothing is overwritten. The import run is recorded in Bronze and the file
-    stays in the inbox, so the import resumes once the archive is put right.
-    The message names the account only, never a filename.
+    Nothing is overwritten. The run stays recorded in Bronze but not logged,
+    and every later import stops before writing until the archive is put
+    right. The message names the account and the run, never a filename.
     """
 
-    def __init__(self, account_id: str) -> None:
-        """Name the account whose archive folder holds the conflicting bytes."""
-        self.account_id = account_id
+    def __init__(self, run: ImportRun) -> None:
+        """Name the account and the import run that cannot be archived."""
+        self.account_id = run.declared_account_id
+        self.import_run_id = run.import_run_id
         super().__init__(
-            f'account "{account_id}": the export archive already holds other '
-            "bytes under this export's name and under its hash folder; nothing "
-            "was overwritten, and the file stays in the inbox"
+            f'account "{self.account_id}", import run {self.import_run_id}: the '
+            "export archive already holds other bytes everywhere this run's "
+            "export may go; nothing was overwritten. Move the conflicting file "
+            "aside, then rerun."
         )
 
 
@@ -162,7 +164,7 @@ def _archived_at(profile: Profile, run: ImportRun, content: bytes) -> tuple[str,
             return archive_path, False
         if target.is_file() and target.read_bytes() == content:
             return archive_path, True
-    raise ArchiveConflictError(run.declared_account_id)
+    raise ArchiveConflictError(run)
 
 
 def _archive(profile: Profile, run: ImportRun, content: bytes) -> str:
@@ -272,19 +274,22 @@ def _recovered_log(profile: Profile, store: BronzeStore) -> frozenset[str]:
 
 def _bring_log_up_to_date(
     profile: Profile, store: BronzeStore, logged: frozenset[str]
-) -> None:
+) -> frozenset[str]:
     """Archive and log every run Bronze holds that the log does not, oldest first.
 
     A crash can leave a run in Bronze and nowhere else. A refused run's file
     stays in the inbox, so no retry of that file would finish it; this does,
-    from the bytes Bronze retains.
+    from the bytes Bronze retains. Returns every run the log now mirrors.
     """
+    now_logged = set(logged)
     for run in store.import_runs():
-        if run.import_run_id in logged:
+        if run.import_run_id in now_logged:
             continue
         content = store.get_payload(run.payload_id).content
         archive_path = _archive(profile, run, content)
         _append_to_log(profile.import_log_file, _log_entry(run, archive_path))
+        now_logged.add(run.import_run_id)
+    return frozenset(now_logged)
 
 
 def _holds(source: Path, payload_id: str) -> bool:
@@ -322,7 +327,9 @@ def import_inbox_file(
         exported_on=coverage.exported_on,
     )
     with BronzeStore(profile) as store:
-        logged = _recovered_log(profile, store)
+        # Earlier runs are finished first, so one that cannot be stops this
+        # import before it records anything of its own.
+        logged = _bring_log_up_to_date(profile, store, _recovered_log(profile, store))
         run = _earlier_run(store, account.account_id, source)
         if run is None:
             run = store.import_file(source, declaration)
