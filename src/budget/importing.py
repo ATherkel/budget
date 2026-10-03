@@ -49,7 +49,18 @@ class ArchiveConflictError(RuntimeError):
 
 
 class ImportLogDamagedError(RuntimeError):
-    """`imports.jsonl` holds what no recorded import run accounts for."""
+    """`imports.jsonl` holds what no recorded import run accounts for.
+
+    Nothing was written. The log is never repaired by guessing: an operator
+    restores it from the newest backup set, as for the decision log.
+    """
+
+    def __init__(self) -> None:
+        """State the problem without quoting the log's content."""
+        super().__init__(
+            "imports.jsonl holds an entry no recorded import run accounts for; "
+            "nothing was written. Restore the log from the newest backup set."
+        )
 
 
 class NotAnInboxFileError(ValueError):
@@ -137,20 +148,28 @@ def _archive_candidates(run: ImportRun) -> tuple[str, ...]:
     return (f"{account_id}/{name}", f"{account_id}/{hash_prefix}/{name}")
 
 
-def _archive(exports: Path, run: ImportRun, content: bytes) -> str:
-    """Archive the bytes where they are, or where nothing is yet.
+def _archived_at(exports: Path, run: ImportRun, content: bytes) -> tuple[str, bool]:
+    """Return where the run's bytes belong, and whether they are there already.
 
-    A candidate that already holds these bytes is reused, so a retry finds the
-    same place. One that holds anything else is never overwritten.
+    The first candidate that already holds these bytes is the place, so a
+    retry finds it again; otherwise the first free one is. A candidate that
+    holds anything else is never overwritten.
     """
     for archive_path in _archive_candidates(run):
         target = exports / archive_path
         if not target.exists():
-            _write_durably(target, content)
-            return archive_path
+            return archive_path, False
         if target.is_file() and target.read_bytes() == content:
-            return archive_path
+            return archive_path, True
     raise ArchiveConflictError(run.declared_account_id)
+
+
+def _archive(exports: Path, run: ImportRun, content: bytes) -> str:
+    """Archive the run's bytes, unless they are archived already."""
+    archive_path, archived = _archived_at(exports, run, content)
+    if not archived:
+        _write_durably(exports / archive_path, content)
+    return archive_path
 
 
 def _write_durably(path: Path, content: bytes) -> None:
@@ -164,9 +183,9 @@ def _write_durably(path: Path, content: bytes) -> None:
     partial.rename(path)
 
 
-def _log_entry(run: ImportRun, archive_path: str) -> dict[str, object]:
-    """Mirror one import run as an `imports.jsonl` entry."""
-    return {
+def _log_entry(run: ImportRun, archive_path: str) -> bytes:
+    """Mirror one import run as an `imports.jsonl` line, with its line feed."""
+    entry = {
         "format": IMPORT_LOG_FORMAT,
         "import_run_id": run.import_run_id,
         "account_id": run.declared_account_id,
@@ -181,23 +200,71 @@ def _log_entry(run: ImportRun, archive_path: str) -> dict[str, object]:
         "outcome": run.outcome,
         "repeat_of": run.repeat_of,
     }
+    return (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
 
 
-def _append_to_log(path: Path, entry: dict[str, object]) -> None:
-    """Append one entry and force it to disk before going on."""
-    line = json.dumps(entry, ensure_ascii=False) + "\n"
+def _append_to_log(path: Path, data: bytes) -> None:
+    """Append to the log and force it to disk before going on."""
     with path.open("ab") as file:
-        file.write(line.encode("utf-8"))
+        file.write(data)
         file.flush()
         os.fsync(file.fileno())
 
 
-def _logged_run_ids(path: Path) -> set[str]:
-    """Return the import runs `imports.jsonl` already mirrors."""
+@dataclass(frozen=True)
+class _LogState:
+    """The runs `imports.jsonl` mirrors, and any final entry a crash cut off."""
+
+    logged: frozenset[str]
+    cut_off: bytes
+
+
+def _read_log(path: Path) -> _LogState:
+    """Read the log's complete entries apart from a final line without a feed."""
     if not path.exists():
-        return set()
-    lines = path.read_text(encoding="utf-8").splitlines()
-    return {json.loads(line)["import_run_id"] for line in lines}
+        return _LogState(logged=frozenset(), cut_off=b"")
+    complete, _, cut_off = path.read_bytes().rpartition(b"\n")
+    logged = set()
+    for line in complete.splitlines():
+        try:
+            logged.add(json.loads(line)["import_run_id"])
+        except (ValueError, KeyError, TypeError):
+            raise ImportLogDamagedError from None
+    return _LogState(logged=frozenset(logged), cut_off=cut_off)
+
+
+def _proving_entry(exports: Path, store: BronzeStore, state: _LogState) -> bytes | None:
+    """Return the entry of an unlogged, archived run that the cut-off begins."""
+    for run in store.import_runs():
+        if run.import_run_id in state.logged:
+            continue
+        content = store.get_payload(run.payload_id).content
+        try:
+            archive_path, archived = _archived_at(exports, run, content)
+        except ArchiveConflictError:
+            continue
+        entry = _log_entry(run, archive_path)
+        if archived and entry.startswith(state.cut_off):
+            return entry
+    return None
+
+
+def _recovered_log(profile: Profile, store: BronzeStore) -> frozenset[str]:
+    """Bring a log a crash cut off back to whole entries, before any write.
+
+    A cut-off final entry is completed only when an unlogged run that is
+    already archived proves what it was going to say: the entry is written
+    after the archive, so no other run can be the one it began. Anything else
+    is refused, and the log is left exactly as it was found.
+    """
+    state = _read_log(profile.import_log_file)
+    if not state.cut_off:
+        return state.logged
+    entry = _proving_entry(profile.exports, store, state)
+    if entry is None:
+        raise ImportLogDamagedError
+    _append_to_log(profile.import_log_file, entry[len(state.cut_off) :])
+    return _read_log(profile.import_log_file).logged
 
 
 def _earlier_run(store: BronzeStore, account_id: str, source: Path) -> ImportRun | None:
@@ -230,13 +297,14 @@ def import_inbox_file(
         exported_on=coverage.exported_on,
     )
     with BronzeStore(profile) as store:
+        logged = _recovered_log(profile, store)
         run = _earlier_run(store, account.account_id, source)
         if run is None:
             run = store.import_file(source, declaration)
         content = store.get_payload(run.payload_id).content
 
     archive_path = _archive(profile.exports, run, content)
-    if run.import_run_id not in _logged_run_ids(profile.import_log_file):
+    if run.import_run_id not in logged:
         _append_to_log(profile.import_log_file, _log_entry(run, archive_path))
     refused = run.outcome == "refused"
     if not refused:
