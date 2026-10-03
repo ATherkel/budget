@@ -102,15 +102,19 @@ class Profile:
             raise UnknownProfileNameError(self.name)
         if self.name == TEST_PROFILE_NAME and self.root is None:
             raise TestProfileRootRequiredError
-        stores = Path(self.stores).resolve()
-        inputs = Path(self.inputs).resolve()
+        folders = {
+            "stores": Path(self.stores).resolve(),
+            "inputs": Path(self.inputs).resolve(),
+            "inbox": Path(self.inbox).resolve(),
+            "exports": Path(self.exports).resolve(),
+        }
         root = None if self.root is None else Path(self.root).resolve()
         if root is not None and not all(
-            folder.is_relative_to(root) for folder in (stores, inputs)
+            folder.is_relative_to(root) for folder in folders.values()
         ):
             raise ProfilePathOutsideRootError
-        object.__setattr__(self, "stores", stores)
-        object.__setattr__(self, "inputs", inputs)
+        for field_name, folder in folders.items():
+            object.__setattr__(self, field_name, folder)
         object.__setattr__(self, "root", root)
 
     def _guarded_path(self, path: Path) -> Path:
@@ -138,7 +142,7 @@ class Profile:
     @property
     def import_log_file(self) -> Path:
         """The append-only import log, re-checked against the test root each time."""
-        raise NotImplementedError
+        return self._guarded_path(Path(self.inputs) / IMPORT_LOG_FILE_NAME)
 
     @property
     def writer_lock_file(self) -> Path:
