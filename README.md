@@ -152,7 +152,8 @@ account's source format. The operation records the run in Bronze, archives the
 bytes under `exports/<account_id>/`, mirrors the run in `inputs/imports.jsonl`,
 and only then removes the file from the inbox. A refused run is logged with a
 copy under `exports/<account_id>/refused/`, and its file stays in the inbox. A
-rerun after a crash finishes the earlier run instead of adding one;
+rerun after a crash finishes an earlier stored or repeat run of the same file
+instead of adding one, while a refused file is presented again;
 [operations.md](docs/architecture/operations.md#importsjsonl-the-import-log)
 gives the rules.
 

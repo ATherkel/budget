@@ -173,8 +173,8 @@ port = 8750
 ```
 
 A development profile has `profile = "development"`, its own `stores`,
-`inbox`, `exports` and `inputs`, all four required in every profile file, and `upstream_backups` naming production's `backups` folder, which
-it only reads. It has no `[backups]` table, because only production writes
+`inbox`, `exports` and `inputs`, all four required in every profile file, and
+`upstream_backups` naming production's `backups` folder, which it only reads. It has no `[backups]` table, because only production writes
 backup sets.
 
 ### Where production lives
@@ -432,21 +432,26 @@ Every command that writes Bronze brings it up to date before it finishes, and
   payload hash>/<original filename>`, while the file itself stays in the inbox:
   the account's own folder holds only accepted exports, and replay can still
   restore the refusal. Archived bytes are never overwritten: when every place
-  an export may go already holds other bytes, the import stops and the file
-  stays in the inbox.
-- **Order.** Bronze commits the run first, then the bytes are archived, then
-  the entry is appended and forced to disk with `fsync`, and only then does an
-  accepted export leave the inbox. Before an import finishes, every run Bronze
-  holds that the log lacks is archived and logged, oldest first, from the
-  bytes Bronze retains. That includes a refused run a crash interrupted, whose
-  file no retry would ever finish.
+  a run's export may go already holds other bytes, that run is not logged,
+  and every import stops before writing anything until the conflicting file
+  is moved aside.
+- **Order.** Before an import writes anything of its own, every run Bronze
+  holds that the log lacks is archived and logged, oldest first, from the bytes
+  Bronze retains. That includes a refused run a crash interrupted, whose file no
+  retry would ever finish. Then Bronze commits the new run, its bytes are
+  archived, its entry is appended and forced to disk with `fsync`, and only
+  then does an accepted export leave the inbox, provided the file still holds
+  the bytes that were imported. A file saved over in the meantime stays.
+- **Every complete line is the one entry of a run Bronze recorded.** A blank
+  line, a second entry for a run, or an entry for a run Bronze never recorded,
+  as when Bronze is older than the log, stops the import before it writes.
+  Restore the log from the newest backup set, or Bronze from a newer one.
 - **A cut-off final entry.** Every entry ends with a line feed. A final line
   without one was cut off by a crash. Unlike the decision log's, it is
   completed, never deleted, when Bronze proves what it was going to say: the
   line must begin the entry of a run that is archived but not yet logged. The
-  rest of that entry is then appended. Any other content the log cannot account
-  for stops the import before anything is written; restore the log from the
-  newest backup set.
+  rest of that entry is then appended. A cut-off line no such run proves stops
+  the import before it writes, as above.
 
 ## The Validation Boundary for Decisions
 
@@ -653,9 +658,10 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | Misfiled export (the filename's account number is not the account's declared `bank_account_number`) | Rejected before Bronze: no import run is recorded and nothing reaches the import log; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file to the right account's folder, or fix the declaration, then rerun |
 | Format failure | Stored with its `FormatFailure`; Silver quarantines it; the file is archived | Settled by a parser fix and `rebuild --from bronze` |
 | Crash during an import | Each file is idempotent: a file whose account, original filename and payload hash already have a `stored` or `repeat` run is finished (archived, logged once, and removed from the inbox) without a new run. Any other run Bronze holds but the log lacks is archived and logged by the next import | Rerun `import` |
-| The archive holds other bytes everywhere an export may go | Nothing is overwritten; the run is recorded in Bronze; the file stays in the inbox | Move the conflicting archive file aside, then rerun |
+| The archive holds other bytes everywhere a run's export may go | Nothing is overwritten; the run stays in Bronze but is not logged; every import stops before writing, naming the account and the run | Move the conflicting archive file aside, then rerun |
+| An inbox file is saved over while it is imported | The run for the bytes that were read is stored, archived and logged; the new file stays in the inbox | Rerun `import` |
 | An import-log entry cut off by a crash | The next import completes it from the run Bronze holds | Nothing to do |
-| The import log holds what no import run accounts for | The import stops before writing anything | Restore `imports.jsonl` from the newest backup set |
+| The import log holds a line that is not the one entry of a recorded run | The import stops before writing anything | Restore `imports.jsonl` from the newest backup set |
 | Crash during a build | SQLite rolls back the uncommitted publication; the previous publication stays current | Rerun the command |
 | Another writing command is running | Exit 4 at once; nothing is written | Rerun when the other command ends |
 | A decision-log line cut off by a crash | `check` reports it; `decide` refuses | Delete the partial last line |
