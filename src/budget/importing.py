@@ -11,6 +11,7 @@ does the file leave the inbox.
 
 import json
 import os
+import sys
 from dataclasses import dataclass
 from datetime import date
 from hashlib import sha256
@@ -178,8 +179,27 @@ def _archive(profile: Profile, run: ImportRun, content: bytes) -> str:
     return archive_path
 
 
+def _sync_folder(folder: Path) -> None:
+    """Force a folder's new entries to disk, where the platform allows it.
+
+    Windows cannot open a folder to fsync it; NTFS journals a rename itself.
+    """
+    if sys.platform == "win32":
+        return
+    descriptor = os.open(folder, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def _write_durably(path: Path, content: bytes) -> None:
-    """Write a new file whole: a crash leaves only a temporary file behind."""
+    """Write a new file whole: a crash leaves only a temporary file behind.
+
+    The caller has checked under the writer lock that `path` is free. That
+    check is what keeps archived bytes from being overwritten: Windows refuses
+    to rename onto an existing file, but POSIX replaces it.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     partial = path.with_name(f".{path.name}.partial")
     with partial.open("wb") as file:
@@ -187,6 +207,7 @@ def _write_durably(path: Path, content: bytes) -> None:
         file.flush()
         os.fsync(file.fileno())
     partial.rename(path)
+    _sync_folder(path.parent)
 
 
 def _log_entry(run: ImportRun, archive_path: str) -> bytes:
