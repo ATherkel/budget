@@ -11,6 +11,7 @@ import errno
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
@@ -34,6 +35,17 @@ class StoresFolderUnavailableError(RuntimeError):
         """Name the folder and the operating system's reason."""
         reason = error.strerror or type(error).__name__
         super().__init__(f"the stores folder {folder} cannot be used: {reason}")
+
+
+@dataclass(frozen=True)
+class WriterLock:
+    """What `writer_lock` hands its `with` block: the profile it locked.
+
+    An operation that writes takes this instead of a bare profile, so it
+    cannot be called without the lock held for that profile.
+    """
+
+    profile: Profile
 
 
 if sys.platform == "win32":
@@ -73,7 +85,7 @@ else:
 
 
 @contextmanager
-def writer_lock(profile: Profile) -> Iterator[None]:
+def writer_lock(profile: Profile) -> Iterator[WriterLock]:
     """Hold the profile's writer lock for the length of a `with` block.
 
     Raises `WriterLockHeldError` at once when another command holds it, and
@@ -94,6 +106,6 @@ def writer_lock(profile: Profile) -> Iterator[None]:
         if not locked:
             raise WriterLockHeldError
         try:
-            yield
+            yield WriterLock(profile)
         finally:
             _unlock(file)
