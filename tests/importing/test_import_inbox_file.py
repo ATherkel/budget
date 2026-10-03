@@ -340,6 +340,47 @@ class RetryTests(unittest.TestCase):
             ]
             assert not source.exists()
 
+    def test_every_run_bronze_holds_is_logged_before_an_import_finishes(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            refused_bytes = payload("01.04.2026")
+            refused_source = drop(profile, "joint-current", EXPORT, refused_bytes)
+            # A refused run's crash came after Bronze committed. Its file stays
+            # in the inbox, so no retry of that file would ever finish it.
+            with BronzeStore(profile) as store:
+                interrupted = store.import_file(
+                    refused_source,
+                    ImportDeclaration(
+                        declared_account_id="joint-current",
+                        source_format="danske-csv-v1",
+                        covers_from=date(2026, 4, 1),
+                        covers_through=date(2026, 5, 3),
+                    ),
+                )
+
+            with writer_lock(profile) as lock:
+                result = import_inbox_file(
+                    lock,
+                    drop(profile, "joint-savings", EXPORT, payload("02.04.2026")),
+                    APRIL,
+                )
+
+            refused_copy = (
+                f"joint-current/refused/{sha256(refused_bytes).hexdigest()[:12]}/"
+                f"{EXPORT}"
+            )
+            assert interrupted.outcome == "refused"
+            assert (profile.exports / refused_copy).read_bytes() == refused_bytes
+            entries = log_entries(profile)
+            assert [entry["import_run_id"] for entry in entries] == [
+                interrupted.import_run_id,
+                result.import_run.import_run_id,
+            ]
+            assert entries[0]["archive_path"] == refused_copy
+            assert refused_source.read_bytes() == refused_bytes
+
     def test_a_refused_run_is_not_finished_by_a_corrected_rerun(self) -> None:
         # A guard: a corrected declaration is a new presentation, never a retry.
         with TemporaryDirectory() as directory:
