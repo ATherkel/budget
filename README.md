@@ -158,7 +158,9 @@ budget --profile "$env:APPDATA\budget\development.toml" migrate
 names it explicitly, and `--stage silver` or `--stage gold` is refused until
 those stores exist. A writing command holds the operating system's lock on
 `budget.lock` in the stores folder for its whole run, so a second one refuses at
-once. Production migration is refused until issue #120 adds the backup it
+once. On Windows the lock of a command that was killed or crashed is released a
+moment late, so an immediate rerun can report another command running; rerun
+it shortly. Production migration is refused until issue #120 adds the backup it
 needs.
 
 | Exit | Meaning |
@@ -167,4 +169,4 @@ needs.
 | 1 | Unexpected error: a defect, such as a broken packaged migration |
 | 2 | Usage error, including a command that is not built yet |
 | 3 | The profile file is missing, unreadable, not UTF-8, invalid or of an unknown format |
-| 4 | Refused environment: no profile, production, a stage not built yet, a store of another profile or schema version, SQLite below the floor, a stores folder that cannot be used, or another command running |
+| 4 | Refused environment: no profile, production, a stage not built yet, a store of another profile or schema version, SQLite below the floor, a stores folder that cannot be used, a store another program holds, or another command running |

@@ -57,6 +57,14 @@ class StoreNotFoundError(BronzeStorageError):
         super().__init__(f"no Bronze store at {path}: migrate the profile first")
 
 
+class StoreBusyError(BronzeStorageError):
+    """Another program held the store past the busy timeout."""
+
+    def __init__(self, path: Path) -> None:
+        """Name the store and what the operator can do about it."""
+        super().__init__(f"{path} is in use by another program: close it and rerun")
+
+
 class UnversionedStoreError(BronzeStorageError):
     """An existing store carries tables but no schema version."""
 
@@ -311,8 +319,8 @@ def require_migration_allowed(profile: Profile) -> None:
     """Refuse a migration this interpreter or profile cannot run.
 
     These checks touch no folder or file, so a command can run them before it
-    takes the profile's writer lock: production migration waits for the
-    backup and command work.
+    takes the profile's writer lock. Production is refused because its
+    migration waits for the backup and command work in issue #120.
     """
     _require_supported_sqlite()
     if profile.name == PRODUCTION_PROFILE_NAME:
@@ -358,6 +366,12 @@ def migrate_bronze(profile: Profile) -> None:
                     _apply_step(connection, profile, step)
             finally:
                 connection.execute("PRAGMA foreign_keys = ON")
+    except sqlite3.OperationalError as error:
+        # The primary code, so BUSY's extended variants count too; any other
+        # operational error, such as a broken migration, stays a defect.
+        if error.sqlite_errorcode & 0xFF != sqlite3.SQLITE_BUSY:
+            raise
+        raise StoreBusyError(path) from None
     finally:
         connection.close()
 
