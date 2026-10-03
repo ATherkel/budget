@@ -6,7 +6,8 @@ Render household financial information for phone and desktop browsers.
 
 ## Boundary
 
-Presentation consumes analytics report DTOs only. It does not classify
+Presentation consumes analytics reports only, as defined in
+[`report-contract.md`](report-contract.md). It does not classify
 transactions, calculate financial totals, or access source data. It never
 reads Gold either: it names the publication in the report context, and
 analytics opens it.
@@ -67,6 +68,12 @@ must preserve the analytics-facing DTO boundary.
   of the publication's `known_at`, not today
   ([`publications.md`](publications.md)). How the picker and banner look
   belongs to issue #11.
+- A page opened on the current publication keeps reading it after a newer
+  build becomes current, so its parts never mix two publications. That is a
+  superseded page, not a past view: instead of the banner, it says that newer
+  figures exist and offers a reload. When its result is no longer retained,
+  the page offers the current publication explicitly and never substitutes it
+  ([`report-contract.md`](report-contract.md#reportpublication)).
 - Account and balance views must reflect each account's coverage status from
   analytics; a `partial` or `no_data` account must never render as if its
   balance or totals are complete.

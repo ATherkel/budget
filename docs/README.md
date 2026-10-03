@@ -16,9 +16,12 @@ agent authority outside its boundary.
 
 ## Normative Documents
 
-- `architecture/gold-contract.md` is the public data contract for analytics,
-  forecasting, and presentation. Downstream code must not depend on Bronze or
-  Silver storage or types.
+- `architecture/gold-contract.md` is the public data contract for analytics
+  and forecasting. Downstream code must not depend on Bronze or Silver storage
+  or types.
+- `architecture/report-contract.md` is the contract between analytics and
+  presentation: the report context and the reports analytics returns.
+  Presentation never reads Gold.
 - `domains/` defines business meaning. It takes precedence over an individual
   layer document when there is a conflict.
 - `domains/category-changes.md` is an append-only record rather than a
