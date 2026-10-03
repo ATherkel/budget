@@ -87,6 +87,59 @@ class OrdinaryImportTests(unittest.TestCase):
             assert not current.exists()
             assert not savings.exists()
 
+    # Guards rather than red tests: a format failure is a `stored` run and a
+    # repeat is accepted like one, so both passed as soon as stored runs did.
+    def test_a_format_failure_is_archived_and_logged_like_any_stored_run(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = b'"Date","Text"\r\n"2026-04-01","not this bank"'
+            source = drop(profile, "joint-current", EXPORT, content)
+
+            with writer_lock(profile) as lock:
+                result = import_inbox_file(lock, source, APRIL)
+
+            run = result.import_run
+            assert run.outcome == "stored"
+            with BronzeStore(profile) as store:
+                assert len(store.get_format_failures(run.payload_id)) == 1
+                assert store.get_source_records(run.payload_id) == ()
+            assert (profile.exports / "joint-current" / EXPORT).read_bytes() == content
+            assert [entry["outcome"] for entry in log_entries(profile)] == ["stored"]
+            assert not result.left_in_inbox
+            assert not source.exists()
+
+    def test_the_same_bytes_in_a_later_export_are_a_new_repeat_run(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            later = "export-20260503.csv"
+            through_may_3 = Coverage(
+                covers_from=date(2026, 4, 1), covers_through=date(2026, 5, 3)
+            )
+
+            with writer_lock(profile) as lock:
+                first = import_inbox_file(
+                    lock, drop(profile, "joint-current", EXPORT, content), APRIL
+                )
+                again = import_inbox_file(
+                    lock, drop(profile, "joint-current", later, content), through_may_3
+                )
+
+            assert again.import_run.outcome == "repeat"
+            assert again.import_run.repeat_of == first.import_run.import_run_id
+            assert again.archive_path == "joint-current/export-20260503.csv"
+            assert (profile.exports / "joint-current" / later).read_bytes() == content
+            entries = log_entries(profile)
+            assert [entry["import_run_id"] for entry in entries] == [
+                first.import_run.import_run_id,
+                again.import_run.import_run_id,
+            ]
+            assert entries[1]["outcome"] == "repeat"
+            assert entries[1]["repeat_of"] == first.import_run.import_run_id
+            assert entries[1]["covers_through"] == "2026-05-03"
+
 
 if __name__ == "__main__":
     unittest.main()
