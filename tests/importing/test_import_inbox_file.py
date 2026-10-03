@@ -24,7 +24,7 @@ from budget.importing import (
     import_inbox_file,
 )
 from budget.inputs import ConfigurationError, MisfiledExportError
-from budget.locking import writer_lock
+from budget.locking import WriterLockReleasedError, writer_lock
 from budget.profiles import Profile
 from tests.importing.households import drop, household, log_entries, payload
 
@@ -467,6 +467,21 @@ class CutOffLogTests(unittest.TestCase):
             with BronzeStore(profile) as store, pytest.raises(KeyError):
                 store.get_payload(sha256(content).hexdigest())
             assert not (profile.exports / "joint-savings").exists()
+
+
+class WriterLockTests(unittest.TestCase):
+    def test_a_released_lock_is_refused_before_writing(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            source = drop(profile, "joint-current", EXPORT, content)
+            with writer_lock(profile) as lock:
+                pass
+
+            with pytest.raises(WriterLockReleasedError):
+                import_inbox_file(lock, source, APRIL)
+
+            assert_nothing_written(profile, source, content)
 
 
 class RefusedImportTests(unittest.TestCase):

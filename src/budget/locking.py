@@ -37,6 +37,10 @@ class StoresFolderUnavailableError(RuntimeError):
         super().__init__(f"the stores folder {folder} cannot be used: {reason}")
 
 
+class WriterLockReleasedError(RuntimeError):
+    """A write was attempted with a writer lock whose `with` block has ended."""
+
+
 @dataclass(frozen=True)
 class WriterLock:
     """What `writer_lock` hands its `with` block: the profile it locked.
