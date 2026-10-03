@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 import pytest
 
-from budget.bronze import BronzeStore, ImportDeclaration
+from budget.bronze import BronzeStore, ImportDeclaration, ImportRun
 from budget.importing import (
     ArchiveConflictError,
     Coverage,
@@ -33,8 +33,12 @@ from budget.locking import WriterLockReleasedError, writer_lock
 from budget.profiles import Profile
 from tests.importing.households import drop, household, log_entries, payload
 
-APRIL = Coverage(covers_from=date(2026, 4, 1), covers_through=date(2026, 5, 2))
 EXPORT = "export-20260502.csv"
+APRIL = Coverage(covers_from=date(2026, 4, 1), covers_through=date(2026, 5, 2))
+LATER_EXPORT = "export-20260503.csv"
+# Right for LATER_EXPORT; for EXPORT it ends after the export date, so Bronze
+# refuses it.
+THROUGH_MAY_3 = Coverage(covers_from=date(2026, 4, 1), covers_through=date(2026, 5, 3))
 
 
 class OrdinaryImportTests(unittest.TestCase):
@@ -130,23 +134,23 @@ class OrdinaryImportTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             profile = household(Path(directory))
             content = payload("01.04.2026")
-            later = "export-20260503.csv"
-            through_may_3 = Coverage(
-                covers_from=date(2026, 4, 1), covers_through=date(2026, 5, 3)
-            )
 
             with writer_lock(profile) as lock:
                 first = import_inbox_file(
                     lock, drop(profile, "joint-current", EXPORT, content), APRIL
                 )
                 again = import_inbox_file(
-                    lock, drop(profile, "joint-current", later, content), through_may_3
+                    lock,
+                    drop(profile, "joint-current", LATER_EXPORT, content),
+                    THROUGH_MAY_3,
                 )
 
             assert again.import_run.outcome == "repeat"
             assert again.import_run.repeat_of == first.import_run.import_run_id
             assert again.archive_path == "joint-current/export-20260503.csv"
-            assert (profile.exports / "joint-current" / later).read_bytes() == content
+            assert (
+                profile.exports / "joint-current" / LATER_EXPORT
+            ).read_bytes() == content
             entries = log_entries(profile)
             assert [entry["import_run_id"] for entry in entries] == [
                 first.import_run.import_run_id,
@@ -286,6 +290,22 @@ class RefusedBeforeBronzeTests(unittest.TestCase):
             assert_nothing_written(profile, source, content)
 
 
+def record_in_bronze_only(
+    profile: Profile, source: Path, coverage: Coverage
+) -> ImportRun:
+    """Leave the state of a crash right after Bronze committed a joint-current run."""
+    with BronzeStore(profile) as store:
+        return store.import_file(
+            source,
+            ImportDeclaration(
+                declared_account_id="joint-current",
+                source_format="danske-csv-v1",
+                covers_from=coverage.covers_from,
+                covers_through=coverage.covers_through,
+            ),
+        )
+
+
 class RetryTests(unittest.TestCase):
     """A rerun after a crash finishes the earlier run instead of adding one.
 
@@ -301,16 +321,7 @@ class RetryTests(unittest.TestCase):
             content = payload("01.04.2026")
             source = drop(profile, "joint-current", EXPORT, content)
             # The crash came after Bronze committed, before the archive.
-            with BronzeStore(profile) as store:
-                earlier = store.import_file(
-                    source,
-                    ImportDeclaration(
-                        declared_account_id="joint-current",
-                        source_format="danske-csv-v1",
-                        covers_from=APRIL.covers_from,
-                        covers_through=APRIL.covers_through,
-                    ),
-                )
+            earlier = record_in_bronze_only(profile, source, APRIL)
 
             with writer_lock(profile) as lock:
                 result = import_inbox_file(lock, source, APRIL)
@@ -354,16 +365,7 @@ class RetryTests(unittest.TestCase):
             refused_source = drop(profile, "joint-current", EXPORT, refused_bytes)
             # A refused run's crash came after Bronze committed. Its file stays
             # in the inbox, so no retry of that file would ever finish it.
-            with BronzeStore(profile) as store:
-                interrupted = store.import_file(
-                    refused_source,
-                    ImportDeclaration(
-                        declared_account_id="joint-current",
-                        source_format="danske-csv-v1",
-                        covers_from=date(2026, 4, 1),
-                        covers_through=date(2026, 5, 3),
-                    ),
-                )
+            interrupted = record_in_bronze_only(profile, refused_source, THROUGH_MAY_3)
 
             with writer_lock(profile) as lock:
                 result = import_inbox_file(
@@ -392,12 +394,9 @@ class RetryTests(unittest.TestCase):
             profile = household(Path(directory))
             content = payload("01.04.2026")
             source = drop(profile, "joint-current", EXPORT, content)
-            past_the_export = Coverage(
-                covers_from=date(2026, 4, 1), covers_through=date(2026, 5, 3)
-            )
 
             with writer_lock(profile) as lock:
-                refused = import_inbox_file(lock, source, past_the_export)
+                refused = import_inbox_file(lock, source, THROUGH_MAY_3)
                 corrected = import_inbox_file(lock, source, APRIL)
 
             assert corrected.import_run.outcome == "stored"
@@ -417,11 +416,7 @@ class CutOffLogTests(unittest.TestCase):
     def test_an_entry_cut_off_by_a_crash_is_completed_from_its_run(self) -> None:
         with TemporaryDirectory() as directory:
             profile = household(Path(directory))
-            later = "export-20260503.csv"
             second = payload("02.04.2026")
-            through_may_3 = Coverage(
-                covers_from=date(2026, 4, 1), covers_through=date(2026, 5, 3)
-            )
             with writer_lock(profile) as lock:
                 import_inbox_file(
                     lock,
@@ -429,16 +424,18 @@ class CutOffLogTests(unittest.TestCase):
                     APRIL,
                 )
                 import_inbox_file(
-                    lock, drop(profile, "joint-current", later, second), through_may_3
+                    lock,
+                    drop(profile, "joint-current", LATER_EXPORT, second),
+                    THROUGH_MAY_3,
                 )
             complete = profile.import_log_file.read_bytes()
             first_entry_end = complete.index(b"\n") + 1
             cut_off = first_entry_end + (len(complete) - first_entry_end) // 2
             profile.import_log_file.write_bytes(complete[:cut_off])
-            source = drop(profile, "joint-current", later, second)
+            source = drop(profile, "joint-current", LATER_EXPORT, second)
 
             with writer_lock(profile) as lock:
-                import_inbox_file(lock, source, through_may_3)
+                import_inbox_file(lock, source, THROUGH_MAY_3)
 
             assert profile.import_log_file.read_bytes() == complete
             assert not source.exists()
@@ -570,12 +567,9 @@ class RefusedImportTests(unittest.TestCase):
             content = payload("01.04.2026")
             source = drop(profile, "joint-current", EXPORT, content)
             # The declared range ends after the export date, so Bronze refuses.
-            past_the_export = Coverage(
-                covers_from=date(2026, 4, 1), covers_through=date(2026, 5, 3)
-            )
 
             with writer_lock(profile) as lock:
-                result = import_inbox_file(lock, source, past_the_export)
+                result = import_inbox_file(lock, source, THROUGH_MAY_3)
 
             refused_copy = (
                 f"joint-current/refused/{sha256(content).hexdigest()[:12]}/{EXPORT}"
