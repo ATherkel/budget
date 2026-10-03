@@ -30,7 +30,7 @@ from budget.importing import (
 )
 from budget.inputs import ConfigurationError, MisfiledExportError
 from budget.locking import WriterLockReleasedError, writer_lock
-from budget.profiles import Profile
+from budget.profiles import Profile, ProfilePathOutsideRootError
 from tests.importing.households import drop, household, log_entries, payload
 
 EXPORT = "export-20260502.csv"
@@ -183,6 +183,30 @@ class ArchiveNameTests(unittest.TestCase):
             assert (profile.exports / result.archive_path).read_bytes() == corrected
             assert (profile.exports / "joint-current" / EXPORT).read_bytes() == earlier
             assert log_entries(profile)[1]["archive_path"] == result.archive_path
+
+    def test_an_archive_folder_replaced_by_a_symlink_out_of_the_root_is_refused(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            source = drop(profile, "joint-current", EXPORT, content)
+            profile.exports.mkdir()
+            try:
+                (profile.exports / "joint-current").symlink_to(
+                    Path(outside), target_is_directory=True
+                )
+            except OSError as error:  # Windows may refuse without a privilege
+                self.skipTest(f"symlinks are unavailable here: {error}")
+
+            with (
+                writer_lock(profile) as lock,
+                pytest.raises(ProfilePathOutsideRootError),
+            ):
+                import_inbox_file(lock, source, APRIL)
+
+            assert list(Path(outside).iterdir()) == []
+            assert source.read_bytes() == content
 
     def test_conflicting_bytes_in_the_hash_folder_are_never_overwritten(
         self,
