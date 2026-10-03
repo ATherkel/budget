@@ -21,6 +21,9 @@ from budget.inputs import load_accounts
 from budget.locking import WriterLock
 
 IMPORT_LOG_FORMAT: Final = 1
+# How much of the payload hash names an archive folder (operations.md, W1).
+HASH_PREFIX_LENGTH: Final = 12
+REFUSED_FOLDER: Final = "refused"
 
 
 @dataclass(frozen=True)
@@ -48,6 +51,20 @@ class InboxImport:
     import_run: ImportRun
     archive_path: str
     left_in_inbox: bool
+
+
+def _archive_path(run: ImportRun) -> str:
+    """Name where a run's bytes are archived, relative to the export archive.
+
+    An accepted export keeps its original name in its account's folder. A
+    refused run's bytes are copied apart, under `refused/`, so the archive's
+    own folder holds only accepted exports while replay can still find them.
+    """
+    account_id = run.declared_account_id
+    if run.outcome == "refused":
+        hash_prefix = run.payload_id[:HASH_PREFIX_LENGTH]
+        return f"{account_id}/{REFUSED_FOLDER}/{hash_prefix}/{run.original_filename}"
+    return f"{account_id}/{run.original_filename}"
 
 
 def _write_durably(path: Path, content: bytes) -> None:
@@ -109,8 +126,10 @@ def import_inbox_file(
         run = store.import_file(source, declaration)
         content = store.get_payload(run.payload_id).content
 
-    archive_path = f"{account_id}/{source.name}"
-    _write_durably(profile.exports / account_id / source.name, content)
+    archive_path = _archive_path(run)
+    _write_durably(profile.exports / archive_path, content)
     _append_to_log(profile.import_log_file, _log_entry(run, archive_path))
-    source.unlink()
-    return InboxImport(import_run=run, archive_path=archive_path, left_in_inbox=False)
+    refused = run.outcome == "refused"
+    if not refused:
+        source.unlink()
+    return InboxImport(import_run=run, archive_path=archive_path, left_in_inbox=refused)
