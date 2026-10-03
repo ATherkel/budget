@@ -49,6 +49,7 @@ made.
 | Path | Contents |
 | --- | --- |
 | `src/budget/` | the application package |
+| `src/budget/cli.py` | the `budget` command line |
 | `src/budget/bronze/` | Bronze: raw payloads, import runs, source records |
 | `src/budget/bronze/parsers/` | the parser contract, the registry, and one module per source format |
 | `tests/` | `unittest` suites, discovered from the repository root |
@@ -106,7 +107,8 @@ A profile name is one of `development`, `production` or `test`; a test profile
 must name the temporary root it stays inside, and every path it derives,
 including the store file itself, is resolved and re-checked against that root on
 each access, so a folder or file replaced by a symlink is refused instead of
-followed. Nothing reads `BUDGET_PROFILE` or a profile file yet.
+followed. The command line below builds a development or production profile
+from a profile file; a test profile is never a file.
 
 `migrate_bronze` is the only operation that creates or upgrades a store. It
 applies the numbered SQL files in `src/budget/migrations/bronze/`, which ship
@@ -123,3 +125,58 @@ lands (issue #120), so these commands are for development and test profiles
 today. `BronzeStore(profile, parsers=...)` accepts an optional mapping for
 tests that need two versions of one format; the mapping is copied, and a parser
 registered under an ID it does not name is refused.
+
+## Command line
+
+`uv sync` installs a `budget` command; `python -m budget` runs the same thing.
+Every command needs a profile file, named by `--profile` or, failing that, the
+`BUDGET_PROFILE` environment variable. There is no default profile. Keep
+profile files outside the repository, for example in `%APPDATA%\budget\`. This
+PowerShell writes a development profile there, and refuses to replace one that
+already exists:
+
+```powershell
+$local = "$env:LOCALAPPDATA\budget"
+New-Item -ItemType Directory -Force "$env:APPDATA\budget" | Out-Null
+@"
+format = 1
+profile = "development"
+
+[paths]
+stores = '$local\dev'
+inputs = '$local\dev-household\inputs'
+"@ | Out-File -NoClobber -Encoding utf8 "$env:APPDATA\budget\development.toml"
+```
+
+PowerShell fills in `$env:LOCALAPPDATA` as it writes, so the file holds absolute
+paths such as `C:\Users\<you>\AppData\Local\budget\dev`: the application never
+expands variables in a profile file.
+
+The file is UTF-8 text, with or without a byte-order mark, and may hold only
+the keys
+[operations.md](docs/architecture/operations.md#selecting-a-profile)
+documents for its profile: `[backups]` and `paths.backups` belong to
+production, and `paths.upstream_backups` to development. `[paths].stores` and
+`[paths].inputs` are required and must be absolute. `profile` is `development`
+or `production`.
+
+```powershell
+budget --profile "$env:APPDATA\budget\development.toml" migrate
+```
+
+`migrate` creates or upgrades the profile's Bronze store; `--stage bronze`
+names it explicitly, and `--stage silver` or `--stage gold` is refused until
+those stores exist. A writing command holds the operating system's lock on
+`budget.lock` in the stores folder for its whole run, so a second one refuses at
+once. On Windows the lock of a command that was killed or crashed is released a
+moment late, so an immediate rerun can report another command running; rerun
+it shortly. Production migration is refused until issue #120 adds the backup it
+needs.
+
+| Exit | Meaning |
+| --- | --- |
+| 0 | Done |
+| 1 | Unexpected error: a defect, such as a broken packaged migration |
+| 2 | Usage error, including a command that is not built yet |
+| 3 | The profile file is missing, unreadable, not UTF-8, invalid or of an unknown format |
+| 4 | Refused environment: no profile, production, a stage not built yet, a store of another profile or schema version, SQLite below the floor, a stores folder that cannot be used, a store another program holds, or another command running |

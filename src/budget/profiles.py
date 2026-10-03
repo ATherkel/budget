@@ -6,6 +6,7 @@ implicitly: the caller builds the profile it means, so a test run cannot
 inherit the operator's shell.
 """
 
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -14,6 +15,7 @@ ACCOUNTS_FILE_NAME = "accounts.toml"
 BRONZE_STORE_NAME = "bronze.db"
 INPUTS_FOLDER = "inputs"
 STORES_FOLDER = "stores"
+WRITER_LOCK_NAME = "budget.lock"
 DEVELOPMENT_PROFILE_NAME = "development"
 PRODUCTION_PROFILE_NAME = "production"
 TEST_PROFILE_NAME = "test"
@@ -22,6 +24,28 @@ PROFILE_NAMES: Final = (
     PRODUCTION_PROFILE_NAME,
     TEST_PROFILE_NAME,
 )
+PROFILE_FILE_FORMAT: Final = 1
+# Test profiles are never files: the test suite builds each one (ADR-015).
+_FILE_PROFILE_NAMES: Final = (DEVELOPMENT_PROFILE_NAME, PRODUCTION_PROFILE_NAME)
+_SHARED_FILE_KEYS: Final = frozenset({"format", "profile", "paths", "dashboard"})
+_SHARED_PATH_KEYS: Final = frozenset({"stores", "inbox", "exports", "inputs"})
+# Only production writes backup sets; development only reads production's.
+_FILE_KEYS: Final = {
+    DEVELOPMENT_PROFILE_NAME: _SHARED_FILE_KEYS,
+    PRODUCTION_PROFILE_NAME: _SHARED_FILE_KEYS | {"backups"},
+}
+_PATH_KEYS: Final = {
+    DEVELOPMENT_PROFILE_NAME: _SHARED_PATH_KEYS | {"upstream_backups"},
+    PRODUCTION_PROFILE_NAME: _SHARED_PATH_KEYS | {"backups"},
+}
+
+
+class ProfileFileError(ValueError):
+    """A profile file the application cannot use: a configuration error."""
+
+    def __init__(self, path: Path, problem: str) -> None:
+        """Name the file and what is wrong with it."""
+        super().__init__(f"{path}: {problem}")
 
 
 class ProfilePathOutsideRootError(ValueError):
@@ -105,6 +129,115 @@ class Profile:
     def accounts_file(self) -> Path:
         """The account registry, re-checked against the test root each time."""
         return self._guarded_path(Path(self.inputs) / ACCOUNTS_FILE_NAME)
+
+    @property
+    def writer_lock_file(self) -> Path:
+        """The file a writing command locks, re-checked like every store path."""
+        return self._guarded_path(Path(self.stores) / WRITER_LOCK_NAME)
+
+
+def _read_profile_document(path: Path) -> dict[str, object]:
+    """Parse the file as TOML, turning every read failure into a refusal."""
+    try:
+        # `utf-8-sig` skips the byte-order mark some Windows editors write.
+        text = path.read_text(encoding="utf-8-sig")
+        # Rebuilt from its items, so the values are typed `object`, not
+        # the `Any` that `tomllib` returns; every check below narrows them.
+        document: dict[str, object] = dict(tomllib.loads(text).items())
+    except OSError as error:
+        reason = error.strerror or type(error).__name__
+        raise ProfileFileError(path, f"cannot be read: {reason}") from None
+    except UnicodeDecodeError:
+        raise ProfileFileError(path, "is not UTF-8 text") from None
+    except tomllib.TOMLDecodeError as error:
+        raise ProfileFileError(path, f"is not valid TOML: {error}") from None
+    return document
+
+
+def _require_format(path: Path, document: dict[str, object]) -> None:
+    """Refuse a file without the one format version this code reads."""
+    if "format" not in document:
+        raise ProfileFileError(path, "has no format version")
+    version = document["format"]
+    # `bool` is an `int` in Python, so `format = true` must not pass as 1.
+    if type(version) is not int or version != PROFILE_FILE_FORMAT:
+        raise ProfileFileError(
+            path,
+            f"format {version!r} is not supported: this code reads "
+            f"format {PROFILE_FILE_FORMAT}",
+        )
+
+
+def _require_known_keys(
+    path: Path,
+    table: dict[str, object],
+    *,
+    known: frozenset[str],
+    prefix: str,
+    profile: str,
+) -> None:
+    """Refuse a key the documented schema of this profile does not have."""
+    unknown = sorted(set(table) - known)
+    if unknown:
+        names = ", ".join(f"{prefix}{key}" for key in unknown)
+        raise ProfileFileError(path, f"unknown key {names} for a {profile} profile")
+
+
+def _profile_name(path: Path, document: dict[str, object]) -> str:
+    """Return the file's profile name, refusing `test` and unknown names."""
+    name = document.get("profile")
+    if name == TEST_PROFILE_NAME:
+        raise ProfileFileError(
+            path, "a test profile is never a file: the test suite builds it"
+        )
+    if not isinstance(name, str) or name not in _FILE_PROFILE_NAMES:
+        expected = " or ".join(_FILE_PROFILE_NAMES)
+        raise ProfileFileError(path, f"profile {name!r} is not {expected}")
+    return name
+
+
+def _paths_table(
+    path: Path, document: dict[str, object], profile: str
+) -> dict[str, object]:
+    """Return the `[paths]` table, refusing a key this profile does not have."""
+    table = document.get("paths")
+    if not isinstance(table, dict):
+        raise ProfileFileError(path, "has no [paths] table")
+    # Rebuilt so the values are typed `object`, as in `_read_profile_document`;
+    # TOML keys are always strings, so `str` changes nothing.
+    paths: dict[str, object] = {str(key): value for key, value in table.items()}
+    _require_known_keys(
+        path, paths, known=_PATH_KEYS[profile], prefix="paths.", profile=profile
+    )
+    return paths
+
+
+def _folder_path(path: Path, paths: dict[str, object], key: str) -> Path:
+    """Return `[paths].<key>`, which must be an absolute path."""
+    folder = paths.get(key)
+    if not isinstance(folder, str):
+        raise ProfileFileError(path, f"paths.{key} must be a path in quotes")
+    if not Path(folder).is_absolute():
+        raise ProfileFileError(path, f"paths.{key} must be an absolute path")
+    return Path(folder)
+
+
+def load_profile_file(path: Path) -> Profile:
+    """Build the profile that one operator's profile file describes.
+
+    The file is versioned TOML with only the keys `operations.md` documents
+    for its profile. Every problem is a `ProfileFileError` naming the file.
+    """
+    document = _read_profile_document(path)
+    _require_format(path, document)
+    name = _profile_name(path, document)
+    _require_known_keys(path, document, known=_FILE_KEYS[name], prefix="", profile=name)
+    paths = _paths_table(path, document, name)
+    return Profile(
+        name=name,
+        stores=_folder_path(path, paths, "stores"),
+        inputs=_folder_path(path, paths, "inputs"),
+    )
 
 
 def test_profile(root: str | Path) -> Profile:

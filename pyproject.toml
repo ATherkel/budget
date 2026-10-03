@@ -9,6 +9,9 @@ authors = [
 requires-python = ">=3.12"
 dependencies = []
 
+[project.scripts]
+budget = "budget.cli:run"
+
 [build-system]
 requires = ["uv_build>=0.12.13,<0.13.0"]
 build-backend = "uv_build"
@@ -47,6 +50,7 @@ ignore = [
     "S101",    # pytest uses bare `assert`
     "D",       # test names document the behaviour
     "PLR2004", # expected values are literal by design
+    "S603",    # tests start sys.executable with arguments they build
 ]
 
 [tool.ruff.lint.mccabe]
