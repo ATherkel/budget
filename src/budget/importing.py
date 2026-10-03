@@ -107,7 +107,8 @@ class InboxImport:
 
     `archive_path` is where its bytes are archived, relative to the profile's
     export archive and with `/` separators, as the import log records it. A
-    refused run leaves the file in the inbox.
+    refused run leaves the file in the inbox, and so does a file saved over
+    with other bytes while it was imported.
     """
 
     import_run: ImportRun
@@ -286,6 +287,11 @@ def _bring_log_up_to_date(
         _append_to_log(profile.import_log_file, _log_entry(run, archive_path))
 
 
+def _holds(source: Path, payload_id: str) -> bool:
+    """Report whether the file still holds the bytes of this payload."""
+    return sha256(source.read_bytes()).hexdigest() == payload_id
+
+
 def _earlier_run(store: BronzeStore, account_id: str, source: Path) -> ImportRun | None:
     """Return the accepted run an interrupted import of this file left behind.
 
@@ -324,7 +330,10 @@ def import_inbox_file(
         archive_path = _archive(profile, run, content)
         _bring_log_up_to_date(profile, store, logged)
 
-    refused = run.outcome == "refused"
-    if not refused:
+    # A file saved over since it was read is another presentation: it stays.
+    left_in_inbox = run.outcome == "refused" or not _holds(source, run.payload_id)
+    if not left_in_inbox:
         source.unlink()
-    return InboxImport(import_run=run, archive_path=archive_path, left_in_inbox=refused)
+    return InboxImport(
+        import_run=run, archive_path=archive_path, left_in_inbox=left_in_inbox
+    )
