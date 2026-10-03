@@ -11,7 +11,6 @@ import errno
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
@@ -40,16 +39,34 @@ class StoresFolderUnavailableError(RuntimeError):
 class WriterLockReleasedError(RuntimeError):
     """A write was attempted with a writer lock whose `with` block has ended."""
 
+    def __init__(self) -> None:
+        """Say why nothing was written."""
+        super().__init__(
+            "the writer lock was released when its with block ended: "
+            "nothing was written"
+        )
 
-@dataclass(frozen=True)
+
 class WriterLock:
     """What `writer_lock` hands its `with` block: the profile it locked.
 
     An operation that writes takes this instead of a bare profile, so it
-    cannot be called without the lock held for that profile.
+    cannot be called without the lock held for that profile. The token keeps
+    the locked file, which `writer_lock` closes when its block ends; from then
+    on the token refuses to name its profile.
     """
 
-    profile: Profile
+    def __init__(self, profile: Profile, locked_file: BinaryIO) -> None:
+        """Hold the profile and the file whose lock stands for it."""
+        self._profile = profile
+        self._locked_file = locked_file
+
+    @property
+    def profile(self) -> Profile:
+        """The locked profile, refused once the lock has been released."""
+        if self._locked_file.closed:
+            raise WriterLockReleasedError
+        return self._profile
 
 
 if sys.platform == "win32":
@@ -110,6 +127,6 @@ def writer_lock(profile: Profile) -> Iterator[WriterLock]:
         if not locked:
             raise WriterLockHeldError
         try:
-            yield WriterLock(profile)
+            yield WriterLock(profile, file)
         finally:
             _unlock(file)
