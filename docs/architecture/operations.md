@@ -434,9 +434,9 @@ Every command that writes Bronze brings it up to date before it finishes, and
   run's bytes are copied to `<account_id>/refused/<first 12 characters of the
   payload hash>/<original filename>`, while the file itself stays in the inbox:
   the account's own folder holds only accepted exports, and replay can still
-  restore the refusal. A place an entry names stays that run's, even while
-  its copy is missing: another export never takes it, and a retry of the run
-  writes a missing copy back there. Archived bytes are never overwritten:
+  restore the refusal. A place an entry names stays reserved for that run's
+  bytes, even while its copy is missing: other bytes never take it, and the
+  next run with those bytes writes a missing copy back there. Archived bytes are never overwritten:
   when every place a run's export may go already holds other bytes, that run
   is not logged, and every import stops before writing anything until the
   conflicting file is moved aside.
@@ -667,7 +667,7 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | Misfiled export (the filename's account number is not the account's declared `bank_account_number`) | Rejected before Bronze: no import run is recorded and nothing reaches the import log; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file to the right account's folder, or fix the declaration, then rerun |
 | Format failure | Stored with its `FormatFailure`; Silver quarantines it; the file is archived | Settled by a parser fix and `rebuild --from bronze` |
 | Crash during an import | Each file is idempotent: a file whose account, original filename and payload hash already have a `stored` or `repeat` run is finished (archived, logged once, and removed from the inbox) without a new run. Any other run Bronze holds but the log lacks is archived and logged by the next import | Rerun `import` |
-| The archive holds other bytes, or a file where a folder must go, everywhere a run's export may go | Nothing is overwritten; the run stays in Bronze but is not logged; every import stops before writing, naming the account and the run | Move the conflicting archive file aside, then rerun |
+| The archive holds other bytes, a file where a folder must go, or a place reserved for other bytes, everywhere a run's export may go | Nothing is overwritten; the run stays in Bronze but is not logged; every import stops before writing, naming the account and the run | Move the conflicting archive file aside, then rerun |
 | An inbox file is saved over while it is imported | The run for the bytes that were read is stored, archived and logged; the new file stays in the inbox | Rerun `import` |
 | An inbox file is removed while it is imported | The import finishes from the bytes it read; there is nothing left to remove | Nothing to do |
 | An import-log entry cut off by a crash | The next import completes it from the run Bronze holds | Nothing to do |
