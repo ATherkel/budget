@@ -438,8 +438,9 @@ Every command that writes Bronze brings it up to date before it finishes, and
   (`refused`, or 12 hexadecimal characters, in any case) goes straight to its
   hash folder. A place an entry names stays reserved for that run's bytes,
   even while its copy is missing, and names that differ only in case are one
-  place: other bytes never take it, and the next run of the same file (the
-  same account, name and bytes) writes a missing copy back there. Archived
+  place: other bytes never take it, and a retry of that run, or the next
+  refusal of the same file (the same account, name and bytes), writes a
+  missing copy back there. Archived
   bytes are never overwritten: when every place a run's export may go already
   holds other bytes, that run is not logged, and every import stops before
   writing anything until the conflicting file is moved aside.
