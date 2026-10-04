@@ -40,7 +40,11 @@ from budget.locking import (
     WriterLockHeldError,
     writer_lock,
 )
-from budget.migration import RestoreInsteadError, migrate_profile
+from budget.migration import (
+    MigratedWithoutBackupError,
+    RestoreInsteadError,
+    migrate_profile,
+)
 from budget.profiles import (
     NoBackupsFolderError,
     Profile,
@@ -185,6 +189,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         WriterLockHeldError,
         StoresFolderUnavailableError,
         RestoreInsteadError,
+        MigratedWithoutBackupError,
         BackupWriteError,
         UnsupportedStoresError,
         NoBackupsFolderError,

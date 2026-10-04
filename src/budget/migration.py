@@ -9,8 +9,11 @@ without backups: only production writes backup sets.
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Final
 
 from budget.backups import (
+    BackupVerificationError,
+    BackupWriteError,
     back_up,
     complete_backup_sets,
     hold_for_recovery,
@@ -18,6 +21,8 @@ from budget.backups import (
     require_supported_stores,
 )
 from budget.bronze import migrate_bronze
+from budget.bronze.storage import BronzeStorageError
+from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.locking import WriterLock
 from budget.profiles import PRODUCTION_PROFILE_NAME
 
@@ -36,6 +41,32 @@ class RestoreInsteadError(RuntimeError):
             "its Bronze store must be restored from the newest, not started "
             "anew; nothing was written"
         )
+
+
+class MigratedWithoutBackupError(RuntimeError):
+    """The store was migrated, but no backup set of it could follow.
+
+    The migration is committed. The set taken before it stays held for
+    recovery, and `budget backup` writes the missing set once its problem is
+    put right.
+    """
+
+    def __init__(self, reason: Exception) -> None:
+        """Say what happened, what did not, and what to run."""
+        super().__init__(
+            "the Bronze store was migrated, but no backup set of it could be "
+            f"written after: {reason}. Put that right, then run `budget backup`"
+        )
+
+
+# Every way a backup set can fail to be written once the store is migrated.
+_BACKUP_FAILURES: Final = (
+    BackupWriteError,
+    BackupVerificationError,
+    BronzeStorageError,
+    ImportLogDamagedError,
+    ImportLogAheadOfBronzeError,
+)
 
 
 def _utc_now() -> datetime:
@@ -71,10 +102,10 @@ def migrate_profile(
         # failed or interrupted one needs.
         hold_for_recovery(lock, back_up(lock, now=clock()))
 
-    if migrate_bronze(profile, new_store=new_store, before_migrating=back_up_first):
+    if not migrate_bronze(profile, new_store=new_store, before_migrating=back_up_first):
+        return
+    try:
         back_up(lock, now=clock())
-        release_recovery_sets(lock)
-
-
-class MigratedWithoutBackupError(RuntimeError):
-    """The store was migrated, but no backup set of it followed."""
+    except _BACKUP_FAILURES as error:
+        raise MigratedWithoutBackupError(error) from error
+    release_recovery_sets(lock)
