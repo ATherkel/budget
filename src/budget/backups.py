@@ -47,6 +47,29 @@ _PACKAGE: Final = Path(__file__).resolve().parent
 _SOURCE_SUFFIXES: Final = frozenset({".py", ".sql"})
 
 
+class BackupWriteError(RuntimeError):
+    """A backup set could not be written: nothing was published.
+
+    What was staged is removed, so the backups folder is as it was.
+    """
+
+    def __init__(self, reason: str) -> None:
+        """Say why, and that no set came of it."""
+        super().__init__(
+            f"the backup set could not be written: {reason}; nothing was published"
+        )
+
+    @classmethod
+    def from_os_error(cls, error: OSError) -> "BackupWriteError":
+        """Report the operating system's reason, without its path."""
+        return cls(error.strerror or type(error).__name__)
+
+    @classmethod
+    def name_taken(cls, name: str) -> "BackupWriteError":
+        """Report a set name another set already has."""
+        return cls(f"a set named {name} already exists, and is never replaced")
+
+
 @dataclass(frozen=True)
 class BackupSet:
     """One complete backup set: its folder name, its folder, and its time."""
@@ -207,6 +230,8 @@ def _publish(profile: Profile, staging: Path, name: str, staged: _StagedSet) -> 
     """
     publishing = profile.backup_path(name + PUBLISHING_SUFFIX)
     target = profile.backup_path(name)
+    if target.exists():
+        raise BackupWriteError.name_taken(name)
     for relative in staged.files:
         _write_synced(publishing / relative, (staging / relative).read_bytes())
     _write_synced(publishing / MANIFEST_NAME, staged.manifest)
@@ -242,12 +267,20 @@ def back_up(lock: WriterLock, *, now: datetime) -> BackupSet:
     `now` names the set; the caller reads the clock, so this never does.
     """
     profile = lock.profile
-    _remove_interrupted(profile)
     name = _set_name(now)
     staging = profile.backup_staging / name
-    staged = _stage(profile, staging, now)
-    path = _publish(profile, staging, name, staged)
-    shutil.rmtree(staging)
+    publishing = profile.backup_path(name + PUBLISHING_SUFFIX)
+    try:
+        _remove_interrupted(profile)
+        staged = _stage(profile, staging, now)
+        path = _publish(profile, staging, name, staged)
+    except OSError as error:
+        raise BackupWriteError.from_os_error(error) from None
+    finally:
+        # Whatever happened, nothing staged or half-published is kept.
+        shutil.rmtree(staging, ignore_errors=True)
+        if publishing.is_dir():
+            shutil.rmtree(publishing, ignore_errors=True)
     return BackupSet(name=name, path=path, created_at=now)
 
 
@@ -304,7 +337,3 @@ def complete_backup_sets(profile: Profile) -> tuple[BackupSet, ...]:
     return tuple(
         sorted(found, key=lambda found_set: found_set.created_at, reverse=True)
     )
-
-
-class BackupWriteError(RuntimeError):
-    """A backup set could not be written: nothing was published."""
