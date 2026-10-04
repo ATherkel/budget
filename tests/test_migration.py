@@ -42,8 +42,10 @@ class MigratedWithoutBackupTests(unittest.TestCase):
                     migrate_profile(lock, clock=lambda: NOW)
 
                 assert user_version(production.bronze_store) == 2
-                before, _ = complete_backup_sets(production)
-            assert before.created_at == NOW
+                sets = complete_backup_sets(production)
+            # The new store's own set, and the one taken before the migration.
+            assert len(sets) == 2
+            assert NOW in {written.created_at for written in sets}
 
 
 if __name__ == "__main__":
