@@ -174,6 +174,24 @@ def _rebuild_derived_cache(
     )
 
 
+def _import_run(row: sqlite3.Row) -> ImportRun:
+    """Read one `import_runs` row back as the run it records."""
+    return ImportRun(
+        import_run_id=row["import_run_id"],
+        payload_id=row["payload_id"],
+        declared_account_id=row["declared_account_id"],
+        source_format=row["source_format"],
+        original_filename=row["original_filename"],
+        exported_on=date.fromisoformat(row["exported_on"]),
+        exported_on_source=row["exported_on_source"],
+        covers_from=date.fromisoformat(row["covers_from"]),
+        covers_through=date.fromisoformat(row["covers_through"]),
+        started_at=datetime.fromisoformat(row["started_at"]),
+        outcome=row["outcome"],
+        repeat_of=row["repeat_of"],
+    )
+
+
 class BronzeStore:
     """Import and retrieve Bronze provenance in a local SQLite store."""
 
@@ -302,20 +320,14 @@ class BronzeStore:
         ).fetchone()
         if row is None:
             raise KeyError(import_run_id)
-        return ImportRun(
-            import_run_id=row["import_run_id"],
-            payload_id=row["payload_id"],
-            declared_account_id=row["declared_account_id"],
-            source_format=row["source_format"],
-            original_filename=row["original_filename"],
-            exported_on=date.fromisoformat(row["exported_on"]),
-            exported_on_source=row["exported_on_source"],
-            covers_from=date.fromisoformat(row["covers_from"]),
-            covers_through=date.fromisoformat(row["covers_through"]),
-            started_at=datetime.fromisoformat(row["started_at"]),
-            outcome=row["outcome"],
-            repeat_of=row["repeat_of"],
+        return _import_run(row)
+
+    def import_runs(self) -> tuple[ImportRun, ...]:
+        """Return every import run's stored provenance, oldest first."""
+        rows = self._connection.execute(
+            "SELECT * FROM import_runs ORDER BY started_at, import_run_id"
         )
+        return tuple(_import_run(row) for row in rows)
 
     def get_payload(self, payload_id: str) -> RawPayload:
         """Return one retained payload's exact bytes."""

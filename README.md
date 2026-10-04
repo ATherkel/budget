@@ -63,10 +63,10 @@ the contract, how to register a format, and what is deliberately not solved yet.
 
 ## Storage and profiles
 
-A profile is an immutable value that names the folder its stage stores live in
-and the inputs folder the household authors. Nothing is selected implicitly,
-and a test profile refuses any path outside the temporary directory it was
-built from:
+A profile is an immutable value that names the folder its stage stores live in,
+the inputs folder the household authors, the inbox exports wait in, and the
+export archive. Nothing is selected implicitly, and a test profile refuses any
+path outside the temporary directory it was built from:
 
 ```python
 import os
@@ -81,6 +81,8 @@ profile = Profile(
     name="development",
     stores=local / "dev",
     inputs=local / "dev-household" / "inputs",
+    inbox=local / "dev-household" / "inbox",
+    exports=local / "dev-household" / "exports",
 )
 source = local / "dev-household" / "inbox" / "daily-account" / "danske-20260914.csv"
 migrate_bronze(profile)
@@ -126,6 +128,35 @@ today. `BronzeStore(profile, parsers=...)` accepts an optional mapping for
 tests that need two versions of one format; the mapping is copied, and a parser
 registered under an ID it does not name is refused.
 
+## Importing an inbox export
+
+`BronzeStore.import_file` only records a run in Bronze. The application
+operation `budget.importing.import_inbox_file` is the whole Bronze step of an
+import, and the future `import` command calls it once per inbox file under one
+writer lock:
+
+```python
+from budget.importing import Coverage, import_inbox_file
+from budget.locking import writer_lock
+
+with writer_lock(profile) as lock:
+    result = import_inbox_file(
+        lock,
+        profile.inbox / "daily-account" / "danske-20260914.csv",
+        Coverage(covers_from=date(2026, 6, 14), covers_through=date(2026, 9, 13)),
+    )
+```
+
+The file's folder in the inbox is its account, and `accounts.toml` gives that
+account's source format. The operation records the run in Bronze, archives the
+bytes under `exports/<account_id>/`, mirrors the run in `inputs/imports.jsonl`,
+and only then removes the file from the inbox. A refused run is logged with a
+copy under `exports/<account_id>/refused/`, and its file stays in the inbox. A
+rerun after a crash finishes an earlier stored or repeat run of the same file
+instead of adding one, while a refused file is presented again;
+[operations.md](docs/architecture/operations.md#importsjsonl-the-import-log)
+gives the rules.
+
 ## Command line
 
 `uv sync` installs a `budget` command; `python -m budget` runs the same thing.
@@ -145,6 +176,8 @@ profile = "development"
 [paths]
 stores = '$local\dev'
 inputs = '$local\dev-household\inputs'
+inbox = '$local\dev-household\inbox'
+exports = '$local\dev-household\exports'
 "@ | Out-File -NoClobber -Encoding utf8 "$env:APPDATA\budget\development.toml"
 ```
 
@@ -156,9 +189,9 @@ The file is UTF-8 text, with or without a byte-order mark, and may hold only
 the keys
 [operations.md](docs/architecture/operations.md#selecting-a-profile)
 documents for its profile: `[backups]` and `paths.backups` belong to
-production, and `paths.upstream_backups` to development. `[paths].stores` and
-`[paths].inputs` are required and must be absolute. `profile` is `development`
-or `production`.
+production, and `paths.upstream_backups` to development. `[paths].stores`,
+`[paths].inputs`, `[paths].inbox` and `[paths].exports` are required and must
+be absolute. `profile` is `development` or `production`.
 
 ```powershell
 budget --profile "$env:APPDATA\budget\development.toml" migrate
