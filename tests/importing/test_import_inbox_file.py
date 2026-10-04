@@ -820,6 +820,28 @@ class RemovedSourceTests(unittest.TestCase):
                 result.import_run.import_run_id
             ]
 
+    def test_a_refused_file_removed_during_its_import_is_not_reported_left(
+        self,
+    ) -> None:
+        # A guard: `left_in_inbox` says where the file is, refused or not.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            source = drop(profile, "joint-current", EXPORT, payload("01.04.2026"))
+            real_fsync = os.fsync
+
+            def fsync_then_remove(descriptor: int) -> None:
+                real_fsync(descriptor)
+                source.unlink(missing_ok=True)
+
+            with (
+                writer_lock(profile) as lock,
+                patch("os.fsync", fsync_then_remove),
+            ):
+                result = import_inbox_file(lock, source, THROUGH_MAY_3)
+
+            assert result.import_run.outcome == "refused"
+            assert not result.left_in_inbox
+
 
 class LockedSourceTests(unittest.TestCase):
     def test_a_file_another_program_holds_is_left_in_the_inbox(self) -> None:
