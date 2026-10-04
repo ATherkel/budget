@@ -869,6 +869,24 @@ class RemovedSourceTests(unittest.TestCase):
             assert not result.left_in_inbox
 
 
+class FailedWriteTests(unittest.TestCase):
+    def test_a_failed_archive_write_leaves_no_temporary_file(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            source = drop(profile, "joint-current", EXPORT, payload("01.04.2026"))
+            disk_full = OSError(28, "No space left on device")
+
+            with (
+                writer_lock(profile) as lock,
+                patch("os.fsync", side_effect=disk_full),
+                pytest.raises(OSError, match="No space left"),
+            ):
+                import_inbox_file(lock, source, APRIL)
+
+            assert list(profile.exports.rglob("*.partial")) == []
+            assert source.exists()
+
+
 class LockedSourceTests(unittest.TestCase):
     def test_a_file_another_program_holds_is_left_in_the_inbox(self) -> None:
         with TemporaryDirectory() as directory:
