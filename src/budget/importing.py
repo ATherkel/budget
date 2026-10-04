@@ -429,18 +429,23 @@ def _logged_archive_paths(state: _LogState, store: BronzeStore) -> dict[str, str
 
 
 def _proving_entry(
-    profile: Profile, store: BronzeStore, state: _LogState
+    profile: Profile,
+    store: BronzeStore,
+    state: _LogState,
+    reserved: Mapping[str, str],
 ) -> tuple[str, str, bytes] | None:
     """Find the unlogged, archived run whose entry the cut-off begins.
 
-    Returns the run, its archive path and its whole entry.
+    The run is placed as archiving placed it: with the places the complete
+    entries reserve, which are the ones before it. Returns the run, its
+    archive path and its whole entry.
     """
     for run in store.import_runs():
         if run.import_run_id in state.lines:
             continue
         content = store.get_payload(run.payload_id).content
         try:
-            archive_path, archived = _archived_at(profile, run, content, {})
+            archive_path, archived = _archived_at(profile, run, content, reserved)
         except ArchiveConflictError:
             continue
         entry = _log_entry(run, archive_path)
@@ -465,7 +470,7 @@ def _recover_log(profile: Profile, store: BronzeStore) -> dict[str, str]:
     logged = _logged_archive_paths(state, store)
     if not state.cut_off:
         return logged
-    proof = _proving_entry(profile, store, state)
+    proof = _proving_entry(profile, store, state, _reserved_places(store, logged))
     if proof is None:
         raise ImportLogDamagedError
     run_id, archive_path, entry = proof
