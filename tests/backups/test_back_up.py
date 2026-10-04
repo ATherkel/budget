@@ -5,9 +5,11 @@ Every profile here is a synthetic test profile in a temporary folder; no test
 opens a production store or reads a real export.
 """
 
+import shutil
 import tomllib
 import unittest
 from contextlib import closing
+from datetime import timedelta
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -135,6 +137,40 @@ class BackUpTests(unittest.TestCase):
                 "imports.jsonl": 0,
                 "decisions.jsonl": 0,
             }
+
+
+class InterruptedSetTests(unittest.TestCase):
+    def test_an_interrupted_set_is_never_selected_and_the_next_backup_removes_it(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            with writer_lock(profile) as lock:
+                earlier = back_up(lock, now=NOW - timedelta(days=1))
+            # What a crash leaves: a set still in staging, a set cut off while
+            # it was copied into the backups folder, and one cut off before
+            # its manifest under its own name.
+            staged = profile.backup_staging / "2026-05-02T00-00-00.000000Z"
+            staged.mkdir(parents=True)
+            (staged / "bronze.db").write_bytes(b"cut off")
+            backups = earlier.path.parent
+            copying = backups / "2026-05-02T01-00-00.000000Z.partial"
+            shutil.copytree(earlier.path, copying)
+            no_manifest = backups / "2026-05-02T02-00-00.000000Z"
+            shutil.copytree(earlier.path, no_manifest)
+            (no_manifest / "manifest.json").unlink()
+
+            assert complete_backup_sets(profile) == (earlier,)
+
+            with writer_lock(profile) as lock:
+                backup = back_up(lock, now=NOW)
+
+            assert complete_backup_sets(profile) == (backup, earlier)
+            assert list(profile.backup_staging.iterdir()) == []
+            assert not copying.exists()
+            # Not this code's to delete: it is named as a set, and may be one
+            # a person is putting back by hand.
+            assert no_manifest.exists()
 
 
 if __name__ == "__main__":
