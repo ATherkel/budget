@@ -16,7 +16,7 @@ import json
 import os
 import shutil
 import sqlite3
-from contextlib import closing
+from contextlib import closing, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
@@ -347,7 +347,6 @@ def back_up(lock: WriterLock, *, now: datetime) -> BackupSet:
         _remove_interrupted(profile)
         staged = _stage(profile, staging, now)
         path = _publish(profile, staging, name, staged)
-        _prune(profile, name, now)
     except OSError as error:
         raise BackupWriteError.from_os_error(error) from None
     finally:
@@ -355,6 +354,10 @@ def back_up(lock: WriterLock, *, now: datetime) -> BackupSet:
         shutil.rmtree(staging, ignore_errors=True)
         if publishing.is_dir():
             shutil.rmtree(publishing, ignore_errors=True)
+    # The set is published: retention that fails now only keeps older sets
+    # until the next backup, so it never fails this one.
+    with suppress(OSError):
+        _prune(profile, name, now)
     return BackupSet(name=name, path=path, created_at=now)
 
 
