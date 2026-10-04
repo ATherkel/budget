@@ -122,9 +122,9 @@ knows, and a matching identity, and it sets `foreign_keys = ON`,
 `busy_timeout = 5000` and `synchronous = FULL`. A new store is created in WAL
 mode.
 
-The production profile refuses to migrate until the backup and command work
-lands (issue #120), so these commands are for development and test profiles
-today. `BronzeStore(profile, parsers=...)` accepts an optional mapping for
+`migrate_bronze` refuses the production profile: production is migrated only
+by `budget migrate`, which backs the store up first (see below).
+`BronzeStore(profile, parsers=...)` accepts an optional mapping for
 tests that need two versions of one format; the mapping is copied, and a parser
 registered under an ID it does not name is refused.
 
@@ -204,8 +204,21 @@ those stores exist. A writing command holds the operating system's lock on
 `budget.lock` in the stores folder for its whole run, so a second one refuses at
 once. On Windows the lock of a command that was killed or crashed is released a
 moment late, so an immediate rerun can report another command running; rerun
-it shortly. Production migration is refused until issue #120 adds the backup it
-needs.
+it shortly.
+
+A production profile file also names `[paths].backups`, the folder backup sets
+are published in, and may hold a `[backups]` table of retention keys
+(`keep_all_days`, `keep_daily_days`, `keep_monthly`); the backups folder may
+not overlap the inputs, inbox or exports folders. In production, `migrate`
+writes a verified backup set before it changes an existing store and another
+after, and a migration that fails commits none of its steps. A missing
+production store is started only with `budget migrate --new-store`, and only
+when no complete backup set could restore it instead. `budget backup` writes
+a set of production by hand and prints its name. Nothing imports into
+production yet: that waits for the `import` command, which backs up after its
+Bronze writes.
+[operations.md](docs/architecture/operations.md#backup-and-restore) describes
+the sets, their manifest and retention.
 
 | Exit | Meaning |
 | --- | --- |
@@ -213,4 +226,5 @@ needs.
 | 1 | Unexpected error: a defect, such as a broken packaged migration |
 | 2 | Usage error, including a command that is not built yet |
 | 3 | The profile file is missing, unreadable, not UTF-8, invalid or of an unknown format |
-| 4 | Refused environment: no profile, production, a stage not built yet, a store of another profile or schema version, SQLite below the floor, a stores folder that cannot be used, a store another program holds, or another command running |
+| 4 | Refused environment: no profile, a production store missing or asked for anew where one or its backup sets exist, a stage not built yet, a store of another profile or schema version, SQLite below the floor, a stores folder that cannot be used, a store another program holds, another command running, a backup set that cannot be written, a store no backup set covers yet, or a store migrated without the backup set after it |
+| 5 | Verification failed: a backup set's copy does not match its manifest, or the import log disagrees with Bronze |
