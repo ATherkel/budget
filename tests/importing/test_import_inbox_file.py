@@ -260,6 +260,30 @@ class ArchiveNameTests(unittest.TestCase):
             assert archived.read_bytes() == b"saved over"
             assert source.read_bytes() == content
 
+    def test_a_refused_copy_gone_missing_is_restored_by_the_next_refusal(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            source = drop(profile, "joint-current", EXPORT, content)
+            with writer_lock(profile) as lock:
+                first = import_inbox_file(lock, source, THROUGH_MAY_3)
+            refused_folder = profile.exports / "joint-current" / "refused"
+            for copy in refused_folder.rglob("*.csv"):
+                copy.unlink()
+
+            with writer_lock(profile) as lock:
+                again = import_inbox_file(lock, source, THROUGH_MAY_3)
+
+            assert again.import_run.outcome == "refused"
+            assert again.archive_path == first.archive_path
+            assert (profile.exports / first.archive_path).read_bytes() == content
+            assert [entry["archive_path"] for entry in log_entries(profile)] == [
+                first.archive_path,
+                first.archive_path,
+            ]
+
     def test_a_place_another_runs_entry_names_is_never_taken_by_a_new_run(
         self,
     ) -> None:
