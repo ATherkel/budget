@@ -27,7 +27,7 @@ from budget.bronze import migrate_bronze
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 from budget.silver import storage
-from budget.silver.storage import migrate_silver
+from budget.silver.storage import migrate_silver, open_silver_connection
 
 # The whole persisted result: the identity table, the account currency
 # snapshot, every collection of a Silver build, and the parent rows their
@@ -236,6 +236,20 @@ class SilverStorageTests(unittest.TestCase):
             assert profile.bronze_store.read_bytes() != b""
             assert profile.silver_store.read_bytes() != b""
             assert profile.bronze_store != profile.silver_store
+
+    def test_opening_a_migrated_store_sets_the_connection_pragmas(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+
+            connection = open_silver_connection(profile)
+            try:
+                assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+                assert connection.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+                # Synchronous 2 is FULL.
+                assert connection.execute("PRAGMA synchronous").fetchone()[0] == 2
+            finally:
+                connection.close()
 
 
 if __name__ == "__main__":
