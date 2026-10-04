@@ -7,7 +7,7 @@ inherit the operator's shell.
 """
 
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
@@ -95,6 +95,21 @@ class TestProfileRootRequiredError(ValueError):
 
 
 @dataclass(frozen=True, kw_only=True)
+class RetentionPolicy:
+    """Which backup sets production keeps, from its profile's `[backups]` table.
+
+    Every set from the last `keep_all_days` days, then the newest set of each
+    day for `keep_daily_days` days, then the newest set of each month for
+    `keep_monthly` months, or forever when it is `None`. The defaults keep
+    too much rather than too little.
+    """
+
+    keep_all_days: int = 14
+    keep_daily_days: int = 365
+    keep_monthly: int | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
 class Profile:
     """One profile: the name a store records, and every folder it touches.
 
@@ -116,6 +131,7 @@ class Profile:
     inbox: Path
     exports: Path
     backups: Path | None = None
+    retention: RetentionPolicy = field(default_factory=RetentionPolicy)
     root: Path | None = None
 
     def __post_init__(self) -> None:

@@ -15,7 +15,7 @@ from tempfile import TemporaryDirectory
 
 from budget.bronze import BronzeStore
 from budget.cli import main
-from budget.profiles import load_profile_file
+from budget.profiles import RetentionPolicy, load_profile_file
 from tests.cli.profile_files import development_profile, write_profile
 
 EXIT_OK = 0
@@ -23,6 +23,7 @@ EXIT_REFUSED_INPUT = 3
 EXIT_REFUSED_ENVIRONMENT = 4
 
 VALID_HEADER = 'format = 1\nprofile = "development"\n'
+PRODUCTION_HEADER = 'format = 1\nprofile = "production"\n'
 
 
 def _inbox_and_exports(folder: Path) -> str:
@@ -40,6 +41,12 @@ def _paths(stores: str, inputs: Path) -> str:
     return f"\n[paths]\nstores = '{stores}'\ninputs = '{inputs}'\n" + (
         _inbox_and_exports(Path(stores).parent)
     )
+
+
+def _production(stores: Path, backups: str, retention: str = "") -> str:
+    """A production profile file naming `backups`, then a `[backups]` table."""
+    paths = _paths(str(stores), stores.parent / "inputs")
+    return PRODUCTION_HEADER + paths + f"backups = '{backups}'\n" + retention
 
 
 def _assert_refused(profile_file: Path, text: str, stores: Path) -> None:
@@ -113,6 +120,52 @@ class ProfileFileTests(unittest.TestCase):
             + absolute.replace(f"exports = '{exports}'", "exports = 'ex'"),
             "an inbox that is the export archive": VALID_HEADER
             + absolute.replace(f"exports = '{exports}'", f"exports = '{inbox}'"),
+            **self._backup_refusals(stores),
+        }
+
+    def _backup_refusals(self, stores: Path) -> dict[str, str]:
+        """Production files whose backups path or retention must be refused."""
+        folder = stores.parent.absolute()
+        backups = str(folder / "backups")
+        inputs = stores.parent / "inputs"
+        return {
+            "no backups path in production": PRODUCTION_HEADER
+            + _paths(str(stores), inputs),
+            "a relative backups path": _production(stores, "backups"),
+            "a backups folder inside the inputs folder": _production(
+                stores, str(folder / "inputs" / "backups")
+            ),
+            "an inputs folder inside the backups folder": PRODUCTION_HEADER
+            + _paths(str(stores), Path(backups) / "inputs")
+            + f"backups = '{backups}'\n",
+            "a backups folder that is the inbox": _production(
+                stores, str(folder / "inbox")
+            ),
+            "a backups folder inside the export archive": _production(
+                stores, str(folder / "exports" / "backups")
+            ),
+            "a negative keep_all_days": _production(
+                stores, backups, "\n[backups]\nkeep_all_days = -1\n"
+            ),
+            "a keep_daily_days that is true": _production(
+                stores, backups, "\n[backups]\nkeep_daily_days = true\n"
+            ),
+            "a keep_daily_days that is a fraction": _production(
+                stores, backups, "\n[backups]\nkeep_daily_days = 1.5\n"
+            ),
+            "a keep_monthly word other than forever": _production(
+                stores, backups, '\n[backups]\nkeep_monthly = "always"\n'
+            ),
+            "a negative keep_monthly": _production(
+                stores, backups, "\n[backups]\nkeep_monthly = -3\n"
+            ),
+            "an unknown backups key": _production(
+                stores, backups, "\n[backups]\nkeep_weekly = 4\n"
+            ),
+            "a backups key that is not a table": PRODUCTION_HEADER
+            + "backups = 1\n"
+            + _paths(str(stores), inputs)
+            + f"backups = '{backups}'\n",
         }
 
     def test_a_profile_file_the_command_cannot_use_is_refused(self) -> None:
@@ -137,6 +190,60 @@ class ProfileFileTests(unittest.TestCase):
 
             assert profile.inbox == (folder / "inbox").resolve()
             assert profile.exports == (folder / "exports").resolve()
+
+    def test_a_production_profile_file_names_its_backups_and_their_retention(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = folder / "production.toml"
+            retention = (
+                "\n[backups]\nkeep_all_days = 7\nkeep_daily_days = 30\n"
+                "keep_monthly = 24\n"
+            )
+            profile_file.write_text(
+                _production(folder / "stores", str(folder / "backups"), retention),
+                encoding="utf-8",
+            )
+
+            profile = load_profile_file(profile_file)
+
+            assert profile.backups == (folder / "backups").resolve()
+            assert profile.retention == RetentionPolicy(
+                keep_all_days=7, keep_daily_days=30, keep_monthly=24
+            )
+
+    def test_backup_retention_keeps_conservative_defaults_and_forever(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = folder / "production.toml"
+            backups = str(folder / "backups")
+            cases = {
+                "no [backups] table": ("", RetentionPolicy()),
+                "monthly sets kept forever": (
+                    '\n[backups]\nkeep_all_days = 3\nkeep_monthly = "forever"\n',
+                    RetentionPolicy(keep_all_days=3),
+                ),
+            }
+            for case, (retention, expected) in cases.items():
+                with self.subTest(case):
+                    profile_file.write_text(
+                        _production(folder / "stores", backups, retention),
+                        encoding="utf-8",
+                    )
+
+                    profile = load_profile_file(profile_file)
+
+                    assert profile.retention == expected
+            assert RetentionPolicy() == RetentionPolicy(
+                keep_all_days=14, keep_daily_days=365, keep_monthly=None
+            )
+
+    def test_a_development_profile_file_names_no_backups(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = load_profile_file(write_profile(Path(directory)))
+
+            assert profile.backups is None
 
     def test_a_missing_profile_file_is_refused(self) -> None:
         with TemporaryDirectory() as directory:
