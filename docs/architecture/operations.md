@@ -434,10 +434,12 @@ Every command that writes Bronze brings it up to date before it finishes, and
   run's bytes are copied to `<account_id>/refused/<first 12 characters of the
   payload hash>/<original filename>`, while the file itself stays in the inbox:
   the account's own folder holds only accepted exports, and replay can still
-  restore the refusal. Archived bytes are never overwritten: when every place
-  a run's export may go already holds other bytes, that run is not logged,
-  and every import stops before writing anything until the conflicting file
-  is moved aside.
+  restore the refusal. A place an entry names stays that run's, even while
+  its copy is missing: another export never takes it, and a retry of the run
+  writes a missing copy back there. Archived bytes are never overwritten:
+  when every place a run's export may go already holds other bytes, that run
+  is not logged, and every import stops before writing anything until the
+  conflicting file is moved aside.
 - **Order.** Before an import writes anything of its own, every run Bronze
   holds that the log lacks is archived and logged, oldest first, from the bytes
   Bronze retains. That includes a refused run a crash interrupted, whose file no
@@ -446,8 +448,8 @@ Every command that writes Bronze brings it up to date before it finishes, and
   then does an accepted export leave the inbox, provided the file still holds
   the bytes that were imported. A file saved over in the meantime stays.
 - **Every complete line is the one entry of a run Bronze recorded.** It must
-  restate that run field for field, and name one of the places its export may
-  be archived. A blank line, a second entry for a run, or an entry that
+  be, byte for byte, the entry the import writes for that run at one of the
+  places its export may be archived. A blank line, a second entry for a run, or an entry that
   disagrees with its run stops the import before it writes; restoring the log
   from the newest backup set is safe, because the next import logs again
   every run Bronze holds. An entry for a run Bronze never recorded means
@@ -671,6 +673,7 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | An import-log entry cut off by a crash | The next import completes it from the run Bronze holds | Nothing to do |
 | The import log holds a blank, unreadable or second line for a run, or an entry that does not restate its run exactly | The import stops before writing anything | Restore `imports.jsonl` from the newest backup set; the next import logs again every run Bronze holds |
 | The import log mirrors a run Bronze never recorded | Bronze is older than the log; the import stops before writing anything | Restore Bronze up to the log; never roll the log back |
+| A logged run's archived copy is saved over, and the run's file is presented again | Nothing is overwritten; the run stays logged and the file stays in the inbox; other imports go on | Put the run's own export back where its log entry says, then rerun |
 | An inbox file is held open by another program | The import is finished; the file stays in the inbox | Close the program, then rerun `import`: the file is removed as a retry |
 | Crash during a build | SQLite rolls back the uncommitted publication; the previous publication stays current | Rerun the command |
 | Another writing command is running | Exit 4 at once; nothing is written | Rerun when the other command ends |
