@@ -976,6 +976,29 @@ class DamagedLogTests(unittest.TestCase):
                 ):
                     import_inbox_file(lock, source, APRIL)
 
+    def test_an_entry_must_restate_its_run_exactly(self) -> None:
+        # JSON `true` equals Python's 1, so only an exact comparison sees it.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            with writer_lock(profile) as lock:
+                import_inbox_file(
+                    lock,
+                    drop(profile, "joint-current", EXPORT, payload("01.04.2026")),
+                    APRIL,
+                )
+            log = profile.import_log_file.read_bytes()
+            assert log.startswith(b'{"format": 1,')
+            profile.import_log_file.write_bytes(
+                log.replace(b'{"format": 1,', b'{"format": true,', 1)
+            )
+            source = drop(profile, "joint-savings", EXPORT, payload("02.04.2026"))
+
+            with (
+                writer_lock(profile) as lock,
+                pytest.raises(ImportLogDamagedError),
+            ):
+                import_inbox_file(lock, source, APRIL)
+
     def test_a_log_ahead_of_bronze_is_told_apart_from_a_damaged_one(self) -> None:
         # Rolling the log back would lose the runs Bronze lacks; Bronze must be
         # brought up to the log instead, so the refusal says which case it is.
