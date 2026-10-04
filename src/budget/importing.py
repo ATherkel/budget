@@ -170,9 +170,21 @@ def _archived_at(profile: Profile, run: ImportRun, content: bytes) -> tuple[str,
         if target.is_file() and target.read_bytes() == content:
             return archive_path, True
     for archive_path, target in candidates.items():
-        if not target.exists():
+        if _is_free(target, profile.exports):
             return archive_path, False
     raise ArchiveConflictError(run)
+
+
+def _is_free(target: Path, exports: Path) -> bool:
+    """Report whether a new file can go at `target` without moving anything.
+
+    An archived export can stand where a folder on the way must go, such as
+    one named `refused`; that place is taken, not free.
+    """
+    folders = [folder for folder in target.parents if folder.is_relative_to(exports)]
+    return not target.exists() and all(
+        folder.is_dir() or not folder.exists() for folder in folders
+    )
 
 
 def _archive(profile: Profile, run: ImportRun, content: bytes) -> str:
