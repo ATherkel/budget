@@ -13,7 +13,7 @@ import json
 import os
 import sys
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import date
 from hashlib import sha256
@@ -182,12 +182,18 @@ def _archive_candidates(run: ImportRun) -> tuple[str, ...]:
     return (f"{account_id}/{name}", f"{account_id}/{hash_prefix}/{name}")
 
 
-def _archived_at(profile: Profile, run: ImportRun, content: bytes) -> tuple[str, bool]:
+def _archived_at(
+    profile: Profile,
+    run: ImportRun,
+    content: bytes,
+    reserved: Collection[str] = frozenset(),
+) -> tuple[str, bool]:
     """Return where the run's bytes belong, and whether they are there already.
 
     The first candidate that already holds these bytes is the place, so a
     retry finds it again; otherwise the first free one is. A candidate that
-    holds anything else is never overwritten.
+    holds anything else is never overwritten, and a `reserved` one, which
+    another run's log entry names, is not free even when its copy is missing.
     """
     candidates = {
         archive_path: profile.archive_file(archive_path)
@@ -197,7 +203,7 @@ def _archived_at(profile: Profile, run: ImportRun, content: bytes) -> tuple[str,
         if target.is_file() and target.read_bytes() == content:
             return archive_path, True
     for archive_path, target in candidates.items():
-        if _is_free(target, profile.exports):
+        if archive_path not in reserved and _is_free(target, profile.exports):
             return archive_path, False
     raise ArchiveConflictError(run)
 
@@ -214,9 +220,18 @@ def _is_free(target: Path, exports: Path) -> bool:
     )
 
 
-def _archive(profile: Profile, run: ImportRun, content: bytes) -> str:
-    """Archive the run's bytes, unless they are archived already."""
-    archive_path, archived = _archived_at(profile, run, content)
+def _archive(
+    profile: Profile,
+    run: ImportRun,
+    content: bytes,
+    reserved: Collection[str],
+) -> str:
+    """Archive the run's bytes, unless they are archived already.
+
+    `reserved` holds the places the log's entries name, which a new copy
+    never takes.
+    """
+    archive_path, archived = _archived_at(profile, run, content, reserved)
     if not archived:
         _write_durably(profile.archive_file(archive_path), content)
     return archive_path
@@ -449,7 +464,7 @@ def _bring_log_up_to_date(
         if run.import_run_id in now_logged:
             continue
         content = store.get_payload(run.payload_id).content
-        archive_path = _archive(profile, run, content)
+        archive_path = _archive(profile, run, content, set(now_logged.values()))
         _append_to_log(profile.import_log_file, _log_entry(run, archive_path))
         now_logged[run.import_run_id] = archive_path
     return now_logged
@@ -521,7 +536,7 @@ def import_inbox_file(
         # An earlier run is logged by now, so its log entry names its place.
         archive_path = logged.get(run.import_run_id)
         if archive_path is None:
-            archive_path = _archive(profile, run, content)
+            archive_path = _archive(profile, run, content, set(logged.values()))
             _bring_log_up_to_date(profile, store, logged)
         else:
             _keep_archived(profile, run, archive_path, content)
