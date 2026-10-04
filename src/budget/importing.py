@@ -162,12 +162,16 @@ def _archived_at(profile: Profile, run: ImportRun, content: bytes) -> tuple[str,
     retry finds it again; otherwise the first free one is. A candidate that
     holds anything else is never overwritten.
     """
-    for archive_path in _archive_candidates(run):
-        target = profile.archive_file(archive_path)
-        if not target.exists():
-            return archive_path, False
+    candidates = {
+        archive_path: profile.archive_file(archive_path)
+        for archive_path in _archive_candidates(run)
+    }
+    for archive_path, target in candidates.items():
         if target.is_file() and target.read_bytes() == content:
             return archive_path, True
+    for archive_path, target in candidates.items():
+        if not target.exists():
+            return archive_path, False
     raise ArchiveConflictError(run)
 
 
