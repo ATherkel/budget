@@ -12,6 +12,7 @@ import pytest
 from budget.profiles import (
     BRONZE_STORE_NAME,
     Profile,
+    ProfileFoldersOverlapError,
     ProfilePathOutsideRootError,
     UnknownProfileNameError,
 )
@@ -240,6 +241,32 @@ class ProfileTests(unittest.TestCase):
                     exports=escape,
                     root=root,
                 )
+
+    def test_an_inbox_and_export_archive_that_overlap_are_refused(self) -> None:
+        # The archive would hold the inbox file itself, which the import then
+        # removes from the inbox.
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            overlaps = {
+                "the same folder": (root / "household", root / "household"),
+                "the inbox inside the archive": (
+                    root / "exports" / "inbox",
+                    root / "exports",
+                ),
+                "the archive inside the inbox": (root / "inbox", root / "inbox" / "x"),
+            }
+            for overlap, (inbox, exports) in overlaps.items():
+                with (
+                    self.subTest(overlap),
+                    pytest.raises(ProfileFoldersOverlapError),
+                ):
+                    Profile(
+                        name="development",
+                        stores=root / "stores",
+                        inputs=root / "inputs",
+                        inbox=inbox,
+                        exports=exports,
+                    )
 
 
 if __name__ == "__main__":

@@ -51,6 +51,10 @@ class ProfileFileError(ValueError):
         super().__init__(f"{path}: {problem}")
 
 
+class ProfileFoldersOverlapError(ValueError):
+    """The inbox and the export archive share a folder."""
+
+
 class ProfilePathOutsideRootError(ValueError):
     """A test profile names a path outside its temporary root."""
 
