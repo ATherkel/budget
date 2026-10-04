@@ -414,6 +414,8 @@ def _clear_from_inbox(source: Path, run: ImportRun) -> bool:
 
     A refused file stays. So does a file saved over since it was read: it is
     another presentation. A file someone already removed needs nothing more.
+    A file another program holds stays too; the import is finished, and the
+    next one removes the file as a retry of this run.
     """
     if run.outcome == "refused":
         return source.exists()
@@ -422,7 +424,9 @@ def _clear_from_inbox(source: Path, run: ImportRun) -> bool:
             return True
         source.unlink()
     except FileNotFoundError:
-        pass
+        return False
+    except PermissionError:
+        return True
     return False
 
 
