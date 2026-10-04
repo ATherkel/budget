@@ -214,15 +214,15 @@ def _archived_at(
     The first candidate that already holds these bytes is the place, so a
     retry finds it again; otherwise the first free one is. A candidate that
     holds anything else is never overwritten. `reserved` maps each place a log
-    entry names to the payload archived there: a place reserved for other
-    bytes is not free even when its copy is missing.
+    entry names, keyed by `_place`, to the payload archived there: a place
+    reserved for other bytes is not free even when its copy is missing.
     """
     # A place another payload's entry names is never this run's, whatever it
     # holds now.
     candidates = {
         archive_path: profile.archive_file(archive_path)
         for archive_path in _archive_candidates(run)
-        if reserved.get(archive_path, run.payload_id) == run.payload_id
+        if reserved.get(_place(archive_path), run.payload_id) == run.payload_id
     }
     for archive_path, target in candidates.items():
         if target.is_file() and target.read_bytes() == content:
@@ -479,10 +479,21 @@ def _recover_log(profile: Profile, store: BronzeStore) -> dict[str, str]:
     return logged
 
 
+def _place(archive_path: str) -> str:
+    """Key an archive path as the file system compares names.
+
+    Windows ignores case, so `A.csv` and `a.csv` are one place there.
+    """
+    return os.path.normcase(archive_path)
+
+
 def _reserved_places(store: BronzeStore, logged: Mapping[str, str]) -> dict[str, str]:
-    """Map each place a log entry names to the payload its run archived there."""
+    """Map each place a log entry names, by `_place`, to its run's payload."""
     payloads = {run.import_run_id: run.payload_id for run in store.import_runs()}
-    return {archive_path: payloads[run_id] for run_id, archive_path in logged.items()}
+    return {
+        _place(archive_path): payloads[run_id]
+        for run_id, archive_path in logged.items()
+    }
 
 
 def _bring_log_up_to_date(
@@ -502,7 +513,7 @@ def _bring_log_up_to_date(
             continue
         content = store.get_payload(run.payload_id).content
         archive_path = _archive(profile, run, content, reserved)
-        reserved[archive_path] = run.payload_id
+        reserved[_place(archive_path)] = run.payload_id
         _append_to_log(profile.import_log_file, _log_entry(run, archive_path))
         now_logged[run.import_run_id] = archive_path
     return now_logged
