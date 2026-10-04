@@ -445,10 +445,14 @@ Every command that writes Bronze brings it up to date before it finishes, and
   archived, its entry is appended and forced to disk with `fsync`, and only
   then does an accepted export leave the inbox, provided the file still holds
   the bytes that were imported. A file saved over in the meantime stays.
-- **Every complete line is the one entry of a run Bronze recorded.** A blank
-  line, a second entry for a run, or an entry for a run Bronze never recorded,
-  as when Bronze is older than the log, stops the import before it writes.
-  Restore the log from the newest backup set, or Bronze from a newer one.
+- **Every complete line is the one entry of a run Bronze recorded.** It must
+  restate that run field for field, and name one of the places its export may
+  be archived. A blank line, a second entry for a run, or an entry that
+  disagrees with its run stops the import before it writes; restoring the log
+  from the newest backup set is safe, because the next import logs again
+  every run Bronze holds. An entry for a run Bronze never recorded means
+  Bronze is older than the log. Those entries are then the only record of
+  their runs, so the log is never rolled back: Bronze is restored up to it.
 - **A cut-off final entry.** Every entry ends with a line feed. A final line
   without one was cut off by a crash. Unlike the decision log's, it is
   completed, never deleted, when Bronze proves what it was going to say: the
@@ -665,7 +669,9 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | An inbox file is saved over while it is imported | The run for the bytes that were read is stored, archived and logged; the new file stays in the inbox | Rerun `import` |
 | An inbox file is removed while it is imported | The import finishes from the bytes it read; there is nothing left to remove | Nothing to do |
 | An import-log entry cut off by a crash | The next import completes it from the run Bronze holds | Nothing to do |
-| The import log holds a line that is not the one entry of a recorded run | The import stops before writing anything | Restore `imports.jsonl` from the newest backup set |
+| The import log holds a line that is not the one entry of a recorded run | The import stops before writing anything | Restore `imports.jsonl` from the newest backup set; the next import logs again every run Bronze holds |
+| The import log mirrors a run Bronze never recorded | Bronze is older than the log; the import stops before writing anything | Restore Bronze up to the log; never roll the log back |
+| An inbox file is held open by another program | The import is finished; the file stays in the inbox | Close the program, then rerun `import`: the file is removed as a retry |
 | Crash during a build | SQLite rolls back the uncommitted publication; the previous publication stays current | Rerun the command |
 | Another writing command is running | Exit 4 at once; nothing is written | Rerun when the other command ends |
 | A decision-log line cut off by a crash | `check` reports it; `decide` refuses | Delete the partial last line |
