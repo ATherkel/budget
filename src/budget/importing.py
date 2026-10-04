@@ -221,6 +221,22 @@ def _archive(profile: Profile, run: ImportRun, content: bytes) -> str:
     return archive_path
 
 
+def _keep_archived(
+    profile: Profile, run: ImportRun, archive_path: str, content: bytes
+) -> None:
+    """Make sure a logged run's bytes are where its log entry says.
+
+    A copy that went missing is written there again, never elsewhere, so the
+    log stays true. Other bytes in its place are never overwritten.
+    """
+    target = profile.archive_file(archive_path)
+    if target.is_file() and target.read_bytes() == content:
+        return
+    if not _is_free(target, profile.exports):
+        raise ArchiveConflictError(run)
+    _write_durably(target, content)
+
+
 def _sync_folder(folder: Path) -> None:
     """Force a folder's new entries to disk, where the platform allows it.
 
@@ -488,8 +504,13 @@ def import_inbox_file(
         if run is None:
             run = store.import_file(source, declaration)
         content = store.get_payload(run.payload_id).content
-        archive_path = _archive(profile, run, content)
-        _bring_log_up_to_date(profile, store, logged)
+        # An earlier run is logged by now, so its log entry names its place.
+        archive_path = logged.get(run.import_run_id)
+        if archive_path is None:
+            archive_path = _archive(profile, run, content)
+            _bring_log_up_to_date(profile, store, logged)
+        else:
+            _keep_archived(profile, run, archive_path, content)
 
     left_in_inbox = _clear_from_inbox(source, run)
     return InboxImport(
