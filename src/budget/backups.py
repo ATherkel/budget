@@ -16,7 +16,6 @@ import json
 import os
 import shutil
 import sqlite3
-import sys
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -27,6 +26,7 @@ from typing import Final
 
 from budget.bronze import BronzeStore
 from budget.bronze.storage import BRONZE_STAGE, open_bronze_for_backup
+from budget.durability import sync_folder
 from budget.importing import check_import_log
 from budget.locking import WriterLock
 from budget.profiles import (
@@ -162,20 +162,6 @@ def code_version() -> dict[str, str]:
     }
 
 
-def _sync_folder(folder: Path) -> None:
-    """Force a folder's new entries to disk, where the platform allows it.
-
-    Windows cannot open a folder to fsync it; NTFS journals a rename itself.
-    """
-    if sys.platform == "win32":
-        return
-    descriptor = os.open(folder, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-
-
 def _write_synced(path: Path, content: bytes) -> None:
     """Write a file and force it to disk."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -284,11 +270,11 @@ def _publish(profile: Profile, staging: Path, name: str, staged: _StagedSet) -> 
     for relative in staged.files:
         _write_synced(publishing / relative, (staging / relative).read_bytes())
     _write_synced(publishing / MANIFEST_NAME, staged.manifest)
-    _sync_folder(publishing)
+    sync_folder(publishing)
     if not _is_complete(publishing):
         raise BackupVerificationError
     publishing.rename(target)
-    _sync_folder(target.parent)
+    sync_folder(target.parent)
     return target
 
 
@@ -548,7 +534,7 @@ def hold_for_recovery(lock: WriterLock, backup: BackupSet) -> None:
     partial.unlink(missing_ok=True)
     _write_synced(partial, content)
     partial.replace(path)
-    _sync_folder(path.parent)
+    sync_folder(path.parent)
 
 
 def release_recovery_sets(lock: WriterLock) -> None:
