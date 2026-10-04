@@ -10,6 +10,7 @@ import argparse
 import os
 import sys
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, NoReturn
 
@@ -17,6 +18,7 @@ from budget.backups import (
     BackupVerificationError,
     BackupWriteError,
     UnsupportedStoresError,
+    back_up,
 )
 from budget.bronze import require_migration_allowed
 from budget.bronze.storage import (
@@ -39,7 +41,12 @@ from budget.locking import (
     writer_lock,
 )
 from budget.migration import RestoreInsteadError, migrate_profile
-from budget.profiles import Profile, ProfileFileError, load_profile_file
+from budget.profiles import (
+    NoBackupsFolderError,
+    Profile,
+    ProfileFileError,
+    load_profile_file,
+)
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
 STAGES: Final = (BRONZE_STAGE, "silver", "gold")
@@ -99,6 +106,7 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="start a new production store where none exists",
     )
+    commands.add_parser("backup", help="write a backup set of production")
     return parser
 
 
@@ -127,10 +135,25 @@ def _migrate(profile: Profile, stage: str | None, *, new_store: bool) -> None:
         migrate_profile(lock, new_store=new_store)
 
 
+def _backup(profile: Profile) -> None:
+    """Write one backup set, and name it on stdout."""
+    # Refusals that touch nothing come first; the lock guards the set.
+    if profile.backups is None:
+        raise NoBackupsFolderError(profile.name)
+    if not profile.bronze_store.exists():
+        raise StoreNotFoundError(profile.bronze_store)
+    with writer_lock(profile) as lock:
+        written = back_up(lock, now=datetime.now(UTC))
+    sys.stdout.write(f"backup set {written.name} written\n")
+
+
 def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> None:
     """Select and load the profile, then run the command against it."""
     profile_file = _selected_profile_file(arguments.profile, environ)
     profile = load_profile_file(profile_file)
+    if arguments.command == "backup":
+        _backup(profile)
+        return
     _migrate(profile, arguments.stage, new_store=arguments.new_store)
 
 
@@ -164,6 +187,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         RestoreInsteadError,
         BackupWriteError,
         UnsupportedStoresError,
+        NoBackupsFolderError,
         *_BRONZE_ENVIRONMENT_REFUSALS,
     ) as error:
         return _refuse(error, EXIT_REFUSED_ENVIRONMENT)
