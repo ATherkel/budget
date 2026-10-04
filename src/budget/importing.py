@@ -357,8 +357,9 @@ def _read_log(path: Path) -> _LogState:
 def _require_entries_match_runs(state: _LogState, store: BronzeStore) -> None:
     """Refuse an entry Bronze recorded no run for, or one its run disagrees with.
 
-    Every field but `archive_path` restates the run, so it must say the same;
-    `archive_path` is only known from the archive, and must be text.
+    Every field but `archive_path` restates the run, so it must say the same.
+    `archive_path` is only known from the archive, so it must be one of the
+    places the run's export may be archived.
     """
     runs = {run.import_run_id: run for run in store.import_runs()}
     for run_id, entry in state.entries.items():
@@ -367,6 +368,8 @@ def _require_entries_match_runs(state: _LogState, store: BronzeStore) -> None:
             raise ImportLogAheadOfBronzeError
         archive_path = entry.get("archive_path")
         if not isinstance(archive_path, str):
+            raise ImportLogDamagedError
+        if archive_path not in _archive_candidates(run):
             raise ImportLogDamagedError
         if entry != _entry_fields(run, archive_path):
             raise ImportLogDamagedError
