@@ -6,6 +6,7 @@ opens a production store or reads a real export.
 """
 
 import shutil
+import sqlite3
 import tomllib
 import unittest
 from contextlib import closing
@@ -19,6 +20,7 @@ import pytest
 from budget.backups import (
     BackupVerificationError,
     BackupWriteError,
+    UnsupportedStoresError,
     back_up,
     complete_backup_sets,
 )
@@ -290,6 +292,48 @@ class ImportLogAgreementTests(unittest.TestCase):
                     assert logs["imports.jsonl"] == len(first)
                     copy = backup.path / "inputs" / "imports.jsonl"
                     assert copy.read_bytes() == log
+
+
+class UnsupportedStoreTests(unittest.TestCase):
+    def test_a_profile_with_a_store_this_backup_cannot_cover_is_refused(
+        self,
+    ) -> None:
+        cases = {
+            "a Silver store": Path("silver.db"),
+            "a Gold store": Path("gold.db"),
+            "a legacy publication": Path("gold") / "legacy" / "publication-1.db",
+            "an empty Silver store being created": Path("silver.db"),
+            "a store under any other name": Path("household.sqlite"),
+        }
+        for case, relative in cases.items():
+            with self.subTest(case), TemporaryDirectory() as directory:
+                profile = household(Path(directory))
+                store = profile.stores / relative
+                store.parent.mkdir(parents=True, exist_ok=True)
+                if case.startswith("an empty"):
+                    store.write_bytes(b"")
+                else:
+                    with closing(sqlite3.connect(store)) as connection:
+                        connection.execute("CREATE TABLE marker (x TEXT)")
+
+                with (
+                    writer_lock(profile) as lock,
+                    pytest.raises(UnsupportedStoresError, match=relative.parts[0]),
+                ):
+                    back_up(lock, now=NOW)
+
+                assert complete_backup_sets(profile) == ()
+
+    def test_files_that_are_not_stores_do_not_stop_a_backup(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            (profile.stores / "notes.txt").write_text("synthetic", encoding="utf-8")
+            (profile.stores / "logs").mkdir()
+
+            with writer_lock(profile) as lock:
+                backup = back_up(lock, now=NOW)
+
+            assert complete_backup_sets(profile) == (backup,)
 
 
 class FailedBackupTests(unittest.TestCase):

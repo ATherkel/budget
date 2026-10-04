@@ -356,3 +356,7 @@ def complete_backup_sets(profile: Profile) -> tuple[BackupSet, ...]:
     return tuple(
         sorted(found, key=lambda found_set: found_set.created_at, reverse=True)
     )
+
+
+class UnsupportedStoresError(RuntimeError):
+    """The stores folder holds a store this backup does not cover."""
