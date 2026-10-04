@@ -494,6 +494,53 @@ class RetryTests(unittest.TestCase):
             assert entries[0]["archive_path"] == refused_copy
             assert refused_source.read_bytes() == refused_bytes
 
+    def test_a_repeat_run_stored_before_a_crash_is_finished_not_repeated(
+        self,
+    ) -> None:
+        # A guard: the retry identity covers repeat runs as well as stored ones.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            with writer_lock(profile) as lock:
+                first = import_inbox_file(
+                    lock, drop(profile, "joint-current", EXPORT, content), APRIL
+                )
+            source = drop(profile, "joint-current", LATER_EXPORT, content)
+            interrupted = record_in_bronze_only(profile, source, THROUGH_MAY_3)
+
+            with writer_lock(profile) as lock:
+                result = import_inbox_file(lock, source, THROUGH_MAY_3)
+
+            assert interrupted.outcome == "repeat"
+            assert result.import_run == interrupted
+            with BronzeStore(profile) as store:
+                assert len(store.import_runs()) == 2
+            assert [entry["import_run_id"] for entry in log_entries(profile)] == [
+                first.import_run.import_run_id,
+                interrupted.import_run_id,
+            ]
+            assert not source.exists()
+
+    def test_the_same_file_in_another_account_is_refused_not_finished(
+        self,
+    ) -> None:
+        # A guard: the account is part of the retry identity, so the bytes a
+        # first account stored are an account conflict in a second one.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            with writer_lock(profile) as lock:
+                import_inbox_file(
+                    lock, drop(profile, "joint-current", EXPORT, content), APRIL
+                )
+                source = drop(profile, "joint-savings", EXPORT, content)
+                result = import_inbox_file(lock, source, APRIL)
+
+            assert result.import_run.outcome == "refused"
+            assert result.import_run.declared_account_id == "joint-savings"
+            assert result.left_in_inbox
+            assert source.read_bytes() == content
+
     def test_a_refused_run_is_not_finished_by_a_corrected_rerun(self) -> None:
         # A guard: a corrected declaration is a new presentation, never a retry.
         with TemporaryDirectory() as directory:
@@ -789,6 +836,39 @@ class CutOffProofTests(unittest.TestCase):
             assert profile.import_log_file.read_bytes() == b"{"
             assert source.read_bytes() == content
             assert not profile.exports.exists()
+
+    def test_a_cut_off_entry_is_never_completed_from_a_run_already_logged(
+        self,
+    ) -> None:
+        # A guard: this cut-off begins every entry, the logged run's included.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            with writer_lock(profile) as lock:
+                import_inbox_file(
+                    lock,
+                    drop(profile, "joint-current", EXPORT, payload("01.04.2026")),
+                    APRIL,
+                )
+                import_inbox_file(
+                    lock,
+                    drop(profile, "joint-savings", EXPORT, payload("02.04.2026")),
+                    APRIL,
+                )
+            complete = profile.import_log_file.read_bytes()
+            first_entry = complete[: complete.index(b"\n") + 1]
+            shared_start = b'{"format": 1, "import_run_id": "'
+            assert complete[len(first_entry) :].startswith(shared_start)
+            profile.import_log_file.write_bytes(first_entry + shared_start)
+
+            with writer_lock(profile) as lock:
+                import_inbox_file(
+                    lock,
+                    drop(profile, "joint-current", LATER_EXPORT, payload("03.04.2026")),
+                    THROUGH_MAY_3,
+                )
+
+            assert profile.import_log_file.read_bytes().startswith(complete)
+            assert len(log_entries(profile)) == 3
 
 
 class DamagedLogTests(unittest.TestCase):
