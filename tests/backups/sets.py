@@ -45,6 +45,23 @@ def copied_run_ids(store: Path, folder: Path) -> list[str]:
     return run_ids(copy)
 
 
+def tables(store: Path) -> list[str]:
+    """The tables a store file holds, read without changing the file."""
+    uri = f"{store.as_uri()}?mode=ro&immutable=1"
+    with closing(sqlite3.connect(uri, uri=True)) as connection:
+        rows = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"
+        )
+        return [str(row[0]) for row in rows]
+
+
+def user_version(store: Path) -> int:
+    """A store file's schema version, read without changing the file."""
+    uri = f"{store.as_uri()}?mode=ro&immutable=1"
+    with closing(sqlite3.connect(uri, uri=True)) as connection:
+        return int(connection.execute("PRAGMA user_version").fetchone()[0])
+
+
 def manifest(set_folder: Path) -> dict[str, object]:
     """A set's `manifest.json`."""
     text = (set_folder / "manifest.json").read_text(encoding="utf-8")
