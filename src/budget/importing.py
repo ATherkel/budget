@@ -54,27 +54,26 @@ class ArchiveConflictError(RuntimeError):
 
 
 class ImportLogDamagedError(RuntimeError):
-    """`imports.jsonl` holds what no recorded import run accounts for.
+    """`imports.jsonl` holds a line that is not the entry of any run it may hold.
 
-    That is a line that is not the one entry of a run Bronze recorded, or a
-    cut-off final line no archived run proves. Nothing was written. The log is
+    That is a blank or unreadable line, a second entry for a run, an entry its
+    run disagrees with, or a cut-off final line no archived run proves. An
+    entry for a run Bronze never recorded is not damage, but a log ahead of
+    Bronze (`ImportLogAheadOfBronzeError`). Nothing was written, and the log is
     never repaired by guessing. Restoring it from the newest backup set is
     safe: the next import logs again every run Bronze holds.
     """
 
-    def __init__(
-        self,
-        message: str = (
+    def __init__(self) -> None:
+        """State the problem and its remedy, without quoting the log."""
+        super().__init__(
             "imports.jsonl holds a line that is not the one entry of a recorded "
             "import run; nothing was written. Restore the log from the newest "
             "backup set: the next import logs again every run Bronze holds."
-        ),
-    ) -> None:
-        """State the problem and its remedy, without quoting the log."""
-        super().__init__(message)
+        )
 
 
-class ImportLogAheadOfBronzeError(ImportLogDamagedError):
+class ImportLogAheadOfBronzeError(RuntimeError):
     """`imports.jsonl` mirrors a run Bronze never recorded.
 
     Bronze is older than the log, as after Bronze was restored from an older
