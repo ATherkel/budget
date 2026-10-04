@@ -30,6 +30,9 @@ PROFILE_NAMES: Final = (
     TEST_PROFILE_NAME,
 )
 PROFILE_FILE_FORMAT: Final = 1
+# `keep_monthly = "forever"` keeps the newest set of every month for good.
+KEEP_FOREVER: Final = "forever"
+_RETENTION_KEYS: Final = frozenset({"keep_all_days", "keep_daily_days", "keep_monthly"})
 # Test profiles are never files: the test suite builds each one (ADR-015).
 _FILE_PROFILE_NAMES: Final = (DEVELOPMENT_PROFILE_NAME, PRODUCTION_PROFILE_NAME)
 _SHARED_FILE_KEYS: Final = frozenset({"format", "profile", "paths", "dashboard"})
@@ -54,16 +57,19 @@ class ProfileFileError(ValueError):
 
 
 class ProfileFoldersOverlapError(ValueError):
-    """The inbox and the export archive share a folder.
+    """Two folders that must stay apart share a folder.
 
-    The archive would then hold the inbox file itself, and an import would
-    remove its only archived copy when it removes the file from the inbox.
+    If the inbox and the export archive overlap, the archive holds the inbox
+    file itself, and an import removes its only archived copy when it removes
+    the file from the inbox. A backups folder inside the inputs folder would
+    be copied into every new backup set, and one inside the inbox or the
+    archive would mix backup sets with exports.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, first: str, second: str) -> None:
         """State the rule without repeating the operator's own paths."""
         super().__init__(
-            "the inbox and the export archive must be separate folders, "
+            f"the {first} and the {second} must be separate folders, "
             "neither inside the other"
         )
 
@@ -92,6 +98,26 @@ class TestProfileRootRequiredError(ValueError):
     def __init__(self) -> None:
         """State the rule a test profile cannot opt out of."""
         super().__init__("a test profile must name the temporary root it stays inside")
+
+
+# Pairs of `Profile` folders that may not overlap, by field name.
+_SEPARATE_FOLDERS: Final = (
+    ("inbox", "exports"),
+    ("backups", "inputs"),
+    ("backups", "inbox"),
+    ("backups", "exports"),
+)
+_FOLDER_NAMES: Final = {
+    "inbox": "inbox",
+    "exports": "export archive",
+    "inputs": "inputs folder",
+    "backups": "backups folder",
+}
+
+
+def _overlap(first: Path, second: Path) -> bool:
+    """Report whether one folder is the other or inside it."""
+    return first.is_relative_to(second) or second.is_relative_to(first)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -148,9 +174,11 @@ class Profile:
         }
         if self.backups is not None:
             folders["backups"] = Path(self.backups).resolve()
-        inbox, exports = folders["inbox"], folders["exports"]
-        if inbox.is_relative_to(exports) or exports.is_relative_to(inbox):
-            raise ProfileFoldersOverlapError
+        for first, second in _SEPARATE_FOLDERS:
+            if first in folders and _overlap(folders[first], folders[second]):
+                raise ProfileFoldersOverlapError(
+                    _FOLDER_NAMES[first], _FOLDER_NAMES[second]
+                )
         root = None if self.root is None else Path(self.root).resolve()
         if root is not None and not all(
             folder.is_relative_to(root) for folder in folders.values()
@@ -295,6 +323,47 @@ def _folder_path(path: Path, paths: dict[str, object], key: str) -> Path:
     return Path(folder)
 
 
+def _days(path: Path, table: dict[str, object], key: str, default: int) -> int:
+    """Return `[backups].<key>`, a whole number of 0 or more, or its default."""
+    value = table.get(key, default)
+    # `bool` is an `int` in Python, so `true` must not pass as 1.
+    if type(value) is not int or value < 0:
+        raise ProfileFileError(path, f"backups.{key} must be a whole number, 0 or more")
+    return value
+
+
+def _months(path: Path, table: dict[str, object]) -> int | None:
+    """Return `[backups].keep_monthly`: a whole number, or `None` for forever."""
+    value = table.get("keep_monthly", KEEP_FOREVER)
+    if value == KEEP_FOREVER:
+        return None
+    if type(value) is not int or value < 0:
+        raise ProfileFileError(
+            path,
+            "backups.keep_monthly must be a whole number, 0 or more, "
+            f'or "{KEEP_FOREVER}"',
+        )
+    return value
+
+
+def _retention(path: Path, document: dict[str, object]) -> RetentionPolicy:
+    """Return the `[backups]` table's retention, or the defaults without one."""
+    table = document.get("backups", {})
+    if not isinstance(table, dict):
+        raise ProfileFileError(path, "backups must be a [backups] table")
+    keys: dict[str, object] = {str(key): value for key, value in table.items()}
+    unknown = sorted(set(keys) - _RETENTION_KEYS)
+    if unknown:
+        names = ", ".join(f"backups.{key}" for key in unknown)
+        raise ProfileFileError(path, f"unknown key {names}")
+    defaults = RetentionPolicy()
+    return RetentionPolicy(
+        keep_all_days=_days(path, keys, "keep_all_days", defaults.keep_all_days),
+        keep_daily_days=_days(path, keys, "keep_daily_days", defaults.keep_daily_days),
+        keep_monthly=_months(path, keys),
+    )
+
+
 def load_profile_file(path: Path) -> Profile:
     """Build the profile that one operator's profile file describes.
 
@@ -306,6 +375,8 @@ def load_profile_file(path: Path) -> Profile:
     name = _profile_name(path, document)
     _require_known_keys(path, document, known=_FILE_KEYS[name], prefix="", profile=name)
     paths = _paths_table(path, document, name)
+    # Only production writes backup sets, so only it names where they go.
+    is_production = name == PRODUCTION_PROFILE_NAME
     try:
         return Profile(
             name=name,
@@ -313,6 +384,8 @@ def load_profile_file(path: Path) -> Profile:
             inputs=_folder_path(path, paths, "inputs"),
             inbox=_folder_path(path, paths, "inbox"),
             exports=_folder_path(path, paths, "exports"),
+            backups=_folder_path(path, paths, "backups") if is_production else None,
+            retention=_retention(path, document),
         )
     except ProfileFoldersOverlapError as error:
         raise ProfileFileError(path, str(error)) from None
