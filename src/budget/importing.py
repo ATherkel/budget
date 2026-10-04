@@ -383,9 +383,21 @@ def _bring_log_up_to_date(
     return frozenset(now_logged)
 
 
-def _holds(source: Path, payload_id: str) -> bool:
-    """Report whether the file still holds the bytes of this payload."""
-    return sha256(source.read_bytes()).hexdigest() == payload_id
+def _clear_from_inbox(source: Path, run: ImportRun) -> bool:
+    """Remove a finished, accepted export from the inbox; report if it is left.
+
+    A refused file stays. So does a file saved over since it was read: it is
+    another presentation. A file someone already removed needs nothing more.
+    """
+    if run.outcome == "refused":
+        return source.exists()
+    try:
+        if sha256(source.read_bytes()).hexdigest() != run.payload_id:
+            return True
+        source.unlink()
+    except FileNotFoundError:
+        pass
+    return False
 
 
 def _earlier_run(store: BronzeStore, account_id: str, source: Path) -> ImportRun | None:
@@ -428,10 +440,7 @@ def import_inbox_file(
         archive_path = _archive(profile, run, content)
         _bring_log_up_to_date(profile, store, logged)
 
-    # A file saved over since it was read is another presentation: it stays.
-    left_in_inbox = run.outcome == "refused" or not _holds(source, run.payload_id)
-    if not left_in_inbox:
-        source.unlink()
+    left_in_inbox = _clear_from_inbox(source, run)
     return InboxImport(
         import_run=run, archive_path=archive_path, left_in_inbox=left_in_inbox
     )
