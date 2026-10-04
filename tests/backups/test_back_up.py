@@ -22,6 +22,7 @@ from budget.backups import (
     back_up,
     complete_backup_sets,
 )
+from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.locking import writer_lock
 from tests.backups.sets import (
     NOW,
@@ -227,6 +228,41 @@ class ChecksumTests(unittest.TestCase):
             backups = profile.backup_path(".")
             assert list(backups.iterdir()) == []
             assert list(profile.backup_staging.iterdir()) == []
+
+
+class ImportLogAgreementTests(unittest.TestCase):
+    def test_a_set_is_refused_when_the_import_log_disagrees_with_the_snapshot(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile = household(folder / "household")
+            with writer_lock(profile) as lock:
+                import_one(lock)
+            entry = profile.import_log_file.read_bytes()
+            fresh = household(folder / "fresh")
+            cases = {
+                "a blank line": (profile, entry + b"\n", ImportLogDamagedError),
+                "an edited entry": (
+                    profile,
+                    entry.replace(b'"stored"', b'"repeat"'),
+                    ImportLogDamagedError,
+                ),
+                "an entry for a run the snapshot lacks": (
+                    fresh,
+                    entry,
+                    ImportLogAheadOfBronzeError,
+                ),
+            }
+            for minute, (case, (target, log, refusal)) in enumerate(cases.items()):
+                with self.subTest(case):
+                    target.import_log_file.write_bytes(log)
+
+                    with writer_lock(target) as lock, pytest.raises(refusal):
+                        back_up(lock, now=NOW + timedelta(minutes=minute))
+
+                    assert complete_backup_sets(target) == ()
+                    assert list(target.backup_staging.iterdir()) == []
 
 
 class FailedBackupTests(unittest.TestCase):
