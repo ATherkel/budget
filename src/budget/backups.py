@@ -19,7 +19,7 @@ import sqlite3
 import sys
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from importlib import metadata
 from pathlib import Path
@@ -36,6 +36,7 @@ from budget.profiles import (
     INPUTS_FOLDER,
     WRITER_LOCK_NAME,
     Profile,
+    RetentionPolicy,
 )
 
 MANIFEST_FORMAT: Final = 1
@@ -336,13 +337,13 @@ def _remove_interrupted(profile: Profile) -> None:
     staging = profile.backup_staging
     if staging.is_dir():
         for leftover in staging.iterdir():
-            shutil.rmtree(leftover)
+            shutil.rmtree(leftover, ignore_errors=True)
     backups = profile.backup_path(".")
     if backups.is_dir():
         for child in backups.iterdir():
             stem = child.name.removesuffix(PUBLISHING_SUFFIX)
             if stem != child.name and _set_time(stem) is not None:
-                shutil.rmtree(profile.backup_path(child.name))
+                shutil.rmtree(profile.backup_path(child.name), ignore_errors=True)
 
 
 def back_up(lock: WriterLock, *, now: datetime) -> BackupSet:
@@ -359,6 +360,7 @@ def back_up(lock: WriterLock, *, now: datetime) -> BackupSet:
         _remove_interrupted(profile)
         staged = _stage(profile, staging, now)
         path = _publish(profile, staging, name, staged)
+        _prune(profile, name, now)
     except OSError as error:
         raise BackupWriteError.from_os_error(error) from None
     finally:
@@ -422,3 +424,87 @@ def complete_backup_sets(profile: Profile) -> tuple[BackupSet, ...]:
     return tuple(
         sorted(found, key=lambda found_set: found_set.created_at, reverse=True)
     )
+
+
+def _prunable_sets(profile: Profile) -> dict[str, datetime]:
+    """Return each set retention may delete, by name, with its time.
+
+    Only a set whose manifest this code can read is one: a set written by a
+    later version may record a reason to keep it that this code cannot see.
+    Its files are not checked again here, which would read every set.
+    """
+    backups = profile.backup_path(".")
+    found = {}
+    for child in backups.iterdir():
+        created_at = _set_time(child.name)
+        if created_at is None:
+            continue
+        manifest = _read_manifest(child)
+        if manifest is not None and manifest.get("format") == MANIFEST_FORMAT:
+            found[child.name] = created_at
+    return found
+
+
+def _months_between(earlier: datetime, later: datetime) -> int:
+    """Count calendar months from `earlier`'s month to `later`'s."""
+    return (later.year - earlier.year) * 12 + later.month - earlier.month
+
+
+def _kept_by_policy(
+    sets: dict[str, datetime], policy: RetentionPolicy, now: datetime
+) -> set[str]:
+    """Name the sets the retention policy keeps at `now`.
+
+    Every set from the last `keep_all_days` days; then the newest set of each
+    day for `keep_daily_days` days; then the newest set of each month, for
+    `keep_monthly` months counting this one, or forever. Days and months are
+    UTC, as set names are.
+    """
+    newest_of_day: dict[object, str] = {}
+    newest_of_month: dict[object, str] = {}
+    for name, created_at in sorted(sets.items(), key=lambda item: item[1]):
+        newest_of_day[created_at.date()] = name
+        newest_of_month[created_at.year, created_at.month] = name
+    kept = set()
+    for name, created_at in sets.items():
+        age = now - created_at
+        months = _months_between(created_at, now)
+        if (
+            age < timedelta(days=policy.keep_all_days)
+            or (
+                age < timedelta(days=policy.keep_daily_days)
+                and newest_of_day[created_at.date()] == name
+            )
+            or (
+                newest_of_month[created_at.year, created_at.month] == name
+                and (policy.keep_monthly is None or months < policy.keep_monthly)
+            )
+        ):
+            kept.add(name)
+    return kept
+
+
+def _delete_set(profile: Profile, name: str) -> None:
+    """Delete one set, first taking it out from under its name.
+
+    Renamed as a set being published, it is never selected again, and the
+    next backup finishes deleting it if this cannot. A failure to delete is
+    left for that backup: an old set kept a little longer is harmless.
+    """
+    deleting = profile.backup_path(name + PUBLISHING_SUFFIX)
+    try:
+        profile.backup_path(name).rename(deleting)
+    except OSError:
+        return
+    shutil.rmtree(deleting, ignore_errors=True)
+
+
+def _prune(profile: Profile, newest: str, now: datetime) -> None:
+    """Delete the sets the profile's retention policy no longer keeps.
+
+    The set just written is always kept, whatever the policy says.
+    """
+    sets = _prunable_sets(profile)
+    kept = _kept_by_policy(sets, profile.retention, now) | {newest}
+    for name in sorted(set(sets) - kept):
+        _delete_set(profile, name)
