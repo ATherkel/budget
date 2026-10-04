@@ -820,6 +820,31 @@ class RemovedSourceTests(unittest.TestCase):
             ]
 
 
+class LockedSourceTests(unittest.TestCase):
+    def test_a_file_another_program_holds_is_left_in_the_inbox(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            source = drop(profile, "joint-current", EXPORT, content)
+
+            def held_by_another_program(path: Path, **_: object) -> None:
+                # Windows refuses to delete a file a spreadsheet has open.
+                raise PermissionError(13, "the file is in use", str(path))
+
+            with (
+                writer_lock(profile) as lock,
+                patch.object(Path, "unlink", held_by_another_program),
+            ):
+                result = import_inbox_file(lock, source, APRIL)
+
+            assert result.import_run.outcome == "stored"
+            assert result.left_in_inbox
+            assert source.read_bytes() == content
+            assert [entry["import_run_id"] for entry in log_entries(profile)] == [
+                result.import_run.import_run_id
+            ]
+
+
 class WriterLockTests(unittest.TestCase):
     def test_a_released_lock_is_refused_before_writing(self) -> None:
         with TemporaryDirectory() as directory:
