@@ -210,6 +210,32 @@ class ArchiveNameTests(unittest.TestCase):
             assert (profile.exports / "joint-current" / "refused").is_file()
             assert source.exists()
 
+    def test_a_retry_restores_a_lost_copy_where_its_log_entry_says(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            corrected = payload("01.04.2026", "02.04.2026")
+            with writer_lock(profile) as lock:
+                import_inbox_file(
+                    lock,
+                    drop(profile, "joint-current", EXPORT, payload("01.04.2026")),
+                    APRIL,
+                )
+                first = import_inbox_file(
+                    lock, drop(profile, "joint-current", EXPORT, corrected), APRIL
+                )
+            # Both archived copies go missing, which frees the plain name; then
+            # the corrected file turns up in the inbox again.
+            (profile.exports / "joint-current" / EXPORT).unlink()
+            (profile.exports / first.archive_path).unlink()
+            source = drop(profile, "joint-current", EXPORT, corrected)
+
+            with writer_lock(profile) as lock:
+                again = import_inbox_file(lock, source, APRIL)
+
+            assert again.archive_path == first.archive_path
+            assert (profile.exports / first.archive_path).read_bytes() == corrected
+            assert not (profile.exports / "joint-current" / EXPORT).exists()
+
     def test_an_archived_export_named_like_a_temporary_file_is_never_overwritten(
         self,
     ) -> None:
