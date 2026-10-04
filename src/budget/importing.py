@@ -11,6 +11,7 @@ does the file leave the inbox.
 
 import json
 import os
+import re
 import sys
 import tempfile
 from collections.abc import Mapping
@@ -31,6 +32,8 @@ HASH_PREFIX_LENGTH: Final = 12
 REFUSED_FOLDER: Final = "refused"
 # The outcomes a rerun finishes rather than presenting the file again.
 RETRIED_OUTCOMES: Final = frozenset({"stored", "repeat"})
+# The name a hash folder takes: the payload hash's first characters.
+_HASH_FOLDER: Final = re.compile(f"[0-9a-f]{{{HASH_PREFIX_LENGTH}}}")
 
 
 class ArchiveConflictError(RuntimeError):
@@ -193,14 +196,27 @@ def _archive_candidates(run: ImportRun) -> tuple[str, ...]:
     when other bytes already hold that name, the same name in a folder named
     by its hash. A refused run's bytes are copied apart, under `refused/`, so
     the account's folder holds only accepted exports while replay can still
-    find them.
+    find them. An export named like one of those folders goes straight to its
+    hash folder, so no archived file ever stands where a folder must go.
     """
     account_id = run.declared_account_id
     name = run.original_filename
     hash_prefix = run.payload_id[:HASH_PREFIX_LENGTH]
+    in_hash_folder = f"{account_id}/{hash_prefix}/{name}"
     if run.outcome == "refused":
         return (f"{account_id}/{REFUSED_FOLDER}/{hash_prefix}/{name}",)
-    return (f"{account_id}/{name}", f"{account_id}/{hash_prefix}/{name}")
+    if _names_an_archive_folder(name):
+        return (in_hash_folder,)
+    return (f"{account_id}/{name}", in_hash_folder)
+
+
+def _names_an_archive_folder(name: str) -> bool:
+    """Report whether a file name is one the archive gives its own folders.
+
+    Compared without case, as Windows compares names.
+    """
+    folded = name.casefold()
+    return folded == REFUSED_FOLDER or _HASH_FOLDER.fullmatch(folded) is not None
 
 
 def _archived_at(
