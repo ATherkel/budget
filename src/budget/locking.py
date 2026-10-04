@@ -50,8 +50,9 @@ class WriterLockReleasedError(RuntimeError):
 class WriterLock:
     """What `writer_lock` hands its `with` block: the profile it locked.
 
-    An operation that writes takes this instead of a bare profile, so it
-    cannot be called without the lock held for that profile. The token keeps
+    An operation that writes takes this instead of a bare profile, so it is
+    not called by mistake without the lock held for that profile. It guards
+    against misuse, not against a caller that builds a token itself. It keeps
     the locked file, which `writer_lock` closes when its block ends; from then
     on the token refuses to name its profile.
     """

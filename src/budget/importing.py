@@ -88,10 +88,15 @@ class UnknownInboxAccountError(ValueError):
     """The file's inbox folder names no account in `accounts.toml`."""
 
     def __init__(self, account_id: str) -> None:
-        """Name the folder, which is the account ID it declares."""
+        """Keep the folder's name, but leave it out of the message.
+
+        The household names inbox folders by hand, so one could carry a bank
+        account number, which never belongs in a message that may be logged.
+        """
         self.account_id = account_id
         super().__init__(
-            f'inbox folder "{account_id}" names no account in accounts.toml'
+            "an inbox folder names no account in accounts.toml; move the file "
+            "to its account's folder, or add the account"
         )
 
 

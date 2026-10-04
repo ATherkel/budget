@@ -174,8 +174,11 @@ port = 8750
 
 A development profile has `profile = "development"`, its own `stores`,
 `inbox`, `exports` and `inputs`, all four required in every profile file, and
-`upstream_backups` naming production's `backups` folder, which it only reads. It has no `[backups]` table, because only production writes
-backup sets.
+`upstream_backups` naming production's `backups` folder, which it only reads.
+It has no `[backups]` table, because only production writes backup sets. The
+inbox and the export archive are separate folders, neither inside the other:
+otherwise the archive would hold the inbox file itself, and an import would
+remove the only copy.
 
 ### Where production lives
 
@@ -658,8 +661,9 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | Misfiled export (the filename's account number is not the account's declared `bank_account_number`) | Rejected before Bronze: no import run is recorded and nothing reaches the import log; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file to the right account's folder, or fix the declaration, then rerun |
 | Format failure | Stored with its `FormatFailure`; Silver quarantines it; the file is archived | Settled by a parser fix and `rebuild --from bronze` |
 | Crash during an import | Each file is idempotent: a file whose account, original filename and payload hash already have a `stored` or `repeat` run is finished (archived, logged once, and removed from the inbox) without a new run. Any other run Bronze holds but the log lacks is archived and logged by the next import | Rerun `import` |
-| The archive holds other bytes everywhere a run's export may go | Nothing is overwritten; the run stays in Bronze but is not logged; every import stops before writing, naming the account and the run | Move the conflicting archive file aside, then rerun |
+| The archive holds other bytes, or a file where a folder must go, everywhere a run's export may go | Nothing is overwritten; the run stays in Bronze but is not logged; every import stops before writing, naming the account and the run | Move the conflicting archive file aside, then rerun |
 | An inbox file is saved over while it is imported | The run for the bytes that were read is stored, archived and logged; the new file stays in the inbox | Rerun `import` |
+| An inbox file is removed while it is imported | The import finishes from the bytes it read; there is nothing left to remove | Nothing to do |
 | An import-log entry cut off by a crash | The next import completes it from the run Bronze holds | Nothing to do |
 | The import log holds a line that is not the one entry of a recorded run | The import stops before writing anything | Restore `imports.jsonl` from the newest backup set |
 | Crash during a build | SQLite rolls back the uncommitted publication; the previous publication stays current | Rerun the command |

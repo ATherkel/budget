@@ -191,7 +191,7 @@ the keys
 documents for its profile: `[backups]` and `paths.backups` belong to
 production, and `paths.upstream_backups` to development. `[paths].stores`,
 `[paths].inputs`, `[paths].inbox` and `[paths].exports` are required and must
-be absolute. `profile` is `development` or `production`.
+be absolute, and the inbox and exports folders may not overlap. `profile` is `development` or `production`.
 
 ```powershell
 budget --profile "$env:APPDATA\budget\development.toml" migrate
