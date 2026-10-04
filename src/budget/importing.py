@@ -54,7 +54,24 @@ class ArchiveConflictError(RuntimeError):
 
 
 class ArchivedCopyReplacedError(RuntimeError):
-    """Other bytes stand where a logged run's log entry says it is archived."""
+    """Other bytes stand where a logged run's log entry says it is archived.
+
+    The run is logged, and other imports go on. Nothing is overwritten: the
+    remedy is to put the run's own bytes back where its entry says, from the
+    file in the inbox or from Bronze. The message names the account and the
+    run, never a filename.
+    """
+
+    def __init__(self, run: ImportRun) -> None:
+        """Name the account and the import run whose copy was replaced."""
+        self.account_id = run.declared_account_id
+        self.import_run_id = run.import_run_id
+        super().__init__(
+            f'account "{self.account_id}", import run {self.import_run_id}: the '
+            "export archive holds other bytes where this run's log entry says it "
+            "is archived; nothing was overwritten, and the file stays in the "
+            "inbox. Put the run's own export back there, then rerun."
+        )
 
 
 class ImportLogDamagedError(RuntimeError):
@@ -253,7 +270,7 @@ def _keep_archived(
     if target.is_file() and target.read_bytes() == content:
         return
     if not _is_free(target, profile.exports):
-        raise ArchiveConflictError(run)
+        raise ArchivedCopyReplacedError(run)
     _write_durably(target, content)
 
 
