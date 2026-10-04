@@ -12,6 +12,12 @@ transactions, calculate financial totals, or access source data. It never
 reads Gold either: it names the publication in the report context, and
 analytics opens it.
 
+Presentation owns the interaction around a report: pinning the resolved
+context on the page, keeping a response eligible only for the activity that
+asked for it, restoring the selection on browser back and forward, and the
+empty-selection prompt. The rules are in
+[`report-contract.md`](report-contract.md#navigation-and-selection-transitions).
+
 ## Initial Technology Direction
 
 - FastAPI for the HTTP application.
@@ -67,7 +73,7 @@ must preserve the analytics-facing DTO boundary.
   an as-was or as-known-at view). A past view takes the provisional label as
   of the publication's `known_at`, not today
   ([`publications.md`](publications.md)). How the picker and banner look
-  belongs to issue #11.
+  belongs to issue #109.
 - A page opened on the current publication keeps reading it after a newer
   build becomes current, so its parts never mix two publications. That is a
   superseded page, not a past view: instead of the banner, it says that newer
