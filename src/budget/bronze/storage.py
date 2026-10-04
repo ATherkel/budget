@@ -473,6 +473,27 @@ def _require_known_version(connection: sqlite3.Connection, path: Path) -> None:
         raise UnsupportedStoreVersionError(path, version, latest)
 
 
+def open_bronze_for_backup(profile: Profile) -> sqlite3.Connection:
+    """Open the profile's live Bronze store to copy it into a backup set.
+
+    Unlike `open_bronze_connection`, a store older than the code is opened:
+    production backs a store up before migrating it. The caller only reads.
+    """
+    _require_supported_sqlite()
+    path = profile.bronze_store
+    if not path.exists():
+        raise StoreNotFoundError(path)
+    connection = _connect(path, mode="rw")
+    try:
+        _apply_connection_settings(connection)
+        _require_known_version(connection, path)
+        _require_identity(connection, path, profile)
+    except BaseException:
+        connection.close()
+        raise
+    return connection
+
+
 def open_bronze_snapshot(profile: Profile, path: Path) -> sqlite3.Connection:
     """Open a backup snapshot of the profile's Bronze store, read-only.
 

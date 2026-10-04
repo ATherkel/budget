@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Final
 
 from budget.bronze import BronzeStore
-from budget.bronze.storage import BRONZE_STAGE, open_bronze_connection
+from budget.bronze.storage import BRONZE_STAGE, open_bronze_for_backup
 from budget.importing import check_import_log
 from budget.locking import WriterLock
 from budget.profiles import (
@@ -192,7 +192,7 @@ def _snapshot_bronze(profile: Profile, target: Path) -> int:
     store's schema version.
     """
     with (
-        closing(open_bronze_connection(profile)) as source,
+        closing(open_bronze_for_backup(profile)) as source,
         closing(sqlite3.connect(target)) as snapshot,
     ):
         source.backup(snapshot)
