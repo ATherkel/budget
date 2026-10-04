@@ -9,11 +9,16 @@ production store. Every test passes `main` an explicit environment.
 import sqlite3
 import unittest
 from contextlib import closing
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from budget.backups import complete_backup_sets
+import pytest
+
+from budget.backups import back_up, complete_backup_sets
 from budget.bronze import BronzeStore
+from budget.bronze.storage import ForeignKeyViolationError
+from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
 from tests.backups.sets import manifest, run_ids, tables, user_version
 from tests.bronze.migration_resources import added_migration
@@ -25,6 +30,14 @@ EXIT_REFUSED_ENVIRONMENT = 4
 EXIT_VERIFICATION_FAILED = 5
 # A synthetic second migration: a table the first one never makes.
 ADDED_TABLE = "CREATE TABLE marker (x TEXT) STRICT;\n"
+# A synthetic second migration that fails its foreign-key check.
+_ORPHAN_SOURCE_RECORD = (
+    "INSERT INTO source_records (payload_id, record_ordinal, fields)"
+    " VALUES ('missing-payload', 1, '{}');\n"
+)
+KEEP_ONLY_THE_NEWEST = (
+    "\n[backups]\nkeep_all_days = 0\nkeep_daily_days = 0\nkeep_monthly = 0\n"
+)
 
 
 def _schema_version(set_folder: Path) -> object:
@@ -160,6 +173,42 @@ class FailedBackupTests(unittest.TestCase):
                 assert user_version(production.bronze_store) == 1
                 assert "marker" not in tables(production.bronze_store)
                 assert complete_backup_sets(production) == sets
+
+
+class FailedMigrationTests(unittest.TestCase):
+    def test_a_failed_migration_keeps_its_backup_set_until_one_succeeds(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            # A policy that keeps nothing but the newest set.
+            profile_file.write_text(
+                profile_file.read_text(encoding="utf-8") + KEEP_ONLY_THE_NEWEST,
+                encoding="utf-8",
+            )
+            assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+
+            with (
+                added_migration(_ORPHAN_SOURCE_RECORD),
+                pytest.raises(ForeignKeyViolationError),
+            ):
+                migrate(profile_file)
+
+            # The store is as it was, and so is its backup set.
+            assert user_version(production.bronze_store) == 1
+            (before,) = complete_backup_sets(production)
+            assert _schema_version(before.path) == 1
+            with writer_lock(production) as lock:
+                later = back_up(lock, now=datetime.now(UTC))
+            assert complete_backup_sets(production) == (later, before)
+
+            with added_migration(ADDED_TABLE):
+                assert migrate(profile_file) == (EXIT_OK, "")
+            with writer_lock(production) as lock:
+                newest = back_up(lock, now=datetime.now(UTC))
+
+            assert complete_backup_sets(production) == (newest,)
 
 
 class CurrentProductionStoreTests(unittest.TestCase):
