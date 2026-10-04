@@ -24,6 +24,7 @@ from budget.silver.models import (
     UnbookedRecord,
     ValidationError,
 )
+from budget.silver.store import SilverStore
 
 __all__ = [
     "AcceptDiscrepancy",
@@ -34,6 +35,7 @@ __all__ = [
     "SameTransaction",
     "SilverDecision",
     "SilverResult",
+    "SilverStore",
     "Transaction",
     "TransactionEvidence",
     "UnbookedRecord",
