@@ -9,6 +9,7 @@ money conversion.
 """
 
 import sqlite3
+from pathlib import Path
 from typing import Final
 
 from budget.profiles import Profile
@@ -18,6 +19,7 @@ from budget.sqlstore import (
     MigrationRequiredError,
     MigrationResourceError,
     ProductionMigrationBlockedError,
+    StageStore,
     StoreBusyError,
     StoreError,
     StoreIdentityError,
@@ -25,10 +27,14 @@ from budget.sqlstore import (
     UnsupportedSQLiteVersionError,
     UnsupportedStoreVersionError,
     UnversionedStoreError,
+    migrate_store,
     require_migration_allowed,
 )
 
 SILVER_STAGE: Final = "silver"
+_MIGRATIONS_FOLDER: Final = (
+    Path(__file__).resolve().parent.parent / "migrations" / "silver"
+)
 
 __all__ = [
     "BUSY_TIMEOUT_MS",
@@ -55,7 +61,18 @@ def migrate_silver(profile: Profile) -> None:
 
     The production profile is refused before any folder or file is touched.
     """
-    raise NotImplementedError
+    migrate_store(silver_stage(profile))
+
+
+def silver_stage(profile: Profile) -> StageStore:
+    """Name the Silver store one profile describes."""
+    return StageStore(
+        profile=profile,
+        stage=SILVER_STAGE,
+        label="Silver",
+        path=profile.silver_store,
+        migrations=_MIGRATIONS_FOLDER,
+    )
 
 
 def open_silver_connection(profile: Profile) -> sqlite3.Connection:
