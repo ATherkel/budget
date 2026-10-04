@@ -13,10 +13,11 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Final, NoReturn
 
-from budget.bronze import migrate_bronze, require_migration_allowed
+from budget.bronze import require_migration_allowed
 from budget.bronze.storage import (
     BRONZE_STAGE,
     MigrationRequiredError,
+    NewStoreRequiredError,
     ProductionMigrationBlockedError,
     StoreBusyError,
     StoreIdentityError,
@@ -30,6 +31,7 @@ from budget.locking import (
     WriterLockHeldError,
     writer_lock,
 )
+from budget.migration import migrate_profile
 from budget.profiles import Profile, ProfileFileError, load_profile_file
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
@@ -43,6 +45,7 @@ EXIT_REFUSED_ENVIRONMENT: Final = 4
 _BRONZE_ENVIRONMENT_REFUSALS: Final = (
     UnsupportedSQLiteVersionError,
     ProductionMigrationBlockedError,
+    NewStoreRequiredError,
     StoreNotFoundError,
     StoreBusyError,
     UnversionedStoreError,
@@ -82,6 +85,11 @@ def _parser() -> argparse.ArgumentParser:
         "migrate", help="create or upgrade the profile's stores"
     )
     migrate.add_argument("--stage", choices=STAGES, help="migrate one stage only")
+    migrate.add_argument(
+        "--new-store",
+        action="store_true",
+        help="start a new production store where none exists",
+    )
     return parser
 
 
@@ -100,21 +108,21 @@ def _selected_profile_file(
     return Path(name)
 
 
-def _migrate(profile: Profile, stage: str | None) -> None:
+def _migrate(profile: Profile, stage: str | None, *, new_store: bool) -> None:
     """Create or upgrade the stores this code has: Bronze, for now."""
     if stage not in {None, BRONZE_STAGE}:
         raise StageNotBuiltError(stage)
     # Refusals that touch nothing come first; the lock guards the mutation.
-    require_migration_allowed(profile)
-    with writer_lock(profile):
-        migrate_bronze(profile)
+    require_migration_allowed(profile, new_store=new_store)
+    with writer_lock(profile) as lock:
+        migrate_profile(lock, new_store=new_store)
 
 
 def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> None:
     """Select and load the profile, then run the command against it."""
     profile_file = _selected_profile_file(arguments.profile, environ)
     profile = load_profile_file(profile_file)
-    _migrate(profile, arguments.stage)
+    _migrate(profile, arguments.stage, new_store=arguments.new_store)
 
 
 def _refuse(error: Exception, status: int) -> int:
