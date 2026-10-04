@@ -264,6 +264,33 @@ class ImportLogAgreementTests(unittest.TestCase):
                     assert complete_backup_sets(target) == ()
                     assert list(target.backup_staging.iterdir()) == []
 
+    def test_a_log_behind_bronze_or_cut_off_by_a_crash_is_backed_up(self) -> None:
+        # The next import logs the runs it lacks and completes a cut-off
+        # entry, so neither is a disagreement.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            with writer_lock(profile) as lock:
+                import_one(lock, "export-20260502.csv")
+                first = profile.import_log_file.read_bytes()
+                import_one(lock, "export-20260503.csv")
+            second = profile.import_log_file.read_bytes()[len(first) :]
+            cases = {
+                "a run not logged yet": first,
+                "an entry cut off by a crash": first + second[:-9],
+            }
+            for minute, (case, log) in enumerate(cases.items()):
+                with self.subTest(case):
+                    profile.import_log_file.write_bytes(log)
+
+                    with writer_lock(profile) as lock:
+                        backup = back_up(lock, now=NOW + timedelta(minutes=minute))
+
+                    logs = manifest(backup.path)["logs"]
+                    assert isinstance(logs, dict)
+                    assert logs["imports.jsonl"] == len(first)
+                    copy = backup.path / "inputs" / "imports.jsonl"
+                    assert copy.read_bytes() == log
+
 
 class FailedBackupTests(unittest.TestCase):
     def test_a_set_that_cannot_be_written_leaves_nothing_behind(self) -> None:
