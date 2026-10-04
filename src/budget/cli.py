@@ -13,6 +13,11 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Final, NoReturn
 
+from budget.backups import (
+    BackupVerificationError,
+    BackupWriteError,
+    UnsupportedStoresError,
+)
 from budget.bronze import require_migration_allowed
 from budget.bronze.storage import (
     BRONZE_STAGE,
@@ -27,6 +32,7 @@ from budget.bronze.storage import (
     UnsupportedStoreVersionError,
     UnversionedStoreError,
 )
+from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.locking import (
     StoresFolderUnavailableError,
     WriterLockHeldError,
@@ -41,6 +47,7 @@ EXIT_OK: Final = 0
 EXIT_USAGE: Final = 2
 EXIT_REFUSED_INPUT: Final = 3
 EXIT_REFUSED_ENVIRONMENT: Final = 4
+EXIT_VERIFICATION_FAILED: Final = 5
 # The Bronze errors operations.md lists as a refused environment. Any other
 # Bronze error, such as a broken packaged migration, is a defect: exit 1.
 _BRONZE_ENVIRONMENT_REFUSALS: Final = (
@@ -155,9 +162,17 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         WriterLockHeldError,
         StoresFolderUnavailableError,
         RestoreInsteadError,
+        BackupWriteError,
+        UnsupportedStoresError,
         *_BRONZE_ENVIRONMENT_REFUSALS,
     ) as error:
         return _refuse(error, EXIT_REFUSED_ENVIRONMENT)
+    except (
+        BackupVerificationError,
+        ImportLogDamagedError,
+        ImportLogAheadOfBronzeError,
+    ) as error:
+        return _refuse(error, EXIT_VERIFICATION_FAILED)
     return EXIT_OK
 
 
