@@ -56,6 +56,52 @@ class BackUpTests(unittest.TestCase):
             }
             assert complete_backup_sets(profile) == (backup,)
 
+    def test_a_set_copies_the_inputs_folder_and_records_each_logs_length(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            decisions = profile.inputs / "decisions.jsonl"
+            # A complete entry, then one a crash cut off, which is not counted.
+            decisions.write_bytes(b'{"format": 1, "entry": 1}\n{"format": 1, "ent')
+            nested = profile.inputs / "notes" / "read-me.txt"
+            nested.parent.mkdir()
+            nested.write_bytes(b"synthetic")
+            with writer_lock(profile) as lock:
+                import_one(lock)
+                backup = back_up(lock, now=NOW)
+
+            written = manifest(backup.path)
+            files = written["files"]
+            assert isinstance(files, dict)
+            names = ("accounts.toml", "imports.jsonl", "decisions.jsonl")
+            for relative in (*names, "notes/read-me.txt"):
+                copy = backup.path / "inputs" / relative
+                assert copy.read_bytes() == (profile.inputs / relative).read_bytes()
+                assert files[f"inputs/{relative}"] == checksum(copy)
+            assert set(files) == {
+                "bronze.db",
+                "inputs/accounts.toml",
+                "inputs/imports.jsonl",
+                "inputs/decisions.jsonl",
+                "inputs/notes/read-me.txt",
+            }
+            assert written["logs"] == {
+                "imports.jsonl": profile.import_log_file.stat().st_size,
+                "decisions.jsonl": len(b'{"format": 1, "entry": 1}\n'),
+            }
+
+    def test_a_log_that_does_not_exist_yet_has_length_zero(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            with writer_lock(profile) as lock:
+                backup = back_up(lock, now=NOW)
+
+            assert manifest(backup.path)["logs"] == {
+                "imports.jsonl": 0,
+                "decisions.jsonl": 0,
+            }
+
 
 if __name__ == "__main__":
     unittest.main()
