@@ -34,6 +34,7 @@ from budget.profiles import (
     DECISION_LOG_FILE_NAME,
     IMPORT_LOG_FILE_NAME,
     INPUTS_FOLDER,
+    WRITER_LOCK_NAME,
     Profile,
 )
 
@@ -48,6 +49,20 @@ PUBLISHING_SUFFIX: Final = ".partial"
 _PACKAGE: Final = Path(__file__).resolve().parent
 _SOURCE_SUFFIXES: Final = frozenset({".py", ".sql"})
 _IMPORT_LOG_IN_SET: Final = f"{INPUTS_FOLDER}/{IMPORT_LOG_FILE_NAME}"
+# What the later stages keep in the stores folder (operations.md, Stores).
+_OTHER_STAGE_STORES: Final = frozenset({"silver.db", "gold.db", "gold"})
+# Bronze's store with the files SQLite keeps beside it, and the writer lock.
+_BRONZE_FILES: Final = frozenset(
+    {
+        BRONZE_STORE_NAME,
+        f"{BRONZE_STORE_NAME}-wal",
+        f"{BRONZE_STORE_NAME}-shm",
+        f"{BRONZE_STORE_NAME}-journal",
+        WRITER_LOCK_NAME,
+    }
+)
+# The first bytes of every SQLite database file.
+_SQLITE_HEADER: Final = b"SQLite format 3\x00"
 
 
 class BackupWriteError(RuntimeError):
@@ -81,6 +96,21 @@ class BackupVerificationError(RuntimeError):
         super().__init__(
             "the backup set's copy does not match the checksums in its manifest; "
             "nothing was published"
+        )
+
+
+class UnsupportedStoresError(RuntimeError):
+    """The stores folder holds a store this backup does not cover.
+
+    Only the Bronze store is backed up so far. A set that left another store
+    out would claim to be a complete copy of the profile, so none is written.
+    """
+
+    def __init__(self, names: list[str]) -> None:
+        """Name what was found in the stores folder."""
+        super().__init__(
+            f"the stores folder holds {', '.join(names)}, which no backup set "
+            "covers yet: only the Bronze store is backed up; nothing was published"
         )
 
 
@@ -260,6 +290,41 @@ def _publish(profile: Profile, staging: Path, name: str, staged: _StagedSet) -> 
     return target
 
 
+def _is_sqlite_database(path: Path) -> bool:
+    """Report whether a file begins as every SQLite database does."""
+    with path.open("rb") as file:
+        return file.read(len(_SQLITE_HEADER)) == _SQLITE_HEADER
+
+
+def _is_another_store(entry: Path) -> bool:
+    """Report whether a stores-folder entry is a store other than Bronze."""
+    if entry.name in _OTHER_STAGE_STORES:
+        return True
+    # The lock is never read: on Windows, its locked byte refuses a reader.
+    if entry.name in _BRONZE_FILES or not entry.is_file():
+        return False
+    return _is_sqlite_database(entry)
+
+
+def require_supported_stores(profile: Profile) -> None:
+    """Refuse a stores folder holding any store besides Bronze.
+
+    Silver's and Gold's stores, Gold's legacy publications, and any other
+    SQLite database are refused, even an empty file being created as one.
+    Bronze's own WAL and shared-memory files, the lock and folders such as
+    `logs` are not stores.
+    """
+    if not profile.stores.is_dir():
+        return
+    found = [
+        entry.name
+        for entry in sorted(profile.stores.iterdir())
+        if _is_another_store(entry)
+    ]
+    if found:
+        raise UnsupportedStoresError(found)
+
+
 def _remove_interrupted(profile: Profile) -> None:
     """Delete what an interrupted backup left: never a set, only its parts.
 
@@ -290,6 +355,7 @@ def back_up(lock: WriterLock, *, now: datetime) -> BackupSet:
     staging = profile.backup_staging / name
     publishing = profile.backup_path(name + PUBLISHING_SUFFIX)
     try:
+        require_supported_stores(profile)
         _remove_interrupted(profile)
         staged = _stage(profile, staging, now)
         path = _publish(profile, staging, name, staged)
@@ -356,7 +422,3 @@ def complete_backup_sets(profile: Profile) -> tuple[BackupSet, ...]:
     return tuple(
         sorted(found, key=lambda found_set: found_set.created_at, reverse=True)
     )
-
-
-class UnsupportedStoresError(RuntimeError):
-    """The stores folder holds a store this backup does not cover."""
