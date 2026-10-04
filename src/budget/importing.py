@@ -13,7 +13,7 @@ import json
 import os
 import sys
 import tempfile
-from collections.abc import Collection, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from hashlib import sha256
@@ -207,14 +207,15 @@ def _archived_at(
     profile: Profile,
     run: ImportRun,
     content: bytes,
-    reserved: Collection[str] = frozenset(),
+    reserved: Mapping[str, str],
 ) -> tuple[str, bool]:
     """Return where the run's bytes belong, and whether they are there already.
 
     The first candidate that already holds these bytes is the place, so a
     retry finds it again; otherwise the first free one is. A candidate that
-    holds anything else is never overwritten, and a `reserved` one, which
-    another run's log entry names, is not free even when its copy is missing.
+    holds anything else is never overwritten. `reserved` maps each place a log
+    entry names to the payload archived there: a place reserved for other
+    bytes is not free even when its copy is missing.
     """
     candidates = {
         archive_path: profile.archive_file(archive_path)
@@ -224,7 +225,8 @@ def _archived_at(
         if target.is_file() and target.read_bytes() == content:
             return archive_path, True
     for archive_path, target in candidates.items():
-        if archive_path not in reserved and _is_free(target, profile.exports):
+        reserved_for = reserved.get(archive_path, run.payload_id)
+        if reserved_for == run.payload_id and _is_free(target, profile.exports):
             return archive_path, False
     raise ArchiveConflictError(run)
 
@@ -245,12 +247,12 @@ def _archive(
     profile: Profile,
     run: ImportRun,
     content: bytes,
-    reserved: Collection[str],
+    reserved: Mapping[str, str],
 ) -> str:
     """Archive the run's bytes, unless they are archived already.
 
-    `reserved` holds the places the log's entries name, which a new copy
-    never takes.
+    `reserved` maps each place the log's entries name to the payload archived
+    there; a new copy never takes a place reserved for other bytes.
     """
     archive_path, archived = _archived_at(profile, run, content, reserved)
     if not archived:
@@ -436,7 +438,7 @@ def _proving_entry(
             continue
         content = store.get_payload(run.payload_id).content
         try:
-            archive_path, archived = _archived_at(profile, run, content)
+            archive_path, archived = _archived_at(profile, run, content, {})
         except ArchiveConflictError:
             continue
         entry = _log_entry(run, archive_path)
@@ -470,6 +472,12 @@ def _recover_log(profile: Profile, store: BronzeStore) -> dict[str, str]:
     return logged
 
 
+def _reserved_places(store: BronzeStore, logged: Mapping[str, str]) -> dict[str, str]:
+    """Map each place a log entry names to the payload its run archived there."""
+    payloads = {run.import_run_id: run.payload_id for run in store.import_runs()}
+    return {archive_path: payloads[run_id] for run_id, archive_path in logged.items()}
+
+
 def _bring_log_up_to_date(
     profile: Profile, store: BronzeStore, logged: Mapping[str, str]
 ) -> dict[str, str]:
@@ -481,11 +489,13 @@ def _bring_log_up_to_date(
     archived, by run.
     """
     now_logged = dict(logged)
+    reserved = _reserved_places(store, now_logged)
     for run in store.import_runs():
         if run.import_run_id in now_logged:
             continue
         content = store.get_payload(run.payload_id).content
-        archive_path = _archive(profile, run, content, set(now_logged.values()))
+        archive_path = _archive(profile, run, content, reserved)
+        reserved[archive_path] = run.payload_id
         _append_to_log(profile.import_log_file, _log_entry(run, archive_path))
         now_logged[run.import_run_id] = archive_path
     return now_logged
@@ -557,7 +567,8 @@ def import_inbox_file(
         # An earlier run is logged by now, so its log entry names its place.
         archive_path = logged.get(run.import_run_id)
         if archive_path is None:
-            archive_path = _archive(profile, run, content, set(logged.values()))
+            reserved = _reserved_places(store, logged)
+            archive_path = _archive(profile, run, content, reserved)
             _bring_log_up_to_date(profile, store, logged)
         else:
             _keep_archived(profile, run, archive_path, content)
