@@ -21,6 +21,7 @@ import pytest
 from budget.bronze import BronzeStore, ImportDeclaration, ImportRun
 from budget.importing import (
     ArchiveConflictError,
+    ArchivedCopyReplacedError,
     Coverage,
     ImportLogAheadOfBronzeError,
     ImportLogDamagedError,
@@ -235,6 +236,29 @@ class ArchiveNameTests(unittest.TestCase):
             assert again.archive_path == first.archive_path
             assert (profile.exports / first.archive_path).read_bytes() == corrected
             assert not (profile.exports / "joint-current" / EXPORT).exists()
+
+    def test_a_retry_never_overwrites_a_logged_copy_saved_over_since(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            with writer_lock(profile) as lock:
+                first = import_inbox_file(
+                    lock, drop(profile, "joint-current", EXPORT, content), APRIL
+                )
+            # Someone opens the archived copy and saves other bytes over it;
+            # then the file turns up in the inbox again.
+            archived = profile.exports / first.archive_path
+            archived.write_bytes(b"saved over")
+            source = drop(profile, "joint-current", EXPORT, content)
+
+            with (
+                writer_lock(profile) as lock,
+                pytest.raises(ArchivedCopyReplacedError),
+            ):
+                import_inbox_file(lock, source, APRIL)
+
+            assert archived.read_bytes() == b"saved over"
+            assert source.read_bytes() == content
 
     def test_a_place_another_runs_entry_names_is_never_taken_by_a_new_run(
         self,

@@ -53,6 +53,10 @@ class ArchiveConflictError(RuntimeError):
         )
 
 
+class ArchivedCopyReplacedError(RuntimeError):
+    """Other bytes stand where a logged run's log entry says it is archived."""
+
+
 class ImportLogDamagedError(RuntimeError):
     """`imports.jsonl` holds a line that is not the entry of any run it may hold.
 
