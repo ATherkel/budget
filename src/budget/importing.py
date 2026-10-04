@@ -58,21 +58,37 @@ class ImportLogDamagedError(RuntimeError):
 
     That is a line that is not the one entry of a run Bronze recorded, or a
     cut-off final line no archived run proves. Nothing was written. The log is
-    never repaired by guessing: an operator restores it from the newest backup
-    set, as for the decision log.
+    never repaired by guessing. Restoring it from the newest backup set is
+    safe: the next import logs again every run Bronze holds.
     """
 
-    def __init__(self) -> None:
-        """State the problem without quoting the log's content."""
-        super().__init__(
+    def __init__(
+        self,
+        message: str = (
             "imports.jsonl holds a line that is not the one entry of a recorded "
             "import run; nothing was written. Restore the log from the newest "
-            "backup set."
-        )
+            "backup set: the next import logs again every run Bronze holds."
+        ),
+    ) -> None:
+        """State the problem and its remedy, without quoting the log."""
+        super().__init__(message)
 
 
 class ImportLogAheadOfBronzeError(ImportLogDamagedError):
-    """`imports.jsonl` mirrors a run Bronze never recorded."""
+    """`imports.jsonl` mirrors a run Bronze never recorded.
+
+    Bronze is older than the log, as after Bronze was restored from an older
+    backup. The log's later entries are then the only record of those runs'
+    declarations, so it must never be rolled back: Bronze is brought up to it.
+    """
+
+    def __init__(self) -> None:
+        """State the problem and its remedy, without quoting the log."""
+        super().__init__(
+            "imports.jsonl mirrors an import run Bronze never recorded, so Bronze "
+            "is older than the log; nothing was written. Bring Bronze up to the "
+            "log by restoring it, and keep the log as it is."
+        )
 
 
 class NotAnInboxFileError(ValueError):
@@ -347,8 +363,10 @@ def _require_entries_match_runs(state: _LogState, store: BronzeStore) -> None:
     runs = {run.import_run_id: run for run in store.import_runs()}
     for run_id, entry in state.entries.items():
         run = runs.get(run_id)
+        if run is None:
+            raise ImportLogAheadOfBronzeError
         archive_path = entry.get("archive_path")
-        if run is None or not isinstance(archive_path, str):
+        if not isinstance(archive_path, str):
             raise ImportLogDamagedError
         if entry != _entry_fields(run, archive_path):
             raise ImportLogDamagedError
