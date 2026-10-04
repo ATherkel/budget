@@ -217,16 +217,18 @@ def _archived_at(
     entry names to the payload archived there: a place reserved for other
     bytes is not free even when its copy is missing.
     """
+    # A place another payload's entry names is never this run's, whatever it
+    # holds now.
     candidates = {
         archive_path: profile.archive_file(archive_path)
         for archive_path in _archive_candidates(run)
+        if reserved.get(archive_path, run.payload_id) == run.payload_id
     }
     for archive_path, target in candidates.items():
         if target.is_file() and target.read_bytes() == content:
             return archive_path, True
     for archive_path, target in candidates.items():
-        reserved_for = reserved.get(archive_path, run.payload_id)
-        if reserved_for == run.payload_id and _is_free(target, profile.exports):
+        if _is_free(target, profile.exports):
             return archive_path, False
     raise ArchiveConflictError(run)
 
