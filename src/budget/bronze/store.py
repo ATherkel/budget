@@ -379,3 +379,7 @@ class BronzeStore:
             )
             for row in rows
         )
+
+
+class ProductionImportBlockedError(RuntimeError):
+    """Production imports wait for the command that backs up after them."""
