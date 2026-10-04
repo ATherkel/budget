@@ -21,6 +21,7 @@ from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
+from importlib import metadata
 from pathlib import Path
 from typing import Final
 
@@ -41,6 +42,9 @@ MANIFEST_NAME: Final = "manifest.json"
 SET_NAME_FORMAT: Final = "%Y-%m-%dT%H-%M-%S.%fZ"
 # The suffix of a set being copied into the backups folder.
 PUBLISHING_SUFFIX: Final = ".partial"
+# The installed `budget` package, whose sources the code version fingerprints.
+_PACKAGE: Final = Path(__file__).resolve().parent
+_SOURCE_SUFFIXES: Final = frozenset({".py", ".sql"})
 
 
 @dataclass(frozen=True)
@@ -68,6 +72,25 @@ def _set_time(name: str) -> datetime | None:
 def _checksum(content: bytes) -> dict[str, object]:
     """Describe one file as the manifest records it: SHA-256 and length."""
     return {"sha256": sha256(content).hexdigest(), "bytes": len(content)}
+
+
+def code_version() -> dict[str, str]:
+    """Name the running code: its package version and a source fingerprint.
+
+    The fingerprint is the SHA-256 of one line per `.py` and `.sql` file in
+    the package, sorted: its `/`-separated path, a tab, its SHA-256, and a
+    line feed. Any checkout can be compared with it, with or without git.
+    """
+    lines = sorted(
+        f"{path.relative_to(_PACKAGE).as_posix()}\t"
+        f"{sha256(path.read_bytes()).hexdigest()}\n"
+        for path in _PACKAGE.rglob("*")
+        if path.suffix in _SOURCE_SUFFIXES
+    )
+    return {
+        "package": metadata.version(_PACKAGE.name),
+        "source_sha256": sha256("".join(lines).encode("utf-8")).hexdigest(),
+    }
 
 
 def _sync_folder(folder: Path) -> None:
@@ -161,6 +184,7 @@ def _stage(profile: Profile, staging: Path, now: datetime) -> _StagedSet:
         "format": MANIFEST_FORMAT,
         "profile": profile.name,
         "created_at": now.astimezone(UTC).isoformat(),
+        "code_version": code_version(),
         "stores": {
             BRONZE_STAGE: {"path": BRONZE_STORE_NAME, "schema_version": schema_version}
         },
