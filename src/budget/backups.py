@@ -216,12 +216,33 @@ def _publish(profile: Profile, staging: Path, name: str, staged: _StagedSet) -> 
     return target
 
 
+def _remove_interrupted(profile: Profile) -> None:
+    """Delete what an interrupted backup left: never a set, only its parts.
+
+    Everything in the staging folder is an unfinished set. In the backups
+    folder, only a set's temporary publishing name is; a folder under a set's
+    own name is left alone even without a manifest, because it is never
+    selected and may be one a person is putting back by hand.
+    """
+    staging = profile.backup_staging
+    if staging.is_dir():
+        for leftover in staging.iterdir():
+            shutil.rmtree(leftover)
+    backups = profile.backup_path(".")
+    if backups.is_dir():
+        for child in backups.iterdir():
+            stem = child.name.removesuffix(PUBLISHING_SUFFIX)
+            if stem != child.name and _set_time(stem) is not None:
+                shutil.rmtree(profile.backup_path(child.name))
+
+
 def back_up(lock: WriterLock, *, now: datetime) -> BackupSet:
     """Write one complete backup set under the held writer lock.
 
     `now` names the set; the caller reads the clock, so this never does.
     """
     profile = lock.profile
+    _remove_interrupted(profile)
     name = _set_name(now)
     staging = profile.backup_staging / name
     staged = _stage(profile, staging, now)
