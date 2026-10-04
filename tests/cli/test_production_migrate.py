@@ -203,10 +203,12 @@ class FailedMigrationTests(unittest.TestCase):
                 later = back_up(lock, now=datetime.now(UTC))
             assert complete_backup_sets(production) == (later, before)
 
+            # Its store is then at the added version, which only this block
+            # packages, so the next backup is taken inside it too.
             with added_migration(ADDED_TABLE):
                 assert migrate(profile_file) == (EXIT_OK, "")
-            with writer_lock(production) as lock:
-                newest = back_up(lock, now=datetime.now(UTC))
+                with writer_lock(production) as lock:
+                    newest = back_up(lock, now=datetime.now(UTC))
 
             assert complete_backup_sets(production) == (newest,)
 
