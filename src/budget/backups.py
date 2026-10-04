@@ -40,6 +40,7 @@ from budget.profiles import (
 )
 
 MANIFEST_FORMAT: Final = 1
+RECOVERY_FORMAT: Final = 1
 MANIFEST_NAME: Final = "manifest.json"
 # A set's folder name: its UTC time, to the microsecond, with `-` for `:`,
 # which Windows does not allow in a name.
@@ -502,9 +503,54 @@ def _delete_set(profile: Profile, name: str) -> None:
 def _prune(profile: Profile, newest: str, now: datetime) -> None:
     """Delete the sets the profile's retention policy no longer keeps.
 
-    The set just written is always kept, whatever the policy says.
+    The set just written is always kept, whatever the policy says, and so is
+    every set an unfinished operation holds. When the file naming those
+    cannot be read, nothing is deleted.
     """
+    held = _held_for_recovery(profile)
+    if held is None:
+        return
     sets = _prunable_sets(profile)
-    kept = _kept_by_policy(sets, profile.retention, now) | {newest}
+    kept = _kept_by_policy(sets, profile.retention, now) | {newest} | held
     for name in sorted(set(sets) - kept):
         _delete_set(profile, name)
+
+
+def _held_for_recovery(profile: Profile) -> set[str] | None:
+    """Name the sets an unfinished operation holds, or `None` if unreadable.
+
+    No file means none is held.
+    """
+    try:
+        document = json.loads(profile.recovery_sets_file.read_bytes())
+    except FileNotFoundError:
+        return set()
+    except (OSError, ValueError):
+        return None
+    held = document.get("sets") if isinstance(document, dict) else None
+    if not isinstance(held, list) or not all(isinstance(name, str) for name in held):
+        return None
+    return {str(name) for name in held}
+
+
+def hold_for_recovery(lock: WriterLock, backup: BackupSet) -> None:
+    """Keep a set from retention until the operation it protects finishes.
+
+    A migration holds the set it took first; if it fails or is cut off, that
+    set stays until `release_recovery_sets` is called after one succeeds.
+    """
+    profile = lock.profile
+    held = _held_for_recovery(profile) or set()
+    document = {"format": RECOVERY_FORMAT, "sets": sorted(held | {backup.name})}
+    content = (json.dumps(document, indent=2) + "\n").encode("utf-8")
+    path = profile.recovery_sets_file
+    partial = path.with_name(path.name + PUBLISHING_SUFFIX)
+    partial.unlink(missing_ok=True)
+    _write_synced(partial, content)
+    partial.replace(path)
+    _sync_folder(path.parent)
+
+
+def release_recovery_sets(lock: WriterLock) -> None:
+    """Let retention treat every held set like any other again."""
+    lock.profile.recovery_sets_file.unlink(missing_ok=True)

@@ -20,6 +20,7 @@ EXPORTS_FOLDER = "exports"
 IMPORT_LOG_FILE_NAME = "imports.jsonl"
 INBOX_FOLDER = "inbox"
 INPUTS_FOLDER = "inputs"
+RECOVERY_SETS_FILE_NAME = "recovery-sets.json"
 STORES_FOLDER = "stores"
 WRITER_LOCK_NAME = "budget.lock"
 DEVELOPMENT_PROFILE_NAME = "development"
@@ -255,6 +256,15 @@ class Profile:
         folder, so a set that is still being written is never synchronised.
         """
         return self._guarded_path(Path(self.stores) / BACKUP_STAGING_FOLDER)
+
+    @property
+    def recovery_sets_file(self) -> Path:
+        """The file naming backup sets an unfinished operation may need.
+
+        It sits beside the stores, whose state it describes, and is re-checked
+        against the test root each time.
+        """
+        return self._guarded_path(Path(self.stores) / RECOVERY_SETS_FILE_NAME)
 
     @property
     def writer_lock_file(self) -> Path:

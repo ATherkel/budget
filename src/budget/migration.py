@@ -10,7 +10,13 @@ without backups: only production writes backup sets.
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from budget.backups import back_up, complete_backup_sets, require_supported_stores
+from budget.backups import (
+    back_up,
+    complete_backup_sets,
+    hold_for_recovery,
+    release_recovery_sets,
+    require_supported_stores,
+)
 from budget.bronze import migrate_bronze
 from budget.locking import WriterLock
 from budget.profiles import PRODUCTION_PROFILE_NAME
@@ -61,7 +67,10 @@ def migrate_profile(
         raise RestoreInsteadError
 
     def back_up_first() -> None:
-        back_up(lock, now=clock())
+        # Held until a migration succeeds, so retention keeps the set a
+        # failed or interrupted one needs.
+        hold_for_recovery(lock, back_up(lock, now=clock()))
 
     if migrate_bronze(profile, new_store=new_store, before_migrating=back_up_first):
         back_up(lock, now=clock())
+        release_recovery_sets(lock)
