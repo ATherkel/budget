@@ -184,6 +184,31 @@ class ArchiveNameTests(unittest.TestCase):
             assert (profile.exports / "joint-current" / EXPORT).read_bytes() == earlier
             assert log_entries(profile)[1]["archive_path"] == result.archive_path
 
+    def test_an_archived_file_standing_where_a_folder_must_go_is_a_conflict(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            # An export saved under the name the refused copies' folder takes.
+            named_refused = Coverage(
+                covers_from=date(2026, 4, 1),
+                covers_through=date(2026, 5, 2),
+                exported_on=date(2026, 5, 2),
+            )
+            with writer_lock(profile) as lock:
+                import_inbox_file(
+                    lock,
+                    drop(profile, "joint-current", "refused", payload("01.04.2026")),
+                    named_refused,
+                )
+                source = drop(profile, "joint-current", EXPORT, payload("02.04.2026"))
+
+                with pytest.raises(ArchiveConflictError):
+                    import_inbox_file(lock, source, THROUGH_MAY_3)
+
+            assert (profile.exports / "joint-current" / "refused").is_file()
+            assert source.exists()
+
     def test_a_retry_finds_its_archived_copy_before_a_place_freed_since(
         self,
     ) -> None:
