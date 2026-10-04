@@ -14,7 +14,9 @@ from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from budget.backups import back_up, complete_backup_sets
+import pytest
+
+from budget.backups import BackupWriteError, back_up, complete_backup_sets
 from budget.locking import writer_lock
 from tests.backups.sets import (
     NOW,
@@ -171,6 +173,39 @@ class InterruptedSetTests(unittest.TestCase):
             # Not this code's to delete: it is named as a set, and may be one
             # a person is putting back by hand.
             assert no_manifest.exists()
+
+
+class FailedBackupTests(unittest.TestCase):
+    def test_a_set_that_cannot_be_written_leaves_nothing_behind(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile = household(root)
+            # Where the backups folder should be, a file stands.
+            (root / "backups").write_bytes(b"not a folder")
+
+            with (
+                writer_lock(profile) as lock,
+                pytest.raises(BackupWriteError, match="nothing was published"),
+            ):
+                back_up(lock, now=NOW)
+
+            assert list(profile.backup_staging.iterdir()) == []
+            assert (root / "backups").read_bytes() == b"not a folder"
+
+    def test_a_set_never_replaces_one_with_its_name(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            with writer_lock(profile) as lock:
+                first = back_up(lock, now=NOW)
+                kept = manifest(first.path)
+                import_one(lock)
+
+                with pytest.raises(BackupWriteError):
+                    back_up(lock, now=NOW)
+
+            assert manifest(first.path) == kept
+            assert complete_backup_sets(profile) == (first,)
+            assert list(profile.backup_staging.iterdir()) == []
 
 
 if __name__ == "__main__":
