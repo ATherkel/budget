@@ -260,6 +260,35 @@ class ArchiveNameTests(unittest.TestCase):
             assert archived.read_bytes() == b"saved over"
             assert source.read_bytes() == content
 
+    def test_a_name_differing_only_in_case_never_takes_a_reserved_place(
+        self,
+    ) -> None:
+        # Windows file names ignore case, so `Export-…` is `export-…`'s place.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            with writer_lock(profile) as lock:
+                first = import_inbox_file(
+                    lock,
+                    drop(profile, "joint-current", EXPORT, payload("01.04.2026")),
+                    APRIL,
+                )
+            reserved_place = profile.exports / first.archive_path
+            reserved_place.unlink()
+
+            with writer_lock(profile) as lock:
+                import_inbox_file(
+                    lock,
+                    drop(
+                        profile,
+                        "joint-current",
+                        EXPORT.capitalize(),
+                        payload("01.04.2026", "02.04.2026"),
+                    ),
+                    APRIL,
+                )
+
+            assert not reserved_place.exists()
+
     def test_a_place_reserved_for_other_bytes_is_never_reused_even_if_they_match(
         self,
     ) -> None:
