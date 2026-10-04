@@ -5,12 +5,14 @@ Every profile here is a synthetic test profile in a temporary folder; no test
 opens a production store or reads a real export.
 """
 
+import json
 import shutil
 import sqlite3
 import tomllib
 import unittest
 from contextlib import closing
-from datetime import timedelta
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -26,6 +28,7 @@ from budget.backups import (
 )
 from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.locking import writer_lock
+from budget.profiles import Profile, RetentionPolicy
 from tests.backups.sets import (
     NOW,
     checksum,
@@ -334,6 +337,95 @@ class UnsupportedStoreTests(unittest.TestCase):
                 backup = back_up(lock, now=NOW)
 
             assert complete_backup_sets(profile) == (backup,)
+
+
+def _at(text: str) -> datetime:
+    """A UTC time written as `2026-05-02 18:05`."""
+    return datetime.strptime(text, "%Y-%m-%d %H:%M").replace(tzinfo=UTC)
+
+
+def _set_names(profile: Profile) -> list[str]:
+    """Every folder in the profile's backups folder, by name."""
+    return sorted(child.name for child in profile.backup_path(".").iterdir())
+
+
+class RetentionTests(unittest.TestCase):
+    def test_a_new_set_prunes_older_sets_the_policy_does_not_keep(self) -> None:
+        # Every set from the last 2 days, then the newest of each day for 10
+        # days, then the newest of each month for 3 months, counting this one.
+        policy = RetentionPolicy(keep_all_days=2, keep_daily_days=10, keep_monthly=3)
+        times = {
+            "December, too old": "2025-12-01 09:00",
+            "February, newest of its month but too old": "2026-02-27 09:00",
+            "March, not the newest of its month": "2026-03-15 09:00",
+            "March, the newest of its month": "2026-03-20 09:00",
+            "April 10, not the newest of April": "2026-04-10 05:00",
+            "April 10, later, still not the newest of April": "2026-04-10 06:00",
+            "April 29, not the newest of its day": "2026-04-29 08:00",
+            "April 29, the newest of its day": "2026-04-29 20:00",
+            "May 1, within two days": "2026-05-01 09:00",
+            "May 2, within two days": "2026-05-02 10:00",
+        }
+        kept = {
+            "March, the newest of its month",
+            "April 29, the newest of its day",
+            "May 1, within two days",
+            "May 2, within two days",
+        }
+        with TemporaryDirectory() as directory:
+            profile = replace(household(Path(directory)), retention=policy)
+            with writer_lock(profile) as lock:
+                written = {
+                    case: back_up(lock, now=_at(time)).name
+                    for case, time in times.items()
+                }
+                newest = back_up(lock, now=NOW).name
+
+            assert _set_names(profile) == sorted(
+                [newest, *(written[case] for case in kept)]
+            )
+
+    def test_monthly_sets_are_kept_forever_by_default(self) -> None:
+        policy = RetentionPolicy(keep_all_days=0, keep_daily_days=0)
+        with TemporaryDirectory() as directory:
+            profile = replace(household(Path(directory)), retention=policy)
+            with writer_lock(profile) as lock:
+                old = back_up(lock, now=_at("2019-01-31 23:00")).name
+                replaced = back_up(lock, now=_at("2026-04-01 09:00")).name
+                april = back_up(lock, now=_at("2026-04-30 09:00")).name
+                newest = back_up(lock, now=NOW).name
+
+            assert replaced not in _set_names(profile)
+            assert _set_names(profile) == sorted([old, april, newest])
+
+    def test_the_new_set_is_kept_whatever_the_policy(self) -> None:
+        policy = RetentionPolicy(keep_all_days=0, keep_daily_days=0, keep_monthly=0)
+        with TemporaryDirectory() as directory:
+            profile = replace(household(Path(directory)), retention=policy)
+            with writer_lock(profile) as lock:
+                back_up(lock, now=NOW - timedelta(hours=1))
+                newest = back_up(lock, now=NOW)
+
+            assert complete_backup_sets(profile) == (newest,)
+
+    def test_a_set_whose_manifest_this_code_cannot_read_is_never_pruned(
+        self,
+    ) -> None:
+        # A later version may record what this one does not know about, such
+        # as a legacy publication that needs the set kept.
+        policy = RetentionPolicy(keep_all_days=0, keep_daily_days=0, keep_monthly=0)
+        with TemporaryDirectory() as directory:
+            profile = replace(household(Path(directory)), retention=policy)
+            with writer_lock(profile) as lock:
+                later_format = back_up(lock, now=NOW - timedelta(days=400))
+                document = manifest(later_format.path)
+                document["format"] = 2
+                (later_format.path / "manifest.json").write_text(
+                    json.dumps(document), encoding="utf-8"
+                )
+                newest = back_up(lock, now=NOW)
+
+            assert _set_names(profile) == sorted([later_format.name, newest.name])
 
 
 class FailedBackupTests(unittest.TestCase):
