@@ -70,6 +70,17 @@ class BackupWriteError(RuntimeError):
         return cls(f"a set named {name} already exists, and is never replaced")
 
 
+class BackupVerificationError(RuntimeError):
+    """A backup set does not match its own manifest: nothing was published."""
+
+    def __init__(self) -> None:
+        """Say what failed, and that no set came of it."""
+        super().__init__(
+            "the backup set's copy does not match the checksums in its manifest; "
+            "nothing was published"
+        )
+
+
 @dataclass(frozen=True)
 class BackupSet:
     """One complete backup set: its folder name, its folder, and its time."""
@@ -236,6 +247,8 @@ def _publish(profile: Profile, staging: Path, name: str, staged: _StagedSet) -> 
         _write_synced(publishing / relative, (staging / relative).read_bytes())
     _write_synced(publishing / MANIFEST_NAME, staged.manifest)
     _sync_folder(publishing)
+    if not _is_complete(publishing):
+        raise BackupVerificationError
     publishing.rename(target)
     _sync_folder(target.parent)
     return target
@@ -337,7 +350,3 @@ def complete_backup_sets(profile: Profile) -> tuple[BackupSet, ...]:
     return tuple(
         sorted(found, key=lambda found_set: found_set.created_at, reverse=True)
     )
-
-
-class BackupVerificationError(RuntimeError):
-    """A backup set does not match its own manifest: nothing was published."""
