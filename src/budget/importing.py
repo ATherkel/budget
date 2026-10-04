@@ -269,9 +269,9 @@ def _missing_folders(folder: Path) -> list[Path]:
     return missing
 
 
-def _entry_fields(run: ImportRun, archive_path: str) -> dict[str, object]:
-    """Mirror one import run as the fields of its `imports.jsonl` entry."""
-    return {
+def _log_entry(run: ImportRun, archive_path: str) -> bytes:
+    """Mirror one import run as an `imports.jsonl` line, with its line feed."""
+    entry = {
         "format": IMPORT_LOG_FORMAT,
         "import_run_id": run.import_run_id,
         "account_id": run.declared_account_id,
@@ -286,11 +286,6 @@ def _entry_fields(run: ImportRun, archive_path: str) -> dict[str, object]:
         "outcome": run.outcome,
         "repeat_of": run.repeat_of,
     }
-
-
-def _log_entry(run: ImportRun, archive_path: str) -> bytes:
-    """Mirror one import run as an `imports.jsonl` line, with its line feed."""
-    entry = _entry_fields(run, archive_path)
     return (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
 
 
@@ -307,79 +302,76 @@ def _append_to_log(path: Path, data: bytes) -> None:
 
 @dataclass(frozen=True)
 class _LogState:
-    """The entries `imports.jsonl` holds by run, and any final one cut off."""
+    """Each complete entry of `imports.jsonl` by run, and any final one cut off.
 
-    entries: Mapping[str, Mapping[str, object]]
+    An entry is kept as its exact bytes, line feed included.
+    """
+
+    lines: Mapping[str, bytes]
     cut_off: bytes
 
-    @property
-    def logged(self) -> frozenset[str]:
-        """The runs the log mirrors."""
-        return frozenset(self.entries)
 
-
-def _logged_entry(line: bytes) -> tuple[str, Mapping[str, object]]:
-    """Return the run one complete line mirrors, and its fields.
-
-    Any line that is not a JSON object naming a run is damage.
-    """
+def _logged_run_id(line: bytes) -> str:
+    """Return the run one complete line names; any other line is damage."""
     try:
-        entry = json.loads(line)
-        run_id = entry["import_run_id"]
+        run_id = json.loads(line)["import_run_id"]
     except (ValueError, KeyError, TypeError):
         raise ImportLogDamagedError from None
-    if not isinstance(entry, dict) or not isinstance(run_id, str):
+    if not isinstance(run_id, str):
         raise ImportLogDamagedError
-    # Rebuilt so the values are typed `object`, not the `Any` `json` returns;
-    # JSON keys are always strings, so `str` changes nothing.
-    fields: dict[str, object] = {str(key): value for key, value in entry.items()}
-    return run_id, fields
+    return run_id
 
 
 def _read_log(path: Path) -> _LogState:
     """Read the log's complete entries apart from a final line without a feed.
 
-    Every complete line, blank ones included, must be the one entry of a run.
+    Every complete line, blank ones included, must name a run, and only once.
     """
     if not path.exists():
-        return _LogState(entries={}, cut_off=b"")
+        return _LogState(lines={}, cut_off=b"")
     complete, feed, cut_off = path.read_bytes().rpartition(b"\n")
-    entries: dict[str, Mapping[str, object]] = {}
+    lines: dict[str, bytes] = {}
     for line in complete.split(b"\n") if feed else []:
-        run_id, entry = _logged_entry(line)
-        if run_id in entries:
+        run_id = _logged_run_id(line)
+        if run_id in lines:
             raise ImportLogDamagedError
-        entries[run_id] = entry
-    return _LogState(entries=entries, cut_off=cut_off)
+        lines[run_id] = line + b"\n"
+    return _LogState(lines=lines, cut_off=cut_off)
 
 
-def _require_entries_match_runs(state: _LogState, store: BronzeStore) -> None:
-    """Refuse an entry Bronze recorded no run for, or one its run disagrees with.
+def _logged_archive_path(run: ImportRun, line: bytes) -> str:
+    """Return where a logged run's export is archived, as its entry says.
 
-    Every field but `archive_path` restates the run, so it must say the same.
-    `archive_path` is only known from the archive, so it must be one of the
-    places the run's export may be archived.
+    The entry must be exactly what this code writes for the run, at one of
+    the places the run's export may be archived; anything else is damage.
     """
+    for archive_path in _archive_candidates(run):
+        if line == _log_entry(run, archive_path):
+            return archive_path
+    raise ImportLogDamagedError
+
+
+def _logged_archive_paths(state: _LogState, store: BronzeStore) -> dict[str, str]:
+    """Return where each logged run is archived, refusing a log Bronze lacks."""
     runs = {run.import_run_id: run for run in store.import_runs()}
-    for run_id, entry in state.entries.items():
+    archive_paths = {}
+    for run_id, line in state.lines.items():
         run = runs.get(run_id)
         if run is None:
             raise ImportLogAheadOfBronzeError
-        archive_path = entry.get("archive_path")
-        if not isinstance(archive_path, str):
-            raise ImportLogDamagedError
-        if archive_path not in _archive_candidates(run):
-            raise ImportLogDamagedError
-        if entry != _entry_fields(run, archive_path):
-            raise ImportLogDamagedError
+        archive_paths[run_id] = _logged_archive_path(run, line)
+    return archive_paths
 
 
 def _proving_entry(
     profile: Profile, store: BronzeStore, state: _LogState
-) -> bytes | None:
-    """Return the entry of an unlogged, archived run that the cut-off begins."""
+) -> tuple[str, str, bytes] | None:
+    """Find the unlogged, archived run whose entry the cut-off begins.
+
+    Returns the run, its archive path and its whole entry.
+    """
     for run in store.import_runs():
-        if run.import_run_id in state.logged:
+        if run.import_run_id in state.lines:
             continue
         content = store.get_payload(run.payload_id).content
         try:
@@ -388,11 +380,11 @@ def _proving_entry(
             continue
         entry = _log_entry(run, archive_path)
         if archived and entry.startswith(state.cut_off):
-            return entry
+            return run.import_run_id, archive_path, entry
     return None
 
 
-def _recovered_log(profile: Profile, store: BronzeStore) -> frozenset[str]:
+def _recover_log(profile: Profile, store: BronzeStore) -> dict[str, str]:
     """Bring a log a crash cut off back to whole entries, before any write.
 
     A cut-off final entry is completed only when an unlogged run that is
@@ -400,37 +392,42 @@ def _recovered_log(profile: Profile, store: BronzeStore) -> frozenset[str]:
     after the archive, so no other run can be the one it began. Anything else
     is refused, and the log is left exactly as it was found. So is an entry
     for a run Bronze never recorded, such as when Bronze is older than the log,
-    and an entry its run disagrees with.
+    and an entry that does not restate its run exactly.
+
+    Returns where each logged run is archived, by run.
     """
     state = _read_log(profile.import_log_file)
-    _require_entries_match_runs(state, store)
+    logged = _logged_archive_paths(state, store)
     if not state.cut_off:
-        return state.logged
-    entry = _proving_entry(profile, store, state)
-    if entry is None:
+        return logged
+    proof = _proving_entry(profile, store, state)
+    if proof is None:
         raise ImportLogDamagedError
+    run_id, archive_path, entry = proof
     _append_to_log(profile.import_log_file, entry[len(state.cut_off) :])
-    return _read_log(profile.import_log_file).logged
+    logged[run_id] = archive_path
+    return logged
 
 
 def _bring_log_up_to_date(
-    profile: Profile, store: BronzeStore, logged: frozenset[str]
-) -> frozenset[str]:
+    profile: Profile, store: BronzeStore, logged: Mapping[str, str]
+) -> dict[str, str]:
     """Archive and log every run Bronze holds that the log does not, oldest first.
 
     A crash can leave a run in Bronze and nowhere else. A refused run's file
     stays in the inbox, so no retry of that file would finish it; this does,
-    from the bytes Bronze retains. Returns every run the log now mirrors.
+    from the bytes Bronze retains. Takes and returns where each logged run is
+    archived, by run.
     """
-    now_logged = set(logged)
+    now_logged = dict(logged)
     for run in store.import_runs():
         if run.import_run_id in now_logged:
             continue
         content = store.get_payload(run.payload_id).content
         archive_path = _archive(profile, run, content)
         _append_to_log(profile.import_log_file, _log_entry(run, archive_path))
-        now_logged.add(run.import_run_id)
-    return frozenset(now_logged)
+        now_logged[run.import_run_id] = archive_path
+    return now_logged
 
 
 def _clear_from_inbox(source: Path, run: ImportRun) -> bool:
@@ -486,7 +483,7 @@ def import_inbox_file(
     with BronzeStore(profile) as store:
         # Earlier runs are finished first, so one that cannot be stops this
         # import before it records anything of its own.
-        logged = _bring_log_up_to_date(profile, store, _recovered_log(profile, store))
+        logged = _bring_log_up_to_date(profile, store, _recover_log(profile, store))
         run = _earlier_run(store, account.account_id, source)
         if run is None:
             run = store.import_file(source, declaration)
