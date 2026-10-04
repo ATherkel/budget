@@ -109,6 +109,7 @@ class Profile:
     inputs: Path
     inbox: Path
     exports: Path
+    backups: Path | None = None
     root: Path | None = None
 
     def __post_init__(self) -> None:
@@ -168,6 +169,11 @@ class Profile:
     def import_log_file(self) -> Path:
         """The append-only import log, re-checked against the test root each time."""
         return self._guarded_path(Path(self.inputs) / IMPORT_LOG_FILE_NAME)
+
+    @property
+    def backup_staging(self) -> Path:
+        """The local folder a backup set is written in until it is complete."""
+        raise NotImplementedError
 
     @property
     def writer_lock_file(self) -> Path:

@@ -216,6 +216,33 @@ class ProfileTests(unittest.TestCase):
                 profile.import_log_file == (root / "inputs" / "imports.jsonl").resolve()
             )
 
+    def test_a_test_profile_names_its_backups_and_their_staging_inside_its_root(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile = make_test_profile(root)
+
+            assert profile.backups == (root / "backups").resolve()
+            assert (
+                profile.backup_staging == (root / "stores" / "backup-staging").resolve()
+            )
+
+    def test_a_test_profile_backups_folder_may_not_escape_its_root(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            with pytest.raises(ProfilePathOutsideRootError):
+                Profile(
+                    name="test",
+                    stores=root / "stores",
+                    inputs=root / "inputs",
+                    inbox=root / "inbox",
+                    exports=root / "exports",
+                    backups=root / ".." / "elsewhere",
+                    root=root,
+                )
+
     def test_a_test_profile_inbox_or_export_archive_may_not_escape_its_root(
         self,
     ) -> None:
