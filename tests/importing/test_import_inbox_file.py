@@ -719,6 +719,35 @@ class ChangedSourceTests(unittest.TestCase):
             assert source.read_bytes() == replacement
 
 
+class RemovedSourceTests(unittest.TestCase):
+    def test_a_file_removed_during_its_import_still_finishes_the_import(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            content = payload("01.04.2026")
+            source = drop(profile, "joint-current", EXPORT, content)
+            real_fsync = os.fsync
+
+            def fsync_then_remove(descriptor: int) -> None:
+                # The household deletes the file from the inbox mid-import.
+                real_fsync(descriptor)
+                source.unlink(missing_ok=True)
+
+            with (
+                writer_lock(profile) as lock,
+                patch("os.fsync", fsync_then_remove),
+            ):
+                result = import_inbox_file(lock, source, APRIL)
+
+            assert result.import_run.outcome == "stored"
+            assert not result.left_in_inbox
+            assert (profile.exports / result.archive_path).read_bytes() == content
+            assert [entry["import_run_id"] for entry in log_entries(profile)] == [
+                result.import_run.import_run_id
+            ]
+
+
 class WriterLockTests(unittest.TestCase):
     def test_a_released_lock_is_refused_before_writing(self) -> None:
         with TemporaryDirectory() as directory:
