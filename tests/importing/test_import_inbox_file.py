@@ -1087,6 +1087,43 @@ class CutOffProofTests(unittest.TestCase):
             assert profile.import_log_file.read_bytes().startswith(complete)
             assert len(log_entries(profile)) == 3
 
+    def test_a_cut_off_entry_is_completed_with_the_place_its_run_was_given(
+        self,
+    ) -> None:
+        # The proof must place the run as archiving did, reservations included.
+        later_download = payload("01.04.2026", "02.04.2026")
+        for cut_after in (b'"archive_path": "joint-current/', b'"outcome": '):
+            with self.subTest(cut_after=cut_after), TemporaryDirectory() as directory:
+                profile = household(Path(directory))
+                with writer_lock(profile) as lock:
+                    first = import_inbox_file(
+                        lock,
+                        drop(profile, "joint-current", EXPORT, payload("01.04.2026")),
+                        APRIL,
+                    )
+                # A later download under the same name is saved over the
+                # first export's copy, then imported; its entry is cut off.
+                (profile.exports / first.archive_path).write_bytes(later_download)
+                with writer_lock(profile) as lock:
+                    import_inbox_file(
+                        lock,
+                        drop(profile, "joint-current", EXPORT, later_download),
+                        APRIL,
+                    )
+                complete = profile.import_log_file.read_bytes()
+                second_entry = complete.index(b"\n") + 1
+                cut_off = complete.index(cut_after, second_entry) + len(cut_after)
+                profile.import_log_file.write_bytes(complete[:cut_off])
+
+                with writer_lock(profile) as lock:
+                    import_inbox_file(
+                        lock,
+                        drop(profile, "joint-savings", EXPORT, payload("03.04.2026")),
+                        APRIL,
+                    )
+
+                assert profile.import_log_file.read_bytes().startswith(complete)
+
 
 class DamagedLogTests(unittest.TestCase):
     def test_an_archive_path_no_run_could_have_is_refused_before_writing(
