@@ -32,7 +32,7 @@ from budget.bronze.parsers.registry import (
     source_formats,
     source_parser,
 )
-from budget.bronze.storage import open_bronze_connection
+from budget.bronze.storage import open_bronze_connection, open_bronze_snapshot
 from budget.profiles import Profile
 
 
@@ -200,10 +200,18 @@ class BronzeStore:
         profile: Profile,
         *,
         parsers: Mapping[str, SourceParser] | None = None,
+        snapshot: Path | None = None,
     ) -> None:
-        """Open the migrated Bronze store that one profile names."""
+        """Open the migrated Bronze store that one profile names.
+
+        With `snapshot`, open that backup snapshot of the profile's store
+        instead, read-only: it can be read, never imported into.
+        """
         selected = _parsers_for(parsers)
-        self._connection = open_bronze_connection(profile)
+        if snapshot is None:
+            self._connection = open_bronze_connection(profile)
+        else:
+            self._connection = open_bronze_snapshot(profile, snapshot)
         self._parsers = selected
 
     def __enter__(self) -> Self:

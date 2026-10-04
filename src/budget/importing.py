@@ -410,7 +410,12 @@ def _read_log(path: Path) -> _LogState:
     """
     if not path.exists():
         return _LogState(lines={}, cut_off=b"")
-    complete, feed, cut_off = path.read_bytes().rpartition(b"\n")
+    return _parse_log(path.read_bytes())
+
+
+def _parse_log(content: bytes) -> _LogState:
+    """Split a log's bytes into its complete entries and a final cut-off line."""
+    complete, feed, cut_off = content.rpartition(b"\n")
     lines: dict[str, bytes] = {}
     for line in complete.split(b"\n") if feed else []:
         run_id = _logged_run_id(line)
@@ -442,6 +447,18 @@ def _logged_archive_paths(state: _LogState, store: BronzeStore) -> dict[str, str
             raise ImportLogAheadOfBronzeError
         archive_paths[run_id] = _logged_archive_path(run, line)
     return archive_paths
+
+
+def check_import_log(store: BronzeStore, log: bytes) -> None:
+    """Refuse a log whose complete entries are not each a run the store holds.
+
+    Each complete entry must restate, byte for byte, one run the store holds,
+    as an import checks before it writes. A final line without its line feed
+    is not an entry yet, and a run the log does not mention yet is one the next
+    import logs, so neither is a disagreement. Raises `ImportLogDamagedError`
+    or `ImportLogAheadOfBronzeError`.
+    """
+    _logged_archive_paths(_parse_log(log), store)
 
 
 def _proving_entry(

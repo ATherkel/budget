@@ -25,7 +25,9 @@ from importlib import metadata
 from pathlib import Path
 from typing import Final
 
+from budget.bronze import BronzeStore
 from budget.bronze.storage import BRONZE_STAGE, open_bronze_connection
+from budget.importing import check_import_log
 from budget.locking import WriterLock
 from budget.profiles import (
     BRONZE_STORE_NAME,
@@ -45,6 +47,7 @@ PUBLISHING_SUFFIX: Final = ".partial"
 # The installed `budget` package, whose sources the code version fingerprints.
 _PACKAGE: Final = Path(__file__).resolve().parent
 _SOURCE_SUFFIXES: Final = frozenset({".py", ".sql"})
+_IMPORT_LOG_IN_SET: Final = f"{INPUTS_FOLDER}/{IMPORT_LOG_FILE_NAME}"
 
 
 class BackupWriteError(RuntimeError):
@@ -212,6 +215,9 @@ def _stage(profile: Profile, staging: Path, now: datetime) -> _StagedSet:
     store = staging / BRONZE_STORE_NAME
     schema_version = _snapshot_bronze(profile, store)
     inputs = _copy_inputs(profile, staging)
+    # The set must restore as it was taken: every logged run in the snapshot.
+    with BronzeStore(profile, snapshot=store) as snapshot:
+        check_import_log(snapshot, inputs.get(_IMPORT_LOG_IN_SET, b""))
     files = {BRONZE_STORE_NAME: _checksum(store.read_bytes())}
     files.update({in_set: _checksum(content) for in_set, content in inputs.items()})
     manifest = {

@@ -386,6 +386,35 @@ def _require_current_version(connection: sqlite3.Connection, path: Path) -> None
         raise UnsupportedStoreVersionError(path, version, latest)
 
 
+def _require_known_version(connection: sqlite3.Connection, path: Path) -> None:
+    """Refuse a store at no schema version, or one newer than this code."""
+    version = _read_version(connection)
+    latest = _migration_steps()[-1].version
+    if not 1 <= version <= latest:
+        raise UnsupportedStoreVersionError(path, version, latest)
+
+
+def open_bronze_snapshot(profile: Profile, path: Path) -> sqlite3.Connection:
+    """Open a backup snapshot of the profile's Bronze store, read-only.
+
+    The snapshot is opened `immutable`, so reading it never writes a WAL or
+    shared-memory file beside it. It must be this profile's Bronze store at a
+    schema version this code knows; a snapshot taken before a migration may
+    be older than the code.
+    """
+    _require_supported_sqlite()
+    uri = f"{path.as_uri()}?mode=ro&immutable=1"
+    connection = sqlite3.connect(uri, uri=True)
+    connection.row_factory = sqlite3.Row
+    try:
+        _require_known_version(connection, path)
+        _require_identity(connection, path, profile)
+    except BaseException:
+        connection.close()
+        raise
+    return connection
+
+
 def open_bronze_connection(profile: Profile) -> sqlite3.Connection:
     """Open an existing Bronze store, refusing anything it cannot vouch for."""
     _require_supported_sqlite()
