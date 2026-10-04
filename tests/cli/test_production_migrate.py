@@ -213,6 +213,25 @@ class FailedMigrationTests(unittest.TestCase):
             assert complete_backup_sets(production) == (newest,)
 
 
+class ContendedProductionStoreTests(unittest.TestCase):
+    def test_migrate_writes_no_set_while_another_command_holds_the_lock(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            sets = complete_backup_sets(production)
+
+            with added_migration(ADDED_TABLE), writer_lock(production):
+                status, stderr = migrate(profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "another command is running" in stderr
+            assert complete_backup_sets(production) == sets
+            assert user_version(production.bronze_store) == 1
+
+
 class CurrentProductionStoreTests(unittest.TestCase):
     def test_a_store_already_current_is_left_as_it_is_without_a_new_set(
         self,
