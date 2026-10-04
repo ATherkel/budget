@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Final
 
 ACCOUNTS_FILE_NAME = "accounts.toml"
+BACKUPS_FOLDER = "backups"
+BACKUP_STAGING_FOLDER = "backup-staging"
 BRONZE_STORE_NAME = "bronze.db"
 EXPORTS_FOLDER = "exports"
 IMPORT_LOG_FILE_NAME = "imports.jsonl"
@@ -99,6 +101,10 @@ class Profile:
     Every field is passed by name: they are mostly paths, so a positional call
     could put one folder in another's place without a type error.
 
+    `backups` is where complete backup sets are published. Only production
+    writes them, so a development profile has none; a test profile keeps one
+    inside its root, so a test can write sets as production would.
+
     `root` is the temporary directory a test profile must stay inside. It is
     `None` for the development and production profiles, whose paths the
     operator's own profile file names.
@@ -124,6 +130,8 @@ class Profile:
             "inbox": Path(self.inbox).resolve(),
             "exports": Path(self.exports).resolve(),
         }
+        if self.backups is not None:
+            folders["backups"] = Path(self.backups).resolve()
         inbox, exports = folders["inbox"], folders["exports"]
         if inbox.is_relative_to(exports) or exports.is_relative_to(inbox):
             raise ProfileFoldersOverlapError
@@ -172,8 +180,12 @@ class Profile:
 
     @property
     def backup_staging(self) -> Path:
-        """The local folder a backup set is written in until it is complete."""
-        raise NotImplementedError
+        """The local folder a backup set is written in until it is complete.
+
+        It sits beside the live stores, never in the synchronised backups
+        folder, so a set that is still being written is never synchronised.
+        """
+        return self._guarded_path(Path(self.stores) / BACKUP_STAGING_FOLDER)
 
     @property
     def writer_lock_file(self) -> Path:
@@ -298,5 +310,6 @@ def test_profile(root: str | Path) -> Profile:
         inputs=Path(root) / INPUTS_FOLDER,
         inbox=Path(root) / INBOX_FOLDER,
         exports=Path(root) / EXPORTS_FOLDER,
+        backups=Path(root) / BACKUPS_FOLDER,
         root=Path(root),
     )
