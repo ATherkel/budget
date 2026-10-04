@@ -209,6 +209,31 @@ class ArchiveNameTests(unittest.TestCase):
             assert (profile.exports / "joint-current" / "refused").is_file()
             assert source.exists()
 
+    def test_an_archived_export_named_like_a_temporary_file_is_never_overwritten(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            first = payload("01.04.2026")
+            declared_export_date = Coverage(
+                covers_from=date(2026, 4, 1),
+                covers_through=date(2026, 5, 2),
+                exported_on=date(2026, 5, 2),
+            )
+            with writer_lock(profile) as lock:
+                earlier = import_inbox_file(
+                    lock,
+                    drop(profile, "joint-current", ".x.csv.partial", first),
+                    declared_export_date,
+                )
+                import_inbox_file(
+                    lock,
+                    drop(profile, "joint-current", "x.csv", payload("02.04.2026")),
+                    declared_export_date,
+                )
+
+            assert (profile.exports / earlier.archive_path).read_bytes() == first
+
     def test_a_retry_finds_its_archived_copy_before_a_place_freed_since(
         self,
     ) -> None:
