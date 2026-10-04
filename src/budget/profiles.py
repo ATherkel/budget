@@ -15,6 +15,7 @@ ACCOUNTS_FILE_NAME = "accounts.toml"
 BACKUPS_FOLDER = "backups"
 BACKUP_STAGING_FOLDER = "backup-staging"
 BRONZE_STORE_NAME = "bronze.db"
+DECISION_LOG_FILE_NAME = "decisions.jsonl"
 EXPORTS_FOLDER = "exports"
 IMPORT_LOG_FILE_NAME = "imports.jsonl"
 INBOX_FOLDER = "inbox"
@@ -220,6 +221,10 @@ class Profile:
     def accounts_file(self) -> Path:
         """The account registry, re-checked against the test root each time."""
         return self._guarded_path(Path(self.inputs) / ACCOUNTS_FILE_NAME)
+
+    def input_file(self, relative: str) -> Path:
+        """One file in the inputs folder, re-checked against the test root."""
+        return self._guarded_path(Path(self.inputs) / relative)
 
     def archive_file(self, archive_path: str) -> Path:
         """One file in the export archive, re-checked against the test root.

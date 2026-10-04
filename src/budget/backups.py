@@ -26,7 +26,13 @@ from typing import Final
 
 from budget.bronze.storage import BRONZE_STAGE, open_bronze_connection
 from budget.locking import WriterLock
-from budget.profiles import BRONZE_STORE_NAME, Profile
+from budget.profiles import (
+    BRONZE_STORE_NAME,
+    DECISION_LOG_FILE_NAME,
+    IMPORT_LOG_FILE_NAME,
+    INPUTS_FOLDER,
+    Profile,
+)
 
 MANIFEST_FORMAT: Final = 1
 MANIFEST_NAME: Final = "manifest.json"
@@ -114,18 +120,53 @@ class _StagedSet:
     manifest: bytes
 
 
+def _copy_inputs(profile: Profile, staging: Path) -> dict[str, bytes]:
+    """Copy every file in the inputs folder into the set's `inputs` folder.
+
+    Returns each copy's bytes by its path in the set, with `/` separators.
+    """
+    if not profile.inputs.is_dir():
+        return {}
+    copies = {}
+    for found in sorted(profile.inputs.rglob("*")):
+        relative = found.relative_to(profile.inputs).as_posix()
+        source = profile.input_file(relative)
+        if not source.is_file():
+            continue
+        content = source.read_bytes()
+        in_set = f"{INPUTS_FOLDER}/{relative}"
+        _write_synced(staging / in_set, content)
+        copies[in_set] = content
+    return copies
+
+
+def _log_length(content: bytes | None) -> int:
+    """Return how many bytes of a log are complete lines.
+
+    A final line without its line feed was cut off by a crash: it is not an
+    entry yet, so it is not counted.
+    """
+    return 0 if content is None else content.rfind(b"\n") + 1
+
+
 def _stage(profile: Profile, staging: Path, now: datetime) -> _StagedSet:
     """Write a set's files into `staging`, and describe them."""
     staging.mkdir(parents=True)
     store = staging / BRONZE_STORE_NAME
     schema_version = _snapshot_bronze(profile, store)
+    inputs = _copy_inputs(profile, staging)
     files = {BRONZE_STORE_NAME: _checksum(store.read_bytes())}
+    files.update({in_set: _checksum(content) for in_set, content in inputs.items()})
     manifest = {
         "format": MANIFEST_FORMAT,
         "profile": profile.name,
         "created_at": now.astimezone(UTC).isoformat(),
         "stores": {
             BRONZE_STAGE: {"path": BRONZE_STORE_NAME, "schema_version": schema_version}
+        },
+        "logs": {
+            log: _log_length(inputs.get(f"{INPUTS_FOLDER}/{log}"))
+            for log in (IMPORT_LOG_FILE_NAME, DECISION_LOG_FILE_NAME)
         },
         "files": files,
     }
