@@ -74,3 +74,7 @@ def migrate_profile(
     if migrate_bronze(profile, new_store=new_store, before_migrating=back_up_first):
         back_up(lock, now=clock())
         release_recovery_sets(lock)
+
+
+class MigratedWithoutBackupError(RuntimeError):
+    """The store was migrated, but no backup set of it followed."""
