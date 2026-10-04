@@ -33,7 +33,7 @@ from budget.bronze.parsers.registry import (
     source_parser,
 )
 from budget.bronze.storage import open_bronze_connection, open_bronze_snapshot
-from budget.profiles import Profile
+from budget.profiles import PRODUCTION_PROFILE_NAME, Profile
 
 
 class MissingExportDateError(ValueError):
@@ -44,6 +44,23 @@ class MissingExportDateError(ValueError):
         super().__init__(
             "Declare exported_on: the declared source format "
             f"{source_format} reads no export date from this filename"
+        )
+
+
+class ProductionImportBlockedError(RuntimeError):
+    """Production imports wait for the command that backs up after them.
+
+    Production can be migrated, so it can have a Bronze store, but every
+    write to it must be followed by a backup set. Until `budget import` does
+    that, nothing imports into production.
+    """
+
+    def __init__(self) -> None:
+        """Say what production imports wait for."""
+        super().__init__(
+            "nothing is imported into production until the `budget import` "
+            "command, which writes a backup set after its Bronze writes; "
+            "nothing was written"
         )
 
 
@@ -213,6 +230,7 @@ class BronzeStore:
         else:
             self._connection = open_bronze_snapshot(profile, snapshot)
         self._parsers = selected
+        self._production = profile.name == PRODUCTION_PROFILE_NAME
 
     def __enter__(self) -> Self:
         """Return the open store for a `with` block."""
@@ -243,7 +261,12 @@ class BronzeStore:
         path: str | Path,
         declaration: ImportDeclaration,
     ) -> ImportRun:
-        """Retain a file's bytes, provenance, and decoded source records."""
+        """Retain a file's bytes, provenance, and decoded source records.
+
+        Refused for production, whose imports wait for `budget import`.
+        """
+        if self._production:
+            raise ProductionImportBlockedError
         started_at = datetime.now(UTC)
         source_format = declaration.source_format
         parser = self._parser_for(source_format)
@@ -379,7 +402,3 @@ class BronzeStore:
             )
             for row in rows
         )
-
-
-class ProductionImportBlockedError(RuntimeError):
-    """Production imports wait for the command that backs up after them."""
