@@ -12,6 +12,7 @@ does the file leave the inbox.
 import json
 import os
 import sys
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
@@ -224,12 +225,16 @@ def _write_durably(path: Path, content: bytes) -> None:
     """
     created = _missing_folders(path.parent)
     path.parent.mkdir(parents=True, exist_ok=True)
-    partial = path.with_name(f".{path.name}.partial")
-    with partial.open("wb") as file:
+    # Created exclusively under a new name, so it never truncates a file the
+    # archive already holds, whatever that file is called.
+    descriptor, partial_name = tempfile.mkstemp(
+        dir=path.parent, prefix=".", suffix=".partial"
+    )
+    with os.fdopen(descriptor, "wb") as file:
         file.write(content)
         file.flush()
         os.fsync(file.fileno())
-    partial.rename(path)
+    Path(partial_name).rename(path)
     _sync_folder(path.parent)
     # A new folder is an entry in its parent, which needs forcing to disk too.
     for folder in created:
