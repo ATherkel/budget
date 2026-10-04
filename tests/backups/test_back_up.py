@@ -5,8 +5,10 @@ Every profile here is a synthetic test profile in a temporary folder; no test
 opens a production store or reads a real export.
 """
 
+import tomllib
 import unittest
 from contextlib import closing
+from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -22,6 +24,24 @@ from tests.backups.sets import (
     run_ids,
 )
 from tests.importing.households import household
+
+REPOSITORY = Path(__file__).resolve().parents[2]
+
+
+def _source_fingerprint(package: Path) -> str:
+    """The fingerprint `operations.md` defines for the package's source.
+
+    One line per `.py` and `.sql` file, sorted by its `/`-separated path in
+    the package: the path, a tab, the file's SHA-256, and a line feed; then
+    the SHA-256 of those lines.
+    """
+    sources = [path for path in package.rglob("*") if path.suffix in {".py", ".sql"}]
+    lines = sorted(
+        f"{path.relative_to(package).as_posix()}\t"
+        f"{sha256(path.read_bytes()).hexdigest()}\n"
+        for path in sources
+    )
+    return sha256("".join(lines).encode("utf-8")).hexdigest()
 
 
 class BackUpTests(unittest.TestCase):
@@ -89,6 +109,20 @@ class BackUpTests(unittest.TestCase):
             assert written["logs"] == {
                 "imports.jsonl": profile.import_log_file.stat().st_size,
                 "decisions.jsonl": len(b'{"format": 1, "entry": 1}\n'),
+            }
+
+    def test_a_set_names_the_code_version_that_wrote_it(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            with writer_lock(profile) as lock:
+                backup = back_up(lock, now=NOW)
+
+            pyproject = tomllib.loads(
+                (REPOSITORY / "pyproject.toml").read_text("utf-8")
+            )
+            assert manifest(backup.path)["code_version"] == {
+                "package": pyproject["project"]["version"],
+                "source_sha256": _source_fingerprint(REPOSITORY / "src" / "budget"),
             }
 
     def test_a_log_that_does_not_exist_yet_has_length_zero(self) -> None:
