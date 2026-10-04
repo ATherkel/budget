@@ -138,9 +138,10 @@ class InboxImport:
     """What happened to one inbox file.
 
     `archive_path` is where its bytes are archived, relative to the profile's
-    export archive and with `/` separators, as the import log records it. A
-    refused run leaves the file in the inbox, and so does a file saved over
-    with other bytes while it was imported.
+    export archive and with `/` separators, as the import log records it.
+    `left_in_inbox` reports whether the file is still in the inbox when the
+    import returns: a refused file, a file saved over with other bytes while it
+    was imported, and a file another program holds all stay there.
     """
 
     import_run: ImportRun
@@ -454,6 +455,11 @@ def _bring_log_up_to_date(
     return now_logged
 
 
+def _payload_id(source: Path) -> str:
+    """Name the bytes a file holds now, as Bronze names a payload."""
+    return sha256(source.read_bytes()).hexdigest()
+
+
 def _clear_from_inbox(source: Path, run: ImportRun) -> bool:
     """Remove a finished, accepted export from the inbox; report if it is left.
 
@@ -465,7 +471,7 @@ def _clear_from_inbox(source: Path, run: ImportRun) -> bool:
     if run.outcome == "refused":
         return source.exists()
     try:
-        if sha256(source.read_bytes()).hexdigest() != run.payload_id:
+        if _payload_id(source) != run.payload_id:
             return True
         source.unlink()
     except FileNotFoundError:
@@ -481,7 +487,7 @@ def _earlier_run(store: BronzeStore, account_id: str, source: Path) -> ImportRun
     The retry identity is the account, the original filename and the payload
     hash. A refused run never matches: presenting the file again is new.
     """
-    identity = (account_id, source.name, sha256(source.read_bytes()).hexdigest())
+    identity = (account_id, source.name, _payload_id(source))
     for run in store.import_runs():
         found = (run.declared_account_id, run.original_filename, run.payload_id)
         if found == identity and run.outcome in RETRIED_OUTCOMES:
