@@ -323,23 +323,16 @@ def _apply_step(
     profile: Profile,
     step: _MigrationStep,
 ) -> None:
-    """Apply one migration and its version bump in one transaction."""
-    try:
-        connection.execute("BEGIN IMMEDIATE")
-        for statement in _statements(step.sql):
-            connection.execute(statement)
-        if step.version == 1:
-            connection.execute(
-                "INSERT INTO store_identity (singleton, profile, stage)"
-                " VALUES (1, ?, ?)",
-                (profile.name, BRONZE_STAGE),
-            )
-        _require_no_foreign_key_violations(connection, step.version)
-        connection.execute(f"PRAGMA user_version = {step.version}")
-        connection.commit()
-    except BaseException:
-        connection.rollback()
-        raise
+    """Apply one migration and its version bump in the open transaction."""
+    for statement in _statements(step.sql):
+        connection.execute(statement)
+    if step.version == 1:
+        connection.execute(
+            "INSERT INTO store_identity (singleton, profile, stage) VALUES (1, ?, ?)",
+            (profile.name, BRONZE_STAGE),
+        )
+    _require_no_foreign_key_violations(connection, step.version)
+    connection.execute(f"PRAGMA user_version = {step.version}")
 
 
 def require_migration_allowed(profile: Profile, *, new_store: bool = False) -> None:
@@ -394,13 +387,22 @@ def _apply_steps(
     profile: Profile,
     steps: list[_MigrationStep],
 ) -> None:
-    """Apply migration steps with foreign keys off, each as `_apply_step` does."""
+    """Apply every pending step in one transaction, with foreign keys off.
+
+    A step that fails rolls back the steps before it too, so the store stays
+    at the version it had: never at one between it and the code's.
+    """
     # The pragma cannot change inside a transaction, and a table rebuild must
     # be free to drop rows before the foreign-key check.
     connection.execute("PRAGMA foreign_keys = OFF")
     try:
+        connection.execute("BEGIN IMMEDIATE")
         for step in steps:
             _apply_step(connection, profile, step)
+        connection.commit()
+    except BaseException:
+        connection.rollback()
+        raise
     finally:
         connection.execute("PRAGMA foreign_keys = ON")
 
