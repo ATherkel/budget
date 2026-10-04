@@ -434,12 +434,15 @@ Every command that writes Bronze brings it up to date before it finishes, and
   run's bytes are copied to `<account_id>/refused/<first 12 characters of the
   payload hash>/<original filename>`, while the file itself stays in the inbox:
   the account's own folder holds only accepted exports, and replay can still
-  restore the refusal. A place an entry names stays reserved for that run's
-  bytes, even while its copy is missing: other bytes never take it, and the
-  next run with those bytes writes a missing copy back there. Archived bytes are never overwritten:
-  when every place a run's export may go already holds other bytes, that run
-  is not logged, and every import stops before writing anything until the
-  conflicting file is moved aside.
+  restore the refusal. An export named like one of the archive's own folders
+  (`refused`, or 12 hexadecimal characters, in any case) goes straight to its
+  hash folder. A place an entry names stays reserved for that run's bytes,
+  even while its copy is missing, and names that differ only in case are one
+  place: other bytes never take it, and the next run of the same file (the
+  same account, name and bytes) writes a missing copy back there. Archived
+  bytes are never overwritten: when every place a run's export may go already
+  holds other bytes, that run is not logged, and every import stops before
+  writing anything until the conflicting file is moved aside.
 - **Order.** Before an import writes anything of its own, every run Bronze
   holds that the log lacks is archived and logged, oldest first, from the bytes
   Bronze retains. That includes a refused run a crash interrupted, whose file no
@@ -591,7 +594,8 @@ the filename, the payload or the export date
 export: its last transaction is in January, and only the declaration says that
 February to April were quiet rather than never exported. Each file then moves
 to `exports\<account_id>\` under its original name, which carries the export
-date. When that name is already taken by different bytes, it goes to
+date. When that name is already taken by different bytes, or is the name of
+one of the archive's own folders, it goes to
 `exports\<account_id>\<first 12 characters of the payload hash>\` instead. A
 refused export stays in the inbox, and a copy of its bytes goes to
 `exports\<account_id>\refused\<first 12 characters of the payload hash>\`
