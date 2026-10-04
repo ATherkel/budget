@@ -217,6 +217,7 @@ def _write_durably(path: Path, content: bytes) -> None:
     check is what keeps archived bytes from being overwritten: Windows refuses
     to rename onto an existing file, but POSIX replaces it.
     """
+    created = _missing_folders(path.parent)
     path.parent.mkdir(parents=True, exist_ok=True)
     partial = path.with_name(f".{path.name}.partial")
     with partial.open("wb") as file:
@@ -225,6 +226,18 @@ def _write_durably(path: Path, content: bytes) -> None:
         os.fsync(file.fileno())
     partial.rename(path)
     _sync_folder(path.parent)
+    # A new folder is an entry in its parent, which needs forcing to disk too.
+    for folder in created:
+        _sync_folder(folder.parent)
+
+
+def _missing_folders(folder: Path) -> list[Path]:
+    """List `folder` and its parents that do not exist yet, innermost first."""
+    missing = []
+    while not folder.exists():
+        missing.append(folder)
+        folder = folder.parent
+    return missing
 
 
 def _entry_fields(run: ImportRun, archive_path: str) -> dict[str, object]:
@@ -254,10 +267,13 @@ def _log_entry(run: ImportRun, archive_path: str) -> bytes:
 
 def _append_to_log(path: Path, data: bytes) -> None:
     """Append to the log and force it to disk before going on."""
+    created = not path.exists()
     with path.open("ab") as file:
         file.write(data)
         file.flush()
         os.fsync(file.fileno())
+    if created:
+        _sync_folder(path.parent)
 
 
 @dataclass(frozen=True)
