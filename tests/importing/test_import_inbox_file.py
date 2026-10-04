@@ -184,6 +184,34 @@ class ArchiveNameTests(unittest.TestCase):
             assert (profile.exports / "joint-current" / EXPORT).read_bytes() == earlier
             assert log_entries(profile)[1]["archive_path"] == result.archive_path
 
+    def test_a_retry_finds_its_archived_copy_before_a_place_freed_since(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            corrected = payload("01.04.2026", "02.04.2026")
+            with writer_lock(profile) as lock:
+                import_inbox_file(
+                    lock,
+                    drop(profile, "joint-current", EXPORT, payload("01.04.2026")),
+                    APRIL,
+                )
+                first = import_inbox_file(
+                    lock, drop(profile, "joint-current", EXPORT, corrected), APRIL
+                )
+            # Someone moves the earlier export aside; then the corrected file
+            # turns up in the inbox again, as after a crash before its removal.
+            (profile.exports / "joint-current" / EXPORT).rename(
+                Path(directory) / "aside.csv"
+            )
+            source = drop(profile, "joint-current", EXPORT, corrected)
+
+            with writer_lock(profile) as lock:
+                again = import_inbox_file(lock, source, APRIL)
+
+            assert again.archive_path == first.archive_path
+            assert not (profile.exports / "joint-current" / EXPORT).exists()
+
     def test_an_archive_folder_replaced_by_a_symlink_out_of_the_root_is_refused(
         self,
     ) -> None:
