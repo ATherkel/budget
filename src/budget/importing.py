@@ -12,6 +12,7 @@ does the file leave the inbox.
 import json
 import os
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from hashlib import sha256
@@ -226,9 +227,9 @@ def _write_durably(path: Path, content: bytes) -> None:
     _sync_folder(path.parent)
 
 
-def _log_entry(run: ImportRun, archive_path: str) -> bytes:
-    """Mirror one import run as an `imports.jsonl` line, with its line feed."""
-    entry = {
+def _entry_fields(run: ImportRun, archive_path: str) -> dict[str, object]:
+    """Mirror one import run as the fields of its `imports.jsonl` entry."""
+    return {
         "format": IMPORT_LOG_FORMAT,
         "import_run_id": run.import_run_id,
         "account_id": run.declared_account_id,
@@ -243,6 +244,11 @@ def _log_entry(run: ImportRun, archive_path: str) -> bytes:
         "outcome": run.outcome,
         "repeat_of": run.repeat_of,
     }
+
+
+def _log_entry(run: ImportRun, archive_path: str) -> bytes:
+    """Mirror one import run as an `imports.jsonl` line, with its line feed."""
+    entry = _entry_fields(run, archive_path)
     return (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
 
 
@@ -256,21 +262,33 @@ def _append_to_log(path: Path, data: bytes) -> None:
 
 @dataclass(frozen=True)
 class _LogState:
-    """The runs `imports.jsonl` mirrors, and any final entry a crash cut off."""
+    """The entries `imports.jsonl` holds by run, and any final one cut off."""
 
-    logged: frozenset[str]
+    entries: Mapping[str, Mapping[str, object]]
     cut_off: bytes
 
+    @property
+    def logged(self) -> frozenset[str]:
+        """The runs the log mirrors."""
+        return frozenset(self.entries)
 
-def _logged_run_id(line: bytes) -> str:
-    """Return the run one complete line mirrors; any other line is damage."""
+
+def _logged_entry(line: bytes) -> tuple[str, Mapping[str, object]]:
+    """Return the run one complete line mirrors, and its fields.
+
+    Any line that is not a JSON object naming a run is damage.
+    """
     try:
-        run_id = json.loads(line)["import_run_id"]
+        entry = json.loads(line)
+        run_id = entry["import_run_id"]
     except (ValueError, KeyError, TypeError):
         raise ImportLogDamagedError from None
-    if not isinstance(run_id, str):
+    if not isinstance(entry, dict) or not isinstance(run_id, str):
         raise ImportLogDamagedError
-    return run_id
+    # Rebuilt so the values are typed `object`, not the `Any` `json` returns;
+    # JSON keys are always strings, so `str` changes nothing.
+    fields: dict[str, object] = {str(key): value for key, value in entry.items()}
+    return run_id, fields
 
 
 def _read_log(path: Path) -> _LogState:
@@ -279,15 +297,31 @@ def _read_log(path: Path) -> _LogState:
     Every complete line, blank ones included, must be the one entry of a run.
     """
     if not path.exists():
-        return _LogState(logged=frozenset(), cut_off=b"")
+        return _LogState(entries={}, cut_off=b"")
     complete, feed, cut_off = path.read_bytes().rpartition(b"\n")
-    logged: set[str] = set()
+    entries: dict[str, Mapping[str, object]] = {}
     for line in complete.split(b"\n") if feed else []:
-        run_id = _logged_run_id(line)
-        if run_id in logged:
+        run_id, entry = _logged_entry(line)
+        if run_id in entries:
             raise ImportLogDamagedError
-        logged.add(run_id)
-    return _LogState(logged=frozenset(logged), cut_off=cut_off)
+        entries[run_id] = entry
+    return _LogState(entries=entries, cut_off=cut_off)
+
+
+def _require_entries_match_runs(state: _LogState, store: BronzeStore) -> None:
+    """Refuse an entry Bronze recorded no run for, or one its run disagrees with.
+
+    Every field but `archive_path` restates the run, so it must say the same;
+    `archive_path` is only known from the archive, and must be text.
+    """
+    runs = {run.import_run_id: run for run in store.import_runs()}
+    for run_id, entry in state.entries.items():
+        run = runs.get(run_id)
+        archive_path = entry.get("archive_path")
+        if run is None or not isinstance(archive_path, str):
+            raise ImportLogDamagedError
+        if entry != _entry_fields(run, archive_path):
+            raise ImportLogDamagedError
 
 
 def _proving_entry(
@@ -315,11 +349,11 @@ def _recovered_log(profile: Profile, store: BronzeStore) -> frozenset[str]:
     already archived proves what it was going to say: the entry is written
     after the archive, so no other run can be the one it began. Anything else
     is refused, and the log is left exactly as it was found. So is an entry
-    for a run Bronze never recorded, such as when Bronze is older than the log.
+    for a run Bronze never recorded, such as when Bronze is older than the log,
+    and an entry its run disagrees with.
     """
     state = _read_log(profile.import_log_file)
-    if not state.logged <= {run.import_run_id for run in store.import_runs()}:
-        raise ImportLogDamagedError
+    _require_entries_match_runs(state, store)
     if not state.cut_off:
         return state.logged
     entry = _proving_entry(profile, store, state)
