@@ -763,6 +763,35 @@ class CutOffProofTests(unittest.TestCase):
 
 
 class DamagedLogTests(unittest.TestCase):
+    def test_an_entry_that_disagrees_with_its_run_is_refused_before_writing(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            with writer_lock(profile) as lock:
+                import_inbox_file(
+                    lock,
+                    drop(profile, "joint-current", EXPORT, payload("01.04.2026")),
+                    APRIL,
+                )
+            log = profile.import_log_file.read_bytes()
+            edited = log.replace(
+                b'"covers_through": "2026-05-02"', b'"covers_through": "2026-05-09"'
+            )
+            assert edited != log
+            profile.import_log_file.write_bytes(edited)
+            content = payload("02.04.2026")
+            source = drop(profile, "joint-savings", EXPORT, content)
+
+            with (
+                writer_lock(profile) as lock,
+                pytest.raises(ImportLogDamagedError),
+            ):
+                import_inbox_file(lock, source, APRIL)
+
+            assert profile.import_log_file.read_bytes() == edited
+            assert source.read_bytes() == content
+
     def test_a_log_line_no_run_accounts_for_is_refused_before_writing(self) -> None:
         damages: dict[str, Callable[[bytes], bytes]] = {
             "a blank line": lambda _: b"\n",
