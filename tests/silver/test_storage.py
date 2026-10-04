@@ -24,6 +24,7 @@ from unittest import mock
 import pytest
 
 from budget.bronze import migrate_bronze
+from budget.bronze.storage import open_bronze_connection
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 from budget.silver import storage
@@ -250,6 +251,77 @@ class SilverStorageTests(unittest.TestCase):
                 assert connection.execute("PRAGMA synchronous").fetchone()[0] == 2
             finally:
                 connection.close()
+
+    def test_open_refuses_a_store_that_was_never_migrated(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+
+            with pytest.raises(storage.StoreNotFoundError) as refusal:
+                open_silver_connection(profile)
+
+            # The refusal names the stage that has no store, not just the path.
+            assert "no Silver store at" in str(refusal.value)
+            assert not profile.silver_store.exists()
+
+    def test_open_refuses_a_store_from_another_profile(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile = make_test_profile(root)
+            migrate_silver(profile)
+            other = Profile(
+                name="development",
+                stores=profile.stores,
+                inputs=profile.inputs,
+                root=root,
+            )
+
+            with pytest.raises(storage.StoreIdentityError):
+                open_silver_connection(other)
+
+    def test_open_refuses_a_store_whose_version_was_lost(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+            with _connected(profile.silver_store) as connection:
+                connection.execute("PRAGMA user_version = 0")
+
+            with pytest.raises(storage.MigrationRequiredError):
+                open_silver_connection(profile)
+
+    def test_open_refuses_a_newer_schema_version(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+            with _connected(profile.silver_store) as connection:
+                connection.execute("PRAGMA user_version = 99")
+
+            with pytest.raises(storage.UnsupportedStoreVersionError):
+                open_silver_connection(profile)
+
+    def test_the_sqlite_version_floor_is_checked_before_opening(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+
+            with (
+                mock.patch.object(sqlite3, "sqlite_version_info", (3, 45, 1)),
+                pytest.raises(storage.UnsupportedSQLiteVersionError),
+            ):
+                open_silver_connection(profile)
+
+    def test_each_stage_opens_only_its_own_file(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_bronze(profile)
+
+            # A migrated Bronze store does not stand in for Silver.
+            with pytest.raises(storage.StoreNotFoundError):
+                open_silver_connection(profile)
+
+            migrate_silver(profile)
+
+            open_bronze_connection(profile).close()
+            open_silver_connection(profile).close()
 
 
 if __name__ == "__main__":

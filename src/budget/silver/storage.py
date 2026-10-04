@@ -28,6 +28,7 @@ from budget.sqlstore import (
     UnsupportedStoreVersionError,
     UnversionedStoreError,
     migrate_store,
+    open_store_connection,
     require_migration_allowed,
 )
 
@@ -77,4 +78,4 @@ def silver_stage(profile: Profile) -> StageStore:
 
 def open_silver_connection(profile: Profile) -> sqlite3.Connection:
     """Open an existing Silver store, refusing anything it cannot vouch for."""
-    raise NotImplementedError
+    return open_store_connection(silver_stage(profile))
