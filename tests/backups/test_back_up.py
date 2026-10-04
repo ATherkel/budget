@@ -175,6 +175,35 @@ class InterruptedSetTests(unittest.TestCase):
             assert no_manifest.exists()
 
 
+class ChecksumTests(unittest.TestCase):
+    def test_a_set_whose_files_do_not_match_its_manifest_is_never_selected(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            with writer_lock(profile) as lock:
+                earlier = back_up(lock, now=NOW - timedelta(days=1))
+                import_one(lock)
+                later = back_up(lock, now=NOW)
+            cases = {
+                "a changed byte": lambda content: content[:-1] + b"\x00",
+                "a cut-off file": lambda content: content[:-1],
+            }
+            for case, damage in cases.items():
+                for relative in ("bronze.db", "inputs/imports.jsonl"):
+                    with self.subTest(case, file=relative):
+                        target = later.path / relative
+                        original = target.read_bytes()
+                        target.write_bytes(damage(original))
+
+                        assert complete_backup_sets(profile) == (earlier,)
+
+                        target.write_bytes(original)
+            missing = later.path / "inputs" / "accounts.toml"
+            missing.unlink()
+            assert complete_backup_sets(profile) == (earlier,)
+
+
 class FailedBackupTests(unittest.TestCase):
     def test_a_set_that_cannot_be_written_leaves_nothing_behind(self) -> None:
         with TemporaryDirectory() as directory:
