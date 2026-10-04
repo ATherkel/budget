@@ -74,6 +74,17 @@ class ProfileFoldersOverlapError(ValueError):
         )
 
 
+class NoBackupsFolderError(ValueError):
+    """The profile names no backups folder, so it writes no backup sets."""
+
+    def __init__(self, name: str) -> None:
+        """Name the profile, and which one writes backup sets."""
+        super().__init__(
+            f"the {name} profile writes no backup sets: only "
+            f"{PRODUCTION_PROFILE_NAME} names a backups folder"
+        )
+
+
 class ProfilePathOutsideRootError(ValueError):
     """A test profile names a path outside its temporary root."""
 
@@ -221,6 +232,15 @@ class Profile:
     def import_log_file(self) -> Path:
         """The append-only import log, re-checked against the test root each time."""
         return self._guarded_path(Path(self.inputs) / IMPORT_LOG_FILE_NAME)
+
+    def backup_path(self, relative: str) -> Path:
+        """One path in the backups folder, re-checked against the test root.
+
+        Raises `NoBackupsFolderError` for a profile that writes no backups.
+        """
+        if self.backups is None:
+            raise NoBackupsFolderError(self.name)
+        return self._guarded_path(Path(self.backups) / relative)
 
     @property
     def backup_staging(self) -> Path:
