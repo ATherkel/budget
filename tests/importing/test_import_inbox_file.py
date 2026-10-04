@@ -923,6 +923,37 @@ class CutOffProofTests(unittest.TestCase):
 
 
 class DamagedLogTests(unittest.TestCase):
+    def test_an_archive_path_no_run_could_have_is_refused_before_writing(
+        self,
+    ) -> None:
+        archived_at = b'"archive_path": "joint-current/export-20260502.csv"'
+        edits = {
+            "a path out of the archive": b'"archive_path": "../../elsewhere.csv"',
+            # A guard: a path that is not text never matched its run.
+            "a path that is not text": b'"archive_path": 123',
+        }
+        for edit, replacement in edits.items():
+            with self.subTest(edit), TemporaryDirectory() as directory:
+                profile = household(Path(directory))
+                with writer_lock(profile) as lock:
+                    import_inbox_file(
+                        lock,
+                        drop(profile, "joint-current", EXPORT, payload("01.04.2026")),
+                        APRIL,
+                    )
+                log = profile.import_log_file.read_bytes()
+                assert archived_at in log
+                profile.import_log_file.write_bytes(
+                    log.replace(archived_at, replacement)
+                )
+                source = drop(profile, "joint-savings", EXPORT, payload("02.04.2026"))
+
+                with (
+                    writer_lock(profile) as lock,
+                    pytest.raises(ImportLogDamagedError),
+                ):
+                    import_inbox_file(lock, source, APRIL)
+
     def test_a_log_ahead_of_bronze_is_told_apart_from_a_damaged_one(self) -> None:
         # Rolling the log back would lose the runs Bronze lacks; Bronze must be
         # brought up to the log instead, so the refusal says which case it is.
