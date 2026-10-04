@@ -988,9 +988,13 @@ class DamagedLogTests(unittest.TestCase):
 
             with (
                 writer_lock(profile) as lock,
-                pytest.raises(ImportLogAheadOfBronzeError),
+                pytest.raises(ImportLogAheadOfBronzeError) as refusal,
             ):
                 import_inbox_file(lock, source, APRIL)
+
+            # Never caught as damage, whose remedy is to roll the log back.
+            assert not isinstance(refusal.value, ImportLogDamagedError)
+            assert source.exists()
 
     def test_an_entry_that_disagrees_with_its_run_is_refused_before_writing(
         self,
@@ -1024,9 +1028,6 @@ class DamagedLogTests(unittest.TestCase):
     def test_a_log_line_no_run_accounts_for_is_refused_before_writing(self) -> None:
         damages: dict[str, Callable[[bytes], bytes]] = {
             "a blank line": lambda _: b"\n",
-            "an entry for a run Bronze never recorded": lambda _: (
-                b'{"format": 1, "import_run_id": "no-such-run"}\n'
-            ),
             "a line that is not JSON": lambda _: b"not an entry\n",
             "an entry that names no run": lambda _: b'{"format": 1}\n',
             # A guard: added with the check that every line is a run's entry.
