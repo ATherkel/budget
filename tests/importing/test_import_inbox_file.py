@@ -260,6 +260,33 @@ class ArchiveNameTests(unittest.TestCase):
             assert archived.read_bytes() == b"saved over"
             assert source.read_bytes() == content
 
+    def test_a_place_reserved_for_other_bytes_is_never_reused_even_if_they_match(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            later_download = payload("01.04.2026", "02.04.2026")
+            with writer_lock(profile) as lock:
+                first = import_inbox_file(
+                    lock,
+                    drop(profile, "joint-current", EXPORT, payload("01.04.2026")),
+                    APRIL,
+                )
+            # A later download under the same name is saved over the first
+            # export's archived copy, then imported from the inbox as well.
+            (profile.exports / first.archive_path).write_bytes(later_download)
+
+            with writer_lock(profile) as lock:
+                second = import_inbox_file(
+                    lock, drop(profile, "joint-current", EXPORT, later_download), APRIL
+                )
+
+            hash_folder = sha256(later_download).hexdigest()[:12]
+            assert second.archive_path == f"joint-current/{hash_folder}/{EXPORT}"
+            assert (profile.exports / second.archive_path).read_bytes() == (
+                later_download
+            )
+
     def test_a_refused_copy_gone_missing_is_restored_by_the_next_refusal(
         self,
     ) -> None:
