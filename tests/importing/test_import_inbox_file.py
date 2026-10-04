@@ -186,29 +186,55 @@ class ArchiveNameTests(unittest.TestCase):
             assert (profile.exports / "joint-current" / EXPORT).read_bytes() == earlier
             assert log_entries(profile)[1]["archive_path"] == result.archive_path
 
-    def test_an_archived_file_standing_where_a_folder_must_go_is_a_conflict(
+    def test_an_export_named_like_an_archive_folder_goes_to_its_hash_folder(
+        self,
+    ) -> None:
+        # An archived file must never stand where the archive's own folders go.
+        declared_export_date = Coverage(
+            covers_from=date(2026, 4, 1),
+            covers_through=date(2026, 5, 2),
+            exported_on=date(2026, 5, 2),
+        )
+        for name in ("refused", "Refused", "0123456789ab"):
+            with self.subTest(name), TemporaryDirectory() as directory:
+                profile = household(Path(directory))
+                content = payload("01.04.2026")
+                with writer_lock(profile) as lock:
+                    named_like_a_folder = import_inbox_file(
+                        lock,
+                        drop(profile, "joint-current", name, content),
+                        declared_export_date,
+                    )
+                    refusal = import_inbox_file(
+                        lock,
+                        drop(profile, "joint-current", EXPORT, payload("02.04.2026")),
+                        THROUGH_MAY_3,
+                    )
+
+                hash_folder = sha256(content).hexdigest()[:12]
+                assert named_like_a_folder.archive_path == (
+                    f"joint-current/{hash_folder}/{name}"
+                )
+                assert refusal.import_run.outcome == "refused"
+
+    def test_a_file_standing_where_an_archive_folder_must_go_is_a_conflict(
         self,
     ) -> None:
         with TemporaryDirectory() as directory:
             profile = household(Path(directory))
-            # An export saved under the name the refused copies' folder takes.
-            named_refused = Coverage(
-                covers_from=date(2026, 4, 1),
-                covers_through=date(2026, 5, 2),
-                exported_on=date(2026, 5, 2),
-            )
-            with writer_lock(profile) as lock:
-                import_inbox_file(
-                    lock,
-                    drop(profile, "joint-current", "refused", payload("01.04.2026")),
-                    named_refused,
-                )
-                source = drop(profile, "joint-current", EXPORT, payload("02.04.2026"))
+            account_folder = profile.exports / "joint-current"
+            account_folder.mkdir(parents=True)
+            # Put there by hand: the import itself never archives a file here.
+            (account_folder / "refused").write_bytes(b"not a folder")
+            source = drop(profile, "joint-current", EXPORT, payload("02.04.2026"))
 
-                with pytest.raises(ArchiveConflictError):
-                    import_inbox_file(lock, source, THROUGH_MAY_3)
+            with (
+                writer_lock(profile) as lock,
+                pytest.raises(ArchiveConflictError),
+            ):
+                import_inbox_file(lock, source, THROUGH_MAY_3)
 
-            assert (profile.exports / "joint-current" / "refused").is_file()
+            assert (account_folder / "refused").read_bytes() == b"not a folder"
             assert source.exists()
 
     def test_a_retry_restores_a_lost_copy_where_its_log_entry_says(self) -> None:
