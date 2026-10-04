@@ -52,7 +52,18 @@ class ProfileFileError(ValueError):
 
 
 class ProfileFoldersOverlapError(ValueError):
-    """The inbox and the export archive share a folder."""
+    """The inbox and the export archive share a folder.
+
+    The archive would then hold the inbox file itself, and an import would
+    remove its only archived copy when it removes the file from the inbox.
+    """
+
+    def __init__(self) -> None:
+        """State the rule without repeating the operator's own paths."""
+        super().__init__(
+            "the inbox and the export archive must be separate folders, "
+            "neither inside the other"
+        )
 
 
 class ProfilePathOutsideRootError(ValueError):
@@ -112,6 +123,9 @@ class Profile:
             "inbox": Path(self.inbox).resolve(),
             "exports": Path(self.exports).resolve(),
         }
+        inbox, exports = folders["inbox"], folders["exports"]
+        if inbox.is_relative_to(exports) or exports.is_relative_to(inbox):
+            raise ProfileFoldersOverlapError
         root = None if self.root is None else Path(self.root).resolve()
         if root is not None and not all(
             folder.is_relative_to(root) for folder in folders.values()
