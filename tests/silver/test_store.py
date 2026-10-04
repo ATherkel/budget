@@ -7,12 +7,30 @@ module covers what the file is for: `SilverStore.replace` writes one whole
 `Decimal` money and deterministic order, before and after a reopen.
 """
 
+import sqlite3
 import unittest
+from contextlib import closing
 from datetime import date
+from decimal import Decimal, localcontext
 from tempfile import TemporaryDirectory
 
+import pytest
+
+from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
-from budget.silver import AcceptDiscrepancy, SilverResult, SilverStore, Withdrawn
+from budget.silver import (
+    AcceptDiscrepancy,
+    MoneyPrecisionError,
+    MoneyRangeError,
+    NonFiniteMoneyError,
+    SilverResult,
+    SilverStore,
+    Transaction,
+    UnbookedRecord,
+    UnknownAccountCurrencyError,
+    Withdrawn,
+)
+from budget.silver.currencies import UnknownCurrencyError
 from budget.silver.storage import migrate_silver
 from tests.silver.exports import (
     build_from,
@@ -83,6 +101,73 @@ def _complete_result() -> SilverResult:
     return build_from(EARLIER, LATER, ELSEWHERE, SAVINGS, decisions=DECISIONS)
 
 
+def _one_transaction(amount: Decimal, currency: str = "DKK") -> SilverResult:
+    """A minimal result carrying one booked transaction, for boundary values."""
+    return SilverResult(
+        transactions=(
+            Transaction(
+                transaction_id="0" * 64,
+                account_id="joint-current",
+                transaction_date=date(2026, 3, 1),
+                amount=amount,
+                currency=currency,
+                description="BOUNDARY",
+                source_system="danske-csv-v1",
+                balance=None,
+                source_status="Udført",
+                booking_status="booked",
+                occurrence=1,
+                day_sequence=1,
+                identity_version="1",
+                bank_category=None,
+                bank_subcategory=None,
+            ),
+        ),
+        transaction_evidence=(),
+        unbooked_records=(),
+        balance_observations=(),
+        account_evidence=(),
+        import_run_results=(),
+        review_items=(),
+    )
+
+
+def _one_unbooked(account_id: str) -> SilverResult:
+    """A minimal result whose only amount belongs to one account."""
+    return SilverResult(
+        transactions=(),
+        transaction_evidence=(),
+        unbooked_records=(
+            UnbookedRecord(
+                payload_id="payload-run-a",
+                record_ordinal=1,
+                import_run_id="run-a",
+                account_id=account_id,
+                transaction_date=date(2026, 3, 1),
+                amount=Decimal("1.00"),
+                source_status="Slettet",
+                booking_status="cancelled",
+            ),
+        ),
+        balance_observations=(),
+        account_evidence=(),
+        import_run_results=(),
+        review_items=(),
+    )
+
+
+def _stored_minor_units(profile: Profile) -> int:
+    """The integer the store wrote, read straight from the file.
+
+    ADR-013 mandates the representation, so this is the one place a test looks
+    past `SilverStore.read` and at the column itself.
+    """
+    with closing(sqlite3.connect(profile.silver_store)) as connection:
+        row = connection.execute("SELECT amount FROM transactions").fetchone()
+    assert row is not None
+    return int(row[0])
+
+
 class SilverStoreTests(unittest.TestCase):
     def test_a_complete_result_survives_a_roundtrip_through_the_store(self) -> None:
         result = _complete_result()
@@ -133,6 +218,140 @@ class SilverStoreTests(unittest.TestCase):
 
             with SilverStore(profile) as reopened:
                 assert reopened.read() == result
+
+
+class SilverMoneyTests(unittest.TestCase):
+    def test_money_is_stored_as_exact_integer_minor_units(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+
+            with SilverStore(profile) as store:
+                store.replace(
+                    _one_transaction(Decimal("-45.00")),
+                    currencies={"joint-current": "DKK"},
+                )
+
+            assert _stored_minor_units(profile) == -4500
+
+    def test_the_ambient_decimal_precision_does_not_change_what_is_stored(
+        self,
+    ) -> None:
+        # A two-digit context would round ordinary Decimal arithmetic; the
+        # persistence boundary must not depend on it.
+        with TemporaryDirectory() as directory, localcontext() as context:
+            context.prec = 2
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+            result = _one_transaction(Decimal("1234567.89"))
+
+            with SilverStore(profile) as store:
+                store.replace(result, currencies={"joint-current": "DKK"})
+
+                assert store.read() == result
+
+            assert _stored_minor_units(profile) == 123456789
+
+    def test_the_int64_limits_are_stored_exactly(self) -> None:
+        cases = {
+            Decimal("92233720368547758.07"): 2**63 - 1,
+            Decimal("-92233720368547758.08"): -(2**63),
+        }
+        for amount, minor_units in cases.items():
+            with self.subTest(amount), TemporaryDirectory() as directory:
+                profile = make_test_profile(directory)
+                migrate_silver(profile)
+                result = _one_transaction(amount)
+
+                with SilverStore(profile) as store:
+                    store.replace(result, currencies={"joint-current": "DKK"})
+
+                    assert store.read() == result
+
+                assert _stored_minor_units(profile) == minor_units
+
+    def test_one_minor_unit_beyond_the_int64_range_is_refused(self) -> None:
+        amounts = (
+            Decimal("92233720368547758.08"),
+            Decimal("-92233720368547758.09"),
+        )
+        for amount in amounts:
+            with self.subTest(amount), TemporaryDirectory() as directory:
+                profile = make_test_profile(directory)
+                migrate_silver(profile)
+
+                with (
+                    SilverStore(profile) as store,
+                    pytest.raises(MoneyRangeError),
+                ):
+                    store.replace(
+                        _one_transaction(amount),
+                        currencies={"joint-current": "DKK"},
+                    )
+
+    def test_an_amount_the_store_cannot_hold_exactly_is_refused_and_keeps_the_result(
+        self,
+    ) -> None:
+        cases = {
+            "more decimal places than DKK allows": (
+                Decimal("-45.001"),
+                MoneyPrecisionError,
+            ),
+            "not a number": (Decimal("NaN"), NonFiniteMoneyError),
+            "an infinity": (Decimal("Infinity"), NonFiniteMoneyError),
+            "beyond the int64 range": (
+                Decimal("92233720368547758.08"),
+                MoneyRangeError,
+            ),
+        }
+        for label, (amount, defect) in cases.items():
+            with self.subTest(label), TemporaryDirectory() as directory:
+                profile = make_test_profile(directory)
+                migrate_silver(profile)
+                result = _complete_result()
+
+                with SilverStore(profile) as store:
+                    store.replace(result, currencies=CURRENCIES)
+
+                    with pytest.raises(defect):
+                        store.replace(
+                            _one_transaction(amount),
+                            currencies={"joint-current": "DKK"},
+                        )
+
+                    # Nothing was written: the earlier result is still whole.
+                    assert store.read() == result
+
+                with SilverStore(profile) as reopened:
+                    assert reopened.read() == result
+
+    def test_an_unsupported_currency_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+
+            with (
+                SilverStore(profile) as store,
+                pytest.raises(UnknownCurrencyError),
+            ):
+                store.replace(
+                    _one_transaction(Decimal("-45.00"), currency="XYZ"),
+                    currencies={"joint-current": "XYZ"},
+                )
+
+    def test_an_account_without_a_currency_in_the_snapshot_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+
+            with (
+                SilverStore(profile) as store,
+                pytest.raises(UnknownAccountCurrencyError),
+            ):
+                store.replace(
+                    _one_unbooked("joint-savings"),
+                    currencies={"joint-current": "DKK"},
+                )
 
 
 if __name__ == "__main__":
