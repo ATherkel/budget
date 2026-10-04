@@ -272,13 +272,16 @@ def load_profile_file(path: Path) -> Profile:
     name = _profile_name(path, document)
     _require_known_keys(path, document, known=_FILE_KEYS[name], prefix="", profile=name)
     paths = _paths_table(path, document, name)
-    return Profile(
-        name=name,
-        stores=_folder_path(path, paths, "stores"),
-        inputs=_folder_path(path, paths, "inputs"),
-        inbox=_folder_path(path, paths, "inbox"),
-        exports=_folder_path(path, paths, "exports"),
-    )
+    try:
+        return Profile(
+            name=name,
+            stores=_folder_path(path, paths, "stores"),
+            inputs=_folder_path(path, paths, "inputs"),
+            inbox=_folder_path(path, paths, "inbox"),
+            exports=_folder_path(path, paths, "exports"),
+        )
+    except ProfileFoldersOverlapError as error:
+        raise ProfileFileError(path, str(error)) from None
 
 
 def test_profile(root: str | Path) -> Profile:
