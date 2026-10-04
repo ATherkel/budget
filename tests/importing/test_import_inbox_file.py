@@ -22,6 +22,7 @@ from budget.bronze import BronzeStore, ImportDeclaration, ImportRun
 from budget.importing import (
     ArchiveConflictError,
     Coverage,
+    ImportLogAheadOfBronzeError,
     ImportLogDamagedError,
     InboxImport,
     NotAnInboxFileError,
@@ -922,6 +923,22 @@ class CutOffProofTests(unittest.TestCase):
 
 
 class DamagedLogTests(unittest.TestCase):
+    def test_a_log_ahead_of_bronze_is_told_apart_from_a_damaged_one(self) -> None:
+        # Rolling the log back would lose the runs Bronze lacks; Bronze must be
+        # brought up to the log instead, so the refusal says which case it is.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            profile.import_log_file.write_bytes(
+                b'{"format": 1, "import_run_id": "run-bronze-never-saw"}\n'
+            )
+            source = drop(profile, "joint-current", EXPORT, payload("01.04.2026"))
+
+            with (
+                writer_lock(profile) as lock,
+                pytest.raises(ImportLogAheadOfBronzeError),
+            ):
+                import_inbox_file(lock, source, APRIL)
+
     def test_an_entry_that_disagrees_with_its_run_is_refused_before_writing(
         self,
     ) -> None:

@@ -71,6 +71,10 @@ class ImportLogDamagedError(RuntimeError):
         )
 
 
+class ImportLogAheadOfBronzeError(ImportLogDamagedError):
+    """`imports.jsonl` mirrors a run Bronze never recorded."""
+
+
 class NotAnInboxFileError(ValueError):
     """The file is not directly inside one account's inbox folder.
 
