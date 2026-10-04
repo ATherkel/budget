@@ -10,10 +10,26 @@ without backups: only production writes backup sets.
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from budget.backups import back_up, require_supported_stores
+from budget.backups import back_up, complete_backup_sets, require_supported_stores
 from budget.bronze import migrate_bronze
 from budget.locking import WriterLock
 from budget.profiles import PRODUCTION_PROFILE_NAME
+
+
+class RestoreInsteadError(RuntimeError):
+    """A new production store was asked for, but backup sets could restore one.
+
+    Complete backup sets mean production had a store; an empty one started
+    in its place would be backed up over them in time.
+    """
+
+    def __init__(self) -> None:
+        """Say why nothing was started, and what to do instead."""
+        super().__init__(
+            "the backups folder holds complete backup sets of this profile, so "
+            "its Bronze store must be restored from the newest, not started "
+            "anew; nothing was written"
+        )
 
 
 def _utc_now() -> datetime:
@@ -37,6 +53,12 @@ def migrate_profile(
         migrate_bronze(profile)
         return
     require_supported_stores(profile)
+    if (
+        new_store
+        and not profile.bronze_store.exists()
+        and complete_backup_sets(profile)
+    ):
+        raise RestoreInsteadError
 
     def back_up_first() -> None:
         back_up(lock, now=clock())

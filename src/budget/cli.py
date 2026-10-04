@@ -17,6 +17,7 @@ from budget.bronze import require_migration_allowed
 from budget.bronze.storage import (
     BRONZE_STAGE,
     MigrationRequiredError,
+    NewStoreRefusedError,
     NewStoreRequiredError,
     ProductionMigrationBlockedError,
     StoreBusyError,
@@ -31,7 +32,7 @@ from budget.locking import (
     WriterLockHeldError,
     writer_lock,
 )
-from budget.migration import migrate_profile
+from budget.migration import RestoreInsteadError, migrate_profile
 from budget.profiles import Profile, ProfileFileError, load_profile_file
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
@@ -46,6 +47,7 @@ _BRONZE_ENVIRONMENT_REFUSALS: Final = (
     UnsupportedSQLiteVersionError,
     ProductionMigrationBlockedError,
     NewStoreRequiredError,
+    NewStoreRefusedError,
     StoreNotFoundError,
     StoreBusyError,
     UnversionedStoreError,
@@ -152,6 +154,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         StageNotBuiltError,
         WriterLockHeldError,
         StoresFolderUnavailableError,
+        RestoreInsteadError,
         *_BRONZE_ENVIRONMENT_REFUSALS,
     ) as error:
         return _refuse(error, EXIT_REFUSED_ENVIRONMENT)
