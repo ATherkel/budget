@@ -337,3 +337,7 @@ def complete_backup_sets(profile: Profile) -> tuple[BackupSet, ...]:
     return tuple(
         sorted(found, key=lambda found_set: found_set.created_at, reverse=True)
     )
+
+
+class BackupVerificationError(RuntimeError):
+    """A backup set does not match its own manifest: nothing was published."""

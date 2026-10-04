@@ -16,12 +16,18 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from budget.backups import BackupWriteError, back_up, complete_backup_sets
+from budget.backups import (
+    BackupVerificationError,
+    BackupWriteError,
+    back_up,
+    complete_backup_sets,
+)
 from budget.locking import writer_lock
 from tests.backups.sets import (
     NOW,
     checksum,
     copied_run_ids,
+    damaged_rereads,
     holding,
     import_one,
     manifest,
@@ -202,6 +208,25 @@ class ChecksumTests(unittest.TestCase):
             missing = later.path / "inputs" / "accounts.toml"
             missing.unlink()
             assert complete_backup_sets(profile) == (earlier,)
+
+    def test_a_copy_that_does_not_match_its_manifest_is_never_published(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            with writer_lock(profile) as lock:
+                import_one(lock)
+
+                with (
+                    damaged_rereads(profile.backup_staging, "bronze.db"),
+                    pytest.raises(BackupVerificationError),
+                ):
+                    back_up(lock, now=NOW)
+
+            assert complete_backup_sets(profile) == ()
+            backups = profile.backup_path(".")
+            assert list(backups.iterdir()) == []
+            assert list(profile.backup_staging.iterdir()) == []
 
 
 class FailedBackupTests(unittest.TestCase):

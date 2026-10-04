@@ -8,10 +8,12 @@ a WAL or shared-memory file into the set.
 import json
 import shutil
 import sqlite3
-from contextlib import closing
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
+from unittest import mock
 
 from budget.importing import Coverage, import_inbox_file
 from budget.locking import WriterLock
@@ -54,6 +56,31 @@ def checksum(path: Path) -> dict[str, object]:
     """What a manifest says about one file: its SHA-256 and its length."""
     content = path.read_bytes()
     return {"sha256": sha256(content).hexdigest(), "bytes": len(content)}
+
+
+@contextmanager
+def damaged_rereads(folder: Path, name: str) -> Iterator[None]:
+    """Make every read of a file after its first return one changed byte.
+
+    It stands for a copy the disk got wrong: the first read is the one a
+    backup checksums, and later reads are what it copies. Only the stdlib
+    read boundary, `pathlib.Path.read_bytes`, is replaced, and only for files
+    called `name` inside `folder`.
+    """
+    original = Path.read_bytes
+    reads: dict[Path, int] = {}
+
+    def read_bytes(path: Path) -> bytes:
+        content = original(path)
+        if path.name != name or not path.resolve().is_relative_to(folder):
+            return content
+        reads[path] = reads.get(path, 0) + 1
+        if reads[path] == 1:
+            return content
+        return content[:-1] + bytes([content[-1] ^ 0xFF])
+
+    with mock.patch.object(Path, "read_bytes", autospec=True, side_effect=read_bytes):
+        yield
 
 
 def holding(profile: Profile) -> sqlite3.Connection:
