@@ -111,6 +111,8 @@ class ProfileFileTests(unittest.TestCase):
             ),
             "a relative exports path": VALID_HEADER
             + absolute.replace(f"exports = '{exports}'", "exports = 'ex'"),
+            "an inbox that is the export archive": VALID_HEADER
+            + absolute.replace(f"exports = '{exports}'", f"exports = '{inbox}'"),
         }
 
     def test_a_profile_file_the_command_cannot_use_is_refused(self) -> None:
