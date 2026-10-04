@@ -252,7 +252,10 @@ def _sync_folder(folder: Path) -> None:
 
 
 def _write_durably(path: Path, content: bytes) -> None:
-    """Write a new file whole: a crash leaves only a temporary file behind.
+    """Write a new file whole, or not at all.
+
+    A write that fails removes its temporary file; only a crash can leave
+    one behind, under a name no later write reuses.
 
     The caller has checked under the writer lock that `path` is free. That
     check is what keeps archived bytes from being overwritten: Windows refuses
@@ -265,11 +268,16 @@ def _write_durably(path: Path, content: bytes) -> None:
     descriptor, partial_name = tempfile.mkstemp(
         dir=path.parent, prefix=".", suffix=".partial"
     )
-    with os.fdopen(descriptor, "wb") as file:
-        file.write(content)
-        file.flush()
-        os.fsync(file.fileno())
-    Path(partial_name).rename(path)
+    partial = Path(partial_name)
+    try:
+        with os.fdopen(descriptor, "wb") as file:
+            file.write(content)
+            file.flush()
+            os.fsync(file.fileno())
+        partial.rename(path)
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
     _sync_folder(path.parent)
     # A new folder is an entry in its parent, which needs forcing to disk too.
     for folder in created:
