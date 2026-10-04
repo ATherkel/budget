@@ -13,6 +13,7 @@ from typing import Final
 
 ACCOUNTS_FILE_NAME = "accounts.toml"
 BRONZE_STORE_NAME = "bronze.db"
+SILVER_STORE_NAME = "silver.db"
 INPUTS_FOLDER = "inputs"
 STORES_FOLDER = "stores"
 WRITER_LOCK_NAME = "budget.lock"
@@ -124,6 +125,11 @@ class Profile:
     def bronze_store(self) -> Path:
         """The Bronze stage store, re-checked against the test root each time."""
         return self._guarded_path(Path(self.stores) / BRONZE_STORE_NAME)
+
+    @property
+    def silver_store(self) -> Path:
+        """The Silver stage store, re-checked against the test root each time."""
+        return self._guarded_path(Path(self.stores) / SILVER_STORE_NAME)
 
     @property
     def accounts_file(self) -> Path:
