@@ -6,13 +6,15 @@ folder, whose stores, inputs and backups stay inside it. No test opens a real
 production store. Every test passes `main` an explicit environment.
 """
 
+import sqlite3
 import unittest
+from contextlib import closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from budget.backups import complete_backup_sets
 from budget.bronze import BronzeStore
-from budget.profiles import load_profile_file
+from budget.profiles import Profile, load_profile_file
 from tests.backups.sets import manifest, run_ids, tables, user_version
 from tests.bronze.migration_resources import added_migration
 from tests.cli.commands import migrate
@@ -20,6 +22,7 @@ from tests.cli.profile_files import write_profile
 
 EXIT_OK = 0
 EXIT_REFUSED_ENVIRONMENT = 4
+EXIT_VERIFICATION_FAILED = 5
 # A synthetic second migration: a table the first one never makes.
 ADDED_TABLE = "CREATE TABLE marker (x TEXT) STRICT;\n"
 
@@ -107,6 +110,56 @@ class OlderProductionStoreTests(unittest.TestCase):
             assert "marker" in tables(after.path / "bronze.db")
             assert _schema_version(before.path) == 1
             assert _schema_version(after.path) == 2
+
+
+class FailedBackupTests(unittest.TestCase):
+    def test_a_backup_that_fails_leaves_the_store_unmigrated(self) -> None:
+        def staging_blocked(production: Profile) -> None:
+            # The first backup left its staging folder empty; a file takes its place.
+            production.backup_staging.rmdir()
+            production.backup_staging.write_bytes(b"not a folder")
+
+        def log_damaged(production: Profile) -> None:
+            production.import_log_file.parent.mkdir(parents=True, exist_ok=True)
+            production.import_log_file.write_bytes(b"\n")
+
+        def another_store(production: Profile) -> None:
+            with closing(sqlite3.connect(production.stores / "silver.db")) as store:
+                store.execute("CREATE TABLE marker (x TEXT)")
+
+        cases = {
+            "a staging folder that cannot be made": (
+                staging_blocked,
+                EXIT_REFUSED_ENVIRONMENT,
+                "nothing was published",
+            ),
+            "an import log that disagrees with Bronze": (
+                log_damaged,
+                EXIT_VERIFICATION_FAILED,
+                "imports.jsonl",
+            ),
+            "a store no backup set covers": (
+                another_store,
+                EXIT_REFUSED_ENVIRONMENT,
+                "silver.db",
+            ),
+        }
+        for case, (break_backup, expected_status, message) in cases.items():
+            with self.subTest(case), TemporaryDirectory() as directory:
+                profile_file = write_profile(Path(directory), name="production")
+                assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+                production = load_profile_file(profile_file)
+                sets = complete_backup_sets(production)
+                break_backup(production)
+
+                with added_migration(ADDED_TABLE):
+                    status, stderr = migrate(profile_file)
+
+                assert status == expected_status
+                assert message in stderr
+                assert user_version(production.bronze_store) == 1
+                assert "marker" not in tables(production.bronze_store)
+                assert complete_backup_sets(production) == sets
 
 
 class CurrentProductionStoreTests(unittest.TestCase):
