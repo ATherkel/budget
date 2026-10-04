@@ -10,9 +10,11 @@ module covers what the file is for: `SilverStore.replace` writes one whole
 import sqlite3
 import unittest
 from contextlib import closing
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal, localcontext
 from tempfile import TemporaryDirectory
+from threading import Thread
 
 import pytest
 
@@ -94,6 +96,22 @@ DECISIONS = (
 )
 
 CURRENCIES = {"joint-current": "DKK", "joint-savings": "DKK"}
+
+# Every table a replacement rewrites, as the literal statements that count
+# their rows. ADR-013 mandates the on-disk shape, so a test may look at it.
+_COUNT_DERIVED_ROWS = (
+    "SELECT COUNT(*) FROM account_currencies",
+    "SELECT COUNT(*) FROM transactions",
+    "SELECT COUNT(*) FROM transaction_evidence",
+    "SELECT COUNT(*) FROM unbooked_records",
+    "SELECT COUNT(*) FROM balance_observations",
+    "SELECT COUNT(*) FROM account_evidence",
+    "SELECT COUNT(*) FROM import_run_results",
+    "SELECT COUNT(*) FROM validation_errors",
+    "SELECT COUNT(*) FROM import_run_result_review_items",
+    "SELECT COUNT(*) FROM review_items",
+    "SELECT COUNT(*) FROM review_item_payloads",
+)
 
 
 def _complete_result() -> SilverResult:
@@ -352,6 +370,95 @@ class SilverMoneyTests(unittest.TestCase):
                     _one_unbooked("joint-savings"),
                     currencies={"joint-current": "DKK"},
                 )
+
+
+class SilverDurabilityTests(unittest.TestCase):
+    def test_a_failed_replacement_leaves_the_previous_result_readable(self) -> None:
+        result = _complete_result()
+        first, second, *rest = result.transactions
+        first_item, *later_items = result.review_items
+        # Each of these breaks a unique key after earlier rows of the same
+        # replacement are already written: one early (transactions), one late
+        # (review items, after every collection before it is in).
+        inconsistent = {
+            "an early duplicate transaction": replace(
+                result, transactions=(first, first, second, *rest)
+            ),
+            "a late duplicate review item": replace(
+                result, review_items=(first_item, first_item, *later_items)
+            ),
+        }
+        for label, broken in inconsistent.items():
+            with self.subTest(label), TemporaryDirectory() as directory:
+                profile = make_test_profile(directory)
+                migrate_silver(profile)
+
+                with SilverStore(profile) as store:
+                    store.replace(result, currencies=CURRENCIES)
+
+                    with pytest.raises(sqlite3.IntegrityError):
+                        store.replace(broken, currencies=CURRENCIES)
+
+                    # The transaction rolled back: the previous result is
+                    # whole, and this connection is ready for the next attempt.
+                    assert store.read() == result
+
+                with SilverStore(profile) as reopened:
+                    assert reopened.read() == result
+
+    def test_a_read_is_one_snapshot_while_the_result_is_replaced(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+            complete = _complete_result()
+            smaller = _one_transaction(Decimal("-45.00"))
+
+            def replace_repeatedly() -> None:
+                with SilverStore(profile) as writer:
+                    for _ in range(25):
+                        writer.replace(smaller, currencies=CURRENCIES)
+                        writer.replace(complete, currencies=CURRENCIES)
+
+            with SilverStore(profile) as store:
+                store.replace(complete, currencies=CURRENCIES)
+                writer = Thread(target=replace_repeatedly)
+                writer.start()
+                try:
+                    for _ in range(100):
+                        # Two tables from two different builds would show up
+                        # here as a result that equals neither whole result.
+                        assert store.read() in (complete, smaller)
+                finally:
+                    writer.join()
+
+            with SilverStore(profile) as reopened:
+                assert reopened.read() in (complete, smaller)
+
+    def test_an_empty_result_clears_every_derived_row_and_keeps_the_identity(
+        self,
+    ) -> None:
+        empty = SilverResult((), (), (), (), (), (), ())
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+
+            with SilverStore(profile) as store:
+                store.replace(_complete_result(), currencies=CURRENCIES)
+
+                store.replace(empty, currencies={})
+
+                assert store.read() == empty
+
+            with closing(sqlite3.connect(profile.silver_store)) as connection:
+                counts = [
+                    connection.execute(statement).fetchone()[0]
+                    for statement in _COUNT_DERIVED_ROWS
+                ]
+                assert set(counts) == {0}
+                assert connection.execute(
+                    "SELECT profile, stage FROM store_identity"
+                ).fetchall() == [("test", "silver")]
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
 
 
 if __name__ == "__main__":
