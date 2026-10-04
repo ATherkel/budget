@@ -236,6 +236,31 @@ class ArchiveNameTests(unittest.TestCase):
             assert (profile.exports / first.archive_path).read_bytes() == corrected
             assert not (profile.exports / "joint-current" / EXPORT).exists()
 
+    def test_a_place_another_runs_entry_names_is_never_taken_by_a_new_run(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            same_day_again = payload("01.04.2026", "02.04.2026")
+            with writer_lock(profile) as lock:
+                first = import_inbox_file(
+                    lock,
+                    drop(profile, "joint-current", EXPORT, payload("01.04.2026")),
+                    APRIL,
+                )
+            # The first export's archived copy goes missing; its entry still
+            # names the plain name, which is therefore not free.
+            (profile.exports / first.archive_path).unlink()
+
+            with writer_lock(profile) as lock:
+                second = import_inbox_file(
+                    lock, drop(profile, "joint-current", EXPORT, same_day_again), APRIL
+                )
+
+            hash_folder = sha256(same_day_again).hexdigest()[:12]
+            assert second.archive_path == f"joint-current/{hash_folder}/{EXPORT}"
+            assert not (profile.exports / first.archive_path).exists()
+
     def test_an_archived_export_named_like_a_temporary_file_is_never_overwritten(
         self,
     ) -> None:
