@@ -31,6 +31,7 @@ from budget.silver.storage import (
     MoneyRangeError,
     NonFiniteMoneyError,
     UnknownAccountCurrencyError,
+    migrate_silver,
 )
 from budget.silver.store import SilverStore
 
@@ -57,5 +58,6 @@ __all__ = [
     "VoidImportRun",
     "Withdrawn",
     "build",
+    "migrate_silver",
     "rebuild_silver",
 ]

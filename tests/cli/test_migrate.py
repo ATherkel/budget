@@ -93,15 +93,14 @@ class MigrateRefusalTests(unittest.TestCase):
             assert not (folder / "stores").exists()
 
     def test_a_stage_that_is_not_built_yet_is_refused(self) -> None:
-        for stage in ("silver", "gold"):
-            with self.subTest(stage), TemporaryDirectory() as directory:
-                folder = Path(directory)
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
 
-                status, stderr = migrate(write_profile(folder), "--stage", stage)
+            status, stderr = migrate(write_profile(folder), "--stage", "gold")
 
-                assert status == EXIT_REFUSED_ENVIRONMENT
-                assert stage in stderr
-                assert not (folder / "stores").exists()
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "gold" in stderr
+            assert not (folder / "stores").exists()
 
     def test_a_store_of_another_profile_is_refused(self) -> None:
         with TemporaryDirectory() as directory:

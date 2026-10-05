@@ -31,9 +31,11 @@ from budget.locking import (
     writer_lock,
 )
 from budget.profiles import Profile, ProfileFileError, load_profile_file
+from budget.silver import migrate_silver
+from budget.silver.storage import SILVER_STAGE
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
-STAGES: Final = (BRONZE_STAGE, "silver", "gold")
+STAGES: Final = (BRONZE_STAGE, SILVER_STAGE, "gold")
 EXIT_OK: Final = 0
 EXIT_USAGE: Final = 2
 EXIT_REFUSED_INPUT: Final = 3
@@ -58,7 +60,8 @@ class StageNotBuiltError(Exception):
     def __init__(self, stage: str) -> None:
         """Name the stage, rather than pretend to migrate it."""
         super().__init__(
-            f"the {stage} stage is not built yet: only {BRONZE_STAGE} can be migrated"
+            f"the {stage} stage is not built yet: only {BRONZE_STAGE} and "
+            f"{SILVER_STAGE} can be migrated"
         )
 
 
@@ -101,13 +104,16 @@ def _selected_profile_file(
 
 
 def _migrate(profile: Profile, stage: str | None) -> None:
-    """Create or upgrade the stores this code has: Bronze, for now."""
-    if stage not in {None, BRONZE_STAGE}:
+    """Create or upgrade the stores this code has: Bronze and Silver, for now."""
+    if stage not in {None, BRONZE_STAGE, SILVER_STAGE}:
         raise StageNotBuiltError(stage)
     # Refusals that touch nothing come first; the lock guards the mutation.
     require_migration_allowed(profile)
     with writer_lock(profile):
-        migrate_bronze(profile)
+        if stage in {None, BRONZE_STAGE}:
+            migrate_bronze(profile)
+        if stage == SILVER_STAGE:
+            migrate_silver(profile)
 
 
 def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> None:
