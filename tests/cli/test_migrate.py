@@ -22,7 +22,7 @@ from budget.bronze.storage import (
 )
 from budget.cli import main
 from budget.profiles import test_profile as make_test_profile
-from tests.bronze.migration_resources import patched_resources
+from tests.bronze.migration_resources import added_migration, patched_resources
 from tests.cli.commands import migrate
 from tests.cli.profile_files import development_profile, write_profile
 
@@ -167,6 +167,24 @@ class MigrateDefectTests(unittest.TestCase):
                 pytest.raises(defect),
             ):
                 migrate(write_profile(Path(directory)))
+
+    def test_a_failed_migration_commits_none_of_the_steps_before_it(self) -> None:
+        # The first step would make a store, the added second one fails it.
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+
+            with (
+                added_migration(_ORPHAN_SOURCE_RECORD),
+                pytest.raises(ForeignKeyViolationError),
+            ):
+                migrate(write_profile(folder))
+
+            store = development_profile(folder).bronze_store
+            assert _user_version(store) == 0
+            with closing(sqlite3.connect(store)) as connection:
+                assert (
+                    connection.execute("SELECT * FROM sqlite_master").fetchall() == []
+                )
 
 
 if __name__ == "__main__":

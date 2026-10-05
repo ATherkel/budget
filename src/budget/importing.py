@@ -12,7 +12,6 @@ does the file leave the inbox.
 import json
 import os
 import re
-import sys
 import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -22,9 +21,11 @@ from pathlib import Path
 from typing import Final
 
 from budget.bronze import BronzeStore, ImportDeclaration, ImportRun
+from budget.bronze.store import ProductionImportBlockedError
+from budget.durability import sync_folder
 from budget.inputs import Account, load_accounts
 from budget.locking import WriterLock
-from budget.profiles import Profile
+from budget.profiles import PRODUCTION_PROFILE_NAME, Profile
 
 IMPORT_LOG_FORMAT: Final = 1
 # How much of the payload hash names an archive folder (operations.md, W1).
@@ -294,20 +295,6 @@ def _keep_archived(
     _write_durably(target, content)
 
 
-def _sync_folder(folder: Path) -> None:
-    """Force a folder's new entries to disk, where the platform allows it.
-
-    Windows cannot open a folder to fsync it; NTFS journals a rename itself.
-    """
-    if sys.platform == "win32":
-        return
-    descriptor = os.open(folder, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-
-
 def _write_durably(path: Path, content: bytes) -> None:
     """Write a new file whole, or not at all.
 
@@ -335,10 +322,10 @@ def _write_durably(path: Path, content: bytes) -> None:
     except BaseException:
         partial.unlink(missing_ok=True)
         raise
-    _sync_folder(path.parent)
+    sync_folder(path.parent)
     # A new folder is an entry in its parent, which needs forcing to disk too.
     for folder in created:
-        _sync_folder(folder.parent)
+        sync_folder(folder.parent)
 
 
 def _missing_folders(folder: Path) -> list[Path]:
@@ -378,7 +365,7 @@ def _append_to_log(path: Path, data: bytes) -> None:
         file.flush()
         os.fsync(file.fileno())
     if created:
-        _sync_folder(path.parent)
+        sync_folder(path.parent)
 
 
 @dataclass(frozen=True)
@@ -410,7 +397,12 @@ def _read_log(path: Path) -> _LogState:
     """
     if not path.exists():
         return _LogState(lines={}, cut_off=b"")
-    complete, feed, cut_off = path.read_bytes().rpartition(b"\n")
+    return _parse_log(path.read_bytes())
+
+
+def _parse_log(content: bytes) -> _LogState:
+    """Split a log's bytes into its complete entries and a final cut-off line."""
+    complete, feed, cut_off = content.rpartition(b"\n")
     lines: dict[str, bytes] = {}
     for line in complete.split(b"\n") if feed else []:
         run_id = _logged_run_id(line)
@@ -442,6 +434,18 @@ def _logged_archive_paths(state: _LogState, store: BronzeStore) -> dict[str, str
             raise ImportLogAheadOfBronzeError
         archive_paths[run_id] = _logged_archive_path(run, line)
     return archive_paths
+
+
+def check_import_log(store: BronzeStore, log: bytes) -> None:
+    """Refuse a log whose complete entries are not each a run the store holds.
+
+    Each complete entry must restate, byte for byte, one run the store holds,
+    as an import checks before it writes. A final line without its line feed
+    is not an entry yet, and a run the log does not mention yet is one the next
+    import logs, so neither is a disagreement. Raises `ImportLogDamagedError`
+    or `ImportLogAheadOfBronzeError`.
+    """
+    _logged_archive_paths(_parse_log(log), store)
 
 
 def _proving_entry(
@@ -580,8 +584,14 @@ def import_inbox_file(
     source: Path,
     coverage: Coverage,
 ) -> InboxImport:
-    """Import one inbox file under the held writer lock."""
+    """Import one inbox file under the held writer lock.
+
+    Refused for production before anything is written: production imports
+    wait for `budget import`, which backs up after them.
+    """
     profile = lock.profile
+    if profile.name == PRODUCTION_PROFILE_NAME:
+        raise ProductionImportBlockedError
     account = _inbox_account(profile, source)
     declaration = ImportDeclaration(
         declared_account_id=account.account_id,
