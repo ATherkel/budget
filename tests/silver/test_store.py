@@ -371,6 +371,32 @@ class SilverMoneyTests(unittest.TestCase):
                     currencies={"joint-current": "DKK"},
                 )
 
+    def test_an_amount_with_more_places_than_its_currency_has_is_refused(self) -> None:
+        # ADR-013: a value carrying more decimal places than its currency allows
+        # is rejected, never normalised, even when the extra places are zeros.
+        amounts = (
+            Decimal("1.230"),
+            Decimal("-1.230"),
+            Decimal("0.000"),
+            Decimal("12345.6789"),
+        )
+        for amount in amounts:
+            with self.subTest(amount), TemporaryDirectory() as directory:
+                profile = make_test_profile(directory)
+                migrate_silver(profile)
+                result = _complete_result()
+
+                with SilverStore(profile) as store:
+                    store.replace(result, currencies=CURRENCIES)
+
+                    with pytest.raises(MoneyPrecisionError):
+                        store.replace(
+                            _one_transaction(amount),
+                            currencies={"joint-current": "DKK"},
+                        )
+
+                    assert store.read() == result
+
 
 class SilverDurabilityTests(unittest.TestCase):
     def test_a_failed_replacement_leaves_the_previous_result_readable(self) -> None:
