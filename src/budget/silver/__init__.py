@@ -26,6 +26,7 @@ from budget.silver.models import (
 )
 from budget.silver.rebuild import SilverBuildInputs, rebuild_silver
 from budget.silver.storage import (
+    CurrencySnapshotMismatchError,
     MoneyError,
     MoneyPrecisionError,
     MoneyRangeError,
@@ -39,6 +40,7 @@ __all__ = [
     "AcceptDiscrepancy",
     "AccountEvidence",
     "BalanceObservation",
+    "CurrencySnapshotMismatchError",
     "ImportRunResult",
     "MoneyError",
     "MoneyPrecisionError",

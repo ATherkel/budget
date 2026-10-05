@@ -22,6 +22,7 @@ from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 from budget.silver import (
     AcceptDiscrepancy,
+    CurrencySnapshotMismatchError,
     MoneyPrecisionError,
     MoneyRangeError,
     NonFiniteMoneyError,
@@ -453,6 +454,40 @@ class SilverMoneyTests(unittest.TestCase):
                 assert stored.amount == Decimal("0.00")
 
             assert _stored_minor_units(profile) == 0
+
+    def test_a_transaction_requires_its_accounts_configured_currency(self) -> None:
+        # A booked row names its account's currency too: the snapshot must hold
+        # a supported currency for that account, and it must agree with the row.
+        cases = {
+            "no snapshot entry": ({}, UnknownAccountCurrencyError),
+            "an unsupported currency": (
+                {"joint-current": "XYZ"},
+                UnknownCurrencyError,
+            ),
+            "a snapshot that disagrees": (
+                {"joint-current": "EUR"},
+                CurrencySnapshotMismatchError,
+            ),
+        }
+        for label, (currencies, defect) in cases.items():
+            with self.subTest(label), TemporaryDirectory() as directory:
+                profile = make_test_profile(directory)
+                migrate_silver(profile)
+                result = _complete_result()
+
+                with SilverStore(profile) as store:
+                    store.replace(result, currencies=CURRENCIES)
+
+                    with pytest.raises(defect):
+                        store.replace(
+                            _one_transaction(Decimal("1.23")),
+                            currencies=currencies,
+                        )
+
+                    assert store.read() == result
+
+                with SilverStore(profile) as reopened:
+                    assert reopened.read() == result
 
 
 class SilverDurabilityTests(unittest.TestCase):

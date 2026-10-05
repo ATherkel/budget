@@ -50,6 +50,7 @@ __all__ = [
     "MAX_MINOR_UNIT",
     "MIN_MINOR_UNIT",
     "SILVER_STAGE",
+    "CurrencySnapshotMismatchError",
     "ForeignKeyViolationError",
     "MigrationRequiredError",
     "MigrationResourceError",
@@ -135,6 +136,19 @@ class UnknownAccountCurrencyError(ValueError):
     def __init__(self, account_id: str) -> None:
         """Name the account whose currency the caller left out."""
         super().__init__(f"account {account_id!r} has no currency in this result")
+
+
+class CurrencySnapshotMismatchError(MoneyError):
+    """A row's currency disagrees with its account's snapshot entry."""
+
+    def __init__(
+        self, account_id: str, row_currency: str, snapshot_currency: str
+    ) -> None:
+        """Name the account and both currencies, so the disagreement is clear."""
+        super().__init__(
+            f"account {account_id!r} is configured as {snapshot_currency} but a "
+            f"stored amount is written in {row_currency}"
+        )
 
 
 def to_minor_units(amount: Decimal, currency: str) -> int:
