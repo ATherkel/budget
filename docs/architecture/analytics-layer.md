@@ -82,6 +82,10 @@ Every household-level measure carries combined coverage: `complete` only
 when every contributing account-month is complete, `no_data` when none has
 evidence, and `partial` otherwise. A partial measure names its incomplete
 accounts. An account without transactions still contributes a coverage status.
+A month outside an account's managed period, before its first month or after
+the month it closed, is outside its reported history and does not contribute;
+the report lists it without letting it make a measure partial. The exact rule
+is in [`report-contract.md`](report-contract.md#coverage).
 
 ## Provisional Periods
 
@@ -90,10 +94,14 @@ Analytics applies the provisional rule in
 the label with the report. Its inputs are the contributing snapshot rows'
 `late_bookings_settled` and a reference date: today in Europe/Copenhagen for
 the current publication, and the publication's `known_at` for a past view.
-Analytics never reads export dates itself.
+Analytics never reads export dates itself. A month after the latest published
+month has no snapshot row, so no flag: for an account with a managed period,
+it counts as not settled ([`report-contract.md`](report-contract.md#provisional)).
 
 ## Outputs
 
-Analytics returns typed report DTOs or API-neutral dictionaries. It does not
+Analytics returns the typed reports defined in
+[`report-contract.md`](report-contract.md), the only normative report schema.
+It does not
 persist report values as a new source of truth; results are recalculated from
 Gold when requested or cached with explicit invalidation.
