@@ -1,3 +1,6 @@
+---
+type: architecture
+---
 # Report Contract
 
 ## Status
