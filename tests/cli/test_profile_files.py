@@ -144,6 +144,16 @@ class ProfileFileTests(unittest.TestCase):
             "a backups folder inside the export archive": _production(
                 stores, str(folder / "exports" / "backups")
             ),
+            # The live stores are never cloud-synchronised (ADR-013); the
+            # backups folder is.
+            "a backups folder that is the stores folder": _production(
+                stores, str(stores.absolute())
+            ),
+            "a stores folder inside the backups folder": PRODUCTION_HEADER
+            + f"\n[paths]\nstores = '{Path(backups) / 'live'}'\n"
+            + f"inputs = '{inputs.absolute()}'\n"
+            + _inbox_and_exports(folder)
+            + f"backups = '{backups}'\n",
             "a negative keep_all_days": _production(
                 stores, backups, "\n[backups]\nkeep_all_days = -1\n"
             ),
