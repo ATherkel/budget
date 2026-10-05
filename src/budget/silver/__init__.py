@@ -24,6 +24,7 @@ from budget.silver.models import (
     UnbookedRecord,
     ValidationError,
 )
+from budget.silver.rebuild import SilverBuildInputs, rebuild_silver
 from budget.silver.storage import (
     MoneyError,
     MoneyPrecisionError,
@@ -44,6 +45,7 @@ __all__ = [
     "NonFiniteMoneyError",
     "ReviewItem",
     "SameTransaction",
+    "SilverBuildInputs",
     "SilverDecision",
     "SilverResult",
     "SilverStore",
@@ -55,4 +57,5 @@ __all__ = [
     "VoidImportRun",
     "Withdrawn",
     "build",
+    "rebuild_silver",
 ]
