@@ -21,11 +21,14 @@ or `gh pr merge --body`.
 - **Relaying the owner's exact words** at their request: end with
   `🤖 Posted by <agent> (<model>); text by @ATherkel`.
 
-## Agent skills
+## Repository conventions
 
-### Issue tracker
+### Glossary and ADR locations
 
-Issues and specs are tracked in GitHub Issues. See `docs/agents/issue-tracker.md`.
+Where a skill says `CONTEXT.md`, use `docs/CONTEXT.md`, the repository's one
+glossary; where it says `docs/adr/`, use `docs/decisions/`. See
+`docs/agents/domain.md` for ADR naming and the header every Markdown file
+under `docs/` opens with.
 
 ### Workflow changes
 
@@ -41,17 +44,6 @@ commit SHA with the release tag as a trailing comment, for example
 `@v4` or `@main`. Take the SHA from the release tag in the action's own
 repository.
 
-### Triage labels
-
-The default five-role triage label vocabulary is in use. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-This repository uses a single-context domain-doc layout. Where a skill says
-`CONTEXT.md`, use `docs/CONTEXT.md`, the repository's one glossary; where it
-says `docs/adr/`, use `docs/decisions/`. See `docs/agents/domain.md` for ADR
-naming and the header every Markdown file under `docs/` opens with.
-
 ### Code quality gate
 
 All Python code must pass ruff (lint and format), ty and complexipy (cognitive
@@ -65,3 +57,21 @@ See `docs/agents/code-quality.md`.
 Use the repository's test-driven development workflow for all application
 features and bug fixes. Read `docs/agents/tdd.md` before beginning; it defines
 the red/green handoffs, test seam agreement, and permitted exceptions.
+
+## Agent skills
+
+Edit `docs/agents/*.md` directly: they are customised past the
+`/setup-matt-pocock-skills` templates, which a re-run of that skill would
+restore.
+
+### Issue tracker
+
+Issues and specs are tracked in GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The default five-role triage label vocabulary is in use. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repository uses a single-context domain-doc layout. See `docs/agents/domain.md`.

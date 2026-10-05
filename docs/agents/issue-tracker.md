@@ -13,6 +13,7 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
+- **Cite a repository file** in an issue, PR or comment: link its lines at a fixed commit, `https://github.com/ATherkel/budget/blob/<sha>/<path>#L<from>-L<to>` with `<sha>` from `git rev-parse origin/main`, and quote the text. The link keeps pointing at those lines however the file changes later; a bare `path:line` drifts with every edit.
 - **Milestone**: a new issue goes in milestone `Later` (`gh issue create --milestone "Later"`) unless the owner puts it in a release milestone.
 
 The repository is `ATherkel/budget`. Pass `--repo ATherkel/budget` to `gh issue` and `gh pr` commands, so the command does not depend on which remote or worktree it runs from.
