@@ -25,7 +25,9 @@ from budget.backups import (
     UnsupportedStoresError,
     back_up,
     complete_backup_sets,
+    hold_for_recovery,
 )
+from budget.bronze import migrate_bronze
 from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.locking import writer_lock
 from budget.profiles import Profile, RetentionPolicy
@@ -39,6 +41,7 @@ from tests.backups.sets import (
     manifest,
     run_ids,
 )
+from tests.bronze.migration_resources import added_migration
 from tests.importing.households import household
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -426,6 +429,25 @@ class RetentionTests(unittest.TestCase):
                 newest = back_up(lock, now=NOW)
 
             assert _set_names(profile) == sorted([later_format.name, newest.name])
+
+
+class RecoveryReleaseTests(unittest.TestCase):
+    def test_a_backup_releases_a_held_set_once_its_schema_is_behind(self) -> None:
+        # `budget backup` is the documented remedy for a migration whose own
+        # backup failed (MigratedWithoutBackupError): the store already
+        # migrated, so the set taken before it no longer guards anything
+        # once a fresh set of the new schema is written.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            with writer_lock(profile) as lock:
+                before = back_up(lock, now=NOW - timedelta(days=1))
+                hold_for_recovery(lock, before)
+
+                with added_migration("CREATE TABLE marker (x TEXT) STRICT;\n"):
+                    migrate_bronze(profile)
+                    back_up(lock, now=NOW)
+
+            assert not profile.recovery_sets_file.exists()
 
 
 class FailedBackupTests(unittest.TestCase):
