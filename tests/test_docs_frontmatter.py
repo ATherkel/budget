@@ -10,7 +10,9 @@ from pathlib import Path
 import pytest
 
 DOCS = Path(__file__).resolve().parent.parent / "docs"
-DOCUMENTS = sorted(DOCS.rglob("*.md"))
+# OKF reserves these names for files that carry no header.
+RESERVED = {"index.md", "log.md"}
+DOCUMENTS = sorted(path for path in DOCS.rglob("*.md") if path.name not in RESERVED)
 
 
 def _expected_type(path: Path) -> str:

@@ -47,7 +47,9 @@ The default five-role triage label vocabulary is in use. See `docs/agents/triage
 
 ### Domain docs
 
-This repository uses a single-context domain-doc layout. See `docs/agents/domain.md`.
+This repository uses a single-context domain-doc layout. The glossary is
+`docs/CONTEXT.md`, wherever a skill expects `CONTEXT.md`; read it and record
+new terms there. See `docs/agents/domain.md`.
 
 ### Code quality gate
 

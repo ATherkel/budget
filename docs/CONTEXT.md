@@ -108,7 +108,7 @@ reflected in Coverage, never silently corrected.
 **Coverage**:
 A per-account, per-reporting-period status (`complete` / `partial` / `no_data`)
 saying whether the balance evidence shows that the whole period is covered.
-The rules are in [`gold-layer.md`](docs/architecture/gold-layer.md#coverage).
+The rules are in [`gold-layer.md`](architecture/gold-layer.md#coverage).
 A quiet month can be complete; absent evidence cannot be read as zero.
 
 **Evidence range**:
@@ -116,7 +116,7 @@ A stretch of consecutive days an account's admitted exports are known to
 cover: the union of their declared *covers from*–*covers through* ranges, with
 no adjustment for the export day. A day no admitted export declares falls in a
 gap between two ranges. The rule is in
-[`docs/architecture/silver-layer.md`](docs/architecture/silver-layer.md#evidence-ranges).
+[`docs/architecture/silver-layer.md`](architecture/silver-layer.md#evidence-ranges).
 _Avoid_: coverage (that is Gold's per-period status)
 
 **Evidence through**:
@@ -135,7 +135,7 @@ bank-stated balance after one transaction)
 **Provisional period**:
 A reporting period that includes the current calendar month or still awaits
 exports covering the late-booking window. How it must be labeled is in
-[`docs/architecture/presentation-layer.md`](docs/architecture/presentation-layer.md#data-trust-display).
+[`docs/architecture/presentation-layer.md`](architecture/presentation-layer.md#data-trust-display).
 
 ### Imports and identity
 
@@ -164,7 +164,7 @@ the *export date*, and every transaction in the export falls on or before it.
 Distinct from the *export date*, so a year of history exported today is not
 read as covering today. Both ends of the range are required on every import
 and never inferred; see
-[`docs/architecture/bronze-layer.md`](docs/architecture/bronze-layer.md).
+[`docs/architecture/bronze-layer.md`](architecture/bronze-layer.md).
 _Avoid_: export range, to-date
 
 **Transaction date**:
@@ -256,7 +256,7 @@ _Avoid_: deleted import, undone import
 One complete, immutable build of Gold, holding its dimensions, facts, lineage,
 and review items, built from one Recipe, with a fingerprint of that result. A
 consumer reads exactly one at a time. The rules are in
-[`publications.md`](docs/architecture/publications.md).
+[`publications.md`](architecture/publications.md).
 _Avoid_: Version, snapshot (a Monthly balance snapshot is a fact), release
 
 **Recipe**:
@@ -284,7 +284,7 @@ _Avoid_: As-of report (ambiguous with As-was view)
 A labeled Publication that a Gold migration could not convert. It is kept in
 its old schema, in its own file and in the pre-migration Backup set, with the
 code version that opens it. The rules are in
-[`operations.md`](docs/architecture/operations.md#legacy-publications).
+[`operations.md`](architecture/operations.md#legacy-publications).
 _Avoid_: archived publication, old version
 
 ### Operations
@@ -293,7 +293,7 @@ _Avoid_: archived publication, old version
 One of `production`, `development`, or `test`: a configuration of the same
 code that names every path the application touches. Every store records the
 profile it belongs to. The rules are in
-[`docs/architecture/operations.md`](docs/architecture/operations.md).
+[`docs/architecture/operations.md`](architecture/operations.md).
 _Avoid_: environment (ambiguous with the Python environment), instance
 
 **Household inputs**:
