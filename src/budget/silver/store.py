@@ -20,6 +20,7 @@ from types import TracebackType
 from typing import Final, Self
 
 from budget.profiles import Profile
+from budget.silver.currencies import minor_unit_places
 from budget.silver.models import (
     AccountEvidence,
     BalanceObservation,
@@ -32,6 +33,7 @@ from budget.silver.models import (
     ValidationError,
 )
 from budget.silver.storage import (
+    CurrencySnapshotMismatchError,
     UnknownAccountCurrencyError,
     from_minor_units,
     open_silver_connection,
@@ -210,7 +212,7 @@ def _encode(result: SilverResult, currencies: Mapping[str, str]) -> _Encoded:
     """Turn one result into the rows every table will hold."""
     return _Encoded(
         account_currencies=tuple(sorted(currencies.items())),
-        transactions=_encode_transactions(result.transactions),
+        transactions=_encode_transactions(result.transactions, currencies),
         transaction_evidence=_encode_evidence(result.transaction_evidence),
         unbooked_records=_encode_unbooked(result.unbooked_records, currencies),
         balance_observations=_encode_observations(
@@ -233,32 +235,57 @@ def _currency_for(currencies: Mapping[str, str], account_id: str) -> str:
         raise UnknownAccountCurrencyError(account_id) from None
 
 
+def _configured_currency(
+    currencies: Mapping[str, str], account_id: str, row_currency: str
+) -> str:
+    """Return an account's configured currency, refusing a row that disagrees.
+
+    The configured currency must be one the ISO 4217 table knows, and it must
+    be the currency the row itself was written in.
+    """
+    currency = _currency_for(currencies, account_id)
+    minor_unit_places(currency)
+    if currency != row_currency:
+        raise CurrencySnapshotMismatchError(account_id, row_currency, currency)
+    return currency
+
+
 def _optional_minor(amount: Decimal | None, currency: str) -> int | None:
     """Write an optional amount, preserving a null balance as a null."""
     return None if amount is None else to_minor_units(amount, currency)
 
 
-def _encode_transactions(items: Sequence[Transaction]) -> Rows:
+def _encode_transactions(
+    items: Sequence[Transaction], currencies: Mapping[str, str]
+) -> Rows:
     return tuple(
-        (
-            ordinal,
-            item.transaction_id,
-            item.account_id,
-            item.transaction_date.isoformat(),
-            to_minor_units(item.amount, item.currency),
-            item.currency,
-            item.description,
-            item.source_system,
-            _optional_minor(item.balance, item.currency),
-            item.source_status,
-            item.booking_status,
-            item.occurrence,
-            item.day_sequence,
-            item.identity_version,
-            item.bank_category,
-            item.bank_subcategory,
-        )
+        _transaction_row(ordinal, item, currencies)
         for ordinal, item in enumerate(items, start=1)
+    )
+
+
+def _transaction_row(
+    ordinal: int, item: Transaction, currencies: Mapping[str, str]
+) -> tuple[object, ...]:
+    """Encode one transaction under its account's configured currency."""
+    currency = _configured_currency(currencies, item.account_id, item.currency)
+    return (
+        ordinal,
+        item.transaction_id,
+        item.account_id,
+        item.transaction_date.isoformat(),
+        to_minor_units(item.amount, currency),
+        currency,
+        item.description,
+        item.source_system,
+        _optional_minor(item.balance, currency),
+        item.source_status,
+        item.booking_status,
+        item.occurrence,
+        item.day_sequence,
+        item.identity_version,
+        item.bank_category,
+        item.bank_subcategory,
     )
 
 
