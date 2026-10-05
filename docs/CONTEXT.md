@@ -116,7 +116,7 @@ A stretch of consecutive days an account's admitted exports are known to
 cover: the union of their declared *covers from*–*covers through* ranges, with
 no adjustment for the export day. A day no admitted export declares falls in a
 gap between two ranges. The rule is in
-[`docs/architecture/silver-layer.md`](architecture/silver-layer.md#evidence-ranges).
+[`silver-layer.md`](architecture/silver-layer.md#evidence-ranges).
 _Avoid_: coverage (that is Gold's per-period status)
 
 **Evidence through**:
@@ -135,7 +135,7 @@ bank-stated balance after one transaction)
 **Provisional period**:
 A reporting period that includes the current calendar month or still awaits
 exports covering the late-booking window. How it must be labeled is in
-[`docs/architecture/presentation-layer.md`](architecture/presentation-layer.md#data-trust-display).
+[`presentation-layer.md`](architecture/presentation-layer.md#data-trust-display).
 
 ### Imports and identity
 
@@ -164,7 +164,7 @@ the *export date*, and every transaction in the export falls on or before it.
 Distinct from the *export date*, so a year of history exported today is not
 read as covering today. Both ends of the range are required on every import
 and never inferred; see
-[`docs/architecture/bronze-layer.md`](architecture/bronze-layer.md).
+[`bronze-layer.md`](architecture/bronze-layer.md).
 _Avoid_: export range, to-date
 
 **Transaction date**:
@@ -293,7 +293,7 @@ _Avoid_: archived publication, old version
 One of `production`, `development`, or `test`: a configuration of the same
 code that names every path the application touches. Every store records the
 profile it belongs to. The rules are in
-[`docs/architecture/operations.md`](architecture/operations.md).
+[`operations.md`](architecture/operations.md).
 _Avoid_: environment (ambiguous with the Python environment), instance
 
 **Household inputs**:

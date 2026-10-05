@@ -103,6 +103,5 @@ document for each rule; where they seem to differ, the governing document wins.
   rebuildable.
 - A module may depend only on its declared input contract. It must not reach
   around the contract to read an upstream layer.
-- Every Markdown file here opens with an Open Knowledge Format header whose
-  `type` is the folder it sits in, as
+- Every Markdown file here opens with the Open Knowledge Format header that
   [ADR-019](decisions/ADR-019-open-knowledge-format-headers.md) sets out.

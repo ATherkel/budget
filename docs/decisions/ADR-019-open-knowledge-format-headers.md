@@ -14,9 +14,10 @@ file is, so it cannot group or filter them.
 
 The [Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format)
 (OKF) v0.2 is a vendor-neutral convention for exactly this layout: a folder of
-Markdown files, each opening with a YAML header. Its only requirement is that
-every Markdown file other than `index.md` and `log.md` has a header with a
-non-empty `type`, which readers use to group and filter documents. Every other
+Markdown files, each opening with a YAML header. Its one requirement on an
+ordinary document, any Markdown file other than the reserved `index.md` and
+`log.md`, is a header with a non-empty `type`, which readers use to group and
+filter documents. Every other
 field is recommended or optional, and a reader must not reject a file for
 leaving one out.
 
@@ -45,8 +46,9 @@ asks that types be descriptive; the folder names are, to anyone who knows the
 layout.
 
 `tests/test_docs_frontmatter.py` checks every file against this rule, and the
-`pytest` workflow runs it like any other test. It skips `index.md` and
-`log.md`, which OKF reserves and which carry no header.
+`pytest` workflow runs it like any other test. It also refuses a file named
+`index.md` or `log.md`, the names OKF reserves for the files this ADR does not
+adopt.
 
 ## Considered Options
 
@@ -60,6 +62,8 @@ layout.
 - **OKF's other fields.** Each would be a second place to keep true. Rejected:
   - `title` and `description`, which OKF recommends, repeat the heading and
     the opening paragraph.
+  - `resource` and `tags`, also recommended: no document describes an asset
+    with its own URI, and the folder already does the grouping tags would.
   - `status` allows only `draft`, `stable` or `deprecated`, while an ADR's
     `**Status:**` line also records what amends or supersedes it.
   - `generated` records who wrote a file, inside the file. For an agent that
@@ -79,8 +83,9 @@ layout.
 ## Consequences
 
 - The header moves every line in `docs/` down by three. This change updates
-  the line citations in `research/`, but citations elsewhere, in GitHub issue
-  bodies and in `prototypes/import-identity/`, now point three lines early.
+  the line citations in `research/`. Citations elsewhere, in GitHub issue
+  bodies and in `prototypes/import-identity/`, were not updated and are now
+  three lines further off.
 - A new document fails the test until it has its header, and a document moved
   to another folder must change its `type`.
 - Skills expect `CONTEXT.md` at the repository root. `AGENTS.md` and

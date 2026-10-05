@@ -2,7 +2,7 @@
 """Open Knowledge Format headers on the docs (ADR-019).
 
 Every Markdown file under `docs/` opens with a three-line header whose only key,
-`type`, is the folder the file sits in.
+`type`, ADR-019 derives from the file's folder.
 """
 
 from pathlib import Path
@@ -10,9 +10,7 @@ from pathlib import Path
 import pytest
 
 DOCS = Path(__file__).resolve().parent.parent / "docs"
-# OKF reserves these names for files that carry no header.
-RESERVED = {"index.md", "log.md"}
-DOCUMENTS = sorted(path for path in DOCS.rglob("*.md") if path.name not in RESERVED)
+DOCUMENTS = sorted(DOCS.rglob("*.md"))
 
 
 def _expected_type(path: Path) -> str:
@@ -27,6 +25,13 @@ def _expected_type(path: Path) -> str:
 def test_the_docs_folder_is_found() -> None:
     # An empty glob would make every parametrized case below vanish silently.
     assert DOCUMENTS
+
+
+def test_no_document_takes_a_name_okf_reserves() -> None:
+    # OKF reserves these names for index and log files, which ADR-019 rejects.
+    reserved = [path for path in DOCUMENTS if path.name in {"index.md", "log.md"}]
+
+    assert reserved == []
 
 
 @pytest.mark.parametrize(
