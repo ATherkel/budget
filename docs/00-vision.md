@@ -1,3 +1,6 @@
+---
+type: overview
+---
 # Budget Platform Vision
 
 ## Goal

@@ -1,3 +1,6 @@
+---
+type: decisions
+---
 # ADR-018: Raise One Review Item per Dropped Transaction
 
 **Status:** Accepted. Amends [ADR-017](ADR-017-dropped-transactions.md): a run

@@ -1,3 +1,6 @@
+---
+type: decisions
+---
 # ADR-016: A Missing Balance Admitted by Accept Discrepancy Stays Null
 
 **Status:** Accepted. Amends the first consequence of

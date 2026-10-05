@@ -1,3 +1,6 @@
+---
+type: architecture
+---
 # Silver Layer
 
 ## Purpose

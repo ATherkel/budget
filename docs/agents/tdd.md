@@ -1,3 +1,6 @@
+---
+type: agents
+---
 # Test-Driven Development Workflow
 
 Use this workflow for every application feature and bug fix that changes

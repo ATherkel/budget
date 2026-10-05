@@ -1,3 +1,6 @@
+---
+type: decisions
+---
 # ADR-011: Classify by Manual Decision, Then Transfer Pairing, Then Rules
 
 **Status:** Accepted

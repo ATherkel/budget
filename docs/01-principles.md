@@ -1,3 +1,6 @@
+---
+type: overview
+---
 # Architectural Principles
 
 ## Principle 1: Source Agnostic Analytics

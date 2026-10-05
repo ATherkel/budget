@@ -1,3 +1,6 @@
+---
+type: decisions
+---
 # ADR-014: Publish Gold as Immutable Publications, with Recipes and a Decision Log
 
 **Status:** Accepted. The retention decision is refined by

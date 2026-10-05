@@ -1,3 +1,6 @@
+---
+type: decisions
+---
 # ADR-005: Use Test-Driven Development for Behavior Changes
 
 **Status:** Accepted

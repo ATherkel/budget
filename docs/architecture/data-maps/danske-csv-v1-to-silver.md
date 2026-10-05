@@ -1,3 +1,6 @@
+---
+type: data-maps
+---
 # Logical Data Map: `danske-csv-v1` → Silver
 
 **Status:** Accepted. The map restates, column by column, what

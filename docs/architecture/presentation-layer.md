@@ -1,3 +1,6 @@
+---
+type: architecture
+---
 # Presentation Layer
 
 ## Purpose

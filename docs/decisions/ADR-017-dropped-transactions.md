@@ -1,3 +1,6 @@
+---
+type: decisions
+---
 # ADR-017: Treat Every Dropped Transaction Like a Dropped Repeat
 
 **Status:** Accepted. Amends [ADR-009](ADR-009-transaction-identity.md): its

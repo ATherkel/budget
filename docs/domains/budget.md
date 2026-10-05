@@ -1,3 +1,6 @@
+---
+type: domains
+---
 # Budget Domain
 
 A budget is a planned amount for a category and period; it is not a

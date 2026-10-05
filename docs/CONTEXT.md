@@ -1,3 +1,6 @@
+---
+type: glossary
+---
 # Household Finance
 
 A platform that turns imported bank exports into trustworthy household financial

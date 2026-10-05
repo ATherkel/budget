@@ -1,3 +1,6 @@
+---
+type: decisions
+---
 # ADR-012: Pair Transfers Only on Strong Evidence; Otherwise Leave Legs Unknown
 
 **Status:** Accepted. The question this ADR left open for issue #12 is

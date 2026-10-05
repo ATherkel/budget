@@ -1,3 +1,6 @@
+---
+type: research
+---
 # How Kimball fits this budget project
 
 Research for [#3](https://github.com/ATherkel/budget/issues/3), originally written 2026-09-14; simplified and updated against `main` on 2026-09-19. Sources are public official material, not the full paid books. No private imports were used in this review.

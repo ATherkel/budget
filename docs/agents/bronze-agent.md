@@ -1,3 +1,6 @@
+---
+type: agents
+---
 # Bronze Agent Brief
 
 ## Mission

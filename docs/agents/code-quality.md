@@ -1,3 +1,6 @@
+---
+type: agents
+---
 # Code Quality Gate
 
 All Python code in this repository must pass these checks. CI runs them in

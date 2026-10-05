@@ -1,3 +1,6 @@
+---
+type: architecture
+---
 # Gold Classification
 
 Status: accepted (ADR-011, ADR-012). The fields it produces are part of Gold

@@ -1,3 +1,6 @@
+---
+type: domains
+---
 # Category Domain
 
 A category groups income or expense facts for reporting and budgeting. It is a

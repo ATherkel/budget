@@ -1,3 +1,6 @@
+---
+type: decisions
+---
 # ADR-006: Reconcile Account Balances via Bank-Stated Balance Chains
 
 **Status:** Accepted. Partly superseded by

@@ -1,3 +1,6 @@
+---
+type: architecture
+---
 # Gold Publications and History
 
 Status: accepted ([ADR-014](../decisions/ADR-014-gold-publications-and-history.md)),

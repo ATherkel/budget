@@ -1,3 +1,6 @@
+---
+type: agents
+---
 # Analytics Agent
 
 ## Mission

@@ -1,3 +1,6 @@
+---
+type: developers
+---
 # Source Parsers
 
 Bronze splits one raw payload into source records. Which rules apply is a

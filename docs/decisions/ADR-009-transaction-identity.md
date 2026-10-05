@@ -1,3 +1,6 @@
+---
+type: decisions
+---
 # ADR-009: Identify Transactions by Content and Occurrence, Verified by Balances
 
 **Status:** Accepted. Amended by

@@ -1,3 +1,6 @@
+---
+type: overview
+---
 # System Architecture
 
 ## Medallion Architecture
