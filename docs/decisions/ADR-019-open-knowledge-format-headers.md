@@ -14,12 +14,12 @@ file is, so it cannot group or filter them.
 
 The [Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format)
 (OKF) v0.2 is a vendor-neutral convention for exactly this layout: a folder of
-Markdown files, each opening with a YAML header. Its one requirement on an
-ordinary document, any Markdown file other than the reserved `index.md` and
-`log.md`, is a header with a non-empty `type`, which readers use to group and
-filter documents. Every other
-field is recommended or optional, and a reader must not reject a file for
-leaving one out.
+Markdown files, each opening with a YAML header. It reserves two names:
+`index.md` for a directory listing and `log.md` for a change history. Its one
+requirement on every other Markdown file is a header with a non-empty `type`,
+which readers use to group and filter documents. Every other field is
+recommended or optional, and a reader must not reject a file for leaving one
+out.
 
 The household's main risk to the project is upkeep, so every field adopted is
 one more thing to keep true.
@@ -63,7 +63,8 @@ adopt.
   - `title` and `description`, which OKF recommends, repeat the heading and
     the opening paragraph.
   - `resource` and `tags`, also recommended: no document describes an asset
-    with its own URI, and the folder already does the grouping tags would.
+    with its own URI, and tags, which group documents across folders, would be
+    one more list to keep true while nothing here reads them.
   - `status` allows only `draft`, `stable` or `deprecated`, while an ADR's
     `**Status:**` line also records what amends or supersedes it.
   - `generated` records who wrote a file, inside the file. For an agent that

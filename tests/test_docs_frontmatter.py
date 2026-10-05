@@ -29,7 +29,11 @@ def test_the_docs_folder_is_found() -> None:
 
 def test_no_document_takes_a_name_okf_reserves() -> None:
     # OKF reserves these names for index and log files, which ADR-019 rejects.
-    reserved = [path for path in DOCUMENTS if path.name in {"index.md", "log.md"}]
+    reserved = [
+        path.relative_to(DOCS).as_posix()
+        for path in DOCUMENTS
+        if path.name in {"index.md", "log.md"}
+    ]
 
     assert reserved == []
 

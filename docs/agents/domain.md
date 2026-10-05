@@ -24,6 +24,10 @@ This is a single-context repository:
 └── src/
 ```
 
+New ADRs go in `docs/decisions/` as `ADR-NNN-slug.md`. Every new Markdown file
+under `docs/` opens with the header ADR-019 sets out, and an ADR keeps its
+`**Status:**` line in the body.
+
 ## Use the glossary's vocabulary
 
 When output names a domain concept—in an issue title, refactor proposal, hypothesis, or test—use the term defined in `docs/CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
