@@ -191,11 +191,13 @@ class _StagedSet:
     """A set written in staging: what each file is, and its manifest's bytes.
 
     `files` maps each file's path in the set, with `/` separators, to what
-    the manifest records about it.
+    the manifest records about it. `schema_version` is the Bronze schema
+    version this set's snapshot was taken at.
     """
 
     files: dict[str, dict[str, object]]
     manifest: bytes
+    schema_version: int
 
 
 def _copy_inputs(profile: Profile, staging: Path) -> dict[str, bytes]:
@@ -253,7 +255,9 @@ def _stage(profile: Profile, staging: Path, now: datetime) -> _StagedSet:
         "files": files,
     }
     return _StagedSet(
-        files=files, manifest=(json.dumps(manifest, indent=2) + "\n").encode("utf-8")
+        files=files,
+        manifest=(json.dumps(manifest, indent=2) + "\n").encode("utf-8"),
+        schema_version=schema_version,
     )
 
 
@@ -354,8 +358,10 @@ def back_up(lock: WriterLock, *, now: datetime) -> BackupSet:
         shutil.rmtree(staging, ignore_errors=True)
         if publishing.is_dir():
             shutil.rmtree(publishing, ignore_errors=True)
-    # The set is published: retention that fails now only keeps older sets
-    # until the next backup, so it never fails this one.
+    # The set is published: retention and release that fail now only leave
+    # sets held or kept until the next backup, so neither fails this one.
+    with suppress(OSError):
+        _release_superseded(profile, staged.schema_version)
     with suppress(OSError):
         _prune(profile, name, now)
     return BackupSet(name=name, path=path, created_at=now)
@@ -522,6 +528,21 @@ def _held_for_recovery(profile: Profile) -> set[str] | None:
     return {str(name) for name in held}
 
 
+def _write_held(profile: Profile, held: set[str]) -> None:
+    """Replace `recovery-sets.json` with `held`, or remove it when empty."""
+    path = profile.recovery_sets_file
+    if not held:
+        path.unlink(missing_ok=True)
+        return
+    document = {"format": RECOVERY_FORMAT, "sets": sorted(held)}
+    content = (json.dumps(document, indent=2) + "\n").encode("utf-8")
+    partial = path.with_name(path.name + PUBLISHING_SUFFIX)
+    partial.unlink(missing_ok=True)
+    _write_synced(partial, content)
+    partial.replace(path)
+    sync_folder(path.parent)
+
+
 def hold_for_recovery(lock: WriterLock, backup: BackupSet) -> None:
     """Keep a set from retention until the operation it protects finishes.
 
@@ -530,16 +551,47 @@ def hold_for_recovery(lock: WriterLock, backup: BackupSet) -> None:
     """
     profile = lock.profile
     held = _held_for_recovery(profile) or set()
-    document = {"format": RECOVERY_FORMAT, "sets": sorted(held | {backup.name})}
-    content = (json.dumps(document, indent=2) + "\n").encode("utf-8")
-    path = profile.recovery_sets_file
-    partial = path.with_name(path.name + PUBLISHING_SUFFIX)
-    partial.unlink(missing_ok=True)
-    _write_synced(partial, content)
-    partial.replace(path)
-    sync_folder(path.parent)
+    _write_held(profile, held | {backup.name})
 
 
 def release_recovery_sets(lock: WriterLock) -> None:
     """Let retention treat every held set like any other again."""
     lock.profile.recovery_sets_file.unlink(missing_ok=True)
+
+
+def _set_schema_version(manifest: dict[str, object]) -> int | None:
+    """Return a set's recorded Bronze schema version, or `None` if absent."""
+    stores = manifest.get("stores")
+    if not isinstance(stores, dict):
+        return None
+    bronze = stores.get(BRONZE_STAGE)
+    if not isinstance(bronze, dict):
+        return None
+    version = bronze.get("schema_version")
+    return version if isinstance(version, int) else None
+
+
+def _superseded(profile: Profile, name: str, schema_version: int) -> bool:
+    """Report whether a held set's own schema version is behind this one."""
+    manifest = _read_manifest(profile.backup_path(name))
+    if manifest is None:
+        return False
+    found = _set_schema_version(manifest)
+    return found is not None and found < schema_version
+
+
+def _release_superseded(profile: Profile, schema_version: int) -> None:
+    """Drop a held set once a fresh set shows the schema has moved past it.
+
+    A held set still at the live schema version is a failed or interrupted
+    migration's only recovery set, and stays held regardless of how many
+    backups are written in the meantime; only a set whose own schema version
+    is behind this one is released. While the held sets cannot be read,
+    nothing changes here either.
+    """
+    held = _held_for_recovery(profile)
+    if not held:
+        return
+    kept = {name for name in held if not _superseded(profile, name, schema_version)}
+    if kept != held:
+        _write_held(profile, kept)
