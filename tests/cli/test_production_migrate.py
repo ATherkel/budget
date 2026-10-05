@@ -213,6 +213,30 @@ class FailedMigrationTests(unittest.TestCase):
             assert complete_backup_sets(production) == (newest,)
 
 
+class RecoveryFileTests(unittest.TestCase):
+    def test_an_unreadable_recovery_file_stops_the_migration_before_the_schema_changes(
+        self,
+    ) -> None:
+        # decision 7: a recovery-sets.json this code cannot read must never
+        # be quietly replaced, so the migration it would guard has to stop
+        # before the store's schema changes, with the usual exit 4.
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            production.recovery_sets_file.parent.mkdir(parents=True, exist_ok=True)
+            production.recovery_sets_file.write_bytes(b"not json")
+
+            with added_migration(ADDED_TABLE):
+                status, stderr = migrate(profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "recovery-sets.json" in stderr
+            assert user_version(production.bronze_store) == 1
+            assert "marker" not in tables(production.bronze_store)
+            assert production.recovery_sets_file.read_bytes() == b"not json"
+
+
 class ContendedProductionStoreTests(unittest.TestCase):
     def test_migrate_writes_no_set_while_another_command_holds_the_lock(
         self,
