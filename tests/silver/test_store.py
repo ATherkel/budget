@@ -413,6 +413,31 @@ class SilverMoneyTests(unittest.TestCase):
 
             assert _stored_minor_units(profile) == 120
 
+    def test_an_amount_with_a_huge_exponent_is_refused(self) -> None:
+        # Building 10**5000 would either take unbounded work or fail inside
+        # Python's integer-to-string limit; the refusal must come first.
+        amounts = (
+            Decimal("1e5000"),
+            Decimal("-1e5000"),
+            Decimal("9.9e999999"),
+        )
+        for amount in amounts:
+            with self.subTest(amount), TemporaryDirectory() as directory:
+                profile = make_test_profile(directory)
+                migrate_silver(profile)
+                result = _complete_result()
+
+                with SilverStore(profile) as store:
+                    store.replace(result, currencies=CURRENCIES)
+
+                    with pytest.raises(MoneyRangeError):
+                        store.replace(
+                            _one_transaction(amount),
+                            currencies={"joint-current": "DKK"},
+                        )
+
+                    assert store.read() == result
+
 
 class SilverDurabilityTests(unittest.TestCase):
     def test_a_failed_replacement_leaves_the_previous_result_readable(self) -> None:
