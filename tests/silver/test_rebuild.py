@@ -7,17 +7,24 @@ the `SilverResult` the caller gets back.
 """
 
 import unittest
+from collections.abc import Sequence
 from datetime import date
 from tempfile import TemporaryDirectory
 
+import pytest
+
+from budget.locking import WriterLockHeldError, writer_lock
+from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 from budget.silver import (
     SilverBuildInputs,
     SilverResult,
     SilverStore,
+    VoidImportRun,
     build,
     rebuild_silver,
 )
+from budget.silver.decisions import SilverDecision
 from budget.silver.storage import migrate_silver
 from tests.silver.exports import Export, export, row
 
@@ -39,13 +46,16 @@ LATER = export(
 )
 
 
-def _inputs(*exports: Export) -> SilverBuildInputs:
+def _inputs(
+    *exports: Export, decisions: Sequence[SilverDecision] = ()
+) -> SilverBuildInputs:
     """The one value a rebuild names its Bronze inputs in."""
     return SilverBuildInputs(
         runs=[each.run for each in exports],
         source_records={each.run.payload_id: each.records for each in exports},
         format_failures={each.run.payload_id: each.failures for each in exports},
         currencies={each.run.declared_account_id: "DKK" for each in exports},
+        decisions=decisions,
     )
 
 
@@ -60,6 +70,12 @@ def _pure_build(inputs: SilverBuildInputs) -> SilverResult:
     )
 
 
+def _stored_dates(profile: Profile) -> list[date]:
+    """The stored transactions' dates, in their stored order."""
+    with SilverStore(profile) as store:
+        return [item.transaction_date for item in store.read().transactions]
+
+
 class SilverRebuildTests(unittest.TestCase):
     def test_rebuild_silver_stores_what_the_pure_build_produces(self) -> None:
         inputs = _inputs(FIRST, LATER)
@@ -72,6 +88,58 @@ class SilverRebuildTests(unittest.TestCase):
             assert result == _pure_build(inputs)
             with SilverStore(profile) as store:
                 assert store.read() == result
+
+    def test_rebuilding_again_replaces_the_stored_result(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+
+            first = rebuild_silver(profile, inputs=_inputs(FIRST))
+            second = rebuild_silver(profile, inputs=_inputs(FIRST, LATER))
+
+            assert second != first
+            assert _stored_dates(profile) == [date(2026, 3, 1), date(2026, 3, 3)]
+            with SilverStore(profile) as store:
+                assert store.read() == second
+
+    def test_a_voided_run_leaves_the_rebuilt_result(self) -> None:
+        # *Void import run* is a build rule, not a rebuild rule: rebuilding
+        # with the decision simply stores the build's result again.
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+            rebuild_silver(profile, inputs=_inputs(FIRST, LATER))
+
+            rebuild_silver(
+                profile,
+                inputs=_inputs(
+                    FIRST,
+                    LATER,
+                    decisions=(
+                        VoidImportRun(decision_id="d-0001", import_run_id="run-b"),
+                    ),
+                ),
+            )
+
+            with SilverStore(profile) as store:
+                stored = store.read()
+            assert [run.import_run_id for run in stored.import_run_results] == ["run-a"]
+            assert [item.transaction_date for item in stored.transactions] == [
+                date(2026, 3, 1)
+            ]
+
+    def test_a_rebuild_refuses_while_another_command_holds_the_lock(self) -> None:
+        inputs = _inputs(FIRST)
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+
+            with writer_lock(profile), pytest.raises(WriterLockHeldError):
+                rebuild_silver(profile, inputs=inputs)
+
+            # Nothing was written, so the store holds no result yet.
+            with SilverStore(profile) as store:
+                assert store.read() == SilverResult((), (), (), (), (), (), ())
 
 
 if __name__ == "__main__":
