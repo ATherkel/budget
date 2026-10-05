@@ -177,12 +177,16 @@ def _snapshot_bronze(profile: Profile, target: Path) -> int:
     The backup API reads the store as one consistent transaction, WAL
     included, which no copy of the store's files can promise. Returns the
     store's schema version.
+
+    SQLite reports a copy it cannot write, such as on a full disk, as its own
+    error rather than an `OSError`: that is a set that cannot be written too.
     """
-    with (
-        closing(open_bronze_for_backup(profile)) as source,
-        closing(sqlite3.connect(target)) as snapshot,
-    ):
-        source.backup(snapshot)
+    with closing(open_bronze_for_backup(profile)) as source:
+        try:
+            with closing(sqlite3.connect(target)) as snapshot:
+                source.backup(snapshot)
+        except sqlite3.OperationalError as error:
+            raise BackupWriteError(str(error)) from None
         return int(source.execute("PRAGMA user_version").fetchone()[0])
 
 
