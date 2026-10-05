@@ -15,7 +15,8 @@ from tempfile import TemporaryDirectory
 
 from budget.bronze import BronzeStore
 from budget.cli import main
-from tests.cli.profile_files import development_profile
+from budget.profiles import load_profile_file
+from tests.cli.profile_files import development_profile, write_profile
 
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
@@ -24,9 +25,21 @@ EXIT_REFUSED_ENVIRONMENT = 4
 VALID_HEADER = 'format = 1\nprofile = "development"\n'
 
 
+def _inbox_and_exports(folder: Path) -> str:
+    """The `[paths]` lines naming the inbox and export archive inside `folder`.
+
+    They are absolute even when a case's stores path is not, so each refusal
+    case below is refused for its own problem only.
+    """
+    folder = folder.absolute()
+    return f"inbox = '{folder / 'inbox'}'\nexports = '{folder / 'exports'}'\n"
+
+
 def _paths(stores: str, inputs: Path) -> str:
-    """A `[paths]` table naming only the stores and inputs folders."""
-    return f"\n[paths]\nstores = '{stores}'\ninputs = '{inputs}'\n"
+    """A `[paths]` table naming the stores and inputs folders, then the rest."""
+    return f"\n[paths]\nstores = '{stores}'\ninputs = '{inputs}'\n" + (
+        _inbox_and_exports(Path(stores).parent)
+    )
 
 
 def _assert_refused(profile_file: Path, text: str, stores: Path) -> None:
@@ -47,6 +60,11 @@ class ProfileFileTests(unittest.TestCase):
         """Profile file contents that must each be refused, by what is wrong."""
         inputs = stores.parent / "inputs"
         absolute = _paths(str(stores), inputs)
+        others = _inbox_and_exports(stores.parent)
+        inbox = stores.parent.absolute() / "inbox"
+        exports = stores.parent.absolute() / "exports"
+        assert f"inbox = '{inbox}'" in absolute
+        assert f"exports = '{exports}'" in absolute
         return {
             "not TOML": "format = = 1\n",
             "an unsupported format version": (
@@ -70,16 +88,31 @@ class ProfileFileTests(unittest.TestCase):
                 + "upstream_backups = 'x'\n"
             ),
             "no paths table": VALID_HEADER,
-            "no stores path": VALID_HEADER + f"\n[paths]\ninputs = '{inputs}'\n",
+            "no stores path": (
+                VALID_HEADER + f"\n[paths]\ninputs = '{inputs}'\n" + others
+            ),
             "a relative stores path": VALID_HEADER + _paths("stores", inputs),
             "a stores path that is not text": (
-                VALID_HEADER + f"\n[paths]\nstores = 1\ninputs = '{inputs}'\n"
+                VALID_HEADER + f"\n[paths]\nstores = 1\ninputs = '{inputs}'\n" + others
             ),
-            "no inputs path": VALID_HEADER + f"\n[paths]\nstores = '{stores}'\n",
+            "no inputs path": (
+                VALID_HEADER + f"\n[paths]\nstores = '{stores}'\n" + others
+            ),
             "a relative inputs path": VALID_HEADER + _paths(str(stores), Path("in")),
             "an inputs path that is not text": (
-                VALID_HEADER + f"\n[paths]\nstores = '{stores}'\ninputs = 1\n"
+                VALID_HEADER + f"\n[paths]\nstores = '{stores}'\ninputs = 1\n" + others
             ),
+            "no inbox path": VALID_HEADER + absolute.replace(f"inbox = '{inbox}'", ""),
+            "a relative inbox path": (
+                VALID_HEADER + absolute.replace(f"inbox = '{inbox}'", "inbox = 'in'")
+            ),
+            "no exports path": (
+                VALID_HEADER + absolute.replace(f"exports = '{exports}'", "")
+            ),
+            "a relative exports path": VALID_HEADER
+            + absolute.replace(f"exports = '{exports}'", "exports = 'ex'"),
+            "an inbox that is the export archive": VALID_HEADER
+            + absolute.replace(f"exports = '{exports}'", f"exports = '{inbox}'"),
         }
 
     def test_a_profile_file_the_command_cannot_use_is_refused(self) -> None:
@@ -95,6 +128,15 @@ class ProfileFileTests(unittest.TestCase):
                     finally:
                         # A case that wrongly migrates must not fail the next.
                         shutil.rmtree(stores, ignore_errors=True)
+
+    def test_a_profile_file_names_the_inbox_and_export_archive(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+
+            profile = load_profile_file(write_profile(folder))
+
+            assert profile.inbox == (folder / "inbox").resolve()
+            assert profile.exports == (folder / "exports").resolve()
 
     def test_a_missing_profile_file_is_refused(self) -> None:
         with TemporaryDirectory() as directory:
@@ -161,8 +203,6 @@ class ProfileFileTests(unittest.TestCase):
             profile_file.write_text(
                 VALID_HEADER
                 + _paths(str(folder / "stores"), folder / "inputs")
-                + f"inbox = '{folder / 'inbox'}'\n"
-                + f"exports = '{folder / 'exports'}'\n"
                 + f"upstream_backups = '{folder / 'upstream'}'\n"
                 + '\n[dashboard]\nbind = "127.0.0.1"\nport = 8750\n',
                 encoding="utf-8",
@@ -181,8 +221,6 @@ class ProfileFileTests(unittest.TestCase):
             profile_file.write_text(
                 'format = 1\nprofile = "production"\n'
                 + _paths(str(folder / "stores"), folder / "inputs")
-                + f"inbox = '{folder / 'inbox'}'\n"
-                + f"exports = '{folder / 'exports'}'\n"
                 + f"backups = '{folder / 'backups'}'\n"
                 + "\n[backups]\nkeep_all_days = 14\nkeep_daily_days = 365\n"
                 + 'keep_monthly = "forever"\n'

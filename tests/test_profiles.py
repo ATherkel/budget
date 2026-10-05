@@ -12,6 +12,7 @@ import pytest
 from budget.profiles import (
     BRONZE_STORE_NAME,
     Profile,
+    ProfileFoldersOverlapError,
     ProfilePathOutsideRootError,
     UnknownProfileNameError,
 )
@@ -33,6 +34,8 @@ class ProfileTests(unittest.TestCase):
                 name="development",
                 stores=root / "stores",
                 inputs=root / "inputs",
+                inbox=root / "inbox",
+                exports=root / "exports",
             )
 
             assert profile.name == "development"
@@ -67,7 +70,14 @@ class ProfileTests(unittest.TestCase):
             escape = root / ".." / "elsewhere"
 
             with pytest.raises(ProfilePathOutsideRootError):
-                Profile(name="test", stores=escape, inputs=root / "inputs", root=root)
+                Profile(
+                    name="test",
+                    stores=escape,
+                    inputs=root / "inputs",
+                    inbox=root / "inbox",
+                    exports=root / "exports",
+                    root=root,
+                )
 
             assert not (root.parent / "elsewhere").exists()
 
@@ -102,7 +112,13 @@ class ProfileTests(unittest.TestCase):
 
             for name in ("Production", "staging", ""):
                 with self.subTest(name=name), pytest.raises(UnknownProfileNameError):
-                    Profile(name=name, stores=root / "stores", inputs=root / "inputs")
+                    Profile(
+                        name=name,
+                        stores=root / "stores",
+                        inputs=root / "inputs",
+                        inbox=root / "inbox",
+                        exports=root / "exports",
+                    )
 
     def test_a_test_profile_must_carry_its_temporary_root(self) -> None:
         with (
@@ -113,6 +129,8 @@ class ProfileTests(unittest.TestCase):
                 name="test",
                 stores=Path(directory) / "stores",
                 inputs=Path(directory) / "inputs",
+                inbox=Path(directory) / "inbox",
+                exports=Path(directory) / "exports",
             )
 
     def test_a_bronze_store_replaced_by_a_symlink_is_refused(self) -> None:
@@ -165,6 +183,8 @@ class ProfileTests(unittest.TestCase):
                     name="test",
                     stores=root / "stores",
                     inputs=root / ".." / "elsewhere",
+                    inbox=root / "inbox",
+                    exports=root / "exports",
                     root=root,
                 )
 
@@ -182,6 +202,71 @@ class ProfileTests(unittest.TestCase):
 
             with pytest.raises(ProfilePathOutsideRootError):
                 _ = profile.accounts_file
+
+    def test_a_test_profile_names_its_inbox_archive_and_import_log_inside_its_root(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile = make_test_profile(root)
+
+            assert profile.inbox == (root / "inbox").resolve()
+            assert profile.exports == (root / "exports").resolve()
+            assert (
+                profile.import_log_file == (root / "inputs" / "imports.jsonl").resolve()
+            )
+
+    def test_a_test_profile_inbox_or_export_archive_may_not_escape_its_root(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            escape = root / ".." / "elsewhere"
+
+            with self.subTest("inbox"), pytest.raises(ProfilePathOutsideRootError):
+                Profile(
+                    name="test",
+                    stores=root / "stores",
+                    inputs=root / "inputs",
+                    inbox=escape,
+                    exports=root / "exports",
+                    root=root,
+                )
+            with self.subTest("exports"), pytest.raises(ProfilePathOutsideRootError):
+                Profile(
+                    name="test",
+                    stores=root / "stores",
+                    inputs=root / "inputs",
+                    inbox=root / "inbox",
+                    exports=escape,
+                    root=root,
+                )
+
+    def test_an_inbox_and_export_archive_that_overlap_are_refused(self) -> None:
+        # The archive would hold the inbox file itself, which the import then
+        # removes from the inbox.
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            overlaps = {
+                "the same folder": (root / "household", root / "household"),
+                "the inbox inside the archive": (
+                    root / "exports" / "inbox",
+                    root / "exports",
+                ),
+                "the archive inside the inbox": (root / "inbox", root / "inbox" / "x"),
+            }
+            for overlap, (inbox, exports) in overlaps.items():
+                with (
+                    self.subTest(overlap),
+                    pytest.raises(ProfileFoldersOverlapError),
+                ):
+                    Profile(
+                        name="development",
+                        stores=root / "stores",
+                        inputs=root / "inputs",
+                        inbox=inbox,
+                        exports=exports,
+                    )
 
 
 if __name__ == "__main__":

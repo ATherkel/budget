@@ -21,7 +21,8 @@ def write_profile(
     path = folder / f"{name}.toml"
     path.write_text(
         f'format = 1\nprofile = "{name}"\n\n[paths]\n'
-        f"stores = '{stores}'\ninputs = '{folder / 'inputs'}'\n",
+        f"stores = '{stores}'\ninputs = '{folder / 'inputs'}'\n"
+        f"inbox = '{folder / 'inbox'}'\nexports = '{folder / 'exports'}'\n",
         encoding="utf-8",
     )
     return path
@@ -30,5 +31,9 @@ def write_profile(
 def development_profile(folder: Path) -> Profile:
     """The development profile `write_profile` describes inside `folder`."""
     return Profile(
-        name="development", stores=folder / "stores", inputs=folder / "inputs"
+        name="development",
+        stores=folder / "stores",
+        inputs=folder / "inputs",
+        inbox=folder / "inbox",
+        exports=folder / "exports",
     )
