@@ -438,6 +438,22 @@ class SilverMoneyTests(unittest.TestCase):
 
                     assert store.read() == result
 
+    def test_a_zero_with_a_huge_exponent_is_stored_as_zero(self) -> None:
+        # An exponent-heavy zero carries no significant digits: it is exactly
+        # zero, so it is stored without building the exponent's power.
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+            result = _one_transaction(Decimal("0e5000"))
+
+            with SilverStore(profile) as store:
+                store.replace(result, currencies={"joint-current": "DKK"})
+
+                [stored] = store.read().transactions
+                assert stored.amount == Decimal("0.00")
+
+            assert _stored_minor_units(profile) == 0
+
 
 class SilverDurabilityTests(unittest.TestCase):
     def test_a_failed_replacement_leaves_the_previous_result_readable(self) -> None:

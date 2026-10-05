@@ -42,6 +42,8 @@ _MIGRATIONS_FOLDER: Final = (
 # bounds has no exact representation and is refused, never clamped.
 MIN_MINOR_UNIT: Final = -(2**63)
 MAX_MINOR_UNIT: Final = 2**63 - 1
+# The widest value either bound can hold has nineteen decimal digits.
+_INT64_DECIMAL_DIGITS: Final = 19
 
 __all__ = [
     "BUSY_TIMEOUT_MS",
@@ -122,11 +124,9 @@ class MoneyPrecisionError(MoneyError):
 class MoneyRangeError(MoneyError):
     """The amount's minor units do not fit SQLite's 64-bit integer."""
 
-    def __init__(self, minor_units: int) -> None:
-        """Name the count and the range it left."""
-        super().__init__(
-            f"{minor_units} minor units do not fit a 64-bit signed integer"
-        )
+    def __init__(self) -> None:
+        """State the range without naming a count that may itself be huge."""
+        super().__init__("the amount's minor units do not fit a 64-bit signed integer")
 
 
 class UnknownAccountCurrencyError(ValueError):
@@ -144,7 +144,9 @@ def to_minor_units(amount: Decimal, currency: str) -> int:
     rounds, never passes through `float`, and does not depend on the ambient
     decimal context's precision. An unsupported currency, a non-finite value,
     more decimal places than the currency allows, and a value outside SQLite's
-    64-bit integer are each refused rather than guessed at.
+    64-bit integer are each refused rather than guessed at. The magnitude is
+    checked before any power of ten is built, so an amount carrying a huge
+    exponent is refused at once instead of allocating its digits first.
     """
     places = minor_unit_places(currency)
     sign, digits, exponent = amount.as_tuple()
@@ -154,11 +156,22 @@ def to_minor_units(amount: Decimal, currency: str) -> int:
     # never normalised, even when the extra places are zeros (ADR-013).
     if exponent < -places:
         raise MoneyPrecisionError(amount, currency)
-    coefficient = int("".join(str(digit) for digit in digits)) if digits else 0
-    minor = coefficient * _power_of_ten(exponent + places)
+    if not any(digits):
+        # Zero is exact at every exponent, including an exponent-heavy zero.
+        return 0
+    # `exponent + places >= 0` here, so the scaled value has `len(digits)` plus
+    # `scale` digits; twenty of them already exceed 2**63 - 1. Checking that
+    # first bounds the work, and no power larger than 10**18 is ever built.
+    scale = exponent + places
+    if len(digits) + scale > _INT64_DECIMAL_DIGITS:
+        raise MoneyRangeError
+    minor = 0
+    for digit in digits:
+        minor = minor * 10 + digit
+    minor *= _power_of_ten(scale)
     minor = -minor if sign else minor
     if not MIN_MINOR_UNIT <= minor <= MAX_MINOR_UNIT:
-        raise MoneyRangeError(minor)
+        raise MoneyRangeError
     return minor
 
 
