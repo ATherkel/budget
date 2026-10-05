@@ -150,15 +150,12 @@ def to_minor_units(amount: Decimal, currency: str) -> int:
     sign, digits, exponent = amount.as_tuple()
     if not isinstance(exponent, int):
         raise NonFiniteMoneyError(amount, currency)
+    # A value carrying more decimal places than the currency has is refused,
+    # never normalised, even when the extra places are zeros (ADR-013).
+    if exponent < -places:
+        raise MoneyPrecisionError(amount, currency)
     coefficient = int("".join(str(digit) for digit in digits)) if digits else 0
-    shift = exponent + places
-    if shift >= 0:
-        minor = coefficient * _power_of_ten(shift)
-    else:
-        divisor = _power_of_ten(-shift)
-        if coefficient % divisor:
-            raise MoneyPrecisionError(amount, currency)
-        minor = coefficient // divisor
+    minor = coefficient * _power_of_ten(exponent + places)
     minor = -minor if sign else minor
     if not MIN_MINOR_UNIT <= minor <= MAX_MINOR_UNIT:
         raise MoneyRangeError(minor)

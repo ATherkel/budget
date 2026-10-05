@@ -397,6 +397,22 @@ class SilverMoneyTests(unittest.TestCase):
 
                     assert store.read() == result
 
+    def test_an_amount_with_fewer_places_than_its_currency_has_is_padded(self) -> None:
+        # `-45,0` and `-45,00` are one amount to the build, so fewer places are
+        # padded to the currency's; only *more* places are refused.
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+            result = _one_transaction(Decimal("1.2"))
+
+            with SilverStore(profile) as store:
+                store.replace(result, currencies={"joint-current": "DKK"})
+
+                [stored] = store.read().transactions
+                assert stored.amount == Decimal("1.20")
+
+            assert _stored_minor_units(profile) == 120
+
 
 class SilverDurabilityTests(unittest.TestCase):
     def test_a_failed_replacement_leaves_the_previous_result_readable(self) -> None:
