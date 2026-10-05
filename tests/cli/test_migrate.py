@@ -22,6 +22,7 @@ from budget.bronze.storage import (
 )
 from budget.cli import main
 from budget.profiles import test_profile as make_test_profile
+from budget.silver import SilverStore
 from tests.bronze.migration_resources import patched_resources
 from tests.cli.commands import migrate
 from tests.cli.profile_files import development_profile, write_profile
@@ -63,6 +64,18 @@ class MigrateTests(unittest.TestCase):
 
             assert status == EXIT_OK
             with BronzeStore(development_profile(folder)):
+                pass
+
+    def test_the_silver_stage_can_be_migrated(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+
+            status, _ = migrate(write_profile(folder), "--stage", "silver")
+
+            assert status == EXIT_OK
+            development = development_profile(folder)
+            assert development.silver_store.exists()
+            with SilverStore(development):
                 pass
 
 
