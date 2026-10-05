@@ -458,18 +458,29 @@ class SilverMoneyTests(unittest.TestCase):
     def test_a_transaction_requires_its_accounts_configured_currency(self) -> None:
         # A booked row names its account's currency too: the snapshot must hold
         # a supported currency for that account, and it must agree with the row.
+        # The configured currency is checked for support first, then against
+        # the row: only DKK is in the ISO 4217 table today, so a snapshot that
+        # names any other currency is refused as unsupported, and a genuine
+        # disagreement is a row written in a currency the account is not in.
         cases = {
-            "no snapshot entry": ({}, UnknownAccountCurrencyError),
-            "an unsupported currency": (
+            "no snapshot entry": ("DKK", {}, UnknownAccountCurrencyError),
+            "an unsupported configured currency": (
+                "DKK",
                 {"joint-current": "XYZ"},
                 UnknownCurrencyError,
             ),
-            "a snapshot that disagrees": (
+            "another unsupported configured currency": (
+                "DKK",
                 {"joint-current": "EUR"},
+                UnknownCurrencyError,
+            ),
+            "a row that disagrees with the snapshot": (
+                "EUR",
+                {"joint-current": "DKK"},
                 CurrencySnapshotMismatchError,
             ),
         }
-        for label, (currencies, defect) in cases.items():
+        for label, (row_currency, currencies, defect) in cases.items():
             with self.subTest(label), TemporaryDirectory() as directory:
                 profile = make_test_profile(directory)
                 migrate_silver(profile)
@@ -480,7 +491,7 @@ class SilverMoneyTests(unittest.TestCase):
 
                     with pytest.raises(defect):
                         store.replace(
-                            _one_transaction(Decimal("1.23")),
+                            _one_transaction(Decimal("1.23"), currency=row_currency),
                             currencies=currencies,
                         )
 
