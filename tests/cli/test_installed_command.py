@@ -3,7 +3,10 @@
 
 Each run is a subprocess whose working directory is a temporary folder and
 whose environment is explicit, so neither the checkout nor the operator's
-shell can stand in for the installed package.
+shell can stand in for the installed package. `migrate` runs from that folder,
+so the migration SQL it applies must come from the installed package: both
+`migrations/bronze/` and `migrations/silver/` ship with it and are discovered
+without a source checkout on the path.
 """
 
 import subprocess
@@ -13,6 +16,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from budget.bronze import BronzeStore
+from budget.silver import SilverStore
 from tests.cli.processes import explicit_environment
 from tests.cli.profile_files import development_profile, write_profile
 
@@ -46,7 +50,8 @@ class InstalledCommandTests(unittest.TestCase):
             # Routine output holds no filenames or values: on success, none.
             assert completed.stdout == ""
             assert completed.stderr == ""
-            with BronzeStore(development_profile(folder)):
+            development = development_profile(folder)
+            with BronzeStore(development), SilverStore(development):
                 pass
 
     def test_the_console_script_reads_budget_profile(self) -> None:
@@ -67,7 +72,8 @@ class InstalledCommandTests(unittest.TestCase):
             # Routine output holds no filenames or values: on success, none.
             assert completed.stdout == ""
             assert completed.stderr == ""
-            with BronzeStore(development_profile(folder)):
+            development = development_profile(folder)
+            with BronzeStore(development), SilverStore(development):
                 pass
 
 
