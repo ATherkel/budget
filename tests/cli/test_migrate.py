@@ -78,6 +78,19 @@ class MigrateTests(unittest.TestCase):
             with SilverStore(development):
                 pass
 
+    def test_migrate_creates_both_stores_when_no_stage_is_named(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+
+            status, _ = migrate(write_profile(folder))
+
+            assert status == EXIT_OK
+            development = development_profile(folder)
+            assert development.bronze_store.exists()
+            assert development.silver_store.exists()
+            with BronzeStore(development), SilverStore(development):
+                pass
+
 
 class MigrateRefusalTests(unittest.TestCase):
     def test_production_migration_is_refused_before_anything_is_created(
