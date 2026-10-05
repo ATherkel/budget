@@ -89,6 +89,11 @@ class BackupWriteError(RuntimeError):
         """Report a set name another set already has."""
         return cls(f"a set named {name} already exists, and is never replaced")
 
+    @classmethod
+    def unreadable(cls, path: Path) -> "BackupWriteError":
+        """Report a file that stands in the way, but cannot be read."""
+        return cls(f"{path} cannot be read")
+
 
 class BackupVerificationError(RuntimeError):
     """A backup set does not match its own manifest: nothing was published."""
@@ -552,10 +557,21 @@ def hold_for_recovery(lock: WriterLock, backup: BackupSet) -> None:
 
     A migration holds the set it took first; if it fails or is cut off, that
     set stays until `release_recovery_sets` is called after one succeeds.
+
+    An existing `recovery-sets.json` that cannot be read or parsed may be
+    hiding a set another unfinished operation still needs: it is refused
+    rather than overwritten, and the migration this guards stops before
+    touching the schema (decision 7). A write that fails partway is reported
+    the same way, instead of escaping as an unhandled `OSError`.
     """
     profile = lock.profile
-    held = _held_for_recovery(profile) or set()
-    _write_held(profile, held | {backup.name})
+    held = _held_for_recovery(profile)
+    if held is None:
+        raise BackupWriteError.unreadable(profile.recovery_sets_file)
+    try:
+        _write_held(profile, held | {backup.name})
+    except OSError as error:
+        raise BackupWriteError.from_os_error(error) from None
 
 
 def release_recovery_sets(lock: WriterLock) -> None:
