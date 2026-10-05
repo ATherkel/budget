@@ -63,10 +63,10 @@ the contract, how to register a format, and what is deliberately not solved yet.
 
 ## Storage and profiles
 
-A profile is an immutable value that names the folder its stage stores live in
-and the inputs folder the household authors. Nothing is selected implicitly,
-and a test profile refuses any path outside the temporary directory it was
-built from:
+A profile is an immutable value that names the folder its stage stores live in,
+the inputs folder the household authors, the inbox exports wait in, and the
+export archive. Nothing is selected implicitly, and a test profile refuses any
+path outside the temporary directory it was built from:
 
 ```python
 import os
@@ -81,6 +81,8 @@ profile = Profile(
     name="development",
     stores=local / "dev",
     inputs=local / "dev-household" / "inputs",
+    inbox=local / "dev-household" / "inbox",
+    exports=local / "dev-household" / "exports",
 )
 source = local / "dev-household" / "inbox" / "daily-account" / "danske-20260914.csv"
 migrate_bronze(profile)
@@ -120,11 +122,40 @@ knows, and a matching identity, and it sets `foreign_keys = ON`,
 `busy_timeout = 5000` and `synchronous = FULL`. A new store is created in WAL
 mode.
 
-The production profile refuses to migrate until the backup and command work
-lands (issue #120), so these commands are for development and test profiles
-today. `BronzeStore(profile, parsers=...)` accepts an optional mapping for
+`migrate_bronze` refuses the production profile: production is migrated only
+by `budget migrate`, which backs the store up first (see below).
+`BronzeStore(profile, parsers=...)` accepts an optional mapping for
 tests that need two versions of one format; the mapping is copied, and a parser
 registered under an ID it does not name is refused.
+
+## Importing an inbox export
+
+`BronzeStore.import_file` only records a run in Bronze. The application
+operation `budget.importing.import_inbox_file` is the whole Bronze step of an
+import, and the future `import` command calls it once per inbox file under one
+writer lock:
+
+```python
+from budget.importing import Coverage, import_inbox_file
+from budget.locking import writer_lock
+
+with writer_lock(profile) as lock:
+    result = import_inbox_file(
+        lock,
+        profile.inbox / "daily-account" / "danske-20260914.csv",
+        Coverage(covers_from=date(2026, 6, 14), covers_through=date(2026, 9, 13)),
+    )
+```
+
+The file's folder in the inbox is its account, and `accounts.toml` gives that
+account's source format. The operation records the run in Bronze, archives the
+bytes under `exports/<account_id>/`, mirrors the run in `inputs/imports.jsonl`,
+and only then removes the file from the inbox. A refused run is logged with a
+copy under `exports/<account_id>/refused/`, and its file stays in the inbox. A
+rerun after a crash finishes an earlier stored or repeat run of the same file
+instead of adding one, while a refused file is presented again;
+[operations.md](docs/architecture/operations.md#importsjsonl-the-import-log)
+gives the rules.
 
 ## Command line
 
@@ -145,6 +176,8 @@ profile = "development"
 [paths]
 stores = '$local\dev'
 inputs = '$local\dev-household\inputs'
+inbox = '$local\dev-household\inbox'
+exports = '$local\dev-household\exports'
 "@ | Out-File -NoClobber -Encoding utf8 "$env:APPDATA\budget\development.toml"
 ```
 
@@ -156,9 +189,10 @@ The file is UTF-8 text, with or without a byte-order mark, and may hold only
 the keys
 [operations.md](docs/architecture/operations.md#selecting-a-profile)
 documents for its profile: `[backups]` and `paths.backups` belong to
-production, and `paths.upstream_backups` to development. `[paths].stores` and
-`[paths].inputs` are required and must be absolute. `profile` is `development`
-or `production`.
+production, and `paths.upstream_backups` to development. `[paths].stores`,
+`[paths].inputs`, `[paths].inbox` and `[paths].exports` are required and must
+be absolute, and the inbox and exports folders may not overlap. `profile` is
+`development` or `production`.
 
 ```powershell
 budget --profile "$env:APPDATA\budget\development.toml" migrate
@@ -170,8 +204,21 @@ those stores exist. A writing command holds the operating system's lock on
 `budget.lock` in the stores folder for its whole run, so a second one refuses at
 once. On Windows the lock of a command that was killed or crashed is released a
 moment late, so an immediate rerun can report another command running; rerun
-it shortly. Production migration is refused until issue #120 adds the backup it
-needs.
+it shortly.
+
+A production profile file also names `[paths].backups`, the folder backup sets
+are published in, and may hold a `[backups]` table of retention keys
+(`keep_all_days`, `keep_daily_days`, `keep_monthly`); the backups folder may
+not overlap the stores, inputs, inbox or exports folders. In production, `migrate`
+writes a verified backup set before it changes an existing store and another
+after, and a migration that fails commits none of its steps. A missing
+production store is started only with `budget migrate --new-store`, and only
+when no complete backup set could restore it instead. `budget backup` writes
+a set of production by hand and prints its name. Nothing imports into
+production yet: that waits for the `import` command, which backs up after its
+Bronze writes.
+[operations.md](docs/architecture/operations.md#backup-and-restore) describes
+the sets, their manifest and retention.
 
 | Exit | Meaning |
 | --- | --- |
@@ -179,4 +226,5 @@ needs.
 | 1 | Unexpected error: a defect, such as a broken packaged migration |
 | 2 | Usage error, including a command that is not built yet |
 | 3 | The profile file is missing, unreadable, not UTF-8, invalid or of an unknown format |
-| 4 | Refused environment: no profile, production, a stage not built yet, a store of another profile or schema version, SQLite below the floor, a stores folder that cannot be used, a store another program holds, or another command running |
+| 4 | Refused environment: no profile, a production store missing or asked for anew where one or its backup sets exist, a stage not built yet, a store of another profile or schema version, SQLite below the floor, a stores folder that cannot be used, a store another program holds, another command running, a backup set that cannot be written, a store no backup set covers yet, or a store migrated without the backup set after it |
+| 5 | Verification failed: a backup set's copy does not match its manifest, or the import log disagrees with Bronze |

@@ -88,7 +88,13 @@ from pathlib import Path
 from budget.locking import writer_lock
 from budget.profiles import Profile
 stores = Path(sys.argv[1])
-profile = Profile(name="development", stores=stores, inputs=stores.parent / "inputs")
+profile = Profile(
+    name="development",
+    stores=stores,
+    inputs=stores.parent / "inputs",
+    inbox=stores.parent / "inbox",
+    exports=stores.parent / "exports",
+)
 with writer_lock(profile):
     print("held", flush=True)
     time.sleep(60)

@@ -10,13 +10,22 @@ import argparse
 import os
 import sys
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, NoReturn
 
-from budget.bronze import migrate_bronze, require_migration_allowed
+from budget.backups import (
+    BackupVerificationError,
+    BackupWriteError,
+    UnsupportedStoresError,
+    back_up,
+)
+from budget.bronze import require_migration_allowed
 from budget.bronze.storage import (
     BRONZE_STAGE,
     MigrationRequiredError,
+    NewStoreRefusedError,
+    NewStoreRequiredError,
     ProductionMigrationBlockedError,
     StoreBusyError,
     StoreIdentityError,
@@ -25,12 +34,23 @@ from budget.bronze.storage import (
     UnsupportedStoreVersionError,
     UnversionedStoreError,
 )
+from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.locking import (
     StoresFolderUnavailableError,
     WriterLockHeldError,
     writer_lock,
 )
-from budget.profiles import Profile, ProfileFileError, load_profile_file
+from budget.migration import (
+    MigratedWithoutBackupError,
+    RestoreInsteadError,
+    migrate_profile,
+)
+from budget.profiles import (
+    NoBackupsFolderError,
+    Profile,
+    ProfileFileError,
+    load_profile_file,
+)
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
 STAGES: Final = (BRONZE_STAGE, "silver", "gold")
@@ -38,11 +58,14 @@ EXIT_OK: Final = 0
 EXIT_USAGE: Final = 2
 EXIT_REFUSED_INPUT: Final = 3
 EXIT_REFUSED_ENVIRONMENT: Final = 4
+EXIT_VERIFICATION_FAILED: Final = 5
 # The Bronze errors operations.md lists as a refused environment. Any other
 # Bronze error, such as a broken packaged migration, is a defect: exit 1.
 _BRONZE_ENVIRONMENT_REFUSALS: Final = (
     UnsupportedSQLiteVersionError,
     ProductionMigrationBlockedError,
+    NewStoreRequiredError,
+    NewStoreRefusedError,
     StoreNotFoundError,
     StoreBusyError,
     UnversionedStoreError,
@@ -82,6 +105,12 @@ def _parser() -> argparse.ArgumentParser:
         "migrate", help="create or upgrade the profile's stores"
     )
     migrate.add_argument("--stage", choices=STAGES, help="migrate one stage only")
+    migrate.add_argument(
+        "--new-store",
+        action="store_true",
+        help="start a new production store where none exists",
+    )
+    commands.add_parser("backup", help="write a backup set of production")
     return parser
 
 
@@ -100,21 +129,36 @@ def _selected_profile_file(
     return Path(name)
 
 
-def _migrate(profile: Profile, stage: str | None) -> None:
+def _migrate(profile: Profile, stage: str | None, *, new_store: bool) -> None:
     """Create or upgrade the stores this code has: Bronze, for now."""
     if stage not in {None, BRONZE_STAGE}:
         raise StageNotBuiltError(stage)
     # Refusals that touch nothing come first; the lock guards the mutation.
-    require_migration_allowed(profile)
-    with writer_lock(profile):
-        migrate_bronze(profile)
+    require_migration_allowed(profile, new_store=new_store)
+    with writer_lock(profile) as lock:
+        migrate_profile(lock, new_store=new_store)
+
+
+def _backup(profile: Profile) -> None:
+    """Write one backup set, and name it on stdout."""
+    # Refusals that touch nothing come first; the lock guards the set.
+    if profile.backups is None:
+        raise NoBackupsFolderError(profile.name)
+    if not profile.bronze_store.exists():
+        raise StoreNotFoundError(profile.bronze_store)
+    with writer_lock(profile) as lock:
+        written = back_up(lock, now=datetime.now(UTC))
+    sys.stdout.write(f"backup set {written.name} written\n")
 
 
 def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> None:
     """Select and load the profile, then run the command against it."""
     profile_file = _selected_profile_file(arguments.profile, environ)
     profile = load_profile_file(profile_file)
-    _migrate(profile, arguments.stage)
+    if arguments.command == "backup":
+        _backup(profile)
+        return
+    _migrate(profile, arguments.stage, new_store=arguments.new_store)
 
 
 def _refuse(error: Exception, status: int) -> int:
@@ -144,9 +188,20 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         StageNotBuiltError,
         WriterLockHeldError,
         StoresFolderUnavailableError,
+        RestoreInsteadError,
+        MigratedWithoutBackupError,
+        BackupWriteError,
+        UnsupportedStoresError,
+        NoBackupsFolderError,
         *_BRONZE_ENVIRONMENT_REFUSALS,
     ) as error:
         return _refuse(error, EXIT_REFUSED_ENVIRONMENT)
+    except (
+        BackupVerificationError,
+        ImportLogDamagedError,
+        ImportLogAheadOfBronzeError,
+    ) as error:
+        return _refuse(error, EXIT_VERIFICATION_FAILED)
     return EXIT_OK
 
 
