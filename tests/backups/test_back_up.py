@@ -20,6 +20,7 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from budget.backups import (
+    PUBLISHING_SUFFIX,
     BackupVerificationError,
     BackupWriteError,
     UnsupportedStoresError,
@@ -446,6 +447,40 @@ class RecoveryReleaseTests(unittest.TestCase):
                 with added_migration("CREATE TABLE marker (x TEXT) STRICT;\n"):
                     migrate_bronze(profile)
                     back_up(lock, now=NOW)
+
+            assert not profile.recovery_sets_file.exists()
+
+    def test_an_unreadable_recovery_file_is_never_silently_replaced(self) -> None:
+        # A hold that cannot be read might be hiding a set another operation
+        # still needs (decision 7): overwriting it would drop that
+        # protection, so the file is left exactly as it was.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            with writer_lock(profile) as lock:
+                before = back_up(lock, now=NOW)
+                profile.recovery_sets_file.parent.mkdir(parents=True, exist_ok=True)
+                profile.recovery_sets_file.write_bytes(b"not json")
+
+                with pytest.raises(BackupWriteError, match=r"recovery-sets\.json"):
+                    hold_for_recovery(lock, before)
+
+            assert profile.recovery_sets_file.read_bytes() == b"not json"
+
+    def test_a_recovery_file_that_cannot_be_written_refuses_cleanly(self) -> None:
+        # A plain OSError from this write must not escape as a traceback: it
+        # has to become the same kind of refusal an unreadable file gets,
+        # and the schema-changing step this guards must never run.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            with writer_lock(profile) as lock:
+                before = back_up(lock, now=NOW)
+                partial = profile.recovery_sets_file.with_name(
+                    profile.recovery_sets_file.name + PUBLISHING_SUFFIX
+                )
+                partial.mkdir()
+
+                with pytest.raises(BackupWriteError):
+                    hold_for_recovery(lock, before)
 
             assert not profile.recovery_sets_file.exists()
 
