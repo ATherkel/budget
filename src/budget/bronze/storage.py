@@ -9,6 +9,7 @@ that applies it, and each stage keeps its own `PRAGMA user_version`.
 """
 
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -39,13 +40,39 @@ class UnsupportedSQLiteVersionError(BronzeStorageError):
 
 
 class ProductionMigrationBlockedError(BronzeStorageError):
-    """Production migration waits for the backup and command work."""
+    """Production is migrated only by `budget migrate`, which backs up first."""
 
     def __init__(self) -> None:
-        """State what is missing, without naming any path."""
+        """State the one way production is migrated, without naming any path."""
         super().__init__(
-            "the production profile cannot be migrated yet: production "
-            "migration waits for the backup and command work in issue #120"
+            "the production profile is migrated only by `budget migrate`, "
+            "which writes a backup set first"
+        )
+
+
+class NewStoreRequiredError(BronzeStorageError):
+    """Production has no Bronze store, and a new one was not asked for.
+
+    A missing production store may be a lost one, which a backup set must
+    restore; starting an empty store in its place is a deliberate act.
+    """
+
+    def __init__(self) -> None:
+        """Say how to start one, and when not to."""
+        super().__init__(
+            "the production profile has no Bronze store: start one with "
+            "`budget migrate --new-store`, unless production had one, which must "
+            "be restored from a backup set instead"
+        )
+
+
+class NewStoreRefusedError(BronzeStorageError):
+    """A new production store was asked for where one already exists."""
+
+    def __init__(self, path: Path) -> None:
+        """Name the store that already exists."""
+        super().__init__(
+            f"{path} is already a Bronze store: migrate it without --new-store"
         )
 
 
@@ -296,43 +323,109 @@ def _apply_step(
     profile: Profile,
     step: _MigrationStep,
 ) -> None:
-    """Apply one migration and its version bump in one transaction."""
+    """Apply one migration and its version bump in the open transaction."""
+    for statement in _statements(step.sql):
+        connection.execute(statement)
+    if step.version == 1:
+        connection.execute(
+            "INSERT INTO store_identity (singleton, profile, stage) VALUES (1, ?, ?)",
+            (profile.name, BRONZE_STAGE),
+        )
+    _require_no_foreign_key_violations(connection, step.version)
+    connection.execute(f"PRAGMA user_version = {step.version}")
+
+
+def require_migration_allowed(profile: Profile, *, new_store: bool = False) -> None:
+    """Refuse a migration this interpreter or profile cannot run.
+
+    These checks touch no folder or file, so a command can run them before it
+    takes the profile's writer lock. A production profile without a Bronze
+    store is refused unless a new store is asked for: a missing store may be
+    a lost one, which a backup set must restore instead.
+    """
+    _require_supported_sqlite()
+    if (
+        profile.name == PRODUCTION_PROFILE_NAME
+        and not new_store
+        and not profile.bronze_store.exists()
+    ):
+        raise NewStoreRequiredError
+
+
+def _require_migratable(
+    connection: sqlite3.Connection,
+    path: Path,
+    profile: Profile,
+    latest: int,
+) -> bool:
+    """Refuse a store no migration may touch; report whether it is new.
+
+    Nothing is written: an unsupported or unversioned store must stay exactly
+    as it was found. A new store is an empty file, or none.
+    """
+    version = _read_version(connection)
+    has_objects = _has_objects(connection)
+    if version < 0 or version > latest:
+        raise UnsupportedStoreVersionError(path, version, latest)
+    if version == 0 and has_objects:
+        raise UnversionedStoreError(path)
+    if version >= 1:
+        _require_identity(connection, path, profile)
+    return version == 0
+
+
+def _require_production_store_choice(path: Path, *, new: bool, new_store: bool) -> None:
+    """Start a production store only when asked, and only where none exists."""
+    if new and not new_store:
+        raise NewStoreRequiredError
+    if new_store and not new:
+        raise NewStoreRefusedError(path)
+
+
+def _apply_steps(
+    connection: sqlite3.Connection,
+    profile: Profile,
+    steps: list[_MigrationStep],
+) -> None:
+    """Apply every pending step in one transaction, with foreign keys off.
+
+    A step that fails rolls back the steps before it too, so the store stays
+    at the version it had: never at one between it and the code's.
+    """
+    # The pragma cannot change inside a transaction, and a table rebuild must
+    # be free to drop rows before the foreign-key check.
+    connection.execute("PRAGMA foreign_keys = OFF")
     try:
         connection.execute("BEGIN IMMEDIATE")
-        for statement in _statements(step.sql):
-            connection.execute(statement)
-        if step.version == 1:
-            connection.execute(
-                "INSERT INTO store_identity (singleton, profile, stage)"
-                " VALUES (1, ?, ?)",
-                (profile.name, BRONZE_STAGE),
-            )
-        _require_no_foreign_key_violations(connection, step.version)
-        connection.execute(f"PRAGMA user_version = {step.version}")
+        for step in steps:
+            _apply_step(connection, profile, step)
         connection.commit()
     except BaseException:
         connection.rollback()
         raise
+    finally:
+        connection.execute("PRAGMA foreign_keys = ON")
 
 
-def require_migration_allowed(profile: Profile) -> None:
-    """Refuse a migration this interpreter or profile cannot run.
-
-    These checks touch no folder or file, so a command can run them before it
-    takes the profile's writer lock. Production is refused because its
-    migration waits for the backup and command work in issue #120.
-    """
-    _require_supported_sqlite()
-    if profile.name == PRODUCTION_PROFILE_NAME:
-        raise ProductionMigrationBlockedError
-
-
-def migrate_bronze(profile: Profile) -> None:
+def migrate_bronze(
+    profile: Profile,
+    *,
+    new_store: bool = False,
+    before_migrating: Callable[[], object] | None = None,
+) -> bool:
     """Create or upgrade the Bronze store that one profile names.
 
-    The production profile is refused before any folder or file is touched.
+    Returns whether a migration was applied. `before_migrating` runs once the
+    store is found to need one and before anything changes, unless the store
+    is new. Production is migrated only with it, which is how `budget migrate`
+    backs the store up first, and is refused before anything is touched
+    without it. A production store is started only with `new_store`, which is
+    refused where one exists; other profiles start a missing store freely.
     """
-    require_migration_allowed(profile)
+    production = profile.name == PRODUCTION_PROFILE_NAME
+    if production and before_migrating is None:
+        raise ProductionMigrationBlockedError
+    require_migration_allowed(profile, new_store=new_store)
 
     steps = _migration_steps()
     latest = steps[-1].version
@@ -342,30 +435,17 @@ def migrate_bronze(profile: Profile) -> None:
     try:
         connection.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
         connection.execute("PRAGMA synchronous = FULL")
-        version = _read_version(connection)
-        has_objects = _has_objects(connection)
-        # Validate the store before any persistent write: a journal-mode change
-        # is a write, and an unsupported or unversioned store must stay exactly
-        # as it was found.
-        if version < 0 or version > latest:
-            raise UnsupportedStoreVersionError(path, version, latest)
-        if version == 0 and has_objects:
-            raise UnversionedStoreError(path)
-        if version >= 1:
-            _require_identity(connection, path, profile)
-        elif not has_objects:
+        new = _require_migratable(connection, path, profile, latest)
+        if production:
+            _require_production_store_choice(path, new=new, new_store=new_store)
+        if new:
             connection.execute("PRAGMA journal_mode = WAL")
-
-        pending = [step for step in steps if step.version > version]
-        if pending:
-            # The pragma cannot change inside a transaction, and a table
-            # rebuild must be free to drop rows before the check below.
-            connection.execute("PRAGMA foreign_keys = OFF")
-            try:
-                for step in pending:
-                    _apply_step(connection, profile, step)
-            finally:
-                connection.execute("PRAGMA foreign_keys = ON")
+        pending = [step for step in steps if step.version > _read_version(connection)]
+        if not pending:
+            return False
+        if before_migrating is not None and not new:
+            before_migrating()
+        _apply_steps(connection, profile, pending)
     except sqlite3.OperationalError as error:
         # The primary code, so BUSY's extended variants count too; any other
         # operational error, such as a broken migration, stays a defect.
@@ -374,6 +454,7 @@ def migrate_bronze(profile: Profile) -> None:
         raise StoreBusyError(path) from None
     finally:
         connection.close()
+    return True
 
 
 def _require_current_version(connection: sqlite3.Connection, path: Path) -> None:
@@ -384,6 +465,56 @@ def _require_current_version(connection: sqlite3.Connection, path: Path) -> None
         raise MigrationRequiredError(path, version, latest)
     if version > latest:
         raise UnsupportedStoreVersionError(path, version, latest)
+
+
+def _require_known_version(connection: sqlite3.Connection, path: Path) -> None:
+    """Refuse a store at no schema version, or one newer than this code."""
+    version = _read_version(connection)
+    latest = _migration_steps()[-1].version
+    if not 1 <= version <= latest:
+        raise UnsupportedStoreVersionError(path, version, latest)
+
+
+def open_bronze_for_backup(profile: Profile) -> sqlite3.Connection:
+    """Open the profile's live Bronze store to copy it into a backup set.
+
+    Unlike `open_bronze_connection`, a store older than the code is opened:
+    production backs a store up before migrating it. The caller only reads.
+    """
+    _require_supported_sqlite()
+    path = profile.bronze_store
+    if not path.exists():
+        raise StoreNotFoundError(path)
+    connection = _connect(path, mode="rw")
+    try:
+        _apply_connection_settings(connection)
+        _require_known_version(connection, path)
+        _require_identity(connection, path, profile)
+    except BaseException:
+        connection.close()
+        raise
+    return connection
+
+
+def open_bronze_snapshot(profile: Profile, path: Path) -> sqlite3.Connection:
+    """Open a backup snapshot of the profile's Bronze store, read-only.
+
+    The snapshot is opened `immutable`, so reading it never writes a WAL or
+    shared-memory file beside it. It must be this profile's Bronze store at a
+    schema version this code knows; a snapshot taken before a migration may
+    be older than the code.
+    """
+    _require_supported_sqlite()
+    uri = f"{path.as_uri()}?mode=ro&immutable=1"
+    connection = sqlite3.connect(uri, uri=True)
+    connection.row_factory = sqlite3.Row
+    try:
+        _require_known_version(connection, path)
+        _require_identity(connection, path, profile)
+    except BaseException:
+        connection.close()
+        raise
+    return connection
 
 
 def open_bronze_connection(profile: Profile) -> sqlite3.Connection:

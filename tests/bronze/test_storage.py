@@ -87,6 +87,8 @@ class BronzeStorageTests(unittest.TestCase):
                 name="production",
                 stores=root / "production",
                 inputs=root / "inputs",
+                inbox=root / "inbox",
+                exports=root / "exports",
             )
 
             with pytest.raises(storage.ProductionMigrationBlockedError):
@@ -131,6 +133,8 @@ class BronzeStorageTests(unittest.TestCase):
                 name="development",
                 stores=profile.stores,
                 inputs=profile.inputs,
+                inbox=profile.inbox,
+                exports=profile.exports,
                 root=root,
             )
 
@@ -213,6 +217,8 @@ class BronzeStorageTests(unittest.TestCase):
                 name="test",
                 stores=root / "store #1 & more",
                 inputs=root / "inputs",
+                inbox=root / "inbox",
+                exports=root / "exports",
                 root=root,
             )
 
