@@ -24,9 +24,7 @@ This is a single-context repository:
 └── src/
 ```
 
-New ADRs go in `docs/decisions/` as `ADR-NNN-slug.md`. Every new Markdown file
-under `docs/` opens with the header ADR-019 sets out, and an ADR keeps its
-`**Status:**` line in the body.
+New ADRs go in `docs/decisions/` as `ADR-NNN-slug.md`. Every new Markdown file under `docs/` opens with the header [ADR-019](../decisions/ADR-019-open-knowledge-format-headers.md) sets out, and an ADR states its status in a `**Status:**` line under its title, not in the header.
 
 ## Use the glossary's vocabulary
 

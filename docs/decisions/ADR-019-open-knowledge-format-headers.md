@@ -57,7 +57,8 @@ adopt.
   folder it means, and `Agent Brief` is wrong for `agents/tdd.md` and
   `agents/code-quality.md`. Rejected.
 - **The repository root as the bundle, keeping `CONTEXT.md` where it was.**
-  `README.md`, `AGENTS.md` and `CLAUDE.md` would then need headers too.
+  `README.md`, `AGENTS.md`, `CLAUDE.md` and every other Markdown file in the
+  repository would then need headers too.
   Rejected.
 - **OKF's other fields.** Each would be a second place to keep true. Rejected:
   - `title` and `description`, which OKF recommends, repeat the heading and
