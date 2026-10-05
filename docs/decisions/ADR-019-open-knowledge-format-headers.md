@@ -86,7 +86,7 @@ adopt.
 
 - The header moves every line in `docs/` down by three. The line citations in
   `research/` were updated and then replaced by section links, as
-  `README.md`'s conventions now ask, and the open issues that cited docs by
+  [`docs/README.md`, *Conventions*](../README.md#conventions) now asks, and the open issues that cited docs by
   line now link to lines at a fixed commit instead. The citations in
   `prototypes/import-identity/` were not updated and are now three lines
   further off.
