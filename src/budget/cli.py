@@ -112,7 +112,7 @@ def _migrate(profile: Profile, stage: str | None) -> None:
     with writer_lock(profile):
         if stage in {None, BRONZE_STAGE}:
             migrate_bronze(profile)
-        if stage == SILVER_STAGE:
+        if stage in {None, SILVER_STAGE}:
             migrate_silver(profile)
 
 
