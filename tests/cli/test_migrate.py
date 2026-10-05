@@ -1,5 +1,5 @@
 # Copyright 2026 Therkel
-"""`budget migrate`: creating and upgrading a profile's Bronze store.
+"""`budget migrate`: creating and upgrading a profile's Bronze and Silver stores.
 
 Every test passes `main` an explicit environment, so a `BUDGET_PROFILE` set in
 the operator's shell never reaches a test.
@@ -22,8 +22,8 @@ from budget.bronze.storage import (
 )
 from budget.cli import main
 from budget.profiles import test_profile as make_test_profile
-from budget.silver import SilverStore
-from tests.bronze.migration_resources import patched_resources
+from budget.silver import SilverStore, migrate_silver
+from tests.bronze.migration_resources import added_migration, patched_resources
 from tests.cli.commands import migrate
 from tests.cli.profile_files import development_profile, write_profile
 
@@ -127,6 +127,32 @@ class MigrateRefusalTests(unittest.TestCase):
             with BronzeStore(make_test_profile(folder)):
                 pass
 
+    def test_a_silver_store_of_another_profile_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            migrate_silver(make_test_profile(folder))
+
+            status, stderr = migrate(write_profile(folder), "--stage", "silver")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "'test'" in stderr
+            with SilverStore(make_test_profile(folder)):
+                pass
+
+    def test_production_silver_is_refused_before_anything_is_created(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+
+            status, stderr = migrate(
+                write_profile(folder, name="production"), "--stage", "silver"
+            )
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "silver" in stderr.lower()
+            assert "120" not in stderr
+            assert not (folder / "stores").exists()
+            assert not (folder / "backups").exists()
+
     def test_a_store_newer_than_this_code_is_refused(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
@@ -137,6 +163,21 @@ class MigrateRefusalTests(unittest.TestCase):
                 connection.execute("PRAGMA user_version = 99")
 
             status, stderr = migrate(profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "99" in stderr
+            assert _user_version(store) == 99
+
+    def test_a_silver_store_newer_than_this_code_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            assert migrate(profile_file, "--stage", "silver")[0] == EXIT_OK
+            store = development_profile(folder).silver_store
+            with closing(sqlite3.connect(store)) as connection:
+                connection.execute("PRAGMA user_version = 99")
+
+            status, stderr = migrate(profile_file, "--stage", "silver")
 
             assert status == EXIT_REFUSED_ENVIRONMENT
             assert "99" in stderr
@@ -192,6 +233,24 @@ class MigrateDefectTests(unittest.TestCase):
                 pytest.raises(defect),
             ):
                 migrate(write_profile(Path(directory)))
+
+    def test_a_failed_migration_commits_none_of_the_steps_before_it(self) -> None:
+        # The first step would make a store, the added second one fails it.
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+
+            with (
+                added_migration(_ORPHAN_SOURCE_RECORD),
+                pytest.raises(ForeignKeyViolationError),
+            ):
+                migrate(write_profile(folder))
+
+            store = development_profile(folder).bronze_store
+            assert _user_version(store) == 0
+            with closing(sqlite3.connect(store)) as connection:
+                assert (
+                    connection.execute("SELECT * FROM sqlite_master").fetchall() == []
+                )
 
 
 if __name__ == "__main__":

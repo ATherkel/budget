@@ -40,13 +40,13 @@ class UnsupportedSQLiteVersionError(StoreError):
 
 
 class ProductionMigrationBlockedError(StoreError):
-    """Production migration waits for the backup and command work."""
+    """Production's backup sets cover no Silver store, so none is migrated."""
 
     def __init__(self) -> None:
-        """State what is missing, without naming any path."""
+        """Name what production's backup sets hold, and what is refused."""
         super().__init__(
-            "the production profile cannot be migrated yet: production "
-            "migration waits for the backup and command work in issue #120"
+            "the production profile's backup sets hold the Bronze store alone, "
+            "so the production profile migrates no Silver store"
         )
 
 
@@ -318,8 +318,8 @@ def require_migration_allowed(profile: Profile) -> None:
     """Refuse a migration this interpreter or profile cannot run.
 
     These checks touch no folder or file, so a command can run them before it
-    takes the profile's writer lock. Production is refused because its
-    migration waits for the backup and command work in issue #120.
+    takes the profile's writer lock. Production is refused: its backup sets
+    hold the Bronze store alone, so a Silver store there is not migrated.
     """
     _require_supported_sqlite()
     if profile.name == PRODUCTION_PROFILE_NAME:

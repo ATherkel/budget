@@ -32,8 +32,8 @@ from budget.bronze.parsers.registry import (
     source_formats,
     source_parser,
 )
-from budget.bronze.storage import open_bronze_connection
-from budget.profiles import Profile
+from budget.bronze.storage import open_bronze_connection, open_bronze_snapshot
+from budget.profiles import PRODUCTION_PROFILE_NAME, Profile
 
 
 class MissingExportDateError(ValueError):
@@ -44,6 +44,23 @@ class MissingExportDateError(ValueError):
         super().__init__(
             "Declare exported_on: the declared source format "
             f"{source_format} reads no export date from this filename"
+        )
+
+
+class ProductionImportBlockedError(RuntimeError):
+    """Production imports wait for the command that backs up after them.
+
+    Production can be migrated, so it can have a Bronze store, but every
+    write to it must be followed by a backup set. Until `budget import` does
+    that, nothing imports into production.
+    """
+
+    def __init__(self) -> None:
+        """Say what production imports wait for."""
+        super().__init__(
+            "nothing is imported into production until the `budget import` "
+            "command, which writes a backup set after its Bronze writes; "
+            "nothing was written"
         )
 
 
@@ -174,6 +191,24 @@ def _rebuild_derived_cache(
     )
 
 
+def _import_run(row: sqlite3.Row) -> ImportRun:
+    """Read one `import_runs` row back as the run it records."""
+    return ImportRun(
+        import_run_id=row["import_run_id"],
+        payload_id=row["payload_id"],
+        declared_account_id=row["declared_account_id"],
+        source_format=row["source_format"],
+        original_filename=row["original_filename"],
+        exported_on=date.fromisoformat(row["exported_on"]),
+        exported_on_source=row["exported_on_source"],
+        covers_from=date.fromisoformat(row["covers_from"]),
+        covers_through=date.fromisoformat(row["covers_through"]),
+        started_at=datetime.fromisoformat(row["started_at"]),
+        outcome=row["outcome"],
+        repeat_of=row["repeat_of"],
+    )
+
+
 class BronzeStore:
     """Import and retrieve Bronze provenance in a local SQLite store."""
 
@@ -182,11 +217,20 @@ class BronzeStore:
         profile: Profile,
         *,
         parsers: Mapping[str, SourceParser] | None = None,
+        snapshot: Path | None = None,
     ) -> None:
-        """Open the migrated Bronze store that one profile names."""
+        """Open the migrated Bronze store that one profile names.
+
+        With `snapshot`, open that backup snapshot of the profile's store
+        instead, read-only: it can be read, never imported into.
+        """
         selected = _parsers_for(parsers)
-        self._connection = open_bronze_connection(profile)
+        if snapshot is None:
+            self._connection = open_bronze_connection(profile)
+        else:
+            self._connection = open_bronze_snapshot(profile, snapshot)
         self._parsers = selected
+        self._production = profile.name == PRODUCTION_PROFILE_NAME
 
     def __enter__(self) -> Self:
         """Return the open store for a `with` block."""
@@ -217,7 +261,12 @@ class BronzeStore:
         path: str | Path,
         declaration: ImportDeclaration,
     ) -> ImportRun:
-        """Retain a file's bytes, provenance, and decoded source records."""
+        """Retain a file's bytes, provenance, and decoded source records.
+
+        Refused for production, whose imports wait for `budget import`.
+        """
+        if self._production:
+            raise ProductionImportBlockedError
         started_at = datetime.now(UTC)
         source_format = declaration.source_format
         parser = self._parser_for(source_format)
@@ -302,20 +351,14 @@ class BronzeStore:
         ).fetchone()
         if row is None:
             raise KeyError(import_run_id)
-        return ImportRun(
-            import_run_id=row["import_run_id"],
-            payload_id=row["payload_id"],
-            declared_account_id=row["declared_account_id"],
-            source_format=row["source_format"],
-            original_filename=row["original_filename"],
-            exported_on=date.fromisoformat(row["exported_on"]),
-            exported_on_source=row["exported_on_source"],
-            covers_from=date.fromisoformat(row["covers_from"]),
-            covers_through=date.fromisoformat(row["covers_through"]),
-            started_at=datetime.fromisoformat(row["started_at"]),
-            outcome=row["outcome"],
-            repeat_of=row["repeat_of"],
+        return _import_run(row)
+
+    def import_runs(self) -> tuple[ImportRun, ...]:
+        """Return every import run's stored provenance, oldest first."""
+        rows = self._connection.execute(
+            "SELECT * FROM import_runs ORDER BY started_at, import_run_id"
         )
+        return tuple(_import_run(row) for row in rows)
 
     def get_payload(self, payload_id: str) -> RawPayload:
         """Return one retained payload's exact bytes."""

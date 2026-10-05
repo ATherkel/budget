@@ -172,10 +172,13 @@ bind = "192.168.1.20"         # reserve this address for the PC in the router
 port = 8750
 ```
 
-A development profile has `profile = "development"`, its own `stores` and
-`inputs`, and `upstream_backups` naming production's `backups` folder, which
-it only reads. It has no `[backups]` table, because only production writes
-backup sets.
+A development profile has `profile = "development"`, its own `stores`,
+`inbox`, `exports` and `inputs`, all four required in every profile file, and
+`upstream_backups` naming production's `backups` folder, which it only reads.
+It has no `[backups]` table, because only production writes backup sets. The
+inbox and the export archive are separate folders, neither inside the other:
+otherwise the archive would hold the inbox file itself, and an import would
+remove the only copy.
 
 ### Where production lives
 
@@ -186,19 +189,21 @@ backup sets.
     gold.db
     gold\legacy\publication-000001.db  only after a Gold migration
     budget.lock                        held by the command that is writing
+    recovery-sets.json                 backup sets a failed migration may need
     backup-staging\                    a backup set until it is complete
     scratch\
     logs\
 OneDrive\Budget\                       closed files only: safe to synchronise
     inbox\<account_id>\                exports waiting to be imported
     exports\<account_id>\              the export archive
+        refused\<hash>\                copies of refused exports, kept for replay
     inputs\                            what the household says
         accounts.toml
         taxonomy.toml
         rules.toml
         decisions.jsonl
         imports.jsonl
-    backups\<UTC timestamp>\           backup sets
+    backups\<UTC time>\                backup sets, such as 2026-05-02T18-05-11.120731Z
 ```
 
 ### Development diverges from a stage
@@ -419,8 +424,48 @@ Every command that writes Bronze brings it up to date before it finishes, and
 `verify` checks that the two agree.
 
 ```json
-{"format": 1, "import_run_id": "run-0001", "account_id": "joint-current", "source_format": "danske-csv-v1", "archive_path": "joint-current/export-20260402.csv", "payload_sha256": "c0ffee…", "exported_on": "2026-04-02", "exported_on_source": "filename", "covers_from": "2026-03-01", "covers_through": "2026-04-02", "started_at": "2026-04-02T18:03:44Z", "outcome": "stored", "repeat_of": null}
+{"format": 1, "import_run_id": "run-0001", "account_id": "joint-current", "source_format": "danske-csv-v1", "archive_path": "joint-current/export-20260402.csv", "payload_sha256": "c0ffee…", "exported_on": "2026-04-02", "exported_on_source": "filename", "covers_from": "2026-03-01", "covers_through": "2026-04-02", "started_at": "2026-04-02T18:03:44.120731+00:00", "outcome": "stored", "repeat_of": null}
 ```
+
+- **`started_at`** is Bronze's own timestamp, written exactly, with its
+  microseconds and offset, so a replay restores the run unchanged.
+- **`archive_path`** is relative to the export archive and uses `/`. Its last
+  part is the export's original filename. An accepted export, a format failure
+  included, is archived as [W1](#w1-the-monthly-import) describes. A refused
+  run's bytes are copied to `<account_id>/refused/<first 12 characters of the
+  payload hash>/<original filename>`, while the file itself stays in the inbox:
+  the account's own folder holds only accepted exports, and replay can still
+  restore the refusal. An export named like one of the archive's own folders
+  (`refused`, or 12 hexadecimal characters, in any case) goes straight to its
+  hash folder. A place an entry names stays reserved for that run's bytes,
+  even while its copy is missing, and names that differ only in case are one
+  place: other bytes never take it, and a retry of that run, or the next
+  refusal of the same file (the same account, name and bytes), writes a
+  missing copy back there. Archived
+  bytes are never overwritten: when every place a run's export may go already
+  holds other bytes, that run is not logged, and every import stops before
+  writing anything until the conflicting file is moved aside.
+- **Order.** Before an import writes anything of its own, every run Bronze
+  holds that the log lacks is archived and logged, oldest first, from the bytes
+  Bronze retains. That includes a refused run a crash interrupted, whose file no
+  retry would ever finish. Then Bronze commits the new run, its bytes are
+  archived, its entry is appended and forced to disk with `fsync`, and only
+  then does an accepted export leave the inbox, provided the file still holds
+  the bytes that were imported. A file saved over in the meantime stays.
+- **Every complete line is the one entry of a run Bronze recorded.** It must
+  be, byte for byte, the entry the import writes for that run at one of the
+  places its export may be archived. A blank line, a second entry for a run, or an entry that
+  disagrees with its run stops the import before it writes; restoring the log
+  from the newest backup set is safe, because the next import logs again
+  every run Bronze holds. An entry for a run Bronze never recorded means
+  Bronze is older than the log. Those entries are then the only record of
+  their runs, so the log is never rolled back: Bronze is restored up to it.
+- **A cut-off final entry.** Every entry ends with a line feed. A final line
+  without one was cut off by a crash. Unlike the decision log's, it is
+  completed, never deleted, when Bronze proves what it was going to say: the
+  line must begin the entry of a run that is archived but not yet logged. The
+  rest of that entry is then appended. A cut-off line no such run proves stops
+  the import before it writes, as above.
 
 ## The Validation Boundary for Decisions
 
@@ -450,7 +495,7 @@ dashboard stays read-only: it has no route that reaches the boundary.
 
 | Command | Does | Writes | Publishes |
 | --- | --- | --- | --- |
-| `migrate [--stage <stage>]` | Creates or upgrades stores. In production, takes a backup set first. A Gold migration converts retained results, extracts and records legacy publications, then runs a pipeline build (ADR-014). | Store schemas, legacy extracts | After a Gold migration |
+| `migrate [--stage <stage>] [--new-store]` | Creates or upgrades stores. In production, takes a backup set before changing an existing store and another after; a missing production store is started only with `--new-store`, and only when no complete backup set could restore it. A Gold migration converts retained results, extracts and records legacy publications, then runs a pipeline build (ADR-014). | Store schemas, legacy extracts, backup sets | After a Gold migration |
 | `check` | Validates every input file and the decision-log prefix. Never builds. | Nothing | No |
 | `import` | Imports each file in the inbox on its own, then rebuilds and publishes what was stored. A refused file stays in the inbox. | Bronze, the import log, Silver, Gold | Yes, if the build succeeds |
 | `rebuild [--from bronze\|silver\|gold]` | Rebuilds from a stage; `gold` by default. | Stages from `--from` on | Yes, if the recipe changed |
@@ -460,7 +505,7 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | `undo` | Moves the pointer back (ADR-014). | `gold.db` | Pointer only |
 | `view --as-was <date> \| --known-at <date> --label <text>` | Builds or finds a past view (ADR-014). Without options, lists retained and legacy publications. | `gold.db`, through a scratch store | Never current |
 | `label <publication_id> <text>` / `unlabel …` | Keeps a result beyond the retention rule, or stops keeping it. | `gold.db` | No |
-| `backup` | Writes a backup set. Also runs automatically; see below. | The backups folder | No |
+| `backup` | Writes a backup set of production and names it. Also runs automatically; see below. | The backups folder | No |
 | `restore [<backup set>]` | Restores the newest complete set, or the one named, into an empty profile, catches up with the import log, then runs `verify`. | Every store | Yes, if it caught up |
 | `restore --from-archive` | Last resort: rebuilds Bronze from the archive and the import log, then Silver and Gold. | Every store | Yes |
 | `verify` | Checks integrity, and replays the current publication's recipe to prove it reproduces (ADR-014). | `scratch/` only | No |
@@ -551,8 +596,12 @@ the filename, the payload or the export date
 export: its last transaction is in January, and only the declaration says that
 February to April were quiet rather than never exported. Each file then moves
 to `exports\<account_id>\` under its original name, which carries the export
-date. When that name is already taken by different bytes, it goes to
-`exports\<account_id>\<first 12 characters of the payload hash>\` instead.
+date. When that name is already taken by different bytes, or is the name of
+one of the archive's own folders, it goes to
+`exports\<account_id>\<first 12 characters of the payload hash>\` instead. A
+refused export stays in the inbox, and a copy of its bytes goes to
+`exports\<account_id>\refused\<first 12 characters of the payload hash>\`
+([`imports.jsonl`](#importsjsonl-the-import-log)).
 
 ### W2: settling a review item
 
@@ -595,8 +644,8 @@ rebuild there.
    as it will in production, including any legacy extraction and the build
    that follows. Its printed diff must show only what the migration intends.
 2. In production: `migrate`, which writes a backup set first, converts the
-   retained results, extracts and records any legacy publication, and runs a
-   pipeline build (ADR-014). Then `verify`.
+   retained results, extracts and records any legacy publication, runs a
+   pipeline build (ADR-014), and writes a backup set after. Then `verify`.
 
 ### W6: the machine dies
 
@@ -620,14 +669,26 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | Failure | Effect | Retry |
 | --- | --- | --- |
 | Configuration error, including an unknown file in the inputs folder | Nothing is built; exit 3 | Fix or remove the file and rerun |
-| Refused import run (account conflict, or a declared range that starts after it ends, ends after the export date, or leaves out one of the payload's transactions) | Recorded as refused; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file or correct the declaration, then rerun |
+| Refused import run (account conflict, or a declared range that starts after it ends, ends after the export date, or leaves out one of the payload's transactions) | Recorded as refused and logged, with a copy of its bytes under `exports\<account_id>\refused\`; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file or correct the declaration, then rerun |
 | Misfiled export (the filename's account number is not the account's declared `bank_account_number`) | Rejected before Bronze: no import run is recorded and nothing reaches the import log; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file to the right account's folder, or fix the declaration, then rerun |
 | Format failure | Stored with its `FormatFailure`; Silver quarantines it; the file is archived | Settled by a parser fix and `rebuild --from bronze` |
-| Crash during an import | Each file is idempotent: a file whose account, original filename and payload hash already have a `stored` or `repeat` run is finished (archived and removed from the inbox) without a new run | Rerun `import` |
+| Crash during an import | Each file is idempotent: a file whose account, original filename and payload hash already have a `stored` or `repeat` run is finished (archived, logged once, and removed from the inbox) without a new run. Any other run Bronze holds but the log lacks is archived and logged by the next import | Rerun `import` |
+| The archive holds other bytes, a file where a folder must go, or a place reserved for other bytes, everywhere a run's export may go | Nothing is overwritten; the run stays in Bronze but is not logged; every import stops before writing, naming the account and the run | Move the conflicting archive file aside, then rerun |
+| An inbox file is saved over while it is imported | The run for the bytes that were read is stored, archived and logged; the new file stays in the inbox | Rerun `import` |
+| An inbox file is removed while it is imported | The import finishes from the bytes it read; there is nothing left to remove | Nothing to do |
+| An import-log entry cut off by a crash | The next import completes it from the run Bronze holds | Nothing to do |
+| The import log holds a blank, unreadable or second line for a run, or an entry that does not restate its run exactly | The import stops before writing anything | Restore `imports.jsonl` from the newest backup set; the next import logs again every run Bronze holds |
+| The import log mirrors a run Bronze never recorded | Bronze is older than the log; the import stops before writing anything | Restore Bronze up to the log; never roll the log back |
+| A logged run's archived copy is saved over, and the run's file is presented again | Nothing is overwritten; the run stays logged and the file stays in the inbox; other imports go on | Put the run's own export back where its log entry says, then rerun |
+| An inbox file is held open by another program | The import is finished; the file stays in the inbox | Close the program, then rerun `import`: the file is removed as a retry |
 | Crash during a build | SQLite rolls back the uncommitted publication; the previous publication stays current | Rerun the command |
 | Another writing command is running | Exit 4 at once; nothing is written | Rerun when the other command ends |
 | A decision-log line cut off by a crash | `check` reports it; `decide` refuses | Delete the partial last line |
-| Crash while writing a backup set | The set stays in `backup-staging\`, is never used, and is deleted by the next backup | Nothing to do |
+| Crash while writing a backup set | The set stays in `backup-staging\` or as a `.partial` folder, is never used, and is deleted by the next backup | Nothing to do |
+| The backup before a migration cannot be written or verified | The migration does not begin; the schema and its version are unchanged; exit 4, or 5 when a copy or the import log does not verify | Fix what the message names, then rerun `migrate` |
+| A migration fails | No step of it is committed; the store keeps its version; the set taken first stays held for recovery until a migration succeeds | Fix the defect; the held set restores the store if needed |
+| The backup after a migration fails | The store is migrated; the set taken first stays held; exit 4, saying so | Fix what the message names, then run `budget backup` |
+| `migrate` finds no production store | Nothing is created; exit 4 | Restore the newest backup set, or, for a first store, rerun with `--new-store` |
 | OneDrive offline | Complete backup sets wait in the local OneDrive folder | Nothing to do |
 
 A genuine repeat export has a new export date in its filename, so it is
@@ -635,24 +696,81 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
 
 ## Backup and Restore
 
-- **A backup set** is a folder under `backups\<UTC timestamp>\` holding a
-  snapshot of every store taken through SQLite's backup API, a copy of the
-  inputs folder, and a `manifest.json` with the profile, the code version,
-  each store's schema version and SHA-256, and the lengths of both logs. The
+- **A backup set** is a folder under `backups\<UTC time>\`, named to the
+  microsecond with `-` for `:`, such as `2026-05-02T18-05-11.120731Z`. It
+  holds a snapshot of every store taken through SQLite's backup API, a copy of
+  every file in the inputs folder under `inputs\`, and `manifest.json`. The
   export archive is not copied, because Bronze holds each payload's bytes.
-- **When:** after every command that writes Bronze or publishes, and before
-  every `migrate`. Only production writes backup sets.
+  Until Silver and Gold have stores, a set holds `bronze.db` only, and a
+  backup is refused while the stores folder holds any other store: `silver.db`,
+  `gold.db`, a `gold\` folder, or any other SQLite file. A Bronze-only set of
+  such a profile would claim to be a complete copy of it.
+- **The manifest** records, in this order:
+
+  ```json
+  {
+    "format": 1,
+    "profile": "production",
+    "created_at": "2026-05-02T18:05:11.120731+00:00",
+    "code_version": {"package": "0.1.0", "source_sha256": "9f2c…"},
+    "stores": {"bronze": {"path": "bronze.db", "schema_version": 1}},
+    "logs": {"imports.jsonl": 1730, "decisions.jsonl": 0},
+    "files": {
+      "bronze.db": {"sha256": "c0ffee…", "bytes": 81920},
+      "inputs/accounts.toml": {"sha256": "5ca1ab…", "bytes": 412},
+      "inputs/imports.jsonl": {"sha256": "0ddba1…", "bytes": 1730}
+    }
+  }
+  ```
+
+  `logs` gives each log's length in bytes, counting complete lines only: a
+  final line a crash cut off is not an entry yet. A log that does not exist
+  has length 0. `code_version` is the package version and a SHA-256
+  fingerprint of its source: one line per `.py` and `.sql` file in the
+  installed `budget` package, sorted, each its `/`-separated path, a tab, its
+  SHA-256 and a line feed. Any checkout can be compared with it, with or
+  without git.
+- **The snapshot and the import log agree.** Every complete entry of the
+  copied `imports.jsonl` must restate, byte for byte, a run in the snapshot,
+  as an import checks before it writes. A blank, damaged or second entry, or
+  one for a run the snapshot lacks, refuses the set with exit 5. Runs the log
+  does not mention yet, and a cut-off final line, are what the next import
+  logs and completes, so they are backed up as they are.
+- **When:** in production, before a `migrate` that changes an existing
+  store, and after every `migrate` that changed anything, a new store
+  included; and by `budget backup`. A migration that changes nothing writes
+  no set. Only production writes backup sets. Nothing imports into production
+  until the `import` command backs up after its Bronze writes: until then,
+  `BronzeStore.import_file` and `import_inbox_file` refuse the production
+  profile.
 - **Written whole or not at all.** A set is written into the profile's local
-  `backup-staging\` folder, `manifest.json` last, and only then moved into
-  the backups folder. A set without a manifest, or whose files do not match
-  its checksums, is incomplete: `restore` and `dev refresh` skip it and take
-  the next newest.
+  `backup-staging\` folder, `manifest.json` last. It is then copied into the
+  backups folder as `<name>.partial`, every copy is checked against the
+  manifest, and only then is it renamed to its name. A set under its name
+  never replaces another. A set without a manifest, or whose files do not
+  match its checksums, is incomplete: it is never selected, and `restore` and
+  `dev refresh` take the next newest. A failure removes what it staged; what
+  a crash leaves in `backup-staging\`, or as a `.partial` folder, the next
+  backup deletes. A folder under a set's own name is never deleted that way,
+  even without a manifest.
 - **Kept**, by the `[backups]` keys in the production profile: every set from
-  the last `keep_all_days` (14), then the newest set of each day for
-  `keep_daily_days` (365), then the newest set of each month for
-  `keep_monthly` (`"forever"`). A set that a legacy entry names is always
-  kept. Each set is a full copy of every store, so a year of daily sets can
-  take a few gigabytes; the keys are there to tune that.
+  the last `keep_all_days` (14) days, then the newest set of each day for
+  `keep_daily_days` (365) days, then the newest set of each month for
+  `keep_monthly` months, counting the current one, or for good with
+  `"forever"`, the default. Days and months are UTC, as set names are. Each
+  backup prunes after it is published, and keeps itself whatever the keys
+  say. Retention reads only manifests, never every set's files. It deletes a
+  set by renaming it to `<name>.partial` first, and a deletion that fails is
+  left to the next backup. Each set is a full copy of every store, so a year
+  of daily sets can take a few gigabytes; the keys are there to tune that.
+- **Never pruned:** a set whose manifest format this code does not read,
+  since a later version may record a reason to keep it, such as a legacy
+  entry (none exist before Gold has a store); and every set held for
+  recovery. A `migrate` holds the set it takes first in `recovery-sets.json`
+  beside the stores, and releases it once a migration succeeds and its own
+  set is written. A failed or interrupted migration therefore keeps its set
+  however small the keys are, until a migration succeeds. While that file
+  cannot be read, nothing is pruned.
 - **Where:** OneDrive, which is safe for them: a backup set is closed files,
   unlike a live database with its WAL files (ADR-013).
 - **`restore`** writes only into a profile with no stores. It takes the newest
@@ -743,6 +861,8 @@ and run at least once in development against a restored production backup.
 - **Restore and `dev refresh`:** their acceptance cases, taken from the tables
   above, belong to the issue that builds them; the readiness review (issue
   #12) moved them out of the first dashboard release.
+- **The `import` command:** it backs up after its Bronze writes. Until it
+  does, nothing imports into production.
 - **Pull request #45:** the Bronze store moves its schema into
   `migrations/bronze/`, records its profile and stage, and is opened through
   the profile.

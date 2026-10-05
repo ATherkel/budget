@@ -2,10 +2,9 @@
 """The Silver stage store: its file, its migrations and its guards.
 
 The runner, the numbered SQL files under `budget/migrations/silver/` inside the
-installed package, and every refusal around them are shared with Bronze
-(`budget.sqlstore`). This module names the Silver stage, re-exports the shared
-refusals under the stage's own module, and will hold the persistence-level
-money conversion.
+installed package, and every refusal around them come from the generic store
+runner (`budget.sqlstore`). This module names the Silver stage, re-exports its
+refusals, and will hold the persistence-level money conversion.
 """
 
 import sqlite3

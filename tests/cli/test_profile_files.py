@@ -15,18 +15,38 @@ from tempfile import TemporaryDirectory
 
 from budget.bronze import BronzeStore
 from budget.cli import main
-from tests.cli.profile_files import development_profile
+from budget.profiles import RetentionPolicy, load_profile_file
+from tests.cli.profile_files import development_profile, write_profile
 
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
 EXIT_REFUSED_ENVIRONMENT = 4
 
 VALID_HEADER = 'format = 1\nprofile = "development"\n'
+PRODUCTION_HEADER = 'format = 1\nprofile = "production"\n'
+
+
+def _inbox_and_exports(folder: Path) -> str:
+    """The `[paths]` lines naming the inbox and export archive inside `folder`.
+
+    They are absolute even when a case's stores path is not, so each refusal
+    case below is refused for its own problem only.
+    """
+    folder = folder.absolute()
+    return f"inbox = '{folder / 'inbox'}'\nexports = '{folder / 'exports'}'\n"
 
 
 def _paths(stores: str, inputs: Path) -> str:
-    """A `[paths]` table naming only the stores and inputs folders."""
-    return f"\n[paths]\nstores = '{stores}'\ninputs = '{inputs}'\n"
+    """A `[paths]` table naming the stores and inputs folders, then the rest."""
+    return f"\n[paths]\nstores = '{stores}'\ninputs = '{inputs}'\n" + (
+        _inbox_and_exports(Path(stores).parent)
+    )
+
+
+def _production(stores: Path, backups: str, retention: str = "") -> str:
+    """A production profile file naming `backups`, then a `[backups]` table."""
+    paths = _paths(str(stores), stores.parent / "inputs")
+    return PRODUCTION_HEADER + paths + f"backups = '{backups}'\n" + retention
 
 
 def _assert_refused(profile_file: Path, text: str, stores: Path) -> None:
@@ -47,6 +67,11 @@ class ProfileFileTests(unittest.TestCase):
         """Profile file contents that must each be refused, by what is wrong."""
         inputs = stores.parent / "inputs"
         absolute = _paths(str(stores), inputs)
+        others = _inbox_and_exports(stores.parent)
+        inbox = stores.parent.absolute() / "inbox"
+        exports = stores.parent.absolute() / "exports"
+        assert f"inbox = '{inbox}'" in absolute
+        assert f"exports = '{exports}'" in absolute
         return {
             "not TOML": "format = = 1\n",
             "an unsupported format version": (
@@ -70,16 +95,87 @@ class ProfileFileTests(unittest.TestCase):
                 + "upstream_backups = 'x'\n"
             ),
             "no paths table": VALID_HEADER,
-            "no stores path": VALID_HEADER + f"\n[paths]\ninputs = '{inputs}'\n",
+            "no stores path": (
+                VALID_HEADER + f"\n[paths]\ninputs = '{inputs}'\n" + others
+            ),
             "a relative stores path": VALID_HEADER + _paths("stores", inputs),
             "a stores path that is not text": (
-                VALID_HEADER + f"\n[paths]\nstores = 1\ninputs = '{inputs}'\n"
+                VALID_HEADER + f"\n[paths]\nstores = 1\ninputs = '{inputs}'\n" + others
             ),
-            "no inputs path": VALID_HEADER + f"\n[paths]\nstores = '{stores}'\n",
+            "no inputs path": (
+                VALID_HEADER + f"\n[paths]\nstores = '{stores}'\n" + others
+            ),
             "a relative inputs path": VALID_HEADER + _paths(str(stores), Path("in")),
             "an inputs path that is not text": (
-                VALID_HEADER + f"\n[paths]\nstores = '{stores}'\ninputs = 1\n"
+                VALID_HEADER + f"\n[paths]\nstores = '{stores}'\ninputs = 1\n" + others
             ),
+            "no inbox path": VALID_HEADER + absolute.replace(f"inbox = '{inbox}'", ""),
+            "a relative inbox path": (
+                VALID_HEADER + absolute.replace(f"inbox = '{inbox}'", "inbox = 'in'")
+            ),
+            "no exports path": (
+                VALID_HEADER + absolute.replace(f"exports = '{exports}'", "")
+            ),
+            "a relative exports path": VALID_HEADER
+            + absolute.replace(f"exports = '{exports}'", "exports = 'ex'"),
+            "an inbox that is the export archive": VALID_HEADER
+            + absolute.replace(f"exports = '{exports}'", f"exports = '{inbox}'"),
+            **self._backup_refusals(stores),
+        }
+
+    def _backup_refusals(self, stores: Path) -> dict[str, str]:
+        """Production files whose backups path or retention must be refused."""
+        folder = stores.parent.absolute()
+        backups = str(folder / "backups")
+        inputs = stores.parent / "inputs"
+        return {
+            "no backups path in production": PRODUCTION_HEADER
+            + _paths(str(stores), inputs),
+            "a relative backups path": _production(stores, "backups"),
+            "a backups folder inside the inputs folder": _production(
+                stores, str(folder / "inputs" / "backups")
+            ),
+            "an inputs folder inside the backups folder": PRODUCTION_HEADER
+            + _paths(str(stores), Path(backups) / "inputs")
+            + f"backups = '{backups}'\n",
+            "a backups folder that is the inbox": _production(
+                stores, str(folder / "inbox")
+            ),
+            "a backups folder inside the export archive": _production(
+                stores, str(folder / "exports" / "backups")
+            ),
+            # The live stores are never cloud-synchronised (ADR-013); the
+            # backups folder is.
+            "a backups folder that is the stores folder": _production(
+                stores, str(stores.absolute())
+            ),
+            "a stores folder inside the backups folder": PRODUCTION_HEADER
+            + f"\n[paths]\nstores = '{Path(backups) / 'live'}'\n"
+            + f"inputs = '{inputs.absolute()}'\n"
+            + _inbox_and_exports(folder)
+            + f"backups = '{backups}'\n",
+            "a negative keep_all_days": _production(
+                stores, backups, "\n[backups]\nkeep_all_days = -1\n"
+            ),
+            "a keep_daily_days that is true": _production(
+                stores, backups, "\n[backups]\nkeep_daily_days = true\n"
+            ),
+            "a keep_daily_days that is a fraction": _production(
+                stores, backups, "\n[backups]\nkeep_daily_days = 1.5\n"
+            ),
+            "a keep_monthly word other than forever": _production(
+                stores, backups, '\n[backups]\nkeep_monthly = "always"\n'
+            ),
+            "a negative keep_monthly": _production(
+                stores, backups, "\n[backups]\nkeep_monthly = -3\n"
+            ),
+            "an unknown backups key": _production(
+                stores, backups, "\n[backups]\nkeep_weekly = 4\n"
+            ),
+            "a backups key that is not a table": PRODUCTION_HEADER
+            + "backups = 1\n"
+            + _paths(str(stores), inputs)
+            + f"backups = '{backups}'\n",
         }
 
     def test_a_profile_file_the_command_cannot_use_is_refused(self) -> None:
@@ -95,6 +191,69 @@ class ProfileFileTests(unittest.TestCase):
                     finally:
                         # A case that wrongly migrates must not fail the next.
                         shutil.rmtree(stores, ignore_errors=True)
+
+    def test_a_profile_file_names_the_inbox_and_export_archive(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+
+            profile = load_profile_file(write_profile(folder))
+
+            assert profile.inbox == (folder / "inbox").resolve()
+            assert profile.exports == (folder / "exports").resolve()
+
+    def test_a_production_profile_file_names_its_backups_and_their_retention(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = folder / "production.toml"
+            retention = (
+                "\n[backups]\nkeep_all_days = 7\nkeep_daily_days = 30\n"
+                "keep_monthly = 24\n"
+            )
+            profile_file.write_text(
+                _production(folder / "stores", str(folder / "backups"), retention),
+                encoding="utf-8",
+            )
+
+            profile = load_profile_file(profile_file)
+
+            assert profile.backups == (folder / "backups").resolve()
+            assert profile.retention == RetentionPolicy(
+                keep_all_days=7, keep_daily_days=30, keep_monthly=24
+            )
+
+    def test_backup_retention_keeps_conservative_defaults_and_forever(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = folder / "production.toml"
+            backups = str(folder / "backups")
+            cases = {
+                "no [backups] table": ("", RetentionPolicy()),
+                "monthly sets kept forever": (
+                    '\n[backups]\nkeep_all_days = 3\nkeep_monthly = "forever"\n',
+                    RetentionPolicy(keep_all_days=3),
+                ),
+            }
+            for case, (retention, expected) in cases.items():
+                with self.subTest(case):
+                    profile_file.write_text(
+                        _production(folder / "stores", backups, retention),
+                        encoding="utf-8",
+                    )
+
+                    profile = load_profile_file(profile_file)
+
+                    assert profile.retention == expected
+            assert RetentionPolicy() == RetentionPolicy(
+                keep_all_days=14, keep_daily_days=365, keep_monthly=None
+            )
+
+    def test_a_development_profile_file_names_no_backups(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = load_profile_file(write_profile(Path(directory)))
+
+            assert profile.backups is None
 
     def test_a_missing_profile_file_is_refused(self) -> None:
         with TemporaryDirectory() as directory:
@@ -161,8 +320,6 @@ class ProfileFileTests(unittest.TestCase):
             profile_file.write_text(
                 VALID_HEADER
                 + _paths(str(folder / "stores"), folder / "inputs")
-                + f"inbox = '{folder / 'inbox'}'\n"
-                + f"exports = '{folder / 'exports'}'\n"
                 + f"upstream_backups = '{folder / 'upstream'}'\n"
                 + '\n[dashboard]\nbind = "127.0.0.1"\nport = 8750\n',
                 encoding="utf-8",
@@ -181,8 +338,6 @@ class ProfileFileTests(unittest.TestCase):
             profile_file.write_text(
                 'format = 1\nprofile = "production"\n'
                 + _paths(str(folder / "stores"), folder / "inputs")
-                + f"inbox = '{folder / 'inbox'}'\n"
-                + f"exports = '{folder / 'exports'}'\n"
                 + f"backups = '{folder / 'backups'}'\n"
                 + "\n[backups]\nkeep_all_days = 14\nkeep_daily_days = 365\n"
                 + 'keep_monthly = "forever"\n'

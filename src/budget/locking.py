@@ -36,6 +36,40 @@ class StoresFolderUnavailableError(RuntimeError):
         super().__init__(f"the stores folder {folder} cannot be used: {reason}")
 
 
+class WriterLockReleasedError(RuntimeError):
+    """A write was attempted with a writer lock whose `with` block has ended."""
+
+    def __init__(self) -> None:
+        """Say why nothing was written."""
+        super().__init__(
+            "the writer lock was released when its with block ended: "
+            "nothing was written"
+        )
+
+
+class WriterLock:
+    """What `writer_lock` hands its `with` block: the profile it locked.
+
+    An operation that writes takes this instead of a bare profile, so it is
+    not called by mistake without the lock held for that profile. It guards
+    against misuse, not against a caller that builds a token itself. It keeps
+    the locked file, which `writer_lock` closes when its block ends; from then
+    on the token refuses to name its profile.
+    """
+
+    def __init__(self, profile: Profile, locked_file: BinaryIO) -> None:
+        """Hold the profile and the file whose lock stands for it."""
+        self._profile = profile
+        self._locked_file = locked_file
+
+    @property
+    def profile(self) -> Profile:
+        """The locked profile, refused once the lock has been released."""
+        if self._locked_file.closed:
+            raise WriterLockReleasedError
+        return self._profile
+
+
 if sys.platform == "win32":
     import msvcrt
 
@@ -73,7 +107,7 @@ else:
 
 
 @contextmanager
-def writer_lock(profile: Profile) -> Iterator[None]:
+def writer_lock(profile: Profile) -> Iterator[WriterLock]:
     """Hold the profile's writer lock for the length of a `with` block.
 
     Raises `WriterLockHeldError` at once when another command holds it, and
@@ -94,6 +128,6 @@ def writer_lock(profile: Profile) -> Iterator[None]:
         if not locked:
             raise WriterLockHeldError
         try:
-            yield
+            yield WriterLock(profile, file)
         finally:
             _unlock(file)
