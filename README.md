@@ -209,7 +209,7 @@ it shortly.
 A production profile file also names `[paths].backups`, the folder backup sets
 are published in, and may hold a `[backups]` table of retention keys
 (`keep_all_days`, `keep_daily_days`, `keep_monthly`); the backups folder may
-not overlap the inputs, inbox or exports folders. In production, `migrate`
+not overlap the stores, inputs, inbox or exports folders. In production, `migrate`
 writes a verified backup set before it changes an existing store and another
 after, and a migration that fails commits none of its steps. A missing
 production store is started only with `budget migrate --new-store`, and only

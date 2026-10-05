@@ -119,8 +119,10 @@ _SEPARATE_FOLDERS: Final = (
     ("backups", "inputs"),
     ("backups", "inbox"),
     ("backups", "exports"),
+    ("backups", "stores"),
 )
 _FOLDER_NAMES: Final = {
+    "stores": "stores folder",
     "inbox": "inbox",
     "exports": "export archive",
     "inputs": "inputs folder",
