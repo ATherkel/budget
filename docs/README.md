@@ -105,3 +105,8 @@ document for each rule; where they seem to differ, the governing document wins.
   around the contract to read an upstream layer.
 - Every Markdown file here opens with the Open Knowledge Format header that
   [ADR-019](decisions/ADR-019-open-knowledge-format-headers.md) sets out.
+- A document cites another by linking the section, such as
+  `[operations.md, *Stores*](architecture/operations.md#stores)`, and quoting
+  the words it relies on. A section link survives edits around it, where a line
+  number drifts with every one; renaming a heading means updating the links to
+  it.
