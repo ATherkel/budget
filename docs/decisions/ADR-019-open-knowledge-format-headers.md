@@ -85,9 +85,10 @@ adopt.
 ## Consequences
 
 - The header moves every line in `docs/` down by three. This change updates
-  the line citations in `research/`. Citations elsewhere, in GitHub issue
-  bodies and in `prototypes/import-identity/`, were not updated and are now
-  three lines further off.
+  the line citations in `research/`, and the open issues that cited docs by
+  line now link to lines at a fixed commit instead. The citations in
+  `prototypes/import-identity/` were not updated and are now three lines
+  further off.
 - A new document fails the test until it has its header, and a document moved
   to another folder must change its `type`.
 - Skills expect `CONTEXT.md` at the repository root. `AGENTS.md` and

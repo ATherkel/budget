@@ -60,9 +60,10 @@ the red/green handoffs, test seam agreement, and permitted exceptions.
 
 ## Agent skills
 
-Edit `docs/agents/*.md` directly: they are customised past the
-`/setup-matt-pocock-skills` templates, which a re-run of that skill would
-restore.
+Edit `docs/agents/issue-tracker.md`, `domain.md` and `triage-labels.md`
+directly: they are customised past the `/setup-matt-pocock-skills` templates,
+which a re-run of that skill would restore. This block lives in `AGENTS.md`,
+which `CLAUDE.md` imports; update it here.
 
 ### Issue tracker
 
