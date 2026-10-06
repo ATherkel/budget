@@ -21,10 +21,10 @@ from budget.backups import (
     require_supported_stores,
 )
 from budget.bronze import migrate_bronze
-from budget.bronze.storage import BronzeStorageError
 from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.locking import WriterLock
 from budget.profiles import PRODUCTION_PROFILE_NAME
+from budget.sqlstore import StoreError
 
 
 class RestoreInsteadError(RuntimeError):
@@ -63,7 +63,7 @@ class MigratedWithoutBackupError(RuntimeError):
 _BACKUP_FAILURES: Final = (
     BackupWriteError,
     BackupVerificationError,
-    BronzeStorageError,
+    StoreError,
     ImportLogDamagedError,
     ImportLogAheadOfBronzeError,
 )

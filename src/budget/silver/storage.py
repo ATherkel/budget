@@ -30,7 +30,6 @@ from budget.sqlstore import (
     UnversionedStoreError,
     migrate_store,
     open_store_connection,
-    require_migration_allowed,
 )
 
 SILVER_STAGE: Final = "silver"
@@ -69,7 +68,6 @@ __all__ = [
     "from_minor_units",
     "migrate_silver",
     "open_silver_connection",
-    "require_migration_allowed",
     "to_minor_units",
 ]
 
@@ -77,7 +75,9 @@ __all__ = [
 def migrate_silver(profile: Profile) -> None:
     """Create or upgrade the Silver store that one profile names.
 
-    The production profile is refused before any folder or file is touched.
+    The production profile is refused before any folder or file is touched:
+    its backup sets do not cover Silver yet, so nothing can back the store up
+    before it changes.
     """
     migrate_store(silver_stage(profile))
 
