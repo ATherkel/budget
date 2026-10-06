@@ -23,6 +23,7 @@ from budget.bronze.storage import (
 from budget.cli import main
 from budget.profiles import test_profile as make_test_profile
 from budget.silver import SilverStore, migrate_silver
+from budget.silver import storage as silver_storage
 from tests.bronze.migration_resources import added_migration, patched_resources
 from tests.cli.commands import migrate
 from tests.cli.profile_files import development_profile, write_profile
@@ -33,6 +34,11 @@ EXIT_REFUSED_ENVIRONMENT = 4
 _ORPHAN_SOURCE_RECORD = (
     "INSERT INTO source_records (payload_id, record_ordinal, fields)"
     " VALUES ('missing-payload', 1, '{}');\n"
+)
+_INVALID_STATEMENT = "INSERT INTO nowhere (x) VALUES (this is not valid sql);\n"
+# Where the installed package keeps the Silver migrations.
+_SILVER_MIGRATIONS = (
+    Path(silver_storage.__file__).resolve().parent.parent / "migrations" / "silver"
 )
 
 
@@ -246,6 +252,26 @@ class MigrateDefectTests(unittest.TestCase):
                 migrate(write_profile(folder))
 
             store = development_profile(folder).bronze_store
+            assert _user_version(store) == 0
+            with closing(sqlite3.connect(store)) as connection:
+                assert (
+                    connection.execute("SELECT * FROM sqlite_master").fetchall() == []
+                )
+
+    def test_a_failed_silver_migration_commits_none_of_the_steps_before_it(
+        self,
+    ) -> None:
+        # The first step would make a store, the added second one fails it.
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+
+            with (
+                added_migration(_INVALID_STATEMENT, folder=_SILVER_MIGRATIONS),
+                pytest.raises(sqlite3.OperationalError),
+            ):
+                migrate(write_profile(folder), "--stage", "silver")
+
+            store = development_profile(folder).silver_store
             assert _user_version(store) == 0
             with closing(sqlite3.connect(store)) as connection:
                 assert (
