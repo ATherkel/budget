@@ -178,8 +178,8 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
     if from_stage != SILVER_STAGE:
         raise RebuildFromStageNotBuiltError(from_stage)
     with writer_lock(profile) as lock:
-        result = rebuild_from_silver(lock)
-    sys.stdout.write(summaries.rebuild_summary(result))
+        rebuilt = rebuild_from_silver(lock)
+    sys.stdout.write(summaries.rebuild_summary(rebuilt))
 
 
 def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> None:

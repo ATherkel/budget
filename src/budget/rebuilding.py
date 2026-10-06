@@ -8,11 +8,28 @@ Bronze inputs and account registry, then hands them to the existing
 admission, or duplicate-resolution rule lives here.
 """
 
+from collections.abc import Sequence
+from dataclasses import dataclass
+
 from budget.bronze import BronzeStore
+from budget.bronze.models import ImportRun
 from budget.inputs import load_accounts
 from budget.locking import WriterLock
 from budget.profiles import Profile
 from budget.silver import SilverBuildInputs, SilverResult, rebuild_silver
+
+
+@dataclass(frozen=True)
+class SilverRebuild:
+    """One Silver rebuild's Bronze provenance and the result it stored.
+
+    The runs are the import runs read under the command's own writer lock,
+    before that lock was released, so a summary reports what the build actually
+    read instead of rereading a store a later command may have changed.
+    """
+
+    runs: Sequence[ImportRun]
+    result: SilverResult
 
 
 def bronze_inputs(profile: Profile) -> SilverBuildInputs:
@@ -43,13 +60,15 @@ def bronze_inputs(profile: Profile) -> SilverBuildInputs:
     )
 
 
-def rebuild_from_silver(lock: WriterLock) -> SilverResult:
+def rebuild_from_silver(lock: WriterLock) -> SilverRebuild:
     """Rebuild the locked profile's Silver from its Bronze store.
 
     The caller holds the profile's writer lock for its whole command, so the
     Bronze inputs are read under that one lock and handed to the existing
-    `budget.silver.rebuild_silver`, which replaces the stored result.
+    `budget.silver.rebuild_silver`, which replaces the stored result. The runs
+    read here come back with the result, so no caller rereads Bronze.
     """
     profile = lock.profile
     inputs = bronze_inputs(profile)
-    return rebuild_silver(lock, inputs=inputs)
+    result = rebuild_silver(lock, inputs=inputs)
+    return SilverRebuild(runs=inputs.runs, result=result)
