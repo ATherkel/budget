@@ -522,6 +522,23 @@ class RecoveryReleaseTests(unittest.TestCase):
 
             assert not profile.recovery_sets_file.exists()
 
+    def test_a_held_set_without_silver_stays_held_once_silver_starts(
+        self,
+    ) -> None:
+        # A set written before Silver had a store records no Silver version,
+        # so a later set holding Silver says nothing about its migration.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            with writer_lock(profile) as lock:
+                before = back_up(lock, now=NOW - timedelta(days=1))
+                hold_for_recovery(lock, before)
+
+                migrate_silver(profile)
+                back_up(lock, now=NOW)
+
+            held = json.loads(profile.recovery_sets_file.read_bytes())
+            assert held["sets"] == [before.name]
+
     def test_an_unreadable_recovery_file_is_never_silently_replaced(self) -> None:
         # A hold that cannot be read might be hiding a set another operation
         # still needs (decision 7): overwriting it would drop that
