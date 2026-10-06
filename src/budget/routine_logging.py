@@ -10,18 +10,19 @@ number, account id, payload id, review id or transaction id.
 
 The write is best effort. A log that cannot be written never changes the
 command's outcome: a fixed warning is reported and the command still finishes,
-so a build that has already replaced its store is not reported as failed.
+so a build that has already replaced its store is not reported as failed. Every
+path it touches, the logs folder and both log files, is resolved through the
+profile, so a test profile cannot let a log escape its temporary root.
 """
 
 import json
 import sys
 from collections.abc import Mapping, Sequence
-from pathlib import Path
 from typing import Final
 
-from budget.profiles import Profile
+from budget.profiles import LOGS_FOLDER, Profile, ProfilePathOutsideRootError
 
-LOG_FOLDER: Final = "logs"
+LOG_FOLDER: Final = LOGS_FOLDER
 LOG_FILE: Final = "commands.jsonl"
 # A log file at or over this many bytes is renamed to the rotated name first,
 # so the routine log stays bounded and keeps its newest records.
@@ -53,18 +54,25 @@ def finished(
         "review_item_kinds": sorted(set(kinds)),
     }
     try:
-        _append(profile.stores / LOG_FOLDER, entry)
-    except OSError:
-        # The command has already succeeded; its outcome does not change.
+        _append(profile, entry)
+    except (OSError, ProfilePathOutsideRootError):
+        # A log outside its profile, or one that cannot be written, never
+        # changes the command's outcome.
         sys.stderr.write(LOG_WARNING)
 
 
-def _append(folder: Path, entry: Mapping[str, object]) -> None:
-    """Append one record, rotating a full log file aside first."""
+def _append(profile: Profile, entry: Mapping[str, object]) -> None:
+    """Append one record, rotating a full log file aside first.
+
+    Every path is resolved before anything is created, rotated or written, so a
+    refused path leaves the profile exactly as it was.
+    """
+    folder = profile.logs_folder
+    path = profile.log_file(LOG_FILE)
+    rotated = profile.log_file(ROTATED_LOG_FILE)
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / LOG_FILE
     if path.exists() and path.stat().st_size >= LOG_MAX_BYTES:
-        path.replace(folder / ROTATED_LOG_FILE)
+        path.replace(rotated)
     line = json.dumps(dict(entry), ensure_ascii=False, sort_keys=True)
     with path.open("a", encoding="utf-8", newline="\n") as log:
         log.write(line + "\n")
