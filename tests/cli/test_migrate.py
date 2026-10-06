@@ -1,5 +1,5 @@
 # Copyright 2026 Therkel
-"""`budget migrate`: creating and upgrading a profile's Bronze store.
+"""`budget migrate`: creating and upgrading a profile's Bronze and Silver stores.
 
 Every test passes `main` an explicit environment, so a `BUDGET_PROFILE` set in
 the operator's shell never reaches a test.
@@ -22,6 +22,7 @@ from budget.bronze.storage import (
 )
 from budget.cli import main
 from budget.profiles import test_profile as make_test_profile
+from budget.silver import SilverStore, migrate_silver
 from tests.bronze.migration_resources import added_migration, patched_resources
 from tests.cli.commands import migrate
 from tests.cli.profile_files import development_profile, write_profile
@@ -65,6 +66,31 @@ class MigrateTests(unittest.TestCase):
             with BronzeStore(development_profile(folder)):
                 pass
 
+    def test_the_silver_stage_can_be_migrated(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+
+            status, _ = migrate(write_profile(folder), "--stage", "silver")
+
+            assert status == EXIT_OK
+            development = development_profile(folder)
+            assert development.silver_store.exists()
+            with SilverStore(development):
+                pass
+
+    def test_migrate_creates_both_stores_when_no_stage_is_named(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+
+            status, _ = migrate(write_profile(folder))
+
+            assert status == EXIT_OK
+            development = development_profile(folder)
+            assert development.bronze_store.exists()
+            assert development.silver_store.exists()
+            with BronzeStore(development), SilverStore(development):
+                pass
+
 
 class MigrateRefusalTests(unittest.TestCase):
     def test_production_migration_is_refused_before_anything_is_created(
@@ -80,15 +106,14 @@ class MigrateRefusalTests(unittest.TestCase):
             assert not (folder / "stores").exists()
 
     def test_a_stage_that_is_not_built_yet_is_refused(self) -> None:
-        for stage in ("silver", "gold"):
-            with self.subTest(stage), TemporaryDirectory() as directory:
-                folder = Path(directory)
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
 
-                status, stderr = migrate(write_profile(folder), "--stage", stage)
+            status, stderr = migrate(write_profile(folder), "--stage", "gold")
 
-                assert status == EXIT_REFUSED_ENVIRONMENT
-                assert stage in stderr
-                assert not (folder / "stores").exists()
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "gold" in stderr
+            assert not (folder / "stores").exists()
 
     def test_a_store_of_another_profile_is_refused(self) -> None:
         with TemporaryDirectory() as directory:
@@ -102,6 +127,32 @@ class MigrateRefusalTests(unittest.TestCase):
             with BronzeStore(make_test_profile(folder)):
                 pass
 
+    def test_a_silver_store_of_another_profile_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            migrate_silver(make_test_profile(folder))
+
+            status, stderr = migrate(write_profile(folder), "--stage", "silver")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "'test'" in stderr
+            with SilverStore(make_test_profile(folder)):
+                pass
+
+    def test_production_silver_is_refused_before_anything_is_created(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+
+            status, stderr = migrate(
+                write_profile(folder, name="production"), "--stage", "silver"
+            )
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "silver" in stderr.lower()
+            assert "120" not in stderr
+            assert not (folder / "stores").exists()
+            assert not (folder / "backups").exists()
+
     def test_a_store_newer_than_this_code_is_refused(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
@@ -112,6 +163,21 @@ class MigrateRefusalTests(unittest.TestCase):
                 connection.execute("PRAGMA user_version = 99")
 
             status, stderr = migrate(profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "99" in stderr
+            assert _user_version(store) == 99
+
+    def test_a_silver_store_newer_than_this_code_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            assert migrate(profile_file, "--stage", "silver")[0] == EXIT_OK
+            store = development_profile(folder).silver_store
+            with closing(sqlite3.connect(store)) as connection:
+                connection.execute("PRAGMA user_version = 99")
+
+            status, stderr = migrate(profile_file, "--stage", "silver")
 
             assert status == EXIT_REFUSED_ENVIRONMENT
             assert "99" in stderr

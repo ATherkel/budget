@@ -68,6 +68,7 @@ class NewProductionStoreTests(unittest.TestCase):
             production = load_profile_file(profile_file)
             with BronzeStore(production):
                 pass
+            assert not (production.stores / "silver.db").exists()
             (backup,) = complete_backup_sets(production)
             assert run_ids(backup.path / "bronze.db") == []
             assert manifest(backup.path)["profile"] == "production"

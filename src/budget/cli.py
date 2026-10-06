@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, NoReturn
 
+from budget import sqlstore
 from budget.backups import (
     BackupVerificationError,
     BackupWriteError,
@@ -46,14 +47,17 @@ from budget.migration import (
     migrate_profile,
 )
 from budget.profiles import (
+    PRODUCTION_PROFILE_NAME,
     NoBackupsFolderError,
     Profile,
     ProfileFileError,
     load_profile_file,
 )
+from budget.silver import migrate_silver
+from budget.silver.storage import SILVER_STAGE
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
-STAGES: Final = (BRONZE_STAGE, "silver", "gold")
+STAGES: Final = (BRONZE_STAGE, SILVER_STAGE, "gold")
 EXIT_OK: Final = 0
 EXIT_USAGE: Final = 2
 EXIT_REFUSED_INPUT: Final = 3
@@ -73,6 +77,18 @@ _BRONZE_ENVIRONMENT_REFUSALS: Final = (
     MigrationRequiredError,
     UnsupportedStoreVersionError,
 )
+# The Silver errors operations.md lists as a refused environment. Any other
+# Silver error, such as a broken packaged migration, is a defect: exit 1.
+_SILVER_ENVIRONMENT_REFUSALS: Final = (
+    sqlstore.UnsupportedSQLiteVersionError,
+    sqlstore.ProductionMigrationBlockedError,
+    sqlstore.StoreNotFoundError,
+    sqlstore.StoreBusyError,
+    sqlstore.UnversionedStoreError,
+    sqlstore.StoreIdentityError,
+    sqlstore.MigrationRequiredError,
+    sqlstore.UnsupportedStoreVersionError,
+)
 
 
 class StageNotBuiltError(Exception):
@@ -81,7 +97,20 @@ class StageNotBuiltError(Exception):
     def __init__(self, stage: str) -> None:
         """Name the stage, rather than pretend to migrate it."""
         super().__init__(
-            f"the {stage} stage is not built yet: only {BRONZE_STAGE} can be migrated"
+            f"the {stage} stage is not built yet: only {BRONZE_STAGE} and "
+            f"{SILVER_STAGE} can be migrated"
+        )
+
+
+class SilverNotBackedUpError(Exception):
+    """Production asked for Silver, which no backup set covers."""
+
+    def __init__(self) -> None:
+        """Name what production migrates, and why Silver is not among it."""
+        super().__init__(
+            "the production profile's backup sets hold the Bronze store alone, "
+            "so no Silver store is migrated there: migrate production without "
+            "--stage, or with --stage bronze"
         )
 
 
@@ -130,13 +159,19 @@ def _selected_profile_file(
 
 
 def _migrate(profile: Profile, stage: str | None, *, new_store: bool) -> None:
-    """Create or upgrade the stores this code has: Bronze, for now."""
-    if stage not in {None, BRONZE_STAGE}:
+    """Create or upgrade the stores this code has: Bronze and Silver, for now."""
+    if stage not in {None, BRONZE_STAGE, SILVER_STAGE}:
         raise StageNotBuiltError(stage)
+    if stage == SILVER_STAGE and profile.name == PRODUCTION_PROFILE_NAME:
+        raise SilverNotBackedUpError
     # Refusals that touch nothing come first; the lock guards the mutation.
     require_migration_allowed(profile, new_store=new_store)
     with writer_lock(profile) as lock:
-        migrate_profile(lock, new_store=new_store)
+        if stage in {None, BRONZE_STAGE}:
+            migrate_profile(lock, new_store=new_store)
+        # Production's backups hold Bronze alone, so it migrates no Silver.
+        if stage in {None, SILVER_STAGE} and profile.name != PRODUCTION_PROFILE_NAME:
+            migrate_silver(profile)
 
 
 def _backup(profile: Profile) -> None:
@@ -186,6 +221,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
     except (
         NoProfileSelectedError,
         StageNotBuiltError,
+        SilverNotBackedUpError,
         WriterLockHeldError,
         StoresFolderUnavailableError,
         RestoreInsteadError,
@@ -194,6 +230,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         UnsupportedStoresError,
         NoBackupsFolderError,
         *_BRONZE_ENVIRONMENT_REFUSALS,
+        *_SILVER_ENVIRONMENT_REFUSALS,
     ) as error:
         return _refuse(error, EXIT_REFUSED_ENVIRONMENT)
     except (

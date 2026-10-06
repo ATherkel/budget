@@ -19,6 +19,7 @@ DECISION_LOG_FILE_NAME = "decisions.jsonl"
 EXPORTS_FOLDER = "exports"
 IMPORT_LOG_FILE_NAME = "imports.jsonl"
 INBOX_FOLDER = "inbox"
+SILVER_STORE_NAME = "silver.db"
 INPUTS_FOLDER = "inputs"
 RECOVERY_SETS_FILE_NAME = "recovery-sets.json"
 STORES_FOLDER = "stores"
@@ -219,6 +220,11 @@ class Profile:
     def bronze_store(self) -> Path:
         """The Bronze stage store, re-checked against the test root each time."""
         return self._guarded_path(Path(self.stores) / BRONZE_STORE_NAME)
+
+    @property
+    def silver_store(self) -> Path:
+        """The Silver stage store, re-checked against the test root each time."""
+        return self._guarded_path(Path(self.stores) / SILVER_STORE_NAME)
 
     @property
     def accounts_file(self) -> Path:

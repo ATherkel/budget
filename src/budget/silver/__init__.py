@@ -24,21 +24,42 @@ from budget.silver.models import (
     UnbookedRecord,
     ValidationError,
 )
+from budget.silver.rebuild import SilverBuildInputs, rebuild_silver
+from budget.silver.storage import (
+    CurrencySnapshotMismatchError,
+    MoneyError,
+    MoneyPrecisionError,
+    MoneyRangeError,
+    NonFiniteMoneyError,
+    UnknownAccountCurrencyError,
+    migrate_silver,
+)
+from budget.silver.store import SilverStore
 
 __all__ = [
     "AcceptDiscrepancy",
     "AccountEvidence",
     "BalanceObservation",
+    "CurrencySnapshotMismatchError",
     "ImportRunResult",
+    "MoneyError",
+    "MoneyPrecisionError",
+    "MoneyRangeError",
+    "NonFiniteMoneyError",
     "ReviewItem",
     "SameTransaction",
+    "SilverBuildInputs",
     "SilverDecision",
     "SilverResult",
+    "SilverStore",
     "Transaction",
     "TransactionEvidence",
     "UnbookedRecord",
+    "UnknownAccountCurrencyError",
     "ValidationError",
     "VoidImportRun",
     "Withdrawn",
     "build",
+    "migrate_silver",
+    "rebuild_silver",
 ]

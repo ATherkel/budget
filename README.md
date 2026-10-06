@@ -112,15 +112,55 @@ each access, so a folder or file replaced by a symlink is refused instead of
 followed. The command line below builds a development or production profile
 from a profile file; a test profile is never a file.
 
-`migrate_bronze` is the only operation that creates or upgrades a store. It
-applies the numbered SQL files in `src/budget/migrations/bronze/`, which ship
-inside the installed wheel and sdist so an installation can migrate without a
-source checkout, and it records both `PRAGMA user_version` and a one-row
-`store_identity` naming the profile and stage. Opening a store never creates or
-changes the schema: it requires an existing file, `mode=rw`, a version this code
-knows, and a matching identity, and it sets `foreign_keys = ON`,
-`busy_timeout = 5000` and `synchronous = FULL`. A new store is created in WAL
-mode.
+`migrate_bronze` and `migrate_silver` are the only operations that create or
+upgrade a store. Each applies its own numbered SQL files, `migrations/bronze/`
+and `migrations/silver/`, which ship inside the installed wheel and sdist so an
+installation can migrate without a source checkout, and each records both
+`PRAGMA user_version` and a one-row `store_identity` naming the profile and
+stage. Opening a store never creates or changes the schema: it requires an
+existing file, `mode=rw`, a version this code knows, and a matching identity,
+and it sets `foreign_keys = ON`, `busy_timeout = 5000` and
+`synchronous = FULL`. A new store is created in WAL mode.
+
+## Silver persistence
+
+`silver.db` holds the output of one Silver build, so the pipeline does not have
+to rebuild it to read it. `SilverStore` is the seam: `replace(result,
+currencies=...)` writes one complete `SilverResult` in one transaction, and
+`read()` returns the complete result with `Decimal` money and the order the
+build produced. A read spans several tables, so it takes one SQLite snapshot;
+a failed replacement rolls back and leaves the previous result readable.
+
+```python
+from budget.silver import SilverStore, migrate_silver, rebuild_silver
+
+migrate_silver(profile)
+
+with SilverStore(profile) as store:
+    result = store.read()
+```
+
+Amounts and balances cross this boundary as `Decimal` and are stored as
+`INTEGER` counts of the currency's minor unit (ADR-013). The conversion is
+exact integer arithmetic: an amount with more decimal places than its currency
+allows, a non-finite value, one outside SQLite's 64-bit integer range, or one
+in a currency the ISO 4217 table does not know is refused before anything is
+written. The result's account currencies are stored with it, so unbooked
+amounts and balance observations decode without re-reading mutable
+configuration.
+
+`rebuild_silver(profile, inputs=SilverBuildInputs(...))` is the entry point a
+pipeline command calls: it holds the profile's writer lock, runs the pure
+`budget.silver.build` over the inputs, replaces the stored result with what the
+build produced, and returns it. The inputs are one frozen value object
+(`runs`, `source_records`, `format_failures`, `currencies`, `decisions`) rather
+than a long argument list, and `build`'s own signature is unchanged.
+
+The full pipeline rebuild CLI does not exist yet. `rebuild
+[--from bronze|silver|gold]`, the decision-log reader and Gold publishing are
+owned by [issue #176](https://github.com/ATherkel/budget/issues/176), which
+depends on this work. Until it lands there is deliberately no command that
+would silently skip those contracts, and no partial decision-log reader.
 
 `migrate_bronze` refuses the production profile: production is migrated only
 by `budget migrate`, which backs the store up first (see below).
@@ -198,20 +238,24 @@ be absolute, and the inbox and exports folders may not overlap. `profile` is
 budget --profile "$env:APPDATA\budget\development.toml" migrate
 ```
 
-`migrate` creates or upgrades the profile's Bronze store; `--stage bronze`
-names it explicitly, and `--stage silver` or `--stage gold` is refused until
-those stores exist. A writing command holds the operating system's lock on
-`budget.lock` in the stores folder for its whole run, so a second one refuses at
-once. On Windows the lock of a command that was killed or crashed is released a
-moment late, so an immediate rerun can report another command running; rerun
-it shortly.
+`migrate` creates or upgrades the profile's Bronze store; in a development
+profile it also creates or upgrades the Silver store, and `--stage bronze` or
+`--stage silver` names one of them. `--stage gold` is refused until that store
+exists. A writing command holds the operating system's lock on `budget.lock`
+in the stores folder for its whole run, so a second one refuses at once. On
+Windows the lock of a command that was killed or crashed is released a moment
+late, so an immediate rerun can report another command running; rerun it
+shortly.
 
 A production profile file also names `[paths].backups`, the folder backup sets
 are published in, and may hold a `[backups]` table of retention keys
 (`keep_all_days`, `keep_daily_days`, `keep_monthly`); the backups folder may
 not overlap the stores, inputs, inbox or exports folders. In production, `migrate`
 writes a verified backup set before it changes an existing store and another
-after, and a migration that fails commits none of its steps. A missing
+after, and a migration that fails commits none of its steps. Those sets hold
+the Bronze store alone, so a production `migrate` creates or upgrades Bronze
+only: `migrate` without `--stage`, or with `--stage bronze`. `--stage silver`
+is refused there until a backup set covers a Silver store. A missing
 production store is started only with `budget migrate --new-store`, and only
 when no complete backup set could restore it instead. `budget backup` writes
 a set of production by hand and prints its name. Nothing imports into
