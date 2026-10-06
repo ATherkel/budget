@@ -46,7 +46,7 @@ from tests.backups.sets import (
     run_ids,
     silver_accounts,
 )
-from tests.bronze.migration_resources import added_migration
+from tests.bronze.migration_resources import SILVER_MIGRATIONS, added_migration
 from tests.importing.households import household
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -478,6 +478,25 @@ class RecoveryReleaseTests(unittest.TestCase):
 
                 with added_migration("CREATE TABLE marker (x TEXT) STRICT;\n"):
                     migrate_bronze(profile)
+                    back_up(lock, now=NOW)
+
+            assert not profile.recovery_sets_file.exists()
+
+    def test_a_backup_releases_a_held_set_once_its_silver_schema_is_behind(
+        self,
+    ) -> None:
+        # As above, after a migration that changed only Silver's schema.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            migrate_silver(profile)
+            with writer_lock(profile) as lock:
+                before = back_up(lock, now=NOW - timedelta(days=1))
+                hold_for_recovery(lock, before)
+
+                with added_migration(
+                    "CREATE TABLE marker (x TEXT) STRICT;\n", folder=SILVER_MIGRATIONS
+                ):
+                    migrate_silver(profile)
                     back_up(lock, now=NOW)
 
             assert not profile.recovery_sets_file.exists()

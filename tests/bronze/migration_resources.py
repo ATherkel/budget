@@ -73,3 +73,7 @@ def added_migration(sql: str, *, folder: Path = MIGRATIONS) -> Iterator[None]:
         mock.patch.object(Path, "read_text", autospec=True, side_effect=read_text),
     ):
         yield
+
+
+# Where the installed package keeps the Silver migrations, for `added_migration`.
+SILVER_MIGRATIONS = MIGRATIONS.parent / "silver"
