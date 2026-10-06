@@ -121,13 +121,17 @@ def require_migration_allowed(
     Bronze store, since every backup set holds Bronze: a store started
     without one could never be backed up.
     """
+    bronze = bronze_stage(profile)
+    if (
+        profile.name == PRODUCTION_PROFILE_NAME
+        and BRONZE_STAGE not in stages
+        and not bronze.path.exists()
+    ):
+        # Checked first, so the advice is the step that works: a later stage
+        # would be refused anew until Bronze has a store.
+        require_store_migration_allowed(bronze)
     for store in _stage_stores(profile, stages):
         require_store_migration_allowed(store, new_store=new_store)
-    if profile.name != PRODUCTION_PROFILE_NAME:
-        return
-    bronze = bronze_stage(profile)
-    if BRONZE_STAGE not in stages and not bronze.path.exists():
-        raise NewStoreRequiredError(bronze.label, bronze.stage)
 
 
 def _require_bronze_beside(profile: Profile, stages: Collection[str]) -> None:
