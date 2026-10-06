@@ -63,12 +63,12 @@ class NewStoreRequiredError(StoreError):
     restore; starting an empty store in its place is a deliberate act.
     """
 
-    def __init__(self, label: str) -> None:
+    def __init__(self, label: str, stage: str) -> None:
         """Say how to start one, and when not to."""
         super().__init__(
             f"the production profile has no {label} store: start one with "
-            "`budget migrate --new-store`, unless production had one, which must "
-            "be restored from a backup set instead"
+            f"`budget migrate --stage {stage} --new-store`, unless production had "
+            "one, which must be restored from a backup set instead"
         )
 
 
@@ -381,7 +381,7 @@ def require_migration_allowed(store: StageStore, *, new_store: bool = False) -> 
         and not new_store
         and not store.path.exists()
     ):
-        raise NewStoreRequiredError(store.label)
+        raise NewStoreRequiredError(store.label, store.stage)
 
 
 def _require_migratable(
@@ -410,7 +410,7 @@ def _require_production_store_choice(
 ) -> None:
     """Start a production store only when asked, and only where none exists."""
     if new and not new_store:
-        raise NewStoreRequiredError(store.label)
+        raise NewStoreRequiredError(store.label, store.stage)
     if new_store and not new:
         raise NewStoreRefusedError(store.label, store.path)
 
