@@ -20,6 +20,7 @@ from budget.bronze import BronzeStore
 from budget.bronze.storage import ForeignKeyViolationError
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
+from budget.silver import SilverStore
 from tests.backups.sets import manifest, run_ids, tables, user_version
 from tests.bronze.migration_resources import added_migration
 from tests.cli.commands import migrate
@@ -66,12 +67,16 @@ class NewProductionStoreTests(unittest.TestCase):
 
             assert (status, stderr) == (EXIT_OK, "")
             production = load_profile_file(profile_file)
-            with BronzeStore(production):
+            with BronzeStore(production), SilverStore(production):
                 pass
-            assert not (production.stores / "silver.db").exists()
             (backup,) = complete_backup_sets(production)
             assert run_ids(backup.path / "bronze.db") == []
+            assert user_version(backup.path / "silver.db") == 1
             assert manifest(backup.path)["profile"] == "production"
+            assert manifest(backup.path)["stores"] == {
+                "bronze": {"path": "bronze.db", "schema_version": 1},
+                "silver": {"path": "silver.db", "schema_version": 1},
+            }
 
     def test_a_new_store_is_refused_where_one_exists(self) -> None:
         with TemporaryDirectory() as directory:
