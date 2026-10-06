@@ -384,6 +384,27 @@ def require_migration_allowed(store: StageStore, *, new_store: bool = False) -> 
         raise NewStoreRequiredError(store.label, store.stage)
 
 
+def is_started(store: StageStore) -> bool:
+    """Report whether the store's file holds a store the runner would not start.
+
+    A missing file is not started, and neither is a file at schema version 0
+    without tables, such as a creation that was cut off leaves: the runner
+    starts both as a new store. The file is only read.
+    """
+    if not store.path.exists():
+        return False
+    connection = _connect(store.path, mode="ro")
+    try:
+        connection.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+        return _read_version(connection) != 0 or _has_objects(connection)
+    except sqlite3.OperationalError as error:
+        if error.sqlite_errorcode & 0xFF != sqlite3.SQLITE_BUSY:
+            raise
+        raise StoreBusyError(store.path) from None
+    finally:
+        connection.close()
+
+
 def _require_migratable(
     connection: sqlite3.Connection,
     store: StageStore,

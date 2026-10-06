@@ -33,6 +33,7 @@ from budget.sqlstore import (
     NewStoreRequiredError,
     StageStore,
     StoreError,
+    is_started,
     migrate_store,
 )
 from budget.sqlstore import (
@@ -134,9 +135,11 @@ def _require_every_store_new(stores: list[StageStore]) -> None:
 
     The runner refuses an existing store only once it reaches it, after the
     stages before it were started; a store started that way would have no
-    backup set after it. Where none exists, each is started in turn.
+    backup set after it. Where none exists, each is started in turn. A file
+    an interrupted start left empty does not count: the runner starts it
+    again.
     """
-    existing = [store for store in stores if store.path.exists()]
+    existing = [store for store in stores if is_started(store)]
     if existing and len(existing) < len(stores):
         raise NewStoreRefusedError(existing[0].label, existing[0].path)
 
