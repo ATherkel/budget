@@ -15,7 +15,6 @@ from budget.bronze.models import (
 )
 from budget.bronze.storage import (
     migrate_bronze,
-    require_migration_allowed,
 )
 from budget.bronze.store import BronzeStore
 
@@ -27,5 +26,4 @@ __all__ = [
     "RawPayload",
     "SourceRecord",
     "migrate_bronze",
-    "require_migration_allowed",
 ]

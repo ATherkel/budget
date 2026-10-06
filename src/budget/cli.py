@@ -125,7 +125,7 @@ def _selected_profile_file(
 
 def _migrate(profile: Profile, stage: str | None, *, new_store: bool) -> None:
     """Create or upgrade the stores this code has: Bronze and Silver, for now."""
-    if stage not in {None, BRONZE_STAGE, SILVER_STAGE}:
+    if stage is not None and stage not in MIGRATED_STAGES:
         raise StageNotBuiltError(stage)
     stages = MIGRATED_STAGES if stage is None else (stage,)
     # Refusals that touch nothing come first; the lock guards the mutation.
