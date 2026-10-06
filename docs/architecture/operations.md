@@ -691,8 +691,8 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | The backup before a migration cannot be written or verified | The migration does not begin; the schema and its version are unchanged; exit 4, or 5 when a copy or the import log does not verify | Fix what the message names, then rerun `migrate` |
 | A migration fails | No step of it is committed and the store keeps its version, though a stage migrated before it (Bronze, before Silver) keeps its new one; the set taken first stays held for recovery until a migration succeeds, or a later backup records a store past it | Fix the defect; the held set restores the stores if needed |
 | The backup after a migration fails | The store is migrated; the set taken first stays held; exit 4, saying so | Fix what the message names, then run `budget backup` |
-| `migrate` finds no production store for a stage | Nothing is created or changed, in any stage; exit 4. So is `--new-store` where one of the stores it would start exists, and Silver where Bronze has no store, since every set holds Bronze | Restore the newest backup set that holds it, or, for a first store, rerun with `--new-store`, adding `--stage` for that stage alone when the other stage's store exists |
-| A store a backup set holds is missing | `backup`, and a `migrate` that would back up, publish nothing and change nothing; exit 4 | Restore the store from the newest backup set that holds it |
+| `migrate` finds no production store for a stage, or only a file an interrupted start left empty | Nothing is created or changed, in any stage; exit 4. So is `--new-store` where one of the stores it would start exists, and Silver where Bronze has no store, since every set holds Bronze | Restore the newest backup set that holds it, or, for a first store, rerun with `--new-store`, adding `--stage` for that stage alone when the other stage's store exists |
+| A store a complete backup set holds is missing | `backup`, and a `migrate` that would back up, publish nothing and change nothing; exit 4 | Restore the store from the newest backup set that holds it |
 | OneDrive offline | Complete backup sets wait in the local OneDrive folder | Nothing to do |
 
 A genuine repeat export has a new export date in its filename, so it is
@@ -712,9 +712,9 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   before sets covered Silver holds `bronze.db` alone, in the same manifest
   format: it stays complete, retention treats it as any other set, and since
   it holds no Silver store, it never stops `migrate --new-store` starting one.
-  Once a set holds a Silver store, a backup is refused while the stores
-  folder has none: a set without it would drop a store the profile had, and
-  retention would in time prune every set holding it.
+  Once a complete set holds a Silver store, a backup is refused while the
+  stores folder has none: a set without it would drop a store the profile
+  had, and retention would in time prune every set holding it.
 - **The manifest** records, in this order:
 
   ```json
@@ -756,9 +756,8 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   Silver takes one set before the first change and one after the last. A
   migration that changes nothing writes no set. Only production writes
   backup sets. Nothing imports into production until the `import` command
-  backs up after its Bronze writes: until then,
-  `BronzeStore.import_file` and `import_inbox_file` refuse the production
-  profile.
+  backs up after its Bronze writes: until then, `BronzeStore.import_file`
+  and `import_inbox_file` refuse the production profile.
 - **Written whole or not at all.** A set is written into the profile's local
   `backup-staging\` folder, `manifest.json` last. It is then copied into the
   backups folder as `<name>.partial`, every copy is checked against the

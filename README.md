@@ -243,9 +243,9 @@ budget --profile "$env:APPDATA\budget\development.toml" migrate
 
 `migrate` creates or upgrades the profile's Bronze and Silver stores, Bronze
 first, and `--stage bronze` or `--stage silver` names one of them. Every stage
-goes through the same runner, so each one refuses the same way: a store recorded for another profile or
-another stage, or at a schema version this code does not know, is left as it
-is and refused with exit 4. `--stage gold` is refused with exit 4 until that
+goes through the same runner, so each one refuses the same way: a store
+recorded for another profile or another stage, or at a schema version this
+code does not know, is left as it is and refused with exit 4. `--stage gold` is refused with exit 4 until that
 store exists. A run that succeeds prints nothing:
 
 ```powershell
@@ -280,8 +280,10 @@ Bronze store and the Silver store, each snapshotted through SQLite's backup
 API, so production migrates both stages as development does. A missing
 production store is started only with `--new-store`, only where none of the
 stores it would start exists, Silver's only beside a Bronze store, and only
-when no complete backup set holds one that could restore it instead. `budget backup` writes a
-set of production by hand and prints its name. Nothing imports into
+when no complete backup set holds one that could restore it instead. A store
+file left empty by an interrupted start counts as missing, so rerunning the
+same command starts it. `budget backup` writes a set of production by hand
+and prints its name. Nothing imports into
 production yet: that waits for the `import` command, which backs up after its
 Bronze writes.
 [operations.md](docs/architecture/operations.md#backup-and-restore) describes
@@ -312,8 +314,8 @@ budget migrate; $LASTEXITCODE                              # 4
 budget migrate --stage silver --new-store; $LASTEXITCODE   # 0: silver.db created, then a set of both stores
 ```
 
-Once a set holds a Silver store, a lost one must be restored, not started
-anew, and no backup is written until it is. A backup is still refused while
+Once a complete set holds a Silver store, a lost one must be restored, not
+started anew, and no backup is written until it is. A backup is still refused while
 the stores folder holds a store no set covers, such as Gold's, since the set
 would not be a complete copy of the profile. All three exit 4 and write
 nothing:
