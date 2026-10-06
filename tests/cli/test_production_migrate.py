@@ -116,6 +116,36 @@ class NewProductionStoreTests(unittest.TestCase):
                 pass
             assert len(complete_backup_sets(production)) == 1
 
+    def test_a_retry_after_silver_was_cut_off_names_the_stage_to_start(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder, name="production")
+            started = migrate(profile_file, "--stage", "bronze", "--new-store")
+            assert started[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            # A first `--new-store` cut off inside Silver's migration: Bronze
+            # committed, Silver left empty at version 0, and no set written.
+            shutil.rmtree(folder / "backups")
+            with closing(sqlite3.connect(production.silver_store)) as store:
+                store.execute("PRAGMA journal_mode = WAL")
+
+            status, stderr = migrate(profile_file, "--new-store")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "budget migrate --stage silver --new-store" in stderr
+            assert user_version(production.silver_store) == 0
+            assert complete_backup_sets(production) == ()
+
+            status, stderr = migrate(profile_file, "--stage", "silver", "--new-store")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            (backup,) = complete_backup_sets(production)
+            stores = manifest(backup.path)["stores"]
+            assert isinstance(stores, dict)
+            assert set(stores) == {"bronze", "silver"}
+
     def test_silver_is_refused_beside_a_bronze_store_left_empty(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
@@ -148,7 +178,7 @@ class NewProductionStoreTests(unittest.TestCase):
             status, stderr = migrate(profile_file, "--new-store")
 
             assert status == EXIT_REFUSED_ENVIRONMENT
-            assert "is already a Silver store" in stderr
+            assert "budget migrate --stage bronze --new-store" in stderr
             assert not production.bronze_store.exists()
             assert complete_backup_sets(production) == ()
 
