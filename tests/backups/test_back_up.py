@@ -363,6 +363,24 @@ class UnsupportedStoreTests(unittest.TestCase):
 
                 assert complete_backup_sets(profile) == ()
 
+    def test_a_lost_store_only_a_damaged_set_holds_does_not_stop_a_backup(
+        self,
+    ) -> None:
+        # A damaged set restores nothing, so it is no reason to wait for a
+        # restore, as it is none to refuse a new store (`migrate`).
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            migrate_silver(profile)
+            with writer_lock(profile) as lock:
+                damaged = back_up(lock, now=NOW - timedelta(days=1))
+                (damaged.path / "silver.db").write_bytes(b"damaged")
+                for lost in profile.stores.glob("silver.db*"):
+                    lost.unlink()
+
+                newest = back_up(lock, now=NOW)
+
+            assert complete_backup_sets(profile) == (newest,)
+
     def test_files_that_are_not_stores_do_not_stop_a_backup(self) -> None:
         with TemporaryDirectory() as directory:
             profile = household(Path(directory))
