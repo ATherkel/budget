@@ -2,9 +2,11 @@
 """Creating, upgrading and opening one ETL stage's SQLite store.
 
 Every stage store follows ADR-013 and ADR-015: numbered plain SQL files that
-ship beside this runner inside the installed package, applied in order, every
-pending file and its `PRAGMA user_version` bump in one transaction, and a one-row
+ship beside this runner inside the installed package, applied in order, each
+file and its `PRAGMA user_version` bump inside one transaction, and a one-row
 `store_identity` table naming the profile and the stage that own the file.
+This runner puts every pending file in the same transaction, so a failed
+migration leaves the store at the version it had.
 Only an explicit `migrate` creates or changes a store. Opening a store never
 does: it refuses a file that is missing, belongs to another profile or stage,
 or is at a schema version this code does not know. A production store is
@@ -242,14 +244,12 @@ def _has_objects(connection: sqlite3.Connection) -> bool:
 def _require_identity(
     connection: sqlite3.Connection,
     store: StageStore,
-    path: Path | None = None,
+    path: Path,
 ) -> None:
     """Refuse a store that belongs to another profile or stage.
 
-    `path` names the file in a refusal: the store's own path by default, or a
-    snapshot's.
+    `path` names the file in a refusal: the store's own, or a snapshot's.
     """
-    path = store.path if path is None else path
     try:
         rows = connection.execute(
             "SELECT profile, stage FROM store_identity"
@@ -401,7 +401,7 @@ def _require_migratable(
     if version == 0 and has_objects:
         raise UnversionedStoreError(store.path)
     if version >= 1:
-        _require_identity(connection, store)
+        _require_identity(connection, store, store.path)
     return version == 0
 
 
@@ -481,14 +481,12 @@ def _require_current_version(connection: sqlite3.Connection, store: StageStore) 
 def _require_known_version(
     connection: sqlite3.Connection,
     store: StageStore,
-    path: Path | None = None,
+    path: Path,
 ) -> None:
     """Refuse a store at no schema version, or one newer than this code.
 
-    `path` names the file in a refusal: the store's own path by default, or a
-    snapshot's.
+    `path` names the file in a refusal: the store's own, or a snapshot's.
     """
-    path = store.path if path is None else path
     version = _read_version(connection)
     latest = _migration_steps(store)[-1].version
     if not 1 <= version <= latest:
@@ -508,8 +506,8 @@ def open_store_for_backup(store: StageStore) -> sqlite3.Connection:
     connection = _connect(path, mode="rw")
     try:
         _apply_connection_settings(connection)
-        _require_known_version(connection, store)
-        _require_identity(connection, store)
+        _require_known_version(connection, store, path)
+        _require_identity(connection, store, path)
     except BaseException:
         connection.close()
         raise
@@ -548,7 +546,7 @@ def open_store_connection(store: StageStore) -> sqlite3.Connection:
     try:
         _apply_connection_settings(connection)
         _require_current_version(connection, store)
-        _require_identity(connection, store)
+        _require_identity(connection, store, path)
     except BaseException:
         connection.close()
         raise
