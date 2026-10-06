@@ -113,13 +113,16 @@ followed. The command line below builds a development or production profile
 from a profile file; a test profile is never a file.
 
 `migrate_bronze` and `migrate_silver` are the only operations that create or
-upgrade a store. Each applies its own numbered SQL files, `migrations/bronze/`
-and `migrations/silver/`, which ship inside the installed wheel and sdist so an
-installation can migrate without a source checkout, and each records both
-`PRAGMA user_version` and a one-row `store_identity` naming the profile and
-stage. Opening a store never creates or changes the schema: it requires an
-existing file, `mode=rw`, a version this code knows, and a matching identity,
-and it sets `foreign_keys = ON`, `busy_timeout = 5000` and
+upgrade a store. Both run one shared runner, `budget.sqlstore`, over their own
+numbered SQL files, `migrations/bronze/` and `migrations/silver/`, which ship
+inside the installed wheel and sdist so an installation can migrate without a
+source checkout. Each store records its own `PRAGMA user_version` and a one-row
+`store_identity` naming the profile and stage. The runner applies every
+pending file in one transaction, so a migration that fails leaves the store at
+the version it had. Gold's store will run the same runner over
+`migrations/gold/`. Opening a store never creates or changes the schema: it
+requires an existing file, `mode=rw`, a version this code knows, and a
+matching identity, and it sets `foreign_keys = ON`, `busy_timeout = 5000` and
 `synchronous = FULL`. A new store is created in WAL mode.
 
 ## Silver persistence
@@ -240,8 +243,29 @@ budget --profile "$env:APPDATA\budget\development.toml" migrate
 
 `migrate` creates or upgrades the profile's Bronze store; in a development
 profile it also creates or upgrades the Silver store, and `--stage bronze` or
-`--stage silver` names one of them. `--stage gold` is refused until that store
-exists. A writing command holds the operating system's lock on `budget.lock`
+`--stage silver` names one of them. Every stage goes through the same runner,
+so each one refuses the same way: a store recorded for another profile or
+another stage, or at a schema version this code does not know, is left as it
+is and refused with exit 4. `--stage gold` is refused with exit 4 until that
+store exists. A run that succeeds prints nothing:
+
+```powershell
+$env:BUDGET_PROFILE = "$env:APPDATA\budget\development.toml"
+budget migrate --stage bronze; $LASTEXITCODE   # 0: bronze.db created or upgraded
+budget migrate --stage silver; $LASTEXITCODE   # 0: silver.db created or upgraded
+budget migrate; $LASTEXITCODE                  # 0: both, already current
+budget migrate --stage gold; $LASTEXITCODE     # 4
+# budget: the gold stage is not built yet: only bronze and silver can be migrated
+```
+
+Had `bronze.db` been replaced by a copy of `silver.db`, `migrate` would refuse
+it rather than adopt it:
+
+```text
+budget: C:\Users\<you>\AppData\Local\budget\dev\bronze.db cannot be opened: it belongs to profile 'development' stage 'silver'
+```
+
+A writing command holds the operating system's lock on `budget.lock`
 in the stores folder for its whole run, so a second one refuses at once. On
 Windows the lock of a command that was killed or crashed is released a moment
 late, so an immediate rerun can report another command running; rerun it
