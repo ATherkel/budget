@@ -68,6 +68,7 @@ __all__ = [
     "from_minor_units",
     "migrate_silver",
     "open_silver_connection",
+    "silver_stage",
     "to_minor_units",
 ]
 
