@@ -7,11 +7,12 @@ migration that changed anything. Development and test profiles migrate
 without backups: only production writes backup sets.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from datetime import UTC, datetime
 from typing import Final
 
 from budget.backups import (
+    BackupSet,
     BackupVerificationError,
     BackupWriteError,
     back_up,
@@ -20,11 +21,12 @@ from budget.backups import (
     release_recovery_sets,
     require_supported_stores,
 )
-from budget.bronze import migrate_bronze
+from budget.bronze.storage import BRONZE_STAGE, bronze_stage
 from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.locking import WriterLock
-from budget.profiles import PRODUCTION_PROFILE_NAME
-from budget.sqlstore import StoreError
+from budget.profiles import PRODUCTION_PROFILE_NAME, Profile
+from budget.silver.storage import SILVER_STAGE, silver_stage
+from budget.sqlstore import StageStore, StoreError, migrate_store
 
 
 class RestoreInsteadError(RuntimeError):
@@ -54,11 +56,17 @@ class MigratedWithoutBackupError(RuntimeError):
     def __init__(self, reason: Exception) -> None:
         """Say what happened, what did not, and what to run."""
         super().__init__(
-            "the Bronze store was migrated, but no backup set of it could be "
+            "the stores were migrated, but no backup set of them could be "
             f"written after: {reason}. Put that right, then run `budget backup`"
         )
 
 
+# Each stage `migrate` creates or upgrades, in the order it does so.
+_STAGE_STORES: Final[dict[str, Callable[[Profile], StageStore]]] = {
+    BRONZE_STAGE: bronze_stage,
+    SILVER_STAGE: silver_stage,
+}
+MIGRATED_STAGES: Final = tuple(_STAGE_STORES)
 # Every way a backup set can fail to be written once the store is migrated.
 _BACKUP_FAILURES: Final = (
     BackupWriteError,
@@ -77,17 +85,24 @@ def _utc_now() -> datetime:
 def migrate_profile(
     lock: WriterLock,
     *,
+    stages: Collection[str] = MIGRATED_STAGES,
     new_store: bool = False,
     clock: Callable[[], datetime] = _utc_now,
 ) -> None:
-    """Create or upgrade the locked profile's stores: Bronze, for now.
+    """Create or upgrade the locked profile's stores for `stages`.
 
-    `new_store` asks for a new production store where none exists. `clock`
-    names each backup set.
+    Bronze is migrated before Silver. `new_store` asks for a new production
+    store where none exists. `clock` names each backup set.
     """
     profile = lock.profile
+    stores = [
+        stage_store(profile)
+        for stage, stage_store in _STAGE_STORES.items()
+        if stage in stages
+    ]
     if profile.name != PRODUCTION_PROFILE_NAME:
-        migrate_bronze(profile)
+        for store in stores:
+            migrate_store(store)
         return
     require_supported_stores(profile)
     if (
@@ -97,12 +112,23 @@ def migrate_profile(
     ):
         raise RestoreInsteadError
 
+    taken: list[BackupSet] = []
+
     def back_up_first() -> None:
+        # One set, taken before the first store changes, covers every store.
         # Held until a migration succeeds, so retention keeps the set a
         # failed or interrupted one needs.
-        hold_for_recovery(lock, back_up(lock, now=clock()))
+        if not taken:
+            taken.append(back_up(lock, now=clock()))
+            hold_for_recovery(lock, taken[0])
 
-    if not migrate_bronze(profile, new_store=new_store, before_migrating=back_up_first):
+    changed = False
+    for store in stores:
+        migrated = migrate_store(
+            store, new_store=new_store, before_migrating=back_up_first
+        )
+        changed = changed or migrated
+    if not changed:
         return
     try:
         back_up(lock, now=clock())
