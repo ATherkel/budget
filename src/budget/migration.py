@@ -164,7 +164,7 @@ def _require_nothing_to_restore(profile: Profile, stores: list[StageStore]) -> N
     """
     sets = complete_backup_sets(profile)
     for store in stores:
-        if not store.path.exists() and any(
+        if not is_started(store) and any(
             holds_store(backup, store.stage) for backup in sets
         ):
             raise RestoreInsteadError(store.label)
