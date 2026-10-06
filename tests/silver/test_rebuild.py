@@ -7,7 +7,7 @@ the `SilverResult` the caller gets back.
 """
 
 import unittest
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import date
 from decimal import Decimal
 from tempfile import TemporaryDirectory
@@ -69,6 +69,17 @@ def _pure_build(inputs: SilverBuildInputs) -> SilverResult:
         currencies=inputs.currencies,
         decisions=inputs.decisions,
     )
+
+
+def _rebuild_with_profile_keyword(
+    call: Callable[..., SilverResult], profile: Profile, inputs: SilverBuildInputs
+) -> SilverResult:
+    """Call a rebuild the way public callers wrote it before `target`.
+
+    The parameter is a plain callable, so the keyword call belongs to the
+    callback contract and not to the current function's own signature.
+    """
+    return call(profile=profile, inputs=inputs)
 
 
 def _stored_dates(profile: Profile) -> list[date]:
@@ -167,6 +178,27 @@ class SilverRebuildTests(unittest.TestCase):
                 (run.import_run_id, run.status) for run in stored.import_run_results
             ] == [("run-a", "accepted")]
             assert stored.review_items == ()
+
+    def test_the_profile_keyword_still_names_the_rebuild_target(self) -> None:
+        # Before the target argument was renamed, callers wrote
+        # `rebuild_silver(profile=..., inputs=...)`; that public call must keep
+        # working. The helper's callable parameter exercises the keyword at
+        # runtime without asking the type checker about the current signature.
+        inputs = _inputs(FIRST)
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+
+            _rebuild_with_profile_keyword(rebuild_silver, profile, inputs)
+
+            with SilverStore(profile) as store:
+                stored = store.read()
+            assert [(t.account_id, t.description) for t in stored.transactions] == [
+                ("joint-current", "NETTO")
+            ]
+            assert [
+                (run.import_run_id, run.status) for run in stored.import_run_results
+            ] == [("run-a", "accepted")]
 
 
 if __name__ == "__main__":
