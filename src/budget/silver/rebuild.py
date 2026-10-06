@@ -34,7 +34,6 @@ def rebuild_silver(
     target: Profile | WriterLock,
     *,
     inputs: SilverBuildInputs,
-    lock: WriterLock | None = None,
 ) -> SilverResult:
     """Rebuild one profile's Silver store from Bronze inputs and return it.
 
@@ -43,17 +42,12 @@ def rebuild_silver(
     one transaction against `silver.db`. `target` is the one authority for the
     profile the result belongs to: a `Profile` takes and releases the writer
     lock itself, and a `WriterLock` is a command's own lock, held for its whole
-    run, which the rebuild then reuses. The `lock` keyword keeps the earlier
-    call shape working while its callers move to the target argument.
+    run, which the rebuild reuses without acquiring it a second time.
     """
     if isinstance(target, WriterLock):
-        message = "a positional writer lock is not wired into the rebuild yet"
-        raise NotImplementedError(message)
-    profile = target
-    if lock is None:
-        with writer_lock(profile) as held:
-            return _replace(held.profile, inputs)
-    return _replace(lock.profile, inputs)
+        return _replace(target.profile, inputs)
+    with writer_lock(target) as held:
+        return _replace(held.profile, inputs)
 
 
 def _replace(profile: Profile, inputs: SilverBuildInputs) -> SilverResult:

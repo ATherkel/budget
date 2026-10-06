@@ -52,4 +52,4 @@ def rebuild_from_silver(lock: WriterLock) -> SilverResult:
     """
     profile = lock.profile
     inputs = bronze_inputs(profile)
-    return rebuild_silver(profile, inputs=inputs, lock=lock)
+    return rebuild_silver(lock, inputs=inputs)
