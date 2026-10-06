@@ -27,6 +27,9 @@ from budget.locking import WriterLock
 from budget.profiles import PRODUCTION_PROFILE_NAME, Profile
 from budget.silver.storage import SILVER_STAGE, silver_stage
 from budget.sqlstore import StageStore, StoreError, migrate_store
+from budget.sqlstore import (
+    require_migration_allowed as require_store_migration_allowed,
+)
 
 
 class RestoreInsteadError(RuntimeError):
@@ -82,6 +85,34 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def _stage_stores(profile: Profile, stages: Collection[str]) -> list[StageStore]:
+    """Name the profile's store for each of `stages`, Bronze before Silver."""
+    return [
+        stage_store(profile)
+        for stage, stage_store in _STAGE_STORES.items()
+        if stage in stages
+    ]
+
+
+def require_migration_allowed(
+    profile: Profile,
+    *,
+    stages: Collection[str] = MIGRATED_STAGES,
+    new_store: bool = False,
+) -> None:
+    """Refuse a migration of `stages` this interpreter or profile cannot run.
+
+    These checks touch no folder or file, so a command can run them before it
+    takes the profile's writer lock. A production profile without one of the
+    stores is refused unless a new store is asked for: a missing store may be
+    a lost one, which a backup set must restore instead. Every stage is
+    checked before any is migrated, so one stage's refusal never follows
+    another stage's change.
+    """
+    for store in _stage_stores(profile, stages):
+        require_store_migration_allowed(store, new_store=new_store)
+
+
 def migrate_profile(
     lock: WriterLock,
     *,
@@ -95,11 +126,7 @@ def migrate_profile(
     store where none exists. `clock` names each backup set.
     """
     profile = lock.profile
-    stores = [
-        stage_store(profile)
-        for stage, stage_store in _STAGE_STORES.items()
-        if stage in stages
-    ]
+    stores = _stage_stores(profile, stages)
     if profile.name != PRODUCTION_PROFILE_NAME:
         for store in stores:
             migrate_store(store)
