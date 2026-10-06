@@ -498,7 +498,7 @@ dashboard stays read-only: it has no route that reaches the boundary.
 
 | Command | Does | Writes | Publishes |
 | --- | --- | --- | --- |
-| `migrate [--stage <stage>] [--new-store]` | Creates or upgrades stores. In production, takes a backup set before changing an existing store and another after; a missing production store is started only with `--new-store`, and only when no complete backup set could restore it. A Gold migration converts retained results, extracts and records legacy publications, then runs a pipeline build (ADR-014). | Store schemas, legacy extracts, backup sets | After a Gold migration |
+| `migrate [--stage <stage>] [--new-store]` | Creates or upgrades stores. In production, takes a backup set before changing an existing store and another after; a missing production store is started only with `--new-store`, and only when no complete backup set holds one that could restore it. A Gold migration converts retained results, extracts and records legacy publications, then runs a pipeline build (ADR-014). | Store schemas, legacy extracts, backup sets | After a Gold migration |
 | `check` | Validates every input file and the decision-log prefix. Never builds. | Nothing | No |
 | `import` | Imports each file in the inbox on its own, then rebuilds and publishes what was stored. A refused file stays in the inbox. | Bronze, the import log, Silver, Gold | Yes, if the build succeeds |
 | `rebuild [--from bronze\|silver\|gold]` | Rebuilds from a stage; `gold` by default. | Stages from `--from` on | Yes, if the recipe changed |
@@ -689,9 +689,9 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | A decision-log line cut off by a crash | `check` reports it; `decide` refuses | Delete the partial last line |
 | Crash while writing a backup set | The set stays in `backup-staging\` or as a `.partial` folder, is never used, and is deleted by the next backup | Nothing to do |
 | The backup before a migration cannot be written or verified | The migration does not begin; the schema and its version are unchanged; exit 4, or 5 when a copy or the import log does not verify | Fix what the message names, then rerun `migrate` |
-| A migration fails | No step of it is committed; the store keeps its version; the set taken first stays held for recovery until a migration succeeds | Fix the defect; the held set restores the store if needed |
+| A migration fails | No step of it is committed and the store keeps its version, though a stage migrated before it (Bronze, before Silver) keeps its new one; the set taken first stays held for recovery until a migration succeeds | Fix the defect; the held set restores the stores if needed |
 | The backup after a migration fails | The store is migrated; the set taken first stays held; exit 4, saying so | Fix what the message names, then run `budget backup` |
-| `migrate` finds no production store | Nothing is created; exit 4 | Restore the newest backup set, or, for a first store, rerun with `--new-store` |
+| `migrate` finds no production store for a stage | Nothing is created or changed, in any stage; exit 4 | Restore the newest backup set that holds it, or, for a first store, rerun with `--new-store`, adding `--stage` for that stage alone when the other stage's store exists |
 | OneDrive offline | Complete backup sets wait in the local OneDrive folder | Nothing to do |
 
 A genuine repeat export has a new export date in its filename, so it is
@@ -704,10 +704,13 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   holds a snapshot of every store taken through SQLite's backup API, a copy of
   every file in the inputs folder under `inputs\`, and `manifest.json`. The
   export archive is not copied, because Bronze holds each payload's bytes.
-  Until Silver and Gold have stores, a set holds `bronze.db` only, and a
-  backup is refused while the stores folder holds any other store: `silver.db`,
-  `gold.db`, a `gold\` folder, or any other SQLite file. A Bronze-only set of
-  such a profile would claim to be a complete copy of it.
+  Until Gold has a store, a set holds `bronze.db` and, once the profile has
+  one, `silver.db`, and a backup is refused while the stores folder holds any
+  other store: `gold.db`, a `gold\` folder, or any other SQLite file. A set
+  without it would claim to be a complete copy of the profile. A set written
+  before sets covered Silver holds `bronze.db` alone, in the same manifest
+  format: it stays complete, retention treats it as any other set, and since
+  it holds no Silver store, it never stops `migrate --new-store` starting one.
 - **The manifest** records, in this order:
 
   ```json
@@ -716,10 +719,14 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
     "profile": "production",
     "created_at": "2026-05-02T18:05:11.120731+00:00",
     "code_version": {"package": "0.1.0", "source_sha256": "9f2c…"},
-    "stores": {"bronze": {"path": "bronze.db", "schema_version": 1}},
+    "stores": {
+      "bronze": {"path": "bronze.db", "schema_version": 1},
+      "silver": {"path": "silver.db", "schema_version": 1}
+    },
     "logs": {"imports.jsonl": 1730, "decisions.jsonl": 0},
     "files": {
       "bronze.db": {"sha256": "c0ffee…", "bytes": 81920},
+      "silver.db": {"sha256": "beefed…", "bytes": 90112},
       "inputs/accounts.toml": {"sha256": "5ca1ab…", "bytes": 412},
       "inputs/imports.jsonl": {"sha256": "0ddba1…", "bytes": 1730}
     }
@@ -741,8 +748,9 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   logs and completes, so they are backed up as they are.
 - **When:** in production, before a `migrate` that changes an existing
   store, and after every `migrate` that changed anything, a new store
-  included; and by `budget backup`. A migration that changes nothing writes
-  no set. Only production writes backup sets. Nothing imports into production
+  included; and by `budget backup`. A `migrate` that changes both Bronze and
+  Silver takes one set before the first change and one after the last. A
+  migration that changes nothing writes no set. Only production writes backup sets. Nothing imports into production
   until the `import` command backs up after its Bronze writes: until then,
   `BronzeStore.import_file` and `import_inbox_file` refuse the production
   profile.
@@ -772,8 +780,10 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   recovery. A `migrate` holds the set it takes first in `recovery-sets.json`
   beside the stores, and releases it once a migration succeeds and its own
   set is written. A failed or interrupted migration therefore keeps its set
-  however small the keys are, until a migration succeeds. While that file
-  cannot be read, nothing is pruned.
+  however small the keys are, until a migration succeeds. A later backup
+  also releases a held set once any store it records is at an older schema
+  version than the new set's, since the migration it was taken for has
+  committed. While that file cannot be read, nothing is pruned.
 - **Where:** OneDrive, which is safe for them: a backup set is closed files,
   unlike a live database with its WAL files (ADR-013).
 - **`restore`** writes only into a profile with no stores. It takes the newest
