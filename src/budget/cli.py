@@ -9,12 +9,14 @@ passes the environment in, so a test never inherits the operator's shell.
 import argparse
 import os
 import sys
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
 from typing import Final, NoReturn
 
-from budget import sqlstore, summaries
+from budget import routine_logging, sqlstore, summaries
 from budget.backups import (
     BackupVerificationError,
     BackupWriteError,
@@ -44,7 +46,7 @@ from budget.profiles import (
     ProfileFileError,
     load_profile_file,
 )
-from budget.rebuilding import rebuild_from_silver
+from budget.rebuilding import SilverRebuild, rebuild_from_silver
 from budget.reviewing import REVIEW_KINDS, open_reviews
 from budget.silver.storage import SILVER_STAGE
 
@@ -178,14 +180,23 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
 
     The whole command holds the profile's writer lock, so the inputs it reads
     from the stages before `from_stage` cannot change between the read and the
-    replacement it writes.
+    replacement it writes, and the summary and completion log belong to that
+    same lock.
     """
     if from_stage != SILVER_STAGE:
         raise RebuildFromStageNotBuiltError(from_stage)
+    started = perf_counter()
     with writer_lock(profile) as lock:
         require_committed_code(lock.profile)
         rebuilt = rebuild_from_silver(lock)
-    sys.stdout.write(summaries.rebuild_summary(rebuilt))
+        summary = summaries.rebuild_summary(rebuilt)
+        routine_logging.finished(
+            profile,
+            "rebuild",
+            counts=_rebuild_counts(rebuilt),
+            duration_ms=_milliseconds(started),
+        )
+        sys.stdout.write(summary)
 
 
 def _review(profile: Profile, kind: str | None, account: str | None) -> None:
@@ -194,8 +205,35 @@ def _review(profile: Profile, kind: str | None, account: str | None) -> None:
     Review only reads the persisted Silver result, so it neither locks nor
     needs a Bronze store or `accounts.toml`.
     """
+    started = perf_counter()
     items = open_reviews(profile, kind=kind, account=account)
-    sys.stdout.write(summaries.review_summary(items))
+    summary = summaries.review_summary(items)
+    routine_logging.finished(
+        profile,
+        "review",
+        counts={"items": len(items)},
+        duration_ms=_milliseconds(started),
+        kinds=tuple(sorted({entry.item.kind for entry in items})),
+    )
+    sys.stdout.write(summary)
+
+
+def _rebuild_counts(rebuilt: SilverRebuild) -> dict[str, int]:
+    """Return the rebuild counts a routine log records, and nothing else."""
+    outcomes = Counter(run.outcome for run in rebuilt.runs)
+    return {
+        "stored": outcomes["stored"],
+        "repeat": outcomes["repeat"],
+        "refused": outcomes["refused"],
+        "review_open": sum(
+            1 for item in rebuilt.result.review_items if item.resolved_by is None
+        ),
+    }
+
+
+def _milliseconds(started: float) -> int:
+    """Whole milliseconds since `started`, as a log records a duration."""
+    return int((perf_counter() - started) * 1000)
 
 
 def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> None:
