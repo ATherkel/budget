@@ -3,8 +3,8 @@
 
 The build itself is the pure `budget.silver.build`, whose signature does not
 change. A rebuild names its inputs once, in `SilverBuildInputs`, so the
-persisted rebuild takes a profile and that one value rather than a long list
-of positional arguments.
+persisted rebuild takes its one profile authority and that one value rather
+than a long list of positional arguments.
 """
 
 from collections.abc import Mapping, Sequence
@@ -31,7 +31,7 @@ class SilverBuildInputs:
 
 
 def rebuild_silver(
-    target: Profile | WriterLock,
+    profile: Profile | WriterLock,
     *,
     inputs: SilverBuildInputs,
 ) -> SilverResult:
@@ -39,14 +39,15 @@ def rebuild_silver(
 
     The build is the existing pure `budget.silver.build`; this function only
     replaces the stored result with what the build produced, so a rebuild is
-    one transaction against `silver.db`. `target` is the one authority for the
-    profile the result belongs to: a `Profile` takes and releases the writer
-    lock itself, and a `WriterLock` is a command's own lock, held for its whole
-    run, which the rebuild reuses without acquiring it a second time.
+    one transaction against `silver.db`. `profile` is the one authority for the
+    profile the result belongs to, named either way: a `Profile` takes and
+    releases the writer lock itself, and a `WriterLock` is a command's own
+    lock, held for its whole run, which the rebuild reuses without acquiring it
+    a second time.
     """
-    if isinstance(target, WriterLock):
-        return _replace(target.profile, inputs)
-    with writer_lock(target) as held:
+    if isinstance(profile, WriterLock):
+        return _replace(profile.profile, inputs)
+    with writer_lock(profile) as held:
         return _replace(held.profile, inputs)
 
 
