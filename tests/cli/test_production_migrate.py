@@ -114,6 +114,32 @@ class NewProductionStoreTests(unittest.TestCase):
             assert not production.bronze_store.exists()
 
 
+class SilverBesideBronzeTests(unittest.TestCase):
+    """A production profile whose stores and sets predate Silver's backups."""
+
+    def test_silver_is_started_beside_an_existing_bronze_store_when_asked(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            started = migrate(profile_file, "--stage", "bronze", "--new-store")
+            assert started[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            (bronze_only,) = complete_backup_sets(production)
+
+            status, stderr = migrate(profile_file, "--stage", "silver", "--new-store")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            with SilverStore(production):
+                pass
+            newest, older = complete_backup_sets(production)
+            assert older == bronze_only
+            assert manifest(newest.path)["stores"] == {
+                "bronze": {"path": "bronze.db", "schema_version": 1},
+                "silver": {"path": "silver.db", "schema_version": 1},
+            }
+
+
 class OlderProductionStoreTests(unittest.TestCase):
     def test_an_older_store_is_backed_up_before_and_after_it_is_migrated(
         self,
