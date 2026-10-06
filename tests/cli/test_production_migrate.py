@@ -21,6 +21,7 @@ from budget.bronze.storage import ForeignKeyViolationError
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
 from budget.silver import SilverStore
+from budget.silver import storage as silver_storage
 from tests.backups.sets import manifest, run_ids, tables, user_version
 from tests.bronze.migration_resources import added_migration
 from tests.cli.commands import migrate
@@ -36,16 +37,20 @@ _ORPHAN_SOURCE_RECORD = (
     "INSERT INTO source_records (payload_id, record_ordinal, fields)"
     " VALUES ('missing-payload', 1, '{}');\n"
 )
+# Where the installed package keeps the Silver migrations.
+SILVER_MIGRATIONS = (
+    Path(silver_storage.__file__).resolve().parent.parent / "migrations" / "silver"
+)
 KEEP_ONLY_THE_NEWEST = (
     "\n[backups]\nkeep_all_days = 0\nkeep_daily_days = 0\nkeep_monthly = 0\n"
 )
 
 
-def _schema_version(set_folder: Path) -> object:
-    """The Bronze schema version a set's manifest records."""
+def _schema_version(set_folder: Path, stage: str = "bronze") -> object:
+    """The schema version a set's manifest records for one stage's store."""
     stores = manifest(set_folder)["stores"]
     assert isinstance(stores, dict)
-    return stores["bronze"]["schema_version"]
+    return stores[stage]["schema_version"]
 
 
 class NewProductionStoreTests(unittest.TestCase):
@@ -129,6 +134,27 @@ class OlderProductionStoreTests(unittest.TestCase):
             assert "marker" in tables(after.path / "bronze.db")
             assert _schema_version(before.path) == 1
             assert _schema_version(after.path) == 2
+
+    def test_an_older_silver_store_is_backed_up_before_and_after_it_is_migrated(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+
+            with added_migration(ADDED_TABLE, folder=SILVER_MIGRATIONS):
+                assert migrate(profile_file) == (EXIT_OK, "")
+                after, before, _ = complete_backup_sets(production)
+
+            assert user_version(production.silver_store) == 2
+            assert user_version(before.path / "silver.db") == 1
+            assert "marker" not in tables(before.path / "silver.db")
+            assert user_version(after.path / "silver.db") == 2
+            assert "marker" in tables(after.path / "silver.db")
+            assert _schema_version(before.path, "silver") == 1
+            assert _schema_version(after.path, "silver") == 2
+            assert _schema_version(after.path) == 1
 
 
 class FailedBackupTests(unittest.TestCase):
