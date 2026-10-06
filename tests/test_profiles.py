@@ -6,6 +6,7 @@ import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -22,6 +23,9 @@ from budget.profiles import (
 from budget.profiles import (
     test_profile as make_test_profile,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class ProfileTests(unittest.TestCase):
@@ -133,22 +137,31 @@ class ProfileTests(unittest.TestCase):
                 exports=Path(directory) / "exports",
             )
 
-    def test_a_bronze_store_replaced_by_a_symlink_is_refused(self) -> None:
-        with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
-            root = Path(directory)
-            profile = make_test_profile(root)
-            profile.stores.mkdir(parents=True)
-            outside_file = Path(outside) / "bronze.db"
-            outside_file.write_bytes(b"not ours")
-            try:
-                profile.bronze_store.symlink_to(outside_file)
-            except OSError as error:  # Windows may refuse without a privilege
-                self.skipTest(f"symlinks are unavailable here: {error}")
+    def test_a_stage_store_replaced_by_a_symlink_is_refused(self) -> None:
+        stores: dict[str, Callable[[Profile], Path]] = {
+            "bronze": lambda profile: profile.bronze_store,
+            "silver": lambda profile: profile.silver_store,
+        }
+        for stage, store in stores.items():
+            with (
+                self.subTest(stage=stage),
+                TemporaryDirectory() as directory,
+                TemporaryDirectory() as outside,
+            ):
+                root = Path(directory)
+                profile = make_test_profile(root)
+                profile.stores.mkdir(parents=True)
+                outside_file = Path(outside) / f"{stage}.db"
+                outside_file.write_bytes(b"not ours")
+                try:
+                    store(profile).symlink_to(outside_file)
+                except OSError as error:  # Windows may refuse without a privilege
+                    self.skipTest(f"symlinks are unavailable here: {error}")
 
-            with pytest.raises(ProfilePathOutsideRootError):
-                _ = profile.bronze_store
+                with pytest.raises(ProfilePathOutsideRootError):
+                    store(profile)
 
-            assert outside_file.read_bytes() == b"not ours"
+                assert outside_file.read_bytes() == b"not ours"
 
     def test_a_stores_folder_replaced_by_a_symlink_is_refused(self) -> None:
         with TemporaryDirectory() as directory, TemporaryDirectory() as outside:

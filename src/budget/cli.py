@@ -22,19 +22,7 @@ from budget.backups import (
     back_up,
 )
 from budget.bronze import require_migration_allowed
-from budget.bronze.storage import (
-    BRONZE_STAGE,
-    MigrationRequiredError,
-    NewStoreRefusedError,
-    NewStoreRequiredError,
-    ProductionMigrationBlockedError,
-    StoreBusyError,
-    StoreIdentityError,
-    StoreNotFoundError,
-    UnsupportedSQLiteVersionError,
-    UnsupportedStoreVersionError,
-    UnversionedStoreError,
-)
+from budget.bronze.storage import BRONZE_STAGE, bronze_stage
 from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.locking import (
     StoresFolderUnavailableError,
@@ -63,25 +51,14 @@ EXIT_USAGE: Final = 2
 EXIT_REFUSED_INPUT: Final = 3
 EXIT_REFUSED_ENVIRONMENT: Final = 4
 EXIT_VERIFICATION_FAILED: Final = 5
-# The Bronze errors operations.md lists as a refused environment. Any other
-# Bronze error, such as a broken packaged migration, is a defect: exit 1.
-_BRONZE_ENVIRONMENT_REFUSALS: Final = (
-    UnsupportedSQLiteVersionError,
-    ProductionMigrationBlockedError,
-    NewStoreRequiredError,
-    NewStoreRefusedError,
-    StoreNotFoundError,
-    StoreBusyError,
-    UnversionedStoreError,
-    StoreIdentityError,
-    MigrationRequiredError,
-    UnsupportedStoreVersionError,
-)
-# The Silver errors operations.md lists as a refused environment. Any other
-# Silver error, such as a broken packaged migration, is a defect: exit 1.
-_SILVER_ENVIRONMENT_REFUSALS: Final = (
+# The store errors operations.md lists as a refused environment, for every
+# stage. Any other store error, such as a broken packaged migration, is a
+# defect: exit 1.
+_STORE_ENVIRONMENT_REFUSALS: Final = (
     sqlstore.UnsupportedSQLiteVersionError,
     sqlstore.ProductionMigrationBlockedError,
+    sqlstore.NewStoreRequiredError,
+    sqlstore.NewStoreRefusedError,
     sqlstore.StoreNotFoundError,
     sqlstore.StoreBusyError,
     sqlstore.UnversionedStoreError,
@@ -179,8 +156,9 @@ def _backup(profile: Profile) -> None:
     # Refusals that touch nothing come first; the lock guards the set.
     if profile.backups is None:
         raise NoBackupsFolderError(profile.name)
-    if not profile.bronze_store.exists():
-        raise StoreNotFoundError(profile.bronze_store)
+    bronze = bronze_stage(profile)
+    if not bronze.path.exists():
+        raise sqlstore.StoreNotFoundError(bronze.label, bronze.path)
     with writer_lock(profile) as lock:
         written = back_up(lock, now=datetime.now(UTC))
     sys.stdout.write(f"backup set {written.name} written\n")
@@ -229,8 +207,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         BackupWriteError,
         UnsupportedStoresError,
         NoBackupsFolderError,
-        *_BRONZE_ENVIRONMENT_REFUSALS,
-        *_SILVER_ENVIRONMENT_REFUSALS,
+        *_STORE_ENVIRONMENT_REFUSALS,
     ) as error:
         return _refuse(error, EXIT_REFUSED_ENVIRONMENT)
     except (

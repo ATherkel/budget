@@ -23,6 +23,7 @@ from budget.bronze.storage import (
 from budget.cli import main
 from budget.profiles import test_profile as make_test_profile
 from budget.silver import SilverStore, migrate_silver
+from budget.silver import storage as silver_storage
 from tests.bronze.migration_resources import added_migration, patched_resources
 from tests.cli.commands import migrate
 from tests.cli.profile_files import development_profile, write_profile
@@ -33,6 +34,11 @@ EXIT_REFUSED_ENVIRONMENT = 4
 _ORPHAN_SOURCE_RECORD = (
     "INSERT INTO source_records (payload_id, record_ordinal, fields)"
     " VALUES ('missing-payload', 1, '{}');\n"
+)
+_INVALID_STATEMENT = "INSERT INTO nowhere (x) VALUES (this is not valid sql);\n"
+# Where the installed package keeps the Silver migrations.
+_SILVER_MIGRATIONS = (
+    Path(silver_storage.__file__).resolve().parent.parent / "migrations" / "silver"
 )
 
 
@@ -138,6 +144,29 @@ class MigrateRefusalTests(unittest.TestCase):
             assert "'test'" in stderr
             with SilverStore(make_test_profile(folder)):
                 pass
+
+    def test_a_store_of_another_stage_is_refused(self) -> None:
+        # Each stage's file is replaced by a store the other stage migrated.
+        for stage, other in (("bronze", "silver"), ("silver", "bronze")):
+            with self.subTest(stage=stage), TemporaryDirectory() as directory:
+                folder = Path(directory)
+                profile_file = write_profile(folder)
+                development = development_profile(folder)
+                paths = {
+                    "bronze": development.bronze_store,
+                    "silver": development.silver_store,
+                }
+                assert migrate(profile_file, "--stage", other)[0] == EXIT_OK
+                paths[other].rename(paths[stage])
+
+                status, stderr = migrate(profile_file, "--stage", stage)
+
+                assert status == EXIT_REFUSED_ENVIRONMENT
+                assert f"stage {other!r}" in stderr
+                with closing(sqlite3.connect(paths[stage])) as connection:
+                    assert connection.execute(
+                        "SELECT stage FROM store_identity"
+                    ).fetchall() == [(other,)]
 
     def test_production_silver_is_refused_before_anything_is_created(self) -> None:
         with TemporaryDirectory() as directory:
@@ -246,6 +275,26 @@ class MigrateDefectTests(unittest.TestCase):
                 migrate(write_profile(folder))
 
             store = development_profile(folder).bronze_store
+            assert _user_version(store) == 0
+            with closing(sqlite3.connect(store)) as connection:
+                assert (
+                    connection.execute("SELECT * FROM sqlite_master").fetchall() == []
+                )
+
+    def test_a_failed_silver_migration_commits_none_of_the_steps_before_it(
+        self,
+    ) -> None:
+        # The first step would make a store, the added second one fails it.
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+
+            with (
+                added_migration(_INVALID_STATEMENT, folder=_SILVER_MIGRATIONS),
+                pytest.raises(sqlite3.OperationalError, match='near "sql"'),
+            ):
+                migrate(write_profile(folder), "--stage", "silver")
+
+            store = development_profile(folder).silver_store
             assert _user_version(store) == 0
             with closing(sqlite3.connect(store)) as connection:
                 assert (

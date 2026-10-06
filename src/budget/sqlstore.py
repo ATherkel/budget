@@ -3,18 +3,24 @@
 
 Every stage store follows ADR-013 and ADR-015: numbered plain SQL files that
 ship beside this runner inside the installed package, applied in order, each
-file and its `PRAGMA user_version` bump in one transaction, and a one-row
+file and its `PRAGMA user_version` bump inside one transaction, and a one-row
 `store_identity` table naming the profile and the stage that own the file.
+This runner puts every pending file in the same transaction, so a failed
+migration leaves the store at the version it had.
 Only an explicit `migrate` creates or changes a store. Opening a store never
 does: it refuses a file that is missing, belongs to another profile or stage,
-or is at a schema version this code does not know.
+or is at a schema version this code does not know. A production store is
+migrated only behind a backup set, and started only when a new one is asked
+for (operations.md, *Profiles*).
 
 Each stage names itself and its own migration folder in a `StageStore`, so the
 runner, the refusals and the connection settings stay in one place while the
-files, the recorded stage and the messages stay stage-specific.
+files, the recorded stage and the messages stay stage-specific. Bronze and
+Silver each describe their store this way; Gold's first migration adds its own.
 """
 
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -40,13 +46,39 @@ class UnsupportedSQLiteVersionError(StoreError):
 
 
 class ProductionMigrationBlockedError(StoreError):
-    """Production's backup sets cover no Silver store, so none is migrated."""
+    """Production is migrated only by `budget migrate`, which backs up first."""
 
-    def __init__(self) -> None:
-        """Name what production's backup sets hold, and what is refused."""
+    def __init__(self, label: str) -> None:
+        """State the one way a production store is migrated, naming no path."""
         super().__init__(
-            "the production profile's backup sets hold the Bronze store alone, "
-            "so the production profile migrates no Silver store"
+            f"the production profile's {label} store is migrated only by "
+            "`budget migrate`, which writes a backup set first"
+        )
+
+
+class NewStoreRequiredError(StoreError):
+    """Production has no store for the stage, and a new one was not asked for.
+
+    A missing production store may be a lost one, which a backup set must
+    restore; starting an empty store in its place is a deliberate act.
+    """
+
+    def __init__(self, label: str) -> None:
+        """Say how to start one, and when not to."""
+        super().__init__(
+            f"the production profile has no {label} store: start one with "
+            "`budget migrate --new-store`, unless production had one, which must "
+            "be restored from a backup set instead"
+        )
+
+
+class NewStoreRefusedError(StoreError):
+    """A new production store was asked for where one already exists."""
+
+    def __init__(self, label: str, path: Path) -> None:
+        """Name the store that already exists."""
+        super().__init__(
+            f"{path} is already a {label} store: migrate it without --new-store"
         )
 
 
@@ -212,9 +244,12 @@ def _has_objects(connection: sqlite3.Connection) -> bool:
 def _require_identity(
     connection: sqlite3.Connection,
     store: StageStore,
+    path: Path,
 ) -> None:
-    """Refuse a store that belongs to another profile or stage."""
-    path = store.path
+    """Refuse a store that belongs to another profile or stage.
+
+    `path` names the file in a refusal: the store's own, or a snapshot's.
+    """
     try:
         rows = connection.execute(
             "SELECT profile, stage FROM store_identity"
@@ -295,43 +330,113 @@ def _apply_step(
     store: StageStore,
     step: _MigrationStep,
 ) -> None:
-    """Apply one migration and its version bump in one transaction."""
+    """Apply one migration and its version bump in the open transaction."""
+    for statement in _statements(step.sql, store.label):
+        connection.execute(statement)
+    if step.version == 1:
+        connection.execute(
+            "INSERT INTO store_identity (singleton, profile, stage) VALUES (1, ?, ?)",
+            (store.profile.name, store.stage),
+        )
+    _require_no_foreign_key_violations(connection, step.version)
+    connection.execute(f"PRAGMA user_version = {step.version}")
+
+
+def _apply_steps(
+    connection: sqlite3.Connection,
+    store: StageStore,
+    steps: list[_MigrationStep],
+) -> None:
+    """Apply every pending step in one transaction, with foreign keys off.
+
+    A step that fails rolls back the steps before it too, so the store stays
+    at the version it had: never at one between it and the code's.
+    """
+    # The pragma cannot change inside a transaction, and a table rebuild must
+    # be free to drop rows before the foreign-key check.
+    connection.execute("PRAGMA foreign_keys = OFF")
     try:
         connection.execute("BEGIN IMMEDIATE")
-        for statement in _statements(step.sql, store.label):
-            connection.execute(statement)
-        if step.version == 1:
-            connection.execute(
-                "INSERT INTO store_identity (singleton, profile, stage)"
-                " VALUES (1, ?, ?)",
-                (store.profile.name, store.stage),
-            )
-        _require_no_foreign_key_violations(connection, step.version)
-        connection.execute(f"PRAGMA user_version = {step.version}")
+        for step in steps:
+            _apply_step(connection, store, step)
         connection.commit()
     except BaseException:
         connection.rollback()
         raise
+    finally:
+        connection.execute("PRAGMA foreign_keys = ON")
 
 
-def require_migration_allowed(profile: Profile) -> None:
+def require_migration_allowed(store: StageStore, *, new_store: bool = False) -> None:
     """Refuse a migration this interpreter or profile cannot run.
 
     These checks touch no folder or file, so a command can run them before it
-    takes the profile's writer lock. Production is refused: its backup sets
-    hold the Bronze store alone, so a Silver store there is not migrated.
+    takes the profile's writer lock. A production profile without the store
+    is refused unless a new store is asked for: a missing store may be a lost
+    one, which a backup set must restore instead.
     """
     _require_supported_sqlite()
-    if profile.name == PRODUCTION_PROFILE_NAME:
-        raise ProductionMigrationBlockedError
+    if (
+        store.profile.name == PRODUCTION_PROFILE_NAME
+        and not new_store
+        and not store.path.exists()
+    ):
+        raise NewStoreRequiredError(store.label)
 
 
-def migrate_store(store: StageStore) -> None:
+def _require_migratable(
+    connection: sqlite3.Connection,
+    store: StageStore,
+    latest: int,
+) -> bool:
+    """Refuse a store no migration may touch; report whether it is new.
+
+    Nothing is written: an unsupported or unversioned store must stay exactly
+    as it was found. A new store is an empty file, or none.
+    """
+    version = _read_version(connection)
+    has_objects = _has_objects(connection)
+    if version < 0 or version > latest:
+        raise UnsupportedStoreVersionError(store.path, version, latest)
+    if version == 0 and has_objects:
+        raise UnversionedStoreError(store.path)
+    if version >= 1:
+        _require_identity(connection, store, store.path)
+    return version == 0
+
+
+def _require_production_store_choice(
+    store: StageStore, *, new: bool, new_store: bool
+) -> None:
+    """Start a production store only when asked, and only where none exists."""
+    if new and not new_store:
+        raise NewStoreRequiredError(store.label)
+    if new_store and not new:
+        raise NewStoreRefusedError(store.label, store.path)
+
+
+def migrate_store(
+    store: StageStore,
+    *,
+    new_store: bool = False,
+    before_migrating: Callable[[], object] | None = None,
+) -> bool:
     """Create or upgrade one stage store, refusing anything it cannot vouch for.
 
-    The production profile is refused before any folder or file is touched.
+    Returns whether a migration was applied. `before_migrating` runs once the
+    store is found to need one and before anything changes, unless the store
+    is new. Production is migrated only with it, which is how `budget migrate`
+    backs the store up first, and is refused before anything is touched
+    without it. A production store is started only with `new_store`, which is
+    refused where one exists; other profiles start a missing store freely.
+    Which stages production may migrate at all is the caller's to decide:
+    until backup sets cover Silver, `migrate_silver` passes no hook and the
+    command line refuses `--stage silver` in production.
     """
-    require_migration_allowed(store.profile)
+    production = store.profile.name == PRODUCTION_PROFILE_NAME
+    if production and before_migrating is None:
+        raise ProductionMigrationBlockedError(store.label)
+    require_migration_allowed(store, new_store=new_store)
 
     steps = _migration_steps(store)
     latest = steps[-1].version
@@ -341,30 +446,17 @@ def migrate_store(store: StageStore) -> None:
     try:
         connection.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
         connection.execute("PRAGMA synchronous = FULL")
-        version = _read_version(connection)
-        has_objects = _has_objects(connection)
-        # Validate the store before any persistent write: a journal-mode change
-        # is a write, and an unsupported or unversioned store must stay exactly
-        # as it was found.
-        if version < 0 or version > latest:
-            raise UnsupportedStoreVersionError(path, version, latest)
-        if version == 0 and has_objects:
-            raise UnversionedStoreError(path)
-        if version >= 1:
-            _require_identity(connection, store)
-        elif not has_objects:
+        new = _require_migratable(connection, store, latest)
+        if production:
+            _require_production_store_choice(store, new=new, new_store=new_store)
+        if new:
             connection.execute("PRAGMA journal_mode = WAL")
-
-        pending = [step for step in steps if step.version > version]
-        if pending:
-            # The pragma cannot change inside a transaction, and a table
-            # rebuild must be free to drop rows before the check below.
-            connection.execute("PRAGMA foreign_keys = OFF")
-            try:
-                for step in pending:
-                    _apply_step(connection, store, step)
-            finally:
-                connection.execute("PRAGMA foreign_keys = ON")
+        pending = [step for step in steps if step.version > _read_version(connection)]
+        if not pending:
+            return False
+        if before_migrating is not None and not new:
+            before_migrating()
+        _apply_steps(connection, store, pending)
     except sqlite3.OperationalError as error:
         # The primary code, so BUSY's extended variants count too; any other
         # operational error, such as a broken migration, stays a defect.
@@ -373,6 +465,7 @@ def migrate_store(store: StageStore) -> None:
         raise StoreBusyError(path) from None
     finally:
         connection.close()
+    return True
 
 
 def _require_current_version(connection: sqlite3.Connection, store: StageStore) -> None:
@@ -383,6 +476,63 @@ def _require_current_version(connection: sqlite3.Connection, store: StageStore) 
         raise MigrationRequiredError(store.path, version, latest)
     if version > latest:
         raise UnsupportedStoreVersionError(store.path, version, latest)
+
+
+def _require_known_version(
+    connection: sqlite3.Connection,
+    store: StageStore,
+    path: Path,
+) -> None:
+    """Refuse a store at no schema version, or one newer than this code.
+
+    `path` names the file in a refusal: the store's own, or a snapshot's.
+    """
+    version = _read_version(connection)
+    latest = _migration_steps(store)[-1].version
+    if not 1 <= version <= latest:
+        raise UnsupportedStoreVersionError(path, version, latest)
+
+
+def open_store_for_backup(store: StageStore) -> sqlite3.Connection:
+    """Open a profile's live stage store to copy it into a backup set.
+
+    Unlike `open_store_connection`, a store older than the code is opened:
+    production backs a store up before migrating it. The caller only reads.
+    """
+    _require_supported_sqlite()
+    path = store.path
+    if not path.exists():
+        raise StoreNotFoundError(store.label, path)
+    connection = _connect(path, mode="rw")
+    try:
+        _apply_connection_settings(connection)
+        _require_known_version(connection, store, path)
+        _require_identity(connection, store, path)
+    except BaseException:
+        connection.close()
+        raise
+    return connection
+
+
+def open_store_snapshot(store: StageStore, path: Path) -> sqlite3.Connection:
+    """Open a backup snapshot of a profile's stage store, read-only.
+
+    The snapshot is opened `immutable`, so reading it never writes a WAL or
+    shared-memory file beside it. It must be this profile's store for this
+    stage, at a schema version this code knows; a snapshot taken before a
+    migration may be older than the code.
+    """
+    _require_supported_sqlite()
+    uri = f"{path.as_uri()}?mode=ro&immutable=1"
+    connection = sqlite3.connect(uri, uri=True)
+    connection.row_factory = sqlite3.Row
+    try:
+        _require_known_version(connection, store, path)
+        _require_identity(connection, store, path)
+    except BaseException:
+        connection.close()
+        raise
+    return connection
 
 
 def open_store_connection(store: StageStore) -> sqlite3.Connection:
@@ -396,7 +546,7 @@ def open_store_connection(store: StageStore) -> sqlite3.Connection:
     try:
         _apply_connection_settings(connection)
         _require_current_version(connection, store)
-        _require_identity(connection, store)
+        _require_identity(connection, store, path)
     except BaseException:
         connection.close()
         raise
