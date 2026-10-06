@@ -116,6 +116,22 @@ class NewProductionStoreTests(unittest.TestCase):
                 pass
             assert len(complete_backup_sets(production)) == 1
 
+    def test_silver_is_refused_beside_a_bronze_store_left_empty(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder, name="production")
+            production = load_profile_file(profile_file)
+            production.stores.mkdir(parents=True)
+            with closing(sqlite3.connect(production.bronze_store)) as store:
+                store.execute("PRAGMA journal_mode = WAL")
+
+            status, stderr = migrate(profile_file, "--stage", "silver", "--new-store")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "budget migrate --stage bronze --new-store" in stderr
+            assert not production.silver_store.exists()
+            assert not (folder / "backups").exists()
+
     def test_new_stores_are_refused_before_any_starts_where_one_exists(
         self,
     ) -> None:
