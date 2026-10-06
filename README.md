@@ -157,13 +157,31 @@ pipeline command calls: it holds the profile's writer lock, runs the pure
 `budget.silver.build` over the inputs, replaces the stored result with what the
 build produced, and returns it. The inputs are one frozen value object
 (`runs`, `source_records`, `format_failures`, `currencies`, `decisions`) rather
-than a long argument list, and `build`'s own signature is unchanged.
+than a long argument list, and `build`'s own signature is unchanged. A command
+that already holds the profile's writer lock passes that `WriterLock` in place
+of the `Profile`, so one command keeps one lock instead of acquiring a second.
 
-The full pipeline rebuild CLI does not exist yet. `rebuild
-[--from bronze|silver|gold]`, the decision-log reader and Gold publishing are
-owned by [issue #176](https://github.com/ATherkel/budget/issues/176), which
-depends on this work. Until it lands there is deliberately no command that
-would silently skip those contracts, and no partial decision-log reader.
+`budget rebuild --from silver` is that command. It holds the profile's writer
+lock for its whole run — the guard, the Bronze read, the replacement, the
+summary and the routine log — so a competing command exits 4 at once. Only
+`silver` is built so far: `--from bronze` and `--from gold` refuse with exit 4,
+and Gold publishing, `dev refresh`, restore and the `import` command are later
+slices. A rebuild always reads the profile's own local stores, so production
+data reaches development only through a restored backup set, which is not built
+yet.
+
+When `inputs/decisions.jsonl` holds any decision, the rebuild refuses with exit
+3 and says so: the decision-log reader is a later slice, and a build must not
+silently ignore a household decision. A missing log, or one holding only a
+byte-order mark and whitespace, means no decisions and is allowed.
+
+`budget review [--kind <kind>] [--account <id>]` lists the open Silver review
+items and nothing else. Each line names the review item, its kind, its account,
+its date range, the import run and payload identifiers it came from, and, for a
+dropped transaction, the first eight characters of its `transaction_id` as the
+handle. A filter that matches nothing exits 0 and prints nothing. Review only
+reads the persisted Silver result: it takes no writer lock and needs neither a
+Bronze store nor `accounts.toml`.
 
 `migrate_bronze` refuses the production profile: production is migrated only
 by `budget migrate`, which backs the store up first (see below).
@@ -199,6 +217,45 @@ rerun after a crash finishes an earlier stored or repeat run of the same file
 instead of adding one, while a refused file is presented again;
 [operations.md](docs/architecture/operations.md#importsjsonl-the-import-log)
 gives the rules.
+
+## Silver walkthrough
+
+`examples/silver_walkthrough.py` runs the whole story on synthetic data in one
+temporary folder and prints what the commands said; nothing outside that folder
+is read or written. Run it with:
+
+```powershell
+uv run python examples/silver_walkthrough.py
+```
+
+Every identifier the commands print is real. The script replaces each run of 16
+or more lowercase hexadecimal characters with `<id>`, so this transcript is
+reproducible:
+
+```text
+budget migrate -> 0
+import_inbox_file joint-current -> stored
+budget rebuild --from silver -> 0
+  Bronze   1 import run: 1 stored, 0 repeat, 0 refused
+  Account  joint-current: 1 admitted, 0 quarantined, 0 refused, 0 repeat, 0 dropped
+  Run  <id>  joint-current  accepted
+budget review -> 0
+  (no open review items)
+import_inbox_file joint-current -> stored
+budget rebuild --from silver -> 0
+  Bronze   2 import runs: 2 stored, 0 repeat, 0 refused
+  Account  joint-current: 1 admitted, 1 quarantined, 0 refused, 0 repeat, 0 dropped
+  Run  <id>  joint-current  accepted
+  Run  <id>  joint-current  quarantined  balance-break, balance-chain-break
+budget review -> 0
+  <id>  balance-break  joint-current  2026-04-02..2026-04-02  run <id>  payload <id>
+```
+
+The second rebuild exits 0 even though its April run is quarantined: a
+quarantine is a result, not a failure, and the empty `review` exits 0 too.
+Until the `import` command exists, exports enter Bronze through the public
+`budget.importing.import_inbox_file` operation the script uses, exactly as
+*Importing an inbox export* above describes.
 
 ## Command line
 

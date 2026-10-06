@@ -19,6 +19,13 @@ from tempfile import TemporaryDirectory
 from budget.importing import Coverage, import_inbox_file
 from budget.locking import writer_lock
 from budget.profiles import Profile
+from budget.routine_logging import (
+    LOG_FILE,
+    LOG_FOLDER,
+    LOG_MAX_BYTES,
+    ROTATED_LOG_FILE,
+)
+from budget.silver import SilverStore
 from tests.cli.commands import migrate, rebuild, review
 from tests.cli.profile_files import development_profile, write_profile
 from tests.importing.households import ACCOUNTS, drop, payload
@@ -48,7 +55,7 @@ ALLOWED_KEYS = frozenset(
 
 def _log_files(profile: Profile) -> list[Path]:
     """Every routine log file under the profile's `logs` folder."""
-    folder = profile.stores / "logs"
+    folder = profile.stores / LOG_FOLDER
     if not folder.is_dir():
         return []
     return sorted(path for path in folder.rglob("*") if path.is_file())
@@ -126,6 +133,48 @@ class SilverLoggingTests(unittest.TestCase):
             ):
                 assert leaked not in text
                 assert leaked not in decoded
+
+    def test_a_full_log_rotates_before_the_next_record(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            assert migrate(profile_file)[0] == EXIT_OK
+            profile = development_profile(folder)
+            logs = profile.stores / LOG_FOLDER
+            logs.mkdir(parents=True, exist_ok=True)
+            (logs / LOG_FILE).write_text(
+                '{"filler": "' + "x" * LOG_MAX_BYTES + '"}\n', encoding="utf-8"
+            )
+
+            assert review(profile_file)[0] == EXIT_OK
+
+            assert (logs / ROTATED_LOG_FILE).is_file()
+            assert (logs / LOG_FILE).stat().st_size < LOG_MAX_BYTES
+
+    def test_a_log_that_cannot_be_written_only_warns(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            assert migrate(profile_file)[0] == EXIT_OK
+            profile = development_profile(folder)
+            profile.inputs.mkdir(parents=True, exist_ok=True)
+            profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+            source = drop(profile, "joint-current", EXPORT_FILE, payload("01.03.2026"))
+            with writer_lock(profile) as lock:
+                import_inbox_file(
+                    lock, source, Coverage(date(2026, 3, 1), date(2026, 3, 4))
+                )
+            # A file where the logs folder must go: every log write fails.
+            (profile.stores / LOG_FOLDER).write_text("not a folder", encoding="utf-8")
+
+            status, stdout, stderr = rebuild(profile_file, "--from", "silver")
+
+            assert status == EXIT_OK
+            assert "joint-current  accepted" in stdout
+            assert "the routine log could not be written" in stderr
+            with SilverStore(profile) as store:
+                stored = store.read()
+            assert [t.description for t in stored.transactions] == ["Café"]
 
 
 if __name__ == "__main__":

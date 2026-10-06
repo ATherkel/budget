@@ -12,16 +12,18 @@ holds, so these are pins, not claimed reds. Each test is synthetic, passes
 import json
 import sqlite3
 import unittest
-from contextlib import closing
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 import pytest
 
 from budget.importing import Coverage, import_inbox_file
 from budget.locking import writer_lock
-from budget.profiles import Profile
+from budget.profiles import Profile, load_profile_file
 from budget.silver import SilverStore
 from tests.cli.commands import migrate, rebuild
 from tests.cli.profile_files import development_profile, write_profile
@@ -32,6 +34,8 @@ EXIT_REFUSED_ENVIRONMENT = 4
 FIRST_EXPORT = "danske-20260305.csv"
 LATER_EXPORT = "danske-20260403.csv"
 START = date(2026, 3, 1)
+DIRTY_STATUS = " M src/budget/cli.py\n"
+SYNTHETIC_GIT = "/synthetic/git"
 # A payload whose header is not a `danske-csv-v1` header: a format failure.
 GARBAGE = b'"Nope","Nope"\r\n1,2\r\n'
 
@@ -73,6 +77,50 @@ def _block_transaction_inserts(profile: Profile) -> None:
             "BEGIN SELECT RAISE(ABORT, 'blocked'); END;"
         )
         connection.commit()
+
+
+def _finished(status: str) -> mock.Mock:
+    """A finished `git status` process, as `subprocess.run` returns one."""
+    completed = mock.Mock()
+    completed.returncode = 0
+    completed.stdout = status
+    completed.stderr = ""
+    return completed
+
+
+@contextmanager
+def _git(status: str = "", *, error: OSError | None = None) -> Iterator[None]:
+    """Replace only the Git system boundary, discovery included.
+
+    `shutil.which` is replaced as well, so the check never depends on a Git
+    installation, and the test names both halves of the boundary itself.
+    """
+    run = mock.Mock(return_value=_finished(status))
+    if error is not None:
+        run.side_effect = error
+    with (
+        mock.patch("shutil.which", return_value=SYNTHETIC_GIT),
+        mock.patch("subprocess.run", run),
+    ):
+        yield
+
+
+def _restore_into(source: Path, target: Path) -> None:
+    """Copy one synthetic store and relabel it as production (fixture only).
+
+    The suite has no restore command, so a test that needs a production store
+    holding data copies a synthetic one through SQLite's own backup API and
+    updates its single `store_identity` row, the way a restored store arrives.
+    Only files inside the test's temporary folder are touched, and production
+    import and restore stay unimplemented.
+    """
+    with (
+        closing(sqlite3.connect(source)) as origin,
+        closing(sqlite3.connect(target)) as destination,
+    ):
+        origin.backup(destination)
+        destination.execute("UPDATE store_identity SET profile = 'production'")
+        destination.commit()
 
 
 class RebuildSafetyTests(unittest.TestCase):
@@ -151,6 +199,53 @@ class RebuildSafetyTests(unittest.TestCase):
             ]
             assert "quarantined  format-failure" in stdout
             assert "repeat quarantined  format-failure" in stdout
+
+    def test_production_rebuild_from_a_restored_store_keeps_its_data(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            development_folder = root / "development"
+            production_folder = root / "production"
+            development_folder.mkdir()
+            production_folder.mkdir()
+            development_file = write_profile(development_folder)
+            production_file = write_profile(production_folder, name="production")
+            development = _profile(development_file, development_folder)
+            _import_one(
+                development, FIRST_EXPORT, payload("01.03.2026"), date(2026, 3, 4)
+            )
+            assert migrate(production_file, "--new-store") == (EXIT_OK, "")
+            production = load_profile_file(production_file)
+            production.inputs.mkdir(parents=True, exist_ok=True)
+            production.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+            _restore_into(development.bronze_store, production.bronze_store)
+            _restore_into(development.silver_store, production.silver_store)
+
+            with _git():
+                status, stdout, stderr = rebuild(production_file, "--from", "silver")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "joint-current  accepted" in stdout
+            with SilverStore(production) as store:
+                stored = store.read()
+            assert [(t.account_id, t.description) for t in stored.transactions] == [
+                ("joint-current", "Café")
+            ]
+
+            with _git(DIRTY_STATUS):
+                status, stdout, stderr = rebuild(production_file, "--from", "silver")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "uncommitted" in stderr
+            with SilverStore(production) as store:
+                assert store.read() == stored
+
+            with _git(error=FileNotFoundError("git")):
+                status, _, stderr = rebuild(production_file, "--from", "silver")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "cannot be checked" in stderr
+            with SilverStore(production) as store:
+                assert store.read() == stored
 
     def test_a_missing_store_refuses(self) -> None:
         with TemporaryDirectory() as directory:
