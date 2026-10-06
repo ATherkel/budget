@@ -245,8 +245,9 @@ budget --profile "$env:APPDATA\budget\development.toml" migrate
 first, and `--stage bronze` or `--stage silver` names one of them. Every stage
 goes through the same runner, so each one refuses the same way: a store
 recorded for another profile or another stage, or at a schema version this
-code does not know, is left as it is and refused with exit 4. `--stage gold` is refused with exit 4 until that
-store exists. A run that succeeds prints nothing:
+code does not know, is left as it is and refused with exit 4. `--stage gold`
+is refused with exit 4 until that store exists. A run that succeeds prints
+nothing:
 
 ```powershell
 $env:BUDGET_PROFILE = "$env:APPDATA\budget\development.toml"
@@ -273,19 +274,20 @@ shortly.
 A production profile file also names `[paths].backups`, the folder backup sets
 are published in, and may hold a `[backups]` table of retention keys
 (`keep_all_days`, `keep_daily_days`, `keep_monthly`); the backups folder may
-not overlap the stores, inputs, inbox or exports folders. In production, `migrate`
-writes a verified backup set before it changes an existing store and another
-after, and a migration that fails commits none of its steps. A set holds the
-Bronze store and the Silver store, each snapshotted through SQLite's backup
-API, so production migrates both stages as development does. A missing
-production store is started only with `--new-store`, only where none of the
-stores it would start exists, Silver's only beside a Bronze store, and only
-when no complete backup set holds one that could restore it instead. A store
-file left empty by an interrupted start counts as missing, so rerunning the
-same command starts it. `budget backup` writes a set of production by hand
-and prints its name. Nothing imports into
-production yet: that waits for the `import` command, which backs up after its
-Bronze writes.
+not overlap the stores, inputs, inbox or exports folders. In production,
+`migrate` writes a verified backup set before it changes an existing store
+and another after, and a migration that fails commits none of its steps. A
+set holds the Bronze store and the Silver store, each snapshotted through
+SQLite's backup API, so production migrates both stages as development does.
+A missing production store is started only with `--new-store`, only where
+none of the stores it would start is started already, Silver's only beside a
+Bronze store a set can hold, and only when no complete backup set holds one
+that could restore it instead. A store file left empty by an interrupted
+start counts as missing: rerunning `--new-store` starts it, or, where an
+earlier stage's store was started, names the `--stage` that starts the rest.
+`budget backup` writes a set of production by hand and prints its name.
+Nothing imports into production yet: that waits for the `import` command,
+which backs up after its Bronze writes.
 [operations.md](docs/architecture/operations.md#backup-and-restore) describes
 the sets, their manifest and retention.
 
@@ -315,10 +317,10 @@ budget migrate --stage silver --new-store; $LASTEXITCODE   # 0: silver.db create
 ```
 
 Once a complete set holds a Silver store, a lost one must be restored, not
-started anew, and no backup is written until it is. A backup is still refused while
-the stores folder holds a store no set covers, such as Gold's, since the set
-would not be a complete copy of the profile. All three exit 4 and write
-nothing:
+started anew, and no backup is written until it is. A backup is still refused
+while the stores folder holds a store no set covers, such as Gold's, since
+the set would not be a complete copy of the profile. All three exit 4 and
+write nothing:
 
 ```text
 budget: the backups folder holds complete backup sets of this profile, so its Silver store must be restored from the newest that holds one, not started anew; nothing was written
