@@ -6,6 +6,7 @@ folder, whose stores, inputs and backups stay inside it. No test opens a real
 production store. Every test passes `main` an explicit environment.
 """
 
+import shutil
 import sqlite3
 import unittest
 from contextlib import closing
@@ -91,6 +92,26 @@ class NewProductionStoreTests(unittest.TestCase):
             assert "budget migrate --stage bronze --new-store" in stderr
             assert not (folder / "stores").exists()
             assert not (folder / "backups").exists()
+
+    def test_new_stores_are_refused_before_any_starts_where_one_exists(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder, name="production")
+            assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            # Bronze's store and every set are gone; Silver's store is not.
+            for lost in production.stores.glob("bronze.db*"):
+                lost.unlink()
+            shutil.rmtree(folder / "backups")
+
+            status, stderr = migrate(profile_file, "--new-store")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "is already a Silver store" in stderr
+            assert not production.bronze_store.exists()
+            assert complete_backup_sets(production) == ()
 
     def test_a_new_store_is_refused_where_one_exists(self) -> None:
         with TemporaryDirectory() as directory:
