@@ -28,6 +28,7 @@ from budget.locking import WriterLock
 from budget.profiles import PRODUCTION_PROFILE_NAME, Profile
 from budget.silver.storage import SILVER_STAGE, silver_stage
 from budget.sqlstore import (
+    NewStoreRefusedError,
     NewStoreRequiredError,
     StageStore,
     StoreError,
@@ -119,13 +120,23 @@ def require_migration_allowed(
     """
     for store in _stage_stores(profile, stages):
         require_store_migration_allowed(store, new_store=new_store)
+    if profile.name != PRODUCTION_PROFILE_NAME:
+        return
     bronze = bronze_stage(profile)
-    if (
-        profile.name == PRODUCTION_PROFILE_NAME
-        and BRONZE_STAGE not in stages
-        and not bronze.path.exists()
-    ):
+    if BRONZE_STAGE not in stages and not bronze.path.exists():
         raise NewStoreRequiredError(bronze.label, bronze.stage)
+
+
+def _require_every_store_new(stores: list[StageStore]) -> None:
+    """Refuse new production stores where any one asked for already exists.
+
+    The runner refuses an existing store only once it reaches it, after the
+    stages before it were started; a store started that way would have no
+    backup set after it. Where none exists, each is started in turn.
+    """
+    existing = [store for store in stores if store.path.exists()]
+    if existing and len(existing) < len(stores):
+        raise NewStoreRefusedError(existing[0].label, existing[0].path)
 
 
 def _require_nothing_to_restore(profile: Profile, stores: list[StageStore]) -> None:
@@ -166,6 +177,7 @@ def migrate_profile(
     require_supported_stores(profile)
     if new_store:
         _require_nothing_to_restore(profile, stores)
+        _require_every_store_new(stores)
 
     taken: list[BackupSet] = []
 
