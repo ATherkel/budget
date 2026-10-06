@@ -146,6 +146,27 @@ class NewProductionStoreTests(unittest.TestCase):
             assert isinstance(stores, dict)
             assert set(stores) == {"bronze", "silver"}
 
+    def test_silver_is_refused_beside_a_bronze_store_no_set_can_hold(
+        self,
+    ) -> None:
+        # The set after Silver's start must snapshot Bronze too, so Bronze's
+        # store is checked as a backup opens it before Silver is started.
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            started = migrate(profile_file, "--stage", "bronze", "--new-store")
+            assert started[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            sets = complete_backup_sets(production)
+            with closing(sqlite3.connect(production.bronze_store)) as store:
+                store.execute("PRAGMA user_version = 99")
+
+            status, stderr = migrate(profile_file, "--stage", "silver", "--new-store")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "schema version 99" in stderr
+            assert not production.silver_store.exists()
+            assert complete_backup_sets(production) == sets
+
     def test_silver_is_refused_beside_a_bronze_store_left_empty(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
