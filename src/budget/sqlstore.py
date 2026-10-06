@@ -429,9 +429,8 @@ def migrate_store(
     backs the store up first, and is refused before anything is touched
     without it. A production store is started only with `new_store`, which is
     refused where one exists; other profiles start a missing store freely.
-    Which stages production may migrate at all is the caller's to decide:
-    until backup sets cover Silver, `migrate_silver` passes no hook and the
-    command line refuses `--stage silver` in production.
+    Which stages production migrates, and the backup sets around them, are
+    the caller's to decide: `budget.migration.migrate_profile` does both.
     """
     production = store.profile.name == PRODUCTION_PROFILE_NAME
     if production and before_migrating is None:
