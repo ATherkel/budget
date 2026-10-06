@@ -44,6 +44,7 @@ from budget.profiles import (
     load_profile_file,
 )
 from budget.rebuilding import rebuild_from_silver
+from budget.reviewing import REVIEW_KINDS, open_reviews
 from budget.silver.storage import SILVER_STAGE
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
@@ -126,6 +127,9 @@ def _parser() -> argparse.ArgumentParser:
         default=GOLD_STAGE,
         help="the stage to rebuild from",
     )
+    review = commands.add_parser("review", help="list the open review items")
+    review.add_argument("--kind", choices=REVIEW_KINDS, help="list one kind only")
+    review.add_argument("--account", help="list one account's items only")
     return parser
 
 
@@ -182,6 +186,16 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
     sys.stdout.write(summaries.rebuild_summary(rebuilt))
 
 
+def _review(profile: Profile, kind: str | None, account: str | None) -> None:
+    """List the profile's open review items, taking no writer lock.
+
+    Review only reads the persisted Silver result, so it neither locks nor
+    needs a Bronze store or `accounts.toml`.
+    """
+    items = open_reviews(profile, kind=kind, account=account)
+    sys.stdout.write(summaries.review_summary(items))
+
+
 def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> None:
     """Select and load the profile, then run the command against it."""
     profile_file = _selected_profile_file(arguments.profile, environ)
@@ -191,6 +205,9 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> None:
         return
     if arguments.command == "rebuild":
         _rebuild(profile, arguments.from_stage)
+        return
+    if arguments.command == "review":
+        _review(profile, arguments.kind, arguments.account)
         return
     _migrate(profile, arguments.stage, new_store=arguments.new_store)
 

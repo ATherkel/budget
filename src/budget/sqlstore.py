@@ -557,14 +557,20 @@ def open_store_snapshot(store: StageStore, path: Path) -> sqlite3.Connection:
     return connection
 
 
-def open_store_connection(store: StageStore) -> sqlite3.Connection:
-    """Open an existing stage store, refusing anything it cannot vouch for."""
+def open_store_connection(
+    store: StageStore, *, read_only: bool = False
+) -> sqlite3.Connection:
+    """Open an existing stage store, refusing anything it cannot vouch for.
+
+    With `read_only`, SQLite opens the file `mode=ro`, so a command that only
+    reads a store cannot write it, or take a write lock on it.
+    """
     _require_supported_sqlite()
     path = store.path
     if not path.exists():
         raise StoreNotFoundError(store.label, path)
 
-    connection = _connect(path, mode="rw")
+    connection = _connect(path, mode="ro" if read_only else "rw")
     try:
         _apply_connection_settings(connection)
         _require_current_version(connection, store)

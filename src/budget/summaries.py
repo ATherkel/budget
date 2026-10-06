@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from budget.bronze.models import ImportRun
 from budget.rebuilding import SilverRebuild
+from budget.reviewing import OpenReview
 from budget.silver import ImportRunResult, ReviewItem, SilverResult
 
 
@@ -128,3 +129,27 @@ def _run_line(row: _Row) -> str:
     """One import run's line: its identifiers, status and reason codes."""
     reasons = f"  {', '.join(row.reasons)}" if row.reasons else ""
     return f"Run  {row.import_run_id}  {row.account_id}  {row.status}{reasons}"
+
+
+def review_summary(items: Sequence[OpenReview]) -> str:
+    """Report each open review item, and nothing at all when there are none."""
+    return "".join(_review_line(entry) for entry in items)
+
+
+def _review_line(entry: OpenReview) -> str:
+    """One open item: its references, kind, dates, and what settles it."""
+    item = entry.item
+    parts = [
+        item.review_item_id,
+        item.kind,
+        item.account_id,
+        f"{item.date_from}..{item.date_to}",
+    ]
+    if entry.import_run_id is not None:
+        parts.append(f"run {entry.import_run_id}")
+    if item.payload_ids:
+        parts.append(f"payload {', '.join(item.payload_ids)}")
+    if item.transaction_id is not None:
+        # A transaction is named by its 8-character handle, never in full.
+        parts.append(f"handle {item.transaction_id[:8]}")
+    return "  ".join(parts) + "\n"
