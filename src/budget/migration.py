@@ -27,7 +27,12 @@ from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.locking import WriterLock
 from budget.profiles import PRODUCTION_PROFILE_NAME, Profile
 from budget.silver.storage import SILVER_STAGE, silver_stage
-from budget.sqlstore import StageStore, StoreError, migrate_store
+from budget.sqlstore import (
+    NewStoreRequiredError,
+    StageStore,
+    StoreError,
+    migrate_store,
+)
 from budget.sqlstore import (
     require_migration_allowed as require_store_migration_allowed,
 )
@@ -108,10 +113,19 @@ def require_migration_allowed(
     stores is refused unless a new store is asked for: a missing store may be
     a lost one, which a backup set must restore instead. Every stage is
     checked before any is migrated, so one stage's refusal never follows
-    another stage's change.
+    another stage's change. Production migrates a later stage only beside a
+    Bronze store, since every backup set holds Bronze: a store started
+    without one could never be backed up.
     """
     for store in _stage_stores(profile, stages):
         require_store_migration_allowed(store, new_store=new_store)
+    bronze = bronze_stage(profile)
+    if (
+        profile.name == PRODUCTION_PROFILE_NAME
+        and BRONZE_STAGE not in stages
+        and not bronze.path.exists()
+    ):
+        raise NewStoreRequiredError(bronze.label, bronze.stage)
 
 
 def _require_nothing_to_restore(profile: Profile, stores: list[StageStore]) -> None:
