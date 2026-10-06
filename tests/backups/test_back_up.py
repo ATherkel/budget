@@ -463,6 +463,27 @@ class RetentionTests(unittest.TestCase):
 
             assert _set_names(profile) == sorted([later_format.name, newest.name])
 
+    def test_a_set_of_bronze_alone_stays_complete_and_kept_by_the_policy(
+        self,
+    ) -> None:
+        # Before backups covered Silver, every set held Bronze alone, under
+        # the same manifest format. Such a set is still complete, and the
+        # policy keeps it as it would any other set of its age.
+        policy = RetentionPolicy(keep_all_days=30, keep_daily_days=0, keep_monthly=0)
+        with TemporaryDirectory() as directory:
+            profile = replace(household(Path(directory)), retention=policy)
+            with writer_lock(profile) as lock:
+                bronze_only = back_up(lock, now=NOW - timedelta(days=1))
+                migrate_silver(profile)
+                newest = back_up(lock, now=NOW)
+
+            written = manifest(bronze_only.path)
+            assert written["format"] == 1
+            assert written["stores"] == {
+                "bronze": {"path": "bronze.db", "schema_version": 1}
+            }
+            assert complete_backup_sets(profile) == (newest, bronze_only)
+
 
 class RecoveryReleaseTests(unittest.TestCase):
     def test_a_backup_releases_a_held_set_once_its_schema_is_behind(self) -> None:
