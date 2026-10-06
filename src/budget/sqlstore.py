@@ -2,8 +2,8 @@
 """Creating, upgrading and opening one ETL stage's SQLite store.
 
 Every stage store follows ADR-013 and ADR-015: numbered plain SQL files that
-ship beside this runner inside the installed package, applied in order, each
-file and its `PRAGMA user_version` bump in one transaction, and a one-row
+ship beside this runner inside the installed package, applied in order, every
+pending file and its `PRAGMA user_version` bump in one transaction, and a one-row
 `store_identity` table naming the profile and the stage that own the file.
 Only an explicit `migrate` creates or changes a store. Opening a store never
 does: it refuses a file that is missing, belongs to another profile or stage,
@@ -295,23 +295,41 @@ def _apply_step(
     store: StageStore,
     step: _MigrationStep,
 ) -> None:
-    """Apply one migration and its version bump in one transaction."""
+    """Apply one migration and its version bump in the open transaction."""
+    for statement in _statements(step.sql, store.label):
+        connection.execute(statement)
+    if step.version == 1:
+        connection.execute(
+            "INSERT INTO store_identity (singleton, profile, stage) VALUES (1, ?, ?)",
+            (store.profile.name, store.stage),
+        )
+    _require_no_foreign_key_violations(connection, step.version)
+    connection.execute(f"PRAGMA user_version = {step.version}")
+
+
+def _apply_steps(
+    connection: sqlite3.Connection,
+    store: StageStore,
+    steps: list[_MigrationStep],
+) -> None:
+    """Apply every pending step in one transaction, with foreign keys off.
+
+    A step that fails rolls back the steps before it too, so the store stays
+    at the version it had: never at one between it and the code's.
+    """
+    # The pragma cannot change inside a transaction, and a table rebuild must
+    # be free to drop rows before the foreign-key check.
+    connection.execute("PRAGMA foreign_keys = OFF")
     try:
         connection.execute("BEGIN IMMEDIATE")
-        for statement in _statements(step.sql, store.label):
-            connection.execute(statement)
-        if step.version == 1:
-            connection.execute(
-                "INSERT INTO store_identity (singleton, profile, stage)"
-                " VALUES (1, ?, ?)",
-                (store.profile.name, store.stage),
-            )
-        _require_no_foreign_key_violations(connection, step.version)
-        connection.execute(f"PRAGMA user_version = {step.version}")
+        for step in steps:
+            _apply_step(connection, store, step)
         connection.commit()
     except BaseException:
         connection.rollback()
         raise
+    finally:
+        connection.execute("PRAGMA foreign_keys = ON")
 
 
 def require_migration_allowed(profile: Profile) -> None:
@@ -357,14 +375,7 @@ def migrate_store(store: StageStore) -> None:
 
         pending = [step for step in steps if step.version > version]
         if pending:
-            # The pragma cannot change inside a transaction, and a table
-            # rebuild must be free to drop rows before the check below.
-            connection.execute("PRAGMA foreign_keys = OFF")
-            try:
-                for step in pending:
-                    _apply_step(connection, store, step)
-            finally:
-                connection.execute("PRAGMA foreign_keys = ON")
+            _apply_steps(connection, store, pending)
     except sqlite3.OperationalError as error:
         # The primary code, so BUSY's extended variants count too; any other
         # operational error, such as a broken migration, stays a defect.
