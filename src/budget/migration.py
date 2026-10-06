@@ -18,6 +18,7 @@ from budget.backups import (
     back_up,
     complete_backup_sets,
     hold_for_recovery,
+    holds_store,
     release_recovery_sets,
     require_supported_stores,
 )
@@ -35,16 +36,16 @@ from budget.sqlstore import (
 class RestoreInsteadError(RuntimeError):
     """A new production store was asked for, but backup sets could restore one.
 
-    Complete backup sets mean production had a store; an empty one started
-    in its place would be backed up over them in time.
+    A complete backup set holding the store means production had one; an
+    empty one started in its place would be backed up over them in time.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, label: str) -> None:
         """Say why nothing was started, and what to do instead."""
         super().__init__(
             "the backups folder holds complete backup sets of this profile, so "
-            "its Bronze store must be restored from the newest, not started "
-            "anew; nothing was written"
+            f"its {label} store must be restored from the newest that holds "
+            "one, not started anew; nothing was written"
         )
 
 
@@ -113,6 +114,20 @@ def require_migration_allowed(
         require_store_migration_allowed(store, new_store=new_store)
 
 
+def _require_nothing_to_restore(profile: Profile, stores: list[StageStore]) -> None:
+    """Refuse a new store where a complete backup set holds one to restore.
+
+    A set written before backups covered Silver holds no Silver store, so it
+    never stands in the way of starting one.
+    """
+    sets = complete_backup_sets(profile)
+    for store in stores:
+        if not store.path.exists() and any(
+            holds_store(backup, store.stage) for backup in sets
+        ):
+            raise RestoreInsteadError(store.label)
+
+
 def migrate_profile(
     lock: WriterLock,
     *,
@@ -132,12 +147,8 @@ def migrate_profile(
             migrate_store(store)
         return
     require_supported_stores(profile)
-    if (
-        new_store
-        and not profile.bronze_store.exists()
-        and complete_backup_sets(profile)
-    ):
-        raise RestoreInsteadError
+    if new_store:
+        _require_nothing_to_restore(profile, stores)
 
     taken: list[BackupSet] = []
 
