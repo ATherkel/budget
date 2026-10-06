@@ -78,6 +78,20 @@ class NewProductionStoreTests(unittest.TestCase):
                 "silver": {"path": "silver.db", "schema_version": 1},
             }
 
+    def test_silver_is_refused_where_production_has_no_bronze_store(self) -> None:
+        # Every set holds Bronze, so a Silver store started alone could never
+        # be backed up.
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder, name="production")
+
+            status, stderr = migrate(profile_file, "--stage", "silver", "--new-store")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "budget migrate --stage bronze --new-store" in stderr
+            assert not (folder / "stores").exists()
+            assert not (folder / "backups").exists()
+
     def test_a_new_store_is_refused_where_one_exists(self) -> None:
         with TemporaryDirectory() as directory:
             profile_file = write_profile(Path(directory), name="production")
