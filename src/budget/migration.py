@@ -130,6 +130,18 @@ def require_migration_allowed(
         raise NewStoreRequiredError(bronze.label, bronze.stage)
 
 
+def _require_bronze_beside(profile: Profile, stages: Collection[str]) -> None:
+    """Refuse a production stage after Bronze where Bronze's store is not started.
+
+    `require_migration_allowed` refuses a missing file before the lock; this
+    reads the file under it, so one an interrupted start left empty is
+    refused too.
+    """
+    bronze = bronze_stage(profile)
+    if BRONZE_STAGE not in stages and not is_started(bronze):
+        raise NewStoreRequiredError(bronze.label, bronze.stage)
+
+
 def _require_every_store_new(stores: list[StageStore]) -> None:
     """Refuse new production stores where any one asked for already exists.
 
@@ -180,6 +192,7 @@ def migrate_profile(
             migrate_store(store)
         return
     require_supported_stores(profile)
+    _require_bronze_beside(profile, stages)
     if new_store:
         _require_nothing_to_restore(profile, stores)
         _require_every_store_new(stores)
