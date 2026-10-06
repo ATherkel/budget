@@ -145,6 +145,29 @@ class MigrateRefusalTests(unittest.TestCase):
             with SilverStore(make_test_profile(folder)):
                 pass
 
+    def test_a_store_of_another_stage_is_refused(self) -> None:
+        # Each stage's file is replaced by a store the other stage migrated.
+        for stage, other in (("bronze", "silver"), ("silver", "bronze")):
+            with self.subTest(stage=stage), TemporaryDirectory() as directory:
+                folder = Path(directory)
+                profile_file = write_profile(folder)
+                development = development_profile(folder)
+                paths = {
+                    "bronze": development.bronze_store,
+                    "silver": development.silver_store,
+                }
+                assert migrate(profile_file, "--stage", other)[0] == EXIT_OK
+                paths[other].rename(paths[stage])
+
+                status, stderr = migrate(profile_file, "--stage", stage)
+
+                assert status == EXIT_REFUSED_ENVIRONMENT
+                assert f"stage {other!r}" in stderr
+                with closing(sqlite3.connect(paths[stage])) as connection:
+                    assert connection.execute(
+                        "SELECT stage FROM store_identity"
+                    ).fetchall() == [(other,)]
+
     def test_production_silver_is_refused_before_anything_is_created(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
