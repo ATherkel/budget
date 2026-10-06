@@ -459,6 +459,13 @@ def complete_backup_sets(profile: Profile) -> tuple[BackupSet, ...]:
     )
 
 
+def holds_store(backup: BackupSet, stage: str) -> bool:
+    """Report whether a set's manifest lists a store for `stage`."""
+    manifest = _read_manifest(backup.path)
+    stores = None if manifest is None else manifest.get("stores")
+    return isinstance(stores, dict) and stage in stores
+
+
 def _prunable_sets(profile: Profile) -> dict[str, datetime]:
     """Return each set retention may delete, by name, with its time.
 
