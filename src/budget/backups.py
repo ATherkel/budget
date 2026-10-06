@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Final
 
 from budget.bronze import BronzeStore
-from budget.bronze.storage import BRONZE_STAGE, bronze_stage
+from budget.bronze.storage import bronze_stage
 from budget.durability import sync_folder
 from budget.importing import check_import_log
 from budget.locking import WriterLock
@@ -398,7 +398,7 @@ def back_up(lock: WriterLock, *, now: datetime) -> BackupSet:
     # The set is published: retention and release that fail now only leave
     # sets held or kept until the next backup, so neither fails this one.
     with suppress(OSError):
-        _release_superseded(profile, staged.schema_versions[BRONZE_STAGE])
+        _release_superseded(profile, staged.schema_versions)
     with suppress(OSError):
         _prune(profile, name, now)
     return BackupSet(name=name, path=path, created_at=now)
@@ -614,39 +614,45 @@ def release_recovery_sets(lock: WriterLock) -> None:
     lock.profile.recovery_sets_file.unlink(missing_ok=True)
 
 
-def _set_schema_version(manifest: dict[str, object]) -> int | None:
-    """Return a set's recorded Bronze schema version, or `None` if absent."""
+def _set_schema_version(manifest: dict[str, object], stage: str) -> int | None:
+    """Return a set's recorded schema version for one stage, or `None`."""
     stores = manifest.get("stores")
     if not isinstance(stores, dict):
         return None
-    bronze = stores.get(BRONZE_STAGE)
-    if not isinstance(bronze, dict):
+    store = stores.get(stage)
+    if not isinstance(store, dict):
         return None
-    version = bronze.get("schema_version")
+    version = store.get("schema_version")
     return version if isinstance(version, int) else None
 
 
-def _superseded(profile: Profile, name: str, schema_version: int) -> bool:
-    """Report whether a held set's own schema version is behind this one."""
+def _superseded(profile: Profile, name: str, schema_versions: dict[str, int]) -> bool:
+    """Report whether any store a held set records is behind the fresh set's."""
     manifest = _read_manifest(profile.backup_path(name))
     if manifest is None:
         return False
-    found = _set_schema_version(manifest)
-    return found is not None and found < schema_version
+    for stage, schema_version in schema_versions.items():
+        found = _set_schema_version(manifest, stage)
+        if found is not None and found < schema_version:
+            return True
+    return False
 
 
-def _release_superseded(profile: Profile, schema_version: int) -> None:
+def _release_superseded(profile: Profile, schema_versions: dict[str, int]) -> None:
     """Drop a held set once a fresh set shows the schema has moved past it.
 
-    A held set still at the live schema version is a failed or interrupted
+    A held set still at every live schema version is a failed or interrupted
     migration's only recovery set, and stays held regardless of how many
-    backups are written in the meantime; only a set whose own schema version
-    is behind this one is released. While the held sets cannot be read,
-    nothing changes here either.
+    backups are written in the meantime; only a set with a store whose own
+    schema version is behind the fresh set's is released, since the
+    migration it was taken for has then committed. A store the held set does
+    not record, such as Silver in a set written before backups covered it,
+    is not compared. While the held sets cannot be read, nothing changes
+    here either.
     """
     held = _held_for_recovery(profile)
     if not held:
         return
-    kept = {name for name in held if not _superseded(profile, name, schema_version)}
+    kept = {name for name in held if not _superseded(profile, name, schema_versions)}
     if kept != held:
         _write_held(profile, kept)
