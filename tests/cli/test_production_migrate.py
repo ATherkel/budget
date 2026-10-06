@@ -158,12 +158,15 @@ class NewProductionStoreTests(unittest.TestCase):
             assert migrate(profile_file, "--new-store")[0] == EXIT_OK
             production = load_profile_file(profile_file)
             sets = complete_backup_sets(production)
+            files = sorted(path.name for path in production.stores.iterdir())
 
             status, stderr = migrate(profile_file, "--new-store")
 
             assert status == EXIT_REFUSED_ENVIRONMENT
             assert "without --new-store" in stderr
             assert complete_backup_sets(production) == sets
+            # A refusal reads the stores, and leaves no file of its own.
+            assert sorted(path.name for path in production.stores.iterdir()) == files
 
     def test_a_new_store_is_refused_where_backup_sets_could_restore_one(
         self,
