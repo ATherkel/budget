@@ -103,13 +103,18 @@ class SilverLoggingTests(unittest.TestCase):
                 assert record["profile"] == "development"
 
             # Nothing a bank said, and no identifier kept for a different
-            # purpose, reaches a routine log.
+            # purpose, reaches a routine log: neither in the raw bytes nor in
+            # the decoded records, so a `\u00e9` escape cannot hide a
+            # description, and both written forms of an amount count.
             text = "\n".join(
                 path.read_text(encoding="utf-8") for path in _log_files(profile)
             )
+            decoded = json.dumps(records, ensure_ascii=False, sort_keys=True)
             for leaked in (
                 "-45,00",
                 "955,00",
+                "-45.00",
+                "955.00",
                 "Café",
                 "Mad",
                 "Dagligvarer",
@@ -120,6 +125,7 @@ class SilverLoggingTests(unittest.TestCase):
                 identity(date(2026, 3, 1), "-45.00", "Café", 1),
             ):
                 assert leaked not in text
+                assert leaked not in decoded
 
 
 if __name__ == "__main__":
