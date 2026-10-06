@@ -294,5 +294,5 @@ the sets, their manifest and retention.
 | 1 | Unexpected error: a defect, such as a broken packaged migration |
 | 2 | Usage error, including a command that is not built yet |
 | 3 | The profile file is missing, unreadable, not UTF-8, invalid or of an unknown format |
-| 4 | Refused environment: no profile, a production store missing or asked for anew where one or its backup sets exist, a stage not built yet, a store of another profile or schema version, SQLite below the floor, a stores folder that cannot be used, a store another program holds, another command running, a backup set that cannot be written, a store no backup set covers yet, or a store migrated without the backup set after it |
+| 4 | Refused environment: no profile, a production store missing or asked for anew where one or its backup sets exist, a stage not built yet, a store of another profile, stage or schema version, SQLite below the floor, a stores folder that cannot be used, a store another program holds, another command running, a backup set that cannot be written, a store no backup set covers yet, or a store migrated without the backup set after it |
 | 5 | Verification failed: a backup set's copy does not match its manifest, or the import log disagrees with Bronze |

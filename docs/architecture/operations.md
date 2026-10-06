@@ -531,7 +531,7 @@ matches more than one transaction is refused.
 | 1 | Unexpected error: a defect. Python's own exit status for an unhandled exception. |
 | 2 | Usage error. `argparse`'s own exit status. |
 | 3 | Refused input: a configuration error, a rejected decision, a misfiled export, or an import run Bronze refused. `import` still publishes the files it stored. |
-| 4 | Refused environment: no profile, a store from another profile, a missing or newer migration, SQLite below the version floor, uncommitted code in production, running code other than the code version a replayed recipe names (ADR-014), another writing command running, a store locked past its busy timeout, or `restore` into a profile that has stores. |
+| 4 | Refused environment: no profile, a store from another profile or stage, a missing or newer migration, SQLite below the version floor, uncommitted code in production, running code other than the code version a replayed recipe names (ADR-014), another writing command running, a store locked past its busy timeout, or `restore` into a profile that has stores. |
 | 5 | Verification failed: a fingerprint mismatch, a failed integrity check, a backup set whose checksums do not match its manifest, or an import log that disagrees with Bronze. |
 
 The codes 1 and 2 are the ones Python and `argparse` already use, so every
