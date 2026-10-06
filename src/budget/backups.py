@@ -129,6 +129,22 @@ class UnsupportedStoresError(RuntimeError):
         )
 
 
+class LostStoreError(RuntimeError):
+    """A store the profile's backup sets hold is missing from the stores folder.
+
+    A set without it would claim to be a complete copy of a profile that has
+    lost a store, and retention would in time prune every set holding it.
+    """
+
+    def __init__(self, label: str) -> None:
+        """Name the lost store, and what to do instead."""
+        super().__init__(
+            f"the stores folder has no {label} store, but backup sets of this "
+            f"profile hold one: the {label} store must be restored from the "
+            "newest that holds one; nothing was published"
+        )
+
+
 @dataclass(frozen=True)
 class BackupSet:
     """One complete backup set: its folder name, its folder, and its time."""
@@ -354,6 +370,30 @@ def require_supported_stores(profile: Profile) -> None:
         raise UnsupportedStoresError(found)
 
 
+def _require_no_lost_store(profile: Profile) -> None:
+    """Refuse a backup while a store the profile's sets hold is missing.
+
+    Only Silver's store may be missing from a set; Bronze's is always
+    snapshotted. Like retention, this reads manifests only, never every
+    set's files, so a set whose files no longer match still counts.
+    """
+    silver = silver_stage(profile)
+    if silver.path.exists():
+        return
+    backups = profile.backup_path(".")
+    if not backups.is_dir():
+        return
+    for child in backups.iterdir():
+        if _set_time(child.name) is None:
+            continue
+        manifest = _read_manifest(child)
+        if (
+            manifest is not None
+            and _set_schema_version(manifest, silver.stage) is not None
+        ):
+            raise LostStoreError(silver.label)
+
+
 def _remove_interrupted(profile: Profile) -> None:
     """Delete what an interrupted backup left: never a set, only its parts.
 
@@ -385,6 +425,7 @@ def back_up(lock: WriterLock, *, now: datetime) -> BackupSet:
     publishing = profile.backup_path(name + PUBLISHING_SUFFIX)
     try:
         require_supported_stores(profile)
+        _require_no_lost_store(profile)
         _remove_interrupted(profile)
         staged = _stage(profile, staging, now)
         path = _publish(profile, staging, name, staged)

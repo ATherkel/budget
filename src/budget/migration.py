@@ -15,6 +15,7 @@ from budget.backups import (
     BackupSet,
     BackupVerificationError,
     BackupWriteError,
+    LostStoreError,
     back_up,
     complete_backup_sets,
     hold_for_recovery,
@@ -80,6 +81,7 @@ MIGRATED_STAGES: Final = tuple(_STAGE_STORES)
 # Every way a backup set can fail to be written once the store is migrated.
 _BACKUP_FAILURES: Final = (
     BackupWriteError,
+    LostStoreError,
     BackupVerificationError,
     StoreError,
     ImportLogDamagedError,

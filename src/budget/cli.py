@@ -18,6 +18,7 @@ from budget import sqlstore
 from budget.backups import (
     BackupVerificationError,
     BackupWriteError,
+    LostStoreError,
     UnsupportedStoresError,
     back_up,
 )
@@ -187,6 +188,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         MigratedWithoutBackupError,
         BackupWriteError,
         UnsupportedStoresError,
+        LostStoreError,
         NoBackupsFolderError,
         *_STORE_ENVIRONMENT_REFUSALS,
     ) as error:
