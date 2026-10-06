@@ -1,3 +1,6 @@
+---
+type: architecture
+---
 # Gold Layer
 
 ## Purpose

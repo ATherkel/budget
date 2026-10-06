@@ -1,3 +1,6 @@
+---
+type: agents
+---
 # Silver Agent Brief
 
 ## Mission

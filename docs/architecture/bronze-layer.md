@@ -1,3 +1,6 @@
+---
+type: architecture
+---
 # Bronze Layer
 
 ## Purpose

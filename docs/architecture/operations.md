@@ -1,3 +1,6 @@
+---
+type: architecture
+---
 # Operations
 
 Status: accepted ([ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md)).

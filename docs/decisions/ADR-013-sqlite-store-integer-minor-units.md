@@ -1,3 +1,6 @@
+---
+type: decisions
+---
 # ADR-013: Store Data in SQLite, with Money as Integer Minor Units
 
 **Status:** Accepted. The location decision is refined by

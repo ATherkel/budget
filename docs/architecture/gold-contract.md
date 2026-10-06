@@ -1,3 +1,6 @@
+---
+type: architecture
+---
 # Gold Data Contract
 
 ## Status

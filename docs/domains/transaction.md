@@ -1,3 +1,6 @@
+---
+type: domains
+---
 # Transaction Domain
 
 A transaction is a booked monetary movement on an account. The source record

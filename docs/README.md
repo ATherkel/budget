@@ -1,3 +1,6 @@
+---
+type: overview
+---
 # Documentation Map
 
 This directory is the project contract before implementation begins. Documents
@@ -88,7 +91,7 @@ primer is stale.
 
 ## Vocabulary
 
-[`../CONTEXT.md`](../CONTEXT.md) is the household finance glossary: tight,
+[`CONTEXT.md`](CONTEXT.md) is the household finance glossary: tight,
 opinionated term definitions. It defines terms only and links to the governing
 document for each rule; where they seem to differ, the governing document wins.
 
@@ -100,3 +103,10 @@ document for each rule; where they seem to differ, the governing document wins.
   rebuildable.
 - A module may depend only on its declared input contract. It must not reach
   around the contract to read an upstream layer.
+- Every Markdown file here opens with the Open Knowledge Format header that
+  [ADR-019](decisions/ADR-019-open-knowledge-format-headers.md) sets out.
+- A document cites another by linking the section, such as
+  `[operations.md, *Stores*](architecture/operations.md#stores)`, and quoting
+  the words it relies on. A section link survives edits around it, where a line
+  number drifts with every one; renaming a heading means updating the links to
+  it.

@@ -1,3 +1,6 @@
+---
+type: agents
+---
 # Gold Agent Brief
 
 ## Mission

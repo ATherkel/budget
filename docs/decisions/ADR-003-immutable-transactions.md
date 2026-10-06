@@ -1,3 +1,6 @@
+---
+type: decisions
+---
 # ADR-003: Retain Immutable Source Data
 
 **Status:** Accepted
