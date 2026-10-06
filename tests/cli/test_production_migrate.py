@@ -182,6 +182,28 @@ class NewProductionStoreTests(unittest.TestCase):
             assert "restore" in stderr
             assert not production.bronze_store.exists()
 
+    def test_a_store_left_empty_is_refused_anew_where_a_set_holds_one(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            sets = complete_backup_sets(production)
+            # The store is lost, and an empty file at version 0 stands in
+            # its place, as an interrupted start would leave it.
+            for lost in production.stores.glob("bronze.db*"):
+                lost.unlink()
+            with closing(sqlite3.connect(production.bronze_store)) as store:
+                store.execute("PRAGMA journal_mode = WAL")
+
+            status, stderr = migrate(profile_file, "--stage", "bronze", "--new-store")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "Bronze store must be restored" in stderr
+            assert user_version(production.bronze_store) == 0
+            assert complete_backup_sets(production) == sets
+
     def test_a_new_silver_store_is_refused_where_a_backup_set_holds_one(
         self,
     ) -> None:
