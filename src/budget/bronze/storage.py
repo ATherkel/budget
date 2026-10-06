@@ -35,7 +35,6 @@ from budget.sqlstore import (
     UnversionedStoreError,
     migrate_store,
     open_store_connection,
-    open_store_for_backup,
     open_store_snapshot,
 )
 from budget.sqlstore import (
@@ -67,7 +66,6 @@ __all__ = [
     "bronze_stage",
     "migrate_bronze",
     "open_bronze_connection",
-    "open_bronze_for_backup",
     "open_bronze_snapshot",
     "require_migration_allowed",
 ]
@@ -115,15 +113,6 @@ def migrate_bronze(
         new_store=new_store,
         before_migrating=before_migrating,
     )
-
-
-def open_bronze_for_backup(profile: Profile) -> sqlite3.Connection:
-    """Open the profile's live Bronze store to copy it into a backup set.
-
-    Unlike `open_bronze_connection`, a store older than the code is opened:
-    production backs a store up before migrating it. The caller only reads.
-    """
-    return open_store_for_backup(bronze_stage(profile))
 
 
 def open_bronze_snapshot(profile: Profile, path: Path) -> sqlite3.Connection:

@@ -77,8 +77,7 @@ def migrate_silver(profile: Profile) -> None:
     """Create or upgrade the Silver store that one profile names.
 
     The production profile is refused before any folder or file is touched:
-    its backup sets do not cover Silver yet, so nothing can back the store up
-    before it changes.
+    it is migrated only by `budget migrate`, which backs the store up first.
     """
     migrate_store(silver_stage(profile))
 

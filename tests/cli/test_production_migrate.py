@@ -21,9 +21,8 @@ from budget.bronze.storage import ForeignKeyViolationError
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
 from budget.silver import SilverStore
-from budget.silver import storage as silver_storage
 from tests.backups.sets import manifest, run_ids, tables, user_version
-from tests.bronze.migration_resources import added_migration
+from tests.bronze.migration_resources import SILVER_MIGRATIONS, added_migration
 from tests.cli.commands import migrate
 from tests.cli.profile_files import write_profile
 
@@ -36,10 +35,6 @@ ADDED_TABLE = "CREATE TABLE marker (x TEXT) STRICT;\n"
 _ORPHAN_SOURCE_RECORD = (
     "INSERT INTO source_records (payload_id, record_ordinal, fields)"
     " VALUES ('missing-payload', 1, '{}');\n"
-)
-# Where the installed package keeps the Silver migrations.
-SILVER_MIGRATIONS = (
-    Path(silver_storage.__file__).resolve().parent.parent / "migrations" / "silver"
 )
 KEEP_ONLY_THE_NEWEST = (
     "\n[backups]\nkeep_all_days = 0\nkeep_daily_days = 0\nkeep_monthly = 0\n"

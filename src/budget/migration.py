@@ -50,7 +50,7 @@ class RestoreInsteadError(RuntimeError):
 
 
 class MigratedWithoutBackupError(RuntimeError):
-    """The store was migrated, but no backup set of it could follow.
+    """The stores were migrated, but no backup set of them could follow.
 
     The migration is committed. The set taken before it stays held for
     recovery, and `budget backup` writes the missing set once its problem is
@@ -137,8 +137,11 @@ def migrate_profile(
 ) -> None:
     """Create or upgrade the locked profile's stores for `stages`.
 
-    Bronze is migrated before Silver. `new_store` asks for a new production
-    store where none exists. `clock` names each backup set.
+    Bronze is migrated before Silver, each in its own transaction. In
+    production, the first store found to need a change takes one backup set
+    of every store before it changes, held for recovery; a set follows once
+    every stage is migrated, if any changed. `new_store` asks for a new
+    production store where none exists. `clock` names each backup set.
     """
     profile = lock.profile
     stores = _stage_stores(profile, stages)
