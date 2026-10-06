@@ -29,7 +29,6 @@ from budget.locking import WriterLock
 from budget.profiles import PRODUCTION_PROFILE_NAME, Profile
 from budget.silver.storage import SILVER_STAGE, silver_stage
 from budget.sqlstore import (
-    NewStoreRefusedError,
     NewStoreRequiredError,
     StageStore,
     StoreError,
@@ -147,17 +146,18 @@ def _require_bronze_beside(profile: Profile, stages: Collection[str]) -> None:
 
 
 def _require_every_store_new(stores: list[StageStore]) -> None:
-    """Refuse new production stores where any one asked for already exists.
+    """Refuse new production stores where some asked for are started already.
 
     The runner refuses an existing store only once it reaches it, after the
     stages before it were started; a store started that way would have no
-    backup set after it. Where none exists, each is started in turn. A file
-    an interrupted start left empty does not count: the runner starts it
-    again.
+    backup set after it. Where none is started, each is started in turn. A
+    file an interrupted start left empty does not count: the runner starts
+    it again. The refusal names the first store still to start, and the
+    `--stage` that starts it alone.
     """
-    existing = [store for store in stores if is_started(store)]
-    if existing and len(existing) < len(stores):
-        raise NewStoreRefusedError(existing[0].label, existing[0].path)
+    missing = [store for store in stores if not is_started(store)]
+    if missing and len(missing) < len(stores):
+        raise NewStoreRequiredError(missing[0].label, missing[0].stage)
 
 
 def _require_nothing_to_restore(profile: Profile, stores: list[StageStore]) -> None:
