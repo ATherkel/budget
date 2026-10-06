@@ -139,6 +139,26 @@ class SilverBesideBronzeTests(unittest.TestCase):
                 "silver": {"path": "silver.db", "schema_version": 1},
             }
 
+    def test_a_missing_silver_store_is_refused_before_bronze_changes(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            started = migrate(profile_file, "--stage", "bronze", "--new-store")
+            assert started[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            sets = complete_backup_sets(production)
+
+            with added_migration(ADDED_TABLE):
+                status, stderr = migrate(profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            # `--new-store` alone would be refused: Bronze's store exists.
+            assert "budget migrate --stage silver --new-store" in stderr
+            assert user_version(production.bronze_store) == 1
+            assert not production.silver_store.exists()
+            assert complete_backup_sets(production) == sets
+
 
 class OlderProductionStoreTests(unittest.TestCase):
     def test_an_older_store_is_backed_up_before_and_after_it_is_migrated(
