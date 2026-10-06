@@ -11,7 +11,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from budget.bronze.models import FormatFailure, ImportRun, SourceRecord
-from budget.locking import writer_lock
+from budget.locking import WriterLock, writer_lock
 from budget.profiles import Profile
 from budget.silver.build import build
 from budget.silver.decisions import SilverDecision
@@ -30,21 +30,37 @@ class SilverBuildInputs:
     decisions: Sequence[SilverDecision] = ()
 
 
-def rebuild_silver(profile: Profile, *, inputs: SilverBuildInputs) -> SilverResult:
+def rebuild_silver(
+    profile: Profile,
+    *,
+    inputs: SilverBuildInputs,
+    lock: WriterLock | None = None,
+) -> SilverResult:
     """Rebuild one profile's Silver store from Bronze inputs and return it.
 
     The build is the existing pure `budget.silver.build`; this function only
-    takes the profile's writer lock and replaces the stored result with what
-    the build produced, so a rebuild is one transaction against `silver.db`.
+    replaces the stored result with what the build produced, so a rebuild is
+    one transaction against `silver.db`. Without `lock`, it takes and releases
+    the profile's writer lock itself. With `lock`, the caller holds that lock
+    for its whole command, so a command that reads its inputs from another
+    store does that under the one lock and hands it in, rather than releasing
+    and retaking it.
     """
-    with writer_lock(profile):
-        result = build(
-            runs=inputs.runs,
-            source_records=inputs.source_records,
-            format_failures=inputs.format_failures,
-            currencies=inputs.currencies,
-            decisions=inputs.decisions,
-        )
-        with SilverStore(profile) as store:
-            store.replace(result, currencies=inputs.currencies)
+    if lock is None:
+        with writer_lock(profile) as held:
+            return _replace(held.profile, inputs)
+    return _replace(lock.profile, inputs)
+
+
+def _replace(profile: Profile, inputs: SilverBuildInputs) -> SilverResult:
+    """Run the pure build and store exactly what it produced."""
+    result = build(
+        runs=inputs.runs,
+        source_records=inputs.source_records,
+        format_failures=inputs.format_failures,
+        currencies=inputs.currencies,
+        decisions=inputs.decisions,
+    )
+    with SilverStore(profile) as store:
+        store.replace(result, currencies=inputs.currencies)
     return result

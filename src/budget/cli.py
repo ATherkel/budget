@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, NoReturn
 
-from budget import sqlstore
+from budget import sqlstore, summaries
 from budget.backups import (
     BackupVerificationError,
     BackupWriteError,
@@ -24,6 +24,7 @@ from budget.backups import (
 )
 from budget.bronze.storage import BRONZE_STAGE, bronze_stage
 from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
+from budget.inputs import ConfigurationError
 from budget.locking import (
     StoresFolderUnavailableError,
     WriterLockHeldError,
@@ -42,10 +43,12 @@ from budget.profiles import (
     ProfileFileError,
     load_profile_file,
 )
+from budget.rebuilding import rebuild_from_silver
 from budget.silver.storage import SILVER_STAGE
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
-STAGES: Final = (BRONZE_STAGE, SILVER_STAGE, "gold")
+GOLD_STAGE: Final = "gold"
+STAGES: Final = (BRONZE_STAGE, SILVER_STAGE, GOLD_STAGE)
 EXIT_OK: Final = 0
 EXIT_USAGE: Final = 2
 EXIT_REFUSED_INPUT: Final = 3
@@ -89,6 +92,16 @@ class NoProfileSelectedError(Exception):
         )
 
 
+class RebuildFromStageNotBuiltError(Exception):
+    """The stage a rebuild would read from has no reader in this code yet."""
+
+    def __init__(self, stage: str) -> None:
+        """Name the one stage reading that exists, rather than pretend."""
+        super().__init__(
+            f"rebuilding from {stage} is not built yet: only --from {SILVER_STAGE} is"
+        )
+
+
 def _parser() -> argparse.ArgumentParser:
     """Build the command-line grammar."""
     parser = argparse.ArgumentParser(prog="budget")
@@ -105,6 +118,14 @@ def _parser() -> argparse.ArgumentParser:
         help="start a new production store where none exists",
     )
     commands.add_parser("backup", help="write a backup set of production")
+    rebuild = commands.add_parser("rebuild", help="rebuild a stage and every later one")
+    rebuild.add_argument(
+        "--from",
+        dest="from_stage",
+        choices=STAGES,
+        default=GOLD_STAGE,
+        help="the stage to rebuild from",
+    )
     return parser
 
 
@@ -147,12 +168,29 @@ def _backup(profile: Profile) -> None:
     sys.stdout.write(f"backup set {written.name} written\n")
 
 
+def _rebuild(profile: Profile, from_stage: str) -> None:
+    """Rebuild `from_stage` and every later stage, under one writer lock.
+
+    The whole command holds the profile's writer lock, so the inputs it reads
+    from the stages before `from_stage` cannot change between the read and the
+    replacement it writes.
+    """
+    if from_stage != SILVER_STAGE:
+        raise RebuildFromStageNotBuiltError(from_stage)
+    with writer_lock(profile) as lock:
+        result = rebuild_from_silver(lock)
+    sys.stdout.write(summaries.rebuild_summary(result))
+
+
 def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> None:
     """Select and load the profile, then run the command against it."""
     profile_file = _selected_profile_file(arguments.profile, environ)
     profile = load_profile_file(profile_file)
     if arguments.command == "backup":
         _backup(profile)
+        return
+    if arguments.command == "rebuild":
+        _rebuild(profile, arguments.from_stage)
         return
     _migrate(profile, arguments.stage, new_store=arguments.new_store)
 
@@ -177,11 +215,12 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         return usage.code if isinstance(usage.code, int) else EXIT_USAGE
     try:
         _run(arguments, environ)
-    except ProfileFileError as error:
+    except (ProfileFileError, ConfigurationError) as error:
         return _refuse(error, EXIT_REFUSED_INPUT)
     except (
         NoProfileSelectedError,
         StageNotBuiltError,
+        RebuildFromStageNotBuiltError,
         WriterLockHeldError,
         StoresFolderUnavailableError,
         RestoreInsteadError,
