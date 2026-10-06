@@ -30,6 +30,7 @@ from budget.locking import (
     writer_lock,
 )
 from budget.migration import (
+    MIGRATED_STAGES,
     MigratedWithoutBackupError,
     RestoreInsteadError,
     migrate_profile,
@@ -41,7 +42,6 @@ from budget.profiles import (
     ProfileFileError,
     load_profile_file,
 )
-from budget.silver import migrate_silver
 from budget.silver.storage import SILVER_STAGE
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
@@ -143,12 +143,9 @@ def _migrate(profile: Profile, stage: str | None, *, new_store: bool) -> None:
         raise SilverNotBackedUpError
     # Refusals that touch nothing come first; the lock guards the mutation.
     require_migration_allowed(profile, new_store=new_store)
+    stages = MIGRATED_STAGES if stage is None else (stage,)
     with writer_lock(profile) as lock:
-        if stage in {None, BRONZE_STAGE}:
-            migrate_profile(lock, new_store=new_store)
-        # Production's backups hold Bronze alone, so it migrates no Silver.
-        if stage in {None, SILVER_STAGE} and profile.name != PRODUCTION_PROFILE_NAME:
-            migrate_silver(profile)
+        migrate_profile(lock, stages=stages, new_store=new_store)
 
 
 def _backup(profile: Profile) -> None:
