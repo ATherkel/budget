@@ -41,6 +41,23 @@ class BackupCommandTests(unittest.TestCase):
             assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
             assert "writes no backup sets" in stderr
 
+    def test_backup_is_refused_where_a_store_its_sets_hold_is_lost(self) -> None:
+        # A set without it would claim a complete copy of a profile that has
+        # lost a store, and retention would in time prune the sets holding it.
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            sets = complete_backup_sets(production)
+            for lost in production.stores.glob("silver.db*"):
+                lost.unlink()
+
+            status, stdout, stderr = backup(profile_file)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "Silver store must be restored" in stderr
+            assert complete_backup_sets(production) == sets
+
     def test_backup_is_refused_where_production_has_no_store(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
