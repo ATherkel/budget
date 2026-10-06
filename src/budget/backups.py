@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Final
 
 from budget.bronze import BronzeStore
-from budget.bronze.storage import BRONZE_STAGE, open_bronze_for_backup
+from budget.bronze.storage import BRONZE_STAGE, bronze_stage
 from budget.durability import sync_folder
 from budget.importing import check_import_log
 from budget.locking import WriterLock
@@ -34,10 +34,13 @@ from budget.profiles import (
     DECISION_LOG_FILE_NAME,
     IMPORT_LOG_FILE_NAME,
     INPUTS_FOLDER,
+    SILVER_STORE_NAME,
     WRITER_LOCK_NAME,
     Profile,
     RetentionPolicy,
 )
+from budget.silver.storage import silver_stage
+from budget.sqlstore import StageStore, open_store_for_backup
 
 MANIFEST_FORMAT: Final = 1
 RECOVERY_FORMAT: Final = 1
@@ -51,16 +54,19 @@ PUBLISHING_SUFFIX: Final = ".partial"
 _PACKAGE: Final = Path(__file__).resolve().parent
 _SOURCE_SUFFIXES: Final = frozenset({".py", ".sql"})
 _IMPORT_LOG_IN_SET: Final = f"{INPUTS_FOLDER}/{IMPORT_LOG_FILE_NAME}"
-# What the later stages keep in the stores folder (operations.md, Stores).
-_OTHER_STAGE_STORES: Final = frozenset({"silver.db", "gold.db", "gold"})
-# Bronze's store with the files SQLite keeps beside it, and the writer lock.
-_BRONZE_FILES: Final = frozenset(
+# What Gold keeps in the stores folder (operations.md, Stores), which no set
+# covers until Gold has a store.
+_UNCOVERED_STAGE_STORES: Final = frozenset({"gold.db", "gold"})
+# The stores a set covers, with the files SQLite keeps beside each, and the
+# writer lock.
+_COVERED_FILES: Final = frozenset(
     {
-        BRONZE_STORE_NAME,
-        f"{BRONZE_STORE_NAME}-wal",
-        f"{BRONZE_STORE_NAME}-shm",
-        f"{BRONZE_STORE_NAME}-journal",
         WRITER_LOCK_NAME,
+        *(
+            f"{store}{suffix}"
+            for store in (BRONZE_STORE_NAME, SILVER_STORE_NAME)
+            for suffix in ("", "-wal", "-shm", "-journal")
+        ),
     }
 )
 # The first bytes of every SQLite database file.
@@ -109,15 +115,17 @@ class BackupVerificationError(RuntimeError):
 class UnsupportedStoresError(RuntimeError):
     """The stores folder holds a store this backup does not cover.
 
-    Only the Bronze store is backed up so far. A set that left another store
-    out would claim to be a complete copy of the profile, so none is written.
+    Only the Bronze and Silver stores are backed up so far. A set that left
+    another store out would claim to be a complete copy of the profile, so
+    none is written.
     """
 
     def __init__(self, names: list[str]) -> None:
         """Name what was found in the stores folder."""
         super().__init__(
             f"the stores folder holds {', '.join(names)}, which no backup set "
-            "covers yet: only the Bronze store is backed up; nothing was published"
+            "covers yet: only the Bronze and Silver stores are backed up; "
+            "nothing was published"
         )
 
 
@@ -176,8 +184,8 @@ def _write_synced(path: Path, content: bytes) -> None:
         os.fsync(file.fileno())
 
 
-def _snapshot_bronze(profile: Profile, target: Path) -> int:
-    """Copy the Bronze store to `target` through SQLite's backup API.
+def _snapshot(store: StageStore, target: Path) -> int:
+    """Copy one stage's store to `target` through SQLite's backup API.
 
     The backup API reads the store as one consistent transaction, WAL
     included, which no copy of the store's files can promise. Returns the
@@ -186,7 +194,7 @@ def _snapshot_bronze(profile: Profile, target: Path) -> int:
     SQLite reports a copy it cannot write, such as on a full disk, as its own
     error rather than an `OSError`: that is a set that cannot be written too.
     """
-    with closing(open_bronze_for_backup(profile)) as source:
+    with closing(open_store_for_backup(store)) as source:
         try:
             with closing(sqlite3.connect(target)) as snapshot:
                 source.backup(snapshot)
@@ -200,13 +208,24 @@ class _StagedSet:
     """A set written in staging: what each file is, and its manifest's bytes.
 
     `files` maps each file's path in the set, with `/` separators, to what
-    the manifest records about it. `schema_version` is the Bronze schema
-    version this set's snapshot was taken at.
+    the manifest records about it. `schema_versions` maps each stage whose
+    store the set holds to the schema version its snapshot was taken at.
     """
 
     files: dict[str, dict[str, object]]
     manifest: bytes
-    schema_version: int
+    schema_versions: dict[str, int]
+
+
+def _covered_stores(profile: Profile) -> tuple[StageStore, ...]:
+    """Name the stores a set of this profile holds: Bronze, and Silver's if any.
+
+    Bronze's is always snapshotted, so a profile without one is refused. A
+    Silver store is snapshotted where it exists; a profile that has none yet
+    is still copied whole without it.
+    """
+    silver = silver_stage(profile)
+    return (bronze_stage(profile), *((silver,) if silver.path.exists() else ()))
 
 
 def _copy_inputs(profile: Profile, staging: Path) -> dict[str, bytes]:
@@ -241,13 +260,18 @@ def _log_length(content: bytes | None) -> int:
 def _stage(profile: Profile, staging: Path, now: datetime) -> _StagedSet:
     """Write a set's files into `staging`, and describe them."""
     staging.mkdir(parents=True)
-    store = staging / BRONZE_STORE_NAME
-    schema_version = _snapshot_bronze(profile, store)
+    stores = _covered_stores(profile)
+    schema_versions = {
+        store.stage: _snapshot(store, staging / store.path.name) for store in stores
+    }
     inputs = _copy_inputs(profile, staging)
     # The set must restore as it was taken: every logged run in the snapshot.
-    with BronzeStore(profile, snapshot=store) as snapshot:
+    with BronzeStore(profile, snapshot=staging / BRONZE_STORE_NAME) as snapshot:
         check_import_log(snapshot, inputs.get(_IMPORT_LOG_IN_SET, b""))
-    files = {BRONZE_STORE_NAME: _checksum(store.read_bytes())}
+    files = {
+        store.path.name: _checksum((staging / store.path.name).read_bytes())
+        for store in stores
+    }
     files.update({in_set: _checksum(content) for in_set, content in inputs.items()})
     manifest = {
         "format": MANIFEST_FORMAT,
@@ -255,7 +279,11 @@ def _stage(profile: Profile, staging: Path, now: datetime) -> _StagedSet:
         "created_at": now.astimezone(UTC).isoformat(),
         "code_version": code_version(),
         "stores": {
-            BRONZE_STAGE: {"path": BRONZE_STORE_NAME, "schema_version": schema_version}
+            store.stage: {
+                "path": store.path.name,
+                "schema_version": schema_versions[store.stage],
+            }
+            for store in stores
         },
         "logs": {
             log: _log_length(inputs.get(f"{INPUTS_FOLDER}/{log}"))
@@ -266,7 +294,7 @@ def _stage(profile: Profile, staging: Path, now: datetime) -> _StagedSet:
     return _StagedSet(
         files=files,
         manifest=(json.dumps(manifest, indent=2) + "\n").encode("utf-8"),
-        schema_version=schema_version,
+        schema_versions=schema_versions,
     )
 
 
@@ -298,22 +326,22 @@ def _is_sqlite_database(path: Path) -> bool:
 
 
 def _is_another_store(entry: Path) -> bool:
-    """Report whether a stores-folder entry is a store other than Bronze."""
-    if entry.name in _OTHER_STAGE_STORES:
+    """Report whether a stores-folder entry is a store no set covers."""
+    if entry.name in _UNCOVERED_STAGE_STORES:
         return True
     # The lock is never read: on Windows, its locked byte refuses a reader.
-    if entry.name in _BRONZE_FILES or not entry.is_file():
+    if entry.name in _COVERED_FILES or not entry.is_file():
         return False
     return _is_sqlite_database(entry)
 
 
 def require_supported_stores(profile: Profile) -> None:
-    """Refuse a stores folder holding any store besides Bronze.
+    """Refuse a stores folder holding any store besides Bronze and Silver.
 
-    Silver's and Gold's stores, Gold's legacy publications, and any other
-    SQLite database are refused, even an empty file being created as one.
-    Bronze's own WAL and shared-memory files, the lock and folders such as
-    `logs` are not stores.
+    Gold's store, its legacy publications, and any other SQLite database are
+    refused, even an empty file being created as one. The covered stores' own
+    WAL and shared-memory files, the lock and folders such as `logs` are not
+    stores.
     """
     if not profile.stores.is_dir():
         return
@@ -370,7 +398,7 @@ def back_up(lock: WriterLock, *, now: datetime) -> BackupSet:
     # The set is published: retention and release that fail now only leave
     # sets held or kept until the next backup, so neither fails this one.
     with suppress(OSError):
-        _release_superseded(profile, staged.schema_version)
+        _release_superseded(profile, staged.schema_versions[BRONZE_STAGE])
     with suppress(OSError):
         _prune(profile, name, now)
     return BackupSet(name=name, path=path, created_at=now)
