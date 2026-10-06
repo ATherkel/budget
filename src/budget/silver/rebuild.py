@@ -31,7 +31,7 @@ class SilverBuildInputs:
 
 
 def rebuild_silver(
-    profile: Profile,
+    target: Profile | WriterLock,
     *,
     inputs: SilverBuildInputs,
     lock: WriterLock | None = None,
@@ -40,12 +40,16 @@ def rebuild_silver(
 
     The build is the existing pure `budget.silver.build`; this function only
     replaces the stored result with what the build produced, so a rebuild is
-    one transaction against `silver.db`. Without `lock`, it takes and releases
-    the profile's writer lock itself. With `lock`, the caller holds that lock
-    for its whole command, so a command that reads its inputs from another
-    store does that under the one lock and hands it in, rather than releasing
-    and retaking it.
+    one transaction against `silver.db`. `target` is the one authority for the
+    profile the result belongs to: a `Profile` takes and releases the writer
+    lock itself, and a `WriterLock` is a command's own lock, held for its whole
+    run, which the rebuild then reuses. The `lock` keyword keeps the earlier
+    call shape working while its callers move to the target argument.
     """
+    if isinstance(target, WriterLock):
+        message = "a positional writer lock is not wired into the rebuild yet"
+        raise NotImplementedError(message)
+    profile = target
     if lock is None:
         with writer_lock(profile) as held:
             return _replace(held.profile, inputs)

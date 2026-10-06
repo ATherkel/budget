@@ -9,6 +9,7 @@ the `SilverResult` the caller gets back.
 import unittest
 from collections.abc import Sequence
 from datetime import date
+from decimal import Decimal
 from tempfile import TemporaryDirectory
 
 import pytest
@@ -140,6 +141,32 @@ class SilverRebuildTests(unittest.TestCase):
             # Nothing was written, so the store holds no result yet.
             with SilverStore(profile) as store:
                 assert store.read() == SilverResult((), (), (), (), (), (), ())
+
+    def test_a_held_writer_lock_is_the_rebuild_target(self) -> None:
+        # A command that reads another store's inputs holds the profile's
+        # writer lock for its whole run, so the rebuild takes that lock as its
+        # one authority instead of acquiring the profile's lock a second time.
+        inputs = _inputs(FIRST)
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+
+            with writer_lock(profile) as lock:
+                result = rebuild_silver(lock, inputs=inputs)
+
+            assert [(t.account_id, t.description) for t in result.transactions] == [
+                ("joint-current", "NETTO")
+            ]
+            with SilverStore(profile) as store:
+                stored = store.read()
+            assert [
+                (t.transaction_date, t.amount, t.balance, t.currency)
+                for t in stored.transactions
+            ] == [(date(2026, 3, 1), Decimal("-45.00"), Decimal("955.00"), "DKK")]
+            assert [
+                (run.import_run_id, run.status) for run in stored.import_run_results
+            ] == [("run-a", "accepted")]
+            assert stored.review_items == ()
 
 
 if __name__ == "__main__":
