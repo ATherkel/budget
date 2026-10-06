@@ -8,6 +8,7 @@ without backups: only production writes backup sets.
 """
 
 from collections.abc import Callable, Collection
+from contextlib import closing
 from datetime import UTC, datetime
 from typing import Final
 
@@ -34,6 +35,7 @@ from budget.sqlstore import (
     StoreError,
     is_started,
     migrate_store,
+    open_store_for_backup,
 )
 from budget.sqlstore import (
     require_migration_allowed as require_store_migration_allowed,
@@ -134,15 +136,21 @@ def require_migration_allowed(
 
 
 def _require_bronze_beside(profile: Profile, stages: Collection[str]) -> None:
-    """Refuse a production stage after Bronze where Bronze's store is not started.
+    """Refuse a production stage after Bronze where no set could hold Bronze.
 
     `require_migration_allowed` refuses a missing file before the lock; this
     reads the file under it, so one an interrupted start left empty is
-    refused too.
+    refused too. A started store is then opened as a backup opens it, so one
+    of another profile or stage, or at a version this code does not know,
+    is refused before a later stage is started beside it.
     """
+    if BRONZE_STAGE in stages:
+        return
     bronze = bronze_stage(profile)
-    if BRONZE_STAGE not in stages and not is_started(bronze):
+    if not is_started(bronze):
         raise NewStoreRequiredError(bronze.label, bronze.stage)
+    with closing(open_store_for_backup(bronze)):
+        pass
 
 
 def _require_every_store_new(stores: list[StageStore]) -> None:
