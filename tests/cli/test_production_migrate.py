@@ -23,7 +23,12 @@ from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
 from budget.silver import SilverStore
 from tests.backups.sets import manifest, run_ids, tables, user_version
-from tests.bronze.migration_resources import SILVER_MIGRATIONS, added_migration
+from tests.bronze.migration_resources import (
+    MIGRATIONS,
+    SILVER_MIGRATIONS,
+    added_migration,
+    added_migrations,
+)
 from tests.cli.commands import migrate
 from tests.cli.profile_files import write_profile
 
@@ -250,6 +255,24 @@ class OlderProductionStoreTests(unittest.TestCase):
             assert _schema_version(before.path, "silver") == 1
             assert _schema_version(after.path, "silver") == 2
             assert _schema_version(after.path) == 1
+
+    def test_older_stores_of_both_stages_share_one_set_before_and_one_after(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+
+            both = {MIGRATIONS: ADDED_TABLE, SILVER_MIGRATIONS: ADDED_TABLE}
+            with added_migrations(both):
+                assert migrate(profile_file) == (EXIT_OK, "")
+                after, before, _ = complete_backup_sets(production)
+
+            for stage in ("bronze", "silver"):
+                assert _schema_version(before.path, stage) == 1
+                assert _schema_version(after.path, stage) == 2
+            assert not production.recovery_sets_file.exists()
 
 
 class FailedBackupTests(unittest.TestCase):
