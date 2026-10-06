@@ -23,6 +23,7 @@ from budget.backups import (
     back_up,
 )
 from budget.bronze.storage import BRONZE_STAGE, bronze_stage
+from budget.codeversion import UncommittedCodeError, require_committed_code
 from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.inputs import ConfigurationError
 from budget.locking import (
@@ -182,6 +183,7 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
     if from_stage != SILVER_STAGE:
         raise RebuildFromStageNotBuiltError(from_stage)
     with writer_lock(profile) as lock:
+        require_committed_code(lock.profile)
         rebuilt = rebuild_from_silver(lock)
     sys.stdout.write(summaries.rebuild_summary(rebuilt))
 
@@ -238,6 +240,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         NoProfileSelectedError,
         StageNotBuiltError,
         RebuildFromStageNotBuiltError,
+        UncommittedCodeError,
         WriterLockHeldError,
         StoresFolderUnavailableError,
         RestoreInsteadError,

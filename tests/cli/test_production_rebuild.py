@@ -82,7 +82,14 @@ class ProductionRebuildCodeTests(unittest.TestCase):
             called = run.call_args
             assert called is not None
             arguments, kwargs = called
-            assert arguments[0][:2] == ["git", "status"]
+            # A PATH-resolved absolute executable, `git` or `git.exe`, running
+            # the fixed `git status` command.
+            assert Path(arguments[0][0]).name.startswith("git")
+            assert arguments[0][1:] == [
+                "status",
+                "--porcelain",
+                "--untracked-files=normal",
+            ]
             # The check reads the package's own checkout, not this profile.
             assert (
                 Path(budget.__file__)
