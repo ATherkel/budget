@@ -113,6 +113,25 @@ class NewProductionStoreTests(unittest.TestCase):
             assert "restore" in stderr
             assert not production.bronze_store.exists()
 
+    def test_a_new_silver_store_is_refused_where_a_backup_set_holds_one(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            sets = complete_backup_sets(production)
+            # Silver's store is lost, but the set that holds it is not.
+            for lost in production.stores.glob("silver.db*"):
+                lost.unlink()
+
+            status, stderr = migrate(profile_file, "--stage", "silver", "--new-store")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "Silver store must be restored" in stderr
+            assert not production.silver_store.exists()
+            assert complete_backup_sets(production) == sets
+
 
 class SilverBesideBronzeTests(unittest.TestCase):
     """A production profile whose stores and sets predate Silver's backups."""
