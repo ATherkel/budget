@@ -109,3 +109,30 @@ def holding(profile: Profile) -> sqlite3.Connection:
     connection = sqlite3.connect(profile.bronze_store)
     connection.execute("SELECT count(*) FROM import_runs").fetchone()
     return connection
+
+
+def holding_silver(profile: Profile) -> sqlite3.Connection:
+    """Open a reader on the live Silver store, as `holding` does for Bronze."""
+    connection = sqlite3.connect(profile.silver_store)
+    connection.execute("SELECT count(*) FROM account_currencies").fetchone()
+    return connection
+
+
+def add_silver_currency(profile: Profile, account_id: str, currency: str) -> None:
+    """Commit one row to the live Silver store, as a build would."""
+    with closing(sqlite3.connect(profile.silver_store)) as connection:
+        connection.execute(
+            "INSERT INTO account_currencies (account_id, currency) VALUES (?, ?)",
+            (account_id, currency),
+        )
+        connection.commit()
+
+
+def silver_accounts(store: Path) -> list[str]:
+    """The accounts a Silver store file holds currencies for, unchanged."""
+    uri = f"{store.as_uri()}?mode=ro&immutable=1"
+    with closing(sqlite3.connect(uri, uri=True)) as connection:
+        rows = connection.execute(
+            "SELECT account_id FROM account_currencies ORDER BY account_id"
+        )
+        return [str(row[0]) for row in rows]

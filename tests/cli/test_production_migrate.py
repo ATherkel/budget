@@ -138,7 +138,7 @@ class FailedBackupTests(unittest.TestCase):
             production.import_log_file.write_bytes(b"\n")
 
         def another_store(production: Profile) -> None:
-            with closing(sqlite3.connect(production.stores / "silver.db")) as store:
+            with closing(sqlite3.connect(production.stores / "gold.db")) as store:
                 store.execute("CREATE TABLE marker (x TEXT)")
 
         cases = {
@@ -155,7 +155,7 @@ class FailedBackupTests(unittest.TestCase):
             "a store no backup set covers": (
                 another_store,
                 EXIT_REFUSED_ENVIRONMENT,
-                "silver.db",
+                "gold.db",
             ),
         }
         for case, (break_backup, expected_status, message) in cases.items():

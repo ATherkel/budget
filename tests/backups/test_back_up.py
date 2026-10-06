@@ -32,15 +32,19 @@ from budget.bronze import migrate_bronze
 from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.locking import writer_lock
 from budget.profiles import Profile, RetentionPolicy
+from budget.silver import migrate_silver
 from tests.backups.sets import (
     NOW,
+    add_silver_currency,
     checksum,
     copied_run_ids,
     damaged_rereads,
     holding,
+    holding_silver,
     import_one,
     manifest,
     run_ids,
+    silver_accounts,
 )
 from tests.bronze.migration_resources import added_migration
 from tests.importing.households import household
@@ -93,6 +97,34 @@ class BackUpTests(unittest.TestCase):
             assert written["created_at"] == "2026-05-02T18:05:11.120731+00:00"
             assert written["stores"] == {
                 "bronze": {"path": "bronze.db", "schema_version": 1}
+            }
+            assert complete_backup_sets(profile) == (backup,)
+
+    def test_a_set_holds_a_snapshot_of_silver_beside_bronze(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile = household(folder / "household")
+            migrate_silver(profile)
+            with closing(holding_silver(profile)), writer_lock(profile) as lock:
+                add_silver_currency(profile, "joint-current", "DKK")
+                # The row is still in Silver's WAL file: a copy of the store
+                # file alone would miss it.
+                copy = folder / "copied-silver.db"
+                shutil.copyfile(profile.silver_store, copy)
+                assert silver_accounts(copy) == []
+
+                backup = back_up(lock, now=NOW)
+
+            store = backup.path / "silver.db"
+            written = manifest(backup.path)
+            files = written["files"]
+            assert isinstance(files, dict)
+            assert files["silver.db"] == checksum(store)
+            assert files["bronze.db"] == checksum(backup.path / "bronze.db")
+            assert silver_accounts(store) == ["joint-current"]
+            assert written["stores"] == {
+                "bronze": {"path": "bronze.db", "schema_version": 1},
+                "silver": {"path": "silver.db", "schema_version": 1},
             }
             assert complete_backup_sets(profile) == (backup,)
 
@@ -305,11 +337,11 @@ class UnsupportedStoreTests(unittest.TestCase):
     def test_a_profile_with_a_store_this_backup_cannot_cover_is_refused(
         self,
     ) -> None:
+        # Bronze and Silver are covered; Gold has no store in this code yet.
         cases = {
-            "a Silver store": Path("silver.db"),
             "a Gold store": Path("gold.db"),
             "a legacy publication": Path("gold") / "legacy" / "publication-1.db",
-            "an empty Silver store being created": Path("silver.db"),
+            "an empty Gold store being created": Path("gold.db"),
             "a store under any other name": Path("household.sqlite"),
         }
         for case, relative in cases.items():
