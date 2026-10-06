@@ -98,6 +98,24 @@ class NewProductionStoreTests(unittest.TestCase):
             assert not (folder / "stores").exists()
             assert not (folder / "backups").exists()
 
+    def test_a_store_an_interrupted_start_left_empty_is_started_with_the_rest(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            production = load_profile_file(profile_file)
+            # What a first `--new-store` cut off inside Bronze's migration
+            # leaves: a WAL-mode file at schema version 0, with no tables.
+            production.stores.mkdir(parents=True)
+            with closing(sqlite3.connect(production.bronze_store)) as store:
+                store.execute("PRAGMA journal_mode = WAL")
+
+            assert migrate(profile_file, "--new-store") == (EXIT_OK, "")
+
+            with BronzeStore(production), SilverStore(production):
+                pass
+            assert len(complete_backup_sets(production)) == 1
+
     def test_new_stores_are_refused_before_any_starts_where_one_exists(
         self,
     ) -> None:
