@@ -167,7 +167,9 @@ class MigrateRefusalTests(unittest.TestCase):
                         "SELECT stage FROM store_identity"
                     ).fetchall() == [(other,)]
 
-    def test_a_production_silver_store_is_started_only_when_asked(self) -> None:
+    def test_production_silver_is_refused_first_for_want_of_bronze(self) -> None:
+        # Starting Silver would be refused too until Bronze has a store, so
+        # the advice is the step that works first.
         with TemporaryDirectory() as directory:
             folder = Path(directory)
 
@@ -176,8 +178,8 @@ class MigrateRefusalTests(unittest.TestCase):
             )
 
             assert status == EXIT_REFUSED_ENVIRONMENT
-            assert "no Silver store" in stderr
-            assert "--new-store" in stderr
+            assert "no Bronze store" in stderr
+            assert "budget migrate --stage bronze --new-store" in stderr
             assert "120" not in stderr
             assert not (folder / "stores").exists()
             assert not (folder / "backups").exists()
