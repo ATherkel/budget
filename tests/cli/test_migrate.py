@@ -290,7 +290,7 @@ class MigrateDefectTests(unittest.TestCase):
 
             with (
                 added_migration(_INVALID_STATEMENT, folder=_SILVER_MIGRATIONS),
-                pytest.raises(sqlite3.OperationalError),
+                pytest.raises(sqlite3.OperationalError, match='near "sql"'),
             ):
                 migrate(write_profile(folder), "--stage", "silver")
 

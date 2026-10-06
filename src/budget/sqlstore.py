@@ -429,6 +429,9 @@ def migrate_store(
     backs the store up first, and is refused before anything is touched
     without it. A production store is started only with `new_store`, which is
     refused where one exists; other profiles start a missing store freely.
+    Which stages production may migrate at all is the caller's to decide:
+    until backup sets cover Silver, `migrate_silver` passes no hook and the
+    command line refuses `--stage silver` in production.
     """
     production = store.profile.name == PRODUCTION_PROFILE_NAME
     if production and before_migrating is None:
@@ -476,9 +479,16 @@ def _require_current_version(connection: sqlite3.Connection, store: StageStore) 
 
 
 def _require_known_version(
-    connection: sqlite3.Connection, store: StageStore, path: Path
+    connection: sqlite3.Connection,
+    store: StageStore,
+    path: Path | None = None,
 ) -> None:
-    """Refuse a store at no schema version, or one newer than this code."""
+    """Refuse a store at no schema version, or one newer than this code.
+
+    `path` names the file in a refusal: the store's own path by default, or a
+    snapshot's.
+    """
+    path = store.path if path is None else path
     version = _read_version(connection)
     latest = _migration_steps(store)[-1].version
     if not 1 <= version <= latest:
@@ -498,8 +508,8 @@ def open_store_for_backup(store: StageStore) -> sqlite3.Connection:
     connection = _connect(path, mode="rw")
     try:
         _apply_connection_settings(connection)
-        _require_known_version(connection, store, path)
-        _require_identity(connection, store, path)
+        _require_known_version(connection, store)
+        _require_identity(connection, store)
     except BaseException:
         connection.close()
         raise
