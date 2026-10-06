@@ -32,3 +32,12 @@ def rebuild(profile_file: Path, *options: str) -> tuple[int, str, str]:
     with redirect_stdout(stdout), redirect_stderr(stderr):
         status = main(["--profile", str(profile_file), "rebuild", *options], environ={})
     return status, stdout.getvalue(), stderr.getvalue()
+
+
+def review(profile_file: Path, *options: str) -> tuple[int, str, str]:
+    """Run `budget review` with one profile file; return status and output."""
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        status = main(["--profile", str(profile_file), "review", *options], environ={})
+    return status, stdout.getvalue(), stderr.getvalue()
