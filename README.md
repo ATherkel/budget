@@ -243,8 +243,7 @@ budget --profile "$env:APPDATA\budget\development.toml" migrate
 
 `migrate` creates or upgrades the profile's Bronze and Silver stores, Bronze
 first, and `--stage bronze` or `--stage silver` names one of them. Every stage
-goes through the same runner,
-so each one refuses the same way: a store recorded for another profile or
+goes through the same runner, so each one refuses the same way: a store recorded for another profile or
 another stage, or at a schema version this code does not know, is left as it
 is and refused with exit 4. `--stage gold` is refused with exit 4 until that
 store exists. A run that succeeds prints nothing:
@@ -279,8 +278,9 @@ writes a verified backup set before it changes an existing store and another
 after, and a migration that fails commits none of its steps. A set holds the
 Bronze store and the Silver store, each snapshotted through SQLite's backup
 API, so production migrates both stages as development does. A missing
-production store is started only with `--new-store`, and only when no complete
-backup set holds one that could restore it instead. `budget backup` writes a
+production store is started only with `--new-store`, only where none of the
+stores it would start exists, Silver's only beside a Bronze store, and only
+when no complete backup set holds one that could restore it instead. `budget backup` writes a
 set of production by hand and prints its name. Nothing imports into
 production yet: that waits for the `import` command, which backs up after its
 Bronze writes.
@@ -313,12 +313,14 @@ budget migrate --stage silver --new-store; $LASTEXITCODE   # 0: silver.db create
 ```
 
 Once a set holds a Silver store, a lost one must be restored, not started
-anew; and a backup is still refused while the stores folder holds a store no
-set covers, such as Gold's, since the set would not be a complete copy of the
-profile. Both exit 4 and write nothing:
+anew, and no backup is written until it is. A backup is still refused while
+the stores folder holds a store no set covers, such as Gold's, since the set
+would not be a complete copy of the profile. All three exit 4 and write
+nothing:
 
 ```text
 budget: the backups folder holds complete backup sets of this profile, so its Silver store must be restored from the newest that holds one, not started anew; nothing was written
+budget: the stores folder has no Silver store, but backup sets of this profile hold one: the Silver store must be restored from the newest that holds one; nothing was published
 budget: the stores folder holds gold.db, which no backup set covers yet: only the Bronze and Silver stores are backed up; nothing was published
 ```
 
@@ -328,5 +330,5 @@ budget: the stores folder holds gold.db, which no backup set covers yet: only th
 | 1 | Unexpected error: a defect, such as a broken packaged migration |
 | 2 | Usage error, including a command that is not built yet |
 | 3 | The profile file is missing, unreadable, not UTF-8, invalid or of an unknown format |
-| 4 | Refused environment: no profile, a production store missing or asked for anew where one or its backup sets exist, a stage not built yet, a store of another profile, stage or schema version, SQLite below the floor, a stores folder that cannot be used, a store another program holds, another command running, a backup set that cannot be written, a store no backup set covers yet, or a store migrated without the backup set after it |
+| 4 | Refused environment: no profile, a production store missing or asked for anew where one or its backup sets exist, a stage not built yet, a store of another profile, stage or schema version, SQLite below the floor, a stores folder that cannot be used, a store another program holds, another command running, a backup set that cannot be written, a store no backup set covers yet or one its backup sets hold gone missing, or a store migrated without the backup set after it |
 | 5 | Verification failed: a backup set's copy does not match its manifest, or the import log disagrees with Bronze |
