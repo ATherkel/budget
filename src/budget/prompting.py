@@ -43,8 +43,8 @@ def _show(ordinal: int, previewed: ExportPreview) -> None:
     if previewed.account_id == NO_ACCOUNT:
         name = f"{previewed.source.parent.name}/{name}"
     _say(f"[{ordinal}] {previewed.account_id}  {name}")
-    if previewed.misfiled:
-        _say(f"{_INDENT}misfiled: {previewed.misfiled}; it stays in the inbox")
+    if previewed.skipped:
+        _say(f"{_INDENT}{previewed.skipped}: {previewed.reason}; it stays in the inbox")
         return
     _say(f"{_INDENT}exported on    {previewed.exported_on} (from filename)")
     _say(f"{_INDENT}transactions   {_transactions(previewed)}")
@@ -76,7 +76,7 @@ def ask_ranges(previews: Sequence[ExportPreview]) -> dict[Path, Coverage] | None
     try:
         for ordinal, previewed in enumerate(previews, start=1):
             _show(ordinal, previewed)
-            if previewed.misfiled:
+            if previewed.skipped:
                 continue
             _say(f"{_INDENT}Enter the range you asked the bank for.")
             declared[previewed.source] = Coverage(

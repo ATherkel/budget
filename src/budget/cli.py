@@ -245,16 +245,15 @@ def _declared_ranges(
     if ranges_file is None:
         return ask_ranges(previews)
     ranges = load_ranges(Path(ranges_file), accounts)
-    return {
-        each.source: ranges.declared(each) for each in previews if not each.misfiled
-    }
+    return {each.source: ranges.declared(each) for each in previews if not each.skipped}
 
 
 def _import(profile: Profile, ranges_file: str | None) -> int:
     """Import every inbox export with its declared range, then rebuild Silver.
 
     Every range is settled before the first file is stored. Returns 3 when
-    any file was refused or misfiled and stays in the inbox, else 0.
+    any file was refused, misfiled or unreadable and stays in the inbox,
+    else 0.
     """
     started = perf_counter()
     with writer_lock(profile) as lock:

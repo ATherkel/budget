@@ -3,9 +3,9 @@
 
 Each export in `inbox/<account_id>/` is previewed, then imported on its own
 through `import_inbox_file`, under the one writer lock the command holds, and
-Silver is then rebuilt from the Bronze those imports wrote. A misfiled export
-is found by its preview, before anyone is asked for its range, and never
-reaches Bronze.
+Silver is then rebuilt from the Bronze those imports wrote. A misfiled or
+unreadable export is found by its preview, before anyone is asked for its
+range, and never reaches Bronze.
 """
 
 from collections import Counter
@@ -42,7 +42,7 @@ from budget.rebuilding import (
 )
 
 # The outcomes that leave a file in the inbox and make `import` exit 3.
-LEFT_IN_INBOX: Final = frozenset({"refused", "misfiled"})
+LEFT_IN_INBOX: Final = frozenset({"refused", "misfiled", "unreadable"})
 # How a file in a folder that names no account is shown: the folder's name is
 # typed by hand, so it may carry a bank account number.
 NO_ACCOUNT: Final = "(no account)"
@@ -58,9 +58,10 @@ class ExportPreview:
     The transaction dates are the file's first and last, read by its
     account's source format, so the person can check that the range they
     declare covers them. Both are `None` when the file has no records, and
-    `failure_reason` says why when the format could not read it. `misfiled`
-    says why the file cannot be imported where it lies; it is empty when it
-    can, and then `exported_on` is the date its filename carries.
+    `failure_reason` says why when the format could not read it. `skipped`
+    names why the file is not imported at all, `misfiled` or `unreadable`,
+    and `reason` says how; both are empty when it can be imported, and
+    then `exported_on` is the date its filename carries.
     """
 
     source: Path
@@ -70,7 +71,8 @@ class ExportPreview:
     last_transaction: date | None = None
     records: int = 0
     failure_reason: str | None = None
-    misfiled: str = ""
+    skipped: str = ""
+    reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -116,6 +118,7 @@ class InboxImport:
             "repeat": outcomes["repeat"],
             "refused": outcomes["refused"],
             "misfiled": outcomes["misfiled"],
+            "unreadable": outcomes["unreadable"],
             "format_failure": outcomes["format failure"],
             "admitted": statuses["accepted"],
             "quarantined": statuses["quarantined"],
@@ -126,7 +129,7 @@ class InboxImport:
 
     @property
     def any_left_in_inbox(self) -> bool:
-        """Whether any file was refused or misfiled, so the command exits 3."""
+        """Whether any file stays in the inbox unimported: exit 3."""
         return any(each.status in LEFT_IN_INBOX for each in self.files)
 
 
@@ -181,23 +184,50 @@ def _exported_on(account: Account, source: Path) -> date | str:
     return _NO_EXPORT_DATE if exported_on is None else exported_on
 
 
+def _misfiled(source: Path, account_id: str, reason: str) -> ExportPreview:
+    """Preview a file that cannot be imported where it lies."""
+    return ExportPreview(
+        source=source, account_id=account_id, skipped="misfiled", reason=reason
+    )
+
+
+def _unreadable(error: OSError) -> str:
+    """Say why a file cannot be read, never naming its path.
+
+    On Windows that is most often another program holding it without
+    sharing it, as a spreadsheet program can.
+    """
+    reason = error.strerror or type(error).__name__
+    return (
+        f"the file cannot be read ({reason}): close the program that holds "
+        "it, then rerun import"
+    )
+
+
 def preview(
     profile: Profile, accounts: Mapping[str, Account], source: Path
 ) -> ExportPreview:
     """Read one inbox file's account and transaction dates, storing nothing."""
     if source.parent == profile.inbox:
         problem = str(NotAnInboxFileError())
-        return ExportPreview(source=source, account_id=NO_ACCOUNT, misfiled=problem)
+        return _misfiled(source, NO_ACCOUNT, problem)
     account = accounts.get(source.parent.name)
     if account is None:
         problem = str(UnknownInboxAccountError(source.parent.name))
-        return ExportPreview(source=source, account_id=NO_ACCOUNT, misfiled=problem)
+        return _misfiled(source, NO_ACCOUNT, problem)
     exported_on = _exported_on(account, source)
     if isinstance(exported_on, str):
+        return _misfiled(source, account.account_id, exported_on)
+    try:
+        content = source.read_bytes()
+    except OSError as error:
         return ExportPreview(
-            source=source, account_id=account.account_id, misfiled=exported_on
+            source=source,
+            account_id=account.account_id,
+            skipped="unreadable",
+            reason=_unreadable(error),
         )
-    parsed = source_parser(account.source_format).parse(source.read_bytes())
+    parsed = source_parser(account.source_format).parse(content)
     return ExportPreview(
         source=source,
         account_id=account.account_id,
@@ -287,16 +317,16 @@ def import_inbox(
 ) -> InboxImport:
     """Import each file with its declared range, then rebuild Silver.
 
-    `declared` maps each file that is not misfiled to the range the person
+    `declared` maps each file that is not skipped to the range the person
     declared for it, all of them settled before this is called. Files are
     numbered in `previews`' order, the order the person was shown them in.
     """
     files = []
     for ordinal, previewed in enumerate(previews, start=1):
-        if previewed.misfiled:
+        if previewed.skipped:
             files.append(
                 FileOutcome(
-                    ordinal, previewed.account_id, "misfiled", previewed.misfiled
+                    ordinal, previewed.account_id, previewed.skipped, previewed.reason
                 )
             )
             continue
