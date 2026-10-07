@@ -500,7 +500,7 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | --- | --- | --- | --- |
 | `migrate [--stage <stage>] [--new-store]` | Creates or upgrades stores. In production, takes a backup set before changing an existing store and another after; a missing production store is started only with `--new-store`, and only when no complete backup set holds one that could restore it. A Gold migration converts retained results, extracts and records legacy publications, then runs a pipeline build (ADR-014). | Store schemas, legacy extracts, backup sets | After a Gold migration |
 | `check` | Validates every input file and the decision-log prefix. Never builds. | Nothing | No |
-| `import` | Imports each file in the inbox on its own, then rebuilds and publishes what was stored. A refused file stays in the inbox. | Bronze, the import log, Silver, Gold | Yes, if the build succeeds |
+| `import [--ranges <file>]` | Imports each file in the inbox on its own, then rebuilds and publishes what was stored. A refused file stays in the inbox. It asks each file's declared range, or reads them from a ranges file: a `[default]` range and `[account.<id>]` ranges, each a TOML `from` and `through` date. | Bronze, the import log, Silver, Gold | Yes, if the build succeeds |
 | `rebuild [--from bronze\|silver\|gold]` | Rebuilds from a stage; `gold` by default. | Stages from `--from` on | Yes, if the recipe changed |
 | `review [--kind <kind>] [--account <id>]` | Lists open review items, Silver's and Gold's, with what a person needs to settle each one. | Nothing | No |
 | `decide <kind> <targets…> [options] --reason <text>` | Proposes a manual decision to the boundary, then rebuilds from the stage the decision affects. | The decision log, then stores | Yes |
@@ -684,6 +684,7 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | The import log mirrors a run Bronze never recorded | Bronze is older than the log; the import stops before writing anything | Restore Bronze up to the log; never roll the log back |
 | A logged run's archived copy is saved over, and the run's file is presented again | Nothing is overwritten; the run stays logged and the file stays in the inbox; other imports go on | Put the run's own export back where its log entry says, then rerun |
 | An inbox file is held open by another program | The import is finished; the file stays in the inbox | Close the program, then rerun `import`: the file is removed as a retry |
+| An inbox file is held by another program that does not share it, so it cannot be read | Not imported, before anything is asked for it; the file stays in the inbox; the other files are stored; exit 3 | Close the program, then rerun `import` |
 | Crash during a build | SQLite rolls back the uncommitted publication; the previous publication stays current | Rerun the command |
 | Another writing command is running | Exit 4 at once; nothing is written | Rerun when the other command ends |
 | A decision-log line cut off by a crash | `check` reports it; `decide` refuses | Delete the partial last line |
@@ -754,10 +755,12 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   store, and after every `migrate` that changed anything, a new store
   included; and by `budget backup`. A `migrate` that changes both Bronze and
   Silver takes one set before the first change and one after the last. A
-  migration that changes nothing writes no set. Only production writes
-  backup sets. Nothing imports into production until the `import` command
-  backs up after its Bronze writes: until then, `BronzeStore.import_file`
-  and `import_inbox_file` refuse the production profile.
+  migration that changes nothing writes no set. After every `import` that
+  presented a file to Bronze, once Silver is rebuilt; an import whose inbox
+  is empty, or that is not confirmed, writes none. Only production writes
+  backup sets. What would refuse that set refuses the import before its
+  first Bronze write; a set that still cannot be written leaves the imports
+  committed, exits 4, and says to run `budget backup`.
 - **Written whole or not at all.** A set is written into the profile's local
   `backup-staging\` folder, `manifest.json` last. It is then copied into the
   backups folder as `<name>.partial`, every copy is checked against the
@@ -880,8 +883,6 @@ and run at least once in development against a restored production backup.
 - **Restore and `dev refresh`:** their acceptance cases, taken from the tables
   above, belong to the issue that builds them; the readiness review (issue
   #12) moved them out of the first dashboard release.
-- **The `import` command:** it backs up after its Bronze writes. Until it
-  does, nothing imports into production.
 - **Pull request #45:** the Bronze store moves its schema into
   `migrations/bronze/`, records its profile and stage, and is opened through
   the profile.
