@@ -244,5 +244,43 @@ class ImportCommandTests(unittest.TestCase):
                 assert not profile.import_log_file.exists()
 
 
+class InteractiveImportTests(unittest.TestCase):
+    def test_the_prompt_asks_each_files_range_then_imports_on_yes(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            source = drop(
+                profile,
+                "joint-current",
+                "danske-20260305.csv",
+                payload("01.03.2026", "02.03.2026"),
+            )
+            # The first answer is not a date, so `from` is asked again.
+            typed = "1 March\n2026-03-01\n2026-03-04\ny\n"
+
+            status, stdout, stderr = import_(profile_file, typed=typed)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout.startswith(
+                "[1] joint-current  danske-20260305.csv\n"
+                "    exported on    2026-03-05 (from filename)\n"
+                "    transactions   2026-03-01..2026-03-02, 2 source records\n"
+                "    Enter the range you asked the bank for.\n"
+                "    from: "
+                "    not a date: type it as 2026-09-30\n"
+                "    from: "
+                "    through: "
+                "Import 1 file? [y/N] "
+            )
+            assert "[1] joint-current  stored\n" in stdout
+            assert not source.exists()
+            [entry] = log_entries(profile)
+            assert (entry["covers_from"], entry["covers_through"]) == (
+                "2026-03-01",
+                "2026-03-04",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
