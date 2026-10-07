@@ -7,6 +7,7 @@ is synthetic.
 """
 
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
@@ -21,6 +22,7 @@ from tests.importing.households import ACCOUNTS, drop, log_entries, payload
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
 EXIT_REFUSED_ENVIRONMENT = 4
+NOW = datetime(2026, 3, 5, 18, 5, 11, 120731, tzinfo=UTC)
 
 
 def _household(profile_file: Path, folder: Path) -> Profile:
@@ -348,6 +350,45 @@ class ProductionImportTests(unittest.TestCase):
             assert isinstance(stores, dict)
             assert set(stores) == {"bronze", "silver"}
             assert run_ids(backup_set / "bronze.db") == [entry["import_run_id"]]
+
+    def test_a_backup_that_fails_after_the_imports_says_what_was_done(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder, name="production")
+            assert migrate(profile_file, "--new-store") == (EXIT_OK, "")
+            profile = load_profile_file(profile_file)
+            profile.inputs.mkdir(parents=True, exist_ok=True)
+            profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+            source = drop(
+                profile, "joint-current", "danske-20260305.csv", payload("01.03.2026")
+            )
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            # The clock names the set after a folder that already exists, and
+            # a set never replaces another, so it cannot be written.
+            profile.backup_path(NOW.strftime("%Y-%m-%dT%H-%M-%S.%fZ")).mkdir()
+            clock = mock.Mock(wraps=datetime)
+            clock.now.return_value = NOW
+
+            with (
+                mock.patch("subprocess.run", return_value=_clean_git()),
+                mock.patch("budget.inbox.datetime", clock),
+            ):
+                status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "[1] joint-current  stored\n" in stdout
+            assert "Silver   1 admitted, 0 quarantined, 0 dropped\n" in stdout
+            assert "Backup" not in stdout
+            assert stderr.startswith(
+                "budget: the exports were imported and Silver rebuilt, but no "
+                "backup set could be written after them: "
+            )
+            assert stderr.endswith("Put that right, then run `budget backup`\n")
+            assert not source.exists()
+            [entry] = log_entries(profile)
+            assert entry["outcome"] == "stored"
 
     def test_what_would_refuse_the_build_or_backup_refuses_first(self) -> None:
         # Each case breaks something the rebuild or the backup after the
