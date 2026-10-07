@@ -251,6 +251,33 @@ class ImportCommandTests(unittest.TestCase):
             assert nested.read_bytes() == content
             assert not profile.import_log_file.exists()
 
+    def test_a_file_silver_quarantines_says_so_on_its_own_line(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            # Two rows that state the same balance after spending: the chain
+            # breaks, so Silver quarantines the run Bronze stored.
+            drop(
+                profile,
+                "joint-current",
+                "danske-20260305.csv",
+                payload("01.03.2026", "02.03.2026"),
+            )
+            drop(profile, "joint-savings", "danske-20260305.csv", payload("01.03.2026"))
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+
+            status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
+
+            assert (status, stderr) == (EXIT_OK, "")
+            lines = stdout.splitlines()
+            assert lines[0].startswith(
+                "[1] joint-current  stored; Silver quarantined it: "
+            )
+            assert "balance" in lines[0]
+            assert lines[1] == "[2] joint-savings  stored"
+            assert lines[2] == "Silver   1 admitted, 1 quarantined, 0 dropped"
+
     def test_a_file_its_format_cannot_read_stays_unstored_in_the_inbox(
         self,
     ) -> None:
