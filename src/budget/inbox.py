@@ -83,7 +83,9 @@ class FileOutcome:
 
     `reason` is empty for a stored or repeat export, and never repeats a
     filename, an amount or a description. `note` says why an accepted export
-    is still in the inbox, when it is.
+    is still in the inbox, when it is. `silver_run_id` is the import run
+    Silver judged for an accepted export: its own, or for a repeat, the run
+    it repeats.
     """
 
     ordinal: int
@@ -91,6 +93,7 @@ class FileOutcome:
     status: str
     reason: str = ""
     note: str = ""
+    silver_run_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -304,7 +307,10 @@ def _outcome(
         reason = "; ".join(refusal_reasons(run, previewed))
         return FileOutcome(ordinal, account_id, "refused", reason)
     note = _still_in_inbox(imported, previewed.source)
-    return FileOutcome(ordinal, account_id, run.outcome, note=note)
+    judged = run.repeat_of or run.import_run_id
+    return FileOutcome(
+        ordinal, account_id, run.outcome, note=note, silver_run_id=judged
+    )
 
 
 def import_inbox(

@@ -8,7 +8,7 @@ category, original filename, transaction id or validation message appears.
 """
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from budget.bronze.models import ImportRun
@@ -138,10 +138,12 @@ def import_summary(imported: ImportedInbox) -> str:
     A file is named by its number in the listing the prompt showed, never by
     its filename, which can carry a bank account number.
     """
-    lines = [_file_line(each) for each in imported.files]
     if imported.rebuilt is None:
+        lines = [_file_line(each, {}) for each in imported.files]
         lines.append("Nothing was imported.")
         return "\n".join(lines) + "\n"
+    quarantined = _quarantined(imported.rebuilt.result)
+    lines = [_file_line(each, quarantined) for each in imported.files]
     counts = imported.counts()
     lines.append(
         f"Silver   {counts['admitted']} admitted, {counts['quarantined']}"
@@ -152,13 +154,29 @@ def import_summary(imported: ImportedInbox) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _file_line(outcome: FileOutcome) -> str:
-    """One inbox file's line: its number, account, outcome and reason."""
+def _quarantined(result: SilverResult) -> dict[str, tuple[str, ...]]:
+    """Map each run Silver quarantined to its reason codes."""
+    return {
+        found.import_run_id: _reasons(found, result.review_items)
+        for found in result.import_run_results
+        if found.status == "quarantined"
+    }
+
+
+def _file_line(outcome: FileOutcome, quarantined: Mapping[str, tuple[str, ...]]) -> str:
+    """One inbox file's line: its number, account, outcome and reasons.
+
+    An accepted export Silver quarantined says so, with Silver's reason
+    codes, so a quarantine is read beside the file it belongs to.
+    """
     line = f"[{outcome.ordinal}] {outcome.account_id}  {outcome.status}"
     if outcome.reason:
         line += f": {outcome.reason}"
     if outcome.status in LEFT_IN_INBOX:
         line += "; it stays in the inbox"
+    codes = quarantined.get(outcome.silver_run_id)
+    if codes is not None:
+        line += f"; Silver quarantined it: {', '.join(codes)}"
     if outcome.note:
         line += f"; {outcome.note}"
     return line
