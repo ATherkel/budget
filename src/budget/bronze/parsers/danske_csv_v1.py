@@ -41,10 +41,13 @@ _HEADERS = (
 _DELIMITERS = (",", ";")
 
 # Inside a quoted field the bank writes a quote as `\"`, and standard CSV writes
-# it doubled; both are one literal quote. A backslash before anything else is
-# just a backslash.
-_ESCAPED_QUOTE = '\\"'
+# it doubled; both are one literal quote. The bank does not escape a backslash,
+# so a `\"` right before the delimiter, a line break or the payload's end is a
+# backslash ending the field: there the quote can only close it. A backslash
+# before anything else is just a backslash.
+_BACKSLASH_QUOTE = re.compile(r"\\\"")
 _DOUBLED_QUOTE = '""'
+_LINE_BREAKS = "\r\n"
 
 # The transaction date is the only value this parser reads rather than presents.
 # `re.ASCII` keeps `\d` to 0-9: otherwise it also matches other scripts'
@@ -77,13 +80,27 @@ class ExportDateSuffixError(ValueError):
         super().__init__("the filename's date suffix is not a real date")
 
 
-def _quoted_field_end(text: str, start: int) -> tuple[int, str | None]:
+def _is_escaped_quote(text: str, index: int, closers: str) -> bool:
+    r"""Tell whether `index` starts a `\"` that escapes a quote inside its field.
+
+    `closers` are the characters that may follow a closing quote, besides the
+    end of the payload.
+    """
+    after = index + 2
+    return (
+        _BACKSLASH_QUOTE.match(text, index) is not None
+        and after < len(text)
+        and text[after] not in closers
+    )
+
+
+def _quoted_field_end(text: str, start: int, closers: str) -> tuple[int, str | None]:
     """Return the index after a field's closing quote, or why it never closes."""
     index = start
     length = len(text)
     while index < length:
-        if text.startswith(_ESCAPED_QUOTE, index):
-            index += len(_ESCAPED_QUOTE)
+        if _is_escaped_quote(text, index, closers):
+            index += 2
             continue
         if text[index] != '"':
             index += 1
@@ -125,7 +142,7 @@ def _payload_delimiter(text: str) -> str:
     other character, is unquoted data after a closing quote.
     """
     if text.startswith('"'):
-        index, _ = _quoted_field_end(text, 1)
+        index, _ = _quoted_field_end(text, 1, "".join(_DELIMITERS) + _LINE_BREAKS)
         found = text[index : index + 1]
         if found in _DELIMITERS:
             return found
@@ -143,18 +160,35 @@ def _field_quoting_error(text: str, delimiter: str) -> str | None:
     optional final line break read normally, and a quoted field may carry line
     breaks of its own.
     """
+    closers = delimiter + _LINE_BREAKS
     index = 0
     length = len(text)
     while index < length:
         if text[index] != '"':
             return "every field must be double-quoted"
-        index, error = _quoted_field_end(text, index + 1)
+        index, error = _quoted_field_end(text, index + 1, closers)
         if error is not None:
             return error
         index, error = _record_separator_end(text, index, delimiter)
         if error is not None:
             return error
     return None
+
+
+def _with_escaped_quotes_doubled(text: str, closers: str) -> str:
+    r"""Rewrite each escaping `\"` as `""`, so csv.reader decodes both alike.
+
+    Only for a payload that passed the quoting check: then every `\"` lies
+    inside a field, and the same test that check used tells an escape from a
+    backslash ending its field, which is left as it is.
+    """
+
+    def doubled(match: re.Match[str]) -> str:
+        if _is_escaped_quote(text, match.start(), closers):
+            return _DOUBLED_QUOTE
+        return match.group()
+
+    return _BACKSLASH_QUOTE.sub(doubled, text)
 
 
 def _split_rows(content: bytes) -> tuple[list[list[str]], str | None]:
@@ -169,9 +203,7 @@ def _split_rows(content: bytes) -> tuple[list[list[str]], str | None]:
     quoting_error = _field_quoting_error(text, delimiter)
     if quoting_error is not None:
         return [], f"payload quoting does not match danske-csv-v1: {quoting_error}"
-    # The quoting check has proved every `\"` escapes a quote inside a field, so
-    # writing it doubled lets csv.reader decode both forms alike.
-    text = text.replace(_ESCAPED_QUOTE, _DOUBLED_QUOTE)
+    text = _with_escaped_quotes_doubled(text, delimiter + _LINE_BREAKS)
     try:
         rows = list(
             csv.reader(
