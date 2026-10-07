@@ -10,16 +10,17 @@ reaches Bronze.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Final
 
+from budget.backups import BackupSet, back_up
 from budget.bronze.models import ImportRun
 from budget.bronze.parsers.registry import source_parser
 from budget.importing import Coverage, UnknownInboxAccountError, import_inbox_file
 from budget.inputs import Account, MisfiledExportError
 from budget.locking import WriterLock
-from budget.profiles import Profile
+from budget.profiles import PRODUCTION_PROFILE_NAME, Profile
 from budget.rebuilding import SilverRebuild, rebuild_from_silver
 
 # The outcomes that leave a file in the inbox and make `import` exit 3.
@@ -70,10 +71,14 @@ class FileOutcome:
 
 @dataclass(frozen=True)
 class InboxImport:
-    """Every inbox file's outcome, and the Silver rebuild that followed."""
+    """Every inbox file's outcome, the Silver rebuild and production's backup.
+
+    `backup` is the set written after the rebuild; only production writes one.
+    """
 
     files: Sequence[FileOutcome]
     rebuilt: SilverRebuild
+    backup: BackupSet | None = None
 
     @property
     def any_left_in_inbox(self) -> bool:
@@ -191,4 +196,10 @@ def import_inbox(
             continue
         imported = import_inbox_file(lock, previewed.source, declared[previewed.source])
         files.append(_outcome(ordinal, imported.import_run, previewed))
-    return InboxImport(files=files, rebuilt=rebuild_from_silver(lock))
+    rebuilt = rebuild_from_silver(lock)
+    backup = None
+    if lock.profile.name == PRODUCTION_PROFILE_NAME:
+        # Every production write is followed by a set covering Bronze and
+        # the Silver just rebuilt from it.
+        backup = back_up(lock, now=datetime.now(UTC))
+    return InboxImport(files=files, rebuilt=rebuilt, backup=backup)

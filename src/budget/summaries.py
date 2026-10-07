@@ -140,6 +140,8 @@ def import_summary(imported: InboxImport) -> str:
     """
     lines = [_file_line(each) for each in imported.files]
     lines.append(_silver_line(imported.rebuilt.result))
+    if imported.backup is not None:
+        lines.append(f"Backup   backup set {imported.backup.name} written")
     return "\n".join(lines) + "\n"
 
 
