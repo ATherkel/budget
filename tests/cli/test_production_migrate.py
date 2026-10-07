@@ -6,6 +6,7 @@ folder, whose stores, inputs and backups stay inside it. No test opens a real
 production store. Every test passes `main` an explicit environment.
 """
 
+import json
 import shutil
 import sqlite3
 import unittest
@@ -42,6 +43,8 @@ _ORPHAN_SOURCE_RECORD = (
     "INSERT INTO source_records (payload_id, record_ordinal, fields)"
     " VALUES ('missing-payload', 1, '{}');\n"
 )
+# A synthetic second migration that fails on a table no store has.
+_BROKEN_STATEMENT = "INSERT INTO no_such_table VALUES (1);\n"
 KEEP_ONLY_THE_NEWEST = (
     "\n[backups]\nkeep_all_days = 0\nkeep_daily_days = 0\nkeep_monthly = 0\n"
 )
@@ -471,6 +474,36 @@ class FailedMigrationTests(unittest.TestCase):
                     newest = back_up(lock, now=datetime.now(UTC))
 
             assert complete_backup_sets(production) == (newest,)
+
+    def test_silver_failing_after_bronze_committed_keeps_the_set_taken_first(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            (first,) = complete_backup_sets(production)
+
+            both = {MIGRATIONS: ADDED_TABLE, SILVER_MIGRATIONS: _BROKEN_STATEMENT}
+            with (
+                added_migrations(both),
+                pytest.raises(sqlite3.OperationalError, match="no_such_table"),
+            ):
+                migrate(profile_file)
+
+            # Bronze stays migrated; Silver rolled back to the version it had.
+            assert user_version(production.bronze_store) == 2
+            assert "marker" in tables(production.bronze_store)
+            assert user_version(production.silver_store) == 1
+            # One set before both stages, none after, and that one is held.
+            sets = complete_backup_sets(production)
+            assert len(sets) == 2
+            before = sets[0]
+            assert sets[1] == first
+            assert _schema_version(before.path) == 1
+            assert _schema_version(before.path, "silver") == 1
+            held = json.loads(production.recovery_sets_file.read_bytes())
+            assert held["sets"] == [before.name]
 
 
 class RecoveryFileTests(unittest.TestCase):
