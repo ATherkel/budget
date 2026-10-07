@@ -12,6 +12,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+from budget.bronze.parsers.registry import source_parser
 from budget.profiles import Profile, load_profile_file
 from budget.silver import SilverStore
 from tests.backups.sets import manifest, run_ids
@@ -171,6 +172,26 @@ class ImportCommandTests(unittest.TestCase):
             assert lines[2].endswith("; it stays in the inbox")
             assert "0099999999" not in stdout
             assert "lost-folder" not in stdout
+
+    def test_a_format_failure_is_stored_and_reported_with_its_reason(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = b'"Not","A","Danske","Export"\r\n"1","2","3","4"'
+            source = drop(profile, "joint-current", "danske-20260305.csv", content)
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            reason = source_parser("danske-csv-v1").parse(content).failure_reason
+            assert reason is not None
+
+            status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert f"[1] joint-current  format failure: {reason}\n" in stdout
+            assert "Silver   0 admitted, 1 quarantined, 0 dropped\n" in stdout
+            assert not source.exists()
+            [entry] = log_entries(profile)
+            assert entry["outcome"] == "stored"
 
     def test_an_account_without_a_range_stops_before_anything_is_stored(
         self,
