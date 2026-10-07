@@ -17,6 +17,7 @@ from tests.cli.profile_files import development_profile, write_profile
 from tests.importing.households import ACCOUNTS, drop, log_entries, payload
 
 EXIT_OK = 0
+EXIT_REFUSED_INPUT = 3
 
 
 def _household(profile_file: Path, folder: Path) -> Profile:
@@ -71,6 +72,44 @@ class ImportCommandTests(unittest.TestCase):
             assert result.import_run_id == entry["import_run_id"]
             assert result.status == "accepted"
             assert "[1] joint-current  stored\n" in stdout
+            assert "Silver   1 admitted, 0 quarantined, 0 dropped\n" in stdout
+
+    def test_a_refused_export_stays_while_the_others_are_stored(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            # The declared range starts after the file's first transaction.
+            refused = drop(
+                profile, "joint-current", "danske-20260305.csv", payload("01.03.2026")
+            )
+            stored = drop(
+                profile, "joint-savings", "danske-20260305.csv", payload("02.03.2026")
+            )
+            ranges = _ranges(
+                folder,
+                accounts={
+                    "joint-current": ("2026-03-02", "2026-03-04"),
+                    "joint-savings": ("2026-03-01", "2026-03-04"),
+                },
+            )
+
+            status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
+
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert refused.exists()
+            assert not stored.exists()
+            outcomes = {
+                entry["account_id"]: entry["outcome"] for entry in log_entries(profile)
+            }
+            assert outcomes == {"joint-current": "refused", "joint-savings": "stored"}
+            [copy] = (profile.exports / "joint-current" / "refused").rglob("*.csv")
+            assert copy.read_bytes() == refused.read_bytes()
+            assert (
+                "[1] joint-current  refused: the file has transactions before the"
+                " declared range starts; it stays in the inbox\n"
+            ) in stdout
+            assert "[2] joint-savings  stored\n" in stdout
             assert "Silver   1 admitted, 0 quarantined, 0 dropped\n" in stdout
 
 
