@@ -8,6 +8,7 @@ is found by its preview, before anyone is asked for its range, and never
 reaches Bronze.
 """
 
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -91,6 +92,28 @@ class InboxImport:
     rebuilt: SilverRebuild
     backup: BackupSet | None = None
     backup_failure: Exception | None = None
+
+    def counts(self) -> dict[str, int]:
+        """Count the files by outcome and Silver's runs and drops, and nothing else.
+
+        These are what the routine log records: never an account, a reason or
+        a filename.
+        """
+        outcomes = Counter(each.status for each in self.files)
+        result = self.rebuilt.result
+        statuses = Counter(each.status for each in result.import_run_results)
+        return {
+            "stored": outcomes["stored"],
+            "repeat": outcomes["repeat"],
+            "refused": outcomes["refused"],
+            "misfiled": outcomes["misfiled"],
+            "format_failure": outcomes["format failure"],
+            "admitted": statuses["accepted"],
+            "quarantined": statuses["quarantined"],
+            "dropped": sum(
+                1 for item in result.review_items if item.kind == "dropped-transaction"
+            ),
+        }
 
     @property
     def any_left_in_inbox(self) -> bool:

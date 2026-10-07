@@ -256,6 +256,7 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
     Every range is settled before the first file is stored. Returns 3 when
     any file was refused or misfiled and stays in the inbox, else 0.
     """
+    started = perf_counter()
     with writer_lock(profile) as lock:
         require_import_allowed(profile)
         accounts = load_accounts(profile)
@@ -266,6 +267,12 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
             return EXIT_OK
         imported = import_inbox(lock, previews, declared)
         sys.stdout.write(summaries.import_summary(imported))
+        routine_logging.finished(
+            profile,
+            "import",
+            counts=imported.counts(),
+            duration_ms=_milliseconds(started),
+        )
     if imported.backup_failure is not None:
         raise ImportedWithoutBackupError(imported.backup_failure)
     return EXIT_REFUSED_INPUT if imported.any_left_in_inbox else EXIT_OK
