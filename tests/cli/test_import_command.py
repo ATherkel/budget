@@ -20,7 +20,13 @@ from budget.silver import SilverStore
 from tests.backups.sets import manifest, run_ids
 from tests.cli.commands import import_, migrate
 from tests.cli.profile_files import development_profile, write_profile
-from tests.importing.households import ACCOUNTS, drop, log_entries, payload
+from tests.importing.households import (
+    ACCOUNTS,
+    chained_payload,
+    drop,
+    log_entries,
+    payload,
+)
 
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
@@ -492,7 +498,7 @@ class InteractiveImportTests(unittest.TestCase):
                 profile,
                 "joint-current",
                 "danske-20260305.csv",
-                payload("01.03.2026", "02.03.2026"),
+                chained_payload("01.03.2026", "02.03.2026"),
             )
             # The first answer is not a date, so `from` is asked again.
             typed = "1 March\n2026-03-01\n2026-03-04\ny\n"
