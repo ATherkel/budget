@@ -251,25 +251,35 @@ class ImportCommandTests(unittest.TestCase):
             assert nested.read_bytes() == content
             assert not profile.import_log_file.exists()
 
-    def test_a_format_failure_is_stored_and_reported_with_its_reason(self) -> None:
+    def test_a_file_its_format_cannot_read_stays_unstored_in_the_inbox(
+        self,
+    ) -> None:
+        # The owner's decision on PR #210: a file the reader cannot parse is
+        # held for a reader fix or a fresh download, never stored unreadable.
         with TemporaryDirectory() as directory:
             folder = Path(directory)
             profile_file = write_profile(folder)
             profile = _household(profile_file, folder)
             content = b'"Not","A","Danske","Export"\r\n"1","2","3","4"'
             source = drop(profile, "joint-current", "danske-20260305.csv", content)
+            stored = drop(
+                profile, "joint-savings", "danske-20260305.csv", payload("01.03.2026")
+            )
             ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
             reason = source_parser("danske-csv-v1").parse(content).failure_reason
             assert reason is not None
 
             status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
-            assert (status, stderr) == (EXIT_OK, "")
-            assert f"[1] joint-current  format failure: {reason}\n" in stdout
-            assert "Silver   0 admitted, 1 quarantined, 0 dropped\n" in stdout
-            assert not source.exists()
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert (
+                f"[1] joint-current  format failure: {reason}; it stays in the inbox\n"
+            ) in stdout
+            assert "[2] joint-savings  stored\n" in stdout
+            assert source.read_bytes() == content
+            assert not stored.exists()
             [entry] = log_entries(profile)
-            assert entry["outcome"] == "stored"
+            assert entry["account_id"] == "joint-savings"
 
     def test_the_log_and_summary_carry_counts_and_no_bank_content(self) -> None:
         with TemporaryDirectory() as directory:
