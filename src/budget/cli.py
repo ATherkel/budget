@@ -59,7 +59,11 @@ from budget.profiles import (
 )
 from budget.prompting import ask_ranges
 from budget.ranges import load_ranges
-from budget.rebuilding import SilverRebuild, rebuild_from_silver
+from budget.rebuilding import (
+    SilverRebuild,
+    rebuild_from_silver,
+    require_buildable_accounts,
+)
 from budget.reviewing import REVIEW_KINDS, open_reviews
 from budget.silver.storage import SILVER_STAGE
 
@@ -265,6 +269,9 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
         if not previews:
             sys.stdout.write("The inbox holds no exports; nothing was imported.\n")
             return EXIT_OK
+        require_buildable_accounts(
+            profile, {each.account_id for each in previews if not each.skipped}
+        )
         declared = _declared_ranges(previews, accounts, ranges_file)
         if declared is None:
             sys.stdout.write("Nothing was imported.\n")
