@@ -171,6 +171,16 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
             }
         ]
 
+    def test_a_backslash_before_anything_but_a_quote_is_kept(self) -> None:
+        # Only `\"` is an escape: any other backslash is source text, a doubled
+        # one included.
+        row = dato_row("12.09.2026").replace(b'" Caf\xe9"', rb'"\Cafe C:\\n\t"')
+
+        result = PARSER.parse(header_payload(row))
+
+        assert result.failure_reason is None
+        assert dict(result.records[0])["Tekst"] == r"\Cafe C:\\n\t"
+
     def test_a_row_ending_in_a_comma_still_needs_its_quoted_field(self) -> None:
         header = HEADER + b"\r\n"
         seven_fields = (
