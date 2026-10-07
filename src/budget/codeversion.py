@@ -74,7 +74,8 @@ def _git(cwd: Path, *arguments: str) -> subprocess.CompletedProcess[str] | None:
         return None
     executable = str(Path(found).resolve())
     try:
-        # The one suppression in this module.
+        # Owner-approved: fixed internal arguments, an absolute executable and
+        # no shell, which is what the S603 untrusted-input rule checks.
         return subprocess.run(  # noqa: S603
             [executable, *arguments],
             cwd=cwd,

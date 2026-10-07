@@ -12,7 +12,7 @@ decision refuses the rebuild rather than silently build as if the household had
 made none. That guard runs before anything is read or replaced.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final
 
@@ -20,8 +20,9 @@ from budget.bronze import BronzeStore
 from budget.bronze.models import ImportRun
 from budget.inputs import ConfigurationError, load_accounts
 from budget.locking import WriterLock
-from budget.profiles import Profile
+from budget.profiles import ACCOUNTS_FILE_NAME, Profile
 from budget.silver import SilverBuildInputs, SilverResult, rebuild_silver
+from budget.silver.currencies import UnknownCurrencyError, minor_unit_places
 
 DECISION_LOG_NAME: Final = "decisions.jsonl"
 _UNREADABLE_DECISIONS: Final = (
@@ -64,11 +65,60 @@ def bronze_inputs(profile: Profile) -> SilverBuildInputs:
         format_failures = {
             run.payload_id: store.get_format_failures(run.payload_id) for run in runs
         }
+    _require_declared_accounts(currencies, runs)
     return SilverBuildInputs(
         runs=runs,
         source_records=source_records,
         format_failures=format_failures,
         currencies=currencies,
+    )
+
+
+def _require_declared_accounts(
+    currencies: Mapping[str, str], runs: Sequence[ImportRun]
+) -> None:
+    """Refuse a rebuild the account registry cannot describe.
+
+    The pure build reads each stored run's account and currency, so a registry
+    that no longer declares one of them is a configuration error here, at the
+    Bronze boundary, instead of a crash inside the build. Refused and repeat
+    runs are ignored, exactly as the pure build ignores them.
+    """
+    for run in runs:
+        if run.outcome != "stored":
+            continue
+        account_id = run.declared_account_id
+        currency = currencies.get(account_id)
+        if currency is None:
+            raise ConfigurationError((_missing_account(account_id),))
+        if not _known_currency(currency):
+            raise ConfigurationError((_unknown_currency(account_id),))
+
+
+def _known_currency(currency: str) -> bool:
+    """Whether the ISO 4217 table knows a currency, without naming its value."""
+    try:
+        minor_unit_places(currency)
+    except UnknownCurrencyError:
+        return False
+    return True
+
+
+def _missing_account(account_id: str) -> str:
+    """Name a stored run's account that the registry no longer declares."""
+    return (
+        f'{ACCOUNTS_FILE_NAME}: account "{account_id}" is not declared, but '
+        "Bronze holds a stored import run for it; restore or add the account in "
+        "accounts.toml before rebuilding; nothing was written"
+    )
+
+
+def _unknown_currency(account_id: str) -> str:
+    """Name the currency field, never repeating the value it holds."""
+    return (
+        f'{ACCOUNTS_FILE_NAME}: account "{account_id}": currency is not '
+        "supported by this Silver build; correct it in accounts.toml before "
+        "rebuilding; nothing was written"
     )
 
 

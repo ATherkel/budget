@@ -2,11 +2,11 @@
 """Editing `accounts.toml` after Bronze and Silver must refuse the rebuild.
 
 The account registry is an input, so it can change after the stores it
-described. A rebuild then names an account Bronze no longer has, or a currency
-the ISO 4217 table does not know, and that is a configuration error: exit 3,
-an actionable message naming the file and the field, no financial value
-repeated, the previous Silver result kept, and no finished-command log for a
-command that failed.
+described. A rebuild then runs against an account the registry no longer
+declares, or a currency the ISO 4217 table does not know, and that is a
+configuration error: exit 3, an actionable message naming the file and the
+field, no financial value repeated, the previous Silver result kept, and no
+finished-command log for a command that failed.
 """
 
 import json
