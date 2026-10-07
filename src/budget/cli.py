@@ -260,7 +260,9 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
     with writer_lock(profile) as lock:
         require_import_allowed(profile)
         accounts = load_accounts(profile)
-        previews = [preview(accounts, source) for source in inbox_exports(profile)]
+        previews = [
+            preview(profile, accounts, source) for source in inbox_exports(profile)
+        ]
         if not previews:
             sys.stdout.write("The inbox holds no exports; nothing was imported.\n")
             return EXIT_OK

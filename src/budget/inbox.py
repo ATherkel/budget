@@ -25,7 +25,12 @@ from budget.backups import (
 from budget.bronze.models import ImportRun
 from budget.bronze.parsers.registry import source_parser
 from budget.codeversion import require_committed_code
-from budget.importing import Coverage, UnknownInboxAccountError, import_inbox_file
+from budget.importing import (
+    Coverage,
+    NotAnInboxFileError,
+    UnknownInboxAccountError,
+    import_inbox_file,
+)
 from budget.importing import InboxImport as InboxFileImport
 from budget.inputs import Account, MisfiledExportError
 from budget.locking import WriterLock
@@ -140,18 +145,21 @@ def require_import_allowed(profile: Profile) -> None:
 
 
 def inbox_exports(profile: Profile) -> tuple[Path, ...]:
-    """List the files waiting in the inbox's account folders, in order."""
+    """List the files waiting in the inbox, in order.
+
+    That is every file in an account folder, and every file in the inbox
+    itself, which no folder declares an account for: an export saved there
+    by mistake is reported, never skipped without a word.
+    """
     if not profile.inbox.is_dir():
         return ()
-    return tuple(
-        sorted(
-            source
-            for folder in profile.inbox.iterdir()
-            if folder.is_dir()
-            for source in folder.iterdir()
-            if source.is_file()
-        )
-    )
+    found = []
+    for entry in profile.inbox.iterdir():
+        if entry.is_dir():
+            found.extend(source for source in entry.iterdir() if source.is_file())
+        elif entry.is_file():
+            found.append(entry)
+    return tuple(sorted(found))
 
 
 def _exported_on(account: Account, source: Path) -> date | str:
@@ -173,8 +181,13 @@ def _exported_on(account: Account, source: Path) -> date | str:
     return _NO_EXPORT_DATE if exported_on is None else exported_on
 
 
-def preview(accounts: Mapping[str, Account], source: Path) -> ExportPreview:
+def preview(
+    profile: Profile, accounts: Mapping[str, Account], source: Path
+) -> ExportPreview:
     """Read one inbox file's account and transaction dates, storing nothing."""
+    if source.parent == profile.inbox:
+        problem = str(NotAnInboxFileError())
+        return ExportPreview(source=source, account_id=NO_ACCOUNT, misfiled=problem)
     account = accounts.get(source.parent.name)
     if account is None:
         problem = str(UnknownInboxAccountError(source.parent.name))
