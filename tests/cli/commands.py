@@ -4,6 +4,7 @@
 import io
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 from budget.cli import main
 
@@ -31,6 +32,22 @@ def rebuild(profile_file: Path, *options: str) -> tuple[int, str, str]:
     stderr = io.StringIO()
     with redirect_stdout(stdout), redirect_stderr(stderr):
         status = main(["--profile", str(profile_file), "rebuild", *options], environ={})
+    return status, stdout.getvalue(), stderr.getvalue()
+
+
+def import_(profile_file: Path, *options: str, typed: str = "") -> tuple[int, str, str]:
+    """Run `budget import` with one profile file; return status and output.
+
+    `typed` is what the person types at the prompts, one answer per line.
+    """
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with (
+        redirect_stdout(stdout),
+        redirect_stderr(stderr),
+        mock.patch("sys.stdin", io.StringIO(typed)),
+    ):
+        status = main(["--profile", str(profile_file), "import", *options], environ={})
     return status, stdout.getvalue(), stderr.getvalue()
 
 
