@@ -28,8 +28,6 @@ def _say(line: str) -> None:
 
 def _transactions(previewed: ExportPreview) -> str:
     """Describe the file's own transaction dates and how many records it has."""
-    if previewed.failure_reason is not None:
-        return f"none read: {previewed.failure_reason}"
     first, last = previewed.first_transaction, previewed.last_transaction
     if first is None or last is None:
         return "none"

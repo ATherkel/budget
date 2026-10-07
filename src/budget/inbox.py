@@ -4,8 +4,9 @@
 Each export in `inbox/<account_id>/` is previewed, then imported on its own
 through `import_inbox_file`, under the one writer lock the command holds, and
 Silver is then rebuilt from the Bronze those imports wrote. A misfiled or
-unreadable export is found by its preview, before anyone is asked for its
-range, and never reaches Bronze.
+unreadable export, or one its format cannot read, is found by its preview,
+before anyone is asked for its range, and never reaches Bronze: it waits
+in the inbox for a fresh download or a reader fix.
 """
 
 from collections import Counter
@@ -42,7 +43,9 @@ from budget.rebuilding import (
 )
 
 # The outcomes that leave a file in the inbox and make `import` exit 3.
-LEFT_IN_INBOX: Final = frozenset({"refused", "misfiled", "unreadable"})
+LEFT_IN_INBOX: Final = frozenset(
+    {"refused", "misfiled", "unreadable", "format failure"}
+)
 # How a file in a folder that names no account is shown: the folder's name is
 # typed by hand, so it may carry a bank account number.
 NO_ACCOUNT: Final = "(no account)"
@@ -57,11 +60,11 @@ class ExportPreview:
 
     The transaction dates are the file's first and last, read by its
     account's source format, so the person can check that the range they
-    declare covers them. Both are `None` when the file has no records, and
-    `failure_reason` says why when the format could not read it. `skipped`
-    names why the file is not imported at all, `misfiled` or `unreadable`,
-    and `reason` says how; both are empty when it can be imported, and
-    then `exported_on` is the date its filename carries.
+    declare covers them. Both are `None` when the file has no records.
+    `skipped` names why the file is not imported at all, `misfiled`,
+    `unreadable` or `format failure`, and `reason` says how; both are
+    empty when it can be imported, and then `exported_on` is the date its
+    filename carries.
     """
 
     source: Path
@@ -70,7 +73,6 @@ class ExportPreview:
     first_transaction: date | None = None
     last_transaction: date | None = None
     records: int = 0
-    failure_reason: str | None = None
     skipped: str = ""
     reason: str = ""
 
@@ -225,6 +227,14 @@ def preview(
             reason=_unreadable(error),
         )
     parsed = source_parser(account.source_format).parse(content)
+    if parsed.failure_reason is not None:
+        # The parser's verdict never repeats source content.
+        return ExportPreview(
+            source=source,
+            account_id=account.account_id,
+            skipped="format failure",
+            reason=parsed.failure_reason,
+        )
     return ExportPreview(
         source=source,
         account_id=account.account_id,
@@ -232,7 +242,6 @@ def preview(
         first_transaction=parsed.first_transaction_date,
         last_transaction=parsed.last_transaction_date,
         records=len(parsed.records),
-        failure_reason=parsed.failure_reason,
     )
 
 
@@ -288,22 +297,13 @@ def _still_in_inbox(imported: InboxFileImport, source: Path) -> str:
 def _outcome(
     ordinal: int, imported: InboxFileImport, previewed: ExportPreview
 ) -> FileOutcome:
-    """Name one imported file's outcome, and why when it was not a clean store.
-
-    A stored payload its format could not read is a format failure: it is
-    archived like any accepted export, and Silver quarantines it. Its reason
-    is the parser's verdict, which never repeats source content.
-    """
+    """Name one imported file's outcome, and why when it was refused."""
     run = imported.import_run
     account_id = run.declared_account_id
     if run.outcome == "refused":
         reason = "; ".join(refusal_reasons(run, previewed))
         return FileOutcome(ordinal, account_id, "refused", reason)
     note = _still_in_inbox(imported, previewed.source)
-    if run.outcome == "stored" and previewed.failure_reason is not None:
-        return FileOutcome(
-            ordinal, account_id, "format failure", previewed.failure_reason, note
-        )
     return FileOutcome(ordinal, account_id, run.outcome, note=note)
 
 
