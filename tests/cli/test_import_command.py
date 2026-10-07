@@ -240,6 +240,43 @@ class ImportCommandTests(unittest.TestCase):
                 assert value not in log, value
                 assert value not in summary, value
 
+    def test_a_rerun_finishes_a_file_another_program_held_and_adds_nothing(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            source = drop(
+                profile, "joint-current", "danske-20260305.csv", payload("01.03.2026")
+            )
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            # Windows refuses to delete a file another program holds open.
+            unlink = Path.unlink
+
+            def held(path: Path, *, missing_ok: bool = False) -> None:
+                if path == source:
+                    raise PermissionError(13, "held by another program")
+                unlink(path, missing_ok=missing_ok)
+
+            with mock.patch.object(Path, "unlink", autospec=True, side_effect=held):
+                status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "[1] joint-current  stored; it stays in the inbox because another"
+                " program holds it: close that program, then rerun import\n"
+            ) in stdout
+            assert source.exists()
+
+            status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "[1] joint-current  stored\n" in stdout
+            assert not source.exists()
+            assert len(log_entries(profile)) == 1
+            assert len(run_ids(profile.bronze_store)) == 1
+
     def test_an_account_without_a_range_stops_before_anything_is_stored(
         self,
     ) -> None:
