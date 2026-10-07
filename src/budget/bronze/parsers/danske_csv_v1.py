@@ -40,6 +40,12 @@ _HEADERS = (
 # or a semicolon (the default); its blank and tab choices are not this format.
 _DELIMITERS = (",", ";")
 
+# Inside a quoted field the bank writes a quote as `\"`, and standard CSV writes
+# it doubled; both are one literal quote. A backslash before anything else is
+# just a backslash.
+_ESCAPED_QUOTE = '\\"'
+_DOUBLED_QUOTE = '""'
+
 # The transaction date is the only value this parser reads rather than presents.
 # `re.ASCII` keeps `\d` to 0-9: otherwise it also matches other scripts'
 # digits, such as Arabic-Indic ones, which `int()` then reads as numbers.
@@ -76,6 +82,9 @@ def _quoted_field_end(text: str, start: int) -> tuple[int, str | None]:
     index = start
     length = len(text)
     while index < length:
+        if text.startswith(_ESCAPED_QUOTE, index):
+            index += len(_ESCAPED_QUOTE)
+            continue
         if text[index] != '"':
             index += 1
             continue
@@ -124,15 +133,15 @@ def _payload_delimiter(text: str) -> str:
 
 
 def _field_quoting_error(text: str, delimiter: str) -> str | None:
-    """Return why the payload's quoting is not the declared shape, if it is not.
+    r"""Return why the payload's quoting is not the declared shape, if it is not.
 
-    `danske-csv-v1` quotes every field, and a quote inside a field is doubled.
-    So a field opens with a quote, and only the payload's delimiter, a line
-    break or the end of the payload may follow its closing quote. One payload
-    keeps one delimiter, so a record written with the other one fails here.
-    Line endings are not otherwise checked: LF endings and one optional final
-    line break read normally, and a quoted field may carry line breaks of its
-    own.
+    `danske-csv-v1` quotes every field, and a quote inside a field is written
+    `\"` or doubled. So a field opens with a quote, and only the payload's
+    delimiter, a line break or the end of the payload may follow its closing
+    quote. One payload keeps one delimiter, so a record written with the other
+    one fails here. Line endings are not otherwise checked: LF endings and one
+    optional final line break read normally, and a quoted field may carry line
+    breaks of its own.
     """
     index = 0
     length = len(text)
@@ -160,6 +169,9 @@ def _split_rows(content: bytes) -> tuple[list[list[str]], str | None]:
     quoting_error = _field_quoting_error(text, delimiter)
     if quoting_error is not None:
         return [], f"payload quoting does not match danske-csv-v1: {quoting_error}"
+    # The quoting check has proved every `\"` escapes a quote inside a field, so
+    # writing it doubled lets csv.reader decode both forms alike.
+    text = text.replace(_ESCAPED_QUOTE, _DOUBLED_QUOTE)
     try:
         rows = list(
             csv.reader(
