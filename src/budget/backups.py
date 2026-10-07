@@ -40,7 +40,7 @@ from budget.profiles import (
     RetentionPolicy,
 )
 from budget.silver.storage import silver_stage
-from budget.sqlstore import StageStore, open_store_for_backup
+from budget.sqlstore import StageStore, is_started, open_store_for_backup
 
 MANIFEST_FORMAT: Final = 1
 RECOVERY_FORMAT: Final = 1
@@ -237,11 +237,12 @@ def _covered_stores(profile: Profile) -> tuple[StageStore, ...]:
     """Name the stores a set of this profile holds: Bronze, and Silver's if any.
 
     Bronze's is always snapshotted, so a profile without one is refused. A
-    Silver store is snapshotted where it exists; a profile that has none yet
-    is still copied whole without it.
+    Silver store is snapshotted where it is started; a profile that has none
+    yet, or only a file an interrupted start left empty, is still copied whole
+    without it.
     """
     silver = silver_stage(profile)
-    return (bronze_stage(profile), *((silver,) if silver.path.exists() else ()))
+    return (bronze_stage(profile), *((silver,) if is_started(silver) else ()))
 
 
 def _copy_inputs(profile: Profile, staging: Path) -> dict[str, bytes]:
@@ -374,26 +375,13 @@ def _require_no_lost_store(profile: Profile) -> None:
     """Refuse a backup while a store the profile's sets hold is missing.
 
     Only Silver's store may be missing from a set; Bronze's is always
-    snapshotted. Only a complete set counts, as for a new store (`migrate`):
-    a damaged one restores nothing. Manifests are read first, so a set's
-    files are checked only when it records a Silver store.
+    snapshotted. A file an interrupted start left empty is missing too, as it
+    is to `_covered_stores`. Only a complete set counts, as for a new store
+    (`migrate`): a damaged one restores nothing.
     """
     silver = silver_stage(profile)
-    if silver.path.exists():
-        return
-    backups = profile.backup_path(".")
-    if not backups.is_dir():
-        return
-    for child in backups.iterdir():
-        if _set_time(child.name) is None:
-            continue
-        manifest = _read_manifest(child)
-        if (
-            manifest is not None
-            and _set_schema_version(manifest, silver.stage) is not None
-            and _is_complete(child)
-        ):
-            raise LostStoreError(silver.label)
+    if not is_started(silver) and complete_set_holds(profile, silver.stage):
+        raise LostStoreError(silver.label)
 
 
 def _remove_interrupted(profile: Profile) -> None:
@@ -502,11 +490,35 @@ def complete_backup_sets(profile: Profile) -> tuple[BackupSet, ...]:
     )
 
 
-def holds_store(backup: BackupSet, stage: str) -> bool:
-    """Report whether a set's manifest lists a store for `stage`."""
-    manifest = _read_manifest(backup.path)
-    stores = None if manifest is None else manifest.get("stores")
+def _lists_store(manifest: dict[str, object], stage: str) -> bool:
+    """Report whether a manifest lists a store for `stage`.
+
+    A listed store counts whatever else its entry records.
+    """
+    stores = manifest.get("stores")
     return isinstance(stores, dict) and stage in stores
+
+
+def complete_set_holds(profile: Profile, stage: str) -> bool:
+    """Report whether any complete backup set of the profile holds `stage`'s store.
+
+    Manifests are read first, so a set's files are checked only when it
+    lists that store: sets of Bronze alone are never read through.
+    """
+    backups = profile.backup_path(".")
+    if not backups.is_dir():
+        return False
+    for child in backups.iterdir():
+        if _set_time(child.name) is None:
+            continue
+        manifest = _read_manifest(child)
+        if (
+            manifest is not None
+            and _lists_store(manifest, stage)
+            and _is_complete(child)
+        ):
+            return True
+    return False
 
 
 def _prunable_sets(profile: Profile) -> dict[str, datetime]:

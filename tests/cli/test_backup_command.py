@@ -5,12 +5,16 @@ Each profile here is a synthetic profile file in a temporary folder. Every
 test passes `main` an explicit environment.
 """
 
+import json
+import sqlite3
 import unittest
+from contextlib import closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from budget.backups import complete_backup_sets
 from budget.profiles import load_profile_file
+from tests.backups.sets import manifest
 from tests.cli.commands import backup, migrate
 from tests.cli.profile_files import write_profile
 
@@ -57,6 +61,75 @@ class BackupCommandTests(unittest.TestCase):
             assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
             assert "Silver store must be restored" in stderr
             assert complete_backup_sets(production) == sets
+
+    def test_backup_leaves_out_a_silver_store_an_interrupted_start_left_empty(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            started = migrate(profile_file, "--stage", "bronze", "--new-store")
+            assert started[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            # What a first `--stage silver --new-store` cut off inside Silver's
+            # migration leaves: a WAL-mode file at schema version 0, no tables.
+            with closing(sqlite3.connect(production.silver_store)) as store:
+                store.execute("PRAGMA journal_mode = WAL")
+
+            status, _, stderr = backup(profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            newest, _ = complete_backup_sets(production)
+            assert manifest(newest.path)["stores"] == {
+                "bronze": {"path": "bronze.db", "schema_version": 1},
+            }
+
+    def test_backup_is_refused_where_a_store_its_sets_hold_is_left_empty(
+        self,
+    ) -> None:
+        # An empty file where the store was is a lost store too: a set
+        # without Silver would still replace the sets holding it.
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            sets = complete_backup_sets(production)
+            for lost in production.stores.glob("silver.db*"):
+                lost.unlink()
+            with closing(sqlite3.connect(production.silver_store)) as store:
+                store.execute("PRAGMA journal_mode = WAL")
+
+            status, stdout, stderr = backup(profile_file)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "Silver store must be restored" in stderr
+            assert complete_backup_sets(production) == sets
+
+    def test_a_set_listing_silver_without_its_version_still_holds_a_lost_store(
+        self,
+    ) -> None:
+        # The set lists a Silver store, which `migrate` would restore rather
+        # than start anew; a backup counts it the same way.
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            (held,) = complete_backup_sets(production)
+            recorded = manifest(held.path)
+            recorded["stores"] = {
+                "bronze": {"path": "bronze.db", "schema_version": 1},
+                "silver": {"path": "silver.db"},
+            }
+            (held.path / "manifest.json").write_text(
+                json.dumps(recorded, indent=2) + "\n", encoding="utf-8"
+            )
+            for lost in production.stores.glob("silver.db*"):
+                lost.unlink()
+
+            status, stdout, stderr = backup(profile_file)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "Silver store must be restored" in stderr
+            assert complete_backup_sets(production) == (held,)
 
     def test_backup_is_refused_where_production_has_no_store(self) -> None:
         with TemporaryDirectory() as directory:

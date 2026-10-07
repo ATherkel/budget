@@ -374,7 +374,9 @@ budget migrate --stage silver --new-store; $LASTEXITCODE   # 0: silver.db create
 ```
 
 Once a complete set holds a Silver store, a lost one must be restored, not
-started anew, and no backup is written until it is. A backup is still refused
+started anew, and no backup is written until it is; a file an interrupted
+start left empty in its place counts as lost. Before then, a backup leaves
+such a file out. A backup is still refused
 while the stores folder holds a store no set covers, such as Gold's, since
 the set would not be a complete copy of the profile. All three exit 4 and
 write nothing:

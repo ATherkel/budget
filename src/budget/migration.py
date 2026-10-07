@@ -18,9 +18,8 @@ from budget.backups import (
     BackupWriteError,
     LostStoreError,
     back_up,
-    complete_backup_sets,
+    complete_set_holds,
     hold_for_recovery,
-    holds_store,
     release_recovery_sets,
     require_supported_stores,
 )
@@ -172,13 +171,11 @@ def _require_nothing_to_restore(profile: Profile, stores: list[StageStore]) -> N
     """Refuse a new store where a complete backup set holds one to restore.
 
     A set written before backups covered Silver holds no Silver store, so it
-    never stands in the way of starting one.
+    never stands in the way of starting one. Sets are read only for a store
+    still to start, and then only those whose manifest lists it.
     """
-    sets = complete_backup_sets(profile)
     for store in stores:
-        if not is_started(store) and any(
-            holds_store(backup, store.stage) for backup in sets
-        ):
+        if not is_started(store) and complete_set_holds(profile, store.stage):
             raise RestoreInsteadError(store.label)
 
 
