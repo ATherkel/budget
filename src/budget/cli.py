@@ -214,9 +214,9 @@ def _import(profile: Profile, ranges_file: str) -> int:
 
     Returns 3 when any file was refused and stays in the inbox, else 0.
     """
-    ranges = load_ranges(Path(ranges_file))
     with writer_lock(profile) as lock:
         accounts = load_accounts(profile)
+        ranges = load_ranges(Path(ranges_file), accounts)
         previews = [preview(accounts, source) for source in inbox_exports(profile)]
         # Every range is settled before the first file is stored.
         declared = {
