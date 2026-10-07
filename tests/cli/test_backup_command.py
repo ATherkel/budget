@@ -5,6 +5,7 @@ Each profile here is a synthetic profile file in a temporary folder. Every
 test passes `main` an explicit environment.
 """
 
+import json
 import sqlite3
 import unittest
 from contextlib import closing
@@ -102,6 +103,33 @@ class BackupCommandTests(unittest.TestCase):
             assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
             assert "Silver store must be restored" in stderr
             assert complete_backup_sets(production) == sets
+
+    def test_a_set_listing_silver_without_its_version_still_holds_a_lost_store(
+        self,
+    ) -> None:
+        # The set lists a Silver store, which `migrate` would restore rather
+        # than start anew; a backup counts it the same way.
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            (held,) = complete_backup_sets(production)
+            recorded = manifest(held.path)
+            recorded["stores"] = {
+                "bronze": {"path": "bronze.db", "schema_version": 1},
+                "silver": {"path": "silver.db"},
+            }
+            (held.path / "manifest.json").write_text(
+                json.dumps(recorded, indent=2) + "\n", encoding="utf-8"
+            )
+            for lost in production.stores.glob("silver.db*"):
+                lost.unlink()
+
+            status, stdout, stderr = backup(profile_file)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "Silver store must be restored" in stderr
+            assert complete_backup_sets(production) == (held,)
 
     def test_backup_is_refused_where_production_has_no_store(self) -> None:
         with TemporaryDirectory() as directory:
