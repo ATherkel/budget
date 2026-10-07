@@ -19,7 +19,7 @@ class UsageTests(unittest.TestCase):
         cases = {
             "no command": [],
             "a command not built yet": ["import"],
-            "another command not built yet": ["rebuild", "--from", "silver"],
+            "an unknown rebuild stage": ["rebuild", "--from", "platinum"],
             "an unknown stage": ["migrate", "--stage", "platinum"],
             "an unknown option": ["migrate", "--force"],
         }

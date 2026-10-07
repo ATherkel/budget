@@ -3,15 +3,15 @@
 
 The build itself is the pure `budget.silver.build`, whose signature does not
 change. A rebuild names its inputs once, in `SilverBuildInputs`, so the
-persisted rebuild takes a profile and that one value rather than a long list
-of positional arguments.
+persisted rebuild takes its one profile authority and that one value rather
+than a long list of positional arguments.
 """
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from budget.bronze.models import FormatFailure, ImportRun, SourceRecord
-from budget.locking import writer_lock
+from budget.locking import WriterLock, writer_lock
 from budget.profiles import Profile
 from budget.silver.build import build
 from budget.silver.decisions import SilverDecision
@@ -30,21 +30,36 @@ class SilverBuildInputs:
     decisions: Sequence[SilverDecision] = ()
 
 
-def rebuild_silver(profile: Profile, *, inputs: SilverBuildInputs) -> SilverResult:
+def rebuild_silver(
+    profile: Profile | WriterLock,
+    *,
+    inputs: SilverBuildInputs,
+) -> SilverResult:
     """Rebuild one profile's Silver store from Bronze inputs and return it.
 
     The build is the existing pure `budget.silver.build`; this function only
-    takes the profile's writer lock and replaces the stored result with what
-    the build produced, so a rebuild is one transaction against `silver.db`.
+    replaces the stored result with what the build produced, so a rebuild is
+    one transaction against `silver.db`. `profile` is the one authority for the
+    profile the result belongs to, named either way: a `Profile` takes and
+    releases the writer lock itself, and a `WriterLock` is a command's own
+    lock, held for its whole run, which the rebuild reuses without acquiring it
+    a second time.
     """
-    with writer_lock(profile):
-        result = build(
-            runs=inputs.runs,
-            source_records=inputs.source_records,
-            format_failures=inputs.format_failures,
-            currencies=inputs.currencies,
-            decisions=inputs.decisions,
-        )
-        with SilverStore(profile) as store:
-            store.replace(result, currencies=inputs.currencies)
+    if isinstance(profile, WriterLock):
+        return _replace(profile.profile, inputs)
+    with writer_lock(profile) as held:
+        return _replace(held.profile, inputs)
+
+
+def _replace(profile: Profile, inputs: SilverBuildInputs) -> SilverResult:
+    """Run the pure build and store exactly what it produced."""
+    result = build(
+        runs=inputs.runs,
+        source_records=inputs.source_records,
+        format_failures=inputs.format_failures,
+        currencies=inputs.currencies,
+        decisions=inputs.decisions,
+    )
+    with SilverStore(profile) as store:
+        store.replace(result, currencies=inputs.currencies)
     return result

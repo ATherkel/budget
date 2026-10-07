@@ -142,9 +142,13 @@ class _Encoded:
 class SilverStore:
     """Read and replace the Silver store that one profile names."""
 
-    def __init__(self, profile: Profile) -> None:
-        """Open the migrated Silver store that one profile names."""
-        self._connection = open_silver_connection(profile)
+    def __init__(self, profile: Profile, *, read_only: bool = False) -> None:
+        """Open the migrated Silver store that one profile names.
+
+        With `read_only`, the connection cannot write the file, so a command
+        that only reads the stored result takes no write lock on it.
+        """
+        self._connection = open_silver_connection(profile, read_only=read_only)
 
     def __enter__(self) -> Self:
         """Return the open store for a `with` block."""

@@ -21,6 +21,7 @@ IMPORT_LOG_FILE_NAME = "imports.jsonl"
 INBOX_FOLDER = "inbox"
 SILVER_STORE_NAME = "silver.db"
 INPUTS_FOLDER = "inputs"
+LOGS_FOLDER = "logs"
 RECOVERY_SETS_FILE_NAME = "recovery-sets.json"
 STORES_FOLDER = "stores"
 WRITER_LOCK_NAME = "budget.lock"
@@ -246,6 +247,20 @@ class Profile:
     def import_log_file(self) -> Path:
         """The append-only import log, re-checked against the test root each time."""
         return self._guarded_path(Path(self.inputs) / IMPORT_LOG_FILE_NAME)
+
+    @property
+    def logs_folder(self) -> Path:
+        """The routine logs folder, re-checked against the test root each time."""
+        return self._guarded_path(Path(self.stores) / LOGS_FOLDER)
+
+    def log_file(self, relative: str) -> Path:
+        """One routine log file, re-checked against the test root each time.
+
+        `relative` is a plain file name in the logs folder. The path is resolved
+        like `input_file`, so a file the logs folder names through a symlink may
+        not leave a test profile's temporary root.
+        """
+        return self._guarded_path(Path(self.stores) / LOGS_FOLDER / relative)
 
     def backup_path(self, relative: str) -> Path:
         """One path in the backups folder, re-checked against the test root.

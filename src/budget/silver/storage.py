@@ -93,9 +93,11 @@ def silver_stage(profile: Profile) -> StageStore:
     )
 
 
-def open_silver_connection(profile: Profile) -> sqlite3.Connection:
+def open_silver_connection(
+    profile: Profile, *, read_only: bool = False
+) -> sqlite3.Connection:
     """Open an existing Silver store, refusing anything it cannot vouch for."""
-    return open_store_connection(silver_stage(profile))
+    return open_store_connection(silver_stage(profile), read_only=read_only)
 
 
 class MoneyError(ValueError):
