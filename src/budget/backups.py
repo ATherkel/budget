@@ -375,12 +375,13 @@ def _require_no_lost_store(profile: Profile) -> None:
     """Refuse a backup while a store the profile's sets hold is missing.
 
     Only Silver's store may be missing from a set; Bronze's is always
-    snapshotted. Only a complete set counts, as for a new store (`migrate`):
-    a damaged one restores nothing. Manifests are read first, so a set's
-    files are checked only when it records a Silver store.
+    snapshotted. A file an interrupted start left empty is missing too, as it
+    is to `_covered_stores`. Only a complete set counts, as for a new store
+    (`migrate`): a damaged one restores nothing. Manifests are read first, so
+    a set's files are checked only when it records a Silver store.
     """
     silver = silver_stage(profile)
-    if silver.path.exists():
+    if is_started(silver):
         return
     backups = profile.backup_path(".")
     if not backups.is_dir():
