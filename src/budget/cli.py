@@ -26,9 +26,13 @@ from budget.backups import (
 )
 from budget.bronze.storage import BRONZE_STAGE, bronze_stage
 from budget.codeversion import UncommittedCodeError, require_committed_code
-from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
-from budget.inbox import import_inbox, inbox_exports, preview
-from budget.inputs import ConfigurationError, load_accounts
+from budget.importing import (
+    Coverage,
+    ImportLogAheadOfBronzeError,
+    ImportLogDamagedError,
+)
+from budget.inbox import ExportPreview, import_inbox, inbox_exports, preview
+from budget.inputs import Account, ConfigurationError, load_accounts
 from budget.locking import (
     StoresFolderUnavailableError,
     WriterLockHeldError,
@@ -47,6 +51,7 @@ from budget.profiles import (
     ProfileFileError,
     load_profile_file,
 )
+from budget.prompting import ask_ranges
 from budget.ranges import load_ranges
 from budget.rebuilding import SilverRebuild, rebuild_from_silver
 from budget.reviewing import REVIEW_KINDS, open_reviews
@@ -137,8 +142,8 @@ def _parser() -> argparse.ArgumentParser:
     )
     import_.add_argument(
         "--ranges",
-        required=True,
-        help="a file declaring the range each account's exports were asked for",
+        help="a file declaring the range each account's exports were asked "
+        "for, instead of asking at the prompt",
     )
     review = commands.add_parser("review", help="list the open review items")
     review.add_argument("--kind", choices=REVIEW_KINDS, help="list one kind only")
@@ -209,19 +214,37 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
         sys.stdout.write(summary)
 
 
-def _import(profile: Profile, ranges_file: str) -> int:
+def _declared_ranges(
+    previews: Sequence[ExportPreview],
+    accounts: Mapping[str, Account],
+    ranges_file: str | None,
+) -> dict[Path, Coverage] | None:
+    """Settle every file's range: from the ranges file, or at the prompt.
+
+    Returns `None` when the person did not confirm at the prompt. A ranges
+    file is the person's written declaration, so it asks nothing.
+    """
+    if ranges_file is None:
+        return ask_ranges(previews)
+    ranges = load_ranges(Path(ranges_file), accounts)
+    return {
+        each.source: ranges.declared(each) for each in previews if not each.misfiled
+    }
+
+
+def _import(profile: Profile, ranges_file: str | None) -> int:
     """Import every inbox export with its declared range, then rebuild Silver.
 
-    Returns 3 when any file was refused and stays in the inbox, else 0.
+    Every range is settled before the first file is stored. Returns 3 when
+    any file was refused or misfiled and stays in the inbox, else 0.
     """
     with writer_lock(profile) as lock:
         accounts = load_accounts(profile)
-        ranges = load_ranges(Path(ranges_file), accounts)
         previews = [preview(accounts, source) for source in inbox_exports(profile)]
-        # Every range is settled before the first file is stored.
-        declared = {
-            each.source: ranges.declared(each) for each in previews if not each.misfiled
-        }
+        declared = _declared_ranges(previews, accounts, ranges_file)
+        if declared is None:
+            sys.stdout.write("Nothing was imported.\n")
+            return EXIT_OK
         imported = import_inbox(lock, previews, declared)
         sys.stdout.write(summaries.import_summary(imported))
     return EXIT_REFUSED_INPUT if imported.any_left_in_inbox else EXIT_OK

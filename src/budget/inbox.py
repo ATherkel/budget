@@ -38,15 +38,19 @@ class ExportPreview:
 
     The transaction dates are the file's first and last, read by its
     account's source format, so the person can check that the range they
-    declare covers them. Both are `None` when the file has no records.
-    `misfiled` says why the file cannot be imported where it lies; it is
-    empty when it can.
+    declare covers them. Both are `None` when the file has no records, and
+    `failure_reason` says why when the format could not read it. `misfiled`
+    says why the file cannot be imported where it lies; it is empty when it
+    can, and then `exported_on` is the date its filename carries.
     """
 
     source: Path
     account_id: str
+    exported_on: date | None = None
     first_transaction: date | None = None
     last_transaction: date | None = None
+    records: int = 0
+    failure_reason: str | None = None
     misfiled: str = ""
 
 
@@ -92,8 +96,12 @@ def inbox_exports(profile: Profile) -> tuple[Path, ...]:
     )
 
 
-def _filename_problem(account: Account, source: Path) -> str:
-    """Say why a file's name does not fit its account, or nothing."""
+def _exported_on(account: Account, source: Path) -> date | str:
+    """Return the export date a file's name carries, or why it does not fit.
+
+    A name that carries another bank account's number, or no export date, is
+    misfiled; the returned reason never repeats the name.
+    """
     try:
         account.check_export_filename(source.name)
     except MisfiledExportError as error:
@@ -103,9 +111,8 @@ def _filename_problem(account: Account, source: Path) -> str:
         exported_on = parser.exported_on_from_filename(source.name)
     except ValueError as error:
         # The parser contract: a date-shaped suffix that is not a real date.
-        # Its message never repeats the filename.
         return str(error)
-    return _NO_EXPORT_DATE if exported_on is None else ""
+    return _NO_EXPORT_DATE if exported_on is None else exported_on
 
 
 def preview(accounts: Mapping[str, Account], source: Path) -> ExportPreview:
@@ -114,17 +121,20 @@ def preview(accounts: Mapping[str, Account], source: Path) -> ExportPreview:
     if account is None:
         problem = str(UnknownInboxAccountError(source.parent.name))
         return ExportPreview(source=source, account_id=NO_ACCOUNT, misfiled=problem)
-    problem = _filename_problem(account, source)
-    if problem:
+    exported_on = _exported_on(account, source)
+    if isinstance(exported_on, str):
         return ExportPreview(
-            source=source, account_id=account.account_id, misfiled=problem
+            source=source, account_id=account.account_id, misfiled=exported_on
         )
     parsed = source_parser(account.source_format).parse(source.read_bytes())
     return ExportPreview(
         source=source,
         account_id=account.account_id,
+        exported_on=exported_on,
         first_transaction=parsed.first_transaction_date,
         last_transaction=parsed.last_transaction_date,
+        records=len(parsed.records),
+        failure_reason=parsed.failure_reason,
     )
 
 
