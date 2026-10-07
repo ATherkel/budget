@@ -50,7 +50,7 @@ class DeclaredRanges:
         if coverage is None:
             problem = (
                 f'{RANGES_FILE}: account "{previewed.account_id}" has no range, '
-                "and there is no [default]"
+                "and there is no [default]; nothing was imported"
             )
             raise ConfigurationError((problem,))
         return coverage

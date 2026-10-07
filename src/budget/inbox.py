@@ -8,7 +8,7 @@ is found by its preview, before anyone is asked for its range, and never
 reaches Bronze.
 """
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -162,13 +162,13 @@ def _outcome(ordinal: int, run: ImportRun, previewed: ExportPreview) -> FileOutc
 def import_inbox(
     lock: WriterLock,
     previews: Sequence[ExportPreview],
-    declared: Callable[[ExportPreview], Coverage],
+    declared: Mapping[Path, Coverage],
 ) -> InboxImport:
     """Import each file with its declared range, then rebuild Silver.
 
-    `declared` gives the range the person declared for a file; it is asked
-    only for a file that is not misfiled. Files are numbered in `previews`'
-    order, the order the person was shown them in.
+    `declared` maps each file that is not misfiled to the range the person
+    declared for it, all of them settled before this is called. Files are
+    numbered in `previews`' order, the order the person was shown them in.
     """
     files = []
     for ordinal, previewed in enumerate(previews, start=1):
@@ -179,6 +179,6 @@ def import_inbox(
                 )
             )
             continue
-        imported = import_inbox_file(lock, previewed.source, declared(previewed))
+        imported = import_inbox_file(lock, previewed.source, declared[previewed.source])
         files.append(_outcome(ordinal, imported.import_run, previewed))
     return InboxImport(files=files, rebuilt=rebuild_from_silver(lock))

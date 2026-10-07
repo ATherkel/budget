@@ -218,7 +218,11 @@ def _import(profile: Profile, ranges_file: str) -> int:
     with writer_lock(profile) as lock:
         accounts = load_accounts(profile)
         previews = [preview(accounts, source) for source in inbox_exports(profile)]
-        imported = import_inbox(lock, previews, ranges.declared)
+        # Every range is settled before the first file is stored.
+        declared = {
+            each.source: ranges.declared(each) for each in previews if not each.misfiled
+        }
+        imported = import_inbox(lock, previews, declared)
         sys.stdout.write(summaries.import_summary(imported))
     return EXIT_REFUSED_INPUT if imported.any_left_in_inbox else EXIT_OK
 
