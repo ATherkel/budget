@@ -95,12 +95,14 @@ class FileOutcome:
 class ImportedInbox:
     """Every inbox file's outcome, the Silver rebuild and production's backup.
 
-    `backup` is the set written after the rebuild; only production writes one.
+    `rebuilt` is `None` when no file reached Bronze: then nothing changed,
+    and neither a rebuild nor a backup follows. `backup` is the set
+    written after the rebuild; only production writes one.
     `backup_failure` is why production's set could not be written, if so.
     """
 
     files: Sequence[FileOutcome]
-    rebuilt: SilverRebuild
+    rebuilt: SilverRebuild | None
     backup: BackupSet | None = None
     backup_failure: Exception | None = None
 
@@ -111,8 +113,10 @@ class ImportedInbox:
         a filename.
         """
         outcomes = Counter(each.status for each in self.files)
-        result = self.rebuilt.result
-        statuses = Counter(each.status for each in result.import_run_results)
+        result = None if self.rebuilt is None else self.rebuilt.result
+        runs = () if result is None else result.import_run_results
+        items = () if result is None else result.review_items
+        statuses = Counter(each.status for each in runs)
         return {
             "stored": outcomes["stored"],
             "repeat": outcomes["repeat"],
@@ -122,9 +126,7 @@ class ImportedInbox:
             "format_failure": outcomes["format failure"],
             "admitted": statuses["accepted"],
             "quarantined": statuses["quarantined"],
-            "dropped": sum(
-                1 for item in result.review_items if item.kind == "dropped-transaction"
-            ),
+            "dropped": sum(1 for item in items if item.kind == "dropped-transaction"),
         }
 
     @property
@@ -321,7 +323,7 @@ def import_inbox(
     declared for it, all of them settled before this is called. Files are
     numbered in `previews`' order, the order the person was shown them in.
     """
-    files = []
+    files: list[FileOutcome] = []
     for ordinal, previewed in enumerate(previews, start=1):
         if previewed.skipped:
             files.append(
@@ -332,6 +334,8 @@ def import_inbox(
             continue
         imported = import_inbox_file(lock, previewed.source, declared[previewed.source])
         files.append(_outcome(ordinal, imported, previewed))
+    if all(previewed.skipped for previewed in previews):
+        return ImportedInbox(files=files, rebuilt=None)
     rebuilt = rebuild_from_silver(lock)
     if lock.profile.name != PRODUCTION_PROFILE_NAME:
         return ImportedInbox(files=files, rebuilt=rebuilt)

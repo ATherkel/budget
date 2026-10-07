@@ -139,6 +139,9 @@ def import_summary(imported: ImportedInbox) -> str:
     its filename, which can carry a bank account number.
     """
     lines = [_file_line(each) for each in imported.files]
+    if imported.rebuilt is None:
+        lines.append("Nothing was imported.")
+        return "\n".join(lines) + "\n"
     counts = imported.counts()
     lines.append(
         f"Silver   {counts['admitted']} admitted, {counts['quarantined']}"
