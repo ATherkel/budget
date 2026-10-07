@@ -9,10 +9,11 @@ is synthetic.
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
-from budget.profiles import Profile
+from budget.profiles import Profile, load_profile_file
 from budget.silver import SilverStore
-from tests.backups.sets import run_ids
+from tests.backups.sets import manifest, run_ids
 from tests.cli.commands import import_, migrate
 from tests.cli.profile_files import development_profile, write_profile
 from tests.importing.households import ACCOUNTS, drop, log_entries, payload
@@ -28,6 +29,21 @@ def _household(profile_file: Path, folder: Path) -> Profile:
     profile.inputs.mkdir(parents=True, exist_ok=True)
     profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
     return profile
+
+
+def _set_names(profile: Profile) -> list[str]:
+    """The backup sets the profile's backups folder holds, by name."""
+    folder = profile.backup_path(".")
+    return sorted(child.name for child in folder.iterdir()) if folder.is_dir() else []
+
+
+def _clean_git() -> mock.Mock:
+    """A finished Git call reporting a clean, tracked checkout."""
+    completed = mock.Mock()
+    completed.returncode = 0
+    completed.stdout = ""
+    completed.stderr = ""
+    return completed
 
 
 def _ranges(
@@ -303,6 +319,34 @@ class InteractiveImportTests(unittest.TestCase):
                 assert source.read_bytes() == content
                 assert not profile.import_log_file.exists()
                 assert run_ids(profile.bronze_store) == []
+
+
+class ProductionImportTests(unittest.TestCase):
+    def test_a_production_import_ends_with_a_backup_set_holding_it(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder, name="production")
+            assert migrate(profile_file, "--new-store") == (EXIT_OK, "")
+            profile = load_profile_file(profile_file)
+            profile.inputs.mkdir(parents=True, exist_ok=True)
+            profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+            sets_before = _set_names(profile)
+            drop(profile, "joint-current", "danske-20260305.csv", payload("01.03.2026"))
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+
+            # Production builds only from committed code; Git is the boundary.
+            with mock.patch("subprocess.run", return_value=_clean_git()):
+                status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
+
+            assert (status, stderr) == (EXIT_OK, "")
+            [entry] = log_entries(profile)
+            [written] = sorted(set(_set_names(profile)) - set(sets_before))
+            assert stdout.endswith(f"Backup   backup set {written} written\n")
+            backup_set = profile.backup_path(written)
+            stores = manifest(backup_set)["stores"]
+            assert isinstance(stores, dict)
+            assert set(stores) == {"bronze", "silver"}
+            assert run_ids(backup_set / "bronze.db") == [entry["import_run_id"]]
 
 
 if __name__ == "__main__":
