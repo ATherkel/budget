@@ -138,9 +138,13 @@ for.
   quotes included, is exported as `"\"Example\""`. A doubled quote (`""`), as
   in standard CSV, is accepted too. Either form decodes to one quote, so the
   source record holds `"Example"`, the way decoding Windows-1252 yields `ø`.
-  A backslash before any other character is kept as it is. A backslash right
-  before a quote is always an escape, so a field cannot end in a backslash:
-  its closing quote would read as an escaped one.
+  A backslash before any other character is kept as it is.
+- The bank does not escape a backslash, so a field whose text ends in one
+  also ends in `\"`, followed by the delimiter, a line break or the payload's
+  end. A `\"` followed by one of those is therefore a backslash and the
+  closing quote; anywhere else it is an escaped quote. The one text this
+  cannot read is a quote that stood right before the delimiter or a line
+  break: its field ends early, and the payload gets a format failure.
 - The bank's export dialog offers a comma, a semicolon (its default), a blank
   or a tab as the delimiter. A comma export and a semicolon export of the same
   data are otherwise byte for byte the same. The character after `"Dato"` in
