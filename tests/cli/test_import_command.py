@@ -12,6 +12,7 @@ from tempfile import TemporaryDirectory
 
 from budget.profiles import Profile
 from budget.silver import SilverStore
+from tests.backups.sets import run_ids
 from tests.cli.commands import import_, migrate
 from tests.cli.profile_files import development_profile, write_profile
 from tests.importing.households import ACCOUNTS, drop, log_entries, payload
@@ -151,6 +152,33 @@ class ImportCommandTests(unittest.TestCase):
             assert lines[2].endswith("; it stays in the inbox")
             assert "0099999999" not in stdout
             assert "lost-folder" not in stdout
+
+    def test_an_account_without_a_range_stops_before_anything_is_stored(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            first = drop(profile, "joint-current", "danske-20260305.csv", content)
+            second = drop(profile, "joint-savings", "danske-20260305.csv", content)
+            ranges = _ranges(
+                folder, accounts={"joint-current": ("2026-03-01", "2026-03-04")}
+            )
+
+            status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
+
+            assert status == EXIT_REFUSED_INPUT
+            assert stdout == ""
+            assert stderr == (
+                'budget: the ranges file: account "joint-savings" has no range,'
+                " and there is no [default]; nothing was imported\n"
+            )
+            assert first.read_bytes() == content
+            assert second.read_bytes() == content
+            assert not profile.import_log_file.exists()
+            assert run_ids(profile.bronze_store) == []
 
 
 if __name__ == "__main__":
