@@ -40,7 +40,7 @@ from budget.profiles import (
     RetentionPolicy,
 )
 from budget.silver.storage import silver_stage
-from budget.sqlstore import StageStore, open_store_for_backup
+from budget.sqlstore import StageStore, is_started, open_store_for_backup
 
 MANIFEST_FORMAT: Final = 1
 RECOVERY_FORMAT: Final = 1
@@ -237,11 +237,12 @@ def _covered_stores(profile: Profile) -> tuple[StageStore, ...]:
     """Name the stores a set of this profile holds: Bronze, and Silver's if any.
 
     Bronze's is always snapshotted, so a profile without one is refused. A
-    Silver store is snapshotted where it exists; a profile that has none yet
-    is still copied whole without it.
+    Silver store is snapshotted where it is started; a profile that has none
+    yet, or only a file an interrupted start left empty, is still copied whole
+    without it.
     """
     silver = silver_stage(profile)
-    return (bronze_stage(profile), *((silver,) if silver.path.exists() else ()))
+    return (bronze_stage(profile), *((silver,) if is_started(silver) else ()))
 
 
 def _copy_inputs(profile: Profile, staging: Path) -> dict[str, bytes]:
