@@ -180,6 +180,69 @@ class ImportCommandTests(unittest.TestCase):
             assert not profile.import_log_file.exists()
             assert run_ids(profile.bronze_store) == []
 
+    def test_a_ranges_file_that_breaks_its_rules_stores_nothing(self) -> None:
+        cases = {
+            "missing": (None, "cannot be read"),
+            "not TOML": ("format = 1\n[default\n", "is not valid TOML"),
+            "no format": (
+                "[default]\nfrom = 2026-03-01\nthrough = 2026-03-04\n",
+                "format must be 1",
+            ),
+            "quoted date": (
+                'format = 1\n[default]\nfrom = "2026-03-01"\nthrough = 2026-03-04\n',
+                "[default]: from must be a date such as 2026-09-30, without quotes",
+            ),
+            "date and time": (
+                (
+                    "format = 1\n[default]\nfrom = 2026-03-01T10:00:00\n"
+                    "through = 2026-03-04\n"
+                ),
+                "[default]: from must be a date such as 2026-09-30, without quotes",
+            ),
+            "no through": (
+                "format = 1\n[default]\nfrom = 2026-03-01\n",
+                "[default]: through is missing",
+            ),
+            "unknown key": (
+                (
+                    "format = 1\n[default]\nfrom = 2026-03-01\nthrough = 2026-03-04\n"
+                    "to = 2026-03-04\n"
+                ),
+                "[default]: unknown key to",
+            ),
+            "unknown table": (
+                "format = 1\n[defaults]\nfrom = 2026-03-01\nthrough = 2026-03-04\n",
+                "unknown key defaults",
+            ),
+            "unknown account": (
+                (
+                    "format = 1\n[account.joint-curent]\nfrom = 2026-03-01\n"
+                    "through = 2026-03-04\n"
+                ),
+                '[account.joint-curent]: "joint-curent" is not in accounts.toml',
+            ),
+        }
+        for case, (text, problem) in cases.items():
+            with self.subTest(case), TemporaryDirectory() as directory:
+                folder = Path(directory)
+                profile_file = write_profile(folder)
+                profile = _household(profile_file, folder)
+                content = payload("01.03.2026")
+                source = drop(profile, "joint-current", "danske-20260305.csv", content)
+                ranges = folder / "ranges.toml"
+                if text is not None:
+                    ranges.write_text(text, encoding="utf-8")
+
+                status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
+
+                assert status == EXIT_REFUSED_INPUT
+                assert stdout == ""
+                assert stderr.startswith("budget: the ranges file: ")
+                assert problem in stderr
+                assert stderr.endswith("; nothing was imported\n")
+                assert source.read_bytes() == content
+                assert not profile.import_log_file.exists()
+
 
 if __name__ == "__main__":
     unittest.main()
