@@ -175,6 +175,27 @@ class ImportCommandTests(unittest.TestCase):
             assert "0099999999" not in stdout
             assert "lost-folder" not in stdout
 
+    def test_a_file_outside_every_account_folder_is_misfiled(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            profile.inbox.mkdir(parents=True)
+            stray = profile.inbox / "danske-20260305.csv"
+            stray.write_bytes(content)
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+
+            status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
+
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert stdout.startswith(
+                "[1] (no account)  misfiled: only a file directly inside "
+                "inbox/<account_id>/ can be imported; it stays in the inbox\n"
+            )
+            assert stray.read_bytes() == content
+            assert not profile.import_log_file.exists()
+
     def test_a_format_failure_is_stored_and_reported_with_its_reason(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
