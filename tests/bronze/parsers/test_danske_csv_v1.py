@@ -181,6 +181,27 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
         assert result.failure_reason is None
         assert dict(result.records[0])["Tekst"] == r"\Cafe C:\\n\t"
 
+    def test_escaped_quotes_do_not_excuse_broken_quoting(self) -> None:
+        broken = {
+            # A field cannot end in a backslash: `\"` is always an escape, so
+            # this one stays open and runs into the next field.
+            "field left open by its escape": rb'"\"Example\"',
+            "data after the closing quote": rb'"\"Example\"" x',
+        }
+
+        for label, tekst in broken.items():
+            with self.subTest(payload=label):
+                row = dato_row("12.09.2026").replace(b'" Caf\xe9"', tekst)
+
+                result = PARSER.parse(header_payload(row))
+
+                assert result.records == ()
+                assert result.last_transaction_date is None
+                reason = result.failure_reason
+                assert reason
+                assert "Example" not in reason
+                assert "\\" not in reason
+
     def test_a_row_ending_in_a_comma_still_needs_its_quoted_field(self) -> None:
         header = HEADER + b"\r\n"
         seven_fields = (
