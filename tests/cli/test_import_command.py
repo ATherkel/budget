@@ -461,6 +461,34 @@ class InteractiveImportTests(unittest.TestCase):
                 "2026-03-04",
             )
 
+    def test_enter_repeats_the_range_typed_for_the_file_before(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            drop(profile, "joint-current", "danske-20260305.csv", content)
+            drop(profile, "joint-savings", "danske-20260305.csv", content)
+            # The second file's range is two presses of Enter.
+            typed = "2026-03-01\n2026-03-04\n\n\ny\n"
+
+            status, stdout, stderr = import_(profile_file, typed=typed)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "    from [2026-03-01]: "
+                "    through [2026-03-04]: "
+                "Import 2 files? [y/N] "
+            ) in stdout
+            ranges = {
+                entry["account_id"]: (entry["covers_from"], entry["covers_through"])
+                for entry in log_entries(profile)
+            }
+            assert ranges == {
+                "joint-current": ("2026-03-01", "2026-03-04"),
+                "joint-savings": ("2026-03-01", "2026-03-04"),
+            }
+
     def test_nothing_is_stored_unless_the_person_confirms(self) -> None:
         answers = {
             "no": "2026-03-01\n2026-03-04\nn\n",
