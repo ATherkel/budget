@@ -27,6 +27,10 @@ from datetime import date
 from pathlib import Path
 
 from budget.importing import Coverage
+from budget.inbox import ExportPreview
+from budget.inputs import ConfigurationError
+
+RANGES_FILE: str = "the ranges file"
 
 
 @dataclass(frozen=True)
@@ -39,6 +43,17 @@ class DeclaredRanges:
     def coverage(self, account_id: str) -> Coverage | None:
         """Return the account's own range, else the default, else none."""
         return self.accounts.get(account_id, self.default)
+
+    def declared(self, previewed: ExportPreview) -> Coverage:
+        """Return the range declared for one inbox file's account."""
+        coverage = self.coverage(previewed.account_id)
+        if coverage is None:
+            problem = (
+                f'{RANGES_FILE}: account "{previewed.account_id}" has no range, '
+                "and there is no [default]"
+            )
+            raise ConfigurationError((problem,))
+        return coverage
 
 
 def _date(table: Mapping[str, object], key: str) -> date:

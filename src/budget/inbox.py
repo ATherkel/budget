@@ -1,12 +1,14 @@
 # Copyright 2026 Therkel
 """The `import` application operation: every inbox export, then Silver.
 
-Each export in `inbox/<account_id>/` is imported on its own through
-`import_inbox_file`, under the one writer lock the command holds, and Silver
-is then rebuilt from the Bronze those imports wrote.
+Each export in `inbox/<account_id>/` is previewed, then imported on its own
+through `import_inbox_file`, under the one writer lock the command holds, and
+Silver is then rebuilt from the Bronze those imports wrote. A misfiled export
+is found by its preview, before anyone is asked for its range, and never
+reaches Bronze.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -14,14 +16,20 @@ from typing import Final
 
 from budget.bronze.models import ImportRun
 from budget.bronze.parsers.registry import source_parser
-from budget.importing import Coverage, import_inbox_file
-from budget.inputs import load_accounts
+from budget.importing import Coverage, UnknownInboxAccountError, import_inbox_file
+from budget.inputs import Account, MisfiledExportError
 from budget.locking import WriterLock
 from budget.profiles import Profile
 from budget.rebuilding import SilverRebuild, rebuild_from_silver
 
 # The outcomes that leave a file in the inbox and make `import` exit 3.
-LEFT_IN_INBOX: Final = frozenset({"refused"})
+LEFT_IN_INBOX: Final = frozenset({"refused", "misfiled"})
+# How a file in a folder that names no account is shown: the folder's name is
+# typed by hand, so it may carry a bank account number.
+NO_ACCOUNT: Final = "(no account)"
+_NO_EXPORT_DATE: Final = (
+    "the filename carries no export date; keep the name the bank gave it"
+)
 
 
 @dataclass(frozen=True)
@@ -31,12 +39,15 @@ class ExportPreview:
     The transaction dates are the file's first and last, read by its
     account's source format, so the person can check that the range they
     declare covers them. Both are `None` when the file has no records.
+    `misfiled` says why the file cannot be imported where it lies; it is
+    empty when it can.
     """
 
     source: Path
     account_id: str
-    first_transaction: date | None
-    last_transaction: date | None
+    first_transaction: date | None = None
+    last_transaction: date | None = None
+    misfiled: str = ""
 
 
 @dataclass(frozen=True)
@@ -62,7 +73,7 @@ class InboxImport:
 
     @property
     def any_left_in_inbox(self) -> bool:
-        """Whether any file was refused, so the command exits 3."""
+        """Whether any file was refused or misfiled, so the command exits 3."""
         return any(each.status in LEFT_IN_INBOX for each in self.files)
 
 
@@ -81,14 +92,37 @@ def inbox_exports(profile: Profile) -> tuple[Path, ...]:
     )
 
 
-def preview(profile: Profile, source: Path) -> ExportPreview:
-    """Read one inbox file's transaction dates, storing nothing."""
-    account_id = source.parent.name
-    account = load_accounts(profile)[account_id]
+def _filename_problem(account: Account, source: Path) -> str:
+    """Say why a file's name does not fit its account, or nothing."""
+    try:
+        account.check_export_filename(source.name)
+    except MisfiledExportError as error:
+        return str(error)
+    parser = source_parser(account.source_format)
+    try:
+        exported_on = parser.exported_on_from_filename(source.name)
+    except ValueError as error:
+        # The parser contract: a date-shaped suffix that is not a real date.
+        # Its message never repeats the filename.
+        return str(error)
+    return _NO_EXPORT_DATE if exported_on is None else ""
+
+
+def preview(accounts: Mapping[str, Account], source: Path) -> ExportPreview:
+    """Read one inbox file's account and transaction dates, storing nothing."""
+    account = accounts.get(source.parent.name)
+    if account is None:
+        problem = str(UnknownInboxAccountError(source.parent.name))
+        return ExportPreview(source=source, account_id=NO_ACCOUNT, misfiled=problem)
+    problem = _filename_problem(account, source)
+    if problem:
+        return ExportPreview(
+            source=source, account_id=account.account_id, misfiled=problem
+        )
     parsed = source_parser(account.source_format).parse(source.read_bytes())
     return ExportPreview(
         source=source,
-        account_id=account_id,
+        account_id=account.account_id,
         first_transaction=parsed.first_transaction_date,
         last_transaction=parsed.last_transaction_date,
     )
@@ -126,11 +160,25 @@ def _outcome(ordinal: int, run: ImportRun, previewed: ExportPreview) -> FileOutc
 
 
 def import_inbox(
-    lock: WriterLock, coverages: Sequence[tuple[ExportPreview, Coverage]]
+    lock: WriterLock,
+    previews: Sequence[ExportPreview],
+    declared: Callable[[ExportPreview], Coverage],
 ) -> InboxImport:
-    """Import each file with its declared range, then rebuild Silver."""
+    """Import each file with its declared range, then rebuild Silver.
+
+    `declared` gives the range the person declared for a file; it is asked
+    only for a file that is not misfiled. Files are numbered in `previews`'
+    order, the order the person was shown them in.
+    """
     files = []
-    for ordinal, (previewed, coverage) in enumerate(coverages, start=1):
-        imported = import_inbox_file(lock, previewed.source, coverage)
+    for ordinal, previewed in enumerate(previews, start=1):
+        if previewed.misfiled:
+            files.append(
+                FileOutcome(
+                    ordinal, previewed.account_id, "misfiled", previewed.misfiled
+                )
+            )
+            continue
+        imported = import_inbox_file(lock, previewed.source, declared(previewed))
         files.append(_outcome(ordinal, imported.import_run, previewed))
     return InboxImport(files=files, rebuilt=rebuild_from_silver(lock))

@@ -28,7 +28,7 @@ from budget.bronze.storage import BRONZE_STAGE, bronze_stage
 from budget.codeversion import UncommittedCodeError, require_committed_code
 from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.inbox import import_inbox, inbox_exports, preview
-from budget.inputs import ConfigurationError
+from budget.inputs import ConfigurationError, load_accounts
 from budget.locking import (
     StoresFolderUnavailableError,
     WriterLockHeldError,
@@ -216,12 +216,9 @@ def _import(profile: Profile, ranges_file: str) -> int:
     """
     ranges = load_ranges(Path(ranges_file))
     with writer_lock(profile) as lock:
-        coverages = []
-        for source in inbox_exports(profile):
-            coverage = ranges.coverage(source.parent.name)
-            if coverage is not None:
-                coverages.append((preview(profile, source), coverage))
-        imported = import_inbox(lock, coverages)
+        accounts = load_accounts(profile)
+        previews = [preview(accounts, source) for source in inbox_exports(profile)]
+        imported = import_inbox(lock, previews, ranges.declared)
         sys.stdout.write(summaries.import_summary(imported))
     return EXIT_REFUSED_INPUT if imported.any_left_in_inbox else EXIT_OK
 
