@@ -466,9 +466,9 @@ class InteractiveImportTests(unittest.TestCase):
             folder = Path(directory)
             profile_file = write_profile(folder)
             profile = _household(profile_file, folder)
-            content = payload("01.03.2026")
-            drop(profile, "joint-current", "danske-20260305.csv", content)
-            drop(profile, "joint-savings", "danske-20260305.csv", content)
+            # Each account its own bytes: one payload belongs to one account.
+            drop(profile, "joint-current", "danske-20260305.csv", payload("01.03.2026"))
+            drop(profile, "joint-savings", "danske-20260305.csv", payload("02.03.2026"))
             # The second file's range is two presses of Enter.
             typed = "2026-03-01\n2026-03-04\n\n\ny\n"
 
