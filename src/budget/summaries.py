@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from budget.bronze.models import ImportRun
-from budget.inbox import InboxImport
+from budget.inbox import LEFT_IN_INBOX, FileOutcome, InboxImport
 from budget.rebuilding import SilverRebuild
 from budget.reviewing import OpenReview
 from budget.silver import ImportRunResult, ReviewItem, SilverResult
@@ -138,11 +138,19 @@ def import_summary(imported: InboxImport) -> str:
     A file is named by its number in the listing the prompt showed, never by
     its filename, which can carry a bank account number.
     """
-    lines = [
-        f"[{each.ordinal}] {each.account_id}  {each.status}" for each in imported.files
-    ]
+    lines = [_file_line(each) for each in imported.files]
     lines.append(_silver_line(imported.rebuilt.result))
     return "\n".join(lines) + "\n"
+
+
+def _file_line(outcome: FileOutcome) -> str:
+    """One inbox file's line: its number, account, outcome and reason."""
+    line = f"[{outcome.ordinal}] {outcome.account_id}  {outcome.status}"
+    if outcome.reason:
+        line += f": {outcome.reason}"
+    if outcome.status in LEFT_IN_INBOX:
+        line += "; it stays in the inbox"
+    return line
 
 
 def _silver_line(result: SilverResult) -> str:

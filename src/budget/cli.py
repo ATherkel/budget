@@ -27,7 +27,7 @@ from budget.backups import (
 from budget.bronze.storage import BRONZE_STAGE, bronze_stage
 from budget.codeversion import UncommittedCodeError, require_committed_code
 from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
-from budget.inbox import import_inbox, inbox_exports
+from budget.inbox import import_inbox, inbox_exports, preview
 from budget.inputs import ConfigurationError
 from budget.locking import (
     StoresFolderUnavailableError,
@@ -209,18 +209,21 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
         sys.stdout.write(summary)
 
 
-def _import(profile: Profile, ranges_file: str) -> None:
-    """Import every inbox export with its declared range, then rebuild Silver."""
+def _import(profile: Profile, ranges_file: str) -> int:
+    """Import every inbox export with its declared range, then rebuild Silver.
+
+    Returns 3 when any file was refused and stays in the inbox, else 0.
+    """
     ranges = load_ranges(Path(ranges_file))
     with writer_lock(profile) as lock:
-        sources = inbox_exports(profile)
         coverages = []
-        for source in sources:
+        for source in inbox_exports(profile):
             coverage = ranges.coverage(source.parent.name)
             if coverage is not None:
-                coverages.append((source, coverage))
+                coverages.append((preview(profile, source), coverage))
         imported = import_inbox(lock, coverages)
         sys.stdout.write(summaries.import_summary(imported))
+    return EXIT_REFUSED_INPUT if imported.any_left_in_inbox else EXIT_OK
 
 
 def _review(profile: Profile, kind: str | None, account: str | None) -> None:
@@ -260,23 +263,21 @@ def _milliseconds(started: float) -> int:
     return int((perf_counter() - started) * 1000)
 
 
-def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> None:
-    """Select and load the profile, then run the command against it."""
+def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
+    """Select and load the profile, run the command, and return its status."""
     profile_file = _selected_profile_file(arguments.profile, environ)
     profile = load_profile_file(profile_file)
+    if arguments.command == "import":
+        return _import(profile, arguments.ranges)
     if arguments.command == "backup":
         _backup(profile)
-        return
-    if arguments.command == "rebuild":
+    elif arguments.command == "rebuild":
         _rebuild(profile, arguments.from_stage)
-        return
-    if arguments.command == "import":
-        _import(profile, arguments.ranges)
-        return
-    if arguments.command == "review":
+    elif arguments.command == "review":
         _review(profile, arguments.kind, arguments.account)
-        return
-    _migrate(profile, arguments.stage, new_store=arguments.new_store)
+    else:
+        _migrate(profile, arguments.stage, new_store=arguments.new_store)
+    return EXIT_OK
 
 
 def _refuse(error: Exception, status: int) -> int:
@@ -298,7 +299,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         # (2 for a usage error, 0 for --help) instead of leaving the process.
         return usage.code if isinstance(usage.code, int) else EXIT_USAGE
     try:
-        _run(arguments, environ)
+        return _run(arguments, environ)
     except (ProfileFileError, ConfigurationError) as error:
         return _refuse(error, EXIT_REFUSED_INPUT)
     except (
@@ -323,7 +324,6 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         ImportLogAheadOfBronzeError,
     ) as error:
         return _refuse(error, EXIT_VERIFICATION_FAILED)
-    return EXIT_OK
 
 
 def run() -> NoReturn:
