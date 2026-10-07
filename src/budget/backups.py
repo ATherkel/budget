@@ -392,7 +392,7 @@ def _require_no_lost_store(profile: Profile) -> None:
         manifest = _read_manifest(child)
         if (
             manifest is not None
-            and _set_schema_version(manifest, silver.stage) is not None
+            and _lists_store(manifest, silver.stage)
             and _is_complete(child)
         ):
             raise LostStoreError(silver.label)
@@ -504,11 +504,20 @@ def complete_backup_sets(profile: Profile) -> tuple[BackupSet, ...]:
     )
 
 
+def _lists_store(manifest: dict[str, object], stage: str) -> bool:
+    """Report whether a manifest lists a store for `stage`.
+
+    A listed store counts whatever else its entry records, so the restore
+    check and the lost-store check never disagree about a set.
+    """
+    stores = manifest.get("stores")
+    return isinstance(stores, dict) and stage in stores
+
+
 def holds_store(backup: BackupSet, stage: str) -> bool:
     """Report whether a set's manifest lists a store for `stage`."""
     manifest = _read_manifest(backup.path)
-    stores = None if manifest is None else manifest.get("stores")
-    return isinstance(stores, dict) and stage in stores
+    return manifest is not None and _lists_store(manifest, stage)
 
 
 def _prunable_sets(profile: Profile) -> dict[str, datetime]:
