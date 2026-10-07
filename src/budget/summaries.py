@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from budget.bronze.models import ImportRun
+from budget.inbox import InboxImport
 from budget.rebuilding import SilverRebuild
 from budget.reviewing import OpenReview
 from budget.silver import ImportRunResult, ReviewItem, SilverResult
@@ -129,6 +130,31 @@ def _run_line(row: _Row) -> str:
     """One import run's line: its identifiers, status and reason codes."""
     reasons = f"  {', '.join(row.reasons)}" if row.reasons else ""
     return f"Run  {row.import_run_id}  {row.account_id}  {row.status}{reasons}"
+
+
+def import_summary(imported: InboxImport) -> str:
+    """Report each inbox file by its number, then Silver's counts.
+
+    A file is named by its number in the listing the prompt showed, never by
+    its filename, which can carry a bank account number.
+    """
+    lines = [
+        f"[{each.ordinal}] {each.account_id}  {each.status}" for each in imported.files
+    ]
+    lines.append(_silver_line(imported.rebuilt.result))
+    return "\n".join(lines) + "\n"
+
+
+def _silver_line(result: SilverResult) -> str:
+    """Count Silver's admitted and quarantined runs and dropped transactions."""
+    statuses = Counter(each.status for each in result.import_run_results)
+    dropped = sum(
+        1 for item in result.review_items if item.kind == "dropped-transaction"
+    )
+    return (
+        f"Silver   {statuses['accepted']} admitted, {statuses['quarantined']}"
+        f" quarantined, {dropped} dropped"
+    )
 
 
 def review_summary(items: Sequence[OpenReview]) -> str:

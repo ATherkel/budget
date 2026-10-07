@@ -27,6 +27,7 @@ from budget.backups import (
 from budget.bronze.storage import BRONZE_STAGE, bronze_stage
 from budget.codeversion import UncommittedCodeError, require_committed_code
 from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
+from budget.inbox import import_inbox, inbox_exports
 from budget.inputs import ConfigurationError
 from budget.locking import (
     StoresFolderUnavailableError,
@@ -46,6 +47,7 @@ from budget.profiles import (
     ProfileFileError,
     load_profile_file,
 )
+from budget.ranges import load_ranges
 from budget.rebuilding import SilverRebuild, rebuild_from_silver
 from budget.reviewing import REVIEW_KINDS, open_reviews
 from budget.silver.storage import SILVER_STAGE
@@ -130,6 +132,14 @@ def _parser() -> argparse.ArgumentParser:
         default=GOLD_STAGE,
         help="the stage to rebuild from",
     )
+    import_ = commands.add_parser(
+        "import", help="import every inbox export, then rebuild Silver"
+    )
+    import_.add_argument(
+        "--ranges",
+        required=True,
+        help="a file declaring the range each account's exports were asked for",
+    )
     review = commands.add_parser("review", help="list the open review items")
     review.add_argument("--kind", choices=REVIEW_KINDS, help="list one kind only")
     review.add_argument("--account", help="list one account's items only")
@@ -199,6 +209,20 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
         sys.stdout.write(summary)
 
 
+def _import(profile: Profile, ranges_file: str) -> None:
+    """Import every inbox export with its declared range, then rebuild Silver."""
+    ranges = load_ranges(Path(ranges_file))
+    with writer_lock(profile) as lock:
+        sources = inbox_exports(profile)
+        coverages = []
+        for source in sources:
+            coverage = ranges.coverage(source.parent.name)
+            if coverage is not None:
+                coverages.append((source, coverage))
+        imported = import_inbox(lock, coverages)
+        sys.stdout.write(summaries.import_summary(imported))
+
+
 def _review(profile: Profile, kind: str | None, account: str | None) -> None:
     """List the profile's open review items, taking no writer lock.
 
@@ -245,6 +269,9 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> None:
         return
     if arguments.command == "rebuild":
         _rebuild(profile, arguments.from_stage)
+        return
+    if arguments.command == "import":
+        _import(profile, arguments.ranges)
         return
     if arguments.command == "review":
         _review(profile, arguments.kind, arguments.account)
