@@ -281,6 +281,29 @@ class InteractiveImportTests(unittest.TestCase):
                 "2026-03-04",
             )
 
+    def test_nothing_is_stored_unless_the_person_confirms(self) -> None:
+        answers = {
+            "no": "2026-03-01\n2026-03-04\nn\n",
+            "just enter": "2026-03-01\n2026-03-04\n\n",
+            "input ends at the confirmation": "2026-03-01\n2026-03-04\n",
+            "input ends at a range": "2026-03-01\n",
+        }
+        for case, typed in answers.items():
+            with self.subTest(case), TemporaryDirectory() as directory:
+                folder = Path(directory)
+                profile_file = write_profile(folder)
+                profile = _household(profile_file, folder)
+                content = payload("01.03.2026")
+                source = drop(profile, "joint-current", "danske-20260305.csv", content)
+
+                status, stdout, stderr = import_(profile_file, typed=typed)
+
+                assert (status, stderr) == (EXIT_OK, "")
+                assert stdout.endswith("Nothing was imported.\n")
+                assert source.read_bytes() == content
+                assert not profile.import_log_file.exists()
+                assert run_ids(profile.bronze_store) == []
+
 
 if __name__ == "__main__":
     unittest.main()
