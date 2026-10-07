@@ -603,6 +603,30 @@ class ProductionImportTests(unittest.TestCase):
                 assert stdout == "The inbox holds no exports; nothing was imported.\n"
                 assert _set_names(profile) == sets_before
 
+    def test_when_no_file_reaches_bronze_nothing_is_rebuilt_or_backed_up(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder, name="production")
+            assert migrate(profile_file, "--new-store") == (EXIT_OK, "")
+            profile = load_profile_file(profile_file)
+            profile.inputs.mkdir(parents=True, exist_ok=True)
+            profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+            sets_before = _set_names(profile)
+            content = payload("01.03.2026")
+            drop(profile, "lost-folder", "danske-20260305.csv", content)
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+
+            with mock.patch("subprocess.run", return_value=_clean_git()):
+                status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
+
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            lines = stdout.splitlines()
+            assert lines[0].startswith("[1] (no account)  misfiled: ")
+            assert lines[1:] == ["Nothing was imported."]
+            assert _set_names(profile) == sets_before
+
     def test_an_account_silver_cannot_build_refuses_before_storing(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
