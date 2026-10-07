@@ -6,6 +6,7 @@ the operator's shell never reaches a test. Every account, date, text and amount
 is synthetic.
 """
 
+import json
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,6 +15,7 @@ from unittest import mock
 
 from budget.bronze.parsers.registry import source_parser
 from budget.profiles import Profile, load_profile_file
+from budget.routine_logging import LOG_FILE, LOG_FOLDER
 from budget.silver import SilverStore
 from tests.backups.sets import manifest, run_ids
 from tests.cli.commands import import_, migrate
@@ -192,6 +194,51 @@ class ImportCommandTests(unittest.TestCase):
             assert not source.exists()
             [entry] = log_entries(profile)
             assert entry["outcome"] == "stored"
+
+    def test_the_log_and_summary_carry_counts_and_no_bank_content(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            stored_name = "danske-20260305.csv"
+            misfiled_name = "Konto-0099999999-20260305.csv"
+            drop(profile, "joint-current", misfiled_name, payload("01.03.2026"))
+            drop(profile, "joint-current", stored_name, payload("01.03.2026"))
+            # Refused: a transaction falls after the declared range ends.
+            drop(profile, "joint-savings", stored_name, payload("05.03.2026"))
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+
+            status, summary, stderr = import_(profile_file, "--ranges", str(ranges))
+
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            log = (profile.stores / LOG_FOLDER / LOG_FILE).read_text(encoding="utf-8")
+            [record] = [json.loads(line) for line in log.splitlines()]
+            assert record["command"] == "import"
+            assert record["counts"] == {
+                "stored": 1,
+                "repeat": 0,
+                "refused": 1,
+                "misfiled": 1,
+                "format_failure": 0,
+                "admitted": 1,
+                "quarantined": 0,
+                "dropped": 0,
+            }
+            # The fixture's amounts, balance, texts, filenames and numbers.
+            fixture = (
+                "-45,00",
+                "955,00",
+                "Café",
+                "Mad",
+                "Dagligvarer",
+                stored_name,
+                misfiled_name,
+                "0099999999",
+                "0012345678",
+            )
+            for value in fixture:
+                assert value not in log, value
+                assert value not in summary, value
 
     def test_an_account_without_a_range_stops_before_anything_is_stored(
         self,
