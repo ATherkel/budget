@@ -134,6 +134,13 @@ for.
 
 - Windows-1252, comma- or semicolon-delimited, every field double-quoted, CRLF
   line endings, and at most one final line break.
+- The bank writes a quote inside a field as `\"`: a `Tekst` of `"Example"`,
+  quotes included, is exported as `"\"Example\""`. A doubled quote (`""`), as
+  in standard CSV, is accepted too. Either form decodes to one quote, so the
+  source record holds `"Example"`, the way decoding Windows-1252 yields `ø`.
+  A backslash before any other character is kept as it is. A backslash right
+  before a quote is always an escape, so a field cannot end in a backslash:
+  its closing quote would read as an escaped one.
 - The bank's export dialog offers a comma, a semicolon (its default), a blank
   or a tab as the delimiter. A comma export and a semicolon export of the same
   data are otherwise byte for byte the same. The character after `"Dato"` in
