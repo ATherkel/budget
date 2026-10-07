@@ -92,7 +92,7 @@ class FileOutcome:
 
 
 @dataclass(frozen=True)
-class InboxImport:
+class ImportedInbox:
     """Every inbox file's outcome, the Silver rebuild and production's backup.
 
     `backup` is the set written after the rebuild; only production writes one.
@@ -314,7 +314,7 @@ def import_inbox(
     lock: WriterLock,
     previews: Sequence[ExportPreview],
     declared: Mapping[Path, Coverage],
-) -> InboxImport:
+) -> ImportedInbox:
     """Import each file with its declared range, then rebuild Silver.
 
     `declared` maps each file that is not skipped to the range the person
@@ -334,12 +334,12 @@ def import_inbox(
         files.append(_outcome(ordinal, imported, previewed))
     rebuilt = rebuild_from_silver(lock)
     if lock.profile.name != PRODUCTION_PROFILE_NAME:
-        return InboxImport(files=files, rebuilt=rebuilt)
+        return ImportedInbox(files=files, rebuilt=rebuilt)
     # Every production write is followed by a set covering Bronze and the
     # Silver just rebuilt from it. The imports are committed by now, so a set
     # that cannot be written is reported beside them, not instead of them.
     try:
         backup = back_up(lock, now=datetime.now(UTC))
     except BACKUP_FAILURES as error:
-        return InboxImport(files=files, rebuilt=rebuilt, backup_failure=error)
-    return InboxImport(files=files, rebuilt=rebuilt, backup=backup)
+        return ImportedInbox(files=files, rebuilt=rebuilt, backup_failure=error)
+    return ImportedInbox(files=files, rebuilt=rebuilt, backup=backup)
