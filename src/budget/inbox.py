@@ -12,6 +12,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Final
 
@@ -25,6 +26,7 @@ from budget.bronze.models import ImportRun
 from budget.bronze.parsers.registry import source_parser
 from budget.codeversion import require_committed_code
 from budget.importing import Coverage, UnknownInboxAccountError, import_inbox_file
+from budget.importing import InboxImport as InboxFileImport
 from budget.inputs import Account, MisfiledExportError
 from budget.locking import WriterLock
 from budget.profiles import PRODUCTION_PROFILE_NAME, Profile
@@ -71,13 +73,15 @@ class FileOutcome:
     """What happened to one inbox file, named by its place in the listing.
 
     `reason` is empty for a stored or repeat export, and never repeats a
-    filename, an amount or a description.
+    filename, an amount or a description. `note` says why an accepted export
+    is still in the inbox, when it is.
     """
 
     ordinal: int
     account_id: str
     status: str
     reason: str = ""
+    note: str = ""
 
 
 @dataclass(frozen=True)
@@ -215,22 +219,52 @@ def refusal_reasons(run: ImportRun, previewed: ExportPreview) -> tuple[str, ...]
     return tuple(reasons)
 
 
-def _outcome(ordinal: int, run: ImportRun, previewed: ExportPreview) -> FileOutcome:
+def _still_in_inbox(imported: InboxFileImport, source: Path) -> str:
+    """Say why an accepted export is still in the inbox, if it is.
+
+    Its bytes are archived and logged, so a rerun finishes it as a retry. The
+    file is either held open by another program, or was saved over while it
+    was imported, in which case it now holds bytes no run stored.
+    """
+    if not imported.left_in_inbox:
+        return ""
+    try:
+        changed = (
+            sha256(source.read_bytes()).hexdigest() != imported.import_run.payload_id
+        )
+    except OSError:
+        changed = False
+    if changed:
+        return (
+            "it stays in the inbox because it changed while it was imported: "
+            "rerun import to import it as it is now"
+        )
+    return (
+        "it stays in the inbox because another program holds it: close that "
+        "program, then rerun import"
+    )
+
+
+def _outcome(
+    ordinal: int, imported: InboxFileImport, previewed: ExportPreview
+) -> FileOutcome:
     """Name one imported file's outcome, and why when it was not a clean store.
 
     A stored payload its format could not read is a format failure: it is
     archived like any accepted export, and Silver quarantines it. Its reason
     is the parser's verdict, which never repeats source content.
     """
+    run = imported.import_run
     account_id = run.declared_account_id
     if run.outcome == "refused":
         reason = "; ".join(refusal_reasons(run, previewed))
         return FileOutcome(ordinal, account_id, "refused", reason)
+    note = _still_in_inbox(imported, previewed.source)
     if run.outcome == "stored" and previewed.failure_reason is not None:
         return FileOutcome(
-            ordinal, account_id, "format failure", previewed.failure_reason
+            ordinal, account_id, "format failure", previewed.failure_reason, note
         )
-    return FileOutcome(ordinal, account_id, run.outcome)
+    return FileOutcome(ordinal, account_id, run.outcome, note=note)
 
 
 def import_inbox(
@@ -254,7 +288,7 @@ def import_inbox(
             )
             continue
         imported = import_inbox_file(lock, previewed.source, declared[previewed.source])
-        files.append(_outcome(ordinal, imported.import_run, previewed))
+        files.append(_outcome(ordinal, imported, previewed))
     rebuilt = rebuild_from_silver(lock)
     if lock.profile.name != PRODUCTION_PROFILE_NAME:
         return InboxImport(files=files, rebuilt=rebuilt)

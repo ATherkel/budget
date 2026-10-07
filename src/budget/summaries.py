@@ -152,6 +152,8 @@ def _file_line(outcome: FileOutcome) -> str:
         line += f": {outcome.reason}"
     if outcome.status in LEFT_IN_INBOX:
         line += "; it stays in the inbox"
+    if outcome.note:
+        line += f"; {outcome.note}"
     return line
 
 
