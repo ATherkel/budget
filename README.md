@@ -241,7 +241,7 @@ log records counts only.
 | `repeat` | The same bytes were stored for this account before; logged as a repeat | Nothing |
 | `format failure` | Stored and archived, but its format could not read it, so Silver quarantines it | Report it: a parser fix and a rebuild settle it |
 | `refused` | Bronze refused the declared range, or the bytes are already stored for another account; a copy is kept under `exports\<account_id>\refused\` | Correct the range, or move the file, then rerun |
-| `misfiled` | Not imported: a filename carrying another account's number or no export date, a folder `accounts.toml` does not name, or a file in the inbox itself | Move or rename the file, or correct `accounts.toml`, then rerun |
+| `misfiled` | Not imported: a filename carrying another account's number or no export date, a folder `accounts.toml` does not name, or a file in the inbox itself or in a folder inside an account's | Move or rename the file, or correct `accounts.toml`, then rerun |
 | `unreadable` | Not imported: another program holds the file without sharing it | Close that program, then rerun |
 | `stored; it stays in the inbox because another program holds it` | Stored, archived and logged, but the file could not be removed | Close that program, then rerun: the rerun removes it and adds no run |
 

@@ -152,19 +152,14 @@ def require_import_allowed(profile: Profile) -> None:
 def inbox_exports(profile: Profile) -> tuple[Path, ...]:
     """List the files waiting in the inbox, in order.
 
-    That is every file in an account folder, and every file in the inbox
-    itself, which no folder declares an account for: an export saved there
-    by mistake is reported, never skipped without a word.
+    That is every file anywhere under the inbox. Only one directly inside an
+    account folder can be imported, but an export saved in the inbox itself,
+    or in a folder inside an account's, is reported, never skipped without a
+    word.
     """
     if not profile.inbox.is_dir():
         return ()
-    found = []
-    for entry in profile.inbox.iterdir():
-        if entry.is_dir():
-            found.extend(source for source in entry.iterdir() if source.is_file())
-        elif entry.is_file():
-            found.append(entry)
-    return tuple(sorted(found))
+    return tuple(sorted(path for path in profile.inbox.rglob("*") if path.is_file()))
 
 
 def _exported_on(account: Account, source: Path) -> date | str:
@@ -210,7 +205,7 @@ def preview(
     profile: Profile, accounts: Mapping[str, Account], source: Path
 ) -> ExportPreview:
     """Read one inbox file's account and transaction dates, storing nothing."""
-    if source.parent == profile.inbox:
+    if source.parent.parent != profile.inbox:
         problem = str(NotAnInboxFileError())
         return _misfiled(source, NO_ACCOUNT, problem)
     account = accounts.get(source.parent.name)
