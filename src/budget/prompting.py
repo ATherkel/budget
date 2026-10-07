@@ -50,10 +50,18 @@ def _show(ordinal: int, previewed: ExportPreview) -> None:
     _say(f"{_INDENT}transactions   {_transactions(previewed)}")
 
 
-def _ask_date(label: str) -> date:
-    """Ask for one date until the answer is one. Raises `EOFError` at the end."""
+def _ask_date(label: str, previous: date | None) -> date:
+    """Ask for one date until the answer is one. Raises `EOFError` at the end.
+
+    With `previous`, the answer given for the file before, the prompt shows
+    it, and an empty answer gives it again: an inbox of one download batch
+    shares one range, and retyping it for every file invites a slip.
+    """
+    offered = "" if previous is None else f" [{previous}]"
     while True:
-        answer = input(f"{_INDENT}{label}: ").strip()
+        answer = input(f"{_INDENT}{label}{offered}: ").strip()
+        if not answer and previous is not None:
+            return previous
         try:
             return date.fromisoformat(answer)
         except ValueError:
@@ -73,15 +81,22 @@ def ask_ranges(previews: Sequence[ExportPreview]) -> dict[Path, Coverage] | None
     not confirm or the input ends first: then nothing is to be stored.
     """
     declared: dict[Path, Coverage] = {}
+    previous: Coverage | None = None
     try:
         for ordinal, previewed in enumerate(previews, start=1):
             _show(ordinal, previewed)
             if previewed.skipped:
                 continue
             _say(f"{_INDENT}Enter the range you asked the bank for.")
-            declared[previewed.source] = Coverage(
-                covers_from=_ask_date("from"), covers_through=_ask_date("through")
+            previous = Coverage(
+                covers_from=_ask_date(
+                    "from", None if previous is None else previous.covers_from
+                ),
+                covers_through=_ask_date(
+                    "through", None if previous is None else previous.covers_through
+                ),
             )
+            declared[previewed.source] = previous
         confirmed = not declared or _confirmed(len(declared))
     except EOFError:
         return None
