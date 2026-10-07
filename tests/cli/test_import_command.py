@@ -20,6 +20,7 @@ from tests.importing.households import ACCOUNTS, drop, log_entries, payload
 
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
+EXIT_REFUSED_ENVIRONMENT = 4
 
 
 def _household(profile_file: Path, folder: Path) -> Profile:
@@ -347,6 +348,49 @@ class ProductionImportTests(unittest.TestCase):
             assert isinstance(stores, dict)
             assert set(stores) == {"bronze", "silver"}
             assert run_ids(backup_set / "bronze.db") == [entry["import_run_id"]]
+
+    def test_what_would_refuse_the_build_or_backup_refuses_first(self) -> None:
+        # Each case breaks something the rebuild or the backup after the
+        # Bronze writes would refuse, so nothing may be stored before it.
+        cases = {
+            "uncommitted code": (EXIT_REFUSED_ENVIRONMENT, "uncommitted"),
+            "a decision": (EXIT_REFUSED_INPUT, "decisions.jsonl"),
+            "a store no set covers": (EXIT_REFUSED_ENVIRONMENT, "gold.db"),
+        }
+        for case, (expected, named) in cases.items():
+            with self.subTest(case), TemporaryDirectory() as directory:
+                folder = Path(directory)
+                profile_file = write_profile(folder, name="production")
+                assert migrate(profile_file, "--new-store") == (EXIT_OK, "")
+                profile = load_profile_file(profile_file)
+                profile.inputs.mkdir(parents=True, exist_ok=True)
+                profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+                sets_before = _set_names(profile)
+                content = payload("01.03.2026")
+                source = drop(profile, "joint-current", "danske-20260305.csv", content)
+                ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+                git = _clean_git()
+                if case == "uncommitted code":
+                    git.stdout = " M src/budget/cli.py\n"
+                if case == "a decision":
+                    profile.input_file("decisions.jsonl").write_text(
+                        '{"decision_id": "d-0001"}\n', encoding="utf-8"
+                    )
+                if case == "a store no set covers":
+                    (profile.stores / "gold.db").write_bytes(b"")
+
+                with mock.patch("subprocess.run", return_value=git):
+                    status, stdout, stderr = import_(
+                        profile_file, "--ranges", str(ranges)
+                    )
+
+                assert status == expected
+                assert stdout == ""
+                assert named in stderr
+                assert source.read_bytes() == content
+                assert not profile.import_log_file.exists()
+                assert run_ids(profile.bronze_store) == []
+                assert _set_names(profile) == sets_before
 
 
 if __name__ == "__main__":
