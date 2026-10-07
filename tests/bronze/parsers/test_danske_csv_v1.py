@@ -149,6 +149,28 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
             with self.subTest(payload=label):
                 verdict_for(row)
 
+    def test_a_backslash_escaped_quote_is_one_quote_in_its_field(self) -> None:
+        # The bank writes a quote inside a field as `\"`, not doubled: a Tekst
+        # of `"Example"`, quotes included, arrives as `"\"Example\""`.
+        payload = (
+            b'"Dato";"Tekst";"Bel\xf8b";"Saldo";"Status";"Afstemt"\r\n'
+            b'"12.09.2026";"\\"Example\\"";"-45,00";"955,00";"Udf\xf8rt";"Nej"'
+        )
+
+        result = PARSER.parse(payload)
+
+        assert result.failure_reason is None
+        assert [dict(record) for record in result.records] == [
+            {
+                "Dato": "12.09.2026",
+                "Tekst": '"Example"',
+                "Beløb": "-45,00",
+                "Saldo": "955,00",
+                "Status": "Udført",
+                "Afstemt": "Nej",
+            }
+        ]
+
     def test_a_row_ending_in_a_comma_still_needs_its_quoted_field(self) -> None:
         header = HEADER + b"\r\n"
         seven_fields = (
