@@ -112,6 +112,46 @@ class ImportCommandTests(unittest.TestCase):
             assert "[2] joint-savings  stored\n" in stdout
             assert "Silver   1 admitted, 0 quarantined, 0 dropped\n" in stdout
 
+    def test_misfiled_exports_stay_while_the_others_are_stored(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            # The filename names another bank account than joint-current's.
+            other_number = drop(
+                profile, "joint-current", "Konto-0099999999-20260305.csv", content
+            )
+            stored = drop(profile, "joint-savings", "danske-20260305.csv", content)
+            # A folder accounts.toml does not name declares no account.
+            no_account = drop(profile, "lost-folder", "danske-20260305.csv", content)
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+
+            status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
+
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert other_number.read_bytes() == content
+            assert no_account.read_bytes() == content
+            assert not stored.exists()
+            [entry] = log_entries(profile)
+            assert (entry["account_id"], entry["outcome"]) == (
+                "joint-savings",
+                "stored",
+            )
+            lines = stdout.splitlines()
+            assert lines[0].startswith(
+                '[1] joint-current  misfiled: account "joint-current": the export\'s'
+                " filename carries another bank account number"
+            )
+            assert lines[0].endswith("; it stays in the inbox")
+            assert lines[1] == "[2] joint-savings  stored"
+            assert lines[2].startswith(
+                "[3] (no account)  misfiled: an inbox folder names no account"
+            )
+            assert lines[2].endswith("; it stays in the inbox")
+            assert "0099999999" not in stdout
+            assert "lost-folder" not in stdout
+
 
 if __name__ == "__main__":
     unittest.main()
