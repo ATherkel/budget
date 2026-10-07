@@ -181,11 +181,40 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
         assert result.failure_reason is None
         assert dict(result.records[0])["Tekst"] == r"\Cafe C:\\n\t"
 
+    def test_a_field_may_end_in_a_backslash(self) -> None:
+        # The bank does not escape a backslash, so a Tekst ending in one is
+        # written `\"` before its delimiter, a line break or the payload's end.
+        # There the quote can only close the field.
+        endings = {
+            "before the delimiter": dato_row("12.09.2026").replace(
+                b'" Caf\xe9"', rb'"Shop.dk/Ref\ \12345678\"'
+            ),
+            "before a line break": dato_row("12.09.2026").replace(b'"Nej"', rb'"Nej\"')
+            + b"\r\n"
+            + dato_row("13.09.2026"),
+            "at the payload's end": dato_row("12.09.2026").replace(
+                b'"Nej"', rb'"Nej\"'
+            ),
+        }
+        expected = {
+            "before the delimiter": ("Tekst", "Shop.dk/Ref\\ \\12345678\\"),
+            "before a line break": ("Afstemt", "Nej\\"),
+            "at the payload's end": ("Afstemt", "Nej\\"),
+        }
+
+        for label, row in endings.items():
+            with self.subTest(payload=label):
+                result = PARSER.parse(header_payload(row))
+
+                assert result.failure_reason is None
+                field, value = expected[label]
+                assert dict(result.records[0])[field] == value
+
     def test_escaped_quotes_do_not_excuse_broken_quoting(self) -> None:
         broken = {
-            # A field cannot end in a backslash: `\"` is always an escape, so
-            # this one stays open and runs into the next field.
-            "field left open by its escape": rb'"\"Example\"',
+            # A `\"` before the delimiter is a backslash and the closing quote,
+            # so a quote that really stood there ends the field early.
+            "quote before the delimiter": rb'"\"Example\",x"',
             "data after the closing quote": rb'"\"Example\"" x',
         }
 
