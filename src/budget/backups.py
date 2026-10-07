@@ -384,6 +384,16 @@ def _require_no_lost_store(profile: Profile) -> None:
         raise LostStoreError(silver.label)
 
 
+def require_backup_allowed(profile: Profile) -> None:
+    """Refuse now, touching nothing, what `back_up` would refuse before writing.
+
+    A command that must back up after its own writes, as `budget import`
+    does, calls this before the first of them.
+    """
+    require_supported_stores(profile)
+    _require_no_lost_store(profile)
+
+
 def _remove_interrupted(profile: Profile) -> None:
     """Delete what an interrupted backup left: never a set, only its parts.
 

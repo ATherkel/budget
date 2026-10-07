@@ -31,7 +31,13 @@ from budget.importing import (
     ImportLogAheadOfBronzeError,
     ImportLogDamagedError,
 )
-from budget.inbox import ExportPreview, import_inbox, inbox_exports, preview
+from budget.inbox import (
+    ExportPreview,
+    import_inbox,
+    inbox_exports,
+    preview,
+    require_import_allowed,
+)
 from budget.inputs import Account, ConfigurationError, load_accounts
 from budget.locking import (
     StoresFolderUnavailableError,
@@ -239,6 +245,7 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
     any file was refused or misfiled and stays in the inbox, else 0.
     """
     with writer_lock(profile) as lock:
+        require_import_allowed(profile)
         accounts = load_accounts(profile)
         previews = [preview(accounts, source) for source in inbox_exports(profile)]
         declared = _declared_ranges(previews, accounts, ranges_file)

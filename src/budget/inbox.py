@@ -14,14 +14,19 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Final
 
-from budget.backups import BackupSet, back_up
+from budget.backups import BackupSet, back_up, require_backup_allowed
 from budget.bronze.models import ImportRun
 from budget.bronze.parsers.registry import source_parser
+from budget.codeversion import require_committed_code
 from budget.importing import Coverage, UnknownInboxAccountError, import_inbox_file
 from budget.inputs import Account, MisfiledExportError
 from budget.locking import WriterLock
 from budget.profiles import PRODUCTION_PROFILE_NAME, Profile
-from budget.rebuilding import SilverRebuild, rebuild_from_silver
+from budget.rebuilding import (
+    SilverRebuild,
+    rebuild_from_silver,
+    require_no_decisions,
+)
 
 # The outcomes that leave a file in the inbox and make `import` exit 3.
 LEFT_IN_INBOX: Final = frozenset({"refused", "misfiled"})
@@ -84,6 +89,20 @@ class InboxImport:
     def any_left_in_inbox(self) -> bool:
         """Whether any file was refused or misfiled, so the command exits 3."""
         return any(each.status in LEFT_IN_INBOX for each in self.files)
+
+
+def require_import_allowed(profile: Profile) -> None:
+    """Refuse, before anything is asked or stored, what would refuse later.
+
+    The Silver rebuild refuses uncommitted code in production and a decision
+    log holding a decision; production's backup refuses a stores folder no
+    set can cover. Found only after the Bronze writes, any of them would
+    leave production written without the build and backup that must follow.
+    """
+    require_committed_code(profile)
+    require_no_decisions(profile)
+    if profile.name == PRODUCTION_PROFILE_NAME:
+        require_backup_allowed(profile)
 
 
 def inbox_exports(profile: Profile) -> tuple[Path, ...]:
