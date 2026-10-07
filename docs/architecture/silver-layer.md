@@ -203,9 +203,10 @@ transaction dates.
 
 **Booking state**
 - Each source format maps its status values to `booking_status`: `booked`,
-  `pending`, or `cancelled`. For `danske-csv-v1`, `Udført` is `booked` and
-  `Slettet` is `cancelled`. Only booked rows enter the canonical transaction
-  output; pending and cancelled rows remain `UnbookedRecord` provenance.
+  `pending`, or `cancelled`. For `danske-csv-v1`, `Udført` is `booked`,
+  `Venter` is `pending` and `Slettet` is `cancelled`. Only booked rows enter
+  the canonical transaction output; pending and cancelled rows remain
+  `UnbookedRecord` provenance.
 - An unknown status value is a validation error. Gold never sees a source
   status vocabulary.
 - `Afstemt` is retained in Bronze only and is not interpreted.

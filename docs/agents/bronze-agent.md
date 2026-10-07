@@ -31,9 +31,9 @@ The current files match `danske-csv-v1` in `architecture/bronze-layer.md`:
 Windows-1252, comma- or semicolon-delimited, quoted fields, CRLF line endings, rows oldest first.
 Accounts without bank categories export no `Kategori` or `Underkategori`
 columns. The only values observed
-in `Status` are `Udført` and `Slettet`, and `Afstemt` is always `Nej`. The
-single blank `Saldo` in the samples is on a `Slettet` row, which the balance
-chain skips.
+in `Status` are `Udført`, `Venter` and `Slettet`, and `Afstemt` is always
+`Nej`. `Saldo` is blank on `Venter` and `Slettet` rows, which the balance
+chain skips. `Venter` rows come last, dated like the last booked row.
 
 ## Acceptance Criteria
 

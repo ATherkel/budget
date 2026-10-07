@@ -161,6 +161,38 @@ def test_a_deleted_row_is_an_unbooked_record_and_not_a_transaction() -> None:
     )
 
 
+def test_a_pending_row_is_an_unbooked_record_and_its_export_is_admitted() -> None:
+    # As the bank writes it: the pending rows come last, carry no balance and
+    # share the date of the last booked row.
+    pending = export(
+        [
+            row("01.03.2026", "NETTO", "-45,00", "955,00"),
+            row("02.03.2026", "KAFFE", "-30,00", "925,00"),
+            row("02.03.2026", "BIO", "-100,00", "", Status="Venter"),
+        ],
+        covers_through=MARCH_2,
+    )
+
+    result = build_from(pending)
+
+    [run] = result.import_run_results
+    assert run.status == "accepted"
+    assert run.errors == ()
+    assert [t.description for t in result.transactions] == ["NETTO", "KAFFE"]
+    assert result.unbooked_records == (
+        UnbookedRecord(
+            payload_id=pending.run.payload_id,
+            record_ordinal=3,
+            import_run_id=pending.run.import_run_id,
+            account_id=ACCOUNT,
+            transaction_date=MARCH_2,
+            amount=Decimal("-100.00"),
+            source_status="Venter",
+            booking_status="pending",
+        ),
+    )
+
+
 def test_each_date_with_a_booked_row_states_its_last_balance() -> None:
     result = build_from(CLEAN)
 

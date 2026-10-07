@@ -49,7 +49,7 @@ meanings come from it, `domains/transaction.md`, and the sample profile in
 | `Underkategori` | ` Dagligvarer ` | bank subcategory, space-padded |
 | `Tekst` | ` Café` | transaction text |
 | `Beløb` | `-1.234,56` | amount, decimal comma, `.` groups thousands, negative is money out |
-| `Saldo` | `2.955,00` | running balance after the row, recalculated at export time; empty on `Slettet` rows |
+| `Saldo` | `2.955,00` | running balance after the row, recalculated at export time; empty on `Venter` and `Slettet` rows |
 | `Status` | `Udført` | the bank's booking status |
 | `Afstemt` | `Nej` | reconciled flag; not interpreted |
 
@@ -83,14 +83,19 @@ These apply wherever a column below names them.
   | `Status` | `booking_status` |
   | --- | --- |
   | `Udført` | `booked` |
+  | `Venter` | `pending` |
   | `Slettet` | `cancelled` |
   | anything else | `unknown-status` error |
 
-  *Map decision.* No pending value is known. The first export carrying one is
-  quarantined whole with an `unknown-status` error on each such record, and its
-  new dates wait. A person then decides what the value means, adds it to this
-  table and to the Silver code, and runs `rebuild --from silver`
-  ([`operations.md`](../operations.md)) to validate the run again.
+  *Map decision.* `Venter` is a row the bank has not booked yet (#212). It
+  stays an `UnbookedRecord`; when a later export shows the transaction booked,
+  that `Udført` row is an ordinary booked row and is not matched to the
+  pending one (`domains/transaction.md`). The first export carrying any other
+  value is quarantined whole with an `unknown-status` error on each such
+  record, and its new dates wait. A person then decides what the value means,
+  adds it to this table and to the Silver code, and runs
+  `rebuild --from silver` ([`operations.md`](../operations.md)) to validate
+  the run again.
 
 - **Identity text.** `Tekst` with leading and trailing Unicode whitespace
   removed and internal runs collapsed to one space, including 0xA0 (ADR-009).
@@ -161,10 +166,10 @@ deduplicated.
 | `transaction_date` | `date` | `Dato` | Date rule |
 | `amount` | `Decimal` | `Beløb` | Decimal rule |
 | `source_status` | `str` | `Status` | copied verbatim |
-| `booking_status` | `Literal` | `Status` | Booking status rule; `cancelled` for `Slettet` |
+| `booking_status` | `Literal` | `Status` | Booking status rule; `pending` for `Venter`, `cancelled` for `Slettet` |
 
-`Saldo` is not read: a `Slettet` row carries none, and unbooked rows are
-outside the balance chain.
+`Saldo` is not read: `Venter` and `Slettet` rows carry none, and unbooked rows
+are outside the balance chain.
 
 ## Target: `TransactionEvidence`
 

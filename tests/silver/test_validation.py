@@ -63,7 +63,7 @@ def test_one_bad_record_quarantines_the_whole_run_and_every_error_is_listed() ->
         [
             VALID,
             row("02.03.2026", "KAFFE", "-30,0,0", "925,00"),
-            row("02.03.2026", "BIO", "-100,00", "825,00", Status="Venter"),
+            row("02.03.2026", "BIO", "-100,00", "825,00", Status="Ukendt"),
             row("03.03.2026", "BOG", "-25,00", "800,00", Status="Slettet"),
         ]
     )
@@ -109,7 +109,7 @@ def test_a_malformed_balance_on_a_booked_row_is_unparseable() -> None:
     assert _errors(result) == [(1, "unparseable-decimal")]
 
 
-@pytest.mark.parametrize("status", [" Udført", "udført", "Venter", ""])
+@pytest.mark.parametrize("status", [" Udført", "udført", "venter", "Ukendt", ""])
 def test_status_matches_exactly(status: str) -> None:
     result = build_from(
         export([row("01.03.2026", "NETTO", "-45,00", "955,00", Status=status)])
