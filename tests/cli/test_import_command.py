@@ -175,6 +175,40 @@ class ImportCommandTests(unittest.TestCase):
             assert "0099999999" not in stdout
             assert "lost-folder" not in stdout
 
+    def test_a_file_that_cannot_be_read_stays_while_the_others_are_stored(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            locked = drop(profile, "joint-current", "danske-20260305.csv", content)
+            stored = drop(profile, "joint-savings", "danske-20260305.csv", content)
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            # Windows refuses every read of a file another program holds
+            # without sharing it.
+            read_bytes = Path.read_bytes
+
+            def held(path: Path) -> bytes:
+                if path == locked:
+                    raise PermissionError(13, "Permission denied", str(path))
+                return read_bytes(path)
+
+            with mock.patch.object(Path, "read_bytes", autospec=True, side_effect=held):
+                status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
+
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert stdout.startswith(
+                "[1] joint-current  unreadable: the file cannot be read "
+                "(Permission denied): close the program that holds it, then "
+                "rerun import; it stays in the inbox\n"
+                "[2] joint-savings  stored\n"
+            )
+            assert str(locked) not in stdout
+            assert locked.read_bytes() == content
+            assert not stored.exists()
+
     def test_a_file_outside_every_account_folder_is_misfiled(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
@@ -240,6 +274,7 @@ class ImportCommandTests(unittest.TestCase):
                 "repeat": 0,
                 "refused": 1,
                 "misfiled": 1,
+                "unreadable": 0,
                 "format_failure": 0,
                 "admitted": 1,
                 "quarantined": 0,
