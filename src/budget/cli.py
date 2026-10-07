@@ -18,10 +18,10 @@ from budget import sqlstore
 from budget.backups import (
     BackupVerificationError,
     BackupWriteError,
+    LostStoreError,
     UnsupportedStoresError,
     back_up,
 )
-from budget.bronze import require_migration_allowed
 from budget.bronze.storage import BRONZE_STAGE, bronze_stage
 from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.locking import (
@@ -30,18 +30,18 @@ from budget.locking import (
     writer_lock,
 )
 from budget.migration import (
+    MIGRATED_STAGES,
     MigratedWithoutBackupError,
     RestoreInsteadError,
     migrate_profile,
+    require_migration_allowed,
 )
 from budget.profiles import (
-    PRODUCTION_PROFILE_NAME,
     NoBackupsFolderError,
     Profile,
     ProfileFileError,
     load_profile_file,
 )
-from budget.silver import migrate_silver
 from budget.silver.storage import SILVER_STAGE
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
@@ -76,18 +76,6 @@ class StageNotBuiltError(Exception):
         super().__init__(
             f"the {stage} stage is not built yet: only {BRONZE_STAGE} and "
             f"{SILVER_STAGE} can be migrated"
-        )
-
-
-class SilverNotBackedUpError(Exception):
-    """Production asked for Silver, which no backup set covers."""
-
-    def __init__(self) -> None:
-        """Name what production migrates, and why Silver is not among it."""
-        super().__init__(
-            "the production profile's backup sets hold the Bronze store alone, "
-            "so no Silver store is migrated there: migrate production without "
-            "--stage, or with --stage bronze"
         )
 
 
@@ -137,18 +125,13 @@ def _selected_profile_file(
 
 def _migrate(profile: Profile, stage: str | None, *, new_store: bool) -> None:
     """Create or upgrade the stores this code has: Bronze and Silver, for now."""
-    if stage not in {None, BRONZE_STAGE, SILVER_STAGE}:
+    if stage is not None and stage not in MIGRATED_STAGES:
         raise StageNotBuiltError(stage)
-    if stage == SILVER_STAGE and profile.name == PRODUCTION_PROFILE_NAME:
-        raise SilverNotBackedUpError
+    stages = MIGRATED_STAGES if stage is None else (stage,)
     # Refusals that touch nothing come first; the lock guards the mutation.
-    require_migration_allowed(profile, new_store=new_store)
+    require_migration_allowed(profile, stages=stages, new_store=new_store)
     with writer_lock(profile) as lock:
-        if stage in {None, BRONZE_STAGE}:
-            migrate_profile(lock, new_store=new_store)
-        # Production's backups hold Bronze alone, so it migrates no Silver.
-        if stage in {None, SILVER_STAGE} and profile.name != PRODUCTION_PROFILE_NAME:
-            migrate_silver(profile)
+        migrate_profile(lock, stages=stages, new_store=new_store)
 
 
 def _backup(profile: Profile) -> None:
@@ -199,13 +182,13 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
     except (
         NoProfileSelectedError,
         StageNotBuiltError,
-        SilverNotBackedUpError,
         WriterLockHeldError,
         StoresFolderUnavailableError,
         RestoreInsteadError,
         MigratedWithoutBackupError,
         BackupWriteError,
         UnsupportedStoresError,
+        LostStoreError,
         NoBackupsFolderError,
         *_STORE_ENVIRONMENT_REFUSALS,
     ) as error:

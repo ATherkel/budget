@@ -32,17 +32,21 @@ from budget.bronze import migrate_bronze
 from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.locking import writer_lock
 from budget.profiles import Profile, RetentionPolicy
+from budget.silver import migrate_silver
 from tests.backups.sets import (
     NOW,
+    add_silver_currency,
     checksum,
     copied_run_ids,
     damaged_rereads,
     holding,
+    holding_silver,
     import_one,
     manifest,
     run_ids,
+    silver_accounts,
 )
-from tests.bronze.migration_resources import added_migration
+from tests.bronze.migration_resources import SILVER_MIGRATIONS, added_migration
 from tests.importing.households import household
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -93,6 +97,34 @@ class BackUpTests(unittest.TestCase):
             assert written["created_at"] == "2026-05-02T18:05:11.120731+00:00"
             assert written["stores"] == {
                 "bronze": {"path": "bronze.db", "schema_version": 1}
+            }
+            assert complete_backup_sets(profile) == (backup,)
+
+    def test_a_set_holds_a_snapshot_of_silver_beside_bronze(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile = household(folder / "household")
+            migrate_silver(profile)
+            with closing(holding_silver(profile)), writer_lock(profile) as lock:
+                add_silver_currency(profile, "joint-current", "DKK")
+                # The row is still in Silver's WAL file: a copy of the store
+                # file alone would miss it.
+                copy = folder / "copied-silver.db"
+                shutil.copyfile(profile.silver_store, copy)
+                assert silver_accounts(copy) == []
+
+                backup = back_up(lock, now=NOW)
+
+            store = backup.path / "silver.db"
+            written = manifest(backup.path)
+            files = written["files"]
+            assert isinstance(files, dict)
+            assert files["silver.db"] == checksum(store)
+            assert files["bronze.db"] == checksum(backup.path / "bronze.db")
+            assert silver_accounts(store) == ["joint-current"]
+            assert written["stores"] == {
+                "bronze": {"path": "bronze.db", "schema_version": 1},
+                "silver": {"path": "silver.db", "schema_version": 1},
             }
             assert complete_backup_sets(profile) == (backup,)
 
@@ -305,11 +337,11 @@ class UnsupportedStoreTests(unittest.TestCase):
     def test_a_profile_with_a_store_this_backup_cannot_cover_is_refused(
         self,
     ) -> None:
+        # Bronze and Silver are covered; Gold has no store in this code yet.
         cases = {
-            "a Silver store": Path("silver.db"),
             "a Gold store": Path("gold.db"),
             "a legacy publication": Path("gold") / "legacy" / "publication-1.db",
-            "an empty Silver store being created": Path("silver.db"),
+            "an empty Gold store being created": Path("gold.db"),
             "a store under any other name": Path("household.sqlite"),
         }
         for case, relative in cases.items():
@@ -330,6 +362,24 @@ class UnsupportedStoreTests(unittest.TestCase):
                     back_up(lock, now=NOW)
 
                 assert complete_backup_sets(profile) == ()
+
+    def test_a_lost_store_only_a_damaged_set_holds_does_not_stop_a_backup(
+        self,
+    ) -> None:
+        # A damaged set restores nothing, so it is no reason to wait for a
+        # restore, as it is none to refuse a new store (`migrate`).
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            migrate_silver(profile)
+            with writer_lock(profile) as lock:
+                damaged = back_up(lock, now=NOW - timedelta(days=1))
+                (damaged.path / "silver.db").write_bytes(b"damaged")
+                for lost in profile.stores.glob("silver.db*"):
+                    lost.unlink()
+
+                newest = back_up(lock, now=NOW)
+
+            assert complete_backup_sets(profile) == (newest,)
 
     def test_files_that_are_not_stores_do_not_stop_a_backup(self) -> None:
         with TemporaryDirectory() as directory:
@@ -431,6 +481,27 @@ class RetentionTests(unittest.TestCase):
 
             assert _set_names(profile) == sorted([later_format.name, newest.name])
 
+    def test_a_set_of_bronze_alone_stays_complete_and_kept_by_the_policy(
+        self,
+    ) -> None:
+        # Before backups covered Silver, every set held Bronze alone, under
+        # the same manifest format. Such a set is still complete, and the
+        # policy keeps it as it would any other set of its age.
+        policy = RetentionPolicy(keep_all_days=30, keep_daily_days=0, keep_monthly=0)
+        with TemporaryDirectory() as directory:
+            profile = replace(household(Path(directory)), retention=policy)
+            with writer_lock(profile) as lock:
+                bronze_only = back_up(lock, now=NOW - timedelta(days=1))
+                migrate_silver(profile)
+                newest = back_up(lock, now=NOW)
+
+            written = manifest(bronze_only.path)
+            assert written["format"] == 1
+            assert written["stores"] == {
+                "bronze": {"path": "bronze.db", "schema_version": 1}
+            }
+            assert complete_backup_sets(profile) == (newest, bronze_only)
+
 
 class RecoveryReleaseTests(unittest.TestCase):
     def test_a_backup_releases_a_held_set_once_its_schema_is_behind(self) -> None:
@@ -449,6 +520,42 @@ class RecoveryReleaseTests(unittest.TestCase):
                     back_up(lock, now=NOW)
 
             assert not profile.recovery_sets_file.exists()
+
+    def test_a_backup_releases_a_held_set_once_its_silver_schema_is_behind(
+        self,
+    ) -> None:
+        # As above, after a migration that changed only Silver's schema.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            migrate_silver(profile)
+            with writer_lock(profile) as lock:
+                before = back_up(lock, now=NOW - timedelta(days=1))
+                hold_for_recovery(lock, before)
+
+                with added_migration(
+                    "CREATE TABLE marker (x TEXT) STRICT;\n", folder=SILVER_MIGRATIONS
+                ):
+                    migrate_silver(profile)
+                    back_up(lock, now=NOW)
+
+            assert not profile.recovery_sets_file.exists()
+
+    def test_a_held_set_without_silver_stays_held_once_silver_starts(
+        self,
+    ) -> None:
+        # A set written before Silver had a store records no Silver version,
+        # so a later set holding Silver says nothing about its migration.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            with writer_lock(profile) as lock:
+                before = back_up(lock, now=NOW - timedelta(days=1))
+                hold_for_recovery(lock, before)
+
+                migrate_silver(profile)
+                back_up(lock, now=NOW)
+
+            held = json.loads(profile.recovery_sets_file.read_bytes())
+            assert held["sets"] == [before.name]
 
     def test_an_unreadable_recovery_file_is_never_silently_replaced(self) -> None:
         # A hold that cannot be read might be hiding a set another operation

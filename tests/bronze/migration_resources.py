@@ -1,7 +1,7 @@
 # Copyright 2026 Therkel
 """Altered packaged migrations, for tests of what a broken migration does."""
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
@@ -42,12 +42,25 @@ def added_migration(sql: str, *, folder: Path = MIGRATIONS) -> Iterator[None]:
     """Package one more migration after a stage's real ones, holding `sql`.
 
     `folder` is the stage's packaged migrations folder, Bronze's by default.
-    Only the stdlib boundaries are replaced: `pathlib.Path.glob` lists the
-    added file beside the packaged ones, and `pathlib.Path.read_text` returns
-    `sql` for it. Discovery, the runner and the transaction stay the real
-    code, so a store migrated inside the block is one version newer.
     """
-    added = folder / f"{len(list(folder.glob('*.sql'))) + 1:04d}_added.sql"
+    with added_migrations({folder: sql}):
+        yield
+
+
+@contextmanager
+def added_migrations(sql_by_folder: Mapping[Path, str]) -> Iterator[None]:
+    """Package one more migration in each of several stages' folders.
+
+    Only the stdlib boundaries are replaced: `pathlib.Path.glob` lists each
+    added file beside the packaged ones, and `pathlib.Path.read_text` returns
+    its folder's SQL for it. Discovery, the runner and the transaction stay
+    the real code, so a store migrated inside the block is one version newer.
+    """
+    added = {
+        folder: folder / f"{len(list(folder.glob('*.sql'))) + 1:04d}_added.sql"
+        for folder in sql_by_folder
+    }
+    sql_by_file = {added[folder]: sql for folder, sql in sql_by_folder.items()}
     original_glob = Path.glob
     original_read_text = Path.read_text
 
@@ -55,8 +68,8 @@ def added_migration(sql: str, *, folder: Path = MIGRATIONS) -> Iterator[None]:
         path: Path, pattern: str, *, case_sensitive: bool | None = None
     ) -> Iterator[Path]:
         found = list(original_glob(path, pattern, case_sensitive=case_sensitive))
-        if path == folder and pattern == "*.sql":
-            found.append(added)
+        if path in added and pattern == "*.sql":
+            found.append(added[path])
         return iter(found)
 
     def read_text(
@@ -64,8 +77,8 @@ def added_migration(sql: str, *, folder: Path = MIGRATIONS) -> Iterator[None]:
         encoding: str | None = None,
         errors: str | None = None,
     ) -> str:
-        if path == added:
-            return sql
+        if path in sql_by_file:
+            return sql_by_file[path]
         return original_read_text(path, encoding, errors)
 
     with (
@@ -73,3 +86,7 @@ def added_migration(sql: str, *, folder: Path = MIGRATIONS) -> Iterator[None]:
         mock.patch.object(Path, "read_text", autospec=True, side_effect=read_text),
     ):
         yield
+
+
+# Where the installed package keeps the Silver migrations, for `added_migration`.
+SILVER_MIGRATIONS = MIGRATIONS.parent / "silver"

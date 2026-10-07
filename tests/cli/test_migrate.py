@@ -23,8 +23,11 @@ from budget.bronze.storage import (
 from budget.cli import main
 from budget.profiles import test_profile as make_test_profile
 from budget.silver import SilverStore, migrate_silver
-from budget.silver import storage as silver_storage
-from tests.bronze.migration_resources import added_migration, patched_resources
+from tests.bronze.migration_resources import (
+    SILVER_MIGRATIONS,
+    added_migration,
+    patched_resources,
+)
 from tests.cli.commands import migrate
 from tests.cli.profile_files import development_profile, write_profile
 
@@ -36,10 +39,6 @@ _ORPHAN_SOURCE_RECORD = (
     " VALUES ('missing-payload', 1, '{}');\n"
 )
 _INVALID_STATEMENT = "INSERT INTO nowhere (x) VALUES (this is not valid sql);\n"
-# Where the installed package keeps the Silver migrations.
-_SILVER_MIGRATIONS = (
-    Path(silver_storage.__file__).resolve().parent.parent / "migrations" / "silver"
-)
 
 
 def _user_version(path: Path) -> int:
@@ -168,7 +167,9 @@ class MigrateRefusalTests(unittest.TestCase):
                         "SELECT stage FROM store_identity"
                     ).fetchall() == [(other,)]
 
-    def test_production_silver_is_refused_before_anything_is_created(self) -> None:
+    def test_production_silver_is_refused_first_for_want_of_bronze(self) -> None:
+        # Starting Silver would be refused too until Bronze has a store, so
+        # the advice is the step that works first.
         with TemporaryDirectory() as directory:
             folder = Path(directory)
 
@@ -177,7 +178,8 @@ class MigrateRefusalTests(unittest.TestCase):
             )
 
             assert status == EXIT_REFUSED_ENVIRONMENT
-            assert "silver" in stderr.lower()
+            assert "no Bronze store" in stderr
+            assert "budget migrate --stage bronze --new-store" in stderr
             assert "120" not in stderr
             assert not (folder / "stores").exists()
             assert not (folder / "backups").exists()
@@ -289,7 +291,7 @@ class MigrateDefectTests(unittest.TestCase):
             folder = Path(directory)
 
             with (
-                added_migration(_INVALID_STATEMENT, folder=_SILVER_MIGRATIONS),
+                added_migration(_INVALID_STATEMENT, folder=SILVER_MIGRATIONS),
                 pytest.raises(sqlite3.OperationalError, match='near "sql"'),
             ):
                 migrate(write_profile(folder), "--stage", "silver")
