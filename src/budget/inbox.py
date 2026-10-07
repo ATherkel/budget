@@ -193,11 +193,21 @@ def refusal_reasons(run: ImportRun, previewed: ExportPreview) -> tuple[str, ...]
 
 
 def _outcome(ordinal: int, run: ImportRun, previewed: ExportPreview) -> FileOutcome:
-    """Name one imported file's outcome, and why when it was refused."""
-    reason = ""
+    """Name one imported file's outcome, and why when it was not a clean store.
+
+    A stored payload its format could not read is a format failure: it is
+    archived like any accepted export, and Silver quarantines it. Its reason
+    is the parser's verdict, which never repeats source content.
+    """
+    account_id = run.declared_account_id
     if run.outcome == "refused":
         reason = "; ".join(refusal_reasons(run, previewed))
-    return FileOutcome(ordinal, run.declared_account_id, run.outcome, reason)
+        return FileOutcome(ordinal, account_id, "refused", reason)
+    if run.outcome == "stored" and previewed.failure_reason is not None:
+        return FileOutcome(
+            ordinal, account_id, "format failure", previewed.failure_reason
+        )
+    return FileOutcome(ordinal, account_id, run.outcome)
 
 
 def import_inbox(
