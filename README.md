@@ -239,16 +239,17 @@ log records counts only.
 | --- | --- | --- |
 | `stored` | In Bronze, archived and logged; the file left the inbox | Nothing |
 | `repeat` | The same bytes were stored for this account before; logged as a repeat | Nothing |
-| `format failure` | Stored and archived, but its format could not read it, so Silver quarantines it | Report it: a parser fix and a rebuild settle it |
+| `stored; Silver quarantined it: <codes>` | Stored, archived and logged, but Silver holds it back; the codes say why, as `budget rebuild --from silver` does | Read the codes; a reader or mapping fix and a rebuild settle it |
 | `refused` | Bronze refused the declared range, or the bytes are already stored for another account; a copy is kept under `exports\<account_id>\refused\` | Correct the range, or move the file, then rerun |
 | `misfiled` | Not imported: a filename carrying another account's number or no export date, a folder `accounts.toml` does not name, or a file in the inbox itself or in a folder inside an account's | Move or rename the file, or correct `accounts.toml`, then rerun |
 | `unreadable` | Not imported: another program holds the file without sharing it | Close that program, then rerun |
+| `format failure` | Not imported: its format cannot read it; the reason says where | Download the export again without opening it, or wait for a reader fix, then rerun. Never edit the file: the archive keeps the bank's exact bytes |
 | `stored; it stays in the inbox because another program holds it` | Stored, archived and logged, but the file could not be removed | Close that program, then rerun: the rerun removes it and adds no run |
 
 | Exit | `import` |
 | --- | --- |
-| 0 | Every file was stored, a repeat or a format failure; or the inbox is empty; or you did not answer `y` |
-| 3 | A file was refused, misfiled or unreadable, and stays in the inbox. Also, with nothing stored: a ranges file or `accounts.toml` that breaks its rules, a decision log holding a decision (its reader is not built yet), or an account Silver cannot build |
+| 0 | Every file was stored or a repeat; or the inbox is empty; or you did not answer `y` |
+| 3 | A file was refused, misfiled, unreadable or a format failure, and stays in the inbox. Also, with nothing stored: a ranges file or `accounts.toml` that breaks its rules, a decision log holding a decision (its reader is not built yet), or an account Silver cannot build |
 | 4 | Nothing stored: another command is running, or production's code is uncommitted, or its stores folder holds a store no backup set covers. After the imports: production's backup set could not be written; run `budget backup` once the message's problem is put right |
 | 5 | Nothing stored: `imports.jsonl` disagrees with Bronze |
 
@@ -473,6 +474,6 @@ budget: the stores folder holds gold.db, which no backup set covers yet: only th
 | 0 | Done |
 | 1 | Unexpected error: a defect, such as a broken packaged migration |
 | 2 | Usage error, including a command that is not built yet |
-| 3 | The profile file is missing, unreadable, not UTF-8, invalid or of an unknown format; an input file or a ranges file breaks its rules; or `import` left a refused, misfiled or unreadable file in the inbox |
+| 3 | The profile file is missing, unreadable, not UTF-8, invalid or of an unknown format; an input file or a ranges file breaks its rules; or `import` left a refused, misfiled, unreadable or unparsable file in the inbox |
 | 4 | Refused environment: no profile, a production store missing or asked for anew where one or its backup sets exist, a stage not built yet, a store of another profile, stage or schema version, SQLite below the floor, a stores folder that cannot be used, a store another program holds, another command running, a backup set that cannot be written, a store no backup set covers yet or one its backup sets hold gone missing, or a store migrated, or exports imported, without the backup set after them |
 | 5 | Verification failed: a backup set's copy does not match its manifest, or the import log disagrees with Bronze |

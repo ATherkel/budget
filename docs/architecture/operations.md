@@ -433,8 +433,10 @@ Every command that writes Bronze brings it up to date before it finishes, and
 - **`started_at`** is Bronze's own timestamp, written exactly, with its
   microseconds and offset, so a replay restores the run unchanged.
 - **`archive_path`** is relative to the export archive and uses `/`. Its last
-  part is the export's original filename. An accepted export, a format failure
-  included, is archived as [W1](#w1-the-monthly-import) describes. A refused
+  part is the export's original filename. An accepted export is archived as
+  [W1](#w1-the-monthly-import) describes. `import` never presents a file its
+  format cannot read, so no format failure reaches Bronze or the archive
+  through it. A refused
   run's bytes are copied to `<account_id>/refused/<first 12 characters of the
   payload hash>/<original filename>`, while the file itself stays in the inbox:
   the account's own folder holds only accepted exports, and replay can still
@@ -674,7 +676,7 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | Configuration error, including an unknown file in the inputs folder | Nothing is built; exit 3 | Fix or remove the file and rerun |
 | Refused import run (account conflict, or a declared range that starts after it ends, ends after the export date, or leaves out one of the payload's transactions) | Recorded as refused and logged, with a copy of its bytes under `exports\<account_id>\refused\`; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file or correct the declaration, then rerun |
 | Misfiled export (the filename's account number is not the account's declared `bank_account_number`) | Rejected before Bronze: no import run is recorded and nothing reaches the import log; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file to the right account's folder, or fix the declaration, then rerun |
-| Format failure | Stored with its `FormatFailure`; Silver quarantines it; the file is archived | Settled by a parser fix and `rebuild --from bronze` |
+| Format failure (the file's format cannot read it) | Found by the preview and not imported: nothing reaches Bronze, the file stays in the inbox, the other files are stored; exit 3. Bronze can still record a `FormatFailure`, but `import` holds the file instead, because nothing re-reads a stored failure until `rebuild --from bronze` exists | Download the export again, or fix the parser, then rerun `import`. Never edit the export by hand |
 | Crash during an import | Each file is idempotent: a file whose account, original filename and payload hash already have a `stored` or `repeat` run is finished (archived, logged once, and removed from the inbox) without a new run. Any other run Bronze holds but the log lacks is archived and logged by the next import | Rerun `import` |
 | The archive holds other bytes, a file where a folder must go, or a place reserved for other bytes, everywhere a run's export may go | Nothing is overwritten; the run stays in Bronze but is not logged; every import stops before writing, naming the account and the run | Move the conflicting archive file aside, then rerun |
 | An inbox file is saved over while it is imported | The run for the bytes that were read is stored, archived and logged; the new file stays in the inbox | Rerun `import` |
