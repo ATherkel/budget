@@ -14,7 +14,12 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Final
 
-from budget.backups import BackupSet, back_up, require_backup_allowed
+from budget.backups import (
+    BACKUP_FAILURES,
+    BackupSet,
+    back_up,
+    require_backup_allowed,
+)
 from budget.bronze.models import ImportRun
 from budget.bronze.parsers.registry import source_parser
 from budget.codeversion import require_committed_code
@@ -79,11 +84,13 @@ class InboxImport:
     """Every inbox file's outcome, the Silver rebuild and production's backup.
 
     `backup` is the set written after the rebuild; only production writes one.
+    `backup_failure` is why production's set could not be written, if so.
     """
 
     files: Sequence[FileOutcome]
     rebuilt: SilverRebuild
     backup: BackupSet | None = None
+    backup_failure: Exception | None = None
 
     @property
     def any_left_in_inbox(self) -> bool:
@@ -216,9 +223,13 @@ def import_inbox(
         imported = import_inbox_file(lock, previewed.source, declared[previewed.source])
         files.append(_outcome(ordinal, imported.import_run, previewed))
     rebuilt = rebuild_from_silver(lock)
-    backup = None
-    if lock.profile.name == PRODUCTION_PROFILE_NAME:
-        # Every production write is followed by a set covering Bronze and
-        # the Silver just rebuilt from it.
+    if lock.profile.name != PRODUCTION_PROFILE_NAME:
+        return InboxImport(files=files, rebuilt=rebuilt)
+    # Every production write is followed by a set covering Bronze and the
+    # Silver just rebuilt from it. The imports are committed by now, so a set
+    # that cannot be written is reported beside them, not instead of them.
+    try:
         backup = back_up(lock, now=datetime.now(UTC))
+    except BACKUP_FAILURES as error:
+        return InboxImport(files=files, rebuilt=rebuilt, backup_failure=error)
     return InboxImport(files=files, rebuilt=rebuilt, backup=backup)

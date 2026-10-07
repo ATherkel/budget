@@ -27,7 +27,11 @@ from typing import Final
 from budget.bronze import BronzeStore
 from budget.bronze.storage import bronze_stage
 from budget.durability import sync_folder
-from budget.importing import check_import_log
+from budget.importing import (
+    ImportLogAheadOfBronzeError,
+    ImportLogDamagedError,
+    check_import_log,
+)
 from budget.locking import WriterLock
 from budget.profiles import (
     BRONZE_STORE_NAME,
@@ -40,7 +44,7 @@ from budget.profiles import (
     RetentionPolicy,
 )
 from budget.silver.storage import silver_stage
-from budget.sqlstore import StageStore, is_started, open_store_for_backup
+from budget.sqlstore import StageStore, StoreError, is_started, open_store_for_backup
 
 MANIFEST_FORMAT: Final = 1
 RECOVERY_FORMAT: Final = 1
@@ -143,6 +147,19 @@ class LostStoreError(RuntimeError):
             f"profile hold one: the {label} store must be restored from the "
             "newest that holds one; nothing was published"
         )
+
+
+# Every way `back_up` can fail to write a set. A command whose own writes are
+# already committed reports these as a set missing after them, not as its own
+# failure, and says to run `budget backup`.
+BACKUP_FAILURES: Final = (
+    BackupWriteError,
+    LostStoreError,
+    BackupVerificationError,
+    StoreError,
+    ImportLogDamagedError,
+    ImportLogAheadOfBronzeError,
+)
 
 
 @dataclass(frozen=True)

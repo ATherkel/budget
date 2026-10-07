@@ -119,6 +119,18 @@ class RebuildFromStageNotBuiltError(Exception):
         )
 
 
+class ImportedWithoutBackupError(Exception):
+    """The imports and Silver are committed, but no backup set followed them."""
+
+    def __init__(self, reason: Exception) -> None:
+        """Say what was done, what was not, and what to run."""
+        super().__init__(
+            "the exports were imported and Silver rebuilt, but no backup set "
+            f"could be written after them: {reason}. Put that right, then run "
+            "`budget backup`"
+        )
+
+
 def _parser() -> argparse.ArgumentParser:
     """Build the command-line grammar."""
     parser = argparse.ArgumentParser(prog="budget")
@@ -254,6 +266,8 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
             return EXIT_OK
         imported = import_inbox(lock, previews, declared)
         sys.stdout.write(summaries.import_summary(imported))
+    if imported.backup_failure is not None:
+        raise ImportedWithoutBackupError(imported.backup_failure)
     return EXIT_REFUSED_INPUT if imported.any_left_in_inbox else EXIT_OK
 
 
@@ -342,6 +356,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         StoresFolderUnavailableError,
         RestoreInsteadError,
         MigratedWithoutBackupError,
+        ImportedWithoutBackupError,
         BackupWriteError,
         UnsupportedStoresError,
         LostStoreError,
