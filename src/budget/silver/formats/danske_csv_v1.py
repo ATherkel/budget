@@ -20,6 +20,7 @@ _DECIMAL = re.compile(
 )
 _BOOKING_STATUS: dict[str, BookingStatus] = {
     "Udført": "booked",
+    "Venter": "pending",
     "Slettet": "cancelled",
 }
 
