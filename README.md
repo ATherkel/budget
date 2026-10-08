@@ -165,8 +165,7 @@ of the `Profile`, so one command keeps one lock instead of acquiring a second.
 lock for its whole run — the guard, the Bronze read, the replacement, the
 summary and the routine log — so a competing command exits 4 at once. Only
 `silver` is built so far: `--from bronze` and `--from gold` refuse with exit 4,
-and Gold publishing, `dev refresh`, restore and the `import` command are later
-slices. A rebuild always reads the profile's own local stores, so production
+and Gold publishing, `dev refresh` and restore are later slices. A rebuild always reads the profile's own local stores, so production
 data reaches development only through a restored backup set, which is not built
 yet.
 
@@ -176,16 +175,10 @@ silently ignore a household decision. A missing log, or one holding only a
 byte-order mark and whitespace, means no decisions and is allowed.
 
 `budget review [--kind <kind>] [--account <id>]` lists the open Silver review
-items, then each quarantined import run that no open item already shows. An item
-line names the review item, its kind, its account, its date range, the import
-run and payload identifiers it came from, and, for a dropped transaction, the
-first eight characters of its `transaction_id` as the handle. A run line reads
-`Run  <import run id>  <account>  <from>..<to>  <error codes>`: it is a run
-quarantined by validation errors alone. A run quarantined by a balance break
-appears once, through its review item, and an accepted run never appears.
-`--account` filters both kinds of line; `--kind` names an item kind, so it lists
-that kind's items and no runs. A filter that matches nothing exits 0 and prints
-nothing. Review only
+items and nothing else. Each line names the review item, its kind, its account,
+its date range, the import run and payload identifiers it came from, and, for a
+dropped transaction, the first eight characters of its `transaction_id` as the
+handle. A filter that matches nothing exits 0 and prints nothing. Review only
 reads the persisted Silver result: it takes no writer lock and needs neither a
 Bronze store nor `accounts.toml`.
 
@@ -195,34 +188,117 @@ by `budget migrate`, which backs the store up first (see below).
 tests that need two versions of one format; the mapping is copied, and a parser
 registered under an ID it does not name is refused.
 
-## Importing an inbox export
+## Importing the inbox: `budget import`
 
-`BronzeStore.import_file` only records a run in Bronze. The application
-operation `budget.importing.import_inbox_file` is the whole Bronze step of an
-import, and the future `import` command calls it once per inbox file under one
-writer lock:
+Save each export in its account's inbox folder, `inbox\<account_id>\`: the
+folder is the account declaration. Then run `budget import`. For each file it
+shows the account, the filename, the export date the name carries, and the
+file's first and last transaction dates, and asks for the range you asked the
+bank for. Both ends are inclusive. After the first file, Enter gives the same
+answer as the file before. Nothing is stored until you answer `y`.
 
-```python
-from budget.importing import Coverage, import_inbox_file
-from budget.locking import writer_lock
+This run is on a synthetic development profile. Its inbox holds an export
+for each account, and a second `joint-current` export whose filename carries
+another account's number:
 
-with writer_lock(profile) as lock:
-    result = import_inbox_file(
-        lock,
-        profile.inbox / "daily-account" / "danske-20260914.csv",
-        Coverage(covers_from=date(2026, 6, 14), covers_through=date(2026, 9, 13)),
-    )
+```text
+> budget import
+[1] joint-current  Joint-0012345678-20260331.csv
+    exported on    2026-03-31 (from filename)
+    transactions   2026-03-02..2026-03-28, 2 source records
+    Enter the range you asked the bank for.
+    from: 2026-03-01
+    through: 2026-03-31
+[2] joint-current  Konto-0099999999-20260331.csv
+    misfiled: account "joint-current": the export's filename carries another bank account number than accounts.toml declares; move the file to its account's inbox folder, or correct the declaration; it stays in the inbox
+[3] joint-savings  danske-20260331.csv
+    exported on    2026-03-31 (from filename)
+    transactions   2026-03-31..2026-03-31, 1 source record
+    Enter the range you asked the bank for.
+    from [2026-03-01]:
+    through [2026-03-31]: 2026-03-30
+Import 2 files? [y/N] y
+[1] joint-current  stored
+[2] joint-current  misfiled: account "joint-current": the export's filename carries another bank account number than accounts.toml declares; move the file to its account's inbox folder, or correct the declaration; it stays in the inbox
+[3] joint-savings  refused: the file has transactions after the declared range ends; it stays in the inbox
+Silver   1 admitted, 0 quarantined, 0 dropped
 ```
 
-The file's folder in the inbox is its account, and `accounts.toml` gives that
-account's source format. The operation records the run in Bronze, archives the
-bytes under `exports/<account_id>/`, mirrors the run in `inputs/imports.jsonl`,
-and only then removes the file from the inbox. A refused run is logged with a
-copy under `exports/<account_id>/refused/`, and its file stays in the inbox. A
-rerun after a crash finishes an earlier stored or repeat run of the same file
-instead of adding one, while a refused file is presented again;
+The exit status is 3, because two files stayed in the inbox. Each file is
+imported on its own: `joint-current`'s export was stored, archived under
+`exports\joint-current\`, logged in `inputs\imports.jsonl`, and removed from
+the inbox, whatever happened to the others. Then Silver was rebuilt from
+everything Bronze holds. In production a backup set of both stores follows,
+and the summary ends `Backup   backup set <name> written`.
+
+The summary names a file by its number in the listing, never by its
+filename, because a bank's filename can carry an account number. The routine
+log records counts only.
+
+| Outcome | What happened | What to do |
+| --- | --- | --- |
+| `stored` | In Bronze, archived and logged; the file left the inbox | Nothing |
+| `repeat` | The same bytes were stored for this account before; logged as a repeat | Nothing |
+| `stored; Silver quarantined it: <codes>` | Stored, archived and logged, but Silver holds it back; the codes say why, as `budget rebuild --from silver` does | Read the codes; a reader or mapping fix and a rebuild settle it |
+| `refused` | Bronze refused the declared range, or the bytes are already stored for another account; a copy is kept under `exports\<account_id>\refused\` | Correct the range, or move the file, then rerun |
+| `misfiled` | Not imported: a filename carrying another account's number or no export date, a folder `accounts.toml` does not name, or a file in the inbox itself or in a folder inside an account's | Move or rename the file, or correct `accounts.toml`, then rerun |
+| `unreadable` | Not imported: another program holds the file without sharing it | Close that program, then rerun |
+| `format failure` | Not imported: its format cannot read it; the reason says where | Download the export again without opening it, or wait for a reader fix, then rerun. Never edit the file: the archive keeps the bank's exact bytes |
+| `stored; it stays in the inbox because another program holds it` | Stored, archived and logged, but the file could not be removed | Close that program, then rerun: the rerun removes it and adds no run |
+
+| Exit | `import` |
+| --- | --- |
+| 0 | Every file was stored or a repeat; or the inbox is empty; or you did not answer `y` |
+| 3 | A file was refused, misfiled, unreadable or a format failure, and stays in the inbox. Also, with nothing stored: a ranges file or `accounts.toml` that breaks its rules, a decision log holding a decision (its reader is not built yet), or an account Silver cannot build |
+| 4 | Nothing stored: another command is running, or production's code is uncommitted, or its stores folder holds a store no backup set covers. After the imports: production's backup set could not be written; run `budget backup` once the message's problem is put right |
+| 5 | Nothing stored: `imports.jsonl` disagrees with Bronze |
+
+The range is the one you set on the bank's slider. It is never inferred from
+the filename, the file or the export date: only the declaration says that a
+quiet month was quiet rather than never exported
+([`bronze-layer.md`](docs/architecture/bronze-layer.md)).
+
+### The ranges file
+
+`budget import --ranges <file>` reads the ranges from a file you write
+instead of asking, and does not ask you to confirm: the file is the
+declaration. It holds a default range and a range for each account that
+differs, because one inbox can hold exports downloaded on different days:
+
+```toml
+format = 1
+
+[default]
+from = 2026-03-01
+through = 2026-03-31
+
+[account.joint-savings]
+from = 2026-01-01
+through = 2026-03-30
+```
+
+Dates are TOML dates, without quotes. Every `[account.<id>]` must name an
+account in `accounts.toml`, so a misspelt one is refused rather than
+silently given the default. An account with a file in the inbox and no range
+of its own, when there is no `[default]`, refuses the whole run. A file that
+breaks a rule lists every problem and imports nothing, with exit 3. Keep it
+outside `inputs\`, which holds only the household's input files, and
+outside the inbox.
+
+### A rerun
+
+Rerunning `budget import` is always safe. A file whose account, filename and
+bytes already have a stored or repeat run is finished, not imported again:
+archived and logged once, and removed from the inbox. A refused file is
+presented again, with whatever range you now declare. An import interrupted
+after its files left the inbox but before Silver was rebuilt leaves nothing
+in the inbox to rerun: run `budget rebuild --from silver`, and in production
+`budget backup`.
+
+`budget.importing.import_inbox_file` is the Bronze step `import` runs for each
+file, under its one writer lock;
 [operations.md](docs/architecture/operations.md#importsjsonl-the-import-log)
-gives the rules.
+gives its rules.
 
 ## Silver walkthrough
 
@@ -259,9 +335,9 @@ budget review -> 0
 
 The second rebuild exits 0 even though its April run is quarantined: a
 quarantine is a result, not a failure, and the empty `review` exits 0 too.
-Until the `import` command exists, exports enter Bronze through the public
-`budget.importing.import_inbox_file` operation the script uses, exactly as
-*Importing an inbox export* above describes.
+The script enters each export through `budget.importing.import_inbox_file`,
+the Bronze step `budget import` runs for every inbox file, so it can declare
+one export at a time between rebuilds.
 
 ## Command line
 
@@ -349,8 +425,8 @@ that could restore it instead. A store file left empty by an interrupted
 start counts as missing: rerunning `--new-store` starts it, or, where an
 earlier stage's store was started, names the `--stage` that starts the rest.
 `budget backup` writes a set of production by hand and prints its name.
-Nothing imports into production yet: that waits for the `import` command,
-which backs up after its Bronze writes.
+`budget import` writes a set after its Bronze writes and the Silver
+rebuild that follows them.
 [operations.md](docs/architecture/operations.md#backup-and-restore) describes
 the sets, their manifest and retention.
 
@@ -398,6 +474,6 @@ budget: the stores folder holds gold.db, which no backup set covers yet: only th
 | 0 | Done |
 | 1 | Unexpected error: a defect, such as a broken packaged migration |
 | 2 | Usage error, including a command that is not built yet |
-| 3 | The profile file is missing, unreadable, not UTF-8, invalid or of an unknown format |
-| 4 | Refused environment: no profile, a production store missing or asked for anew where one or its backup sets exist, a stage not built yet, a store of another profile, stage or schema version, SQLite below the floor, a stores folder that cannot be used, a store another program holds, another command running, a backup set that cannot be written, a store no backup set covers yet or one its backup sets hold gone missing, or a store migrated without the backup set after it |
+| 3 | The profile file is missing, unreadable, not UTF-8, invalid or of an unknown format; an input file or a ranges file breaks its rules; or `import` left a refused, misfiled, unreadable or unparsable file in the inbox |
+| 4 | Refused environment: no profile, a production store missing or asked for anew where one or its backup sets exist, a stage not built yet, a store of another profile, stage or schema version, SQLite below the floor, a stores folder that cannot be used, a store another program holds, another command running, a backup set that cannot be written, a store no backup set covers yet or one its backup sets hold gone missing, or a store migrated, or exports imported, without the backup set after them |
 | 5 | Verification failed: a backup set's copy does not match its manifest, or the import log disagrees with Bronze |
