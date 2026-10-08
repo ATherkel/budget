@@ -157,11 +157,6 @@ class MigrateRefusalTests(unittest.TestCase):
                 }
                 assert migrate(profile_file, "--stage", other)[0] == EXIT_OK
                 paths[other].rename(paths[stage])
-                # Stages migrate to their own latest version; set the foreign
-                # store to this stage's, so the refusal is about its stage and
-                # not about a schema newer than this stage knows.
-                with closing(sqlite3.connect(paths[stage])) as connection:
-                    connection.execute("PRAGMA user_version = 1")
 
                 status, stderr = migrate(profile_file, "--stage", stage)
 

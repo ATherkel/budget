@@ -181,10 +181,8 @@ ReviewItem(
 ```
 
 `ImportRunResult.account_id` is the account the import run declared, copied
-from Bronze, so `budget review` can name a quarantined run's account from
-Silver alone. Silver migration 0002 added it and emptied the persisted result
-rather than backfilling, because a migration cannot read Bronze; Silver reads as
-not built until the next `budget rebuild`.
+from Bronze, so a reader can name a quarantined run's account from Silver
+alone.
 
 `ImportRunResult.covered_from` and `covered_to` describe the file, not the
 transactions admitted from it: they are the range the operator declared for
