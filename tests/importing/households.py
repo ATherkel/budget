@@ -53,6 +53,16 @@ def payload(*datos: str) -> bytes:
     return "\r\n".join([_HEADER, *rows]).encode("cp1252")
 
 
+def chained_payload(*datos: str) -> bytes:
+    """A `danske-csv-v1` export whose rows' balances chain, so Silver admits it."""
+    rows = [
+        f'"{dato}"," Mad "," Dagligvarer ","Café","-45,00",'
+        f'"{1000 - 45 * position},00","Udført","Nej"'
+        for position, dato in enumerate(datos, start=1)
+    ]
+    return "\r\n".join([_HEADER, *rows]).encode("cp1252")
+
+
 def drop(profile: Profile, account_id: str, name: str, content: bytes) -> Path:
     """Save an export into one account's inbox folder, as the household does."""
     folder = profile.inbox / account_id

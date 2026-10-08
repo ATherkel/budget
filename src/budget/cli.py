@@ -26,8 +26,19 @@ from budget.backups import (
 )
 from budget.bronze.storage import BRONZE_STAGE, bronze_stage
 from budget.codeversion import UncommittedCodeError, require_committed_code
-from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
-from budget.inputs import ConfigurationError
+from budget.importing import (
+    Coverage,
+    ImportLogAheadOfBronzeError,
+    ImportLogDamagedError,
+)
+from budget.inbox import (
+    ExportPreview,
+    import_inbox,
+    inbox_exports,
+    preview,
+    require_import_allowed,
+)
+from budget.inputs import Account, ConfigurationError, load_accounts
 from budget.locking import (
     StoresFolderUnavailableError,
     WriterLockHeldError,
@@ -46,7 +57,13 @@ from budget.profiles import (
     ProfileFileError,
     load_profile_file,
 )
-from budget.rebuilding import SilverRebuild, rebuild_from_silver
+from budget.prompting import ask_ranges
+from budget.ranges import load_ranges
+from budget.rebuilding import (
+    SilverRebuild,
+    rebuild_from_silver,
+    require_buildable_accounts,
+)
 from budget.reviewing import REVIEW_KINDS, open_reviews
 from budget.silver.storage import SILVER_STAGE
 
@@ -106,6 +123,18 @@ class RebuildFromStageNotBuiltError(Exception):
         )
 
 
+class ImportedWithoutBackupError(Exception):
+    """The imports and Silver are committed, but no backup set followed them."""
+
+    def __init__(self, reason: Exception) -> None:
+        """Say what was done, what was not, and what to run."""
+        super().__init__(
+            "the exports were imported and Silver rebuilt, but no backup set "
+            f"could be written after them: {reason}. Put that right, then run "
+            "`budget backup`"
+        )
+
+
 def _parser() -> argparse.ArgumentParser:
     """Build the command-line grammar."""
     parser = argparse.ArgumentParser(prog="budget")
@@ -129,6 +158,14 @@ def _parser() -> argparse.ArgumentParser:
         choices=STAGES,
         default=GOLD_STAGE,
         help="the stage to rebuild from",
+    )
+    import_ = commands.add_parser(
+        "import", help="import every inbox export, then rebuild Silver"
+    )
+    import_.add_argument(
+        "--ranges",
+        help="a file declaring the range each account's exports were asked "
+        "for, instead of asking at the prompt",
     )
     review = commands.add_parser("review", help="list the open review items")
     review.add_argument("--kind", choices=REVIEW_KINDS, help="list one kind only")
@@ -199,6 +236,59 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
         sys.stdout.write(summary)
 
 
+def _declared_ranges(
+    previews: Sequence[ExportPreview],
+    accounts: Mapping[str, Account],
+    ranges_file: str | None,
+) -> dict[Path, Coverage] | None:
+    """Settle every file's range: from the ranges file, or at the prompt.
+
+    Returns `None` when the person did not confirm at the prompt. A ranges
+    file is the person's written declaration, so it asks nothing.
+    """
+    if ranges_file is None:
+        return ask_ranges(previews)
+    ranges = load_ranges(Path(ranges_file), accounts)
+    return {each.source: ranges.declared(each) for each in previews if not each.skipped}
+
+
+def _import(profile: Profile, ranges_file: str | None) -> int:
+    """Import every inbox export with its declared range, then rebuild Silver.
+
+    Every range is settled before the first file is stored. Returns 3 when
+    any file was refused, misfiled or unreadable and stays in the inbox,
+    else 0.
+    """
+    started = perf_counter()
+    with writer_lock(profile) as lock:
+        require_import_allowed(profile)
+        accounts = load_accounts(profile)
+        previews = [
+            preview(profile, accounts, source) for source in inbox_exports(profile)
+        ]
+        if not previews:
+            sys.stdout.write("The inbox holds no exports; nothing was imported.\n")
+            return EXIT_OK
+        require_buildable_accounts(
+            profile, {each.account_id for each in previews if not each.skipped}
+        )
+        declared = _declared_ranges(previews, accounts, ranges_file)
+        if declared is None:
+            sys.stdout.write("Nothing was imported.\n")
+            return EXIT_OK
+        imported = import_inbox(lock, previews, declared)
+        sys.stdout.write(summaries.import_summary(imported))
+        routine_logging.finished(
+            profile,
+            "import",
+            counts=imported.counts(),
+            duration_ms=_milliseconds(started),
+        )
+    if imported.backup_failure is not None:
+        raise ImportedWithoutBackupError(imported.backup_failure)
+    return EXIT_REFUSED_INPUT if imported.any_left_in_inbox else EXIT_OK
+
+
 def _review(profile: Profile, kind: str | None, account: str | None) -> None:
     """List the profile's open review items, taking no writer lock.
 
@@ -236,20 +326,21 @@ def _milliseconds(started: float) -> int:
     return int((perf_counter() - started) * 1000)
 
 
-def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> None:
-    """Select and load the profile, then run the command against it."""
+def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
+    """Select and load the profile, run the command, and return its status."""
     profile_file = _selected_profile_file(arguments.profile, environ)
     profile = load_profile_file(profile_file)
+    if arguments.command == "import":
+        return _import(profile, arguments.ranges)
     if arguments.command == "backup":
         _backup(profile)
-        return
-    if arguments.command == "rebuild":
+    elif arguments.command == "rebuild":
         _rebuild(profile, arguments.from_stage)
-        return
-    if arguments.command == "review":
+    elif arguments.command == "review":
         _review(profile, arguments.kind, arguments.account)
-        return
-    _migrate(profile, arguments.stage, new_store=arguments.new_store)
+    else:
+        _migrate(profile, arguments.stage, new_store=arguments.new_store)
+    return EXIT_OK
 
 
 def _refuse(error: Exception, status: int) -> int:
@@ -271,7 +362,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         # (2 for a usage error, 0 for --help) instead of leaving the process.
         return usage.code if isinstance(usage.code, int) else EXIT_USAGE
     try:
-        _run(arguments, environ)
+        return _run(arguments, environ)
     except (ProfileFileError, ConfigurationError) as error:
         return _refuse(error, EXIT_REFUSED_INPUT)
     except (
@@ -283,6 +374,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         StoresFolderUnavailableError,
         RestoreInsteadError,
         MigratedWithoutBackupError,
+        ImportedWithoutBackupError,
         BackupWriteError,
         UnsupportedStoresError,
         LostStoreError,
@@ -296,7 +388,6 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         ImportLogAheadOfBronzeError,
     ) as error:
         return _refuse(error, EXIT_VERIFICATION_FAILED)
-    return EXIT_OK
 
 
 def run() -> NoReturn:

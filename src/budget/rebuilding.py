@@ -12,7 +12,7 @@ decision refuses the rebuild rather than silently build as if the household had
 made none. That guard runs before anything is read or replaced.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final
 
@@ -92,6 +92,26 @@ def _require_declared_accounts(
         if currency is None:
             raise ConfigurationError((_missing_account(account_id),))
         if not _known_currency(currency):
+            raise ConfigurationError((_unknown_currency(account_id),))
+
+
+def require_buildable_accounts(profile: Profile, importing: Collection[str]) -> None:
+    """Refuse now what a Silver rebuild after imports to `importing` would refuse.
+
+    A command that writes Bronze and then rebuilds, as `budget import` does,
+    calls this before its first write, so a refused rebuild never follows
+    Bronze writes. Every account with a stored run must be declared with a
+    currency the build supports, and so must every account being imported.
+    """
+    currencies = {
+        account_id: account.currency
+        for account_id, account in load_accounts(profile).items()
+    }
+    with BronzeStore(profile) as store:
+        _require_declared_accounts(currencies, store.import_runs())
+    for account_id in sorted(importing):
+        currency = currencies.get(account_id)
+        if currency is not None and not _known_currency(currency):
             raise ConfigurationError((_unknown_currency(account_id),))
 
 
