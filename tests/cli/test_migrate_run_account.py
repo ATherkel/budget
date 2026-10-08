@@ -29,18 +29,27 @@ EMPTY = SilverResult((), (), (), (), (), (), ())
 # item, and a transaction. Every statement names only synthetic values.
 _OLD_ROWS = (
     "INSERT INTO account_currencies VALUES ('joint-current', 'DKK')",
-    "INSERT INTO transactions (ordinal, transaction_id, account_id,"
-    " transaction_date, amount, currency, description, source_system,"
-    " source_status, booking_status, occurrence, day_sequence, identity_version)"
-    " VALUES (1, 'tx-old', 'joint-current', '2026-03-01', -4500, 'DKK', 'OLD',"
-    " 'danske-csv-v1', 'Udført', 'booked', 1, 1, '1')",
-    "INSERT INTO import_run_results VALUES"
-    " (1, 'run-old', 'quarantined', '2026-03-01', '2026-03-02')",
-    "INSERT INTO validation_errors VALUES"
-    " (1, 1, 'payload-old', 1, 'unknown-status', 'old message')",
-    "INSERT INTO review_items VALUES"
-    " (1, 'item-old', 'balance-break', 'joint-current', '2026-03-01',"
-    " '2026-03-02', NULL, NULL)",
+    (
+        "INSERT INTO transactions (ordinal, transaction_id, account_id,"
+        " transaction_date, amount, currency, description, source_system,"
+        " source_status, booking_status, occurrence, day_sequence,"
+        " identity_version)"
+        " VALUES (1, 'tx-old', 'joint-current', '2026-03-01', -4500, 'DKK',"
+        " 'OLD', 'danske-csv-v1', 'Udført', 'booked', 1, 1, '1')"
+    ),
+    (
+        "INSERT INTO import_run_results VALUES"
+        " (1, 'run-old', 'quarantined', '2026-03-01', '2026-03-02')"
+    ),
+    (
+        "INSERT INTO validation_errors VALUES"
+        " (1, 1, 'payload-old', 1, 'unknown-status', 'old message')"
+    ),
+    (
+        "INSERT INTO review_items VALUES"
+        " (1, 'item-old', 'balance-break', 'joint-current', '2026-03-01',"
+        " '2026-03-02', NULL, NULL)"
+    ),
     "INSERT INTO import_run_result_review_items VALUES (1, 1, 'item-old')",
     "INSERT INTO review_item_payloads VALUES (1, 1, 'payload-old')",
 )
