@@ -113,8 +113,8 @@ class ExampleWalkthroughLogTests(unittest.TestCase):
                 for path in files
                 for line in path.read_text(encoding="utf-8").splitlines()
             ]
-            assert {record["command"] for record in records} == {"rebuild", "review"}
-            assert "budget rebuild --from silver -> 0" in output.getvalue()
+            assert {record["command"] for record in records} == {"import", "review"}
+            assert "budget import --ranges ranges-march.toml -> 0" in output.getvalue()
 
             text = "\n".join(path.read_text(encoding="utf-8") for path in files)
             decoded = json.dumps(records, ensure_ascii=False, sort_keys=True)
