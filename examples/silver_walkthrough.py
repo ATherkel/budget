@@ -1,16 +1,18 @@
 # Copyright 2026 Therkel
 """A synthetic Silver walkthrough, runnable on its own.
 
-`budget rebuild --from silver` and `budget review` are exercised on invented
-data in one temporary folder: a local development profile is written, two
-exports are imported through the public `import_inbox_file` operation (the
-`import` CLI does not exist yet), Silver is rebuilt and the open review items
-are listed. Nothing outside the temporary folder is read or written, and no
-real profile, export or bank data is touched.
+`budget import` and `budget review` are exercised on invented data in one
+temporary folder: a local development profile is written, and two exports are
+each saved in the account's inbox folder and imported with
+`budget import --ranges`, which rebuilds Silver after storing them. The open
+review items are listed after each import. The profile, inbox, ranges files,
+stores, archive, import log and routine log all stay in the temporary folder,
+and no real profile, export or bank data is read or written.
 
 Every identifier the commands print is real; this script replaces each run of
 16 or more lowercase hexadecimal characters with `<id>`, so its transcript is
-reproducible. Run it with:
+reproducible. A command's output is indented under it; a line starting with
+`#` is the script's own note. Run it with:
 
     uv run python examples/silver_walkthrough.py
 """
@@ -24,9 +26,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from budget.cli import main as budget_main
-from budget.importing import Coverage, import_inbox_file
-from budget.locking import writer_lock
-from budget.profiles import Profile
 
 ACCOUNTS = """\
 format = 1
@@ -80,28 +79,39 @@ def _show(command: str, outcome: tuple[int, str, str]) -> None:
         _say(f"  {_IDENTIFIER.sub('<id>', line)}")
 
 
-def _import(profile: Profile, name: str, content: bytes, coverage: Coverage) -> str:
-    """Import one synthetic export and return the run's Bronze outcome."""
-    source = profile.inbox / "joint-current" / name
+def _import(profile_file: Path, name: str, content: bytes, ranges: Path) -> None:
+    """Save one export in the account's inbox folder, then run `budget import`."""
+    source = profile_file.parent / "inbox" / "joint-current" / name
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_bytes(content)
-    with writer_lock(profile) as lock:
-        imported = import_inbox_file(lock, source, coverage)
-    return imported.import_run.outcome
+    outcome = _budget(profile_file, "import", "--ranges", str(ranges))
+    _show(f"import --ranges {ranges.name}", outcome)
 
 
-def _rebuild(profile_file: Path) -> tuple[int, str, str]:
-    """Run the one rebuild this walkthrough uses."""
-    return _budget(profile_file, "rebuild", "--from", "silver")
+def _ranges(path: Path, covers_from: date, covers_through: date) -> Path:
+    """Write a ranges file declaring one default range, and return its path."""
+    path.write_text(
+        f"format = 1\n\n[default]\nfrom = {covers_from}\n"
+        f"through = {covers_through}\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def _review(profile_file: Path) -> None:
+    """List the open review items, noting when the command printed nothing."""
+    status, stdout, stderr = _budget(profile_file, "review")
+    _show("review", (status, stdout, stderr))
+    if not stdout + stderr:
+        _say("# (no output: no open review items)")
 
 
 def walkthrough(root: Path) -> None:
     """Run the whole synthetic walkthrough with every path under `root`."""
-    stores = root / "stores"
     profile_file = root / "development.toml"
     profile_file.write_text(
         'format = 1\nprofile = "development"\n\n[paths]\n'
-        f"stores = '{stores}'\ninputs = '{root / 'inputs'}'\n"
+        f"stores = '{root / 'stores'}'\ninputs = '{root / 'inputs'}'\n"
         f"inbox = '{root / 'inbox'}'\nexports = '{root / 'exports'}'\n",
         encoding="utf-8",
     )
@@ -110,34 +120,14 @@ def walkthrough(root: Path) -> None:
     accounts = root / "inputs" / "accounts.toml"
     accounts.parent.mkdir(parents=True, exist_ok=True)
     accounts.write_text(ACCOUNTS, encoding="utf-8")
-    profile = Profile(
-        name="development",
-        stores=stores,
-        inputs=root / "inputs",
-        inbox=root / "inbox",
-        exports=root / "exports",
-    )
 
-    outcome = _import(
-        profile,
-        "danske-20260306.csv",
-        _export(*MARCH),
-        Coverage(covers_from=date(2026, 3, 1), covers_through=date(2026, 3, 5)),
-    )
-    _say(f"import_inbox_file joint-current -> {outcome}")
-    _show("rebuild --from silver", _rebuild(profile_file))
-    status, stdout, stderr = _budget(profile_file, "review")
-    _show("review", (status, stdout or "(no open review items)", stderr))
+    march = _ranges(root / "ranges-march.toml", date(2026, 3, 1), date(2026, 3, 5))
+    _import(profile_file, "danske-20260306.csv", _export(*MARCH), march)
+    _review(profile_file)
 
-    outcome = _import(
-        profile,
-        "danske-20260403.csv",
-        _export(*APRIL),
-        Coverage(covers_from=date(2026, 4, 1), covers_through=date(2026, 4, 2)),
-    )
-    _say(f"import_inbox_file joint-current -> {outcome}")
-    _show("rebuild --from silver", _rebuild(profile_file))
-    _show("review", _budget(profile_file, "review"))
+    april = _ranges(root / "ranges-april.toml", date(2026, 4, 1), date(2026, 4, 2))
+    _import(profile_file, "danske-20260403.csv", _export(*APRIL), april)
+    _review(profile_file)
 
 
 def main() -> None:
