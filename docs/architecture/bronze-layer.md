@@ -144,7 +144,9 @@ for.
   end. A `\"` followed by one of those is therefore a backslash and the
   closing quote; anywhere else it is an escaped quote. The one text this
   cannot read is a quote that stood right before the delimiter or a line
-  break: its field ends early, and the payload gets a format failure.
+  break: its field ends early, and the payload gets a format failure. A quote
+  before a comma is ordinary punctuation (`"Netto", Kbh`), so keep the bank's
+  default semicolon, which a quote rarely precedes.
 - The bank's export dialog offers a comma, a semicolon (its default), a blank
   or a tab as the delimiter. A comma export and a semicolon export of the same
   data are otherwise byte for byte the same. The character after `"Dato"` in
