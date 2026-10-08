@@ -20,6 +20,7 @@ from budget.silver import (
     ReviewItem,
     SilverResult,
     SilverStore,
+    ValidationError,
     migrate_silver,
 )
 from tests.cli.commands import review
@@ -33,6 +34,9 @@ SAVINGS = "joint-savings"
 RUN_A = "0400a869" + "1" * 24
 RUN_B = "0400a869" + "2" * 24
 RUN_C = "75674506" + "3" * 24
+RUN_D = "9c1d2e3f" + "4" * 24
+RUN_E = "9c1d2e3f" + "5" * 24
+RUN_F = "d4e5f6a7" + "6" * 24
 PAYLOAD_A = "1a2b3c4d" + "0" * 56
 PAYLOAD_B = "1a2b3c4d" + "1" * 56
 BREAK_ITEM = "aaaa0000" + "1" * 56
@@ -55,6 +59,18 @@ EXPECTED_DISAGREE = (
     f"{DISAGREE_ITEM}  export-disagreement  joint-current"
     f"  2026-03-10..2026-03-12  run {RUN_A}  payload {PAYLOAD_A}"
 )
+EXPECTED_RUN_D = (
+    f"Run  {RUN_D}  joint-current  2026-03-15..2026-03-16"
+    "  duplicate-record, unknown-status"
+)
+EXPECTED_RUN_E = f"Run  {RUN_E}  joint-savings  2026-04-10..2026-04-11  unknown-status"
+
+
+def _error(code: str) -> ValidationError:
+    return ValidationError(
+        payload_id=PAYLOAD_A, record_ordinal=1, code=code, message="synthetic"
+    )
+
 
 _RESULT = SilverResult(
     transactions=(),
@@ -65,6 +81,7 @@ _RESULT = SilverResult(
     import_run_results=(
         ImportRunResult(
             import_run_id=RUN_A,
+            account_id=CURRENT,
             status="quarantined",
             covered_from=date(2026, 3, 1),
             covered_to=date(2026, 3, 12),
@@ -73,6 +90,7 @@ _RESULT = SilverResult(
         ),
         ImportRunResult(
             import_run_id=RUN_B,
+            account_id=CURRENT,
             status="quarantined",
             covered_from=date(2026, 3, 1),
             covered_to=date(2026, 3, 9),
@@ -81,11 +99,39 @@ _RESULT = SilverResult(
         ),
         ImportRunResult(
             import_run_id=RUN_C,
+            account_id=SAVINGS,
             status="quarantined",
             covered_from=date(2026, 4, 1),
             covered_to=date(2026, 4, 2),
             errors=(),
             review_item_ids=(BREAK_ITEM,),
+        ),
+        ImportRunResult(
+            import_run_id=RUN_D,
+            account_id=CURRENT,
+            status="quarantined",
+            covered_from=date(2026, 3, 15),
+            covered_to=date(2026, 3, 16),
+            errors=(_error("unknown-status"), _error("duplicate-record")),
+            review_item_ids=(),
+        ),
+        ImportRunResult(
+            import_run_id=RUN_E,
+            account_id=SAVINGS,
+            status="quarantined",
+            covered_from=date(2026, 4, 10),
+            covered_to=date(2026, 4, 11),
+            errors=(_error("unknown-status"), _error("unknown-status")),
+            review_item_ids=(),
+        ),
+        ImportRunResult(
+            import_run_id=RUN_F,
+            account_id=CURRENT,
+            status="accepted",
+            covered_from=date(2026, 5, 1),
+            covered_to=date(2026, 5, 2),
+            errors=(),
+            review_item_ids=(),
         ),
     ),
     review_items=(
@@ -153,18 +199,31 @@ class ReviewCommandTests(unittest.TestCase):
 
             assert status == EXIT_OK
             assert stderr == ""
-            # Stored order, the resolved item skipped.
+            # Items in stored order, the resolved one skipped, then the
+            # quarantined runs no item shows. The balance-break run and the
+            # accepted run have no line of their own.
             assert everything.splitlines() == [
                 EXPECTED_BREAK,
                 EXPECTED_DROP,
                 EXPECTED_DISAGREE,
+                EXPECTED_RUN_D,
+                EXPECTED_RUN_E,
             ]
             status, dropped, _ = review(profile_file, "--kind", "dropped-transaction")
             assert status == EXIT_OK
             assert dropped.splitlines() == [EXPECTED_DROP]
             status, savings, _ = review(profile_file, "--account", SAVINGS)
             assert status == EXIT_OK
-            assert savings.splitlines() == [EXPECTED_BREAK]
+            assert savings.splitlines() == [EXPECTED_BREAK, EXPECTED_RUN_E]
+            status, current, _ = review(profile_file, "--account", CURRENT)
+            assert status == EXIT_OK
+            assert current.splitlines() == [
+                EXPECTED_DROP,
+                EXPECTED_DISAGREE,
+                EXPECTED_RUN_D,
+            ]
+            assert RUN_F not in everything
+            assert everything.count(RUN_C) == 1
             status, empty, stderr = review(profile_file, "--account", "no-such-account")
             assert status == EXIT_OK
             assert (empty, stderr) == ("", "")

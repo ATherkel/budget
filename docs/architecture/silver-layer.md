@@ -152,6 +152,7 @@ AccountEvidence(                # one evidence range; see Evidence Ranges
 
 ImportRunResult(
     import_run_id: str,
+    account_id: str,            # the account the run declared (Bronze); never empty
     status: Literal["accepted", "quarantined"],
     covered_from: date,         # the import run's covers_from (Bronze)
     covered_to: date,           # the import run's covers_through (Bronze)
@@ -178,6 +179,10 @@ ReviewItem(
                                 # None for every other kind (ADR-018)
 )
 ```
+
+`ImportRunResult.account_id` is the account the import run declared, copied
+from Bronze, so a reader can name a quarantined run's account from Silver
+alone.
 
 `ImportRunResult.covered_from` and `covered_to` describe the file, not the
 transactions admitted from it: they are the range the operator declared for

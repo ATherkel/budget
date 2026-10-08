@@ -167,9 +167,13 @@ def _parser() -> argparse.ArgumentParser:
         help="a file declaring the range each account's exports were asked "
         "for, instead of asking at the prompt",
     )
-    review = commands.add_parser("review", help="list the open review items")
-    review.add_argument("--kind", choices=REVIEW_KINDS, help="list one kind only")
-    review.add_argument("--account", help="list one account's items only")
+    review = commands.add_parser(
+        "review", help="list the open review items and quarantined runs"
+    )
+    review.add_argument(
+        "--kind", choices=REVIEW_KINDS, help="list one kind of item only, no runs"
+    )
+    review.add_argument("--account", help="list one account's items and runs only")
     return parser
 
 
@@ -290,20 +294,20 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
 
 
 def _review(profile: Profile, kind: str | None, account: str | None) -> None:
-    """List the profile's open review items, taking no writer lock.
+    """List the open review items and unshown quarantined runs, with no lock.
 
     Review only reads the persisted Silver result, so it neither locks nor
     needs a Bronze store or `accounts.toml`.
     """
     started = perf_counter()
-    items = open_reviews(profile, kind=kind, account=account)
-    summary = summaries.review_summary(items)
+    reviews = open_reviews(profile, kind=kind, account=account)
+    summary = summaries.review_summary(reviews)
     routine_logging.finished(
         profile,
         "review",
-        counts={"items": len(items)},
+        counts={"items": len(reviews.items), "runs": len(reviews.runs)},
         duration_ms=_milliseconds(started),
-        kinds=tuple(sorted({entry.item.kind for entry in items})),
+        kinds=tuple(sorted({entry.item.kind for entry in reviews.items})),
     )
     sys.stdout.write(summary)
 

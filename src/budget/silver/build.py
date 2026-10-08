@@ -203,6 +203,7 @@ def _result(judged: Admission) -> ImportRunResult:
     each = judged.each
     return ImportRunResult(
         import_run_id=each.run.import_run_id,
+        account_id=each.account_id,
         status="accepted" if judged.admitted else "quarantined",
         covered_from=each.run.covers_from,
         covered_to=each.run.covers_through,

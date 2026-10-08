@@ -12,7 +12,7 @@ import pytest
 
 from budget.bronze.models import FormatFailure
 from budget.silver import SilverResult
-from tests.silver.exports import FORMAT, build_from, declared, export, row
+from tests.silver.exports import ACCOUNT, FORMAT, build_from, declared, export, row
 
 VALID = row("01.03.2026", "NETTO", "-45,00", "955,00")
 
@@ -56,6 +56,16 @@ def test_a_format_failure_quarantines_the_run_and_keeps_its_declared_range() -> 
     assert run.errors[0].payload_id == failed.run.payload_id
     assert run.covered_from == date(2026, 2, 1)
     assert run.covered_to == date(2026, 3, 4)
+
+
+def test_a_quarantined_run_names_the_account_it_declared() -> None:
+    unknown_status = export([row("01.03.2026", "NETTO", "-45,00", "", Status="???")])
+
+    result = build_from(unknown_status)
+
+    [run] = result.import_run_results
+    assert run.status == "quarantined"
+    assert run.account_id == ACCOUNT
 
 
 def test_one_bad_record_quarantines_the_whole_run_and_every_error_is_listed() -> None:

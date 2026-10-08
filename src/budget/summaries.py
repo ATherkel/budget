@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from budget.bronze.models import ImportRun
 from budget.inbox import LEFT_IN_INBOX, FileOutcome, ImportedInbox
 from budget.rebuilding import SilverRebuild
-from budget.reviewing import OpenReview
+from budget.reviewing import OpenReview, OpenReviews
 from budget.silver import ImportRunResult, ReviewItem, SilverResult
 
 
@@ -182,9 +182,28 @@ def _file_line(outcome: FileOutcome, quarantined: Mapping[str, tuple[str, ...]])
     return line
 
 
-def review_summary(items: Sequence[OpenReview]) -> str:
-    """Report each open review item, and nothing at all when there are none."""
-    return "".join(_review_line(entry) for entry in items)
+def review_summary(reviews: OpenReviews) -> str:
+    """Report each open item, then each unshown quarantined run; else nothing."""
+    return "".join(
+        [
+            *(_review_line(entry) for entry in reviews.items),
+            *(_quarantined_line(run) for run in reviews.runs),
+        ]
+    )
+
+
+def _quarantined_line(run: ImportRunResult) -> str:
+    """One quarantined run: its identifiers, covered dates and error codes."""
+    parts = [
+        "Run",
+        run.import_run_id,
+        run.account_id,
+        f"{run.covered_from}..{run.covered_to}",
+    ]
+    codes = sorted({error.code for error in run.errors})
+    if codes:
+        parts.append(", ".join(codes))
+    return "  ".join(parts) + "\n"
 
 
 def _review_line(entry: OpenReview) -> str:

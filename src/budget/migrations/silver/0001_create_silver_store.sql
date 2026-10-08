@@ -80,6 +80,7 @@ CREATE TABLE account_evidence (
 CREATE TABLE import_run_results (
     ordinal INTEGER PRIMARY KEY,
     import_run_id TEXT NOT NULL UNIQUE,
+    account_id TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('accepted', 'quarantined')),
     covered_from TEXT NOT NULL,
     covered_to TEXT NOT NULL

@@ -203,6 +203,7 @@ source records.
 | Target column | Type | Source | Transformation |
 | --- | --- | --- | --- |
 | `import_run_id` | `str` | `ImportRun.import_run_id` | copied |
+| `account_id` | `str` | `ImportRun.declared_account_id` | copied |
 | `status` | `Literal` | derived, and manual decisions | `accepted` when the run has no validation error and fails no merge check, or when every one it has belongs to a review item manual decisions have settled: *accept discrepancy* for a `balance-break`, and for each `dropped-transaction`, one per transaction the run dropped, a *withdrawn* or *same transaction* (ADR-010, ADR-017, ADR-018). Otherwise `quarantined` |
 | `covered_from` | `date` | `ImportRun.covers_from` | copied |
 | `covered_to` | `date` | `ImportRun.covers_through` | copied |
