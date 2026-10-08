@@ -65,6 +65,7 @@ _RESULT = SilverResult(
     import_run_results=(
         ImportRunResult(
             import_run_id=RUN_A,
+            account_id=CURRENT,
             status="quarantined",
             covered_from=date(2026, 3, 1),
             covered_to=date(2026, 3, 12),
@@ -73,6 +74,7 @@ _RESULT = SilverResult(
         ),
         ImportRunResult(
             import_run_id=RUN_B,
+            account_id=CURRENT,
             status="quarantined",
             covered_from=date(2026, 3, 1),
             covered_to=date(2026, 3, 9),
@@ -81,6 +83,7 @@ _RESULT = SilverResult(
         ),
         ImportRunResult(
             import_run_id=RUN_C,
+            account_id=SAVINGS,
             status="quarantined",
             covered_from=date(2026, 4, 1),
             covered_to=date(2026, 4, 2),

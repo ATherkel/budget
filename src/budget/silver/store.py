@@ -522,6 +522,7 @@ def _result(
     ordinal = row["ordinal"]
     return ImportRunResult(
         import_run_id=row["import_run_id"],
+        account_id="",
         status=row["status"],
         covered_from=date.fromisoformat(row["covered_from"]),
         covered_to=date.fromisoformat(row["covered_to"]),
