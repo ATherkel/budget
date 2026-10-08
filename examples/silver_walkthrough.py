@@ -79,9 +79,8 @@ def _show(command: str, outcome: tuple[int, str, str]) -> None:
         _say(f"  {_IDENTIFIER.sub('<id>', line)}")
 
 
-def _import(profile_file: Path, name: str, content: bytes, ranges: Path) -> None:
-    """Save one export in the account's inbox folder, then run `budget import`."""
-    source = profile_file.parent / "inbox" / "joint-current" / name
+def _import(profile_file: Path, source: Path, content: bytes, ranges: Path) -> None:
+    """Save one export at `source` in the inbox, then run `budget import`."""
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_bytes(content)
     outcome = _budget(profile_file, "import", "--ranges", str(ranges))
@@ -91,8 +90,7 @@ def _import(profile_file: Path, name: str, content: bytes, ranges: Path) -> None
 def _ranges(path: Path, covers_from: date, covers_through: date) -> Path:
     """Write a ranges file declaring one default range, and return its path."""
     path.write_text(
-        f"format = 1\n\n[default]\nfrom = {covers_from}\n"
-        f"through = {covers_through}\n",
+        f"format = 1\n\n[default]\nfrom = {covers_from}\nthrough = {covers_through}\n",
         encoding="utf-8",
     )
     return path
@@ -121,12 +119,14 @@ def walkthrough(root: Path) -> None:
     accounts.parent.mkdir(parents=True, exist_ok=True)
     accounts.write_text(ACCOUNTS, encoding="utf-8")
 
+    # The account's inbox folder is its declaration (README: `budget import`).
+    inbox = root / "inbox" / "joint-current"
     march = _ranges(root / "ranges-march.toml", date(2026, 3, 1), date(2026, 3, 5))
-    _import(profile_file, "danske-20260306.csv", _export(*MARCH), march)
+    _import(profile_file, inbox / "danske-20260306.csv", _export(*MARCH), march)
     _review(profile_file)
 
     april = _ranges(root / "ranges-april.toml", date(2026, 4, 1), date(2026, 4, 2))
-    _import(profile_file, "danske-20260403.csv", _export(*APRIL), april)
+    _import(profile_file, inbox / "danske-20260403.csv", _export(*APRIL), april)
     _review(profile_file)
 
 
