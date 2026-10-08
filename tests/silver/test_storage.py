@@ -78,7 +78,7 @@ class SilverStorageTests(unittest.TestCase):
                 assert set(definitions) == STORE_TABLES
                 for definition in definitions.values():
                     assert "STRICT" in definition
-                assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
                 assert connection.execute(
                     "SELECT profile, stage FROM store_identity"
                 ).fetchall() == [("test", "silver")]
@@ -92,7 +92,7 @@ class SilverStorageTests(unittest.TestCase):
             migrate_silver(profile)
 
             with _connected(profile.silver_store) as connection:
-                assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
                 assert connection.execute(
                     "SELECT profile, stage FROM store_identity"
                 ).fetchall() == [("test", "silver")]

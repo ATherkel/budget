@@ -89,8 +89,8 @@ _INSERT_RANGES: Final = (
 )
 _INSERT_RESULTS: Final = (
     "INSERT INTO import_run_results"
-    " (ordinal, import_run_id, status, covered_from, covered_to)"
-    " VALUES (?, ?, ?, ?, ?)"
+    " (ordinal, import_run_id, account_id, status, covered_from, covered_to)"
+    " VALUES (?, ?, ?, ?, ?, ?)"
 )
 _INSERT_ERRORS: Final = (
     "INSERT INTO validation_errors (import_run_ordinal, position, payload_id,"
@@ -359,6 +359,7 @@ def _encode_results(items: Sequence[ImportRunResult]) -> Rows:
         (
             ordinal,
             item.import_run_id,
+            item.account_id,
             item.status,
             item.covered_from.isoformat(),
             item.covered_to.isoformat(),
@@ -522,7 +523,7 @@ def _result(
     ordinal = row["ordinal"]
     return ImportRunResult(
         import_run_id=row["import_run_id"],
-        account_id="",
+        account_id=row["account_id"],
         status=row["status"],
         covered_from=date.fromisoformat(row["covered_from"]),
         covered_to=date.fromisoformat(row["covered_to"]),

@@ -591,7 +591,7 @@ class SilverDurabilityTests(unittest.TestCase):
                 assert connection.execute(
                     "SELECT profile, stage FROM store_identity"
                 ).fetchall() == [("test", "silver")]
-                assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
 
 
 if __name__ == "__main__":

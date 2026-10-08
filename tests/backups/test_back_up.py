@@ -124,7 +124,7 @@ class BackUpTests(unittest.TestCase):
             assert silver_accounts(store) == ["joint-current"]
             assert written["stores"] == {
                 "bronze": {"path": "bronze.db", "schema_version": 1},
-                "silver": {"path": "silver.db", "schema_version": 1},
+                "silver": {"path": "silver.db", "schema_version": 2},
             }
             assert complete_backup_sets(profile) == (backup,)
 
