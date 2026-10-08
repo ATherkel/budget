@@ -149,6 +149,125 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
             with self.subTest(payload=label):
                 verdict_for(row)
 
+    def test_a_backslash_escaped_quote_is_one_quote_in_its_field(self) -> None:
+        # The bank writes a quote inside a field as `\"`, not doubled: a Tekst
+        # of `"Example"`, quotes included, arrives as `"\"Example\""`.
+        payload = (
+            b'"Dato";"Tekst";"Bel\xf8b";"Saldo";"Status";"Afstemt"\r\n'
+            b'"12.09.2026";"\\"Example\\"";"-45,00";"955,00";"Udf\xf8rt";"Nej"'
+        )
+
+        result = PARSER.parse(payload)
+
+        assert result.failure_reason is None
+        assert [dict(record) for record in result.records] == [
+            {
+                "Dato": "12.09.2026",
+                "Tekst": '"Example"',
+                "Beløb": "-45,00",
+                "Saldo": "955,00",
+                "Status": "Udført",
+                "Afstemt": "Nej",
+            }
+        ]
+
+    def test_a_backslash_before_anything_but_a_quote_is_kept(self) -> None:
+        # Only `\"` is an escape: any other backslash is source text, a doubled
+        # one included.
+        row = dato_row("12.09.2026").replace(b'" Caf\xe9"', rb'"\Cafe C:\\n\t"')
+
+        result = PARSER.parse(header_payload(row))
+
+        assert result.failure_reason is None
+        assert dict(result.records[0])["Tekst"] == r"\Cafe C:\\n\t"
+
+    def test_a_field_may_end_in_a_backslash(self) -> None:
+        # The bank does not escape a backslash, so a Tekst ending in one is
+        # written `\"` before its delimiter, a line break or the payload's end.
+        # There the quote can only close the field.
+        endings = {
+            "before the delimiter": dato_row("12.09.2026").replace(
+                b'" Caf\xe9"', rb'"Shop.dk/Ref\ \12345678\"'
+            ),
+            "before a line break": dato_row("12.09.2026").replace(b'"Nej"', rb'"Nej\"')
+            + b"\r\n"
+            + dato_row("13.09.2026"),
+            "before an LF line break": dato_row("12.09.2026").replace(
+                b'"Nej"', rb'"Nej\"'
+            )
+            + b"\n"
+            + dato_row("13.09.2026"),
+            "at the payload's end": dato_row("12.09.2026").replace(
+                b'"Nej"', rb'"Nej\"'
+            ),
+        }
+        expected = {
+            "before the delimiter": ("Tekst", "Shop.dk/Ref\\ \\12345678\\"),
+            "before a line break": ("Afstemt", "Nej\\"),
+            "before an LF line break": ("Afstemt", "Nej\\"),
+            "at the payload's end": ("Afstemt", "Nej\\"),
+        }
+
+        for label, row in endings.items():
+            with self.subTest(payload=label):
+                result = PARSER.parse(header_payload(row))
+
+                assert result.failure_reason is None
+                field, value = expected[label]
+                assert dict(result.records[0])[field] == value
+
+    def test_only_the_payloads_own_delimiter_ends_a_field_after_a_backslash(
+        self,
+    ) -> None:
+        # The other accepted delimiter is ordinary text inside a field, so a
+        # `\"` before it is still an escaped quote.
+        header = (b"Dato", b"Tekst", b"Bel\xf8b", b"Saldo", b"Status", b"Afstemt")
+        cases = {
+            b";": (b'K\xf8b \\"X\\", Y', 'Køb "X", Y'),
+            b",": (b'K\xf8b \\"X\\"; Y', 'Køb "X"; Y'),
+        }
+
+        for delimiter, (tekst, decoded) in cases.items():
+            with self.subTest(delimiter=delimiter):
+                record = (
+                    b"12.09.2026",
+                    tekst,
+                    b"-45,00",
+                    b"955,00",
+                    b"Udf\xf8rt",
+                    b"Nej",
+                )
+                payload = b"\r\n".join(
+                    delimiter.join(b'"%s"' % value for value in row)
+                    for row in (header, record)
+                )
+
+                result = PARSER.parse(payload)
+
+                assert result.failure_reason is None
+                assert dict(result.records[0])["Tekst"] == decoded
+
+    def test_escaped_quotes_do_not_excuse_broken_quoting(self) -> None:
+        broken = {
+            # A `\"` before the delimiter is a backslash and the closing quote,
+            # so a quote that really stood there ends the field early.
+            "quote before the delimiter": rb'"\"Example\",x"',
+            "data after the closing quote": rb'"\"Example\"" x',
+        }
+
+        for label, tekst in broken.items():
+            with self.subTest(payload=label):
+                row = dato_row("12.09.2026").replace(b'" Caf\xe9"', tekst)
+
+                result = PARSER.parse(header_payload(row))
+
+                assert result.records == ()
+                assert result.last_transaction_date is None
+                reason = result.failure_reason
+                assert reason
+                assert "Example" not in reason
+                assert "\\" not in reason
+
     def test_a_row_ending_in_a_comma_still_needs_its_quoted_field(self) -> None:
         header = HEADER + b"\r\n"
         seven_fields = (
