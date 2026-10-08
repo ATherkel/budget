@@ -176,10 +176,16 @@ silently ignore a household decision. A missing log, or one holding only a
 byte-order mark and whitespace, means no decisions and is allowed.
 
 `budget review [--kind <kind>] [--account <id>]` lists the open Silver review
-items and nothing else. Each line names the review item, its kind, its account,
-its date range, the import run and payload identifiers it came from, and, for a
-dropped transaction, the first eight characters of its `transaction_id` as the
-handle. A filter that matches nothing exits 0 and prints nothing. Review only
+items, then each quarantined import run that no open item already shows. An item
+line names the review item, its kind, its account, its date range, the import
+run and payload identifiers it came from, and, for a dropped transaction, the
+first eight characters of its `transaction_id` as the handle. A run line reads
+`Run  <import run id>  <account>  <from>..<to>  <error codes>`: it is a run
+quarantined by validation errors alone. A run quarantined by a balance break
+appears once, through its review item, and an accepted run never appears.
+`--account` filters both kinds of line; `--kind` names an item kind, so it lists
+that kind's items and no runs. A filter that matches nothing exits 0 and prints
+nothing. Review only
 reads the persisted Silver result: it takes no writer lock and needs neither a
 Bronze store nor `accounts.toml`.
 
