@@ -12,6 +12,12 @@ documentation, not by application code; what release 0.2 needs from it is the
 shared report context, the monthly overview, the shared selection and failure
 semantics, and the interaction transitions below.
 
+Version `0.2` amends it for the Enkel overview (issue #104), as the owner
+decided on 2026-10-08: the overview orders its Categories by spending, largest
+first, and Enkel shows every row; and Enkel notes Unclassified money quietly,
+without its amounts. It also states that Income can be negative. Nothing else
+changes, and no implementation had been built against `0.1`.
+
 It covers what the monthly overview needs: the report context, the monthly
 overview report, and the failures a report read can raise. Category detail,
 account activity, Kontrol checks, budget comparison, trends and history views
@@ -52,7 +58,8 @@ places (`"-450.00"`), a ratio is the string form of its `Decimal`
 a ratio is ever a JSON number.
 
 Signs: Income, Expenses and category spending are reported as positive
-amounts, and a net Refund makes Expenses or a category's spending negative.
+amounts, and a net Refund makes Income, Expenses or a category's spending
+negative.
 Net cash flow is negative when Expenses exceed Income. On the Unclassified and
 Adjustment lines, money in is zero or positive and money out is zero or
 negative.
@@ -150,7 +157,7 @@ the page offers the current publication explicitly instead of substituting it.
 | `expenses` | Money/null | **Expenses** in `analytics-layer.md`: expense transactions plus expense-direction Refunds, reported positive. |
 | `net_cash_flow` | Money/null | Income − Expenses: the money left after all expenses. It equals Savings in this release. |
 | `savings_rate` | Ratio/null | `net_cash_flow / income`, which equals `savings / income` while the two are equal. Null when `income` is null or not positive. |
-| `categories` | list of `CategorySpending` | One row per expense-direction Category with at least one allocation in the month, ordered by `category_id`. Empty when `coverage.status` is `no_data`. |
+| `categories` | list of `CategorySpending` | One row per expense-direction Category with at least one allocation in the month, ordered by `spending`, largest first, and then by `category_id`. Empty when `coverage.status` is `no_data`. |
 | `unclassified` | `MoneyInOut`/null | Unclassified money: `unknown` transactions. |
 | `adjustments` | `MoneyInOut`/null | `adjustment` transactions, which carry no allocation. |
 | `coverage` | `ReportCoverage` | Coverage of every figure above. |
@@ -175,9 +182,21 @@ transactions + Σ allocations of `refund` transactions), negative when Refunds
 exceed purchases. The overview carries no Category group totals and no
 transaction rows; reports that need them add them.
 
+Enkel shows every row in the order the report gives, so the list it shows
+still adds up to Expenses and needs no remainder line. Presentation neither
+reorders nor truncates it; a net Refund Category falls to the bottom.
+
 `MoneyInOut`: `money_in` (Σ positive amounts), `money_out` (Σ negative
 amounts), and `count`. The two amounts are never netted, so offsetting entries
 cannot read as nothing.
+
+Unclassified money is a trust condition of its own, distinct from coverage and
+provisional figures: money left leaves it out, so money left may be off by up
+to that amount. When `unclassified.count` is greater than zero, Enkel says so
+in quiet wording that links to the
+[explanation](#navigation-and-selection-transitions), and shows neither the
+amounts nor the count, which belong to Kontrol (issue #106). Adjustments carry
+no such note.
 
 ### Coverage
 
@@ -288,11 +307,12 @@ state falls back to the current publication, to the default selection, or to
 whatever the reader was looking at before. Ordinary links and forms the page
 follows preserve the pin the same way.
 
-**Explanation of coverage and provisional figures.** The explanation stays
-reachable within the same context: the page offers the report's own incomplete
-account-months and provisional reasons without leaving the pinned context or
-resolving a new one (issue #104). It does not require the Kontrol screen, which
-arrives later (issue #106). Analytics owns the judgements the explanation
+**Explanation of coverage, provisional figures and Unclassified money.** The
+explanation stays reachable within the same context: the page offers the
+report's own incomplete account-months and provisional reasons, and whether it
+has Unclassified money, without leaving the pinned context or resolving a new
+one (issue #104). It does not require the Kontrol screen, which arrives later
+(issue #106). Analytics owns the judgements the explanation
 shows, which issue #179 implements; presentation owns the destination and the
 way it is reached.
 
@@ -341,7 +361,7 @@ stated, so `SelectionOptions` has `first_month` 2026-01 and `last_month`
 | `expenses` | 9,020.00: −(−8,500.00 − 640.00 + 120.00) |
 | `net_cash_flow` | 15,980.00 |
 | `savings_rate` | 0.6392 |
-| `categories` | `groceries` (`food`) 520.00: 640.00 − 120.00; `rent` (`housing`) 8,500.00 |
+| `categories` | `rent` (`housing`) 8,500.00; `groceries` (`food`) 520.00: 640.00 − 120.00 |
 | `unclassified`, `adjustments` | 0.00 in, 0.00 out, count 0 |
 | `coverage` | `partial`: `joint-current` 2026-02 `partial` |
 | `provisional` | null: February is closed and its rows are settled. |
@@ -364,6 +384,10 @@ the same month changes neither.
 | `unclassified` | 0.00 in, −450.00 out, count 1 |
 | `coverage` | `partial`: `joint-current` 2026-03 `partial` (the balance break) |
 | `provisional` | null |
+
+The Unclassified count is 1, so Enkel shows its quiet Unclassified note beside
+money left of −1,000.00, without the 450.00 or the count. Were the 450.00 an
+expense, money left would be 450.00 lower; were it a Transfer, it would stand.
 
 **May: current month, no activity yet.** Income, Expenses and net cash flow
 are 0.00, `savings_rate` is null, and `categories` is empty, under coverage
