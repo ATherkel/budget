@@ -203,6 +203,10 @@ class SilverStoreTests(unittest.TestCase):
             "accepted",
             "quarantined",
         }
+        assert {r.account_id for r in result.import_run_results} == {
+            "joint-current",
+            "joint-savings",
+        }
         assert [len(r.errors) for r in result.import_run_results].count(0) == 3
         assert any(r.review_item_ids for r in result.import_run_results)
         assert {i.kind for i in result.review_items} == {
