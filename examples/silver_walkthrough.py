@@ -97,10 +97,11 @@ def _ranges(path: Path, covers_from: date, covers_through: date) -> Path:
 
 
 def _review(profile_file: Path) -> None:
-    """List the open review items, noting when the command printed nothing."""
-    status, stdout, stderr = _budget(profile_file, "review")
-    _show("review", (status, stdout, stderr))
-    if not stdout + stderr:
+    """List the open review items, noting when a successful review was silent."""
+    outcome = _budget(profile_file, "review")
+    _show("review", outcome)
+    status, stdout, stderr = outcome
+    if status == 0 and not stdout + stderr:
         _say("# (no output: no open review items)")
 
 
