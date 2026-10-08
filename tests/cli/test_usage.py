@@ -18,7 +18,7 @@ class UsageTests(unittest.TestCase):
     def test_a_usage_error_returns_exit_2(self) -> None:
         cases = {
             "no command": [],
-            "a command not built yet": ["import"],
+            "a command not built yet": ["status"],
             "an unknown rebuild stage": ["rebuild", "--from", "platinum"],
             "an unknown stage": ["migrate", "--stage", "platinum"],
             "an unknown option": ["migrate", "--force"],
