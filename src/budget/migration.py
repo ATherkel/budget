@@ -13,10 +13,8 @@ from datetime import UTC, datetime
 from typing import Final
 
 from budget.backups import (
+    BACKUP_FAILURES,
     BackupSet,
-    BackupVerificationError,
-    BackupWriteError,
-    LostStoreError,
     back_up,
     complete_set_holds,
     hold_for_recovery,
@@ -24,14 +22,12 @@ from budget.backups import (
     require_supported_stores,
 )
 from budget.bronze.storage import BRONZE_STAGE, bronze_stage
-from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.locking import WriterLock
 from budget.profiles import PRODUCTION_PROFILE_NAME, Profile
 from budget.silver.storage import SILVER_STAGE, silver_stage
 from budget.sqlstore import (
     NewStoreRequiredError,
     StageStore,
-    StoreError,
     is_started,
     migrate_store,
     open_store_for_backup,
@@ -79,15 +75,6 @@ _STAGE_STORES: Final[dict[str, Callable[[Profile], StageStore]]] = {
     SILVER_STAGE: silver_stage,
 }
 MIGRATED_STAGES: Final = tuple(_STAGE_STORES)
-# Every way a backup set can fail to be written once the store is migrated.
-_BACKUP_FAILURES: Final = (
-    BackupWriteError,
-    LostStoreError,
-    BackupVerificationError,
-    StoreError,
-    ImportLogDamagedError,
-    ImportLogAheadOfBronzeError,
-)
 
 
 def _utc_now() -> datetime:
@@ -226,6 +213,6 @@ def migrate_profile(
         return
     try:
         back_up(lock, now=clock())
-    except _BACKUP_FAILURES as error:
+    except BACKUP_FAILURES as error:
         raise MigratedWithoutBackupError(error) from error
     release_recovery_sets(lock)

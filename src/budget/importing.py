@@ -21,11 +21,10 @@ from pathlib import Path
 from typing import Final
 
 from budget.bronze import BronzeStore, ImportDeclaration, ImportRun
-from budget.bronze.store import ProductionImportBlockedError
 from budget.durability import sync_folder
 from budget.inputs import Account, load_accounts
 from budget.locking import WriterLock
-from budget.profiles import PRODUCTION_PROFILE_NAME, Profile
+from budget.profiles import Profile
 
 IMPORT_LOG_FORMAT: Final = 1
 # How much of the payload hash names an archive folder (operations.md, W1).
@@ -586,12 +585,10 @@ def import_inbox_file(
 ) -> InboxImport:
     """Import one inbox file under the held writer lock.
 
-    Refused for production before anything is written: production imports
-    wait for `budget import`, which backs up after them.
+    In production, the caller writes a backup set after its Bronze writes, as
+    `budget import` does.
     """
     profile = lock.profile
-    if profile.name == PRODUCTION_PROFILE_NAME:
-        raise ProductionImportBlockedError
     account = _inbox_account(profile, source)
     declaration = ImportDeclaration(
         declared_account_id=account.account_id,

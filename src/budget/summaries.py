@@ -8,10 +8,11 @@ category, original filename, transaction id or validation message appears.
 """
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from budget.bronze.models import ImportRun
+from budget.inbox import LEFT_IN_INBOX, FileOutcome, ImportedInbox
 from budget.rebuilding import SilverRebuild
 from budget.reviewing import OpenReview, OpenReviews
 from budget.silver import ImportRunResult, ReviewItem, SilverResult
@@ -129,6 +130,56 @@ def _run_line(row: _Row) -> str:
     """One import run's line: its identifiers, status and reason codes."""
     reasons = f"  {', '.join(row.reasons)}" if row.reasons else ""
     return f"Run  {row.import_run_id}  {row.account_id}  {row.status}{reasons}"
+
+
+def import_summary(imported: ImportedInbox) -> str:
+    """Report each inbox file by its number, then Silver's counts.
+
+    A file is named by its number in the listing the prompt showed, never by
+    its filename, which can carry a bank account number.
+    """
+    if imported.rebuilt is None:
+        lines = [_file_line(each, {}) for each in imported.files]
+        lines.append("Nothing was imported.")
+        return "\n".join(lines) + "\n"
+    quarantined = _quarantined(imported.rebuilt.result)
+    lines = [_file_line(each, quarantined) for each in imported.files]
+    counts = imported.counts()
+    lines.append(
+        f"Silver   {counts['admitted']} admitted, {counts['quarantined']}"
+        f" quarantined, {counts['dropped']} dropped"
+    )
+    if imported.backup is not None:
+        lines.append(f"Backup   backup set {imported.backup.name} written")
+    return "\n".join(lines) + "\n"
+
+
+def _quarantined(result: SilverResult) -> dict[str, tuple[str, ...]]:
+    """Map each run Silver quarantined to its reason codes."""
+    return {
+        found.import_run_id: _reasons(found, result.review_items)
+        for found in result.import_run_results
+        if found.status == "quarantined"
+    }
+
+
+def _file_line(outcome: FileOutcome, quarantined: Mapping[str, tuple[str, ...]]) -> str:
+    """One inbox file's line: its number, account, outcome and reasons.
+
+    An accepted export Silver quarantined says so, with Silver's reason
+    codes, so a quarantine is read beside the file it belongs to.
+    """
+    line = f"[{outcome.ordinal}] {outcome.account_id}  {outcome.status}"
+    if outcome.reason:
+        line += f": {outcome.reason}"
+    if outcome.status in LEFT_IN_INBOX:
+        line += "; it stays in the inbox"
+    codes = quarantined.get(outcome.silver_run_id)
+    if codes is not None:
+        line += f"; Silver quarantined it: {', '.join(codes)}"
+    if outcome.note:
+        line += f"; {outcome.note}"
+    return line
 
 
 def review_summary(reviews: OpenReviews) -> str:
