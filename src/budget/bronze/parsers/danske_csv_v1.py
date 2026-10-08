@@ -99,7 +99,8 @@ def _quoted_field_end(text: str, start: int, closers: str) -> tuple[int, str | N
     index = start
     length = len(text)
     while index < length:
-        if _is_escaped_quote(text, index, closers):
+        # Most characters are not a backslash; skip the full test for them.
+        if text[index] == "\\" and _is_escaped_quote(text, index, closers):
             index += 2
             continue
         if text[index] != '"':
