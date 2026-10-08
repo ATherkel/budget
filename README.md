@@ -308,41 +308,56 @@ gives its rules.
 ## Silver walkthrough
 
 `examples/silver_walkthrough.py` runs the whole story on synthetic data in one
-temporary folder and prints what the commands said; nothing outside that folder
-is read or written. Run it with:
+temporary folder, with no input from you. It writes a development profile and
+a `joint-current` account, saves a March export in `inbox\joint-current\`,
+runs `budget import` and `budget review`, then does the same with an April
+export whose balance chain breaks. The profile, inbox, ranges files, stores,
+archive, import log and routine log all stay in that folder, and nothing
+outside it is read or written. Run it with:
 
 ```powershell
 uv run python examples/silver_walkthrough.py
 ```
 
-Every identifier the commands print is real. The script replaces each run of 16
-or more lowercase hexadecimal characters with `<id>`, so this transcript is
-reproducible:
+Each import declares its range in a ranges file
+([see above](#the-ranges-file)) beside the profile, so nothing asks at the
+prompt. March's `ranges-march.toml` is:
+
+```toml
+format = 1
+
+[default]
+from = 2026-03-01
+through = 2026-03-05
+```
+
+Each command line ends with its exit status after `->`, and the lines indented
+under it are what the command printed. A line starting with `#` is the
+script's own note, not command output. Every identifier the commands print is
+real. The script replaces each run of 16 or more lowercase hexadecimal
+characters with `<id>`, so this transcript is reproducible:
 
 ```text
 budget migrate -> 0
-import_inbox_file joint-current -> stored
-budget rebuild --from silver -> 0
-  Bronze   1 import run: 1 stored, 0 repeat, 0 refused
-  Account  joint-current: 1 admitted, 0 quarantined, 0 refused, 0 repeat, 0 dropped
-  Run  <id>  joint-current  accepted
+budget import --ranges ranges-march.toml -> 0
+  [1] joint-current  stored
+  Silver   1 admitted, 0 quarantined, 0 dropped
 budget review -> 0
-  (no open review items)
-import_inbox_file joint-current -> stored
-budget rebuild --from silver -> 0
-  Bronze   2 import runs: 2 stored, 0 repeat, 0 refused
-  Account  joint-current: 1 admitted, 1 quarantined, 0 refused, 0 repeat, 0 dropped
-  Run  <id>  joint-current  accepted
-  Run  <id>  joint-current  quarantined  balance-break, balance-chain-break
+# (no output: no open review items)
+budget import --ranges ranges-april.toml -> 0
+  [1] joint-current  stored; Silver quarantined it: balance-break, balance-chain-break
+  Silver   1 admitted, 1 quarantined, 0 dropped
 budget review -> 0
   <id>  balance-break  joint-current  2026-04-02..2026-04-02  run <id>  payload <id>
 ```
 
-The second rebuild exits 0 even though its April run is quarantined: a
-quarantine is a result, not a failure, and the empty `review` exits 0 too.
-The script enters each export through `budget.importing.import_inbox_file`,
-the Bronze step `budget import` runs for every inbox file, so it can declare
-one export at a time between rebuilds.
+Each import rebuilds Silver from everything Bronze holds, so the walkthrough
+runs no `budget rebuild --from silver` of its own. The profile is a
+development one, so no backup set follows; in production the summary would
+end `Backup   backup set <name> written`. The April import exits 0 even though
+Silver quarantines its run: a quarantine is a result, not a failure, and the
+file was stored, archived and removed from the inbox. `budget review` prints
+nothing when no item is open, and exits 0.
 
 ## Command line
 
