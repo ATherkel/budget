@@ -1,6 +1,6 @@
 [project]
 name = "budget"
-version = "0.1.0"
+version = "0.2.0"
 description = "Self-hostable household budget platform built on a Bronze/Silver/Gold data pipeline."
 readme = "README.md"
 authors = [
