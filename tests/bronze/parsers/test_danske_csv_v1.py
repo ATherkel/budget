@@ -192,6 +192,11 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
             "before a line break": dato_row("12.09.2026").replace(b'"Nej"', rb'"Nej\"')
             + b"\r\n"
             + dato_row("13.09.2026"),
+            "before an LF line break": dato_row("12.09.2026").replace(
+                b'"Nej"', rb'"Nej\"'
+            )
+            + b"\n"
+            + dato_row("13.09.2026"),
             "at the payload's end": dato_row("12.09.2026").replace(
                 b'"Nej"', rb'"Nej\"'
             ),
@@ -199,6 +204,7 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
         expected = {
             "before the delimiter": ("Tekst", "Shop.dk/Ref\\ \\12345678\\"),
             "before a line break": ("Afstemt", "Nej\\"),
+            "before an LF line break": ("Afstemt", "Nej\\"),
             "at the payload's end": ("Afstemt", "Nej\\"),
         }
 
@@ -209,6 +215,37 @@ class DanskeCsvV1ParserTests(unittest.TestCase):
                 assert result.failure_reason is None
                 field, value = expected[label]
                 assert dict(result.records[0])[field] == value
+
+    def test_only_the_payloads_own_delimiter_ends_a_field_after_a_backslash(
+        self,
+    ) -> None:
+        # The other accepted delimiter is ordinary text inside a field, so a
+        # `\"` before it is still an escaped quote.
+        header = (b"Dato", b"Tekst", b"Bel\xf8b", b"Saldo", b"Status", b"Afstemt")
+        cases = {
+            b";": (b'K\xf8b \\"X\\", Y', 'Køb "X", Y'),
+            b",": (b'K\xf8b \\"X\\"; Y', 'Køb "X"; Y'),
+        }
+
+        for delimiter, (tekst, decoded) in cases.items():
+            with self.subTest(delimiter=delimiter):
+                record = (
+                    b"12.09.2026",
+                    tekst,
+                    b"-45,00",
+                    b"955,00",
+                    b"Udf\xf8rt",
+                    b"Nej",
+                )
+                payload = b"\r\n".join(
+                    delimiter.join(b'"%s"' % value for value in row)
+                    for row in (header, record)
+                )
+
+                result = PARSER.parse(payload)
+
+                assert result.failure_reason is None
+                assert dict(result.records[0])["Tekst"] == decoded
 
     def test_escaped_quotes_do_not_excuse_broken_quoting(self) -> None:
         broken = {
