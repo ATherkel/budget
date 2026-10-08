@@ -21,7 +21,7 @@ dev = [
     "complexipy>=4",
     "pytest>=8",
     "ruff>=0.16.10",
-    "ty>=0.0.1a20",
+    "ty>=0.0.84",
 ]
 
 [tool.uv]
