@@ -6,15 +6,25 @@ must hold, and `then` assigns exactly one outcome (`classification.md`,
 *Classification Rules*). File order never matters, so rules are keyed by ID.
 """
 
+import re
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from types import MappingProxyType
 from typing import Any, Literal
 
 from budget.inputs.document import ConfigurationError, file_problem, read_document
-from budget.inputs.fields import FieldRule
+from budget.inputs.fields import (
+    AMOUNT,
+    DATE,
+    TEXT,
+    FieldRule,
+    is_text,
+    key_problems,
+    one_of,
+    optional,
+)
 from budget.profiles import (
     ACCOUNTS_FILE_NAME,
     RULES_FILE_NAME,
@@ -65,20 +75,55 @@ class AssignAdjustment:
 type RuleOutcome = AssignCategory | ClaimTransfer | AssignAdjustment
 
 
-def _is_quoted_decimal(value: object) -> bool:
-    """Accept a quoted, finite decimal such as `"-1000.00"`."""
-    if not isinstance(value, str):
-        return False
+def _pattern_list(value: object) -> list[object] | None:
+    """Read one pattern or a list of them as a list; `None` for anything else."""
+    if isinstance(value, str):
+        return [value]
+    return list[object](value) if isinstance(value, list) else None
+
+
+def _is_patterns(value: object) -> bool:
+    """Accept a non-empty string, or a non-empty list of them."""
+    patterns = _pattern_list(value)
+    return bool(patterns) and all(map(is_text, patterns or ()))
+
+
+def _compiles(pattern: object) -> bool:
+    """Accept a regular expression as a rule applies it: case-insensitively."""
     try:
-        return Decimal(value).is_finite()
-    except InvalidOperation:
+        re.compile(str(pattern), re.IGNORECASE)
+    except re.error:
         return False
+    return True
 
 
-_AMOUNT = FieldRule(
-    _is_quoted_decimal, "must be a quoted decimal, got a number", required=False
+def _is_regexes(value: object) -> bool:
+    """Accept patterns that are each a valid regular expression."""
+    return _is_patterns(value) and all(map(_compiles, _pattern_list(value) or ()))
+
+
+_PATTERNS = FieldRule(
+    _is_patterns, "must be a non-empty string or a list of them", required=False
 )
-_AMOUNT_KEYS = ("amount_min", "amount_max")
+
+# Every condition a rule's `when` table may hold; each is optional.
+_WHEN_FIELDS: Mapping[str, FieldRule] = MappingProxyType(
+    {
+        "account": optional(TEXT),
+        "description_contains": _PATTERNS,
+        "description_starts_with": _PATTERNS,
+        "description_regex": FieldRule(
+            _is_regexes, "must hold valid regular expressions", required=False
+        ),
+        "amount_sign": optional(one_of("negative", "positive")),
+        "amount_min": optional(AMOUNT),
+        "amount_max": optional(AMOUNT),
+        "date_from": optional(DATE),
+        "date_to": optional(DATE),
+        "bank_category": optional(TEXT),
+        "bank_subcategory": optional(TEXT),
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -157,20 +202,25 @@ def _reference_problems(entry: Mapping[str, Any], known: KnownIds) -> list[str]:
     )
     problems = []
     for table, key, declared, file_name in references:
-        value = entry.get(table, {}).get(key)
-        if value is not None and value not in declared:
+        values = entry.get(table)
+        # A value of the wrong type has its own problem, and names nothing.
+        value = values.get(key) if isinstance(values, dict) else None
+        if is_text(value) and value not in declared:
             problems.append(f'{table}.{key} "{value}" is not in {file_name}')
     return problems
 
 
+def _when_problems(entry: Mapping[str, Any]) -> list[str]:
+    """List the problems in a rule's conditions."""
+    when = entry.get("when", {})
+    if not isinstance(when, dict):
+        return ["when must be a table of conditions"]
+    return key_problems(when, _WHEN_FIELDS, prefix="when.")
+
+
 def _rule_problems(entry: Mapping[str, Any], known: KnownIds) -> list[str]:
     """List one rule's problems, each naming the rule."""
-    when = entry.get("when", {})
-    problems = [
-        f"when.{key} {_AMOUNT.rule}"
-        for key in _AMOUNT_KEYS
-        if key in when and not _AMOUNT.accepts(when[key])
-    ]
+    problems = _when_problems(entry)
     problems.extend(_reference_problems(entry, known))
     return [
         file_problem(RULES_FILE_NAME, f'rule "{entry["id"]}": {problem}')
