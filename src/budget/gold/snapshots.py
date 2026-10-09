@@ -2,9 +2,9 @@
 """Monthly balance snapshots: one row per account per month of its managed period.
 
 The managed period runs from the month of the account's first booked
-transaction to the latest published month: the month of the latest
-`evidence_through` over every Gold account (`gold-contract.md`,
-*MonthlyBalanceSnapshot*).
+transaction to the latest published month, the month of the latest
+`evidence_through` over every Gold account, or to the month of `closed_on` if
+that is earlier (`gold-contract.md`, *MonthlyBalanceSnapshot*).
 """
 
 from collections.abc import Iterable, Sequence
@@ -39,9 +39,19 @@ def monthly_balances(
         snapshot
         for account in accounts
         for snapshot in _account_balances(
-            _history(account.account_id, transactions), ranges, exports, latest
+            _history(account.account_id, transactions),
+            ranges,
+            exports,
+            _last_managed(account, latest),
         )
     )
+
+
+def _last_managed(account: GoldAccount, latest: ReportingMonth) -> ReportingMonth:
+    """End at the latest published month, or earlier at the closing month."""
+    if account.closed_on is None:
+        return latest
+    return min(latest, ReportingMonth.of(account.closed_on))
 
 
 def _history(
@@ -57,7 +67,7 @@ def _account_balances(
     history: Sequence[GoldTransaction],
     ranges: Sequence[AccountEvidence],
     exports: Sequence[EvidenceExport],
-    latest: ReportingMonth,
+    last: ReportingMonth,
 ) -> list[MonthlyBalanceSnapshot]:
     """Snapshot one account; with no booked transaction it has no managed period."""
     if not history:
@@ -65,7 +75,7 @@ def _account_balances(
     evidence = BalanceEvidence.of(history, ranges, exports)
     return [
         _snapshot(month, history, evidence)
-        for month in months_through(evidence.opened, latest)
+        for month in months_through(evidence.opened, last)
     ]
 
 
