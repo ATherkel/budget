@@ -205,3 +205,16 @@ def test_an_export_produced_under_7_days_after_a_month_does_not_settle_it() -> N
 
     assert _settled(six_days_after)[APRIL] is False
     assert _settled(seven_days_after)[APRIL] is True
+
+
+def test_an_export_whose_range_misses_the_months_last_day_never_settles_it() -> None:
+    starts_after = EvidenceExport(
+        CURRENT, date(2026, 6, 30), date(2026, 5, 1), date(2026, 6, 30)
+    )
+    ends_before = EvidenceExport(
+        CURRENT, date(2026, 6, 30), COVERS_FROM, date(2026, 4, 29)
+    )
+
+    # Each was produced long after April ended, but cannot show its late bookings.
+    assert _settled(starts_after)[APRIL] is False
+    assert _settled(ends_before)[APRIL] is False
