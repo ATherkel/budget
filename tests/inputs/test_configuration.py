@@ -141,6 +141,24 @@ class RuleProblemTests(unittest.TestCase):
                     ),
                 )
 
+    def test_the_documented_error_examples_give_their_messages(self) -> None:
+        # operations.md, *Error reporting*: each problem in file order.
+        rules = RULES.replace('"-1000.00"', "-1000.00") + (
+            "\n[[rule]]\n"
+            'id = "r-mobilepay-netto"\n'
+            'when.description_contains = "MOBILEPAY NETTO"\n'
+            'then.category = "food-out"\n'
+        )
+
+        assert refusal(rules=rules) == (
+            rule_problem(
+                "r-furniture", "when.amount_max must be a quoted decimal, got a number"
+            ),
+            rule_problem(
+                "r-mobilepay-netto", 'then.category "food-out" is not in taxonomy.toml'
+            ),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
