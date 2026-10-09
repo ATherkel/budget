@@ -54,11 +54,23 @@ class ConfigurationSnapshot:
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _canonical_amount(amount: Decimal) -> str:
+    """Write an amount exactly, without trailing zeros or a negative zero.
+
+    Formatting a `Decimal` without a precision is exact, so no amount is
+    rounded to the decimal context's 28 digits: -1000.00 and -1000 are one
+    amount, and every two different amounts stay two.
+    """
+    text = format(amount, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return "0" if text == "-0" else text
+
+
 def _json_value(value: object) -> str:
     """Write a value JSON has no type for: a decimal amount or a date."""
     if isinstance(value, Decimal):
-        # -1000.00 and -1000.0 are one amount.
-        return format(value.normalize(), "f")
+        return _canonical_amount(value)
     if isinstance(value, date):
         return value.isoformat()
     message = f"no canonical form for {type(value).__name__}"

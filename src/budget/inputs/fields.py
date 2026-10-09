@@ -10,11 +10,13 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
 from typing import TypeGuard
 
 # A durable ID: lowercase ASCII words joined by single hyphens.
 _DURABLE_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+
+# An amount: an optional sign, digits, and optionally a point and more digits.
+_PLAIN_DECIMAL = re.compile(r"[+-]?[0-9]+(?:\.[0-9]+)?")
 
 
 @dataclass(frozen=True)
@@ -63,13 +65,12 @@ def one_of(*choices: str) -> FieldRule:
 
 
 def is_quoted_decimal(value: object) -> bool:
-    """Accept a quoted, finite decimal such as `"-1000.00"`."""
-    if not isinstance(value, str):
-        return False
-    try:
-        return Decimal(value).is_finite()
-    except InvalidOperation:
-        return False
+    """Accept a quoted decimal in plain notation, such as `"-1000.00"`.
+
+    No exponent, separator or padding: `Decimal` would read `"1e3"` or
+    `"1_000"`, but neither is how an amount is written.
+    """
+    return isinstance(value, str) and _PLAIN_DECIMAL.fullmatch(value) is not None
 
 
 def _amount_refusal(value: object) -> str:
