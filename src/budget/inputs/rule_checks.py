@@ -77,6 +77,12 @@ _WHEN_FIELDS: Mapping[str, FieldRule] = MappingProxyType(
     }
 )
 
+
+def _is_reason(value: object) -> bool:
+    """Accept a reason lineage can keep: text that is not only blanks."""
+    return isinstance(value, str) and value.strip() != ""
+
+
 # Every outcome a rule's `then` table may hold; it holds exactly one.
 _THEN_FIELDS: Mapping[str, FieldRule] = MappingProxyType(
     {
@@ -84,7 +90,7 @@ _THEN_FIELDS: Mapping[str, FieldRule] = MappingProxyType(
         "transfer_claim": FieldRule(
             lambda value: value is True, "must be true", required=False
         ),
-        "adjustment": optional(TEXT),
+        "adjustment": FieldRule(_is_reason, "must give a reason", required=False),
     }
 )
 _ONE_OUTCOME = f"then must hold exactly one of {', '.join(_THEN_FIELDS)}"
