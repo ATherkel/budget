@@ -65,7 +65,18 @@ def test_no_contract_record_declares_a_float() -> None:
     assert _fields_built_from(lambda part: part is float) == []
 
 
-def test_no_contract_record_declares_a_sequence() -> None:
+def _mutable_collection(part: object) -> bool:
+    """Whether `part` is a collection other than a tuple, such as `list[str]`."""
+    origin = get_origin(part) or part
+    return (
+        isinstance(origin, type)
+        and issubclass(origin, abc.Collection)
+        # A string is itself a collection, of characters.
+        and not issubclass(origin, (tuple, str, bytes))
+    )
+
+
+def test_every_contract_record_collection_is_a_tuple() -> None:
     # A record holding a list can change after it is made and cannot be hashed,
     # so `Counter` cannot compare it; `tuple[str, ...]` refuses a list.
-    assert _fields_built_from(lambda part: get_origin(part) is abc.Sequence) == []
+    assert _fields_built_from(_mutable_collection) == []
