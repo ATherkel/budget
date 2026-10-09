@@ -18,7 +18,12 @@ def build(
     categories: Sequence[GoldCategory],
     publication: GoldPublication,
 ) -> GoldResult:
-    """Derive Gold from a Silver result, the account registry and the taxonomy."""
+    """Derive Gold from a Silver result, the account registry and the taxonomy.
+
+    Nothing is classified yet: every transaction is `unknown`, and no category
+    allocation, lineage or review item is published. The result is bound to
+    `publication`, which the caller supplies.
+    """
     gold_accounts = tuple(
         _account(account, silver.account_evidence) for account in accounts.values()
     )

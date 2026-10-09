@@ -30,7 +30,11 @@ def monthly_balances(
 ) -> tuple[MonthlyBalanceSnapshot, ...]:
     """Snapshot every account for every month of its managed period."""
     latest = max(
-        (ReportingMonth.of(a.evidence_through) for a in accounts if a.evidence_through),
+        (
+            ReportingMonth.of(a.evidence_through)
+            for a in accounts
+            if a.evidence_through is not None
+        ),
         default=None,
     )
     if latest is None:

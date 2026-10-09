@@ -30,8 +30,6 @@ def months_through(
 
 
 def _following(month: ReportingMonth) -> ReportingMonth:
-    # Months counted from 1 become 0-11 past each year's December.
-    year, index = divmod(
-        month.year * _MONTHS_IN_A_YEAR + month.month, _MONTHS_IN_A_YEAR
-    )
-    return ReportingMonth(year, index + 1)
+    if month.month < _MONTHS_IN_A_YEAR:
+        return ReportingMonth(month.year, month.month + 1)
+    return ReportingMonth(month.year + 1, 1)
