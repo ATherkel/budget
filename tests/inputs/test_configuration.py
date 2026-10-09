@@ -129,6 +129,99 @@ def rule_problem(rule_id: str, text: str) -> str:
     return f'rules.toml: rule "{rule_id}": {text}'
 
 
+# The documented examples again, with the same meaning in another form: tables
+# and keys reordered, inline tables, a single pattern as a list of one, a list's
+# patterns reordered, a default priority spelt out, and an amount's trailing
+# zero dropped.
+REWRITTEN_ACCOUNTS = """\
+format = 1
+[account.joint-savings]
+source_format = "danske-csv-v1"
+currency = "DKK"
+ownership_scope = "household"
+account_type = "savings"
+display_name = "Joint savings"
+
+[account.joint-current]
+bank_account_number = "1234567890"
+display_name = "Joint current"
+account_type = "current"
+ownership_scope = "household"
+currency = "DKK"
+source_format = "danske-csv-v1"
+"""
+REWRITTEN_TAXONOMY = """\
+format = 1
+category.furniture = { group = "home", name = "Furniture" }
+category.eating-out = { name = "Eating out", group = "food" }
+category.groceries = { group = "food", name = "Groceries" }
+group.home = { direction = "expense", name = "Home" }
+group.food = { name = "Food", direction = "expense" }
+"""
+REWRITTEN_RULES = """\
+format = 1
+
+[[rule]]
+id = "r-interest-correction"
+then = { adjustment = "Bank's interest correction" }
+when = { description_starts_with = "RENTEKORR", account = "joint-savings" }
+
+[[rule]]
+priority = -10
+id = "r-bank-groceries"
+then.category = "groceries"
+when.bank_category = "Groceries"
+
+[[rule]]
+id = "r-savings-transfer"
+when.description_contains = ["FROM CURRENT", "TO SAVINGS"]
+then.transfer_claim = true
+
+[[rule]]
+id = "r-furniture"
+when = { amount_max = "-1000.0", description_contains = ["IKEA"] }
+priority = 10
+then.category = "furniture"
+
+[[rule]]
+then.category = "groceries"
+when.description_contains = ["NETTO"]
+id = "r-netto"
+priority = 0
+"""
+
+
+class FingerprintTests(unittest.TestCase):
+    def test_the_same_meaning_in_another_form_has_the_same_fingerprint(
+        self,
+    ) -> None:
+        documented = configuration()
+        rewritten = configuration(
+            REWRITTEN_ACCOUNTS, REWRITTEN_TAXONOMY, REWRITTEN_RULES
+        )
+
+        assert rewritten.fingerprint == documented.fingerprint
+        assert len(documented.fingerprint) == 64
+        assert set(documented.fingerprint) <= set("0123456789abcdef")
+
+    def test_any_change_of_meaning_changes_the_fingerprint(self) -> None:
+        documented = configuration().fingerprint
+        for accounts, taxonomy, rules in (
+            (ACCOUNTS.replace('"Joint current"', '"Shared current"'), TAXONOMY, RULES),
+            (ACCOUNTS.replace('"1234567890"', '"1234567891"'), TAXONOMY, RULES),
+            (ACCOUNTS, TAXONOMY.replace('"Eating out"', '"Restaurants"'), RULES),
+            (ACCOUNTS, TAXONOMY.replace('group = "home"', 'group = "food"'), RULES),
+            (ACCOUNTS, TAXONOMY.replace('"expense"', '"income"'), RULES),
+            (ACCOUNTS, TAXONOMY, RULES.replace("priority = 10", "priority = 11")),
+            (ACCOUNTS, TAXONOMY, RULES.replace('"NETTO"', '"NETTO 0412"')),
+            (ACCOUNTS, TAXONOMY, RULES.replace('"-1000.00"', '"-999.99"')),
+            (ACCOUNTS, TAXONOMY, RULES.replace('"groceries"', '"eating-out"', 1)),
+        ):
+            with self.subTest(accounts=accounts, taxonomy=taxonomy, rules=rules):
+                changed = configuration(accounts, taxonomy, rules).fingerprint
+                assert changed != documented
+
+
 class EveryFileTests(unittest.TestCase):
     def test_every_file_is_judged_before_stopping(self) -> None:
         # A refused file declares nothing a rule can be checked against, so no

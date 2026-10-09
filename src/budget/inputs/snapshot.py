@@ -24,6 +24,11 @@ class ConfigurationSnapshot:
     taxonomy: Taxonomy
     rules: Mapping[str, Rule]
 
+    @property
+    def fingerprint(self) -> str:
+        """The SHA-256 of the snapshot's canonical content, in hexadecimal."""
+        raise NotImplementedError
+
 
 def _attempt[T](load: Callable[[], T], problems: list[str]) -> T | None:
     """Load one file, or keep its problems and give nothing."""
