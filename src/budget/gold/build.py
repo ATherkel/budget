@@ -35,6 +35,6 @@ def _account(account: Account, ranges: Sequence[AccountEvidence]) -> GoldAccount
         ownership_scope=account.ownership_scope,
         currency=account.currency,
         closed_on=account.closed_on,
-        coverage_start=min(r.covers_from for r in own),
-        evidence_through=max(r.covers_through for r in own),
+        coverage_start=min((r.covers_from for r in own), default=None),
+        evidence_through=max((r.covers_through for r in own), default=None),
     )
