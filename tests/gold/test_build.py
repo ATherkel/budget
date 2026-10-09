@@ -318,3 +318,30 @@ def test_a_quiet_accounts_repeated_export_settles_its_months() -> None:
     # Produced three days after January, the first export settles nothing.
     assert settled(first) == [False, False]
     assert settled(first, same_bytes) == [True, True, False]
+
+
+def test_the_managed_period_runs_across_a_year_end() -> None:
+    december = date(2025, 12, 1)
+    through = date(2026, 2, 10)
+    silver = replace(
+        SILVER,
+        transactions=(
+            silver_transaction("dec", CURRENT, date(2025, 12, 15), "-5.00", "95.00"),
+        ),
+        account_evidence=(AccountEvidence(CURRENT, december, through),),
+        evidence_exports=(EvidenceExport(CURRENT, through, december, through),),
+    )
+
+    rows = _rows(build_from(silver), CURRENT)
+
+    assert rows == [
+        (
+            ReportingMonth(2025, 12),
+            "partial",
+            Decimal("100.00"),
+            Decimal("95.00"),
+            True,
+        ),
+        (ReportingMonth(2026, 1), "complete", Decimal("95.00"), Decimal("95.00"), True),
+        (ReportingMonth(2026, 2), "partial", None, None, False),
+    ]
