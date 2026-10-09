@@ -149,7 +149,8 @@ includes that day. The runs counted are exactly those behind the evidence
 ranges: admitted runs, and `repeat` runs of an admitted payload. A quiet
 account whose monthly export repeats the same bytes therefore settles its
 months like any other. Silver passes each counted run's export date and range
-on, so Gold never reads Bronze. An export whose range starts after the month
+on as an `EvidenceExport` ([`silver-layer.md`](silver-layer.md#evidence-ranges)),
+so Gold never reads Bronze. An export whose range starts after the month
 cannot show its late bookings, however late it was produced. The flag depends
 only on recorded export dates and ranges, so a rebuild of the same recipe
 gives the same flags. Analytics combines it with the reference date to decide
