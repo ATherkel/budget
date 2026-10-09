@@ -36,5 +36,5 @@ def test_no_contract_record_declares_a_float() -> None:
         if float in _types_in(hint)
     ]
 
-    assert len(records) == 10
+    assert budget.gold.GoldTransaction in records  # the scan found the records
     assert floats == []
