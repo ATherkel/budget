@@ -559,6 +559,11 @@ decisions.jsonl: entry 7 (d-0007): targets a transaction already decided by d-00
 3 configuration errors. Nothing was built.
 ```
 
+A file that is itself refused declares nothing to check against: until
+`taxonomy.toml` loads, no rule's `then.category` is checked against it, and
+until `accounts.toml` loads, no rule's `when.account` is. Fixing one file can
+therefore reveal problems in another.
+
 ## Completeness Outputs
 
 `status` shows, and `import`, `rebuild` and `decide` end with, the two
