@@ -20,6 +20,7 @@ from budget.gold import (
     ReportingMonth,
 )
 from budget.inputs import Account
+from budget.silver import EvidenceExport
 from tests.gold.worked_example import (
     ACCOUNTS,
     CATEGORIES,
@@ -30,6 +31,7 @@ from tests.gold.worked_example import (
     TRANSACTIONS,
 )
 from tests.gold.worked_silver import (
+    COVERS_FROM,
     REGISTRY,
     SILVER,
     build_from,
@@ -178,3 +180,28 @@ def test_the_worked_examples_snapshots_come_out_exactly() -> None:
 
     # The only export, dated 2026-05-08, settles every month through April.
     assert Counter(_all_snapshots(result)) == Counter(MONTHLY_BALANCES)
+
+
+APRIL = ReportingMonth(2026, 4)
+
+
+def _settled(*exports: EvidenceExport) -> dict[ReportingMonth, bool]:
+    """Which of joint-current's months these exports settle."""
+    result = build_from(replace(SILVER, evidence_exports=exports))
+    return {
+        s.month: s.late_bookings_settled
+        for s in _all_snapshots(result)
+        if s.account_id == CURRENT
+    }
+
+
+def test_an_export_produced_under_7_days_after_a_month_does_not_settle_it() -> None:
+    six_days_after = EvidenceExport(
+        CURRENT, date(2026, 5, 6), COVERS_FROM, date(2026, 5, 6)
+    )
+    seven_days_after = EvidenceExport(
+        CURRENT, date(2026, 5, 7), COVERS_FROM, date(2026, 5, 7)
+    )
+
+    assert _settled(six_days_after)[APRIL] is False
+    assert _settled(seven_days_after)[APRIL] is True
