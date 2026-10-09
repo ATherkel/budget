@@ -204,6 +204,18 @@ class FingerprintTests(unittest.TestCase):
         assert len(documented.fingerprint) == 64
         assert set(documented.fingerprint) <= set("0123456789abcdef")
 
+    def test_an_amount_is_fingerprinted_by_its_exact_value(self) -> None:
+        def fingerprint(amount: str) -> str:
+            rules = RULES.replace('"-1000.00"', f'"{amount}"')
+            return configuration(rules=rules).fingerprint
+
+        for first, second in (("-1000.00", "-1000"), ("0.00", "-0"), ("+5", "5.0")):
+            with self.subTest(same=(first, second)):
+                assert fingerprint(first) == fingerprint(second)
+        # 29 significant digits: one more than Python's default decimal context.
+        long = "1234567890123456789012345678"
+        assert fingerprint(f"{long}.1") != fingerprint(f"{long}.2")
+
     def test_any_change_of_meaning_changes_the_fingerprint(self) -> None:
         documented = configuration().fingerprint
         for accounts, taxonomy, rules in (
@@ -374,6 +386,12 @@ class RuleProblemTests(unittest.TestCase):
             ('amount_sign = "minus"', "amount_sign must be one of negative, positive"),
             ('amount_min = "ten"', f"amount_min {amount}"),
             ('amount_min = "NaN"', f"amount_min {amount}"),
+            # Only plain decimal notation, as the bank writes amounts.
+            ('amount_min = "1e3"', f"amount_min {amount}"),
+            ('amount_min = "1e1000000"', f"amount_min {amount}"),
+            ('amount_min = "1_000"', f"amount_min {amount}"),
+            ('amount_min = " -1000.00"', f"amount_min {amount}"),
+            ('amount_min = "-1000."', f"amount_min {amount}"),
             ('date_from = "2026-01-01"', f"date_from {day}"),
             ("date_to = 2026-01-31T00:00:00", f"date_to {day}"),
             ('bank_category = ""', f"bank_category {text}"),
