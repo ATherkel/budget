@@ -1,5 +1,8 @@
 # Copyright 2026 Therkel
-"""Gold transactions: Silver's booked transactions in each account's order."""
+"""Gold transactions: Silver's booked transactions in each account's order.
+
+Pending and cancelled rows stay Silver provenance (Gold contract, invariant 2).
+"""
 
 from collections.abc import Iterable, Sequence
 from itertools import groupby
@@ -11,7 +14,8 @@ from budget.silver.models import Transaction
 def gold_transactions(silver: Iterable[Transaction]) -> tuple[GoldTransaction, ...]:
     """Order each account's transactions by date, then by Silver's day_sequence."""
     ordered = sorted(
-        silver, key=lambda t: (t.account_id, t.transaction_date, t.day_sequence)
+        (t for t in silver if t.booking_status == "booked"),
+        key=lambda t: (t.account_id, t.transaction_date, t.day_sequence),
     )
     return tuple(
         gold
