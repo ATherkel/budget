@@ -14,12 +14,18 @@ from decimal import Decimal
 from types import MappingProxyType
 from typing import Any, Literal
 
-from budget.inputs.document import ConfigurationError, file_problem, read_document
+from budget.inputs.document import (
+    ConfigurationError,
+    file_problem,
+    read_document,
+    unknown_top_level_keys,
+)
 from budget.inputs.fields import (
     AMOUNT,
     DATE,
     TEXT,
     FieldRule,
+    is_durable_id,
     is_text,
     key_problems,
     one_of,
@@ -138,6 +144,25 @@ _THEN_FIELDS: Mapping[str, FieldRule] = MappingProxyType(
 _ONE_OUTCOME = f"then must hold exactly one of {', '.join(_THEN_FIELDS)}"
 
 
+def _is_integer(value: object) -> bool:
+    """Accept a TOML integer; `bool` is a subclass of `int` in Python, and is not."""
+    return type(value) is int
+
+
+# A key whose value is judged apart, by `_when_problems` or `_then_problems`.
+_JUDGED_APART = FieldRule(lambda _: True, "", required=False)
+
+# Every key a `[[rule]]` block may carry.
+_RULE_FIELDS: Mapping[str, FieldRule] = MappingProxyType(
+    {
+        "id": TEXT,
+        "priority": FieldRule(_is_integer, "must be an integer", required=False),
+        "when": _JUDGED_APART,
+        "then": _JUDGED_APART,
+    }
+)
+
+
 @dataclass(frozen=True)
 class Rule:
     """One `[[rule]]` block."""
@@ -241,15 +266,57 @@ def _then_problems(entry: Mapping[str, Any]) -> list[str]:
     return problems
 
 
-def _rule_problems(entry: Mapping[str, Any], known: KnownIds) -> list[str]:
-    """List one rule's problems, each naming the rule."""
-    problems = _when_problems(entry)
+def _id_problems(rule_id: object, earlier: Collection[str]) -> list[str]:
+    """Name an ID of the wrong shape, or one an earlier rule already uses.
+
+    An ID that is not a string at all is a key problem of its own.
+    """
+    if not is_text(rule_id):
+        return []
+    if not is_durable_id(rule_id):
+        return ["the ID must be lowercase words joined by hyphens, such as r-netto"]
+    if rule_id in earlier:
+        return ["the ID is already used by an earlier rule"]
+    return []
+
+
+def _rule_problems(
+    entry: object, known: KnownIds, earlier: Collection[str]
+) -> list[str]:
+    """List one rule's problems: its ID, its keys, then its tables."""
+    if not isinstance(entry, dict):
+        return ["must be a table of keys"]
+    problems = _id_problems(entry.get("id"), earlier)
+    problems.extend(key_problems(entry, _RULE_FIELDS))
+    problems.extend(_when_problems(entry))
     problems.extend(_then_problems(entry))
     problems.extend(_reference_problems(entry, known))
-    return [
-        file_problem(RULES_FILE_NAME, f'rule "{entry["id"]}": {problem}')
-        for problem in problems
-    ]
+    return problems
+
+
+def _rule_id(entry: object) -> str | None:
+    """Return the rule's ID, if it has a usable one."""
+    rule_id = entry.get("id") if isinstance(entry, dict) else None
+    return rule_id if is_text(rule_id) else None
+
+
+def _rules_problems(entries: list[object], known: KnownIds) -> list[str]:
+    """List every rule's problems in file order, each naming its rule.
+
+    A rule without a usable ID is named by its position, counting from 1.
+    """
+    problems = []
+    earlier: set[str] = set()
+    for position, entry in enumerate(entries, start=1):
+        rule_id = _rule_id(entry)
+        label = f"rule {position}" if rule_id is None else f'rule "{rule_id}"'
+        problems.extend(
+            file_problem(RULES_FILE_NAME, f"{label}: {problem}")
+            for problem in _rule_problems(entry, known, earlier)
+        )
+        if rule_id is not None:
+            earlier.add(rule_id)
+    return problems
 
 
 def load_rules(profile: Profile, known: KnownIds) -> Mapping[str, Rule]:
@@ -258,10 +325,14 @@ def load_rules(profile: Profile, known: KnownIds) -> Mapping[str, Rule]:
     A rule may name only the accounts and categories `known` holds.
     """
     document = read_document(profile.input_file(RULES_FILE_NAME), RULES_FILE_NAME)
+    problems = unknown_top_level_keys(document, RULES_FILE_NAME, ("rule",))
     entries = document.get("rule", [])
-    problems = [
-        problem for entry in entries for problem in _rule_problems(entry, known)
-    ]
+    if not isinstance(entries, list):
+        problems.append(
+            file_problem(RULES_FILE_NAME, "rule must hold one [[rule]] block per rule")
+        )
+        entries = []
+    problems.extend(_rules_problems(entries, known))
     if problems:
         raise ConfigurationError(tuple(problems))
     return MappingProxyType({rule.rule_id: rule for rule in map(_rule, entries)})
