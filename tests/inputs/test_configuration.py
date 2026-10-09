@@ -205,6 +205,24 @@ class RuleProblemTests(unittest.TestCase):
             rule_problem("r-bank-groceries", 'unknown key "when.bank_label"'),
         )
 
+    def test_then_holds_exactly_one_outcome(self) -> None:
+        one = "then must hold exactly one of category, transfer_claim, adjustment"
+        for lines, expected in (
+            ("", (one,)),
+            ("then = {}", (one,)),
+            ('then = "groceries"', (one,)),
+            ('then.category = "groceries"\nthen.transfer_claim = true', (one,)),
+            ('then.counterpart = "x"', ('unknown key "then.counterpart"', one)),
+            ("then.transfer_claim = false", ("then.transfer_claim must be true",)),
+            ('then.adjustment = ""', ("then.adjustment must be a non-empty string",)),
+            ("then.category = 5", ("then.category must be a non-empty string",)),
+        ):
+            rules = f'format = 1\n[[rule]]\nid = "r-netto"\n{lines}\n'
+            with self.subTest(lines=lines):
+                assert refusal(rules=rules) == tuple(
+                    rule_problem("r-netto", problem) for problem in expected
+                )
+
     def test_when_is_a_table_of_conditions(self) -> None:
         rules = 'format = 1\n[[rule]]\nid = "r-netto"\nwhen = "NETTO"\n'
         rules += 'then.adjustment = "x"\n'
