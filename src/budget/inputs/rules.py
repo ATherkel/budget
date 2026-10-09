@@ -225,10 +225,14 @@ def _rule(entry: Mapping[str, Any]) -> Rule:
 
 @dataclass(frozen=True)
 class KnownIds:
-    """The IDs other input files declare, which a rule may name."""
+    """The IDs other input files declare, which a rule may name.
 
-    accounts: Collection[str]
-    categories: Collection[str]
+    `None` stands for a file that was itself refused: it declares nothing a
+    rule can be checked against, so no reference into it is judged.
+    """
+
+    accounts: Collection[str] | None
+    categories: Collection[str] | None
 
 
 def _reference_problems(entry: Mapping[str, Any], known: KnownIds) -> list[str]:
@@ -242,7 +246,7 @@ def _reference_problems(entry: Mapping[str, Any], known: KnownIds) -> list[str]:
         values = entry.get(table)
         # A value of the wrong type has its own problem, and names nothing.
         value = values.get(key) if isinstance(values, dict) else None
-        if is_text(value) and value not in declared:
+        if declared is not None and is_text(value) and value not in declared:
             problems.append(f'{table}.{key} "{value}" is not in {file_name}')
     return problems
 
