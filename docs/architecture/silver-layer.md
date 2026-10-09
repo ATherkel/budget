@@ -117,7 +117,7 @@ account with no admitted import run produces no `AccountEvidence`, and
 `GoldAccount.coverage_start` and `evidence_through` are null.
 
 Silver also passes on each run it counted here as an `EvidenceExport`: its
-account, `exported_on`, `covers_from` and `covers_through`. Gold settles late
+`import_run_id`, account, `exported_on`, `covers_from` and `covers_through`. Gold settles late
 bookings from them (`gold-layer.md`, *Late bookings settled*), so it never
 reads Bronze. `ImportRunResult` cannot serve, because Silver produces it only
 for `stored` runs.
@@ -157,6 +157,7 @@ AccountEvidence(                # one evidence range; see Evidence Ranges
 )
 
 EvidenceExport(                 # one import run counted in an evidence range
+    import_run_id: str,         # the counted run (Bronze)
     account_id: str,            # the account the run declared (Bronze)
     exported_on: date,          # the run's export date (Bronze)
     covers_from: date,          # the run's declared range, inclusive (Bronze)
