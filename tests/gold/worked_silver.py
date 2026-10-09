@@ -107,7 +107,9 @@ SILVER = SilverResult(
         for account_id in (CURRENT, SAVINGS)
     ),
     evidence_exports=tuple(
-        EvidenceExport(account_id, EXPORTED_ON, COVERS_FROM, EXPORTED_ON)
+        EvidenceExport(
+            f"run-{account_id}", account_id, EXPORTED_ON, COVERS_FROM, EXPORTED_ON
+        )
         for account_id in (CURRENT, SAVINGS)
     ),
     import_run_results=(),

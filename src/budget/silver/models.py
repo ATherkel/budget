@@ -81,6 +81,7 @@ class EvidenceExport:
     Admitted runs count, and so do `repeat` runs of an admitted payload.
     """
 
+    import_run_id: str
     account_id: str
     exported_on: date
     covers_from: date

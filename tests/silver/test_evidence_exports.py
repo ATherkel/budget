@@ -35,12 +35,14 @@ def test_exactly_the_runs_behind_the_evidence_ranges_are_passed_on() -> None:
     # The quarantined run and its repeat are no evidence, so neither is passed on.
     assert result.evidence_exports == (
         EvidenceExport(
+            import_run_id="run-a",
             account_id=ACCOUNT,
             exported_on=date(2026, 3, 5),
             covers_from=date(2026, 3, 2),
             covers_through=date(2026, 3, 5),
         ),
         EvidenceExport(
+            import_run_id="run-a2",
             account_id=ACCOUNT,
             exported_on=date(2026, 4, 10),
             covers_from=date(2026, 3, 2),

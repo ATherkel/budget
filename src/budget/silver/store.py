@@ -544,6 +544,7 @@ def _range(row: sqlite3.Row) -> AccountEvidence:
 
 def _export(row: sqlite3.Row) -> EvidenceExport:
     return EvidenceExport(
+        import_run_id="",
         account_id=row["account_id"],
         exported_on=date.fromisoformat(row["exported_on"]),
         covers_from=date.fromisoformat(row["covers_from"]),

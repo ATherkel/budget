@@ -214,6 +214,7 @@ def _evidence_exports(counted: Iterable[ImportRun]) -> tuple[EvidenceExport, ...
         sorted(
             (
                 EvidenceExport(
+                    import_run_id="",
                     account_id=run.declared_account_id,
                     exported_on=run.exported_on,
                     covers_from=run.covers_from,

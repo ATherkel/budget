@@ -198,10 +198,10 @@ def _settled(*exports: EvidenceExport) -> dict[ReportingMonth, bool]:
 
 def test_an_export_produced_under_7_days_after_a_month_does_not_settle_it() -> None:
     six_days_after = EvidenceExport(
-        CURRENT, date(2026, 5, 6), COVERS_FROM, date(2026, 5, 6)
+        "run-6", CURRENT, date(2026, 5, 6), COVERS_FROM, date(2026, 5, 6)
     )
     seven_days_after = EvidenceExport(
-        CURRENT, date(2026, 5, 7), COVERS_FROM, date(2026, 5, 7)
+        "run-7", CURRENT, date(2026, 5, 7), COVERS_FROM, date(2026, 5, 7)
     )
 
     assert _settled(six_days_after)[APRIL] is False
@@ -210,10 +210,10 @@ def test_an_export_produced_under_7_days_after_a_month_does_not_settle_it() -> N
 
 def test_an_export_whose_range_misses_the_months_last_day_never_settles_it() -> None:
     starts_after = EvidenceExport(
-        CURRENT, date(2026, 6, 30), date(2026, 5, 1), date(2026, 6, 30)
+        "run-may", CURRENT, date(2026, 6, 30), date(2026, 5, 1), date(2026, 6, 30)
     )
     ends_before = EvidenceExport(
-        CURRENT, date(2026, 6, 30), COVERS_FROM, date(2026, 4, 29)
+        "run-april", CURRENT, date(2026, 6, 30), COVERS_FROM, date(2026, 4, 29)
     )
 
     # Each was produced long after April ended, but cannot show its late bookings.
@@ -250,8 +250,12 @@ def test_an_account_whose_exports_lag_still_has_a_row_for_each_later_month() -> 
             AccountEvidence(SAVINGS, COVERS_FROM, date(2026, 3, 15)),
         ),
         evidence_exports=(
-            EvidenceExport(CURRENT, date(2026, 5, 8), COVERS_FROM, date(2026, 5, 8)),
-            EvidenceExport(SAVINGS, date(2026, 3, 15), COVERS_FROM, date(2026, 3, 15)),
+            EvidenceExport(
+                "run-c", CURRENT, date(2026, 5, 8), COVERS_FROM, date(2026, 5, 8)
+            ),
+            EvidenceExport(
+                "run-s", SAVINGS, date(2026, 3, 15), COVERS_FROM, date(2026, 3, 15)
+            ),
         ),
     )
 
@@ -329,7 +333,9 @@ def test_the_managed_period_runs_across_a_year_end() -> None:
             silver_transaction("dec", CURRENT, date(2025, 12, 15), "-5.00", "95.00"),
         ),
         account_evidence=(AccountEvidence(CURRENT, december, through),),
-        evidence_exports=(EvidenceExport(CURRENT, through, december, through),),
+        evidence_exports=(
+            EvidenceExport("run-dec", CURRENT, through, december, through),
+        ),
     )
 
     rows = _rows(build_from(silver), CURRENT)
