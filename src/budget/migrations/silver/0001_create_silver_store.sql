@@ -77,6 +77,16 @@ CREATE TABLE account_evidence (
     covers_through TEXT NOT NULL
 ) STRICT;
 
+-- Each import run counted in an account's evidence, with its export date and
+-- declared range, so Gold can settle late bookings without reading Bronze.
+CREATE TABLE evidence_exports (
+    ordinal INTEGER PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    exported_on TEXT NOT NULL,
+    covers_from TEXT NOT NULL,
+    covers_through TEXT NOT NULL
+) STRICT;
+
 CREATE TABLE import_run_results (
     ordinal INTEGER PRIMARY KEY,
     import_run_id TEXT NOT NULL UNIQUE,

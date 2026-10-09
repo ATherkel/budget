@@ -107,6 +107,7 @@ _COUNT_DERIVED_ROWS = (
     "SELECT COUNT(*) FROM unbooked_records",
     "SELECT COUNT(*) FROM balance_observations",
     "SELECT COUNT(*) FROM account_evidence",
+    "SELECT COUNT(*) FROM evidence_exports",
     "SELECT COUNT(*) FROM import_run_results",
     "SELECT COUNT(*) FROM validation_errors",
     "SELECT COUNT(*) FROM import_run_result_review_items",
