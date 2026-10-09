@@ -10,6 +10,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import date
+from decimal import Decimal
 
 from budget.gold import GoldAccount, GoldResult, GoldTransaction
 from budget.inputs import Account
@@ -112,3 +113,24 @@ def test_the_worked_examples_balance_checks_come_out_exactly() -> None:
     assert {t.transaction_id: t.balance_check for t in _all_transactions(result)} == {
         t.transaction_id: t.balance_check for t in TRANSACTIONS
     }
+
+
+def test_a_missing_balance_is_bridged_but_never_filled_in() -> None:
+    stated = (
+        silver_transaction("a", CURRENT, date(2026, 1, 5), "-5.00", None),
+        silver_transaction("b", CURRENT, date(2026, 1, 6), "-10.00", "100.00"),
+        silver_transaction("c", CURRENT, date(2026, 1, 7), "-10.00", None),
+        silver_transaction("d", CURRENT, date(2026, 1, 8), "-10.00", "80.00"),
+        silver_transaction("e", CURRENT, date(2026, 1, 9), "-10.00", "75.00"),
+    )
+
+    found = _all_transactions(build_from(replace(SILVER, transactions=stated)))
+
+    assert [(t.transaction_id, t.balance_after, t.balance_check) for t in found] == [
+        ("a", None, "missing_balance"),
+        ("b", Decimal("100.00"), "opening"),
+        ("c", None, "missing_balance"),
+        # 100.00 - 10.00 - 10.00, bridging c's missing balance
+        ("d", Decimal("80.00"), "consistent"),
+        ("e", Decimal("75.00"), "break"),
+    ]
