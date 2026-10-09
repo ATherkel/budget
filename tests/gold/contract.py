@@ -9,6 +9,7 @@ records, so the tests compare them as multisets.
 
 from collections import Counter
 from datetime import date
+from decimal import Decimal
 
 from budget.gold import GoldRepository, ReportingMonth
 from tests.gold.worked_example import (
@@ -101,3 +102,24 @@ class GoldRepositoryContract:
         self, repository: GoldRepository
     ) -> None:
         assert repository.publication() == PUBLICATION
+
+    def test_every_amount_and_balance_is_a_decimal(
+        self, repository: GoldRepository
+    ) -> None:
+        start, end = date(2026, 1, 1), date(2026, 5, 31)
+        transactions = repository.transactions(start_date=start, end_date=end)
+        allocations = repository.category_allocations(start_date=start, end_date=end)
+        snapshots = repository.monthly_balances(
+            start_month=ReportingMonth.of(start), end_month=ReportingMonth.of(end)
+        )
+        money = [
+            *(t.amount for t in transactions),
+            *(t.balance_after for t in transactions),
+            *(a.amount for a in allocations),
+            *(s.opening_balance for s in snapshots),
+            *(s.closing_balance for s in snapshots),
+        ]
+
+        # A float equals the Decimal of the same value, so the record comparisons
+        # above would not notice one; only its type does.
+        assert {type(value) for value in money if value is not None} == {Decimal}
