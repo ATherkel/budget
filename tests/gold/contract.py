@@ -12,7 +12,10 @@ from datetime import date
 
 from budget.gold import GoldRepository, ReportingMonth
 from tests.gold.worked_example import (
+    ACCOUNTS,
+    CATEGORIES,
     CURRENT,
+    PUBLICATION,
     SAVINGS,
     example_allocations,
     example_balances,
@@ -87,3 +90,14 @@ class GoldRepositoryContract:
         )
         # The latest published month is May, so June has no row: no data, not zero.
         assert Counter(current_from_april) == Counter(example_balances(CURRENT, 4, 5))
+
+    def test_the_dimensions_are_the_whole_example(
+        self, repository: GoldRepository
+    ) -> None:
+        assert Counter(repository.accounts()) == Counter(ACCOUNTS)
+        assert Counter(repository.categories()) == Counter(CATEGORIES)
+
+    def test_the_publication_is_the_one_the_records_belong_to(
+        self, repository: GoldRepository
+    ) -> None:
+        assert repository.publication() == PUBLICATION

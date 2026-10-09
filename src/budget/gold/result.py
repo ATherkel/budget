@@ -59,11 +59,11 @@ class GoldResult:
 
     def accounts(self) -> Sequence[GoldAccount]:
         """Return every account inside the reporting boundary."""
-        return ()
+        return self._records.accounts
 
     def categories(self) -> Sequence[GoldCategory]:
         """Return every assignable category."""
-        return ()
+        return self._records.categories
 
     def transactions(
         self,
