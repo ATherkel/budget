@@ -351,3 +351,38 @@ def test_the_managed_period_runs_across_a_year_end() -> None:
         (ReportingMonth(2026, 1), "complete", Decimal("95.00"), Decimal("95.00"), True),
         (ReportingMonth(2026, 2), "partial", None, None, False),
     ]
+
+
+def test_a_link_beside_a_missing_balance_leaves_its_months_partial() -> None:
+    january = date(2026, 1, 1)
+    april_end = date(2026, 4, 30)
+    silver = replace(
+        SILVER,
+        transactions=(
+            silver_transaction("jan", CURRENT, date(2026, 1, 10), "100.00", "100.00"),
+            silver_transaction("feb", CURRENT, date(2026, 2, 10), "-10.00", None),
+            silver_transaction("mar", CURRENT, date(2026, 3, 10), "-10.00", "80.00"),
+            silver_transaction("apr", CURRENT, date(2026, 4, 10), "-5.00", "75.00"),
+        ),
+        account_evidence=(AccountEvidence(CURRENT, january, april_end),),
+        evidence_exports=(
+            EvidenceExport("run-apr", CURRENT, april_end, january, april_end),
+        ),
+    )
+
+    result = build_from(silver)
+
+    # March's check bridges February's blank and is consistent, but neither
+    # link beside the blank is verified, so February and March stay partial.
+    assert [t.balance_check for t in _all_transactions(result)] == [
+        "opening",
+        "missing_balance",
+        "consistent",
+        "consistent",
+    ]
+    assert [(row[0], row[1]) for row in _rows(result, CURRENT)] == [
+        (ReportingMonth(2026, 1), "partial"),
+        (ReportingMonth(2026, 2), "partial"),
+        (ReportingMonth(2026, 3), "partial"),
+        (ReportingMonth(2026, 4), "complete"),
+    ]
