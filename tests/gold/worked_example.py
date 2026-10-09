@@ -202,3 +202,9 @@ def example_allocations(*allocation_ids: str) -> list[GoldCategoryAllocation]:
     """Return the example's allocations with these identifiers (`current-04/rent`)."""
     by_id = {a.allocation_id: a for a in CATEGORY_ALLOCATIONS}
     return [by_id[allocation_id] for allocation_id in allocation_ids]
+
+
+def example_balances(account_id: str, *months: int) -> list[MonthlyBalanceSnapshot]:
+    """Return the example's snapshots of `account_id` for these months of 2026."""
+    by_key = {(s.account_id, s.month): s for s in MONTHLY_BALANCES}
+    return [by_key[account_id, ReportingMonth(2026, month)] for month in months]

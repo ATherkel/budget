@@ -103,5 +103,9 @@ class GoldResult:
         account_ids: Collection[str] | None = None,
     ) -> Sequence[MonthlyBalanceSnapshot]:
         """Return the snapshots for `start_month` through `end_month`."""
-        del start_month, end_month, account_ids
-        return ()
+        return tuple(
+            snapshot
+            for snapshot in self._records.monthly_balances
+            if start_month <= snapshot.month <= end_month
+            and _named(snapshot.account_id, account_ids)
+        )
