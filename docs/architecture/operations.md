@@ -318,6 +318,14 @@ group = "food"
 [category.eating-out]
 name = "Eating out"
 group = "food"
+
+[group.home]
+name = "Home"
+direction = "expense"
+
+[category.furniture]
+name = "Furniture"
+group = "home"
 ```
 
 A rename or regroup is also recorded in
@@ -550,6 +558,15 @@ rules.toml: rule "r-furniture": when.amount_max must be a quoted decimal, got a 
 decisions.jsonl: entry 7 (d-0007): targets a transaction already decided by d-0002
 3 configuration errors. Nothing was built.
 ```
+
+A file that is itself refused declares nothing to check against: until
+`taxonomy.toml` loads, no rule's `then.category` is checked against it, and
+until `accounts.toml` loads, no rule's `when.account` is. Fixing one file can
+therefore reveal problems in another.
+
+A table declared twice, such as two `[category.groceries]` tables, is not
+valid TOML. The file is refused as a whole with the parser's message, which
+gives the line of the first repeat only.
 
 ## Completeness Outputs
 

@@ -7,36 +7,29 @@ it, which is checked against an export's filename and never stored as Bronze
 evidence.
 """
 
-import re
-import tomllib
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import date, datetime
-from pathlib import Path
+from datetime import date
 from types import MappingProxyType
-from typing import Any, Literal, TypeGuard
+from typing import Any, Literal
 
 from budget.bronze.parsers import source_formats, source_parser
+from budget.inputs.document import (
+    ConfigurationError,
+    file_problem,
+    keyed_tables,
+    read_document,
+    unknown_top_level_keys,
+)
+from budget.inputs.fields import (
+    TEXT,
+    FieldRule,
+    entry_problems,
+    is_date,
+    is_text,
+    one_of,
+)
 from budget.profiles import ACCOUNTS_FILE_NAME, Profile
-
-_FORMAT_VERSION = 1
-_TOP_LEVEL_KEYS = ("format", "account")
-
-# A durable account ID: lowercase ASCII words joined by single hyphens.
-_ACCOUNT_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
-
-
-class ConfigurationError(ValueError):
-    """A household input file breaks its rules.
-
-    `problems` holds one line per problem, each naming the file, the entry and
-    the problem, in file order, so a caller can list every one before stopping.
-    """
-
-    def __init__(self, problems: tuple[str, ...]) -> None:
-        """Keep every problem, and show them one per line."""
-        self.problems = problems
-        super().__init__("\n".join(problems))
 
 
 class MisfiledExportError(ValueError):
@@ -89,123 +82,36 @@ class Account:
             raise MisfiledExportError(self.account_id)
 
 
-@dataclass(frozen=True)
-class _FieldRule:
-    """What one `[account.<id>]` key must hold, and how a problem says so."""
-
-    accepts: Callable[[object], bool]
-    rule: str
-    required: bool = True
-
-
-def _is_text(value: object) -> TypeGuard[str]:
-    """Accept a non-empty TOML string."""
-    return isinstance(value, str) and value != ""
-
-
-def _is_date(value: object) -> bool:
-    """Accept a TOML local date; a date-time is a different value."""
-    return isinstance(value, date) and not isinstance(value, datetime)
-
-
-def _one_of(*choices: str) -> _FieldRule:
-    """Accept exactly one of the given strings."""
-    return _FieldRule(
-        accepts=lambda value: value in choices,
-        rule=f"must be one of {', '.join(choices)}",
-    )
-
-
 # Every key an account may carry, required ones first, in the order a missing
 # one is reported.
-_FIELDS: Mapping[str, _FieldRule] = MappingProxyType(
+_FIELDS: Mapping[str, FieldRule] = MappingProxyType(
     {
-        "display_name": _FieldRule(_is_text, "must be a non-empty string"),
-        "account_type": _one_of("current", "savings"),
-        "ownership_scope": _one_of("household", "person"),
-        "currency": _FieldRule(_is_text, "must be a non-empty string"),
-        "source_format": _one_of(*source_formats()),
-        "bank_account_number": _FieldRule(
-            _is_text, "must be a quoted string", required=False
+        "display_name": TEXT,
+        "account_type": one_of("current", "savings"),
+        "ownership_scope": one_of("household", "person"),
+        "currency": TEXT,
+        "source_format": one_of(*source_formats()),
+        "bank_account_number": FieldRule(
+            is_text, "must be a quoted string", required=False
         ),
-        "closed_on": _FieldRule(
-            _is_date, "must be a date such as 2027-06-30", required=False
+        "closed_on": FieldRule(
+            is_date, "must be a date such as 2027-06-30", required=False
         ),
     }
 )
 
 
-def _problem(text: str) -> str:
-    """Name the file a problem is in."""
-    return f"{ACCOUNTS_FILE_NAME}: {text}"
-
-
-def _read_document(path: Path) -> dict[str, Any]:
-    """Read the file as UTF-8 TOML, or refuse it as a whole."""
-    try:
-        content = path.read_bytes()
-    except FileNotFoundError:
-        problem = _problem("the file is missing")
-        raise ConfigurationError((problem,)) from None
-    try:
-        # A leading byte-order mark is still UTF-8, and is dropped.
-        text = content.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        problem = _problem("the file is not UTF-8")
-        raise ConfigurationError((problem,)) from None
-    try:
-        return tomllib.loads(text)
-    except tomllib.TOMLDecodeError as error:
-        problem = _problem(f"the file is not valid TOML: {error}")
-        raise ConfigurationError((problem,)) from None
-
-
-def _require_known_format(document: Mapping[str, object]) -> None:
-    """Refuse a file whose format version this code does not read.
-
-    `bool` is a subclass of `int` in Python, so the type is compared exactly:
-    `format = true` is not version 1.
-    """
-    version = document.get("format")
-    if version is None:
-        problem = _problem("format is missing")
-    elif type(version) is not int or version != _FORMAT_VERSION:
-        problem = _problem(f"format must be {_FORMAT_VERSION}")
-    else:
-        return
-    raise ConfigurationError((problem,))
-
-
 def _entry_problem(account_id: str, text: str) -> str:
     """Name the file and the entry a problem is in."""
-    return _problem(f'account "{account_id}": {text}')
+    return file_problem(ACCOUNTS_FILE_NAME, f'account "{account_id}": {text}')
 
 
 def _entry_problems(account_id: str, entry: object) -> list[str]:
     """List one entry's problems: its ID, then its keys, then what is missing."""
-    if not isinstance(entry, dict):
-        return [_entry_problem(account_id, "must be a table of keys")]
-    problems = []
-    if _ACCOUNT_ID.fullmatch(account_id) is None:
-        problems.append(
-            _entry_problem(
-                account_id,
-                "the ID must be lowercase words joined by hyphens, "
-                "such as joint-current",
-            )
-        )
-    for key, value in entry.items():
-        field_rule = _FIELDS.get(key)
-        if field_rule is None:
-            problems.append(_entry_problem(account_id, f'unknown key "{key}"'))
-        elif not field_rule.accepts(value):
-            problems.append(_entry_problem(account_id, f"{key} {field_rule.rule}"))
-    problems.extend(
-        _entry_problem(account_id, f"{key} is missing")
-        for key, field_rule in _FIELDS.items()
-        if field_rule.required and key not in entry
-    )
-    return problems
+    return [
+        _entry_problem(account_id, problem)
+        for problem in entry_problems(account_id, entry, _FIELDS, "joint-current")
+    ]
 
 
 def _number_shape_problems(account_id: str, entry: object) -> list[str]:
@@ -219,7 +125,7 @@ def _number_shape_problems(account_id: str, entry: object) -> list[str]:
         return []
     source_format = entry.get("source_format")
     number = entry.get("bank_account_number")
-    if source_format not in source_formats() or not _is_text(number):
+    if source_format not in source_formats() or not is_text(number):
         return []
     if source_parser(source_format).is_account_number(number):
         return []
@@ -240,7 +146,7 @@ def _shared_number_problems(entries: Mapping[str, object]) -> list[str]:
     problems = []
     for account_id, entry in entries.items():
         number = entry.get("bank_account_number") if isinstance(entry, dict) else None
-        if not _is_text(number):
+        if not is_text(number):
             continue
         earlier = declared_by.setdefault(number, account_id)
         if earlier != account_id:
@@ -269,19 +175,10 @@ def _account(account_id: str, entry: Mapping[str, Any]) -> Account:
 
 def load_accounts(profile: Profile) -> Mapping[str, Account]:
     """Load and validate the profile's `accounts.toml`, keyed by account ID."""
-    document = _read_document(profile.accounts_file)
-    _require_known_format(document)
-    problems = [
-        _problem(f'unknown key "{key}"')
-        for key in document
-        if key not in _TOP_LEVEL_KEYS
-    ]
-    entries = document.get("account", {})
-    if not isinstance(entries, dict):
-        problems.append(
-            _problem("account must hold one [account.<id>] table per account")
-        )
-        entries = {}
+    document = read_document(profile.accounts_file, ACCOUNTS_FILE_NAME)
+    problems = unknown_top_level_keys(document, ACCOUNTS_FILE_NAME, ("account",))
+    entries, shape_problems = keyed_tables(document, ACCOUNTS_FILE_NAME, "account")
+    problems.extend(shape_problems)
     for account_id, entry in entries.items():
         problems.extend(_entry_problems(account_id, entry))
         problems.extend(_number_shape_problems(account_id, entry))
