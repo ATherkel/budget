@@ -129,6 +129,64 @@ def rule_problem(rule_id: str, text: str) -> str:
     return f'rules.toml: rule "{rule_id}": {text}'
 
 
+class TaxonomyProblemTests(unittest.TestCase):
+    def test_every_broken_entry_is_named_with_its_problems(self) -> None:
+        # Groups are judged before categories, each in file order.
+        taxonomy = """\
+format = 1
+shade = 1
+
+[group.food]
+name = "Food"
+direction = "spending"
+
+[category.groceries]
+name = "Groceries"
+group = "food"
+direction = "expense"
+
+[group.Home]
+name = ""
+
+[category.rent]
+name = "Rent"
+group = "housing"
+
+[category.eating-out]
+name = "Eating out"
+"""
+        rules = 'format = 1\n[[rule]]\nid = "r-netto"\nthen.transfer_claim = true\n'
+
+        assert refusal(taxonomy=taxonomy, rules=rules) == (
+            'taxonomy.toml: unknown key "shade"',
+            'taxonomy.toml: group "food": direction must be one of income, expense',
+            (
+                'taxonomy.toml: group "Home": the ID must be lowercase words '
+                "joined by hyphens, such as food"
+            ),
+            'taxonomy.toml: group "Home": name must be a non-empty string',
+            'taxonomy.toml: group "Home": direction is missing',
+            'taxonomy.toml: category "groceries": unknown key "direction"',
+            'taxonomy.toml: category "rent": group "housing" is not declared',
+            'taxonomy.toml: category "eating-out": group is missing',
+        )
+
+    def test_each_kind_holds_one_table_per_entry(self) -> None:
+        for content, expected in (
+            ("group = 1", "group must hold one [group.<id>] table per group"),
+            (
+                "category = 1",
+                "category must hold one [category.<id>] table per category",
+            ),
+            ('group.food = "Food"', 'group "food": must be a table of keys'),
+        ):
+            with self.subTest(content=content):
+                taxonomy = f"format = 1\n{content}\n"
+                assert refusal(taxonomy=taxonomy, rules="format = 1\n") == (
+                    f"taxonomy.toml: {expected}",
+                )
+
+
 class RuleProblemTests(unittest.TestCase):
     def test_an_unquoted_amount_is_a_configuration_error(self) -> None:
         for amount in ("-1000.00", "-1000", "-1e3"):
