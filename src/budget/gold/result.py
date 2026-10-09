@@ -2,7 +2,7 @@
 """`GoldResult`: one build's Gold records, answering `GoldRepository` in memory."""
 
 from collections.abc import Collection, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import date
 
 from budget.gold.models import (
@@ -25,6 +25,13 @@ class GoldRecords:
     transactions: Sequence[GoldTransaction] = ()
     category_allocations: Sequence[GoldCategoryAllocation] = ()
     monthly_balances: Sequence[MonthlyBalanceSnapshot] = ()
+
+    def __post_init__(self) -> None:
+        """Copy each collection, so a caller's later change never reaches Gold."""
+        for record_kind in fields(self):
+            copied = tuple(getattr(self, record_kind.name))
+            # A frozen dataclass sets its own fields only through object.
+            object.__setattr__(self, record_kind.name, copied)
 
 
 class GoldResult:
