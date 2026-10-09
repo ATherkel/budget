@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, Self
 
 type AccountType = Literal["current", "savings"]
 type OwnershipScope = Literal["household", "person"]
@@ -40,6 +40,11 @@ class ReportingMonth:
 
     year: int
     month: int
+
+    @classmethod
+    def of(cls, day: date) -> Self:
+        """Return the month `day` falls in."""
+        return cls(day.year, day.month)
 
 
 @dataclass(frozen=True)
