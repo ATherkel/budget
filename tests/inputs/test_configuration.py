@@ -159,6 +159,16 @@ class RuleProblemTests(unittest.TestCase):
             ),
         )
 
+    def test_a_rule_may_name_only_a_declared_account(self) -> None:
+        rules = RULES.replace('"joint-savings"', '"joint-credit"')
+
+        assert refusal(rules=rules) == (
+            rule_problem(
+                "r-interest-correction",
+                'when.account "joint-credit" is not in accounts.toml',
+            ),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
