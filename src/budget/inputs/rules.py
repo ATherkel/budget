@@ -6,7 +6,7 @@ must hold, and `then` assigns exactly one outcome (`classification.md`,
 *Classification Rules*). File order never matters, so rules are keyed by ID.
 """
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -15,7 +15,7 @@ from typing import Any, Literal
 
 from budget.inputs.document import ConfigurationError, file_problem, read_document
 from budget.inputs.fields import FieldRule
-from budget.profiles import RULES_FILE_NAME, Profile
+from budget.profiles import RULES_FILE_NAME, TAXONOMY_FILE_NAME, Profile
 
 
 @dataclass(frozen=True)
@@ -136,23 +136,41 @@ def _rule(entry: Mapping[str, Any]) -> Rule:
     )
 
 
-def _rule_problems(entry: Mapping[str, Any]) -> list[str]:
+def _reference_problems(
+    then: Mapping[str, Any], categories: Collection[str]
+) -> list[str]:
+    """Name an outcome that refers to a category the taxonomy lacks."""
+    category = then.get("category")
+    if category is None or category in categories:
+        return []
+    return [f'then.category "{category}" is not in {TAXONOMY_FILE_NAME}']
+
+
+def _rule_problems(entry: Mapping[str, Any], categories: Collection[str]) -> list[str]:
     """List one rule's problems, each naming the rule."""
     when = entry.get("when", {})
-    return [
-        file_problem(
-            RULES_FILE_NAME, f'rule "{entry["id"]}": when.{key} {_AMOUNT.rule}'
-        )
+    problems = [
+        f"when.{key} {_AMOUNT.rule}"
         for key in _AMOUNT_KEYS
         if key in when and not _AMOUNT.accepts(when[key])
     ]
+    problems.extend(_reference_problems(entry["then"], categories))
+    return [
+        file_problem(RULES_FILE_NAME, f'rule "{entry["id"]}": {problem}')
+        for problem in problems
+    ]
 
 
-def load_rules(profile: Profile) -> Mapping[str, Rule]:
-    """Load and validate the profile's `rules.toml`, keyed by rule ID."""
+def load_rules(profile: Profile, categories: Collection[str]) -> Mapping[str, Rule]:
+    """Load the profile's `rules.toml`, keyed by rule ID.
+
+    A rule may assign only one of the given category IDs.
+    """
     document = read_document(profile.input_file(RULES_FILE_NAME), RULES_FILE_NAME)
     entries = document.get("rule", [])
-    problems = [problem for entry in entries for problem in _rule_problems(entry)]
+    problems = [
+        problem for entry in entries for problem in _rule_problems(entry, categories)
+    ]
     if problems:
         raise ConfigurationError(tuple(problems))
     return MappingProxyType({rule.rule_id: rule for rule in map(_rule, entries)})

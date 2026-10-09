@@ -26,8 +26,9 @@ class ConfigurationSnapshot:
 
 def load_configuration(profile: Profile) -> ConfigurationSnapshot:
     """Load and cross-check the profile's accounts, taxonomy and rules."""
+    taxonomy = load_taxonomy(profile)
     return ConfigurationSnapshot(
         accounts=load_accounts(profile),
-        taxonomy=load_taxonomy(profile),
-        rules=load_rules(profile),
+        taxonomy=taxonomy,
+        rules=load_rules(profile, taxonomy.categories.keys()),
     )
