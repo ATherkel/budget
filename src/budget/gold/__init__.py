@@ -5,6 +5,7 @@
 `docs/architecture/gold-contract.md`.
 """
 
+from budget.gold.build import build
 from budget.gold.models import (
     AccountType,
     BalanceCheck,
@@ -55,4 +56,5 @@ __all__ = [
     "TransactionType",
     "TransferBasis",
     "TransferEvidence",
+    "build",
 ]
