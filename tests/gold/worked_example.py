@@ -196,3 +196,9 @@ def example_transactions(*transaction_ids: str) -> list[GoldTransaction]:
     """Return the example's transactions with these identifiers (`current-04`)."""
     by_id = {t.transaction_id: t for t in TRANSACTIONS}
     return [by_id[transaction_id] for transaction_id in transaction_ids]
+
+
+def example_allocations(*allocation_ids: str) -> list[GoldCategoryAllocation]:
+    """Return the example's allocations with these identifiers (`current-04/rent`)."""
+    by_id = {a.allocation_id: a for a in CATEGORY_ALLOCATIONS}
+    return [by_id[allocation_id] for allocation_id in allocation_ids]

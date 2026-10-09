@@ -11,7 +11,11 @@ from collections import Counter
 from datetime import date
 
 from budget.gold import GoldRepository
-from tests.gold.worked_example import SAVINGS, example_transactions
+from tests.gold.worked_example import (
+    SAVINGS,
+    example_allocations,
+    example_transactions,
+)
 
 
 class GoldRepositoryContract:
@@ -40,3 +44,26 @@ class GoldRepositoryContract:
         )
 
         assert Counter(found) == Counter(example_transactions("savings-01"))
+
+    def test_category_allocations_are_filtered_like_transactions(
+        self, repository: GoldRepository
+    ) -> None:
+        february = repository.category_allocations(
+            start_date=date(2026, 2, 2), end_date=date(2026, 2, 25)
+        )
+        savings = repository.category_allocations(
+            start_date=date(2026, 1, 20),
+            end_date=date(2026, 4, 30),
+            account_ids=[SAVINGS],
+        )
+
+        # gold-layer.md writes February's allocations out in full.
+        assert Counter(february) == Counter(
+            example_allocations(
+                "current-04/rent",
+                "current-05/groceries",
+                "current-06/groceries",
+                "current-07/salary",
+            )
+        )
+        assert Counter(savings) == Counter(example_allocations("savings-02/interest"))

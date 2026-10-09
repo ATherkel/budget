@@ -88,8 +88,12 @@ class GoldResult:
         account_ids: Collection[str] | None = None,
     ) -> Sequence[GoldCategoryAllocation]:
         """Return the allocations dated from `start_date` through `end_date`."""
-        del start_date, end_date, account_ids
-        return ()
+        return tuple(
+            allocation
+            for allocation in self._records.category_allocations
+            if start_date <= allocation.transaction_date <= end_date
+            and _named(allocation.account_id, account_ids)
+        )
 
     def monthly_balances(
         self,
