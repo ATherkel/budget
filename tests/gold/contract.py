@@ -11,7 +11,7 @@ from collections import Counter
 from datetime import date
 
 from budget.gold import GoldRepository
-from tests.gold.worked_example import example_transactions
+from tests.gold.worked_example import SAVINGS, example_transactions
 
 
 class GoldRepositoryContract:
@@ -29,3 +29,14 @@ class GoldRepositoryContract:
                 "current-02", "savings-01", "current-03", "current-04", "current-05"
             )
         )
+
+    def test_transactions_are_only_those_of_the_named_accounts(
+        self, repository: GoldRepository
+    ) -> None:
+        found = repository.transactions(
+            start_date=date(2026, 1, 20),
+            end_date=date(2026, 2, 2),
+            account_ids=[SAVINGS],
+        )
+
+        assert Counter(found) == Counter(example_transactions("savings-01"))

@@ -34,6 +34,11 @@ class GoldRecords:
             object.__setattr__(self, record_kind.name, copied)
 
 
+def _named(account_id: str, account_ids: Collection[str] | None) -> bool:
+    """Whether `account_ids` names `account_id`; `None` names every account."""
+    return account_ids is None or account_id in account_ids
+
+
 class GoldResult:
     """One build's records, bound to one publication; a `GoldRepository`.
 
@@ -68,11 +73,11 @@ class GoldResult:
         account_ids: Collection[str] | None = None,
     ) -> Sequence[GoldTransaction]:
         """Return the transactions dated from `start_date` through `end_date`."""
-        del account_ids
         return tuple(
             transaction
             for transaction in self._records.transactions
             if start_date <= transaction.transaction_date <= end_date
+            and _named(transaction.account_id, account_ids)
         )
 
     def category_allocations(
