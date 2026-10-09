@@ -7,6 +7,25 @@ of bank and import format.
 Start with the [documentation map](docs/README.md) and the
 [delivery roadmap](docs/03-roadmap.md).
 
+## Privacy and terms
+
+The [privacy notice](PRIVACY.md) and [Terms and Conditions](TERMS.md) describe
+Therkel's personal installation. Enable Banking access is planned; these
+documents do not mean a bank connector is already available.
+
+After the privacy contact is completed and these files are merged into this
+public repository's `main` branch, the URLs for that installation's Enable
+Banking registration are:
+
+- Privacy: <https://github.com/ATherkel/budget/blob/main/PRIVACY.md>
+- Terms: <https://github.com/ATherkel/budget/blob/main/TERMS.md>
+
+Until then, use the rendered files on the PR branch for review; the `main`
+links will not work yet. Another operator must adapt the documents to their own
+identity, contact email, deployment, and data handling, publish their own URLs,
+and register their own Enable Banking application with their own credentials.
+The provider's personal-use conditions still apply to each installation.
+
 ## Install and test
 
 `uv` manages the environment, the standard library's `unittest` runs the tests,
