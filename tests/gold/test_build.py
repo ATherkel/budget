@@ -157,3 +157,17 @@ def test_the_worked_examples_months_and_coverage_come_out_exactly() -> None:
     assert Counter(
         (s.account_id, s.month, s.coverage) for s in _all_snapshots(result)
     ) == Counter((s.account_id, s.month, s.coverage) for s in MONTHLY_BALANCES)
+
+
+def test_the_worked_examples_balances_come_out_exactly() -> None:
+    result = build_from()
+
+    # joint-savings carries 53,000.00 through its complete quiet months, and
+    # May, quiet with partial evidence, has no balance on either account.
+    assert Counter(
+        (s.account_id, s.month, s.opening_balance, s.closing_balance)
+        for s in _all_snapshots(result)
+    ) == Counter(
+        (s.account_id, s.month, s.opening_balance, s.closing_balance)
+        for s in MONTHLY_BALANCES
+    )
