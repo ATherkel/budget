@@ -12,12 +12,19 @@ from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
-from budget.gold import GoldAccount, GoldResult, GoldTransaction
+from budget.gold import (
+    GoldAccount,
+    GoldResult,
+    GoldTransaction,
+    MonthlyBalanceSnapshot,
+    ReportingMonth,
+)
 from budget.inputs import Account
 from tests.gold.worked_example import (
     ACCOUNTS,
     CATEGORIES,
     CURRENT,
+    MONTHLY_BALANCES,
     PUBLICATION,
     SAVINGS,
     TRANSACTIONS,
@@ -134,3 +141,19 @@ def test_a_missing_balance_is_bridged_but_never_filled_in() -> None:
         ("d", Decimal("80.00"), "consistent"),
         ("e", Decimal("75.00"), "break"),
     ]
+
+
+def _all_snapshots(result: GoldResult) -> Sequence[MonthlyBalanceSnapshot]:
+    return result.monthly_balances(
+        start_month=ReportingMonth(1, 1), end_month=ReportingMonth(9999, 12)
+    )
+
+
+def test_the_worked_examples_months_and_coverage_come_out_exactly() -> None:
+    result = build_from()
+
+    # One row per month from the first transaction through May, the month of
+    # the latest evidence_through, even though neither account has a May row.
+    assert Counter(
+        (s.account_id, s.month, s.coverage) for s in _all_snapshots(result)
+    ) == Counter((s.account_id, s.month, s.coverage) for s in MONTHLY_BALANCES)
