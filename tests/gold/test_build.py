@@ -16,10 +16,17 @@ from budget.inputs import Account
 from tests.gold.worked_example import (
     ACCOUNTS,
     CATEGORIES,
+    CURRENT,
     PUBLICATION,
+    SAVINGS,
     TRANSACTIONS,
 )
-from tests.gold.worked_silver import REGISTRY, build_from
+from tests.gold.worked_silver import (
+    REGISTRY,
+    SILVER,
+    build_from,
+    silver_transaction,
+)
 
 
 def test_the_registry_and_taxonomy_are_published_as_dimensions() -> None:
@@ -79,3 +86,21 @@ def test_each_booked_silver_transaction_is_one_unknown_gold_transaction() -> Non
         )
         for t in TRANSACTIONS
     )
+
+
+def test_a_pending_or_cancelled_silver_transaction_is_no_gold_transaction() -> None:
+    unbooked = (
+        replace(
+            silver_transaction("pending", CURRENT, date(2026, 4, 28), "-60.00", None),
+            booking_status="pending",
+        ),
+        replace(
+            silver_transaction("cancelled", SAVINGS, date(2026, 3, 3), "5.00", None),
+            booking_status="cancelled",
+        ),
+    )
+    silver = replace(SILVER, transactions=(*SILVER.transactions, *unbooked))
+
+    found = _all_transactions(build_from(silver))
+
+    assert Counter(found) == Counter(_all_transactions(build_from()))
