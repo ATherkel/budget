@@ -171,3 +171,10 @@ def test_the_worked_examples_balances_come_out_exactly() -> None:
         (s.account_id, s.month, s.opening_balance, s.closing_balance)
         for s in MONTHLY_BALANCES
     )
+
+
+def test_the_worked_examples_snapshots_come_out_exactly() -> None:
+    result = build_from()
+
+    # The only export, dated 2026-05-08, settles every month through April.
+    assert Counter(_all_snapshots(result)) == Counter(MONTHLY_BALANCES)
