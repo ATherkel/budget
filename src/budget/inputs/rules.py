@@ -9,11 +9,12 @@ must hold, and `then` assigns exactly one outcome (`classification.md`,
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from types import MappingProxyType
 from typing import Any, Literal
 
-from budget.inputs.document import read_document
+from budget.inputs.document import ConfigurationError, file_problem, read_document
+from budget.inputs.fields import FieldRule
 from budget.profiles import RULES_FILE_NAME, Profile
 
 
@@ -57,6 +58,22 @@ class AssignAdjustment:
 
 
 type RuleOutcome = AssignCategory | ClaimTransfer | AssignAdjustment
+
+
+def _is_quoted_decimal(value: object) -> bool:
+    """Accept a quoted, finite decimal such as `"-1000.00"`."""
+    if not isinstance(value, str):
+        return False
+    try:
+        return Decimal(value).is_finite()
+    except InvalidOperation:
+        return False
+
+
+_AMOUNT = FieldRule(
+    _is_quoted_decimal, "must be a quoted decimal, got a number", required=False
+)
+_AMOUNT_KEYS = ("amount_min", "amount_max")
 
 
 @dataclass(frozen=True)
@@ -119,8 +136,23 @@ def _rule(entry: Mapping[str, Any]) -> Rule:
     )
 
 
+def _rule_problems(entry: Mapping[str, Any]) -> list[str]:
+    """List one rule's problems, each naming the rule."""
+    when = entry.get("when", {})
+    return [
+        file_problem(
+            RULES_FILE_NAME, f'rule "{entry["id"]}": when.{key} {_AMOUNT.rule}'
+        )
+        for key in _AMOUNT_KEYS
+        if key in when and not _AMOUNT.accepts(when[key])
+    ]
+
+
 def load_rules(profile: Profile) -> Mapping[str, Rule]:
-    """Load the profile's `rules.toml`, keyed by rule ID."""
+    """Load and validate the profile's `rules.toml`, keyed by rule ID."""
     document = read_document(profile.input_file(RULES_FILE_NAME), RULES_FILE_NAME)
-    rules = (_rule(entry) for entry in document.get("rule", []))
-    return MappingProxyType({rule.rule_id: rule for rule in rules})
+    entries = document.get("rule", [])
+    problems = [problem for entry in entries for problem in _rule_problems(entry)]
+    if problems:
+        raise ConfigurationError(tuple(problems))
+    return MappingProxyType({rule.rule_id: rule for rule in map(_rule, entries)})
