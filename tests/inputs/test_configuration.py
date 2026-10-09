@@ -476,7 +476,8 @@ then.category = "groceries"
             ('then.category = "groceries"\nthen.transfer_claim = true', (one,)),
             ('then.counterpart = "x"', ('unknown key "then.counterpart"', one)),
             ("then.transfer_claim = false", ("then.transfer_claim must be true",)),
-            ('then.adjustment = ""', ("then.adjustment must be a non-empty string",)),
+            ('then.adjustment = ""', ("then.adjustment must give a reason",)),
+            ('then.adjustment = " \\t"', ("then.adjustment must give a reason",)),
             ("then.category = 5", ("then.category must be a non-empty string",)),
         ):
             rules = f'format = 1\n[[rule]]\nid = "r-netto"\n{lines}\n'
