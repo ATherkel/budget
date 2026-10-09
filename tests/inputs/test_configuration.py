@@ -205,6 +205,62 @@ class RuleProblemTests(unittest.TestCase):
             rule_problem("r-bank-groceries", 'unknown key "when.bank_label"'),
         )
 
+    def test_every_broken_rule_is_named_with_its_problems_in_file_order(
+        self,
+    ) -> None:
+        rules = """\
+format = 1
+colour = "blue"
+
+[[rule]]
+id = "r-netto"
+weight = 3
+then.category = "groceries"
+
+[[rule]]
+id = "r-netto"
+priority = 1.5
+then.category = "groceries"
+
+[[rule]]
+id = "R Netto"
+priority = true
+then.category = "groceries"
+
+[[rule]]
+id = 5
+then.category = "groceries"
+
+[[rule]]
+then.category = "groceries"
+"""
+        assert refusal(rules=rules) == (
+            'rules.toml: unknown key "colour"',
+            rule_problem("r-netto", 'unknown key "weight"'),
+            rule_problem("r-netto", "the ID is already used by an earlier rule"),
+            rule_problem("r-netto", "priority must be an integer"),
+            rule_problem(
+                "R Netto",
+                "the ID must be lowercase words joined by hyphens, such as r-netto",
+            ),
+            rule_problem("R Netto", "priority must be an integer"),
+            "rules.toml: rule 4: id must be a non-empty string",
+            "rules.toml: rule 5: id is missing",
+        )
+
+    def test_rule_holds_one_block_per_rule(self) -> None:
+        for content, expected in (
+            ("rule = 1", "rules.toml: rule must hold one [[rule]] block per rule"),
+            (
+                '[rule.r-netto]\nthen.category = "groceries"',
+                "rules.toml: rule must hold one [[rule]] block per rule",
+            ),
+            ("rule = [1]", "rules.toml: rule 1: must be a table of keys"),
+        ):
+            with self.subTest(content=content):
+                rules = f"format = 1\n{content}\n"
+                assert refusal(rules=rules) == (expected,)
+
     def test_then_holds_exactly_one_outcome(self) -> None:
         one = "then must hold exactly one of category, transfer_claim, adjustment"
         for lines, expected in (
