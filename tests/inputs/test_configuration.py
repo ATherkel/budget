@@ -11,12 +11,15 @@ from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pytest
+
 from budget.inputs import (
     AssignAdjustment,
     AssignCategory,
     Category,
     CategoryGroup,
     ClaimTransfer,
+    ConfigurationError,
     ConfigurationSnapshot,
     Rule,
     RuleConditions,
@@ -110,6 +113,33 @@ class DocumentedExamplesTests(unittest.TestCase):
                 AssignAdjustment("Bank's interest correction"),
             ),
         }
+
+
+def refusal(
+    accounts: str = ACCOUNTS, taxonomy: str = TAXONOMY, rules: str = RULES
+) -> tuple[str, ...]:
+    """The problems a configuration error lists for the given files."""
+    with pytest.raises(ConfigurationError) as refused:
+        configuration(accounts, taxonomy, rules)
+    return refused.value.problems
+
+
+def rule_problem(rule_id: str, text: str) -> str:
+    """Spell one rule's problem the way the loader reports it."""
+    return f'rules.toml: rule "{rule_id}": {text}'
+
+
+class RuleProblemTests(unittest.TestCase):
+    def test_an_unquoted_amount_is_a_configuration_error(self) -> None:
+        for amount in ("-1000.00", "-1000", "-1e3"):
+            rules = RULES.replace('"-1000.00"', amount)
+            with self.subTest(amount=amount):
+                assert refusal(rules=rules) == (
+                    rule_problem(
+                        "r-furniture",
+                        "when.amount_max must be a quoted decimal, got a number",
+                    ),
+                )
 
 
 if __name__ == "__main__":
