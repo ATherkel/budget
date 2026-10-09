@@ -9,7 +9,7 @@ stopping.
 import hashlib
 import json
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
@@ -21,6 +21,7 @@ from budget.inputs.rules import (
     ClaimTransfer,
     KnownIds,
     Rule,
+    RuleConditions,
     RuleOutcome,
     load_rules,
 )
@@ -88,33 +89,78 @@ def _canonical_outcome(outcome: RuleOutcome) -> dict[str, object]:
             return {"adjustment": reason}
 
 
+def _set(table: Mapping[str, object]) -> dict[str, object]:
+    """Keep only the keys a file set, so a new optional key changes nothing."""
+    return {key: value for key, value in table.items() if value not in (None, [])}
+
+
+def _any_of(patterns: tuple[str, ...]) -> list[str]:
+    """Spell patterns a condition holds when any matches: their order is not."""
+    return sorted(set(patterns))
+
+
+def _canonical_when(when: RuleConditions) -> dict[str, object]:
+    """Spell a rule's conditions as `rules.toml` does."""
+    return _set(
+        {
+            "account": when.account,
+            "description_contains": _any_of(when.description_contains),
+            "description_starts_with": _any_of(when.description_starts_with),
+            "description_regex": _any_of(when.description_regex),
+            "amount_sign": when.amount_sign,
+            "amount_min": when.amount_min,
+            "amount_max": when.amount_max,
+            "date_from": when.date_from,
+            "date_to": when.date_to,
+            "bank_category": when.bank_category,
+            "bank_subcategory": when.bank_subcategory,
+        }
+    )
+
+
 def _canonical_rule(rule: Rule) -> dict[str, object]:
-    """Spell a rule; a condition's patterns are any of them, so their order is not."""
-    when = {
-        key: sorted(set(value)) if isinstance(value, tuple) else value
-        for key, value in asdict(rule.when).items()
-    }
+    """Spell a rule as `rules.toml` does, its ID being its key."""
     return {
         "priority": rule.priority,
-        "when": when,
+        "when": _canonical_when(rule.when),
         "then": _canonical_outcome(rule.then),
     }
 
 
+def _canonical_account(account: Account) -> dict[str, object]:
+    """Spell an account as `accounts.toml` does, its ID being its key."""
+    return _set(
+        {
+            "display_name": account.display_name,
+            "account_type": account.account_type,
+            "ownership_scope": account.ownership_scope,
+            "currency": account.currency,
+            "source_format": account.source_format,
+            "bank_account_number": account.bank_account_number,
+            "closed_on": account.closed_on,
+        }
+    )
+
+
 def _canonical(snapshot: ConfigurationSnapshot) -> dict[str, object]:
-    """Spell the snapshot's meaning as plain values; JSON sorts every key."""
+    """Spell the snapshot as its files do; JSON sorts every key.
+
+    Each value is written out key by key, never from the Python field names,
+    so renaming a field leaves every fingerprint as it was.
+    """
+    taxonomy = snapshot.taxonomy
     return {
         "accounts": {
-            account_id: asdict(account)
+            account_id: _canonical_account(account)
             for account_id, account in snapshot.accounts.items()
         },
         "groups": {
-            group_id: asdict(group)
-            for group_id, group in snapshot.taxonomy.groups.items()
+            group_id: {"name": group.name, "direction": group.direction}
+            for group_id, group in taxonomy.groups.items()
         },
         "categories": {
-            category_id: asdict(category)
-            for category_id, category in snapshot.taxonomy.categories.items()
+            category_id: {"name": category.name, "group": category.group_id}
+            for category_id, category in taxonomy.categories.items()
         },
         "rules": {
             rule_id: _canonical_rule(rule) for rule_id, rule in snapshot.rules.items()
