@@ -318,6 +318,14 @@ group = "food"
 [category.eating-out]
 name = "Eating out"
 group = "food"
+
+[group.home]
+name = "Home"
+direction = "expense"
+
+[category.furniture]
+name = "Furniture"
+group = "home"
 ```
 
 A rename or regroup is also recorded in
