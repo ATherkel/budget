@@ -90,9 +90,8 @@ _INSERT_RANGES: Final = (
     " (ordinal, account_id, covers_from, covers_through) VALUES (?, ?, ?, ?)"
 )
 _INSERT_EXPORTS: Final = (
-    "INSERT INTO evidence_exports"
-    " (ordinal, account_id, exported_on, covers_from, covers_through)"
-    " VALUES (?, ?, ?, ?, ?)"
+    "INSERT INTO evidence_exports (ordinal, import_run_id, account_id,"
+    " exported_on, covers_from, covers_through) VALUES (?, ?, ?, ?, ?, ?)"
 )
 _INSERT_RESULTS: Final = (
     "INSERT INTO import_run_results"
@@ -369,6 +368,7 @@ def _encode_exports(items: Sequence[EvidenceExport]) -> Rows:
     return tuple(
         (
             ordinal,
+            item.import_run_id,
             item.account_id,
             item.exported_on.isoformat(),
             item.covers_from.isoformat(),
@@ -544,7 +544,7 @@ def _range(row: sqlite3.Row) -> AccountEvidence:
 
 def _export(row: sqlite3.Row) -> EvidenceExport:
     return EvidenceExport(
-        import_run_id="",
+        import_run_id=row["import_run_id"],
         account_id=row["account_id"],
         exported_on=date.fromisoformat(row["exported_on"]),
         covers_from=date.fromisoformat(row["covers_from"]),

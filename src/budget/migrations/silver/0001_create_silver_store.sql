@@ -81,6 +81,7 @@ CREATE TABLE account_evidence (
 -- declared range, so Gold can settle late bookings without reading Bronze.
 CREATE TABLE evidence_exports (
     ordinal INTEGER PRIMARY KEY,
+    import_run_id TEXT NOT NULL UNIQUE,
     account_id TEXT NOT NULL,
     exported_on TEXT NOT NULL,
     covers_from TEXT NOT NULL,
