@@ -28,7 +28,10 @@ def build(
         categories=categories,
         transactions=transactions,
         monthly_balances=monthly_balances(
-            gold_accounts, transactions, silver.account_evidence
+            gold_accounts,
+            transactions,
+            silver.account_evidence,
+            silver.evidence_exports,
         ),
     )
     return GoldResult(publication, records)

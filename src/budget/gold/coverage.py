@@ -1,6 +1,8 @@
 # Copyright 2026 Therkel
 """What one account's evidence says about a month (`gold-layer.md`, *Coverage*).
 
+That is the month's coverage, and whether its late bookings are settled.
+
 A link joins two consecutive booked transactions and spans both their dates.
 It is verified when both balances exist and the later balance is the earlier
 plus the later amount. Bridging a missing balance for `balance_check` does not
@@ -9,13 +11,16 @@ verify either link beside it.
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from itertools import pairwise
 from typing import Self
 
 from budget.gold.models import Coverage, GoldTransaction, ReportingMonth
 from budget.gold.months import first_day, last_day
-from budget.silver.models import AccountEvidence
+from budget.silver.models import AccountEvidence, EvidenceExport
+
+# How long after a month ends an export must be produced to show its late bookings.
+_LATE_BOOKING_WINDOW = timedelta(days=7)
 
 
 @dataclass(frozen=True)
@@ -46,17 +51,22 @@ class BalanceEvidence:
 
     opened: ReportingMonth
     ranges: tuple[AccountEvidence, ...]
+    exports: tuple[EvidenceExport, ...]
     links: tuple[_Link, ...]
 
     @classmethod
     def of(
-        cls, history: Sequence[GoldTransaction], ranges: Iterable[AccountEvidence]
+        cls,
+        history: Sequence[GoldTransaction],
+        ranges: Iterable[AccountEvidence],
+        exports: Iterable[EvidenceExport],
     ) -> Self:
         """Gather the evidence of the account `history` belongs to, in booked order."""
         account_id = history[0].account_id
         return cls(
             opened=ReportingMonth.of(history[0].transaction_date),
             ranges=tuple(r for r in ranges if r.account_id == account_id),
+            exports=tuple(e for e in exports if e.account_id == account_id),
             links=_links(history),
         )
 
@@ -79,3 +89,8 @@ class BalanceEvidence:
             for link in self.links
         )
         return "complete" if whole and not broken else "partial"
+
+    def late_bookings_settled(self, month: ReportingMonth) -> bool:
+        """Whether an export was produced long enough after the month to show them."""
+        settles_on = last_day(month) + _LATE_BOOKING_WINDOW
+        return any(e.exported_on >= settles_on for e in self.exports)
