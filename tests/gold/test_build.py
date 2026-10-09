@@ -104,3 +104,11 @@ def test_a_pending_or_cancelled_silver_transaction_is_no_gold_transaction() -> N
     found = _all_transactions(build_from(silver))
 
     assert Counter(found) == Counter(_all_transactions(build_from()))
+
+
+def test_the_worked_examples_balance_checks_come_out_exactly() -> None:
+    result = build_from()
+
+    assert {t.transaction_id: t.balance_check for t in _all_transactions(result)} == {
+        t.transaction_id: t.balance_check for t in TRANSACTIONS
+    }
