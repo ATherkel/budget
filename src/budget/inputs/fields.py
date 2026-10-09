@@ -90,6 +90,24 @@ AMOUNT = FieldRule(
 )
 
 
+def entry_problems(
+    entry_id: str, entry: object, fields: Mapping[str, FieldRule], example: str
+) -> list[str]:
+    """List a `[<kind>.<id>]` entry's problems: its shape, its ID, then its keys.
+
+    `example` is a well-formed ID of the same kind, for the problem to show.
+    """
+    if not isinstance(entry, dict):
+        return ["must be a table of keys"]
+    problems = []
+    if not is_durable_id(entry_id):
+        problems.append(
+            f"the ID must be lowercase words joined by hyphens, such as {example}"
+        )
+    problems.extend(key_problems(entry, fields))
+    return problems
+
+
 def key_problems(
     table: Mapping[str, object], fields: Mapping[str, FieldRule], prefix: str = ""
 ) -> list[str]:
