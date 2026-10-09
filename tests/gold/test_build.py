@@ -37,6 +37,7 @@ from tests.gold.worked_silver import (
     build_from,
     silver_transaction,
 )
+from tests.silver import exports
 
 
 def test_the_registry_and_taxonomy_are_published_as_dimensions() -> None:
@@ -294,3 +295,26 @@ def test_a_closed_accounts_rows_end_at_its_closing_or_the_latest_month() -> None
     assert closing_in_september == [
         ReportingMonth(2026, month) for month in (1, 2, 3, 4, 5)
     ]
+
+
+def test_a_quiet_accounts_repeated_export_settles_its_months() -> None:
+    first = exports.declared(
+        exports.export(
+            [exports.row("10.01.2026", "LOEN", "1000,00", "1000,00")],
+            run_id="run-1",
+            exported_on=date(2026, 2, 3),
+        ),
+        covers_from=date(2026, 1, 1),
+    )
+    # Nothing new was booked, so the bank's next export has the same bytes.
+    same_bytes = exports.repeat(first, run_id="run-2", exported_on=date(2026, 3, 10))
+    registry = {exports.ACCOUNT: REGISTRY[CURRENT]}
+
+    def settled(*runs: exports.Export) -> list[bool]:
+        result = build_from(exports.build_from(*runs), accounts=registry)
+        by_month = sorted(_all_snapshots(result), key=lambda s: s.month)
+        return [s.late_bookings_settled for s in by_month]
+
+    # Produced three days after January, the first export settles nothing.
+    assert settled(first) == [False, False]
+    assert settled(first, same_bytes) == [True, True, False]
