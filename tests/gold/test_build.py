@@ -276,3 +276,21 @@ def test_an_account_whose_exports_lag_still_has_a_row_for_each_later_month() -> 
         (ReportingMonth(2026, 4), "no_data", None, None, False),
         (ReportingMonth(2026, 5), "no_data", None, None, False),
     ]
+
+
+def test_a_closed_accounts_rows_end_at_its_closing_or_the_latest_month() -> None:
+    def closing(on: date) -> list[ReportingMonth]:
+        accounts = {**REGISTRY, SAVINGS: replace(REGISTRY[SAVINGS], closed_on=on)}
+        result = build_from(accounts=accounts)
+        return sorted(
+            s.month for s in _all_snapshots(result) if s.account_id == SAVINGS
+        )
+
+    closed_in_april = closing(date(2026, 4, 30))
+    # A closing recorded ahead of time never reaches past the published data.
+    closing_in_september = closing(date(2026, 9, 30))
+
+    assert closed_in_april == [ReportingMonth(2026, month) for month in (1, 2, 3, 4)]
+    assert closing_in_september == [
+        ReportingMonth(2026, month) for month in (1, 2, 3, 4, 5)
+    ]
