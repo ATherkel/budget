@@ -3,10 +3,10 @@
 
 from collections.abc import Mapping, Sequence
 
-from budget.gold.models import GoldCategory, GoldPublication
+from budget.gold.models import GoldAccount, GoldCategory, GoldPublication
 from budget.gold.result import GoldRecords, GoldResult
 from budget.inputs.accounts import Account
-from budget.silver.models import SilverResult
+from budget.silver.models import AccountEvidence, SilverResult
 
 
 def build(
@@ -17,5 +17,24 @@ def build(
     publication: GoldPublication,
 ) -> GoldResult:
     """Derive Gold from a Silver result, the account registry and the taxonomy."""
-    del silver, accounts, categories
-    return GoldResult(publication, GoldRecords())
+    gold_accounts = tuple(
+        _account(account, silver.account_evidence) for account in accounts.values()
+    )
+    return GoldResult(
+        publication, GoldRecords(accounts=gold_accounts, categories=categories)
+    )
+
+
+def _account(account: Account, ranges: Sequence[AccountEvidence]) -> GoldAccount:
+    """Publish a registry account, spanning its evidence ranges."""
+    own = [r for r in ranges if r.account_id == account.account_id]
+    return GoldAccount(
+        account_id=account.account_id,
+        display_name=account.display_name,
+        account_type=account.account_type,
+        ownership_scope=account.ownership_scope,
+        currency=account.currency,
+        closed_on=account.closed_on,
+        coverage_start=min(r.covers_from for r in own),
+        evidence_through=max(r.covers_through for r in own),
+    )
