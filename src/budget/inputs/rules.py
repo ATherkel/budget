@@ -125,6 +125,18 @@ _WHEN_FIELDS: Mapping[str, FieldRule] = MappingProxyType(
     }
 )
 
+# Every outcome a rule's `then` table may hold; it holds exactly one.
+_THEN_FIELDS: Mapping[str, FieldRule] = MappingProxyType(
+    {
+        "category": optional(TEXT),
+        "transfer_claim": FieldRule(
+            lambda value: value is True, "must be true", required=False
+        ),
+        "adjustment": optional(TEXT),
+    }
+)
+_ONE_OUTCOME = f"then must hold exactly one of {', '.join(_THEN_FIELDS)}"
+
 
 @dataclass(frozen=True)
 class Rule:
@@ -218,9 +230,21 @@ def _when_problems(entry: Mapping[str, Any]) -> list[str]:
     return key_problems(when, _WHEN_FIELDS, prefix="when.")
 
 
+def _then_problems(entry: Mapping[str, Any]) -> list[str]:
+    """List the problems in a rule's outcome."""
+    then = entry.get("then", {})
+    if not isinstance(then, dict):
+        return [_ONE_OUTCOME]
+    problems = key_problems(then, _THEN_FIELDS, prefix="then.")
+    if sum(key in then for key in _THEN_FIELDS) != 1:
+        problems.append(_ONE_OUTCOME)
+    return problems
+
+
 def _rule_problems(entry: Mapping[str, Any], known: KnownIds) -> list[str]:
     """List one rule's problems, each naming the rule."""
     problems = _when_problems(entry)
+    problems.extend(_then_problems(entry))
     problems.extend(_reference_problems(entry, known))
     return [
         file_problem(RULES_FILE_NAME, f'rule "{entry["id"]}": {problem}')
