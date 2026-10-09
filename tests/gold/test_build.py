@@ -20,7 +20,7 @@ from budget.gold import (
     ReportingMonth,
 )
 from budget.inputs import Account
-from budget.silver import EvidenceExport
+from budget.silver import AccountEvidence, EvidenceExport
 from tests.gold.worked_example import (
     ACCOUNTS,
     CATEGORIES,
@@ -218,3 +218,61 @@ def test_an_export_whose_range_misses_the_months_last_day_never_settles_it() -> 
     # Each was produced long after April ended, but cannot show its late bookings.
     assert _settled(starts_after)[APRIL] is False
     assert _settled(ends_before)[APRIL] is False
+
+
+def _rows(result: GoldResult, account_id: str) -> list[tuple[object, ...]]:
+    """An account's (month, coverage, opening, closing, settled), month by month."""
+    return [
+        (
+            s.month,
+            s.coverage,
+            s.opening_balance,
+            s.closing_balance,
+            s.late_bookings_settled,
+        )
+        for s in sorted(_all_snapshots(result), key=lambda s: s.month)
+        if s.account_id == account_id
+    ]
+
+
+def test_an_account_whose_exports_lag_still_has_a_row_for_each_later_month() -> None:
+    lagging = replace(
+        SILVER,
+        transactions=(
+            *(t for t in SILVER.transactions if t.account_id == CURRENT),
+            silver_transaction(
+                "savings-01", SAVINGS, date(2026, 1, 20), "3000.00", "53000.00"
+            ),
+        ),
+        account_evidence=(
+            AccountEvidence(CURRENT, COVERS_FROM, date(2026, 5, 8)),
+            AccountEvidence(SAVINGS, COVERS_FROM, date(2026, 3, 15)),
+        ),
+        evidence_exports=(
+            EvidenceExport(CURRENT, date(2026, 5, 8), COVERS_FROM, date(2026, 5, 8)),
+            EvidenceExport(SAVINGS, date(2026, 3, 15), COVERS_FROM, date(2026, 3, 15)),
+        ),
+    )
+
+    result = build_from(lagging)
+
+    # joint-current's evidence reaches May, so joint-savings has rows through May.
+    assert _rows(result, SAVINGS) == [
+        (
+            ReportingMonth(2026, 1),
+            "partial",
+            Decimal("50000.00"),
+            Decimal("53000.00"),
+            True,
+        ),
+        (
+            ReportingMonth(2026, 2),
+            "complete",
+            Decimal("53000.00"),
+            Decimal("53000.00"),
+            True,
+        ),
+        (ReportingMonth(2026, 3), "partial", None, None, False),
+        (ReportingMonth(2026, 4), "no_data", None, None, False),
+        (ReportingMonth(2026, 5), "no_data", None, None, False),
+    ]
