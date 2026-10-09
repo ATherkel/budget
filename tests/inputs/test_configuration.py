@@ -129,6 +129,43 @@ def rule_problem(rule_id: str, text: str) -> str:
     return f'rules.toml: rule "{rule_id}": {text}'
 
 
+class EveryFileTests(unittest.TestCase):
+    def test_every_file_is_judged_before_stopping(self) -> None:
+        # A refused file declares nothing a rule can be checked against, so no
+        # reference into it is judged.
+        accounts = ACCOUNTS.replace("format = 1\n", 'format = 1\ncolour = "blue"\n')
+        taxonomy = TAXONOMY.replace('"expense"', '"spending"', 1)
+        rules = RULES.replace('"-1000.00"', "-1000.00").replace(
+            'then.category = "groceries"', 'then.category = "food-out"'
+        )
+
+        assert refusal(accounts, taxonomy, rules) == (
+            'accounts.toml: unknown key "colour"',
+            'taxonomy.toml: group "food": direction must be one of income, expense',
+            rule_problem(
+                "r-furniture", "when.amount_max must be a quoted decimal, got a number"
+            ),
+        )
+
+    def test_a_missing_file_is_named_beside_the_others_problems(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            profile.inputs.mkdir(parents=True)
+            profile.input_file("accounts.toml").write_text(ACCOUNTS, encoding="utf-8")
+            rules = RULES.replace('"-1000.00"', "-1000.00")
+            profile.input_file("rules.toml").write_text(rules, encoding="utf-8")
+
+            with pytest.raises(ConfigurationError) as refused:
+                load_configuration(profile)
+
+        assert refused.value.problems == (
+            "taxonomy.toml: the file is missing",
+            rule_problem(
+                "r-furniture", "when.amount_max must be a quoted decimal, got a number"
+            ),
+        )
+
+
 class TaxonomyProblemTests(unittest.TestCase):
     def test_every_broken_entry_is_named_with_its_problems(self) -> None:
         # Groups are judged before categories, each in file order.
