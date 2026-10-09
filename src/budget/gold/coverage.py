@@ -91,6 +91,14 @@ class BalanceEvidence:
         return "complete" if whole and not broken else "partial"
 
     def late_bookings_settled(self, month: ReportingMonth) -> bool:
-        """Whether an export was produced long enough after the month to show them."""
-        settles_on = last_day(month) + _LATE_BOOKING_WINDOW
-        return any(e.exported_on >= settles_on for e in self.exports)
+        """Whether a counted export shows the month's late bookings.
+
+        It must be produced at least 7 days after the month's last day, and its
+        declared range must include that day.
+        """
+        last = last_day(month)
+        return any(
+            e.exported_on >= last + _LATE_BOOKING_WINDOW
+            and e.covers_from <= last <= e.covers_through
+            for e in self.exports
+        )
