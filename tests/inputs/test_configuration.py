@@ -169,6 +169,50 @@ class RuleProblemTests(unittest.TestCase):
             ),
         )
 
+    def test_every_when_key_holds_its_declared_type(self) -> None:
+        text = "must be a non-empty string"
+        patterns = f"{text} or a list of them"
+        amount = 'must be a quoted decimal such as "-1000.00"'
+        day = "must be a date such as 2026-01-31"
+        for line, expected in (
+            ("account = 5", f"account {text}"),
+            ('description_contains = ""', f"description_contains {patterns}"),
+            ("description_starts_with = []", f"description_starts_with {patterns}"),
+            ('description_contains = ["NETTO", 5]', f"description_contains {patterns}"),
+            (
+                'description_regex = ["NETTO", "NETTO("]',
+                "description_regex must hold valid regular expressions",
+            ),
+            ('amount_sign = "minus"', "amount_sign must be one of negative, positive"),
+            ('amount_min = "ten"', f"amount_min {amount}"),
+            ('amount_min = "NaN"', f"amount_min {amount}"),
+            ('date_from = "2026-01-01"', f"date_from {day}"),
+            ("date_to = 2026-01-31T00:00:00", f"date_to {day}"),
+            ('bank_category = ""', f"bank_category {text}"),
+            ("bank_subcategory = 1", f"bank_subcategory {text}"),
+        ):
+            rules = f'format = 1\n[[rule]]\nid = "r-netto"\nwhen.{line}\n'
+            rules += 'then.adjustment = "x"\n'
+            with self.subTest(line=line):
+                assert refusal(rules=rules) == (
+                    rule_problem("r-netto", f"when.{expected}"),
+                )
+
+    def test_an_unknown_when_key_is_a_configuration_error(self) -> None:
+        rules = RULES.replace("when.bank_category", "when.bank_label")
+
+        assert refusal(rules=rules) == (
+            rule_problem("r-bank-groceries", 'unknown key "when.bank_label"'),
+        )
+
+    def test_when_is_a_table_of_conditions(self) -> None:
+        rules = 'format = 1\n[[rule]]\nid = "r-netto"\nwhen = "NETTO"\n'
+        rules += 'then.adjustment = "x"\n'
+
+        assert refusal(rules=rules) == (
+            rule_problem("r-netto", "when must be a table of conditions"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
