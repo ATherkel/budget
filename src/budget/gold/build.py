@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 
 from budget.gold.models import GoldAccount, GoldCategory, GoldPublication
 from budget.gold.result import GoldRecords, GoldResult
+from budget.gold.snapshots import monthly_balances
 from budget.gold.transactions import gold_transactions
 from budget.inputs.accounts import Account
 from budget.silver.models import AccountEvidence, SilverResult
@@ -21,10 +22,14 @@ def build(
     gold_accounts = tuple(
         _account(account, silver.account_evidence) for account in accounts.values()
     )
+    transactions = gold_transactions(silver.transactions)
     records = GoldRecords(
         accounts=gold_accounts,
         categories=categories,
-        transactions=gold_transactions(silver.transactions),
+        transactions=transactions,
+        monthly_balances=monthly_balances(
+            gold_accounts, transactions, silver.account_evidence
+        ),
     )
     return GoldResult(publication, records)
 
