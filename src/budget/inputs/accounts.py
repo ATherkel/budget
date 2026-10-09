@@ -17,16 +17,16 @@ from budget.bronze.parsers import source_formats, source_parser
 from budget.inputs.document import (
     ConfigurationError,
     file_problem,
+    keyed_tables,
     read_document,
     unknown_top_level_keys,
 )
 from budget.inputs.fields import (
     TEXT,
     FieldRule,
+    entry_problems,
     is_date,
-    is_durable_id,
     is_text,
-    key_problems,
     one_of,
 )
 from budget.profiles import ACCOUNTS_FILE_NAME, Profile
@@ -108,21 +108,10 @@ def _entry_problem(account_id: str, text: str) -> str:
 
 def _entry_problems(account_id: str, entry: object) -> list[str]:
     """List one entry's problems: its ID, then its keys, then what is missing."""
-    if not isinstance(entry, dict):
-        return [_entry_problem(account_id, "must be a table of keys")]
-    problems = []
-    if not is_durable_id(account_id):
-        problems.append(
-            _entry_problem(
-                account_id,
-                "the ID must be lowercase words joined by hyphens, "
-                "such as joint-current",
-            )
-        )
-    problems.extend(
-        _entry_problem(account_id, problem) for problem in key_problems(entry, _FIELDS)
-    )
-    return problems
+    return [
+        _entry_problem(account_id, problem)
+        for problem in entry_problems(account_id, entry, _FIELDS, "joint-current")
+    ]
 
 
 def _number_shape_problems(account_id: str, entry: object) -> list[str]:
@@ -188,15 +177,8 @@ def load_accounts(profile: Profile) -> Mapping[str, Account]:
     """Load and validate the profile's `accounts.toml`, keyed by account ID."""
     document = read_document(profile.accounts_file, ACCOUNTS_FILE_NAME)
     problems = unknown_top_level_keys(document, ACCOUNTS_FILE_NAME, ("account",))
-    entries = document.get("account", {})
-    if not isinstance(entries, dict):
-        problems.append(
-            file_problem(
-                ACCOUNTS_FILE_NAME,
-                "account must hold one [account.<id>] table per account",
-            )
-        )
-        entries = {}
+    entries, shape_problems = keyed_tables(document, ACCOUNTS_FILE_NAME, "account")
+    problems.extend(shape_problems)
     for account_id, entry in entries.items():
         problems.extend(_entry_problems(account_id, entry))
         problems.extend(_number_shape_problems(account_id, entry))

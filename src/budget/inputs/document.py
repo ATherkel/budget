@@ -72,14 +72,14 @@ def _parse(path: Path, file_name: str) -> dict[str, Any]:
 
 def keyed_tables(
     document: Mapping[str, object], file_name: str, kind: str
-) -> tuple[Mapping[str, object], list[str]]:
+) -> tuple[Mapping[str, Any], list[str]]:
     """Return the file's `[<kind>.<id>]` entries, or a problem with their shape.
 
     A `kind` key holding anything but a table of entries gives none.
     """
     entries = document.get(kind, {})
     if isinstance(entries, dict):
-        return dict[str, object](entries), []
+        return dict[str, Any](entries), []
     problem = file_problem(
         file_name, f"{kind} must hold one [{kind}.<id>] table per {kind}"
     )
