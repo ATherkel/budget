@@ -8,15 +8,17 @@ transaction to the latest published month: the month of the latest
 """
 
 from collections.abc import Iterable, Sequence
+from decimal import Decimal
 
 from budget.gold.coverage import BalanceEvidence
 from budget.gold.models import (
+    Coverage,
     GoldAccount,
     GoldTransaction,
     MonthlyBalanceSnapshot,
     ReportingMonth,
 )
-from budget.gold.months import months_through
+from budget.gold.months import first_day, months_through
 from budget.silver.models import AccountEvidence
 
 
@@ -60,13 +62,50 @@ def _account_balances(
         return []
     evidence = BalanceEvidence.of(history, ranges)
     return [
-        MonthlyBalanceSnapshot(
-            account_id=history[0].account_id,
-            month=month,
-            opening_balance=None,
-            closing_balance=None,
-            coverage=evidence.coverage(month),
-            late_bookings_settled=False,
-        )
+        _snapshot(month, history, evidence.coverage(month))
         for month in months_through(evidence.opened, latest)
     ]
+
+
+def _snapshot(
+    month: ReportingMonth, history: Sequence[GoldTransaction], coverage: Coverage
+) -> MonthlyBalanceSnapshot:
+    opening, closing = _balances(month, history, coverage)
+    return MonthlyBalanceSnapshot(
+        account_id=history[0].account_id,
+        month=month,
+        opening_balance=opening,
+        closing_balance=closing,
+        coverage=coverage,
+        late_bookings_settled=False,
+    )
+
+
+def _balances(
+    month: ReportingMonth, history: Sequence[GoldTransaction], coverage: Coverage
+) -> tuple[Decimal | None, Decimal | None]:
+    """Return the month's bank-stated opening and closing balances, if known.
+
+    A complete quiet month carries the last stated balance into both; a quiet
+    month that is not complete has neither, and neither has a `no_data` month.
+    """
+    if coverage == "no_data":
+        return None, None
+    inside = [t for t in history if ReportingMonth.of(t.transaction_date) == month]
+    if inside:
+        first, last = inside[0], inside[-1]
+        opening = (
+            None if first.balance_after is None else first.balance_after - first.amount
+        )
+        return opening, last.balance_after
+    if coverage != "complete":
+        return None, None
+    carried = next(
+        (
+            t.balance_after
+            for t in reversed(history)
+            if t.transaction_date < first_day(month) and t.balance_after is not None
+        ),
+        None,
+    )
+    return carried, carried
