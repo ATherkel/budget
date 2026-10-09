@@ -123,3 +123,33 @@ class GoldRepositoryContract:
         # A float equals the Decimal of the same value, so the record comparisons
         # above would not notice one; only its type does.
         assert {type(value) for value in money if value is not None} == {Decimal}
+
+    def test_an_empty_account_list_names_no_account(
+        self, repository: GoldRepository
+    ) -> None:
+        start, end = date(2026, 1, 1), date(2026, 5, 31)
+
+        found = {
+            "transactions": list(
+                repository.transactions(start_date=start, end_date=end, account_ids=[])
+            ),
+            "category_allocations": list(
+                repository.category_allocations(
+                    start_date=start, end_date=end, account_ids=[]
+                )
+            ),
+            "monthly_balances": list(
+                repository.monthly_balances(
+                    start_month=ReportingMonth.of(start),
+                    end_month=ReportingMonth.of(end),
+                    account_ids=[],
+                )
+            ),
+        }
+
+        # Unlike None, which names every account.
+        assert found == {
+            "transactions": [],
+            "category_allocations": [],
+            "monthly_balances": [],
+        }

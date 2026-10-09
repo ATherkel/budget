@@ -19,7 +19,10 @@ from budget.gold.models import (
 
 
 class GoldRepository(Protocol):
-    """One publication's consumer records; `account_ids=None` means every account."""
+    """One publication's consumer records.
+
+    `account_ids=None` means every account, and an empty collection means none.
+    """
 
     def publication(self) -> GoldPublication:
         """Return the publication every other method reads from."""
