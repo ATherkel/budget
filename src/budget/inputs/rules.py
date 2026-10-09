@@ -15,7 +15,12 @@ from typing import Any, Literal
 
 from budget.inputs.document import ConfigurationError, file_problem, read_document
 from budget.inputs.fields import FieldRule
-from budget.profiles import RULES_FILE_NAME, TAXONOMY_FILE_NAME, Profile
+from budget.profiles import (
+    ACCOUNTS_FILE_NAME,
+    RULES_FILE_NAME,
+    TAXONOMY_FILE_NAME,
+    Profile,
+)
 
 
 @dataclass(frozen=True)
@@ -136,17 +141,29 @@ def _rule(entry: Mapping[str, Any]) -> Rule:
     )
 
 
-def _reference_problems(
-    then: Mapping[str, Any], categories: Collection[str]
-) -> list[str]:
-    """Name an outcome that refers to a category the taxonomy lacks."""
-    category = then.get("category")
-    if category is None or category in categories:
-        return []
-    return [f'then.category "{category}" is not in {TAXONOMY_FILE_NAME}']
+@dataclass(frozen=True)
+class KnownIds:
+    """The IDs other input files declare, which a rule may name."""
+
+    accounts: Collection[str]
+    categories: Collection[str]
 
 
-def _rule_problems(entry: Mapping[str, Any], categories: Collection[str]) -> list[str]:
+def _reference_problems(entry: Mapping[str, Any], known: KnownIds) -> list[str]:
+    """Name each account or category a rule refers to that no file declares."""
+    references = (
+        ("when", "account", known.accounts, ACCOUNTS_FILE_NAME),
+        ("then", "category", known.categories, TAXONOMY_FILE_NAME),
+    )
+    problems = []
+    for table, key, declared, file_name in references:
+        value = entry.get(table, {}).get(key)
+        if value is not None and value not in declared:
+            problems.append(f'{table}.{key} "{value}" is not in {file_name}')
+    return problems
+
+
+def _rule_problems(entry: Mapping[str, Any], known: KnownIds) -> list[str]:
     """List one rule's problems, each naming the rule."""
     when = entry.get("when", {})
     problems = [
@@ -154,22 +171,22 @@ def _rule_problems(entry: Mapping[str, Any], categories: Collection[str]) -> lis
         for key in _AMOUNT_KEYS
         if key in when and not _AMOUNT.accepts(when[key])
     ]
-    problems.extend(_reference_problems(entry["then"], categories))
+    problems.extend(_reference_problems(entry, known))
     return [
         file_problem(RULES_FILE_NAME, f'rule "{entry["id"]}": {problem}')
         for problem in problems
     ]
 
 
-def load_rules(profile: Profile, categories: Collection[str]) -> Mapping[str, Rule]:
+def load_rules(profile: Profile, known: KnownIds) -> Mapping[str, Rule]:
     """Load the profile's `rules.toml`, keyed by rule ID.
 
-    A rule may assign only one of the given category IDs.
+    A rule may name only the accounts and categories `known` holds.
     """
     document = read_document(profile.input_file(RULES_FILE_NAME), RULES_FILE_NAME)
     entries = document.get("rule", [])
     problems = [
-        problem for entry in entries for problem in _rule_problems(entry, categories)
+        problem for entry in entries for problem in _rule_problems(entry, known)
     ]
     if problems:
         raise ConfigurationError(tuple(problems))

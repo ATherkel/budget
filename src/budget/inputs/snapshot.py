@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from budget.inputs.accounts import Account, load_accounts
-from budget.inputs.rules import Rule, load_rules
+from budget.inputs.rules import KnownIds, Rule, load_rules
 from budget.inputs.taxonomy import Taxonomy, load_taxonomy
 from budget.profiles import Profile
 
@@ -26,9 +26,9 @@ class ConfigurationSnapshot:
 
 def load_configuration(profile: Profile) -> ConfigurationSnapshot:
     """Load and cross-check the profile's accounts, taxonomy and rules."""
+    accounts = load_accounts(profile)
     taxonomy = load_taxonomy(profile)
+    known = KnownIds(accounts=accounts.keys(), categories=taxonomy.categories.keys())
     return ConfigurationSnapshot(
-        accounts=load_accounts(profile),
-        taxonomy=taxonomy,
-        rules=load_rules(profile, taxonomy.categories.keys()),
+        accounts=accounts, taxonomy=taxonomy, rules=load_rules(profile, known)
     )
