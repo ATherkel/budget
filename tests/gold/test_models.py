@@ -1,8 +1,10 @@
 # Copyright 2026 Therkel
 """The Gold contract records and `ReportingMonth` (`gold-contract.md`)."""
 
+from collections import abc
+from collections.abc import Callable
 from datetime import date
-from typing import TypeAliasType, get_args, get_type_hints
+from typing import TypeAliasType, get_args, get_origin, get_type_hints
 
 import budget.gold
 from budget.gold import ReportingMonth
@@ -38,19 +40,32 @@ def _types_in(hint: object) -> set[object]:
     return found
 
 
-def test_no_contract_record_declares_a_float() -> None:
-    records = [
-        exported
-        for exported in vars(budget.gold).values()
-        if isinstance(exported, type) and exported.__module__ == "budget.gold.models"
-    ]
+CONTRACT_RECORDS = [
+    exported
+    for exported in vars(budget.gold).values()
+    if isinstance(exported, type) and exported.__module__ == "budget.gold.models"
+]
 
-    floats = [
+
+def _fields_built_from(is_kind: Callable[[object], bool]) -> list[str]:
+    """Return each contract record field whose declared type uses a matching type."""
+    return [
         f"{record.__name__}.{field}"
-        for record in records
+        for record in CONTRACT_RECORDS
         for field, hint in get_type_hints(record).items()
-        if float in _types_in(hint)
+        if any(is_kind(part) for part in _types_in(hint))
     ]
 
-    assert budget.gold.GoldTransaction in records  # the scan found the records
-    assert floats == []
+
+def test_the_scan_finds_the_contract_records() -> None:
+    assert budget.gold.GoldTransaction in CONTRACT_RECORDS
+
+
+def test_no_contract_record_declares_a_float() -> None:
+    assert _fields_built_from(lambda part: part is float) == []
+
+
+def test_no_contract_record_declares_a_sequence() -> None:
+    # A record holding a list can change after it is made and cannot be hashed,
+    # so `Counter` cannot compare it; `tuple[str, ...]` refuses a list.
+    assert _fields_built_from(lambda part: get_origin(part) is abc.Sequence) == []

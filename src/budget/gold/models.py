@@ -5,7 +5,6 @@ Every monetary value is a `Decimal` in its account's currency; no float enters
 the contract.
 """
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -141,7 +140,7 @@ class TransferEvidence:
     counterpart_account_id: str
     counterpart_transaction_id: str | None
     date_gap_days: int | None
-    claim_rule_ids: Sequence[str]
+    claim_rule_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -151,11 +150,11 @@ class GoldTransactionLineage:
     transaction_id: str
     silver_transaction_id: str
     classification_source: ClassificationSource
-    rule_ids: Sequence[str]
+    rule_ids: tuple[str, ...]
     decision_id: str | None
     classification_version: str
     transfer_evidence: TransferEvidence | None
-    review_item_ids: Sequence[str]
+    review_item_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -164,7 +163,7 @@ class ClassificationReviewItem:
 
     review_item_id: str
     kind: ClassificationReviewKind
-    transaction_ids: Sequence[str]
-    rule_ids: Sequence[str]
+    transaction_ids: tuple[str, ...]
+    rule_ids: tuple[str, ...]
     decision_id: str | None
     reason: str | None
