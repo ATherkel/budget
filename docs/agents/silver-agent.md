@@ -25,6 +25,9 @@ resolve duplicates without assigning household financial meaning.
 - `AccountEvidence`, one row per evidence range, computed by the rule in that
   document, which is the only place it is stated; Gold reads the ranges rather
   than deriving them again.
+- `EvidenceExport`, one row per import run counted in those ranges, with its
+  export date and declared range, so Gold settles late bookings without
+  reading Bronze.
 
 ## Prohibited Work
 

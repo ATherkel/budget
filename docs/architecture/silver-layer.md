@@ -116,6 +116,12 @@ records, which is how an account with no new activity extends its evidence. An
 account with no admitted import run produces no `AccountEvidence`, and
 `GoldAccount.coverage_start` and `evidence_through` are null.
 
+Silver also passes on each run it counted here as an `EvidenceExport`: its
+account, `exported_on`, `covers_from` and `covers_through`. Gold settles late
+bookings from them (`gold-layer.md`, *Late bookings settled*), so it never
+reads Bronze. `ImportRunResult` cannot serve, because Silver produces it only
+for `stored` runs.
+
 ## Other Outputs
 
 ```python
@@ -148,6 +154,13 @@ AccountEvidence(                # one evidence range; see Evidence Ranges
     account_id: str,
     covers_from: date,          # first day of the range, inclusive
     covers_through: date,       # last day of the range, inclusive
+)
+
+EvidenceExport(                 # one import run counted in an evidence range
+    account_id: str,            # the account the run declared (Bronze)
+    exported_on: date,          # the run's export date (Bronze)
+    covers_from: date,          # the run's declared range, inclusive (Bronze)
+    covers_through: date,
 )
 
 ImportRunResult(
@@ -337,6 +350,10 @@ Gold relies on three guarantees that Silver provides under
 - the source's category labels as trimmed Silver provenance (`bank_category`
   and `bank_subcategory`), which Gold rules may test; Bronze preserves the
   original labels ([`classification.md`](classification.md)).
+
+Gold also needs the evidence ranges and, for late bookings, the export date
+and declared range of every run counted in them; both are under
+[Evidence Ranges](#evidence-ranges).
 
 ## Responsibilities
 
