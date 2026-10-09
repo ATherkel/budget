@@ -564,6 +564,10 @@ A file that is itself refused declares nothing to check against: until
 until `accounts.toml` loads, no rule's `when.account` is. Fixing one file can
 therefore reveal problems in another.
 
+A table declared twice, such as two `[category.groceries]` tables, is not
+valid TOML. The file is refused as a whole with the parser's message, which
+gives the line of the first repeat only.
+
 ## Completeness Outputs
 
 `status` shows, and `import`, `rebuild` and `decide` end with, the two
