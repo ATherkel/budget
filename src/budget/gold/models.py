@@ -41,6 +41,12 @@ class ReportingMonth:
     year: int
     month: int
 
+    def __post_init__(self) -> None:
+        """Refuse a month outside the calendar."""
+        if self.month not in range(1, 12 + 1):
+            message = f"month {self.month} is not a calendar month (1-12)"
+            raise ValueError(message)
+
     @classmethod
     def of(cls, day: date) -> Self:
         """Return the month `day` falls in."""
