@@ -78,6 +78,7 @@ _RESULT = SilverResult(
     unbooked_records=(),
     balance_observations=(),
     account_evidence=(),
+    evidence_exports=(),
     import_run_results=(
         ImportRunResult(
             import_run_id=RUN_A,

@@ -75,6 +75,19 @@ class AccountEvidence:
 
 
 @dataclass(frozen=True)
+class EvidenceExport:
+    """One import run counted in an account's evidence: its dates, as declared.
+
+    Admitted runs count, and so do `repeat` runs of an admitted payload.
+    """
+
+    account_id: str
+    exported_on: date
+    covers_from: date
+    covers_through: date
+
+
+@dataclass(frozen=True)
 class ValidationError:
     """One problem with a payload, or with one of its source records."""
 
@@ -121,5 +134,6 @@ class SilverResult:
     unbooked_records: Sequence[UnbookedRecord]
     balance_observations: Sequence[BalanceObservation]
     account_evidence: Sequence[AccountEvidence]
+    evidence_exports: Sequence[EvidenceExport]
     import_run_results: Sequence[ImportRunResult]
     review_items: Sequence[ReviewItem]

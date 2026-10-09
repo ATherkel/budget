@@ -69,6 +69,7 @@ def build(
             )
         ),
         account_evidence=_account_evidence(runs, admitted),
+        evidence_exports=(),
         import_run_results=tuple(
             sorted((_result(j) for j in judged), key=lambda r: r.import_run_id)
         ),

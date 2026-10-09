@@ -441,6 +441,7 @@ def _decode(connection: sqlite3.Connection) -> SilverResult:
         account_evidence=tuple(
             _range(row) for row in connection.execute(_SELECT_RANGES)
         ),
+        evidence_exports=(),
         import_run_results=tuple(
             _result(row, errors, review_ids)
             for row in connection.execute(_SELECT_RESULTS)
