@@ -7,6 +7,7 @@ Pending and cancelled rows stay Silver provenance (Gold contract, invariant 2).
 from collections.abc import Iterable, Sequence
 from itertools import groupby
 
+from budget.gold.chain import balance_checks
 from budget.gold.models import GoldTransaction
 from budget.silver.models import Transaction
 
@@ -26,6 +27,7 @@ def gold_transactions(silver: Iterable[Transaction]) -> tuple[GoldTransaction, .
 
 def _account_history(history: Sequence[Transaction]) -> list[GoldTransaction]:
     """Publish one account's transactions, already in their booked order."""
+    checks = balance_checks((t.amount, t.balance) for t in history)
     return [
         GoldTransaction(
             transaction_id=t.transaction_id,
@@ -37,7 +39,7 @@ def _account_history(history: Sequence[Transaction]) -> list[GoldTransaction]:
             transaction_type="unknown",
             transfer_group_id=None,
             balance_after=t.balance,
-            balance_check="opening",
+            balance_check=check,
         )
-        for sequence, t in enumerate(history, start=1)
+        for sequence, (t, check) in enumerate(zip(history, checks, strict=True), 1)
     ]
