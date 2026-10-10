@@ -6,9 +6,11 @@ ADR-011). A category's type follows from its direction and the amount's sign,
 and a classified transaction has one allocation for its whole amount (ADR-008).
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import Decimal
+from types import MappingProxyType
+from typing import Literal
 
 from budget.gold.models import (
     CategoryDirection,
@@ -19,6 +21,20 @@ from budget.gold.models import (
 from budget.inputs.rules import AssignCategory, RuleConditions
 from budget.inputs.snapshot import ConfigurationSnapshot
 from budget.silver.models import Transaction
+
+type _Sign = Literal["negative", "positive"]
+
+# The type a category gives (classification.md, *What a rule may assign*).
+_CATEGORY_TYPES: Mapping[tuple[CategoryDirection, _Sign], TransactionType] = (
+    MappingProxyType(
+        {
+            ("expense", "negative"): "expense",
+            ("expense", "positive"): "refund",
+            ("income", "positive"): "income",
+            ("income", "negative"): "refund",
+        }
+    )
+)
 
 
 @dataclass(frozen=True)
@@ -83,12 +99,10 @@ def _matches(when: RuleConditions, transaction: Transaction) -> bool:
 
 def _derived_type(direction: CategoryDirection, amount: Decimal) -> TransactionType:
     """Derive a category's type from its direction and the amount's sign."""
-    if direction == "expense":
-        if amount < 0:
-            return "expense"
-        if amount > 0:
-            return "refund"
-    return "unknown"
+    if amount == Decimal(0):
+        return "unknown"
+    sign: _Sign = "positive" if amount > 0 else "negative"
+    return _CATEGORY_TYPES[(direction, sign)]
 
 
 def _allocation(
