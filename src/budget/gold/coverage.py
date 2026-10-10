@@ -19,9 +19,6 @@ from budget.gold.models import Coverage, GoldTransaction, ReportingMonth
 from budget.gold.months import first_day, last_day
 from budget.silver.models import AccountEvidence, EvidenceExport
 
-# How long after a month ends an export must be produced to show its late bookings.
-_LATE_BOOKING_WINDOW = timedelta(days=7)
-
 
 @dataclass(frozen=True)
 class _Link:
@@ -47,7 +44,11 @@ def _links(history: Sequence[GoldTransaction]) -> tuple[_Link, ...]:
 
 @dataclass(frozen=True)
 class BalanceEvidence:
-    """One account's balance evidence: its ranges and its transaction links."""
+    """One account's balance evidence: its ranges and its transaction links.
+
+    `late_booking_window` is how long after a month ends an export must be
+    produced to show the month's late bookings.
+    """
 
     opened: ReportingMonth
     ranges: tuple[AccountEvidence, ...]
@@ -96,12 +97,12 @@ class BalanceEvidence:
     def late_bookings_settled(self, month: ReportingMonth) -> bool:
         """Whether a counted export shows the month's late bookings.
 
-        It must be produced at least 7 days after the month's last day, and its
-        declared range must include that day.
+        It must be produced at least `late_booking_window` after the month's last
+        day, and its declared range must include that day.
         """
         last = last_day(month)
         return any(
-            e.exported_on >= last + _LATE_BOOKING_WINDOW
+            e.exported_on >= last + self.late_booking_window
             and e.covers_from <= last <= e.covers_through
             for e in self.exports
         )
