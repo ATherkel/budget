@@ -3,12 +3,13 @@
 
 from collections.abc import Sequence
 
-from budget.gold.models import GoldAccount, GoldPublication
+from budget.gold.models import GoldAccount, GoldCategory, GoldPublication
 from budget.gold.result import GoldRecords, GoldResult
 from budget.gold.snapshots import monthly_balances
 from budget.gold.transactions import gold_transactions
 from budget.inputs.accounts import Account
 from budget.inputs.snapshot import ConfigurationSnapshot
+from budget.inputs.taxonomy import Taxonomy
 from budget.silver.models import AccountEvidence, SilverResult
 
 
@@ -31,7 +32,7 @@ def build(
     transactions = gold_transactions(silver.transactions)
     records = GoldRecords(
         accounts=gold_accounts,
-        categories=(),
+        categories=_categories(configuration.taxonomy),
         transactions=transactions,
         monthly_balances=monthly_balances(
             gold_accounts,
@@ -55,4 +56,18 @@ def _account(account: Account, ranges: Sequence[AccountEvidence]) -> GoldAccount
         closed_on=account.closed_on,
         coverage_start=min((r.covers_from for r in own), default=None),
         evidence_through=max((r.covers_through for r in own), default=None),
+    )
+
+
+def _categories(taxonomy: Taxonomy) -> tuple[GoldCategory, ...]:
+    """Publish each category with its group flattened onto it."""
+    return tuple(
+        GoldCategory(
+            category_id=category.category_id,
+            name=category.name,
+            group_id=category.group_id,
+            group_name=taxonomy.groups[category.group_id].name,
+            direction=taxonomy.groups[category.group_id].direction,
+        )
+        for category in taxonomy.categories.values()
     )
