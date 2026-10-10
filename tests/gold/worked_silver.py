@@ -8,13 +8,19 @@ admitted export per account, dated 2026-05-08, declares 2026-01-01 through
 2026-05-08. Every account, text and amount is invented.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
-from budget.gold import GoldCategory, GoldResult, build
-from budget.inputs import Account
+from budget.gold import GoldResult, build
+from budget.inputs import (
+    Account,
+    Category,
+    CategoryGroup,
+    ConfigurationSnapshot,
+    Taxonomy,
+)
 from budget.silver import (
     AccountEvidence,
     EvidenceExport,
@@ -22,7 +28,6 @@ from budget.silver import (
     Transaction,
 )
 from tests.gold.worked_example import (
-    CATEGORIES,
     CURRENT,
     PUBLICATION,
     SAVINGS,
@@ -50,6 +55,23 @@ REGISTRY: Mapping[str, Account] = {
         source_format="danske-csv-v1",
     ),
 }
+
+# `taxonomy.toml` as loaded: the groups and categories the example's
+# `CATEGORIES` flatten.
+TAXONOMY = Taxonomy(
+    groups={
+        "income": CategoryGroup("income", "Income", "income"),
+        "housing": CategoryGroup("housing", "Housing", "expense"),
+        "food": CategoryGroup("food", "Food", "expense"),
+    },
+    categories={
+        "salary": Category("salary", "Salary", "income"),
+        "interest": Category("interest", "Interest", "income"),
+        "rent": Category("rent", "Rent", "housing"),
+        "utilities": Category("utilities", "Utilities", "housing"),
+        "groceries": Category("groceries", "Groceries", "food"),
+    },
+)
 
 
 def silver_transaction(
@@ -121,12 +143,15 @@ def build_from(
     silver: SilverResult = SILVER,
     *,
     accounts: Mapping[str, Account] = REGISTRY,
-    categories: Sequence[GoldCategory] = CATEGORIES,
 ) -> GoldResult:
-    """Run the Gold build over these inputs, bound to the example's publication."""
+    """Run the Gold build over these inputs, bound to the example's publication.
+
+    The configuration has no rules: nothing is classified yet.
+    """
     return build(
         silver=silver,
-        accounts=accounts,
-        categories=categories,
+        configuration=ConfigurationSnapshot(
+            accounts=accounts, taxonomy=TAXONOMY, rules={}
+        ),
         publication=PUBLICATION,
     )

@@ -1,36 +1,37 @@
 # Copyright 2026 Therkel
 """The Gold build: one publication's records from Silver and the household inputs."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 
-from budget.gold.models import GoldAccount, GoldCategory, GoldPublication
+from budget.gold.models import GoldAccount, GoldPublication
 from budget.gold.result import GoldRecords, GoldResult
 from budget.gold.snapshots import monthly_balances
 from budget.gold.transactions import gold_transactions
 from budget.inputs.accounts import Account
+from budget.inputs.snapshot import ConfigurationSnapshot
 from budget.silver.models import AccountEvidence, SilverResult
 
 
 def build(
     *,
     silver: SilverResult,
-    accounts: Mapping[str, Account],
-    categories: Sequence[GoldCategory],
+    configuration: ConfigurationSnapshot,
     publication: GoldPublication,
 ) -> GoldResult:
-    """Derive Gold from a Silver result, the account registry and the taxonomy.
+    """Derive Gold from a Silver result and the household's configuration.
 
     Nothing is classified yet: every transaction is `unknown`, and no category
     allocation, lineage or review item is published. The result is bound to
     `publication`, which the caller supplies.
     """
     gold_accounts = tuple(
-        _account(account, silver.account_evidence) for account in accounts.values()
+        _account(account, silver.account_evidence)
+        for account in configuration.accounts.values()
     )
     transactions = gold_transactions(silver.transactions)
     records = GoldRecords(
         accounts=gold_accounts,
-        categories=categories,
+        categories=(),
         transactions=transactions,
         monthly_balances=monthly_balances(
             gold_accounts,
