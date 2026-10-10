@@ -9,7 +9,7 @@ from datetime import date
 from decimal import Decimal
 
 from budget.gold import GoldCategoryAllocation, GoldResult, TransactionType
-from tests.gold.classification_example import CURRENT, booked, classified
+from tests.gold.classification_example import CURRENT, SAVINGS, booked, classified
 
 
 def _types(result: GoldResult) -> dict[str, TransactionType]:
@@ -50,3 +50,16 @@ def test_2_a_positive_amount_in_an_expense_category_is_a_refund_netting_it() -> 
     assert _types(result) == {"netto": "expense", "return": "refund"}
     groceries = [a for a in _allocations(result) if a.category_id == "groceries"]
     assert sum(a.amount for a in groceries) == Decimal("-520.00")
+
+
+def test_6_and_15_an_income_category_is_income_in_and_a_refund_out() -> None:
+    result = classified(
+        booked("from-bo", CURRENT, date(2026, 2, 1), "4000.00", "FROM BO"),
+        booked("interest", SAVINGS, date(2026, 3, 31), "-3.50", "INTEREST ADJ"),
+    )
+
+    assert _types(result) == {"from-bo": "income", "interest": "refund"}
+    assert {(a.transaction_id, a.category_id) for a in _allocations(result)} == {
+        ("from-bo", "contribution"),
+        ("interest", "interest"),
+    }
