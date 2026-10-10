@@ -39,3 +39,14 @@ def test_1_a_rule_assigns_an_expense_its_whole_amount_in_one_category() -> None:
             amount=Decimal("-640.00"),
         )
     ]
+
+
+def test_2_a_positive_amount_in_an_expense_category_is_a_refund_netting_it() -> None:
+    result = classified(
+        booked("netto", CURRENT, date(2026, 2, 2), "-640.00", "NETTO 0412"),
+        booked("return", CURRENT, date(2026, 2, 12), "120.00", "NETTO 0412"),
+    )
+
+    assert _types(result) == {"netto": "expense", "return": "refund"}
+    groceries = [a for a in _allocations(result) if a.category_id == "groceries"]
+    assert sum(a.amount for a in groceries) == Decimal("-520.00")
