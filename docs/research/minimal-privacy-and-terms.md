@@ -1,74 +1,71 @@
 ---
 type: research
 ---
-# Minimal privacy notice and personal-use terms
+# Sources for privacy and terms scaffolds
 
-Researched 2026-10-09 for issue #248. Scope: a personally operated Budget
-installation and the owner's restricted Enable Banking application. These are
-drafting choices, not a finding that any deployment meets all legal requirements.
+Researched 2026-10-10 for issue #248. The requested deliverables use existing
+template headings and blanks for human completion. They are not independently
+authored legal policies or completed documents ready for Enable Banking.
 
-## Template selection and reuse
+## Privacy: Datatilsynet's short example
 
-The Danish Data Protection Agency's [small-business privacy guide](https://www.datatilsynet.dk/regler-og-vejledning/gdpr-univers-for-smaa-virksomheder/trin-4-oplys-om-at-du-behandler-personoplysninger)
-provides a privacy-policy example and a useful short checklist: identity and
-contact, data categories, purposes and legal basis, recipients, retention, and
-rights. Use these topics as a drafting checklist in original wording, adapted
-to this installation; do not import the example business's practices.
+The Danish regulator's [small-business guide](https://www.datatilsynet.dk/regler-og-vejledning/gdpr-univers-for-smaa-virksomheder/trin-4-oplys-om-at-du-behandler-personoplysninger)
+links a short [privacy-policy example, DOCX](https://cdn.datatilsynet.dk/datatilsynet/Media/638130886539375689/Persondatapolitik_trin4.docx).
+The downloaded document was inspected. It has these Danish section headings:
 
-[Automattic's Legalmattic](https://github.com/Automattic/legalmattic) publishes
-reusable privacy and terms documents under CC BY-SA 4.0. Its
-[terms](https://wordpress.com/tos/) separate account responsibilities,
-third-party services, intellectual property, changes, and stopping use. Most
-of its paid-service, content-publication, and dispute provisions do not fit this
-project. Reusing its text as an adaptation requires the applicable attribution
-and share-alike conditions. The recommended approach is independently written
-documents informed by these general topics, without copying its clauses or
-adopting its license for the repository.
+- Identitet og kontaktoplysninger
+- Hvilke personoplysninger
+- Hvorfor
+- Hvem oplysningerne evt. deles med
+- Hvor længe gemmes oplysninger?
+- Dine rettigheder
 
-## Minimum useful outlines
+The selected scaffold retains those headings with `[UDFYLD]` blanks. The source
+body describes a fictional hairdresser, purchases, deliveries and a customer
+club; none of those facts should be copied into Budget's notice. No explicit
+open-content license was found on the source page or the regulator's
+[website information page](https://www.datatilsynet.dk/om-hjemmesiden). Therefore
+the scaffold references the example and reuses only its short headings, not
+its policy paragraphs or graphic material. This is not a claim that its full
+text has an open license.
 
-**Privacy notice:** identify the personal installation and operator; explain
-the budgeting purpose and data actually handled; describe storage, any
-recipients, retention and deletion; give a private contact route. Explain
-Enable Banking separately and distinguish planned API access from features
-already present. Describe backups and operator-configured services accurately;
-avoid unconditional promises such as "data never leaves your computer".
+## Terms: App.net's template
 
-**Terms and Conditions:** describe self-hosted personal use; explain that each
-operator supplies their own installation and provider registration; assign
-responsibility for credentials, lawful access, backups and checking results;
-link the privacy notice and provider terms; distinguish these operating terms
-from any software license. Do not invent a software license, commercial service
-contract, liability cap, arbitration clause, or guaranteed support commitment.
-These are recommended scope choices, not mandatory boilerplate.
+[App.net's template repository](https://github.com/appdotnet/template-terms-of-service)
+says its lawyers prepared the documents and expressly licenses them under
+CC BY-SA 3.0. The [original terms template](https://raw.githubusercontent.com/appdotnet/template-terms-of-service/master/terms_template.md)
+contains named placeholders and sections including accepting terms, privacy,
+third-party services, termination, and contact details.
 
-## Provider requirements and scope
+The selected scaffold uses a minimal subset of those source headings and
+leaves factual and legal completion to the owner. Retain source attribution,
+identify the reduction to a scaffold, and link the
+[CC BY-SA 3.0 license](https://creativecommons.org/licenses/by-sa/3.0/).
+That document's provenance and license do not relicense Budget's code.
 
-Enable Banking explains that privacy and terms URLs describe how the receiving
-application uses data. Its FAQ exempts restricted own-account activation from
-checking those URLs and the contact email; this is not confirmation that an
-arbitrary document is suitable. Publishing accurate, accessible Markdown is
-the proposed approach, not a verified provider approval.
-[Enable Banking FAQ](https://enablebanking.com/docs/faq/#why-are-a-data-protection-email-and-links-to-app-terms-and-privacy-required-in-production).
+The full source explicitly targets US-based services. It also contains
+user-content licenses, restrictions on modifying the service, liability
+provisions and dispute clauses. A heading-only scaffold does not adopt those
+clauses and should not imply that the full template fits a personal Danish
+installation without review.
 
-Its terms require accurate application information and secure credentials.
-Personal production use is limited to the linked accounts belonging to the
-control-panel user. Separate installations should therefore use separate
-registrations and credentials; these documents do not authorize a shared
-bank-data service. The provider's agreement remains separate from Budget's
-terms. [Enable Banking terms](https://enablebanking.com/terms/).
+## Alternative inspected: ICO fill-in template
 
-## Boundaries before wider use
+The UK regulator provides a genuine [privacy template, DOCX](https://ico.org.uk/media2/for-organisations/documents/4019666/privacy-template.docx),
+still linked from its [current guidance](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/employment/employment-practices-and-data-protection-keeping-employment-records/collecting-and-keeping-employment-records/).
+Its text and instructional blanks were inspected. It includes contact, data,
+purpose, sharing, retention, rights and complaints. Its references to UK GDPR
+and the ICO prevent treating the unmodified text as a Danish notice.
 
-GDPR Article 2(2)(c) excludes purely personal or household processing; Recital
-18 distinguishes providers enabling that processing. Do not generalize this
-into an exemption for hosting other people's data. Where GDPR applies, Articles
-13–14 require additional contextual information, including applicable legal
-basis, rights, transfers and data sources. A template does not establish those
-facts. Reassess the notice when the audience or processing changes.
-[GDPR](https://eur-lex.europa.eu/eli/reg/2016/679/oj/eng).
+The ICO's [reuse statement](https://ico.org.uk/global/copyright-and-re-use-of-materials/)
+licenses website text under OGL v3.0 unless stated otherwise and specifies
+attribution; logos are excluded. This is an available alternative if the owner
+wants fuller fill-in prose instead of the selected Danish outline.
 
-Before registration, the operator must supply a reachable data-protection email
-and confirm that the published notice matches the installation. Do not invent
-an address, a retention period, consent controls, encryption guarantees, or a
-live bank connector to fill a template.
+## Completion boundary
+
+The source references and blanks make these drafting scaffolds. They do not
+establish contact details, processing practices, retention, legal basis or
+contract terms. The owner must complete and review them before presenting
+them as the application's operative documents. No provider acceptance was
+tested or established.

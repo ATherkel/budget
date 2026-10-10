@@ -9,19 +9,21 @@ Start with the [documentation map](docs/README.md) and the
 
 ## Privacy and terms
 
-The [privacy notice](PRIVACY.md) and [Terms and Conditions](TERMS.md) describe
-Therkel's personal installation. Enable Banking access is planned; these
-documents do not mean a bank connector is already available.
+The [privacy scaffold](PRIVACY.md) and [terms scaffold](TERMS.md) contain sourced
+headings and blanks for the owner to complete. They are not finished policies
+and must not be used as registration documents yet. The originals and their
+reuse conditions are linked in the files and in the
+[template research](docs/research/minimal-privacy-and-terms.md).
 
-After the privacy contact is completed and these files are merged into this
+After the owner completes and reviews both documents and they are merged into this
 public repository's `main` branch, the URLs for that installation's Enable
 Banking registration are:
 
 - Privacy: <https://github.com/ATherkel/budget/blob/main/PRIVACY.md>
 - Terms: <https://github.com/ATherkel/budget/blob/main/TERMS.md>
 
-Until then, use the rendered files on the PR branch for review; the `main`
-links will not work yet. Another operator must adapt the documents to their own
+Until then, use the rendered files on the PR branch for review. Another
+operator must complete the documents for their own
 identity, contact email, deployment, and data handling, publish their own URLs,
 and register their own Enable Banking application with their own credentials.
 The provider's personal-use conditions still apply to each installation.
