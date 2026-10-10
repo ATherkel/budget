@@ -143,17 +143,19 @@ managed period. No account may disappear merely because it has no transactions.
 A transaction can be booked days after its transaction date, so a month can
 still change after it ends. For each account and month of its managed period,
 `late_bookings_settled` is true when one of the import runs counted in the
-account's evidence has an export date at least 7 days after the month's last
-day *and* a declared range from `covers_from` through `covers_through` that
+account's evidence has an export date at least the **late-booking window**
+after the month's last day *and* a declared range from `covers_from` through `covers_through` that
 includes that day. The runs counted are exactly those behind the evidence
 ranges: admitted runs, and `repeat` runs of an admitted payload. A quiet
 account whose monthly export repeats the same bytes therefore settles its
 months like any other. Silver passes each counted run's export date and range
 on as an `EvidenceExport` ([`silver-layer.md`](silver-layer.md#evidence-ranges)),
 so Gold never reads Bronze. An export whose range starts after the month
-cannot show its late bookings, however late it was produced. The flag depends
-only on recorded export dates and ranges, so a rebuild of the same recipe
-gives the same flags. Analytics combines it with the reference date to decide
+cannot show its late bookings, however late it was produced. The window is 7
+days unless the profile sets another, and the build is given it rather than
+reading a clock or a constant. The flag depends only on recorded export dates
+and ranges and that window, so a rebuild of the same recipe gives the same
+flags. Analytics combines it with the reference date to decide
 the provisional label
 ([`presentation-layer.md`](presentation-layer.md#data-trust-display)).
 
@@ -167,7 +169,7 @@ published month is 2026-04. Both accounts have an admitted export dated
 2026-05-08 whose declared range runs from 2026-01-01 through 2026-05-08, so
 by the rule in [`silver-layer.md`](silver-layer.md#evidence-ranges) each
 account has one evidence range, 2026-01-01 through 2026-05-08:
-`coverage_start` is 2026-01-01 and `evidence_through` is 2026-05-08. The export was produced more than 7 days after April ended and
+`coverage_start` is 2026-01-01 and `evidence_through` is 2026-05-08. The export was produced more than the default 7-day window after April ended and
 its range covers April's last day, so April is past the provisional window.
 Gold carries both values; it never derives them from an export date itself.
 The latest published month is therefore 2026-05, the month of the latest

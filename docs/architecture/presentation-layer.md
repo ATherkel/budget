@@ -48,7 +48,8 @@ must preserve the analytics-facing DTO boundary.
   status withholds it here.
 - A period that is already closed carries the same label until, for every
   account in the report and *every month* in the period, one of the exports
-  counted in the account's evidence ranges was produced at least 7 days after
+  counted in the account's evidence ranges was produced at least the
+  late-booking window (7 days unless the profile sets another) after
   that month ended *and* its range covers that month's last day. Late bookings
   land on their transaction date, so an export starting after a month cannot
   show them, however late it was produced. Checking every month, not only the
