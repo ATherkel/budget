@@ -83,8 +83,11 @@ def _matches(when: RuleConditions, transaction: Transaction) -> bool:
 
 def _derived_type(direction: CategoryDirection, amount: Decimal) -> TransactionType:
     """Derive a category's type from its direction and the amount's sign."""
-    if direction == "expense" and amount < 0:
-        return "expense"
+    if direction == "expense":
+        if amount < 0:
+            return "expense"
+        if amount > 0:
+            return "refund"
     return "unknown"
 
 
