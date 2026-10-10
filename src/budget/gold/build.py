@@ -4,6 +4,7 @@
 from collections.abc import Sequence
 from datetime import timedelta
 
+from budget.gold.classification import classify
 from budget.gold.models import GoldAccount, GoldCategory, GoldPublication
 from budget.gold.result import GoldRecords, GoldResult
 from budget.gold.snapshots import monthly_balances
@@ -23,20 +24,23 @@ def build(
 ) -> GoldResult:
     """Derive Gold from a Silver result and the household's configuration.
 
-    Nothing is classified yet: every transaction is `unknown`, and no category
-    allocation, lineage or review item is published. The result is bound to
-    `publication`, which the caller supplies. A month's late bookings are
-    settled by an export produced `late_booking_window` or more after it ends.
+    Transactions are classified by the configuration's rules. The result is
+    bound to `publication`, which the caller supplies. A month's late bookings
+    are settled by an export produced `late_booking_window` or more after it
+    ends.
     """
     gold_accounts = tuple(
         _account(account, silver.account_evidence)
         for account in configuration.accounts.values()
     )
-    transactions = gold_transactions(silver.transactions)
+    transactions, allocations = classify(
+        gold_transactions(silver.transactions), silver.transactions, configuration
+    )
     records = GoldRecords(
         accounts=gold_accounts,
         categories=_categories(configuration.taxonomy),
         transactions=transactions,
+        category_allocations=allocations,
         monthly_balances=monthly_balances(
             gold_accounts,
             transactions,
