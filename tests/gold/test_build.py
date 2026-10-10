@@ -9,7 +9,7 @@ synthetic. Records come in no fixed order, so they are compared as multisets.
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from budget.gold import (
@@ -186,9 +186,12 @@ def test_the_worked_examples_snapshots_come_out_exactly() -> None:
 APRIL = ReportingMonth(2026, 4)
 
 
-def _settled(*exports: EvidenceExport) -> dict[ReportingMonth, bool]:
+def _settled(
+    *exports: EvidenceExport, window: timedelta = timedelta(days=7)
+) -> dict[ReportingMonth, bool]:
     """Which of joint-current's months these exports settle."""
-    result = build_from(replace(SILVER, evidence_exports=exports))
+    silver = replace(SILVER, evidence_exports=exports)
+    result = build_from(silver, late_booking_window=window)
     return {
         s.month: s.late_bookings_settled
         for s in _all_snapshots(result)
@@ -206,6 +209,18 @@ def test_an_export_produced_under_7_days_after_a_month_does_not_settle_it() -> N
 
     assert _settled(six_days_after)[APRIL] is False
     assert _settled(seven_days_after)[APRIL] is True
+
+
+def test_a_longer_late_booking_window_needs_a_later_export() -> None:
+    seven_days_after = EvidenceExport(
+        "run-7", CURRENT, date(2026, 5, 7), COVERS_FROM, date(2026, 5, 7)
+    )
+    ten_days_after = EvidenceExport(
+        "run-10", CURRENT, date(2026, 5, 10), COVERS_FROM, date(2026, 5, 10)
+    )
+
+    assert _settled(seven_days_after, window=timedelta(days=10))[APRIL] is False
+    assert _settled(ten_days_after, window=timedelta(days=10))[APRIL] is True
 
 
 def test_an_export_whose_range_misses_the_months_last_day_never_settles_it() -> None:

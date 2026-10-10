@@ -10,7 +10,7 @@ admitted export per account, dated 2026-05-08, declares 2026-01-01 through
 
 from collections.abc import Mapping
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from budget.gold import GoldResult, build
@@ -35,6 +35,8 @@ from tests.gold.worked_example import (
 )
 
 EXPORTED_ON = date(2026, 5, 8)
+# The late-booking window a profile gives when it sets none.
+LATE_BOOKING_WINDOW = timedelta(days=7)
 COVERS_FROM = date(2026, 1, 1)
 
 REGISTRY: Mapping[str, Account] = {
@@ -143,6 +145,7 @@ def build_from(
     silver: SilverResult = SILVER,
     *,
     accounts: Mapping[str, Account] = REGISTRY,
+    late_booking_window: timedelta = LATE_BOOKING_WINDOW,
 ) -> GoldResult:
     """Run the Gold build over these inputs, bound to the example's publication.
 
@@ -154,4 +157,5 @@ def build_from(
             accounts=accounts, taxonomy=TAXONOMY, rules={}
         ),
         publication=PUBLICATION,
+        late_booking_window=late_booking_window,
     )

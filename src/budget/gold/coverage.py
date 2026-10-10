@@ -53,6 +53,7 @@ class BalanceEvidence:
     ranges: tuple[AccountEvidence, ...]
     exports: tuple[EvidenceExport, ...]
     links: tuple[_Link, ...]
+    late_booking_window: timedelta
 
     @classmethod
     def of(
@@ -60,6 +61,7 @@ class BalanceEvidence:
         history: Sequence[GoldTransaction],
         ranges: Iterable[AccountEvidence],
         exports: Iterable[EvidenceExport],
+        late_booking_window: timedelta,
     ) -> Self:
         """Gather the evidence of the account `history` belongs to, in booked order."""
         account_id = history[0].account_id
@@ -68,6 +70,7 @@ class BalanceEvidence:
             ranges=tuple(r for r in ranges if r.account_id == account_id),
             exports=tuple(e for e in exports if e.account_id == account_id),
             links=_links(history),
+            late_booking_window=late_booking_window,
         )
 
     def coverage(self, month: ReportingMonth) -> Coverage:

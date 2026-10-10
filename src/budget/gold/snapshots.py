@@ -8,6 +8,7 @@ that is earlier (`gold-contract.md`, *MonthlyBalanceSnapshot*).
 """
 
 from collections.abc import Iterable, Sequence
+from datetime import timedelta
 from decimal import Decimal
 
 from budget.gold.coverage import BalanceEvidence
@@ -27,6 +28,7 @@ def monthly_balances(
     transactions: Sequence[GoldTransaction],
     ranges: Sequence[AccountEvidence],
     exports: Sequence[EvidenceExport],
+    late_booking_window: timedelta,
 ) -> tuple[MonthlyBalanceSnapshot, ...]:
     """Snapshot every account for every month of its managed period."""
     latest = max(
@@ -46,6 +48,7 @@ def monthly_balances(
             _history(account.account_id, transactions),
             ranges,
             exports,
+            late_booking_window,
             _last_managed(account, latest),
         )
     )
@@ -71,12 +74,13 @@ def _account_balances(
     history: Sequence[GoldTransaction],
     ranges: Sequence[AccountEvidence],
     exports: Sequence[EvidenceExport],
+    late_booking_window: timedelta,
     last: ReportingMonth,
 ) -> list[MonthlyBalanceSnapshot]:
     """Snapshot one account; with no booked transaction it has no managed period."""
     if not history:
         return []
-    evidence = BalanceEvidence.of(history, ranges, exports)
+    evidence = BalanceEvidence.of(history, ranges, exports, late_booking_window)
     return [
         _snapshot(month, history, evidence)
         for month in months_through(evidence.opened, last)

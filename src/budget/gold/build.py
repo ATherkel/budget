@@ -2,6 +2,7 @@
 """The Gold build: one publication's records from Silver and the household inputs."""
 
 from collections.abc import Sequence
+from datetime import timedelta
 
 from budget.gold.models import GoldAccount, GoldCategory, GoldPublication
 from budget.gold.result import GoldRecords, GoldResult
@@ -18,12 +19,14 @@ def build(
     silver: SilverResult,
     configuration: ConfigurationSnapshot,
     publication: GoldPublication,
+    late_booking_window: timedelta,
 ) -> GoldResult:
     """Derive Gold from a Silver result and the household's configuration.
 
     Nothing is classified yet: every transaction is `unknown`, and no category
     allocation, lineage or review item is published. The result is bound to
-    `publication`, which the caller supplies.
+    `publication`, which the caller supplies. A month's late bookings are
+    settled by an export produced `late_booking_window` or more after it ends.
     """
     gold_accounts = tuple(
         _account(account, silver.account_evidence)
@@ -39,6 +42,7 @@ def build(
             transactions,
             silver.account_evidence,
             silver.evidence_exports,
+            late_booking_window,
         ),
     )
     return GoldResult(publication, records)
