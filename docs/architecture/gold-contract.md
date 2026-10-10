@@ -153,7 +153,7 @@ one row per month in that range, including months with no transactions.
 | `opening_balance` | `Decimal`/null | No | Balance immediately before the month's first transaction: that transaction's `balance_after` minus its `amount`. For a complete quiet month, carry the last bank-stated balance into both opening and closing. Null when the required balance is missing, the month is `no_data`, or the month is quiet and not `complete`. |
 | `closing_balance` | `Decimal`/null | No | `balance_after` of the month's last transaction by `account_sequence`, bank-stated only. For a complete quiet month, carry the last bank-stated balance into both opening and closing. Null when the required balance is missing, the month is `no_data`, or the month is quiet and not `complete`. |
 | `coverage` | `Coverage` | Yes | Trust status for this account and month (see `gold-layer.md`). |
-| `late_bookings_settled` | bool | Yes | True when one of the import runs counted in the account's evidence (admitted runs, and `repeat` runs of an admitted payload) was exported at least 7 days after the month's last day and its declared range covers that day, so late bookings into the month have had time to appear (see `gold-layer.md`, *Late bookings settled*). Computed at build from recorded export dates and ranges, never from the clock. |
+| `late_bookings_settled` | bool | Yes | True when one of the import runs counted in the account's evidence (admitted runs, and `repeat` runs of an admitted payload) was exported at least the late-booking window (7 days unless the profile sets another) after the month's last day and its declared range covers that day, so late bookings into the month have had time to appear (see `gold-layer.md`, *Late bookings settled*). Computed at build from recorded export dates and ranges, never from the clock. |
 
 Additivity: `amount` is additive across every dimension within one currency,
 on both the transaction and the allocation fact. The two are never summed
@@ -391,8 +391,8 @@ transaction type that must carry no allocation; manual classification decision
 previous month; first managed month (`partial`); complete quiet month; partial
 quiet month crossed by a broken link; `no_data` month beyond evidence; an
 account whose exports lag behind the latest published month; a month whose
-late bookings are settled and one whose covering export was produced fewer
-than 7 days after it ended; closed account; and two categories sharing a
+late bookings are settled and one whose covering export was produced less
+than the late-booking window after it ended; closed account; and two categories sharing a
 group. The worked example in `gold-layer.md` covers most of these.
 
 Classification fixtures reproduce every synthetic scenario and taxonomy change

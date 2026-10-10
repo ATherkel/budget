@@ -15,6 +15,7 @@ from budget.silver.merge import Ledger
 from budget.silver.models import (
     AccountEvidence,
     BalanceObservation,
+    EvidenceExport,
     ImportRunResult,
     SilverResult,
     Transaction,
@@ -51,6 +52,7 @@ def build(
         ledger = ledgers.setdefault(each.account_id, Ledger(each.account_id))
         judged.append(admit(judge(each, indexed), ledger, indexed))
     admitted = [j.each for j in judged if j.admitted]
+    counted = _counted(runs, admitted)
     return SilverResult(
         transactions=tuple(
             t for ledger in _sorted(ledgers) for t in _transactions(ledger)
@@ -68,7 +70,8 @@ def build(
                 key=lambda o: (o.account_id, o.balance_date, o.payload_id),
             )
         ),
-        account_evidence=_account_evidence(runs, admitted),
+        account_evidence=_account_evidence(counted),
+        evidence_exports=_evidence_exports(counted),
         import_run_results=tuple(
             sorted((_result(j) for j in judged), key=lambda r: r.import_run_id)
         ),
@@ -170,19 +173,25 @@ def _observations(each: ReadRun) -> list[BalanceObservation]:
     ]
 
 
-def _account_evidence(
-    runs: Iterable[ImportRun], admitted: Iterable[ReadRun]
-) -> tuple[AccountEvidence, ...]:
-    """Union the declared ranges, as `silver-layer.md` (*Evidence Ranges*) says.
+def _counted(runs: Iterable[ImportRun], admitted: Iterable[ReadRun]) -> list[ImportRun]:
+    """Return the runs counted in evidence (`silver-layer.md`, *Evidence Ranges*).
 
     Admitted runs count, and so do `repeat` runs of an admitted payload.
     """
     payloads = {(each.account_id, each.run.payload_id) for each in admitted}
-    declared = sorted(
-        (run.declared_account_id, run.covers_from, run.covers_through)
+    return [
+        run
         for run in runs
         if run.outcome != "refused"
         and (run.declared_account_id, run.payload_id) in payloads
+    ]
+
+
+def _account_evidence(counted: Iterable[ImportRun]) -> tuple[AccountEvidence, ...]:
+    """Union the counted runs' declared ranges into maximal stretches of days."""
+    declared = sorted(
+        (run.declared_account_id, run.covers_from, run.covers_through)
+        for run in counted
     )
     ranges: list[AccountEvidence] = []
     for account_id, covers_from, covers_through in declared:
@@ -197,6 +206,25 @@ def _account_evidence(
         else:
             ranges.append(AccountEvidence(account_id, covers_from, covers_through))
     return tuple(ranges)
+
+
+def _evidence_exports(counted: Iterable[ImportRun]) -> tuple[EvidenceExport, ...]:
+    """Each counted run's export date and declared range, for Gold to settle."""
+    return tuple(
+        sorted(
+            (
+                EvidenceExport(
+                    import_run_id=run.import_run_id,
+                    account_id=run.declared_account_id,
+                    exported_on=run.exported_on,
+                    covers_from=run.covers_from,
+                    covers_through=run.covers_through,
+                )
+                for run in counted
+            ),
+            key=lambda e: (e.account_id, e.exported_on, e.import_run_id),
+        )
+    )
 
 
 def _result(judged: Admission) -> ImportRunResult:

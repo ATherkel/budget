@@ -22,7 +22,7 @@ from tests.importing.households import ACCOUNTS
 EXIT_OK = 0
 EXIT_REFUSED_ENVIRONMENT = 4
 DIRTY_STATUS = " M src/budget/cli.py\n"
-EMPTY_RESULT = SilverResult((), (), (), (), (), (), ())
+EMPTY_RESULT = SilverResult((), (), (), (), (), (), (), ())
 
 
 def _git(returncode: int, stdout: str) -> mock.Mock:

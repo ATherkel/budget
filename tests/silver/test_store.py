@@ -107,6 +107,7 @@ _COUNT_DERIVED_ROWS = (
     "SELECT COUNT(*) FROM unbooked_records",
     "SELECT COUNT(*) FROM balance_observations",
     "SELECT COUNT(*) FROM account_evidence",
+    "SELECT COUNT(*) FROM evidence_exports",
     "SELECT COUNT(*) FROM import_run_results",
     "SELECT COUNT(*) FROM validation_errors",
     "SELECT COUNT(*) FROM import_run_result_review_items",
@@ -146,6 +147,7 @@ def _one_transaction(amount: Decimal, currency: str = "DKK") -> SilverResult:
         unbooked_records=(),
         balance_observations=(),
         account_evidence=(),
+        evidence_exports=(),
         import_run_results=(),
         review_items=(),
     )
@@ -170,6 +172,7 @@ def _one_unbooked(account_id: str) -> SilverResult:
         ),
         balance_observations=(),
         account_evidence=(),
+        evidence_exports=(),
         import_run_results=(),
         review_items=(),
     )
@@ -570,7 +573,7 @@ class SilverDurabilityTests(unittest.TestCase):
     def test_an_empty_result_clears_every_derived_row_and_keeps_the_identity(
         self,
     ) -> None:
-        empty = SilverResult((), (), (), (), (), (), ())
+        empty = SilverResult((), (), (), (), (), (), (), ())
         with TemporaryDirectory() as directory:
             profile = make_test_profile(directory)
             migrate_silver(profile)

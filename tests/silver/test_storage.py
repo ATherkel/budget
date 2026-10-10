@@ -40,6 +40,7 @@ STORE_TABLES = {
     "unbooked_records",
     "balance_observations",
     "account_evidence",
+    "evidence_exports",
     "import_run_results",
     "validation_errors",
     "import_run_result_review_items",

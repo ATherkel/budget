@@ -16,6 +16,7 @@ from budget.silver.decisions import (
 from budget.silver.models import (
     AccountEvidence,
     BalanceObservation,
+    EvidenceExport,
     ImportRunResult,
     ReviewItem,
     SilverResult,
@@ -41,6 +42,7 @@ __all__ = [
     "AccountEvidence",
     "BalanceObservation",
     "CurrencySnapshotMismatchError",
+    "EvidenceExport",
     "ImportRunResult",
     "MoneyError",
     "MoneyPrecisionError",
