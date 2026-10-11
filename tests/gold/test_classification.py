@@ -75,3 +75,16 @@ def test_a_transaction_no_rule_matches_is_unknown_with_an_unclassified_item() ->
         (i.kind, i.transaction_ids, i.rule_ids, i.decision_id, i.reason)
         for i in result.classification_review_items()
     ] == [("unclassified", ("cash",), (), None, None)]
+
+
+def test_a_rule_matches_text_that_starts_with_its_pattern_in_any_case() -> None:
+    # r-mobilepay: text starts with MOBILEPAY, assigns eating-out.
+    result = classified(
+        booked("cafe", CURRENT, date(2026, 2, 21), "-85.00", "MobilePay Cafe Luna"),
+        booked("via", CURRENT, date(2026, 2, 22), "-40.00", "CAFE VIA MOBILEPAY"),
+    )
+
+    assert _types(result) == {"cafe": "expense", "via": "unknown"}
+    assert [(a.transaction_id, a.category_id) for a in _allocations(result)] == [
+        ("cafe", "eating-out")
+    ]
