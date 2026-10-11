@@ -76,6 +76,17 @@ def _group_problems(groups: Mapping[str, object]) -> list[str]:
     ]
 
 
+# Transaction types that carry no category, so no category may take their name.
+_TYPE_NAMES = frozenset({"transfer", "adjustment", "unknown"})
+
+
+def _type_name(category_id: str) -> list[str]:
+    """Refuse a category ID that names a transaction type."""
+    if category_id not in _TYPE_NAMES:
+        return []
+    return ["the ID is a transaction type, not a category"]
+
+
 def _undeclared_group(entry: object, groups: Mapping[str, object]) -> list[str]:
     """Name a category's group that no `[group.<id>]` table declares."""
     group = entry.get("group") if isinstance(entry, dict) else None
@@ -91,6 +102,7 @@ def _category_problems(
     problems = []
     for category_id, entry in categories.items():
         found = entry_problems(category_id, entry, _CATEGORY_FIELDS, "groceries")
+        found.extend(_type_name(category_id))
         found.extend(_undeclared_group(entry, groups))
         problems.extend(_entry_problem("category", category_id, p) for p in found)
     return problems
