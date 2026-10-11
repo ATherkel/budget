@@ -14,10 +14,13 @@ from typing import Literal
 
 from budget.gold.models import (
     CategoryDirection,
+    ClassificationReviewItem,
+    ClassificationReviewKind,
     GoldCategoryAllocation,
     GoldTransaction,
     TransactionType,
 )
+from budget.hashing import hash_parts
 from budget.inputs.rules import AssignCategory, RuleConditions
 from budget.inputs.snapshot import ConfigurationSnapshot
 from budget.silver.models import Transaction
@@ -43,14 +46,25 @@ class _Outcome:
 
     transaction_type: TransactionType
     category_id: str | None = None
+    # The kind of review item the outcome raises, if any.
+    review_kind: ClassificationReviewKind | None = None
+
+
+@dataclass(frozen=True)
+class Classified:
+    """Classification's output: typed transactions and what they give rise to."""
+
+    transactions: tuple[GoldTransaction, ...]
+    allocations: tuple[GoldCategoryAllocation, ...]
+    review_items: tuple[ClassificationReviewItem, ...]
 
 
 def classify(
     transactions: Sequence[GoldTransaction],
     silver: Iterable[Transaction],
     configuration: ConfigurationSnapshot,
-) -> tuple[tuple[GoldTransaction, ...], tuple[GoldCategoryAllocation, ...]]:
-    """Type each transaction, and allocate each classified one whole.
+) -> Classified:
+    """Type each transaction, allocate each classified one whole, and raise items.
 
     A rule tests the Silver row's own facts, so `silver` must hold every
     transaction's parent row.
@@ -59,12 +73,17 @@ def classify(
     outcomes = [
         (t, _outcome(facts[t.transaction_id], configuration)) for t in transactions
     ]
-    return (
-        tuple(replace(t, transaction_type=o.transaction_type) for t, o in outcomes),
-        tuple(
+    return Classified(
+        transactions=tuple(
+            replace(t, transaction_type=o.transaction_type) for t, o in outcomes
+        ),
+        allocations=tuple(
             _allocation(t, o.category_id)
             for t, o in outcomes
             if o.category_id is not None
+        ),
+        review_items=tuple(
+            item for t, o in outcomes if (item := _review_item(t, o)) is not None
         ),
     )
 
@@ -79,7 +98,7 @@ def _outcome(
         if _matches(rule.when, transaction)
     ]
     if not matching:
-        return _Outcome("unknown")
+        return _Outcome("unknown", review_kind="unclassified")
     winner = max(matching, key=lambda rule: rule.priority)
     match winner.then:
         case AssignCategory(category_id=category_id):
@@ -116,4 +135,21 @@ def _allocation(
         transaction_date=transaction.transaction_date,
         category_id=category_id,
         amount=transaction.amount,
+    )
+
+
+def _review_item(
+    transaction: GoldTransaction, outcome: _Outcome
+) -> ClassificationReviewItem | None:
+    """Raise the review item an outcome calls for; most call for none."""
+    if outcome.review_kind is None:
+        return None
+
+    return ClassificationReviewItem(
+        review_item_id=hash_parts([outcome.review_kind, transaction.transaction_id]),
+        kind=outcome.review_kind,
+        transaction_ids=(transaction.transaction_id,),
+        rule_ids=(),
+        decision_id=None,
+        reason=None,
     )

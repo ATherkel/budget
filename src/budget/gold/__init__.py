@@ -29,7 +29,7 @@ from budget.gold.models import (
     TransferEvidence,
 )
 from budget.gold.repository import GoldLineageRepository, GoldRepository
-from budget.gold.result import GoldRecords, GoldResult
+from budget.gold.result import GoldLineageRecords, GoldRecords, GoldResult
 
 __all__ = [
     "AccountType",
@@ -42,6 +42,7 @@ __all__ = [
     "GoldAccount",
     "GoldCategory",
     "GoldCategoryAllocation",
+    "GoldLineageRecords",
     "GoldLineageRepository",
     "GoldPublication",
     "GoldRecords",

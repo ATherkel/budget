@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from budget.gold.classification import classify
 from budget.gold.models import GoldAccount, GoldCategory, GoldPublication
-from budget.gold.result import GoldRecords, GoldResult
+from budget.gold.result import GoldLineageRecords, GoldRecords, GoldResult
 from budget.gold.snapshots import monthly_balances
 from budget.gold.transactions import gold_transactions
 from budget.inputs.accounts import Account
@@ -33,23 +33,24 @@ def build(
         _account(account, silver.account_evidence)
         for account in configuration.accounts.values()
     )
-    transactions, allocations = classify(
+    classified = classify(
         gold_transactions(silver.transactions), silver.transactions, configuration
     )
     records = GoldRecords(
         accounts=gold_accounts,
         categories=_categories(configuration.taxonomy),
-        transactions=transactions,
-        category_allocations=allocations,
+        transactions=classified.transactions,
+        category_allocations=classified.allocations,
         monthly_balances=monthly_balances(
             gold_accounts,
-            transactions,
+            classified.transactions,
             silver.account_evidence,
             silver.evidence_exports,
             late_booking_window,
         ),
     )
-    return GoldResult(publication, records)
+    lineage = GoldLineageRecords(classification_review_items=classified.review_items)
+    return GoldResult(publication, records, lineage)
 
 
 def _account(account: Account, ranges: Sequence[AccountEvidence]) -> GoldAccount:
