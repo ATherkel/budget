@@ -7,6 +7,10 @@ A link joins two consecutive booked transactions and spans both their dates.
 It is verified when both balances exist and the later balance is the earlier
 plus the later amount. Bridging a missing balance for `balance_check` does not
 verify either link beside it.
+
+A last, open-ended link runs from the last transaction's date onward. It is
+verified when that transaction states its balance, so the quiet months after a
+missing one are not complete until a later transaction states a balance.
 """
 
 from collections.abc import Iterable, Sequence
@@ -22,7 +26,10 @@ from budget.silver.models import AccountEvidence, EvidenceExport
 
 @dataclass(frozen=True)
 class _Link:
-    """Two consecutive transactions, from the earlier's date to the later's."""
+    """Two consecutive transactions, from the earlier's date to the later's.
+
+    The last link has no later transaction and never ends.
+    """
 
     starts: date
     ends: date
@@ -30,15 +37,23 @@ class _Link:
 
 
 def _links(history: Sequence[GoldTransaction]) -> tuple[_Link, ...]:
-    return tuple(
+    last = history[-1]
+    return (
+        *(
+            _Link(
+                starts=earlier.transaction_date,
+                ends=later.transaction_date,
+                verified=earlier.balance_after is not None
+                and later.balance_after is not None
+                and later.balance_after == earlier.balance_after + later.amount,
+            )
+            for earlier, later in pairwise(history)
+        ),
         _Link(
-            starts=earlier.transaction_date,
-            ends=later.transaction_date,
-            verified=earlier.balance_after is not None
-            and later.balance_after is not None
-            and later.balance_after == earlier.balance_after + later.amount,
-        )
-        for earlier, later in pairwise(history)
+            starts=last.transaction_date,
+            ends=date.max,
+            verified=last.balance_after is not None,
+        ),
     )
 
 

@@ -498,3 +498,58 @@ def test_a_link_beside_a_missing_balance_leaves_its_months_partial() -> None:
         (ReportingMonth(2026, 3), "partial"),
         (ReportingMonth(2026, 4), "complete"),
     ]
+
+
+def test_quiet_months_after_a_last_transaction_without_a_balance_are_partial() -> None:
+    january = date(2026, 1, 1)
+    march_end = date(2026, 3, 31)
+    silver = replace(
+        SILVER,
+        transactions=(
+            silver_transaction("jan-05", CURRENT, date(2026, 1, 5), "100.00", "100.00"),
+            silver_transaction("jan-20", CURRENT, date(2026, 1, 20), "-40.00", None),
+        ),
+        account_evidence=(AccountEvidence(CURRENT, january, march_end),),
+        evidence_exports=(
+            EvidenceExport("run-mar", CURRENT, march_end, january, march_end),
+        ),
+    )
+
+    result = build_from(silver)
+
+    # The true balance after January is 60.00, which no export states. Carrying
+    # 100.00 would overstate it, so the quiet months have no balance at all.
+    assert [row[:4] for row in _rows(result, CURRENT)] == [
+        (ReportingMonth(2026, 1), "partial", Decimal("0.00"), None),
+        (ReportingMonth(2026, 2), "partial", None, None),
+        (ReportingMonth(2026, 3), "partial", None, None),
+    ]
+
+
+def test_quiet_months_are_complete_again_once_a_balance_is_stated() -> None:
+    january = date(2026, 1, 1)
+    june_end = date(2026, 6, 30)
+    silver = replace(
+        SILVER,
+        transactions=(
+            silver_transaction("jan-05", CURRENT, date(2026, 1, 5), "100.00", "100.00"),
+            silver_transaction("jan-20", CURRENT, date(2026, 1, 20), "-40.00", None),
+            silver_transaction("may-03", CURRENT, date(2026, 5, 3), "-10.00", "50.00"),
+        ),
+        account_evidence=(AccountEvidence(CURRENT, january, june_end),),
+        evidence_exports=(
+            EvidenceExport("run-jun", CURRENT, june_end, january, june_end),
+        ),
+    )
+
+    result = build_from(silver)
+
+    # May states 50.00, but the link into it is not verified, so May stays
+    # partial; June carries May's stated balance.
+    assert [row[1:4] for row in _rows(result, CURRENT)][1:] == [
+        ("partial", None, None),
+        ("partial", None, None),
+        ("partial", None, None),
+        ("partial", Decimal("60.00"), Decimal("50.00")),
+        ("complete", Decimal("50.00"), Decimal("50.00")),
+    ]
