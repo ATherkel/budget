@@ -57,12 +57,15 @@ categories.
   transaction.
 - Every category has a direction, `income` or `expense`, shared by every
   category in its group, so a group rollup never mixes the two.
-- Identifiers are durable and household-assigned, such as `groceries`.
-- The taxonomy needs at least one income and one expense category, plus
+- Identifiers are durable and household-assigned, such as `groceries`. No
+  category may take a transaction type's name.
+- A useful taxonomy has at least one income and one expense category, plus
   categories for money that crosses the reporting boundary without being pay
   or spending: for example, money moved to a savings account that is not
   imported, or contributions from a member's account that is not imported.
-  Such money is never a transfer.
+  Such money is never a transfer. This is guidance, not a configuration
+  error: money no category rule matches stays `unknown` and is raised as an
+  `unclassified` review item.
 
 | Change | Effect |
 | --- | --- |
@@ -249,6 +252,8 @@ anything is published, and the error lists every offending entry:
 
 - duplicate category, group, rule, or decision identifiers;
 - a category without a group, or a group whose categories differ in direction;
+- a category whose identifier is a transaction type: `transfer`, `adjustment`,
+  or `unknown`;
 - a rule or decision that references a missing category, including a deleted
   one;
 - a rule with no outcome, several outcomes, or an unparseable pattern;
