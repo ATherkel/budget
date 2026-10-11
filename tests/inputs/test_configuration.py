@@ -313,6 +313,37 @@ name = "Eating out"
             'taxonomy.toml: category "eating-out": group is missing',
         )
 
+    def test_a_transaction_type_is_not_a_category_id(self) -> None:
+        taxonomy = """\
+format = 1
+
+[group.money]
+name = "Money"
+direction = "expense"
+
+[category.transfer]
+name = "Transfer"
+group = "money"
+
+[category.groceries]
+name = "Groceries"
+group = "money"
+
+[category.adjustment]
+name = "Adjustment"
+group = "money"
+
+[category.unknown]
+name = "Unknown"
+group = "money"
+"""
+
+        assert refusal(taxonomy=taxonomy, rules="format = 1\n") == tuple(
+            f'taxonomy.toml: category "{type_name}": '
+            "the ID is a transaction type, not a category"
+            for type_name in ("transfer", "adjustment", "unknown")
+        )
+
     def test_each_kind_holds_one_table_per_entry(self) -> None:
         for content, expected in (
             ("group = 1", "group must hold one [group.<id>] table per group"),
