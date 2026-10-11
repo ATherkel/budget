@@ -70,8 +70,8 @@ def _undeclared_account(account_id: str) -> str:
     """Name a Silver account that the registry does not declare."""
     return (
         f'{ACCOUNTS_FILE_NAME}: account "{account_id}" is not declared, but '
-        "Silver holds transactions for it; restore it, or retire it with "
-        "closed_on, before rebuilding; nothing was published"
+        "Silver holds transactions for it; restore it, with closed_on set if "
+        "the account has closed, before rebuilding; nothing was published"
     )
 
 
