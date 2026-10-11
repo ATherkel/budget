@@ -302,6 +302,13 @@ that file before Bronze, and the file is never moved to another account
 not the content: it does not catch an export the bank labelled with the wrong
 account.
 
+An account is retired by setting `closed_on`, never by deleting its entry. Once
+its exports are imported, deleting the entry is a configuration error: the Gold
+build refuses, naming each account that Silver holds transactions for and the
+registry does not declare, and the current publication stays as it was. Its
+facts are never dropped silently. Restore the entry, with `closed_on` set if
+the account has closed, and rebuild.
+
 ### `taxonomy.toml`
 
 ```toml
