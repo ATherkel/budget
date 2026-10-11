@@ -6,6 +6,7 @@ from dataclasses import dataclass, fields
 from datetime import date
 
 from budget.gold.models import (
+    ClassificationReviewItem,
     GoldAccount,
     GoldCategory,
     GoldCategoryAllocation,
@@ -109,3 +110,7 @@ class GoldResult:
             if start_month <= snapshot.month <= end_month
             and _named(snapshot.account_id, account_ids)
         )
+
+    def classification_review_items(self) -> Sequence[ClassificationReviewItem]:
+        """Return every open classification review item."""
+        return ()

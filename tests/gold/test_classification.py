@@ -63,3 +63,15 @@ def test_6_and_15_an_income_category_is_income_in_and_a_refund_out() -> None:
         ("from-bo", "contribution"),
         ("interest", "interest"),
     }
+
+
+def test_a_transaction_no_rule_matches_is_unknown_with_an_unclassified_item() -> None:
+    result = classified(booked("cash", CURRENT, date(2026, 2, 3), "-200.00", "ATM 17"))
+
+    assert _types(result) == {"cash": "unknown"}
+    assert _allocations(result) == []
+    # The review item's identifier has a test of its own.
+    assert [
+        (i.kind, i.transaction_ids, i.rule_ids, i.decision_id, i.reason)
+        for i in result.classification_review_items()
+    ] == [("unclassified", ("cash",), (), None, None)]
