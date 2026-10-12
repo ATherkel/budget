@@ -127,7 +127,7 @@ def _balances(
         (
             t.balance_after
             for t in reversed(history)
-            if t.transaction_date < first_day(month) and t.balance_after is not None
+            if t.transaction_date < first_day(month)
         ),
         None,
     )
