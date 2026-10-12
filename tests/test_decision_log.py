@@ -117,3 +117,99 @@ class PrefixTests(unittest.TestCase):
         assert read == DecisionLogRead(
             silver=(), gold=(), position=0, prefix_sha256=hashlib.sha256().hexdigest()
         )
+
+
+def line(entry: int = 1, **changes: object) -> str:
+    """One complete `classify` line on `tx-a`, with keys changed or dropped.
+
+    A change to `DROP` removes the key.
+    """
+    fields = json.loads(classify(entry, f"tx-{entry}", "gifts"))
+    fields.update(changes)
+    kept = {key: value for key, value in fields.items() if value is not DROP}
+    return json.dumps(kept) + "\n"
+
+
+DROP = object()
+
+
+def problem(text: str, entry: int = 1, decision_id: str | None = "d-0001") -> str:
+    """Spell one entry's problem the way the reader reports it."""
+    name = f"entry {entry}" if decision_id is None else f"entry {entry} ({decision_id})"
+    return f"decisions.jsonl: {name}: {text}"
+
+
+INVALID_LOGS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("not JSON", "not json\n", (problem("must be one JSON object", decision_id=None),)),
+    ("a blank line", "\n", (problem("must be one JSON object", decision_id=None),)),
+    ("an unknown format", line(format=2), (problem("format must be 1"),)),
+    (
+        "an entry out of position",
+        line(entry=3, decision_id="d-0001"),
+        (problem("entry must be 1, its position in the log"),),
+    ),
+    (
+        "an unknown kind",
+        line(kind="rename"),
+        (problem('kind "rename" is not a decision kind'),),
+    ),
+    ("an unknown key", line(note="x"), (problem('unknown key "note"'),)),
+    ("a missing reason", line(reason=DROP), (problem("reason is missing"),)),
+    (
+        "a classify with two targets",
+        line(targets=["tx-a", "tx-b"]),
+        (problem("targets must list exactly 1 target"),),
+    ),
+    (
+        "a pair with one target",
+        line(kind="pair", targets=["tx-a"], category=DROP),
+        (problem("targets must list exactly 2 targets"),),
+    ),
+    (
+        "a local recorded_at",
+        line(recorded_at="2026-04-01T12:00:00"),
+        (problem("recorded_at must be a UTC time such as 2026-04-10T17:02:11Z"),),
+    ),
+    (
+        "a classify with category and adjustment",
+        line(adjustment=True),
+        (problem("classify must give exactly one of category or adjustment"),),
+    ),
+    (
+        "a classify with neither",
+        line(category=DROP),
+        (problem("classify must give exactly one of category or adjustment"),),
+    ),
+    (
+        "a one-sided transfer without a counterpart",
+        line(kind="one-sided-transfer", category=DROP),
+        (problem("counterpart_account_id is missing"),),
+    ),
+    (
+        "a same-transaction record without its ordinal",
+        line(kind="same-transaction", category=DROP, record={"payload_id": "p-1"}),
+        (problem("record.record_ordinal is missing"),),
+    ),
+    (
+        "a supersedes naming no decision in force",
+        line(supersedes=["d-0009"]),
+        (problem("supersedes d-0009, which is not in force"),),
+    ),
+    (
+        "a retract superseding nothing",
+        line(kind="retract", targets=[], category=DROP),
+        (problem("a retract must supersede a decision"),),
+    ),
+    (
+        "a reused decision_id",
+        line(1) + line(2, decision_id="d-0001"),
+        (problem("decision_id d-0001 is already used by entry 1", entry=2),),
+    ),
+)
+
+
+class EntryValidationTests(unittest.TestCase):
+    def test_each_invalid_entry_is_refused_naming_its_problem(self) -> None:
+        for case, log, expected in INVALID_LOGS:
+            with self.subTest(case):
+                assert refusal(log.encode()) == expected
