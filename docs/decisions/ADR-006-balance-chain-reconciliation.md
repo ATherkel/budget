@@ -81,8 +81,9 @@ reconciliation flag (`Afstemt` in the Danske export) is not used for anything.
   `architecture/silver-layer.md` is now the only reading. Likewise the
   account's evidence now starts at the earliest declared `covers_from` over its
   admitted import runs rather than at its first transaction
-  (`architecture/gold-contract.md`, `coverage_start`), so a quiet account can
-  be `complete` from the start of its first declared range.
+  (`architecture/gold-contract.md`, `coverage_start`), so an account with no
+  transactions can still be reported as `no_data` before it has a managed
+  period.
 - No link originally reached past an account's last transaction, so the quiet
   months after a last transaction with no balance read as a confirmed zero.
   A final link now runs from the last transaction onward, verified only when
