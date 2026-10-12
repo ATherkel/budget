@@ -391,7 +391,7 @@ def _closed_early(account_id: str, closed_on: str, latest: str) -> str:
     return (
         f'accounts.toml: account "{account_id}": closed_on {closed_on} is before '
         f"its latest transaction on {latest}; correct closed_on in "
-        "accounts.toml; nothing was built"
+        "accounts.toml; nothing was published"
     )
 
 
