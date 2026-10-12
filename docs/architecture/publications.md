@@ -77,7 +77,7 @@ A recipe names each input exactly and never by "latest":
 | Data | The set of import runs, each with its `import_run_id` and payload hash. Silver derives admission and quarantine from these; admission is not an input. |
 | Configuration snapshot | The parsed, canonical content of the account registry, category taxonomy, and classification rules. It is stored once per distinct content and referenced by its fingerprint. |
 | Decision log position | The last decision-log entry included. The effective decisions are derived from the log up to that entry. |
-| Code version | The commit of the application code, with its locked dependencies, and the Gold contract version and Silver identity version it implements. It also fixes the transfer matching policy, which is a constant of the code ([`operations.md`](operations.md#rulestoml)). |
+| Code version | The commit of the application code, with its locked dependencies, and the Gold contract version and Silver identity version it implements. It also determines the transfer matching policy, which is a constant of the code ([`classification.md`](classification.md#inputs)). |
 
 A recipe holds inputs only, so two recipes can be compared before anything is
 built. The recipe also records the Python and SQLite versions that ran the
@@ -96,7 +96,8 @@ any figure moved.
 
 `classification_version` in lineage is the fingerprint of the classification
 inputs: the configuration snapshot and the effective classification
-decisions.
+decisions. The transfer matching policy and the classifier's code are not part
+of it; they change with the recipe's code version.
 
 ## What Reproducible Promises
 
@@ -311,7 +312,8 @@ item, or voids an import run, is an entry in one append-only log:
   each classified by their own decision supersedes both in one entry, and
   therefore in one build, never passing through a publication where both legs
   are unclassified.
-- Rules, the taxonomy, and the account registry remain edited files. Their history is the configuration snapshots in recipes.
+- Rules, the taxonomy, and the account registry remain edited files. Their
+  history is the configuration snapshots in recipes.
 
 ## Reading a Publication
 
