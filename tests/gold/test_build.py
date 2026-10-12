@@ -334,6 +334,31 @@ def test_an_account_closed_before_its_latest_transaction_is_refused() -> None:
     )
 
 
+def test_every_account_closed_too_early_is_named_with_its_latest_date() -> None:
+    # joint-current has two transactions after 2026-03-31, rent on 2026-04-01
+    # and salary on 2026-04-24; the error names the latest.
+    closed_early = {
+        account_id: replace(account, closed_on=date(2026, 3, 31))
+        for account_id, account in REGISTRY.items()
+    }
+
+    with pytest.raises(ConfigurationError) as refused:
+        build_from(accounts=closed_early)
+
+    assert refused.value.problems == (
+        (
+            'accounts.toml: account "joint-current": closed_on 2026-03-31 is before '
+            "its latest transaction on 2026-04-24; correct closed_on in "
+            "accounts.toml; nothing was built"
+        ),
+        (
+            'accounts.toml: account "joint-savings": closed_on 2026-03-31 is before '
+            "its latest transaction on 2026-04-30; correct closed_on in "
+            "accounts.toml; nothing was built"
+        ),
+    )
+
+
 def test_a_quiet_accounts_repeated_export_settles_its_months() -> None:
     first = exports.declared(
         exports.export(
