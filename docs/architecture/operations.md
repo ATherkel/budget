@@ -427,6 +427,21 @@ The Silver kinds target these:
 | `withdrawn` | one `transaction_id` | none |
 | `same-transaction` | the existing `transaction_id` | `record`: `{"payload_id": …, "record_ordinal": …}`, the source record that shows it under new text |
 
+The classification kinds
+([`classification.md`](classification.md#manual-decisions)) and `retract`
+target these:
+
+| Kind | `targets` | Other fields |
+| --- | --- | --- |
+| `classify` | one `transaction_id` | exactly one of `category`, a category ID, or `"adjustment": true` |
+| `pair` | two `transaction_id`s | none |
+| `one-sided-transfer` | one `transaction_id` | `counterpart_account_id`: the counterpart Gold account |
+| `retract` | none | none; `supersedes` lists at least one decision |
+
+An entry's `entry` is its line number, counting from 1. `recorded_at` is UTC
+to the second, such as `2026-04-10T17:02:11Z`: an instant has one spelling,
+and no daylight-saving change repeats or skips it.
+
 Two checks guard the log against edits that bypass `decide`:
 
 - **Every build re-validates every entry** with the boundary's rules below. A
