@@ -169,7 +169,9 @@ accounts for the same month, never across months. `coverage` is non-additive.
    immutable and are never reused for a different meaning. A category or
    account is retired by deactivating it, never by repointing its key. Every
    other attribute may change, and changing one restates history, which is
-   what Type 1 means.
+   what Type 1 means. A Silver transaction on an account the registry no
+   longer declares refuses the build rather than publishing an orphan fact
+   (see [`accounts.toml`](operations.md#accountstoml)).
 2. Each booked Silver transaction on a Gold account yields exactly one
    `GoldTransaction`. Only `booking_status=booked` rows qualify; pending and
    cancelled records remain provenance.
