@@ -544,12 +544,38 @@ def test_quiet_months_are_complete_again_once_a_balance_is_stated() -> None:
 
     result = build_from(silver)
 
-    # May states 50.00, but the link into it is not verified, so May stays
-    # partial; June carries May's stated balance.
-    assert [row[1:4] for row in _rows(result, CURRENT)][1:] == [
-        ("partial", None, None),
-        ("partial", None, None),
-        ("partial", None, None),
-        ("partial", Decimal("60.00"), Decimal("50.00")),
-        ("complete", Decimal("50.00"), Decimal("50.00")),
+    # This guards where the unknown stretch ends. May states 50.00, but the
+    # link into it is not verified, so May stays partial; June carries 50.00.
+    assert [row[:4] for row in _rows(result, CURRENT)] == [
+        (ReportingMonth(2026, 1), "partial", Decimal("0.00"), None),
+        (ReportingMonth(2026, 2), "partial", None, None),
+        (ReportingMonth(2026, 3), "partial", None, None),
+        (ReportingMonth(2026, 4), "partial", None, None),
+        (ReportingMonth(2026, 5), "partial", Decimal("60.00"), Decimal("50.00")),
+        (ReportingMonth(2026, 6), "complete", Decimal("50.00"), Decimal("50.00")),
+    ]
+
+
+def test_an_account_whose_source_states_no_balances_is_never_complete() -> None:
+    january = date(2026, 1, 1)
+    march_end = date(2026, 3, 31)
+    silver = replace(
+        SILVER,
+        transactions=(
+            silver_transaction("jan-05", CURRENT, date(2026, 1, 5), "100.00", None),
+            silver_transaction("jan-20", CURRENT, date(2026, 1, 20), "-40.00", None),
+        ),
+        account_evidence=(AccountEvidence(CURRENT, january, march_end),),
+        evidence_exports=(
+            EvidenceExport("run-mar", CURRENT, march_end, january, march_end),
+        ),
+    )
+
+    result = build_from(silver)
+
+    # A complete month must state its balances, and none is ever stated here.
+    assert [row[:4] for row in _rows(result, CURRENT)] == [
+        (ReportingMonth(2026, 1), "partial", None, None),
+        (ReportingMonth(2026, 2), "partial", None, None),
+        (ReportingMonth(2026, 3), "partial", None, None),
     ]
