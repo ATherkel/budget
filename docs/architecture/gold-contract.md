@@ -64,7 +64,7 @@ current household interpretation.
 | `ownership_scope` | `OwnershipScope` | Yes | `household` or `person`. |
 | `currency` | ISO 4217 string | Yes | Currency of every amount and balance on this account. `DKK` in the first release. |
 | `closed_on` | `date`/null | No | Date the account closed; null while open. Ends the account's managed period. |
-| `coverage_start` | `date`/null | No | First day of the account's earliest evidence range (`silver-layer.md`, *Evidence Ranges*), which is the earliest `covers_from` over its admitted import runs, so a quiet account can be `complete` from the start of its first range. Null when the account has no admitted import run. |
+| `coverage_start` | `date`/null | No | First day of the account's earliest evidence range (`silver-layer.md`, *Evidence Ranges*), which is the earliest `covers_from` over its admitted import runs. With `evidence_through`, it lets consumers report an account with no transactions as `no_data` even before it has a managed period (`gold-layer.md`). Null when the account has no admitted import run. |
 | `evidence_through` | `date`/null | No | Last day of the account's latest evidence range (`silver-layer.md`, *Evidence Ranges*). Gold takes it from Silver's ranges and never derives it from an export date. Null when no export of the account has been imported. Days between the two dates can still fall in a gap between ranges. |
 
 ### `GoldCategory`
