@@ -22,6 +22,7 @@ class GoldRepository(Protocol):
     """One publication's consumer records.
 
     `account_ids=None` means every account, and an empty collection means none.
+    Filtering methods raise `TypeError` when `account_ids` is a bare string.
     """
 
     def publication(self) -> GoldPublication:

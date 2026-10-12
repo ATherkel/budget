@@ -34,6 +34,13 @@ class GoldRecords:
             object.__setattr__(self, record_kind.name, copied)
 
 
+def _validate_account_ids(account_ids: Collection[str] | None) -> None:
+    """Reject a string before filtering, including when no records match."""
+    if isinstance(account_ids, str):
+        msg = "account_ids must be a collection of account IDs, not a string"
+        raise TypeError(msg)
+
+
 def _named(account_id: str, account_ids: Collection[str] | None) -> bool:
     """Whether `account_ids` names `account_id`; `None` names every account."""
     return account_ids is None or account_id in account_ids
@@ -73,6 +80,7 @@ class GoldResult:
         account_ids: Collection[str] | None = None,
     ) -> Sequence[GoldTransaction]:
         """Return the transactions dated from `start_date` through `end_date`."""
+        _validate_account_ids(account_ids)
         return tuple(
             transaction
             for transaction in self._records.transactions
@@ -88,6 +96,7 @@ class GoldResult:
         account_ids: Collection[str] | None = None,
     ) -> Sequence[GoldCategoryAllocation]:
         """Return the allocations dated from `start_date` through `end_date`."""
+        _validate_account_ids(account_ids)
         return tuple(
             allocation
             for allocation in self._records.category_allocations
@@ -103,6 +112,7 @@ class GoldResult:
         account_ids: Collection[str] | None = None,
     ) -> Sequence[MonthlyBalanceSnapshot]:
         """Return the snapshots for `start_month` through `end_month`."""
+        _validate_account_ids(account_ids)
         return tuple(
             snapshot
             for snapshot in self._records.monthly_balances
