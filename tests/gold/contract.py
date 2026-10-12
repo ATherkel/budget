@@ -8,7 +8,7 @@ records, so the tests compare them as multisets.
 """
 
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from datetime import date
 from decimal import Decimal
 
@@ -18,9 +18,11 @@ from budget.gold import GoldRepository, ReportingMonth
 from tests.gold.worked_example import (
     ACCOUNTS,
     CATEGORIES,
+    CATEGORY_ALLOCATIONS,
     CURRENT,
     PUBLICATION,
     SAVINGS,
+    TRANSACTIONS,
     example_allocations,
     example_balances,
     example_transactions,
@@ -30,29 +32,30 @@ from tests.gold.worked_example import (
 class GoldRepositoryContract:
     """`gold-contract.md`, *Consumer Interface*, over the worked example."""
 
+    @pytest.mark.parametrize("year", [2026, 2027], ids=["matching", "no-matches"])
     @pytest.mark.parametrize(
         "query",
         [
             pytest.param(
-                lambda repository: repository.transactions(
-                    start_date=date(2026, 1, 1),
-                    end_date=date(2026, 5, 31),
+                lambda repository, year: repository.transactions(
+                    start_date=date(year, 1, 1),
+                    end_date=date(year, 5, 31),
                     account_ids="joint-current",
                 ),
                 id="transactions",
             ),
             pytest.param(
-                lambda repository: repository.category_allocations(
-                    start_date=date(2026, 1, 1),
-                    end_date=date(2026, 5, 31),
+                lambda repository, year: repository.category_allocations(
+                    start_date=date(year, 1, 1),
+                    end_date=date(year, 5, 31),
                     account_ids="joint-current",
                 ),
                 id="category_allocations",
             ),
             pytest.param(
-                lambda repository: repository.monthly_balances(
-                    start_month=ReportingMonth(2026, 1),
-                    end_month=ReportingMonth(2026, 5),
+                lambda repository, year: repository.monthly_balances(
+                    start_month=ReportingMonth(year, 1),
+                    end_month=ReportingMonth(year, 5),
                     account_ids="joint-current",
                 ),
                 id="monthly_balances",
@@ -60,10 +63,46 @@ class GoldRepositoryContract:
         ],
     )
     def test_account_ids_rejects_a_bare_string(
-        self, repository: GoldRepository, query: Callable[[GoldRepository], object]
+        self,
+        repository: GoldRepository,
+        query: Callable[[GoldRepository, int], object],
+        year: int,
     ) -> None:
         with pytest.raises(TypeError):
-            query(repository)
+            query(repository, year)
+
+    @pytest.mark.parametrize(
+        "account_ids",
+        [[CURRENT, SAVINGS], (CURRENT, SAVINGS), {CURRENT, SAVINGS}, None],
+        ids=["list", "tuple", "set", "all"],
+    )
+    def test_account_collections_and_none_preserve_the_records(
+        self, repository: GoldRepository, account_ids: Collection[str] | None
+    ) -> None:
+        assert Counter(
+            repository.transactions(
+                start_date=date(2026, 1, 1),
+                end_date=date(2026, 5, 31),
+                account_ids=account_ids,
+            )
+        ) == Counter(TRANSACTIONS)
+        assert Counter(
+            repository.category_allocations(
+                start_date=date(2026, 1, 1),
+                end_date=date(2026, 5, 31),
+                account_ids=account_ids,
+            )
+        ) == Counter(CATEGORY_ALLOCATIONS)
+        assert Counter(
+            repository.monthly_balances(
+                start_month=ReportingMonth(2026, 1),
+                end_month=ReportingMonth(2026, 5),
+                account_ids=account_ids,
+            )
+        ) == Counter(
+            example_balances(CURRENT, 1, 2, 3, 4, 5)
+            + example_balances(SAVINGS, 1, 2, 3, 4, 5)
+        )
 
     def test_transactions_are_those_dated_within_an_inclusive_range(
         self, repository: GoldRepository
