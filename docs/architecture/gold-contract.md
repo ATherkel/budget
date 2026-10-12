@@ -394,7 +394,8 @@ a classified transaction and its single allocation summing to its amount; a
 transaction type that must carry no allocation; manual classification decision
 (visible through lineage); missing balance; chain break that demotes the
 previous month; first managed month (`partial`); complete quiet month; partial
-quiet month crossed by a broken link; `no_data` month beyond evidence; an
+quiet month crossed by a broken link; partial quiet month after a last
+transaction with no balance; `no_data` month beyond evidence; an
 account whose exports lag behind the latest published month; a month whose
 late bookings are settled and one whose covering export was produced less
 than the late-booking window after it ended; closed account; and two categories sharing a

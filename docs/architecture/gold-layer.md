@@ -120,7 +120,7 @@ the later amount. Otherwise it is broken. Its span includes both transaction
 dates. Bridging a missing balance for `balance_check` does not make either
 adjacent link verified. A final link runs from the account's last transaction
 onward without end. It is verified when that transaction states its balance,
-so after a last transaction with no balance every month is `partial` until a
+so no month after a last transaction with no balance is `complete` until a
 later transaction states one; that transaction's month stays `partial`, since
 the link into it is broken.
 
