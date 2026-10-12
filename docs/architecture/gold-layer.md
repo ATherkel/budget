@@ -121,8 +121,8 @@ dates. Bridging a missing balance for `balance_check` does not make either
 adjacent link verified. A final link runs from the account's last transaction
 onward without end. It is verified when that transaction states its balance,
 so no month after a last transaction with no balance is `complete` until a
-later transaction states one; that transaction's month stays `partial`, since
-the link into it is broken.
+later import adds a transaction that states one. That transaction's month
+stays `partial`, since the link into it is broken.
 
 For each account and month of its managed period:
 

@@ -10,8 +10,8 @@ verify either link beside it.
 
 A last, open-ended link runs from the last transaction's date onward. It is
 verified when that transaction states its balance, so no quiet month after a
-last transaction with no balance is complete until a later transaction states
-one.
+last transaction with no balance is complete until a later import adds a
+transaction that states one.
 """
 
 from collections.abc import Iterable, Sequence
