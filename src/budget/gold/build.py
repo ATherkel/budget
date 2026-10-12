@@ -1,16 +1,23 @@
 # Copyright 2026 Therkel
 """The Gold build: one publication's records from Silver and the household inputs."""
 
-from collections.abc import Sequence
-from datetime import timedelta
+from collections.abc import Mapping, Sequence
+from datetime import date, timedelta
 
-from budget.gold.models import GoldAccount, GoldCategory, GoldPublication
+from budget.gold.models import (
+    GoldAccount,
+    GoldCategory,
+    GoldPublication,
+    GoldTransaction,
+)
 from budget.gold.result import GoldRecords, GoldResult
 from budget.gold.snapshots import monthly_balances
 from budget.gold.transactions import gold_transactions
 from budget.inputs.accounts import Account
+from budget.inputs.document import ConfigurationError
 from budget.inputs.snapshot import ConfigurationSnapshot
 from budget.inputs.taxonomy import Taxonomy
+from budget.profiles import ACCOUNTS_FILE_NAME
 from budget.silver.models import AccountEvidence, SilverResult
 
 
@@ -28,11 +35,14 @@ def build(
     `publication`, which the caller supplies. A month's late bookings are
     settled by an export produced `late_booking_window` or more after it ends.
     """
+    transactions = gold_transactions(silver.transactions)
+    problems = _closing_problems(configuration.accounts, transactions)
+    if problems:
+        raise ConfigurationError(problems)
     gold_accounts = tuple(
         _account(account, silver.account_evidence)
         for account in configuration.accounts.values()
     )
-    transactions = gold_transactions(silver.transactions)
     records = GoldRecords(
         accounts=gold_accounts,
         categories=_categories(configuration.taxonomy),
@@ -46,6 +56,38 @@ def build(
         ),
     )
     return GoldResult(publication, records)
+
+
+def _closing_problems(
+    accounts: Mapping[str, Account], transactions: Sequence[GoldTransaction]
+) -> tuple[str, ...]:
+    """Name every account closed before its latest transaction, by account id.
+
+    Invariant 14 of `gold-contract.md`: no `transaction_date` falls after its
+    account's `closed_on`. A transaction on the closing date itself is allowed.
+    """
+    for transaction in transactions:
+        account = accounts[transaction.account_id]
+        if (
+            account.closed_on is not None
+            and transaction.transaction_date > account.closed_on
+        ):
+            return (
+                _closed_too_early(
+                    account.account_id, account.closed_on, transaction.transaction_date
+                ),
+            )
+    return ()
+
+
+def _closed_too_early(account_id: str, closed_on: date, latest: date) -> str:
+    """Name the account and both dates, and say how to fix it."""
+    return (
+        f'{ACCOUNTS_FILE_NAME}: account "{account_id}": closed_on '
+        f"{closed_on.isoformat()} is before its latest transaction on "
+        f"{latest.isoformat()}; correct closed_on in {ACCOUNTS_FILE_NAME}; "
+        "nothing was built"
+    )
 
 
 def _account(account: Account, ranges: Sequence[AccountEvidence]) -> GoldAccount:
