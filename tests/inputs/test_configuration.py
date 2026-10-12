@@ -10,9 +10,11 @@ import unittest
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import get_args
 
 import pytest
 
+from budget.gold.models import TransactionType
 from budget.inputs import (
     AssignAdjustment,
     AssignCategory,
@@ -271,6 +273,11 @@ class EveryFileTests(unittest.TestCase):
         )
 
 
+# The transaction types that carry no category, in the order the refusal test's
+# file declares them.
+UNCATEGORISED_TYPES = ("transfer", "adjustment", "unknown")
+
+
 class TaxonomyProblemTests(unittest.TestCase):
     def test_every_broken_entry_is_named_with_its_problems(self) -> None:
         # Groups are judged before categories, each in file order.
@@ -312,6 +319,42 @@ name = "Eating out"
             'taxonomy.toml: category "rent": group "housing" is not declared',
             'taxonomy.toml: category "eating-out": group is missing',
         )
+
+    def test_a_transaction_type_is_not_a_category_id(self) -> None:
+        taxonomy = """\
+format = 1
+
+[group.money]
+name = "Money"
+direction = "expense"
+
+[category.transfer]
+name = "Transfer"
+group = "money"
+
+[category.groceries]
+name = "Groceries"
+group = "money"
+
+[category.adjustment]
+name = "Adjustment"
+group = "money"
+
+[category.unknown]
+name = "Unknown"
+group = "money"
+"""
+
+        assert refusal(taxonomy=taxonomy, rules="format = 1\n") == tuple(
+            f'taxonomy.toml: category "{type_name}": '
+            "the ID is a transaction type that carries no category"
+            for type_name in UNCATEGORISED_TYPES
+        )
+
+    def test_the_refused_ids_are_gold_transaction_types(self) -> None:
+        # Inputs must not import Gold, so the loader keeps its own copy of the
+        # names; renaming or removing one of Gold's types fails here.
+        assert set(UNCATEGORISED_TYPES) <= set(get_args(TransactionType.__value__))
 
     def test_each_kind_holds_one_table_per_entry(self) -> None:
         for content, expected in (

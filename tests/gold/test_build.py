@@ -79,6 +79,32 @@ def test_an_account_with_no_export_is_published_without_evidence() -> None:
     )
 
 
+def test_a_silver_account_missing_from_the_registry_refuses_the_build() -> None:
+    with pytest.raises(ConfigurationError) as refusal:
+        build_from(accounts={"joint-current": REGISTRY["joint-current"]})
+
+    assert refusal.value.problems == (_undeclared("joint-savings"),)
+
+
+def test_every_undeclared_silver_account_is_named_in_account_order() -> None:
+    with pytest.raises(ConfigurationError) as refusal:
+        build_from(accounts={})
+
+    assert refusal.value.problems == (
+        _undeclared("joint-current"),
+        _undeclared("joint-savings"),
+    )
+
+
+def _undeclared(account_id: str) -> str:
+    """The refusal naming an account Silver holds and the registry lacks."""
+    return (
+        f'accounts.toml: account "{account_id}" is not declared, but Silver '
+        "holds transactions for it; restore it, with closed_on set if the "
+        "account has closed, before rebuilding; nothing was published"
+    )
+
+
 def _all_transactions(result: GoldResult) -> Sequence[GoldTransaction]:
     return result.transactions(start_date=date.min, end_date=date.max)
 
