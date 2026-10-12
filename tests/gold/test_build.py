@@ -12,6 +12,8 @@ from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
+
 from budget.gold import (
     GoldAccount,
     GoldResult,
@@ -19,7 +21,7 @@ from budget.gold import (
     MonthlyBalanceSnapshot,
     ReportingMonth,
 )
-from budget.inputs import Account
+from budget.inputs import Account, ConfigurationError
 from budget.silver import AccountEvidence, EvidenceExport
 from tests.gold.worked_example import (
     ACCOUNTS,
@@ -314,6 +316,22 @@ def test_a_closed_accounts_rows_end_at_its_closing_or_the_latest_month() -> None
     assert closing_in_september == [
         ReportingMonth(2026, month) for month in (1, 2, 3, 4, 5)
     ]
+
+
+def test_an_account_closed_before_its_latest_transaction_is_refused() -> None:
+    # joint-savings' latest transaction is its interest on 2026-04-30.
+    closed_early = replace(REGISTRY[SAVINGS], closed_on=date(2026, 3, 31))
+
+    with pytest.raises(ConfigurationError) as refused:
+        build_from(accounts={**REGISTRY, SAVINGS: closed_early})
+
+    assert refused.value.problems == (
+        (
+            'accounts.toml: account "joint-savings": closed_on 2026-03-31 is before '
+            "its latest transaction on 2026-04-30; correct closed_on in "
+            "accounts.toml; nothing was built"
+        ),
+    )
 
 
 def test_a_quiet_accounts_repeated_export_settles_its_months() -> None:
