@@ -352,11 +352,7 @@ def test_an_account_closed_before_its_latest_transaction_is_refused() -> None:
         build_from(accounts={**REGISTRY, SAVINGS: closed_early})
 
     assert refused.value.problems == (
-        (
-            'accounts.toml: account "joint-savings": closed_on 2026-03-31 is before '
-            "its latest transaction on 2026-04-30; correct closed_on in "
-            "accounts.toml; nothing was built"
-        ),
+        _closed_early("joint-savings", "2026-03-31", "2026-04-30"),
     )
 
 
@@ -372,16 +368,8 @@ def test_every_account_closed_too_early_is_named_with_its_latest_date() -> None:
         build_from(accounts=closed_early)
 
     assert refused.value.problems == (
-        (
-            'accounts.toml: account "joint-current": closed_on 2026-03-31 is before '
-            "its latest transaction on 2026-04-24; correct closed_on in "
-            "accounts.toml; nothing was built"
-        ),
-        (
-            'accounts.toml: account "joint-savings": closed_on 2026-03-31 is before '
-            "its latest transaction on 2026-04-30; correct closed_on in "
-            "accounts.toml; nothing was built"
-        ),
+        _closed_early("joint-current", "2026-03-31", "2026-04-24"),
+        _closed_early("joint-savings", "2026-03-31", "2026-04-30"),
     )
 
 
@@ -394,11 +382,16 @@ def test_an_account_closed_before_its_first_transaction_is_refused() -> None:
         build_from(accounts={**REGISTRY, SAVINGS: closed_early})
 
     assert refused.value.problems == (
-        (
-            'accounts.toml: account "joint-savings": closed_on 2025-12-31 is before '
-            "its latest transaction on 2026-04-30; correct closed_on in "
-            "accounts.toml; nothing was built"
-        ),
+        _closed_early("joint-savings", "2025-12-31", "2026-04-30"),
+    )
+
+
+def _closed_early(account_id: str, closed_on: str, latest: str) -> str:
+    """The refusal naming an account closed before its latest transaction."""
+    return (
+        f'accounts.toml: account "{account_id}": closed_on {closed_on} is before '
+        f"its latest transaction on {latest}; correct closed_on in "
+        "accounts.toml; nothing was built"
     )
 
 
