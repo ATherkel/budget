@@ -344,7 +344,7 @@ class GoldLineageRepository(Protocol):
 | `classification_source` | enum | Yes | `manual`, `transfer_match`, `rule`, or `unclassified`. |
 | `rule_ids` | list of string | Yes | The highest-priority matching rules; they decided only when `classification_source` is `rule`. Empty when no rule matched. |
 | `decision_id` | string/null | Conditional | The manual decision that decided. Required when `classification_source` is `manual`, otherwise null. |
-| `classification_version` | string | Yes | Fingerprint of the classification inputs: the configuration snapshot (account registry, taxonomy, rules, and matching policy) and the effective classification decisions ([`publications.md`](publications.md)). |
+| `classification_version` | string | Yes | Fingerprint of the classification inputs: the configuration snapshot (account registry, taxonomy, and rules) and the effective classification decisions ([`publications.md`](publications.md)). |
 | `transfer_evidence` | `TransferEvidence`/null | Conditional | Required on every `transfer`, otherwise null. |
 | `review_item_ids` | list of string | Yes | Open classification review items involving this transaction. Often empty. |
 
