@@ -15,9 +15,15 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from budget.decision_log import DecisionLogRead, read_decision_log
-from budget.gold.decisions import Classify, Pair
+from budget.gold.decisions import Classify, OneSidedTransfer, Pair
 from budget.inputs import ConfigurationError
 from budget.profiles import test_profile as make_test_profile
+from budget.silver.decisions import (
+    AcceptDiscrepancy,
+    SameTransaction,
+    VoidImportRun,
+    Withdrawn,
+)
 
 OPERATIONS = (
     Path(__file__).resolve().parents[1] / "docs" / "architecture" / "operations.md"
@@ -213,3 +219,57 @@ class EntryValidationTests(unittest.TestCase):
         for case, log, expected in INVALID_LOGS:
             with self.subTest(case):
                 assert refusal(log.encode()) == expected
+
+
+def decision(entry: int, kind: str, targets: list[str], **fields: object) -> str:
+    """One complete line of any kind, numbered `entry`, with only `fields` added."""
+    changes = {"category": DROP, **fields}
+    return line(entry, kind=kind, targets=targets, **changes)
+
+
+class TypedDecisionTests(unittest.TestCase):
+    def test_each_kind_in_force_reads_as_its_typed_decision(self) -> None:
+        log = (
+            decision(1, "classify", ["tx-a"], category="gifts")
+            + decision(2, "classify", ["tx-b"], adjustment=True)
+            + decision(3, "pair", ["tx-c", "tx-d"])
+            + decision(
+                4,
+                "one-sided-transfer",
+                ["tx-e"],
+                counterpart_account_id="joint-savings",
+            )
+            + decision(5, "void-import-run", ["run-1"])
+            + decision(6, "accept-discrepancy", ["run-2"])
+            + decision(7, "withdrawn", ["tx-f"])
+            + decision(
+                8,
+                "same-transaction",
+                ["tx-g"],
+                record={"payload_id": "p-1", "record_ordinal": 4},
+            )
+        )
+
+        read = read_log(log.encode())
+
+        assert read.gold == (
+            Classify("d-0001", "tx-a", "gifts"),
+            Classify("d-0002", "tx-b", None),
+            Pair("d-0003", ("tx-c", "tx-d")),
+            OneSidedTransfer("d-0004", "tx-e", "joint-savings"),
+        )
+        assert read.silver == (
+            VoidImportRun("d-0005", "run-1"),
+            AcceptDiscrepancy("d-0006", "run-2"),
+            Withdrawn("d-0007", "tx-f"),
+            SameTransaction("d-0008", "tx-g", "p-1", 4),
+        )
+
+    def test_a_superseding_pair_replaces_both_legs_classify(self) -> None:
+        log = (
+            classify(1, "tx-a", "gifts")
+            + classify(2, "tx-b", "gifts")
+            + decision(3, "pair", ["tx-a", "tx-b"], supersedes=["d-0001", "d-0002"])
+        )
+
+        assert read_log(log.encode()).gold == (Pair("d-0003", ("tx-a", "tx-b")),)
