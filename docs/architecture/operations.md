@@ -302,6 +302,17 @@ that file before Bronze, and the file is never moved to another account
 not the content: it does not catch an export the bank labelled with the wrong
 account.
 
+`closed_on` is optional: the date the account closed. It ends the account's
+managed period
+([`MonthlyBalanceSnapshot`](gold-contract.md#monthlybalancesnapshot)), so it
+may not fall before the account's latest booked transaction; a transaction on
+the closing date itself is allowed. The Gold build checks this before building
+anything. A `closed_on` recorded too early is a configuration error naming the
+account, its `closed_on` and its latest transaction date: nothing is built,
+the current publication is unchanged, and the command exits 3
+([Exit codes](#exit-codes)). The fix is to correct the date in
+`accounts.toml`; the build never drops the transactions after it.
+
 ### `taxonomy.toml`
 
 ```toml

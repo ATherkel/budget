@@ -205,7 +205,10 @@ accounts for the same month, never across months. `coverage` is non-additive.
     `opening_balance + sum(amounts in the month) == closing_balance`.
 13. All first-release accounts use `DKK`. Consumers must never aggregate
     amounts or balances across different currencies.
-14. No `transaction_date` falls after its account's `closed_on`.
+14. No `transaction_date` falls after its account's `closed_on`. The Gold
+    build refuses a `closed_on` that would break this, rather than dropping
+    the transactions after it
+    ([`operations.md`, `accounts.toml`](operations.md#accountstoml)).
 15. A consumer reads exactly one Gold publication at a time, and every record
     it reads belongs to that publication. A consumer reads the current
     publication unless it opens another one explicitly. Identity across
