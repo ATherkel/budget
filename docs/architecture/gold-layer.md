@@ -118,7 +118,11 @@ booked transactions in `(transaction_date, day_sequence)` order. It is verified
 when both balances exist and the later balance equals the earlier balance plus
 the later amount. Otherwise it is broken. Its span includes both transaction
 dates. Bridging a missing balance for `balance_check` does not make either
-adjacent link verified.
+adjacent link verified. A final link runs from the account's last transaction
+onward without end. It is verified when that transaction states its balance,
+so no month after a last transaction with no balance is `complete` until a
+later import adds a transaction that states one. That transaction's month
+stays `partial`, since the link into it is broken.
 
 For each account and month of its managed period:
 
@@ -129,7 +133,7 @@ For each account and month of its managed period:
 - **`no_data`**: none of the account's evidence ranges reaches into the month.
 - **`partial`**: otherwise. This includes the first managed month, evidence
   starting or ending inside a month, a gap between two ranges inside a month,
-  and every month overlapped by a broken link.
+  and every month overlapped by a broken link, the final one included.
 
 A quiet month inside verified evidence is `complete` with zero activity; carry
 the last bank-stated balance into its opening and closing snapshot fields.

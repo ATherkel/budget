@@ -22,7 +22,7 @@ from budget.gold import (
     ReportingMonth,
 )
 from budget.inputs import Account, ConfigurationError
-from budget.silver import AccountEvidence, EvidenceExport
+from budget.silver import AccountEvidence, EvidenceExport, SilverResult, Transaction
 from tests.gold.worked_example import (
     ACCOUNTS,
     CATEGORIES,
@@ -436,18 +436,28 @@ def test_a_quiet_accounts_repeated_export_settles_its_months() -> None:
     assert settled(first, same_bytes) == [True, True, False]
 
 
-def test_the_managed_period_runs_across_a_year_end() -> None:
-    december = date(2025, 12, 1)
-    through = date(2026, 2, 10)
-    silver = replace(
+def _joint_current_only(
+    covers_from: date, through: date, *transactions: Transaction
+) -> SilverResult:
+    """Silver holding only these joint-current transactions.
+
+    One export, produced on `through`, declares `covers_from` through `through`.
+    """
+    return replace(
         SILVER,
-        transactions=(
-            silver_transaction("dec", CURRENT, date(2025, 12, 15), "-5.00", "95.00"),
-        ),
-        account_evidence=(AccountEvidence(CURRENT, december, through),),
+        transactions=transactions,
+        account_evidence=(AccountEvidence(CURRENT, covers_from, through),),
         evidence_exports=(
-            EvidenceExport("run-dec", CURRENT, through, december, through),
+            EvidenceExport("run-1", CURRENT, through, covers_from, through),
         ),
+    )
+
+
+def test_the_managed_period_runs_across_a_year_end() -> None:
+    silver = _joint_current_only(
+        date(2025, 12, 1),
+        date(2026, 2, 10),
+        silver_transaction("dec", CURRENT, date(2025, 12, 15), "-5.00", "95.00"),
     )
 
     rows = _rows(build_from(silver), CURRENT)
@@ -466,20 +476,13 @@ def test_the_managed_period_runs_across_a_year_end() -> None:
 
 
 def test_a_link_beside_a_missing_balance_leaves_its_months_partial() -> None:
-    january = date(2026, 1, 1)
-    april_end = date(2026, 4, 30)
-    silver = replace(
-        SILVER,
-        transactions=(
-            silver_transaction("jan", CURRENT, date(2026, 1, 10), "100.00", "100.00"),
-            silver_transaction("feb", CURRENT, date(2026, 2, 10), "-10.00", None),
-            silver_transaction("mar", CURRENT, date(2026, 3, 10), "-10.00", "80.00"),
-            silver_transaction("apr", CURRENT, date(2026, 4, 10), "-5.00", "75.00"),
-        ),
-        account_evidence=(AccountEvidence(CURRENT, january, april_end),),
-        evidence_exports=(
-            EvidenceExport("run-apr", CURRENT, april_end, january, april_end),
-        ),
+    silver = _joint_current_only(
+        date(2026, 1, 1),
+        date(2026, 4, 30),
+        silver_transaction("jan", CURRENT, date(2026, 1, 10), "100.00", "100.00"),
+        silver_transaction("feb", CURRENT, date(2026, 2, 10), "-10.00", None),
+        silver_transaction("mar", CURRENT, date(2026, 3, 10), "-10.00", "80.00"),
+        silver_transaction("apr", CURRENT, date(2026, 4, 10), "-5.00", "75.00"),
     )
 
     result = build_from(silver)
@@ -497,4 +500,64 @@ def test_a_link_beside_a_missing_balance_leaves_its_months_partial() -> None:
         (ReportingMonth(2026, 2), "partial"),
         (ReportingMonth(2026, 3), "partial"),
         (ReportingMonth(2026, 4), "complete"),
+    ]
+
+
+def test_quiet_months_after_a_last_transaction_without_a_balance_are_partial() -> None:
+    silver = _joint_current_only(
+        date(2026, 1, 1),
+        date(2026, 3, 31),
+        silver_transaction("jan-05", CURRENT, date(2026, 1, 5), "100.00", "100.00"),
+        silver_transaction("jan-20", CURRENT, date(2026, 1, 20), "-40.00", None),
+    )
+
+    result = build_from(silver)
+
+    # The true balance after January is 60.00, which no export states. Carrying
+    # 100.00 would overstate it, so the quiet months have no balance at all.
+    assert [row[:4] for row in _rows(result, CURRENT)] == [
+        (ReportingMonth(2026, 1), "partial", Decimal("0.00"), None),
+        (ReportingMonth(2026, 2), "partial", None, None),
+        (ReportingMonth(2026, 3), "partial", None, None),
+    ]
+
+
+def test_quiet_months_are_complete_again_once_a_balance_is_stated() -> None:
+    silver = _joint_current_only(
+        date(2026, 1, 1),
+        date(2026, 6, 30),
+        silver_transaction("jan-05", CURRENT, date(2026, 1, 5), "100.00", "100.00"),
+        silver_transaction("jan-20", CURRENT, date(2026, 1, 20), "-40.00", None),
+        silver_transaction("may-03", CURRENT, date(2026, 5, 3), "-10.00", "50.00"),
+    )
+
+    result = build_from(silver)
+
+    # This guards where the unknown stretch ends. May states 50.00, but the
+    # link into it is not verified, so May stays partial; June carries 50.00.
+    assert [row[:4] for row in _rows(result, CURRENT)] == [
+        (ReportingMonth(2026, 1), "partial", Decimal("0.00"), None),
+        (ReportingMonth(2026, 2), "partial", None, None),
+        (ReportingMonth(2026, 3), "partial", None, None),
+        (ReportingMonth(2026, 4), "partial", None, None),
+        (ReportingMonth(2026, 5), "partial", Decimal("60.00"), Decimal("50.00")),
+        (ReportingMonth(2026, 6), "complete", Decimal("50.00"), Decimal("50.00")),
+    ]
+
+
+def test_an_account_whose_source_states_no_balances_is_never_complete() -> None:
+    silver = _joint_current_only(
+        date(2026, 1, 1),
+        date(2026, 3, 31),
+        silver_transaction("jan-05", CURRENT, date(2026, 1, 5), "100.00", None),
+        silver_transaction("jan-20", CURRENT, date(2026, 1, 20), "-40.00", None),
+    )
+
+    result = build_from(silver)
+
+    # A complete month must state its balances, and none is ever stated here.
+    assert [row[:4] for row in _rows(result, CURRENT)] == [
+        (ReportingMonth(2026, 1), "partial", None, None),
+        (ReportingMonth(2026, 2), "partial", None, None),
+        (ReportingMonth(2026, 3), "partial", None, None),
     ]

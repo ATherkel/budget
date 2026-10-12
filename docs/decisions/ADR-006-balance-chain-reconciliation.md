@@ -83,6 +83,11 @@ reconciliation flag (`Afstemt` in the Danske export) is not used for anything.
   admitted import runs rather than at its first transaction
   (`architecture/gold-contract.md`, `coverage_start`), so a quiet account can
   be `complete` from the start of its first declared range.
+- No link originally reached past an account's last transaction, so the quiet
+  months after a last transaction with no balance read as a confirmed zero.
+  A final link now runs from the last transaction onward, verified only when
+  it states a balance ([`architecture/gold-layer.md`](../architecture/gold-layer.md#coverage),
+  [issue #238](https://github.com/ATherkel/budget/issues/238)).
 - A computed-only balance would have drifted silently on any missed or
   duplicated import; a snapshot-only balance would have given no way to
   detect that drift. Neither alone satisfies "trustworthy... and
