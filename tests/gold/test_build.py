@@ -359,6 +359,23 @@ def test_every_account_closed_too_early_is_named_with_its_latest_date() -> None:
     )
 
 
+def test_an_account_closed_before_its_first_transaction_is_refused() -> None:
+    # joint-savings' first transaction is on 2026-01-20, so every one of its
+    # transactions falls after the close, and it would get no snapshot rows.
+    closed_early = replace(REGISTRY[SAVINGS], closed_on=date(2025, 12, 31))
+
+    with pytest.raises(ConfigurationError) as refused:
+        build_from(accounts={**REGISTRY, SAVINGS: closed_early})
+
+    assert refused.value.problems == (
+        (
+            'accounts.toml: account "joint-savings": closed_on 2025-12-31 is before '
+            "its latest transaction on 2026-04-30; correct closed_on in "
+            "accounts.toml; nothing was built"
+        ),
+    )
+
+
 def test_a_quiet_accounts_repeated_export_settles_its_months() -> None:
     first = exports.declared(
         exports.export(
