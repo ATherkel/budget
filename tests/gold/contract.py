@@ -8,8 +8,11 @@ records, so the tests compare them as multisets.
 """
 
 from collections import Counter
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
+
+import pytest
 
 from budget.gold import GoldRepository, ReportingMonth
 from tests.gold.worked_example import (
@@ -26,6 +29,41 @@ from tests.gold.worked_example import (
 
 class GoldRepositoryContract:
     """`gold-contract.md`, *Consumer Interface*, over the worked example."""
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            pytest.param(
+                lambda repository: repository.transactions(
+                    start_date=date(2026, 1, 1),
+                    end_date=date(2026, 5, 31),
+                    account_ids="joint-current",
+                ),
+                id="transactions",
+            ),
+            pytest.param(
+                lambda repository: repository.category_allocations(
+                    start_date=date(2026, 1, 1),
+                    end_date=date(2026, 5, 31),
+                    account_ids="joint-current",
+                ),
+                id="category_allocations",
+            ),
+            pytest.param(
+                lambda repository: repository.monthly_balances(
+                    start_month=ReportingMonth(2026, 1),
+                    end_month=ReportingMonth(2026, 5),
+                    account_ids="joint-current",
+                ),
+                id="monthly_balances",
+            ),
+        ],
+    )
+    def test_account_ids_rejects_a_bare_string(
+        self, repository: GoldRepository, query: Callable[[GoldRepository], object]
+    ) -> None:
+        with pytest.raises(TypeError):
+            query(repository)
 
     def test_transactions_are_those_dated_within_an_inclusive_range(
         self, repository: GoldRepository
