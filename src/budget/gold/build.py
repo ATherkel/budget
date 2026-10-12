@@ -35,7 +35,9 @@ def build(
     `publication`, which the caller supplies. A month's late bookings are
     settled by an export produced `late_booking_window` or more after it ends.
     A Silver transaction on an account the registry does not declare refuses
-    the build, so no fact is published without its account.
+    the build, so no fact is published without its account. So does an
+    account whose `closed_on` falls before its latest booked transaction, so
+    no fact falls outside its account's managed period.
     """
     _require_declared_accounts(silver, configuration.accounts)
     transactions = gold_transactions(silver.transactions)
