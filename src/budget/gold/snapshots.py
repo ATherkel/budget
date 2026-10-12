@@ -109,8 +109,9 @@ def _balances(
 ) -> tuple[Decimal | None, Decimal | None]:
     """Return the month's bank-stated opening and closing balances, if known.
 
-    A complete quiet month carries the last stated balance into both; a quiet
-    month that is not complete has neither, and neither has a `no_data` month.
+    A complete quiet month carries the latest earlier transaction's balance into
+    both; completeness means that transaction states one. A quiet month that is
+    not complete has neither, and neither has a `no_data` month.
     """
     if coverage == "no_data":
         return None, None
