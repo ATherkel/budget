@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from budget.gold.decisions import Classify, GoldDecision, OneSidedTransfer, Pair
+from budget.inputs import ConfigurationError
 from budget.profiles import DECISION_LOG_FILE_NAME, Profile
 from budget.silver.decisions import (
     AcceptDiscrepancy,
@@ -95,6 +96,35 @@ _SILVER_KINDS: Mapping[str, Callable[[Mapping[str, Any]], SilverDecision]] = {
 }
 
 
+def _entry_problem(entry: Mapping[str, Any], text: str) -> str:
+    """Name the log, then the entry by its position and ID."""
+    return (
+        f"{DECISION_LOG_FILE_NAME}: entry {entry['entry']} "
+        f"({entry['decision_id']}): {text}"
+    )
+
+
+def _clashes(
+    entry: Mapping[str, Any], in_force: Mapping[str, Mapping[str, Any]]
+) -> list[str]:
+    """Each target a decision in force holds that `entry` does not supersede.
+
+    ADR-011 allows at most one decision per target, so a new one must list
+    the old in `supersedes` (`publications.md`, *The Decision Log*).
+    """
+    holders = {
+        target: decision_id
+        for decision_id, held in in_force.items()
+        for target in held["targets"]
+    }
+    return [
+        f"{target} is already decided by {holders[target]}, "
+        "which supersedes does not list"
+        for target in entry["targets"]
+        if target in holders and holders[target] not in entry["supersedes"]
+    ]
+
+
 def read_decision_log(profile: Profile) -> DecisionLogRead:
     """Read and validate the profile's decision log.
 
@@ -108,12 +138,18 @@ def read_decision_log(profile: Profile) -> DecisionLogRead:
     prefix = content[: content.rfind(b"\n") + 1]
     lines = prefix.decode("utf-8-sig").split("\n")[:-1]
     in_force: dict[str, Mapping[str, Any]] = {}
+    problems: list[str] = []
     for line in lines:
         entry = json.loads(line)
+        problems.extend(
+            _entry_problem(entry, text) for text in _clashes(entry, in_force)
+        )
         for superseded in entry["supersedes"]:
             del in_force[superseded]
         if entry["kind"] != _RETRACT:
             in_force[entry["decision_id"]] = entry
+    if problems:
+        raise ConfigurationError(tuple(problems))
     return DecisionLogRead(
         silver=tuple(
             _SILVER_KINDS[e["kind"]](e)
