@@ -114,7 +114,7 @@ def _closed_too_early(account_id: str, closed_on: date, latest: date) -> str:
         f'{ACCOUNTS_FILE_NAME}: account "{account_id}": closed_on '
         f"{closed_on.isoformat()} is before its latest transaction on "
         f"{latest.isoformat()}; correct closed_on in {ACCOUNTS_FILE_NAME}; "
-        "nothing was built"
+        "nothing was published"
     )
 
 
