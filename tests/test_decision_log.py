@@ -6,6 +6,7 @@ folder. The example `operations.md` documents is read from that document, so
 an example that stops reading as described fails here.
 """
 
+import hashlib
 import json
 import unittest
 from pathlib import Path
@@ -14,7 +15,7 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from budget.decision_log import DecisionLogRead, read_decision_log
-from budget.gold.decisions import Pair
+from budget.gold.decisions import Classify, Pair
 from budget.inputs import ConfigurationError
 from budget.profiles import test_profile as make_test_profile
 
@@ -83,4 +84,36 @@ class SupersessionTests(unittest.TestCase):
                 "decisions.jsonl: entry 2 (d-0002): tx-a is already decided by "
                 "d-0001, which supersedes does not list"
             ),
+        )
+
+
+class PrefixTests(unittest.TestCase):
+    def test_an_edited_entry_changes_the_prefix_hash(self) -> None:
+        recorded = read_log(classify(1, "tx-a", "gifts").encode())
+        edited = read_log(classify(1, "tx-a", "groceries").encode())
+
+        assert recorded.position == edited.position == 1
+        assert recorded.prefix_sha256 != edited.prefix_sha256
+
+    def test_the_hash_covers_exactly_the_bytes_read(self) -> None:
+        log = classify(1, "tx-a", "gifts").encode()
+
+        assert read_log(log).prefix_sha256 == hashlib.sha256(log).hexdigest()
+
+    def test_a_final_line_without_a_line_feed_was_never_written(self) -> None:
+        complete = classify(1, "tx-a", "gifts")
+        cut_off = classify(2, "tx-b", "gifts").rstrip("\n")
+
+        read = read_log((complete + cut_off).encode())
+
+        assert read.gold == (Classify("d-0001", "tx-a", "gifts"),)
+        assert read.position == 1
+        assert read.prefix_sha256 == read_log(complete.encode()).prefix_sha256
+
+    def test_a_missing_log_holds_no_decisions(self) -> None:
+        with TemporaryDirectory() as directory:
+            read = read_decision_log(make_test_profile(directory))
+
+        assert read == DecisionLogRead(
+            silver=(), gold=(), position=0, prefix_sha256=hashlib.sha256().hexdigest()
         )
