@@ -386,6 +386,24 @@ def test_an_account_closed_before_its_first_transaction_is_refused() -> None:
     )
 
 
+def test_a_pending_transaction_after_closed_on_does_not_refuse_the_build() -> None:
+    # Only booked rows become Gold facts, so a payment still pending after
+    # the close is no fact that could fall outside the managed period.
+    accounts = {
+        **REGISTRY,
+        SAVINGS: replace(REGISTRY[SAVINGS], closed_on=date(2026, 4, 30)),
+    }
+    pending = replace(
+        silver_transaction("pending", SAVINGS, date(2026, 5, 5), "-60.00", None),
+        booking_status="pending",
+    )
+    silver = replace(SILVER, transactions=(*SILVER.transactions, pending))
+
+    found = _all_transactions(build_from(silver, accounts=accounts))
+
+    assert Counter(found) == Counter(_all_transactions(build_from(accounts=accounts)))
+
+
 def _closed_early(account_id: str, closed_on: str, latest: str) -> str:
     """The refusal naming an account closed before its latest transaction."""
     return (
