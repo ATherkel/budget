@@ -66,20 +66,21 @@ def _closing_problems(
     Invariant 14 of `gold-contract.md`: no `transaction_date` falls after its
     account's `closed_on`. A transaction on the closing date itself is allowed.
     """
-    latest: dict[str, date] = {}
-    return_values = ()
+    latest_transaction: dict[str, date] = {}
     for transaction in transactions:
         account_id = transaction.account_id
-        latest[account_id] = max(
-            latest.get(account_id, transaction.transaction_date),
+        latest_transaction[account_id] = max(
+            latest_transaction.get(account_id, transaction.transaction_date),
             transaction.transaction_date,
         )
 
-    for account in sorted(accounts):
-        closed_on = accounts[account].closed_on
-        if closed_on is not None and account in latest and closed_on < latest[account]:
-            return_values += (_closed_too_early(account, closed_on, latest[account]),)
-    return return_values
+    return tuple(
+        _closed_too_early(account_id, closed_on, latest)
+        for account_id in sorted(accounts)
+        if (closed_on := accounts[account_id].closed_on) is not None
+        and (latest := latest_transaction.get(account_id)) is not None
+        and closed_on < latest
+    )
 
 
 def _closed_too_early(account_id: str, closed_on: date, latest: date) -> str:
