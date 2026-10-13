@@ -16,7 +16,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from budget.gold.decisions import Classify, GoldDecision, OneSidedTransfer, Pair
+from budget.gold.decisions import (
+    Classify,
+    ClassifyAdjustment,
+    GoldDecision,
+    OneSidedTransfer,
+    Pair,
+)
 from budget.inputs import ConfigurationError
 from budget.inputs.fields import (
     TEXT,
@@ -308,9 +314,11 @@ class _Replay:
         return problems
 
 
-def _classify(entry: Entry) -> Classify:
+def _classify(entry: Entry) -> Classify | ClassifyAdjustment:
     (target,) = entry["targets"]
-    return Classify(entry["decision_id"], target, entry.get("category"))
+    if entry.get("adjustment") is True:
+        return ClassifyAdjustment(entry["decision_id"], target)
+    return Classify(entry["decision_id"], target, entry["category"])
 
 
 def _pair(entry: Entry) -> Pair:

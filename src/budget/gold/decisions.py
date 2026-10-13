@@ -11,11 +11,11 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Classify:
-    """Classify one transaction: a category, or `None` for an adjustment."""
+    """Classify one transaction into a category."""
 
     decision_id: str
     transaction_id: str
-    category_id: str | None
+    category_id: str
 
 
 @dataclass(frozen=True)
