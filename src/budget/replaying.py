@@ -130,19 +130,41 @@ def _archived_export(profile: Profile, run: ImportRun, archive_path: str) -> byt
     return content
 
 
+def _check_prefix(
+    held: tuple[ImportRun, ...], logged: tuple[tuple[ImportRun, str], ...]
+) -> None:
+    """Refuse unless Bronze holds exactly the log's first runs, as logged."""
+    logged_runs = {run.import_run_id: run for run, _ in logged}
+    for position, run in enumerate(held):
+        logged_run = logged_runs.get(run.import_run_id)
+        if logged_run is not None and logged_run != run:
+            raise RunConflictError(run.import_run_id)
+        if position >= len(logged) or logged[position][0] != run:
+            raise NotALogPrefixError
+
+
 def replay_import_log(lock: WriterLock) -> tuple[ImportRun, ...]:
-    """Restore every logged run Bronze lacks; return the runs restored."""
+    """Restore every logged run Bronze lacks; return the runs restored.
+
+    Bronze must hold exactly the log's first runs, as logged; the rest are
+    restored in log order, each with its payload and derived cache at once.
+    """
     profile = lock.profile
     lines = profile.import_log_file.read_bytes().split(b"\n")[:-1]
+    logged = tuple(
+        (_logged_run(entry), str(entry["archive_path"]))
+        for entry in map(json.loads, lines)
+    )
     restored = []
     with BronzeStore(profile) as store:
-        held = {run.import_run_id for run in store.import_runs()}
-        for line in lines:
-            entry = json.loads(line)
-            run = _logged_run(entry)
-            if run.import_run_id in held:
-                continue
-            content = _archived_export(profile, run, entry["archive_path"])
+        held = store.import_runs()
+        _check_prefix(held, logged)
+        recorded = {run.import_run_id for run in held}
+        for run, archive_path in logged[len(held) :]:
+            if run.repeat_of is not None and run.repeat_of not in recorded:
+                raise UnknownRepeatOfError(run.import_run_id)
+            content = _archived_export(profile, run, archive_path)
             store.restore_import_run(run, content)
+            recorded.add(run.import_run_id)
             restored.append(run)
     return tuple(restored)
