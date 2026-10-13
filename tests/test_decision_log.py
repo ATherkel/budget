@@ -261,6 +261,13 @@ INVALID_LOGS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         (problem('key "category" appears more than once'),),
     ),
     (
+        "a repeated key inside record",
+        decision(1, "same-transaction", ["tx-a"], record=RECORD_P1).replace(
+            '"payload_id": "p-1"', '"payload_id": "p-1", "payload_id": "p-2"'
+        ),
+        (problem('key "record.payload_id" appears more than once'),),
+    ),
+    (
         "a retract with a target",
         line(1) + decision(2, "retract", ["tx-1"], supersedes=["d-0001"]),
         (problem("a retract has no targets", 2, "d-0002"),),
