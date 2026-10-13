@@ -273,3 +273,10 @@ class TypedDecisionTests(unittest.TestCase):
         )
 
         assert read_log(log.encode()).gold == (Pair("d-0003", ("tx-a", "tx-b")),)
+
+
+class EncodingTests(unittest.TestCase):
+    def test_a_log_that_is_not_utf8_is_refused(self) -> None:
+        log = classify(1, "tx-a", "gifts").encode() + b"\xff\n"
+
+        assert refusal(log) == ("decisions.jsonl: the file is not UTF-8",)

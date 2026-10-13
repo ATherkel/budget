@@ -351,7 +351,11 @@ def read_decision_log(profile: Profile) -> DecisionLogRead:
     except FileNotFoundError:
         content = b""
     prefix = content[: content.rfind(b"\n") + 1]
-    lines = prefix.decode("utf-8-sig").split("\n")[:-1]
+    try:
+        lines = prefix.decode("utf-8-sig").split("\n")[:-1]
+    except UnicodeDecodeError:
+        problem = f"{DECISION_LOG_FILE_NAME}: the file is not UTF-8"
+        raise ConfigurationError((problem,)) from None
     replay = _Replay()
     for position, line in enumerate(lines, start=1):
         replay.read(position, line)
