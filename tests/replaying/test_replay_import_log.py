@@ -21,6 +21,9 @@ from budget.replaying import replay_import_log
 from tests.importing.households import household, payload
 
 STARTED_AT = datetime(2026, 5, 2, 18, 3, 44, 120731, tzinfo=UTC)
+LATER = datetime(2026, 5, 3, 9, 0, 0, 5, tzinfo=UTC)
+LATEST = datetime(2026, 5, 4, 9, 0, tzinfo=UTC)
+LAST = datetime(2026, 5, 5, 9, 0, tzinfo=UTC)
 
 
 def archive(profile: Profile, archive_path: str, content: bytes) -> str:
@@ -99,3 +102,72 @@ class CompleteLogTests(unittest.TestCase):
                     for record in store.get_source_records(payload_id)
                 ] == ["01.04.2026", "30.04.2026"]
                 assert store.get_format_failures(payload_id) == ()
+
+    def test_repeat_refused_and_unreadable_runs_keep_their_logged_outcomes(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            first = payload("01.04.2026")
+            refused = payload("01.03.2026")
+            unreadable = b"not an export"
+            first_id = archive(profile, "joint-current/export-20260502.csv", first)
+            archive(profile, "joint-current/export-20260503.csv", first)
+            refused_path = f"joint-current/refused/{sha256(refused).hexdigest()[:12]}"
+            refused_id = archive(profile, f"{refused_path}/old.csv", refused)
+            unreadable_id = archive(profile, "joint-current/broken.csv", unreadable)
+            write_log(
+                profile,
+                entry("run-0001", "joint-current/export-20260502.csv", first_id),
+                entry(
+                    "run-0002",
+                    "joint-current/export-20260503.csv",
+                    first_id,
+                    started_at=LATER.isoformat(),
+                    outcome="repeat",
+                    repeat_of="run-0001",
+                ),
+                entry(
+                    "run-0003",
+                    f"{refused_path}/old.csv",
+                    refused_id,
+                    started_at=LATEST.isoformat(),
+                    outcome="refused",
+                ),
+                entry(
+                    "run-0004",
+                    "joint-current/broken.csv",
+                    unreadable_id,
+                    started_at=LAST.isoformat(),
+                    exported_on_source="declared",
+                ),
+            )
+
+            with writer_lock(profile) as lock:
+                replay_import_log(lock)
+
+            with BronzeStore(profile) as store:
+                runs = store.import_runs()
+                assert [
+                    (
+                        run.import_run_id,
+                        run.original_filename,
+                        run.started_at,
+                        run.outcome,
+                        run.repeat_of,
+                    )
+                    for run in runs
+                ] == [
+                    ("run-0001", "export-20260502.csv", STARTED_AT, "stored", None),
+                    ("run-0002", "export-20260503.csv", LATER, "repeat", "run-0001"),
+                    ("run-0003", "old.csv", LATEST, "refused", None),
+                    ("run-0004", "broken.csv", LAST, "stored", None),
+                ]
+                assert runs[3].exported_on_source == "declared"
+                assert store.get_payload(refused_id).content == refused
+                assert len(store.get_source_records(refused_id)) == 1
+                assert store.get_source_records(unreadable_id) == ()
+                assert [
+                    failure.source_format
+                    for failure in store.get_format_failures(unreadable_id)
+                ] == ["danske-csv-v1"]
