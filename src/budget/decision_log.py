@@ -261,6 +261,12 @@ class _Claim:
     target: str
     payload: str | None
 
+    def overlaps(self, other: "_Claim") -> bool:
+        """Say whether the two claims hold anything in common."""
+        return (self.group, self.target) == (other.group, other.target) and (
+            None in {self.payload, other.payload} or self.payload == other.payload
+        )
+
 
 def _claims(entry: Entry) -> list[_Claim]:
     """Each target a well-formed entry holds once it is in force."""
@@ -356,6 +362,7 @@ class _Replay:
             for superseded in entry["supersedes"]
             if superseded not in self.in_force
         )
+        problems.extend(self._unrelated(entry))
         problems.extend(self._clashes(entry))
         return problems
 
@@ -381,7 +388,27 @@ class _Replay:
         return [
             decision_id
             for payload, decision_id in held.items()
-            if claim.payload is None or payload is None or payload == claim.payload
+            if claim.overlaps(_Claim(claim.group, claim.target, payload))
+        ]
+
+    def _unrelated(self, entry: Entry) -> list[str]:
+        """Each decision `entry` supersedes without sharing a claim with it.
+
+        Superseding one would quietly cancel a decision on another target, or
+        across Silver and Gold. A `retract` withdraws whatever it names.
+        """
+        if entry["kind"] == _RETRACT:
+            return []
+        claims = _claims(entry)
+        return [
+            f"supersedes {superseded}, which decides nothing this entry targets"
+            for superseded in entry["supersedes"]
+            if superseded in self.in_force
+            and not any(
+                claim.overlaps(old)
+                for claim in claims
+                for old in _claims(self.in_force[superseded])
+            )
         ]
 
 
