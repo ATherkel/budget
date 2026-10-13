@@ -235,6 +235,11 @@ INVALID_LOGS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         line(kind="pair", targets=["tx-a", "tx-a"], category=DROP),
         (problem("targets lists tx-a more than once"),),
     ),
+    (
+        "a repeated key",
+        line(category="gifts")[:-2] + ', "category": "groceries"}\n',
+        (problem('key "category" appears more than once'),),
+    ),
 )
 
 
