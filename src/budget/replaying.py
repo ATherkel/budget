@@ -15,7 +15,8 @@ from hashlib import sha256
 from typing import Final, Literal
 
 from budget.bronze import BronzeStore, ImportRun
-from budget.importing import IMPORT_LOG_FORMAT, archive_candidates
+from budget.bronze.parsers import source_formats
+from budget.importing import IMPORT_LOG_FORMAT, archive_candidates, log_entry
 from budget.locking import WriterLock
 from budget.profiles import Profile
 
@@ -117,7 +118,7 @@ class RunConflictError(RuntimeError):
 
 
 class NotALogPrefixError(RuntimeError):
-    """Bronze holds runs that are not the import log's first runs, in order.
+    """Bronze holds runs other than the import log's first runs.
 
     A replay only continues history Bronze already shares with the log, so
     nothing is restored.
@@ -126,25 +127,27 @@ class NotALogPrefixError(RuntimeError):
     def __init__(self) -> None:
         """State the problem and its remedy, without quoting the log."""
         super().__init__(
-            "Bronze holds import runs that are not the import log's first runs, "
-            "in order; nothing was restored. Restore Bronze from a backup set "
+            "Bronze holds import runs other than the import log's first runs; "
+            "nothing was restored. Restore Bronze from a backup set "
             "taken from this log, or replay into an empty store."
         )
 
 
 class InvalidRepeatLinkError(RuntimeError):
-    """A logged repeat names no run restored before it.
+    """A logged repeat links no earlier stored run of its bytes and account.
 
-    The runs before it stay restored, and nothing of this run is written.
+    The import links a repeat only to such a run. The runs before it stay
+    restored, and nothing of this run is written.
     """
 
     def __init__(self, import_run_id: str) -> None:
-        """Name the run whose repeat link points nowhere."""
+        """Name the run whose repeat link the import could not have written."""
         self.import_run_id = import_run_id
         super().__init__(
-            f"import run {import_run_id}: its log entry repeats a run the log "
-            "does not record before it; nothing of the run was restored. "
-            "Restore the log from the newest backup set."
+            f"import run {import_run_id}: its log entry repeats a run that is "
+            "not an earlier stored run of the same export for the same account; "
+            "nothing of the run was restored. Restore the log from the newest "
+            "backup set."
         )
 
 
@@ -233,11 +236,24 @@ def _logged_run(line: bytes) -> tuple[ImportRun, str]:
         outcome=outcome,
         repeat_of=_repeat_of(entry, outcome),
     )
-    # The path must be one the import itself could have archived the run at,
-    # which also keeps it inside the run's account folder.
+    if run.source_format not in source_formats():
+        raise _NotAnEntryError
+    # The account and the name are each one folder part, so the path the
+    # import could have archived the run at stays inside the run's folder.
+    if not all(map(_is_one_part, (run.declared_account_id, run.original_filename))):
+        raise _NotAnEntryError
     if archive_path not in archive_candidates(run):
         raise _NotAnEntryError
+    # Byte for byte what the import writes for the run, so a replayed log is
+    # one every later import accepts.
+    if line + b"\n" != log_entry(run, archive_path):
+        raise _NotAnEntryError
     return run, archive_path
+
+
+def _is_one_part(name: str) -> bool:
+    """Report whether a name is one folder part on every file system."""
+    return name not in {"", ".", ".."} and not {"/", "\\"} & set(name)
 
 
 def _read_log(profile: Profile) -> tuple[tuple[ImportRun, str], ...]:
@@ -277,14 +293,36 @@ def _archived_export(profile: Profile, run: ImportRun, archive_path: str) -> byt
 def _check_prefix(
     held: tuple[ImportRun, ...], logged: tuple[tuple[ImportRun, str], ...]
 ) -> None:
-    """Refuse unless Bronze holds exactly the log's first runs, as logged."""
+    """Refuse unless Bronze holds exactly the log's first runs, as logged.
+
+    Bronze orders runs by `started_at`, the log by when each was written, and
+    a clock can step back between imports; so the runs are compared as a set.
+    """
     logged_runs = {run.import_run_id: run for run, _ in logged}
-    for position, run in enumerate(held):
+    for run in held:
         logged_run = logged_runs.get(run.import_run_id)
         if logged_run is not None and logged_run != run:
             raise RunConflictError(run.import_run_id)
-        if position >= len(logged) or logged[position][0] != run:
-            raise NotALogPrefixError
+    prefix = {run.import_run_id for run, _ in logged[: len(held)]}
+    if {run.import_run_id for run in held} != prefix:
+        raise NotALogPrefixError
+
+
+def _check_repeat_link(run: ImportRun, recorded: Mapping[str, ImportRun]) -> None:
+    """Refuse a repeat unless it links a run the import could have linked.
+
+    That is an earlier stored run of the same bytes for the same account.
+    """
+    if run.repeat_of is None:
+        return
+    linked = recorded.get(run.repeat_of)
+    if (
+        linked is None
+        or linked.outcome != "stored"
+        or linked.payload_id != run.payload_id
+        or linked.declared_account_id != run.declared_account_id
+    ):
+        raise InvalidRepeatLinkError(run.import_run_id)
 
 
 def replay_import_log(lock: WriterLock) -> tuple[ImportRun, ...]:
@@ -299,12 +337,11 @@ def replay_import_log(lock: WriterLock) -> tuple[ImportRun, ...]:
     with BronzeStore(profile) as store:
         held = store.import_runs()
         _check_prefix(held, logged)
-        recorded = {run.import_run_id for run in held}
+        recorded = {run.import_run_id: run for run in held}
         for run, archive_path in logged[len(held) :]:
-            if run.repeat_of is not None and run.repeat_of not in recorded:
-                raise InvalidRepeatLinkError(run.import_run_id)
+            _check_repeat_link(run, recorded)
             content = _archived_export(profile, run, archive_path)
             store.restore_import_run(run, content)
-            recorded.add(run.import_run_id)
+            recorded[run.import_run_id] = run
             restored.append(run)
     return tuple(restored)
