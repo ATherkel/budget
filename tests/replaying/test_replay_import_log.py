@@ -1,10 +1,11 @@
 # Copyright 2026 Therkel
 """Replaying `imports.jsonl` into Bronze from the export archive.
 
-Every test writes a synthetic archive and import log by hand into a migrated,
-empty test profile, replays them under the writer lock, and reads the restored
-history back through the reopened Bronze store. The expected runs are written
-out independently of the code that writes the log.
+Every test replays a synthetic archive and import log into a migrated test
+profile under the writer lock, and reads the restored history back through the
+reopened Bronze store. Most write the log by hand, so the expected runs are
+independent of the code that writes it; the prefix and crash tests take theirs
+from a household the real import wrote, so the writer and replay must agree.
 """
 
 import json
