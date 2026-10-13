@@ -38,6 +38,8 @@ _ENTRY_FIELDS: Final = frozenset(
         "repeat_of",
     }
 )
+# Identity maps: looking a logged string up in one both checks it and narrows
+# it to the Literal type `ImportRun` declares.
 _OUTCOMES: Final[Mapping[str, Literal["stored", "repeat", "refused"]]] = {
     "stored": "stored",
     "repeat": "repeat",
