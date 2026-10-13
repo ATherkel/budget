@@ -301,11 +301,19 @@ item, or voids an import run, is an entry in one append-only log:
 - The effective decisions at an entry are those recorded up to it and not
   superseded up to it, excluding `retract` entries, which are never
   effective.
-- An entry that targets a transaction already targeted by an effective
-  decision must list that decision in `supersedes`, and every decision it
-  lists must be effective. Otherwise the entry is rejected when it is
-  recorded, so ADR-011's "at most one decision per transaction" holds by
-  construction. The same validation serves the CLI now and a browser editor
+- Decisions collide only within a group, and a Silver decision never
+  collides with a Gold one:
+  - `classify`, `pair` and `one-sided-transfer` collide on a transaction, so
+    ADR-011's "at most one decision per transaction" holds by construction.
+  - `void-import-run` and `accept-discrepancy` collide on an import run.
+  - `withdrawn` and `same-transaction` exclude each other on a transaction.
+    Several `same-transaction` decisions stand for one transaction, one per
+    `record.payload_id`.
+- An entry that collides with an effective decision must list that decision
+  in `supersedes`. Every decision it lists must be effective, and, unless the
+  entry is a `retract`, must collide with it, so an entry never quietly
+  cancels a decision on another target. Otherwise the entry is rejected when
+  it is recorded. The same validation serves the CLI now and a browser editor
   later ([`operations.md`](operations.md#the-validation-boundary-for-decisions)).
 - One entry can supersede several decisions. A `pair` of two legs that are
   each classified by their own decision supersedes both in one entry, and

@@ -413,8 +413,10 @@ The fields and their rules are defined in
 `same-transaction`, `withdrawn`, `accept-discrepancy` (Silver, issue #5); and
 `retract`, which withdraws an earlier decision without replacing it. It is
 named `retract` so it is not confused with *withdrawn*, which records that the
-bank removed a transaction. A new decision on a target that already has one
-must list the old one in `supersedes`, or the boundary rejects it. One entry
+bank removed a transaction. A new decision that collides with one in force
+must list the old one in `supersedes`, or the boundary rejects it; which
+kinds collide is set out in
+[`publications.md`](publications.md#the-decision-log). One entry
 can supersede several decisions: a `pair` whose two legs each have their own
 `classify` decision lists both. Nothing is edited in place.
 
