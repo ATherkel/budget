@@ -87,9 +87,12 @@ def replay_import_log(lock: WriterLock) -> tuple[ImportRun, ...]:
     lines = profile.import_log_file.read_bytes().split(b"\n")[:-1]
     restored = []
     with BronzeStore(profile) as store:
+        held = {run.import_run_id for run in store.import_runs()}
         for line in lines:
             entry = json.loads(line)
             run = _logged_run(entry)
+            if run.import_run_id in held:
+                continue
             content = _archived_export(profile, run, entry["archive_path"])
             store.restore_import_run(run, content)
             restored.append(run)
