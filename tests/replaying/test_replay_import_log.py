@@ -8,6 +8,7 @@ out independently of the code that writes the log.
 """
 
 import json
+import shutil
 import unittest
 from datetime import UTC, date, datetime
 from hashlib import sha256
@@ -17,6 +18,7 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from budget.bronze import BronzeStore, ImportRun
+from budget.importing import Coverage, import_inbox_file
 from budget.locking import writer_lock
 from budget.profiles import Profile
 from budget.replaying import (
@@ -24,7 +26,7 @@ from budget.replaying import (
     ArchivedExportMissingError,
     replay_import_log,
 )
-from tests.importing.households import household, payload
+from tests.importing.households import drop, household, payload
 
 STARTED_AT = datetime(2026, 5, 2, 18, 3, 44, 120731, tzinfo=UTC)
 LATER = datetime(2026, 5, 3, 9, 0, 0, 5, tzinfo=UTC)
@@ -177,6 +179,61 @@ class CompleteLogTests(unittest.TestCase):
                     failure.source_format
                     for failure in store.get_format_failures(unreadable_id)
                 ] == ["danske-csv-v1"]
+
+
+def imported_household(root: Path) -> Profile:
+    """A household whose two exports were imported, archived and logged."""
+    profile = household(root)
+    for name, content, through in (
+        ("export-20260502.csv", payload("01.04.2026"), date(2026, 5, 2)),
+        ("export-20260503.csv", payload("02.05.2026"), date(2026, 5, 3)),
+    ):
+        source = drop(profile, "joint-current", name, content)
+        with writer_lock(profile) as lock:
+            import_inbox_file(lock, source, Coverage(date(2026, 4, 1), through))
+    return profile
+
+
+def restored_household(root: Path, original: Profile) -> Profile:
+    """An empty household holding a copy of `original`'s export archive."""
+    profile = household(root)
+    shutil.copytree(original.exports, profile.exports)
+    return profile
+
+
+class PrefixTests(unittest.TestCase):
+    def test_a_suffix_replays_onto_its_restored_prefix(self) -> None:
+        with TemporaryDirectory() as directory:
+            original = imported_household(Path(directory) / "original")
+            restored = restored_household(Path(directory) / "restored", original)
+            log = original.import_log_file.read_bytes()
+            first_line = log[: log.index(b"\n") + 1]
+            with BronzeStore(original) as store:
+                first, second = store.import_runs()
+
+            restored.import_log_file.write_bytes(first_line)
+            with writer_lock(restored) as lock:
+                assert replay_import_log(lock) == (first,)
+            restored.import_log_file.write_bytes(log)
+            with writer_lock(restored) as lock:
+                assert replay_import_log(lock) == (second,)
+
+            with BronzeStore(restored) as store:
+                assert store.import_runs() == (first, second)
+
+    def test_replaying_a_replayed_log_again_restores_nothing(self) -> None:
+        with TemporaryDirectory() as directory:
+            original = imported_household(Path(directory) / "original")
+            restored = restored_household(Path(directory) / "restored", original)
+            shutil.copyfile(original.import_log_file, restored.import_log_file)
+            with writer_lock(restored) as lock:
+                replay_import_log(lock)
+
+            with writer_lock(restored) as lock:
+                assert replay_import_log(lock) == ()
+
+            with BronzeStore(original) as before, BronzeStore(restored) as after:
+                assert after.import_runs() == before.import_runs()
 
 
 class ArchiveProofTests(unittest.TestCase):
