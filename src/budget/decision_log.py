@@ -250,13 +250,27 @@ def _clashes(entry: Entry, in_force: Mapping[str, Entry]) -> list[str]:
     ]
 
 
-def _parse(line: str) -> dict[str, Any] | None:
-    """Read one line as a JSON object, or `None` when it is not one."""
+def _parse(line: str) -> tuple[dict[str, Any] | None, list[str]]:
+    """Read one line as a JSON object, or `None`, with each key it repeats.
+
+    `json.loads` alone keeps the last of a repeated key, so what a person
+    reads in the line would differ from what takes effect.
+    """
+    repeated: list[str] = []
+
+    def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        table: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in table and key not in repeated:
+                repeated.append(key)
+            table[key] = value
+        return table
+
     try:
-        entry = json.loads(line)
+        entry = json.loads(line, object_pairs_hook=unique)
     except json.JSONDecodeError:
-        return None
-    return entry if isinstance(entry, dict) else None
+        return None, []
+    return (entry if isinstance(entry, dict) else None), repeated
 
 
 def _problem(position: int, decision_id: object, text: str) -> str:
@@ -281,11 +295,15 @@ class _Replay:
 
     def read(self, position: int, line: str) -> None:
         """Judge the entry at `position`, then bring it into force if valid."""
-        entry = _parse(line)
+        entry, repeated = _parse(line)
         if entry is None:
             self.problems.append(_problem(position, None, "must be one JSON object"))
             return
-        found = _shape_problems(entry, position) or self._history_problems(entry)
+        found = (
+            [f'key "{key}" appears more than once' for key in repeated]
+            or _shape_problems(entry, position)
+            or self._history_problems(entry)
+        )
         if found:
             decision_id = entry.get("decision_id")
             self.problems.extend(_problem(position, decision_id, t) for t in found)
