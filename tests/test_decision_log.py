@@ -165,6 +165,19 @@ def decision(entry: int, kind: str, targets: list[str], **fields: object) -> str
     return line(entry, kind=kind, targets=targets, **changes)
 
 
+def held(target: str, by: str) -> str:
+    """Spell entry 2's clash with the decision in force on `target`."""
+    return problem(
+        f"{target} is already decided by {by}, which supersedes does not list",
+        2,
+        "d-0002",
+    )
+
+
+RECORD_P1 = {"payload_id": "p-1", "record_ordinal": 0}
+RECORD_P2 = {"payload_id": "p-2", "record_ordinal": 0}
+
+
 INVALID_LOGS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("not JSON", "not json\n", (problem("must be one JSON object", decision_id=None),)),
     ("a blank line", "\n", (problem("must be one JSON object", decision_id=None),)),
@@ -251,6 +264,38 @@ INVALID_LOGS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         line(1) + decision(2, "retract", ["tx-1"], supersedes=["d-0001"]),
         (problem("a retract has no targets", 2, "d-0002"),),
     ),
+    (
+        "a second same-transaction for one record's payload",
+        decision(1, "same-transaction", ["tx-a"], record=RECORD_P1)
+        + decision(2, "same-transaction", ["tx-a"], record=RECORD_P1),
+        (held("tx-a", by="d-0001"),),
+    ),
+    (
+        "a same-transaction on a withdrawn transaction",
+        decision(1, "withdrawn", ["tx-a"])
+        + decision(2, "same-transaction", ["tx-a"], record=RECORD_P1),
+        (held("tx-a", by="d-0001"),),
+    ),
+    (
+        "a withdrawn on a transaction with a same-transaction",
+        decision(1, "same-transaction", ["tx-a"], record=RECORD_P1)
+        + decision(2, "withdrawn", ["tx-a"]),
+        (held("tx-a", by="d-0001"),),
+    ),
+    (
+        "an accept-discrepancy on a voided run",
+        decision(1, "void-import-run", ["run-1"])
+        + decision(2, "accept-discrepancy", ["run-1"]),
+        (held("run-1", by="d-0001"),),
+    ),
+    (
+        "a one-sided transfer on a paired leg",
+        decision(1, "pair", ["tx-a", "tx-b"])
+        + decision(
+            2, "one-sided-transfer", ["tx-b"], counterpart_account_id="joint-savings"
+        ),
+        (held("tx-b", by="d-0001"),),
+    ),
 )
 
 
@@ -259,6 +304,31 @@ class EntryValidationTests(unittest.TestCase):
         for case, log, expected in INVALID_LOGS:
             with self.subTest(case):
                 assert refusal(log.encode()) == expected
+
+
+class CollisionTests(unittest.TestCase):
+    def test_silver_and_gold_decisions_on_one_transaction_both_hold(self) -> None:
+        log = (
+            classify(1, "tx-a", "gifts")
+            + decision(2, "same-transaction", ["tx-a"], record=RECORD_P1)
+            + decision(3, "same-transaction", ["tx-a"], record=RECORD_P2)
+        )
+
+        read = read_log(log.encode())
+
+        assert read.gold == (Classify("d-0001", "tx-a", "gifts"),)
+        assert read.silver == (
+            SameTransaction("d-0002", "tx-a", "p-1", 0),
+            SameTransaction("d-0003", "tx-a", "p-2", 0),
+        )
+
+    def test_a_withdrawn_transaction_keeps_its_classification(self) -> None:
+        log = classify(1, "tx-a", "gifts") + decision(2, "withdrawn", ["tx-a"])
+
+        read = read_log(log.encode())
+
+        assert read.gold == (Classify("d-0001", "tx-a", "gifts"),)
+        assert read.silver == (Withdrawn("d-0002", "tx-a"),)
 
 
 class TypedDecisionTests(unittest.TestCase):
