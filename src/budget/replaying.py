@@ -15,6 +15,40 @@ from budget.bronze import BronzeStore, ImportRun
 from budget.locking import WriterLock
 
 
+class ArchivedExportMissingError(RuntimeError):
+    """No file stands where a logged run's entry says its export is archived.
+
+    The runs before it stay restored, and nothing of this run is written. The
+    message names the run, never a filename.
+    """
+
+    def __init__(self, import_run_id: str) -> None:
+        """Name the run whose archived export is missing."""
+        self.import_run_id = import_run_id
+        super().__init__(
+            f"import run {import_run_id}: the export archive holds no file where "
+            "its log entry says the export is archived; nothing of the run was "
+            "restored. Put the export back there, then rerun."
+        )
+
+
+class ArchivedExportMismatchError(RuntimeError):
+    """The file where a logged run is archived is not the bytes its entry names.
+
+    The runs before it stay restored, and nothing of this run is written. The
+    message names the run, never a filename.
+    """
+
+    def __init__(self, import_run_id: str) -> None:
+        """Name the run whose archived bytes do not match its entry."""
+        self.import_run_id = import_run_id
+        super().__init__(
+            f"import run {import_run_id}: the archived export's SHA-256 is not "
+            "the one its log entry names; nothing of the run was restored. Put "
+            "the run's own export back there, then rerun."
+        )
+
+
 def _logged_run(entry: dict[str, Any]) -> ImportRun:
     """Read one log entry back as the run it mirrors."""
     archive_path = str(entry["archive_path"])

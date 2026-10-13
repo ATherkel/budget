@@ -14,10 +14,16 @@ from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pytest
+
 from budget.bronze import BronzeStore, ImportRun
 from budget.locking import writer_lock
 from budget.profiles import Profile
-from budget.replaying import replay_import_log
+from budget.replaying import (
+    ArchivedExportMismatchError,
+    ArchivedExportMissingError,
+    replay_import_log,
+)
 from tests.importing.households import household, payload
 
 STARTED_AT = datetime(2026, 5, 2, 18, 3, 44, 120731, tzinfo=UTC)
@@ -171,3 +177,58 @@ class CompleteLogTests(unittest.TestCase):
                     failure.source_format
                     for failure in store.get_format_failures(unreadable_id)
                 ] == ["danske-csv-v1"]
+
+
+class ArchiveProofTests(unittest.TestCase):
+    def _refused_replay(
+        self, second: bytes | None, refusal: type[RuntimeError]
+    ) -> tuple[Profile, str]:
+        """Log two runs; archive the second's export as `second`, or not at all.
+
+        Replay must stop with `refusal`, naming the second run but not its
+        file. Returns the profile and the first run's payload hash.
+        """
+        directory = self.enterContext(TemporaryDirectory())
+        profile = household(Path(directory))
+        first_id = archive(profile, "joint-current/first.csv", payload("01.04.2026"))
+        logged = payload("02.04.2026")
+        if second is not None:
+            archive(profile, "joint-current/second.csv", second)
+        write_log(
+            profile,
+            entry("run-0001", "joint-current/first.csv", first_id),
+            entry(
+                "run-0002",
+                "joint-current/second.csv",
+                sha256(logged).hexdigest(),
+                started_at=LATER.isoformat(),
+            ),
+        )
+        with (
+            writer_lock(profile) as lock,
+            pytest.raises(refusal, match="run-0002") as raised,
+        ):
+            replay_import_log(lock)
+        assert "second.csv" not in str(raised.value)
+        return profile, first_id
+
+    def _assert_only_the_first_run_restored(
+        self, profile: Profile, first_id: str
+    ) -> None:
+        with BronzeStore(profile) as store:
+            assert [run.import_run_id for run in store.import_runs()] == ["run-0001"]
+            assert store.get_payload(first_id).payload_id == first_id
+            with pytest.raises(KeyError):
+                store.get_payload(sha256(payload("02.04.2026")).hexdigest())
+
+    def test_a_missing_archived_export_stops_replay_at_its_run(self) -> None:
+        profile, first_id = self._refused_replay(None, ArchivedExportMissingError)
+
+        self._assert_only_the_first_run_restored(profile, first_id)
+
+    def test_archived_bytes_that_do_not_match_the_entry_are_refused(self) -> None:
+        profile, first_id = self._refused_replay(
+            payload("03.04.2026"), ArchivedExportMismatchError
+        )
+
+        self._assert_only_the_first_run_restored(profile, first_id)
