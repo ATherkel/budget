@@ -497,6 +497,44 @@ class InvalidLogTests(unittest.TestCase):
 
                 self._assert_refused_at_line_2(profile, first + spoiled)
 
+    def test_a_drive_or_stream_in_an_archive_path_is_refused(self) -> None:
+        # Nothing is planted: on Windows these paths lead out of the test root.
+        for changes in (
+            {"account_id": "C:", "archive_path": "C:/second.csv"},
+            {"account_id": "C:x", "archive_path": "C:x/second.csv"},
+            {"archive_path": "joint-current/second.csv:stream"},
+        ):
+            with self.subTest(changes["archive_path"]):
+                profile, first, second = self._log()
+                spoiled = line(json.loads(second) | changes)
+
+                self._assert_refused_at_line_2(profile, first + spoiled)
+
+    def test_an_account_folder_that_leads_out_of_the_archive_is_refused(
+        self,
+    ) -> None:
+        profile, first, second = self._log()
+        elsewhere = profile.exports.parent / "elsewhere"
+        elsewhere.mkdir()
+        (elsewhere / "second.csv").write_bytes(payload("02.04.2026"))
+        (elsewhere / "first.csv").write_bytes(payload("01.04.2026"))
+        shutil.rmtree(profile.exports / "joint-current")
+        try:
+            (profile.exports / "joint-current").symlink_to(
+                elsewhere, target_is_directory=True
+            )
+        except OSError as error:  # Windows may refuse without a privilege
+            self.skipTest(f"symlinks are unavailable here: {error}")
+        profile.import_log_file.write_bytes(first + second)
+
+        with (
+            writer_lock(profile) as lock,
+            pytest.raises(ImportLogInvalidError, match="line 1"),
+        ):
+            replay_import_log(lock)
+        with BronzeStore(profile) as store:
+            assert store.import_runs() == ()
+
     def test_a_line_that_is_no_entry_refuses_the_log(self) -> None:
         for name, bad_line in (
             ("blank", b"\n"),
