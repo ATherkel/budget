@@ -15,7 +15,7 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from budget.decision_log import DecisionLogRead, read_decision_log
-from budget.gold.decisions import Classify, OneSidedTransfer, Pair
+from budget.gold.decisions import Classify, ClassifyAdjustment, OneSidedTransfer, Pair
 from budget.inputs import ConfigurationError
 from budget.profiles import test_profile as make_test_profile
 from budget.silver.decisions import (
@@ -278,7 +278,7 @@ class TypedDecisionTests(unittest.TestCase):
 
         assert read.gold == (
             Classify("d-0001", "tx-a", "gifts"),
-            Classify("d-0002", "tx-b", None),
+            ClassifyAdjustment("d-0002", "tx-b"),
             Pair("d-0003", ("tx-c", "tx-d")),
             OneSidedTransfer("d-0004", "tx-e", "joint-savings"),
         )

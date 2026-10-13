@@ -19,6 +19,14 @@ class Classify:
 
 
 @dataclass(frozen=True)
+class ClassifyAdjustment:
+    """Classify one transaction as an adjustment, which takes no category."""
+
+    decision_id: str
+    transaction_id: str
+
+
+@dataclass(frozen=True)
 class Pair:
     """Join two transactions on different accounts as one transfer (ADR-012)."""
 
@@ -35,4 +43,4 @@ class OneSidedTransfer:
     counterpart_account_id: str
 
 
-type GoldDecision = Classify | Pair | OneSidedTransfer
+type GoldDecision = Classify | ClassifyAdjustment | Pair | OneSidedTransfer
