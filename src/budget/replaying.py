@@ -8,13 +8,45 @@ store that holds a prefix of it.
 """
 
 import json
+import re
+from collections.abc import Mapping
 from datetime import date, datetime
 from hashlib import sha256
-from typing import Any
+from typing import Final, Literal
 
 from budget.bronze import BronzeStore, ImportRun
+from budget.importing import IMPORT_LOG_FORMAT, archive_candidates
 from budget.locking import WriterLock
 from budget.profiles import Profile
+
+# Every field an entry holds, no more and no fewer.
+_ENTRY_FIELDS: Final = frozenset(
+    {
+        "format",
+        "import_run_id",
+        "account_id",
+        "source_format",
+        "archive_path",
+        "payload_sha256",
+        "exported_on",
+        "exported_on_source",
+        "covers_from",
+        "covers_through",
+        "started_at",
+        "outcome",
+        "repeat_of",
+    }
+)
+_OUTCOMES: Final[Mapping[str, Literal["stored", "repeat", "refused"]]] = {
+    "stored": "stored",
+    "repeat": "repeat",
+    "refused": "refused",
+}
+_DATE_SOURCES: Final[Mapping[str, Literal["filename", "declared"]]] = {
+    "filename": "filename",
+    "declared": "declared",
+}
+_SHA256: Final = re.compile("[0-9a-f]{64}")
 
 
 class ArchivedExportMissingError(RuntimeError):
@@ -116,23 +148,119 @@ class UnknownRepeatOfError(RuntimeError):
         )
 
 
-def _logged_run(entry: dict[str, Any]) -> ImportRun:
-    """Read one log entry back as the run it mirrors."""
-    archive_path = str(entry["archive_path"])
-    return ImportRun(
-        import_run_id=entry["import_run_id"],
-        payload_id=entry["payload_sha256"],
-        declared_account_id=entry["account_id"],
-        source_format=entry["source_format"],
+class _NotAnEntryError(ValueError):
+    """A complete log line that is not a valid entry; its caller numbers it."""
+
+
+def _entry_object(line: bytes) -> dict[str, object]:
+    """Read a line as a JSON object holding exactly an entry's fields."""
+    try:
+        parsed: object = json.loads(line)
+    except ValueError:
+        raise _NotAnEntryError from None
+    if not isinstance(parsed, dict) or set(parsed) != _ENTRY_FIELDS:
+        raise _NotAnEntryError
+    entry: dict[str, object] = {str(field): value for field, value in parsed.items()}
+    # A bool is an int to Python, but `true` is not format 1.
+    if type(entry["format"]) is not int or entry["format"] != IMPORT_LOG_FORMAT:
+        raise _NotAnEntryError
+    return entry
+
+
+def _text(entry: Mapping[str, object], field: str) -> str:
+    """Return a field that must be a string."""
+    value = entry[field]
+    if not isinstance(value, str):
+        raise _NotAnEntryError
+    return value
+
+
+def _one_of[T](entry: Mapping[str, object], field: str, values: Mapping[str, T]) -> T:
+    """Return a string field that must be one of a few values."""
+    try:
+        return values[_text(entry, field)]
+    except KeyError:
+        raise _NotAnEntryError from None
+
+
+def _date(entry: Mapping[str, object], field: str) -> date:
+    """Return a field that must be an ISO date."""
+    try:
+        return date.fromisoformat(_text(entry, field))
+    except ValueError:
+        raise _NotAnEntryError from None
+
+
+def _started_at(entry: Mapping[str, object]) -> datetime:
+    """Return `started_at`, which Bronze always writes with its offset."""
+    try:
+        started_at = datetime.fromisoformat(_text(entry, "started_at"))
+    except ValueError:
+        raise _NotAnEntryError from None
+    if started_at.tzinfo is None:
+        raise _NotAnEntryError
+    return started_at
+
+
+def _repeat_of(entry: Mapping[str, object], outcome: str) -> str | None:
+    """Return the repeat link, which a repeat has and no other run does."""
+    if outcome != "repeat":
+        if entry["repeat_of"] is not None:
+            raise _NotAnEntryError
+        return None
+    return _text(entry, "repeat_of")
+
+
+def _logged_run(line: bytes) -> tuple[ImportRun, str]:
+    """Read one complete log line as the run it mirrors and its archive path."""
+    entry = _entry_object(line)
+    payload_id = _text(entry, "payload_sha256")
+    if _SHA256.fullmatch(payload_id) is None:
+        raise _NotAnEntryError
+    archive_path = _text(entry, "archive_path")
+    outcome = _one_of(entry, "outcome", _OUTCOMES)
+    run = ImportRun(
+        import_run_id=_text(entry, "import_run_id"),
+        payload_id=payload_id,
+        declared_account_id=_text(entry, "account_id"),
+        source_format=_text(entry, "source_format"),
         original_filename=archive_path.rsplit("/", 1)[-1],
-        exported_on=date.fromisoformat(entry["exported_on"]),
-        exported_on_source=entry["exported_on_source"],
-        covers_from=date.fromisoformat(entry["covers_from"]),
-        covers_through=date.fromisoformat(entry["covers_through"]),
-        started_at=datetime.fromisoformat(entry["started_at"]),
-        outcome=entry["outcome"],
-        repeat_of=entry["repeat_of"],
+        exported_on=_date(entry, "exported_on"),
+        exported_on_source=_one_of(entry, "exported_on_source", _DATE_SOURCES),
+        covers_from=_date(entry, "covers_from"),
+        covers_through=_date(entry, "covers_through"),
+        started_at=_started_at(entry),
+        outcome=outcome,
+        repeat_of=_repeat_of(entry, outcome),
     )
+    # The path must be one the import itself could have archived the run at,
+    # which also keeps it inside the run's account folder.
+    if archive_path not in archive_candidates(run):
+        raise _NotAnEntryError
+    return run, archive_path
+
+
+def _read_log(profile: Profile) -> tuple[tuple[ImportRun, str], ...]:
+    """Read every complete entry of the log, refusing it whole if one is invalid.
+
+    A final line without its line feed was cut off by a crash and is not an
+    entry yet, so it is left out. A missing log records no history.
+    """
+    if not profile.import_log_file.exists():
+        return ()
+    lines = profile.import_log_file.read_bytes().split(b"\n")[:-1]
+    logged = []
+    run_ids: set[str] = set()
+    for line_number, line in enumerate(lines, start=1):
+        try:
+            run, archive_path = _logged_run(line)
+        except _NotAnEntryError:
+            raise ImportLogInvalidError(line_number) from None
+        if run.import_run_id in run_ids:
+            raise ImportLogInvalidError(line_number)
+        run_ids.add(run.import_run_id)
+        logged.append((run, archive_path))
+    return tuple(logged)
 
 
 def _archived_export(profile: Profile, run: ImportRun, archive_path: str) -> bytes:
@@ -166,11 +294,7 @@ def replay_import_log(lock: WriterLock) -> tuple[ImportRun, ...]:
     restored in log order, each with its payload and derived cache at once.
     """
     profile = lock.profile
-    lines = profile.import_log_file.read_bytes().split(b"\n")[:-1]
-    logged = tuple(
-        (_logged_run(entry), str(entry["archive_path"]))
-        for entry in map(json.loads, lines)
-    )
+    logged = _read_log(profile)
     restored = []
     with BronzeStore(profile) as store:
         held = store.import_runs()

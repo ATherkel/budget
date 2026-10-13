@@ -189,7 +189,7 @@ def _inbox_account(profile: Profile, source: Path) -> Account:
     return account
 
 
-def _archive_candidates(run: ImportRun) -> tuple[str, ...]:
+def archive_candidates(run: ImportRun) -> tuple[str, ...]:
     """Name where a run's bytes may be archived, relative to the export archive.
 
     An accepted export keeps its original name in its account's folder, or,
@@ -237,7 +237,7 @@ def _archived_at(
     # holds now.
     candidates = {
         archive_path: profile.archive_file(archive_path)
-        for archive_path in _archive_candidates(run)
+        for archive_path in archive_candidates(run)
         if reserved.get(_place(archive_path), run.payload_id) == run.payload_id
     }
     for archive_path, target in candidates.items():
@@ -417,7 +417,7 @@ def _logged_archive_path(run: ImportRun, line: bytes) -> str:
     The entry must be exactly what this code writes for the run, at one of
     the places the run's export may be archived; anything else is damage.
     """
-    for archive_path in _archive_candidates(run):
+    for archive_path in archive_candidates(run):
         if line == _log_entry(run, archive_path):
             return archive_path
     raise ImportLogDamagedError

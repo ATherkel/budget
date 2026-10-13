@@ -322,7 +322,9 @@ class ConflictTests(unittest.TestCase):
         profile, first, second = self._two_runs()
 
         with pytest.raises(UnknownRepeatOfError, match="run-0002"):
-            self._replay(profile, first, second | {"repeat_of": "run-0009"})
+            self._replay(
+                profile, first, second | {"outcome": "repeat", "repeat_of": "run-0009"}
+            )
 
         assert [run.import_run_id for run in self._held_runs(profile)] == ["run-0001"]
 
