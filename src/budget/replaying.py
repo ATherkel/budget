@@ -12,13 +12,14 @@ import re
 from collections.abc import Mapping
 from datetime import date, datetime
 from hashlib import sha256
+from pathlib import Path
 from typing import Final, Literal
 
 from budget.bronze import BronzeStore, ImportRun
 from budget.bronze.parsers import source_formats
 from budget.importing import IMPORT_LOG_FORMAT, archive_candidates, log_entry
 from budget.locking import WriterLock
-from budget.profiles import Profile
+from budget.profiles import Profile, ProfilePathOutsideRootError
 
 # Every field an entry holds, no more and no fewer.
 _ENTRY_FIELDS: Final = frozenset(
@@ -254,8 +255,25 @@ def _logged_run(line: bytes) -> tuple[ImportRun, str]:
 
 
 def _is_one_part(name: str) -> bool:
-    """Report whether a name is one folder part on every file system."""
-    return name not in {"", ".", ".."} and not {"/", "\\"} & set(name)
+    """Report whether a name is one folder part on every file system.
+
+    A `:` names a drive or an NTFS stream on Windows, so it is refused on
+    every system, and a log replays the same everywhere.
+    """
+    return name not in {"", ".", ".."} and not {"/", "\\", ":"} & set(name)
+
+
+def _inside_archive(profile: Profile, archive_path: str) -> bool:
+    """Report whether an archive path resolves inside the export archive.
+
+    This catches any other way out, such as an account folder replaced by a
+    link to elsewhere.
+    """
+    try:
+        target = profile.archive_file(archive_path)
+    except ProfilePathOutsideRootError:
+        return False
+    return target.is_relative_to(Path(profile.exports).resolve())
 
 
 def _read_log(profile: Profile) -> tuple[tuple[ImportRun, str], ...]:
@@ -274,7 +292,7 @@ def _read_log(profile: Profile) -> tuple[tuple[ImportRun, str], ...]:
             run, archive_path = _logged_run(line)
         except _NotAnEntryError:
             raise ImportLogInvalidError(line_number) from None
-        if run.import_run_id in run_ids:
+        if run.import_run_id in run_ids or not _inside_archive(profile, archive_path):
             raise ImportLogInvalidError(line_number)
         run_ids.add(run.import_run_id)
         logged.append((run, archive_path))
