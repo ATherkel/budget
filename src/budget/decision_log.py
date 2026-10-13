@@ -103,8 +103,9 @@ def _targets(count: int) -> FieldRule:
     )
 
 
-# `format` and `kind` are judged before the other keys.
-_JUDGED_FIRST = FieldRule(lambda _: True, "is judged first")
+# Keys judged apart from the table: `format` and `kind` before the others,
+# and a retract's `targets` by its kind.
+_JUDGED_APART = FieldRule(lambda _: True, "is judged apart")
 _ID = FieldRule(_is_id, "must be lowercase words joined by hyphens")
 _RECORD_FIELDS: Mapping[str, FieldRule] = {
     "payload_id": TEXT,
@@ -133,8 +134,13 @@ def _record_problems(entry: Entry) -> list[str]:
 
 
 def _retract_problems(entry: Entry) -> list[str]:
-    """Require a `retract` to withdraw at least one decision."""
-    return [] if entry.get("supersedes") else ["a retract must supersede a decision"]
+    """Require a `retract` to target nothing and withdraw at least one decision."""
+    problems = []
+    if entry.get("targets", []) != []:
+        problems.append("a retract has no targets")
+    if not entry.get("supersedes"):
+        problems.append("a retract must supersede a decision")
+    return problems
 
 
 @dataclass(frozen=True)
@@ -165,7 +171,7 @@ _KINDS: Mapping[str, _Kind] = {
         {"record": FieldRule(lambda v: isinstance(v, dict), "must be an object")},
         _record_problems,
     ),
-    _RETRACT: _Kind(0, {}, _retract_problems),
+    _RETRACT: _Kind(0, {"targets": _JUDGED_APART}, _retract_problems),
 }
 
 
@@ -191,7 +197,7 @@ def _shape_problems(entry: Entry, position: int) -> list[str]:
         return refusal
     kind = _KINDS[entry["kind"]]
     fields = {
-        "format": _JUDGED_FIRST,
+        "format": _JUDGED_APART,
         "entry": FieldRule(
             lambda value: type(value) is int and value == position,
             f"must be {position}, its position in the log",
@@ -200,7 +206,7 @@ def _shape_problems(entry: Entry, position: int) -> list[str]:
         "recorded_at": FieldRule(
             _is_utc_time, "must be a UTC time such as 2026-04-10T17:02:11Z"
         ),
-        "kind": _JUDGED_FIRST,
+        "kind": _JUDGED_APART,
         "targets": _targets(kind.targets),
         "reason": TEXT,
         "supersedes": FieldRule(_lists_ids, "must list decision IDs"),
