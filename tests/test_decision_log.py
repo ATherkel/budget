@@ -92,6 +92,20 @@ class SupersessionTests(unittest.TestCase):
             ),
         )
 
+    def test_a_retract_frees_its_target_for_a_new_decision(self) -> None:
+        log = (
+            classify(1, "tx-a", "gifts")
+            + decision(2, "retract", [], supersedes=["d-0001"])
+            + classify(3, "tx-a", "groceries")
+        )
+
+        assert read_log(log.encode()).gold == (Classify("d-0003", "tx-a", "groceries"),)
+
+    def test_an_invalid_entry_never_holds_its_target(self) -> None:
+        log = line(1, targets=["tx-a"], format=2) + classify(2, "tx-a", "groceries")
+
+        assert refusal(log.encode()) == (problem("format must be 1"),)
+
 
 class PrefixTests(unittest.TestCase):
     def test_an_edited_entry_changes_the_prefix_hash(self) -> None:
