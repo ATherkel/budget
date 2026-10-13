@@ -389,7 +389,10 @@ Notes:
   unclassified out −129.00, one `rule-conflict` opened*. That diff is the cue
   to undo.
 - **Step 6.** The configuration snapshot is taken of parsed content, so a
-  rules file restored to its old meaning gives the same fingerprint.
+  rules file restored to its old meaning gives the same fingerprint. A
+  `contains` or `starts_with` pattern counts by its case-folded text, so
+  changing only its case is no change; a regular expression counts as
+  written.
 - **Step 7.** No fact or allocation changes. The `GoldCategory` row changes,
   so the result fingerprint changes too. Group rollups restate for every
   month: `leisure` −129.00, `housing` +129.00 in February.
