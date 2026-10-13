@@ -159,6 +159,12 @@ def problem(text: str, entry: int = 1, decision_id: str | None = "d-0001") -> st
     return f"decisions.jsonl: {name}: {text}"
 
 
+def decision(entry: int, kind: str, targets: list[str], **fields: object) -> str:
+    """One complete line of any kind, numbered `entry`, with only `fields` added."""
+    changes = {"category": DROP, **fields}
+    return line(entry, kind=kind, targets=targets, **changes)
+
+
 INVALID_LOGS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("not JSON", "not json\n", (problem("must be one JSON object", decision_id=None),)),
     ("a blank line", "\n", (problem("must be one JSON object", decision_id=None),)),
@@ -240,6 +246,11 @@ INVALID_LOGS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         line(category="gifts")[:-2] + ', "category": "groceries"}\n',
         (problem('key "category" appears more than once'),),
     ),
+    (
+        "a retract with a target",
+        line(1) + decision(2, "retract", ["tx-1"], supersedes=["d-0001"]),
+        (problem("a retract has no targets", 2, "d-0002"),),
+    ),
 )
 
 
@@ -248,12 +259,6 @@ class EntryValidationTests(unittest.TestCase):
         for case, log, expected in INVALID_LOGS:
             with self.subTest(case):
                 assert refusal(log.encode()) == expected
-
-
-def decision(entry: int, kind: str, targets: list[str], **fields: object) -> str:
-    """One complete line of any kind, numbered `entry`, with only `fields` added."""
-    changes = {"category": DROP, **fields}
-    return line(entry, kind=kind, targets=targets, **changes)
 
 
 class TypedDecisionTests(unittest.TestCase):
