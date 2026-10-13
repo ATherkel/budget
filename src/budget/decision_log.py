@@ -145,15 +145,26 @@ def _retract_problems(entry: Entry) -> list[str]:
 
 @dataclass(frozen=True)
 class _Kind:
-    """What an entry of one kind carries beyond the keys every entry has."""
+    """What an entry of one kind carries beyond the keys every entry has.
 
+    `group` names the kinds that collide on a target; a `retract` is in none.
+    """
+
+    group: str | None
     targets: int
     fields: Mapping[str, FieldRule]
     problems: Callable[[Entry], list[str]] = _no_problems
 
 
+# The collision groups: a transaction's classification (ADR-011), an import
+# run's admission, and a transaction's change at the bank.
+_CLASSIFICATION = "classification"
+_IMPORT_RUN = "import-run"
+_BANK_CHANGE = "bank-change"
+
 _KINDS: Mapping[str, _Kind] = {
     "classify": _Kind(
+        _CLASSIFICATION,
         1,
         {
             "category": optional(_ID),
@@ -161,17 +172,18 @@ _KINDS: Mapping[str, _Kind] = {
         },
         _classify_problems,
     ),
-    "pair": _Kind(2, {}),
-    "one-sided-transfer": _Kind(1, {"counterpart_account_id": _ID}),
-    "void-import-run": _Kind(1, {}),
-    "accept-discrepancy": _Kind(1, {}),
-    "withdrawn": _Kind(1, {}),
+    "pair": _Kind(_CLASSIFICATION, 2, {}),
+    "one-sided-transfer": _Kind(_CLASSIFICATION, 1, {"counterpart_account_id": _ID}),
+    "void-import-run": _Kind(_IMPORT_RUN, 1, {}),
+    "accept-discrepancy": _Kind(_IMPORT_RUN, 1, {}),
+    "withdrawn": _Kind(_BANK_CHANGE, 1, {}),
     "same-transaction": _Kind(
+        _BANK_CHANGE,
         1,
         {"record": FieldRule(lambda v: isinstance(v, dict), "must be an object")},
         _record_problems,
     ),
-    _RETRACT: _Kind(0, {"targets": _JUDGED_APART}, _retract_problems),
+    _RETRACT: _Kind(None, 0, {"targets": _JUDGED_APART}, _retract_problems),
 }
 
 
@@ -237,23 +249,27 @@ def _repeats(entry: Entry, key: str) -> list[str]:
     ]
 
 
-def _clashes(entry: Entry, in_force: Mapping[str, Entry]) -> list[str]:
-    """Each target a decision in force holds that `entry` does not supersede.
+@dataclass(frozen=True)
+class _Claim:
+    """What a decision holds: one target, within its kind's collision group.
 
-    ADR-011 allows at most one decision per target, so a new one must list
-    the old in `supersedes` (`publications.md`, *The Decision Log*).
+    `payload` is a `same-transaction` record's `payload_id`, and `None` for
+    every other kind, which holds the whole target.
     """
-    holders = {
-        target: decision_id
-        for decision_id, held in in_force.items()
-        for target in held["targets"]
-    }
-    return [
-        f"{target} is already decided by {holders[target]}, "
-        "which supersedes does not list"
-        for target in entry["targets"]
-        if target in holders and holders[target] not in entry["supersedes"]
-    ]
+
+    group: str
+    target: str
+    payload: str | None
+
+
+def _claims(entry: Entry) -> list[_Claim]:
+    """Each target a well-formed entry holds once it is in force."""
+    group = _KINDS[entry["kind"]].group
+    if group is None:
+        return []
+    record = entry.get("record")
+    payload = record["payload_id"] if isinstance(record, dict) else None
+    return [_Claim(group, target, payload) for target in entry["targets"]]
 
 
 def _parse(line: str) -> tuple[dict[str, Any] | None, list[str]]:
@@ -292,12 +308,14 @@ class _Replay:
     """The log read so far: the decisions in force, and what was wrong.
 
     An invalid entry never comes into force, so the entries after it are
-    judged against the log as if it were not there.
+    judged against the log as if it were not there. `holders` indexes what
+    the decisions in force hold: by group and target, then by payload.
     """
 
     in_force: dict[str, Entry] = field(default_factory=dict)
     used: dict[str, int] = field(default_factory=dict)
     problems: list[str] = field(default_factory=list)
+    holders: dict[tuple[str, str], dict[str | None, str]] = field(default_factory=dict)
 
     def read(self, position: int, line: str) -> None:
         """Judge the entry at `position`, then bring it into force if valid."""
@@ -316,9 +334,13 @@ class _Replay:
             return
         self.used[entry["decision_id"]] = position
         for superseded in entry["supersedes"]:
-            del self.in_force[superseded]
+            for claim in _claims(self.in_force.pop(superseded)):
+                del self.holders[claim.group, claim.target][claim.payload]
         if entry["kind"] != _RETRACT:
             self.in_force[entry["decision_id"]] = entry
+            for claim in _claims(entry):
+                held = self.holders.setdefault((claim.group, claim.target), {})
+                held[claim.payload] = entry["decision_id"]
 
     def _history_problems(self, entry: Entry) -> list[str]:
         """Judge a well-formed entry against the entries before it."""
@@ -334,8 +356,33 @@ class _Replay:
             for superseded in entry["supersedes"]
             if superseded not in self.in_force
         )
-        problems.extend(_clashes(entry, self.in_force))
+        problems.extend(self._clashes(entry))
         return problems
+
+    def _clashes(self, entry: Entry) -> list[str]:
+        """Each target a decision in force holds that `entry` does not supersede.
+
+        Kinds collide only within their group, so at most one classification
+        decision holds a transaction (ADR-011). A `same-transaction` holds its
+        transaction only for its record's payload, so several stand together,
+        while a `withdrawn` excludes them all.
+        """
+        return [
+            f"{claim.target} is already decided by {holder}, "
+            "which supersedes does not list"
+            for claim in _claims(entry)
+            for holder in self._holders(claim)
+            if holder not in entry["supersedes"]
+        ]
+
+    def _holders(self, claim: _Claim) -> list[str]:
+        """List the decisions in force whose claims overlap `claim`."""
+        held = self.holders.get((claim.group, claim.target), {})
+        return [
+            decision_id
+            for payload, decision_id in held.items()
+            if claim.payload is None or payload is None or payload == claim.payload
+        ]
 
 
 def _classify(entry: Entry) -> Classify | ClassifyAdjustment:
