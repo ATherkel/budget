@@ -176,6 +176,7 @@ def held(target: str, by: str) -> str:
 
 RECORD_P1 = {"payload_id": "p-1", "record_ordinal": 0}
 RECORD_P2 = {"payload_id": "p-2", "record_ordinal": 0}
+SHARES_NOTHING = "supersedes d-0001, which decides nothing this entry targets"
 
 
 INVALID_LOGS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
@@ -295,6 +296,19 @@ INVALID_LOGS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
             2, "one-sided-transfer", ["tx-b"], counterpart_account_id="joint-savings"
         ),
         (held("tx-b", by="d-0001"),),
+    ),
+    (
+        "a supersedes naming a decision on another target",
+        classify(1, "tx-a", "gifts") + classify(2, "tx-b", "gifts", "d-0001"),
+        (problem(SHARES_NOTHING, 2, "d-0002"),),
+    ),
+    (
+        "a Silver decision superseding a Gold one",
+        classify(1, "tx-a", "gifts")
+        + decision(
+            2, "same-transaction", ["tx-a"], record=RECORD_P1, supersedes=["d-0001"]
+        ),
+        (problem(SHARES_NOTHING, 2, "d-0002"),),
     ),
 )
 
