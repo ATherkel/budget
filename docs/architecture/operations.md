@@ -542,7 +542,7 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | `verify` | Checks integrity, and replays the current publication's recipe to prove it reproduces (ADR-014). | `scratch/` only | No |
 | `dev refresh [--inputs] [--writable]` | Development only: restores production's newest complete backup set into `upstream/`, or with `--writable` into development's own stores. | Development only | No |
 | `serve` | Starts the read-only dashboard. | Nothing | No |
-| `set-passphrase` | Sets the dashboard passphrase. | The passphrase file | No |
+| `set-passphrase` | Sets the dashboard passphrase, which logs out every device. | The passphrase file | No |
 
 Review output shows each transaction with a short handle: the first 8
 characters of its `transaction_id`. `decide` accepts a handle; a handle that
@@ -854,8 +854,17 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   from the internet.
 - One household passphrase guards every page. It is stored as a `scrypt` hash
   in a file under `%APPDATA%\budget\`, never in OneDrive or the repository. A
-  successful login sets an `HttpOnly`, `SameSite=Strict` session cookie.
-  Repeated failed logins are slowed down.
+  successful login sets an `HttpOnly`, `SameSite=Strict` session cookie
+  holding an unguessable value. Repeated failed logins are slowed down.
+- A login lasts while it is used: every request renews the cookie for another
+  30 days, so a device unused for 30 days asks for the passphrase again. The
+  30 days are a constant of the code, not a profile setting.
+- A login ends early only at logout or `set-passphrase`, which logs out every
+  device at once. Restarting `serve` keeps logins: the cookie carries its own
+  expiry, signed with a key derived from the passphrase hash, so the dashboard
+  keeps no session store.
+- The cookie has no `Secure` flag, because a browser sends such a cookie only
+  over HTTPS. The HTTPS upgrade below adds it.
 - **Plain HTTP on the home network is an accepted risk.** Someone on the same
   Wi-Fi who captures traffic could read the passphrase and pages. HTTPS with a
   locally trusted certificate is the upgrade path if that changes.
