@@ -282,12 +282,17 @@ def _parse(line: str) -> tuple[dict[str, Any] | None, list[str]]:
     """Read one line as a JSON object, or `None`, with each key it repeats.
 
     `json.loads` alone keeps the last of a repeated key, so what a person
-    reads in the line would differ from what takes effect.
+    reads in the line would differ from what takes effect. A key repeated in
+    a nested object such as `record` is named the way problems name its keys,
+    `record.payload_id`.
     """
-    repeated: list[str] = []
+    # The hook cannot see an object's own key, so repeats are kept by object
+    # and named once the whole line is read.
+    repeats: dict[int, list[str]] = {}
 
     def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         table: dict[str, Any] = {}
+        repeated = repeats.setdefault(id(table), [])
         for key, value in pairs:
             if key in table and key not in repeated:
                 repeated.append(key)
@@ -298,7 +303,15 @@ def _parse(line: str) -> tuple[dict[str, Any] | None, list[str]]:
         entry = json.loads(line, object_pairs_hook=unique)
     except json.JSONDecodeError:
         return None, []
-    return (entry if isinstance(entry, dict) else None), repeated
+    if not isinstance(entry, dict):
+        return None, []
+    nested = [
+        f"{key}.{inner}"
+        for key, value in entry.items()
+        if isinstance(value, dict)
+        for inner in repeats[id(value)]
+    ]
+    return entry, [*repeats[id(entry)], *nested]
 
 
 def _problem(position: int, decision_id: object, text: str) -> str:
