@@ -236,10 +236,13 @@ class FingerprintTests(unittest.TestCase):
             RULES.replace('"IKEA"', '["IKEA", "ikea"]'),
         ):
             with self.subTest(rules=rules):
+                assert rules != RULES
                 assert configuration(rules=rules).fingerprint == documented
 
         def fingerprint(pattern: str) -> str:
-            return configuration(rules=RULES.replace('"NETTO"', pattern)).fingerprint
+            rules = RULES.replace('"NETTO"', pattern)
+            assert rules != RULES
+            return configuration(rules=rules).fingerprint
 
         assert fingerprint('"STRASSE"') == fingerprint('"straße"')
 
