@@ -855,14 +855,19 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
 - One household passphrase guards every page. It is stored as a `scrypt` hash
   in a file under `%APPDATA%\budget\`, never in OneDrive or the repository. A
   successful login sets an `HttpOnly`, `SameSite=Strict` session cookie
-  holding an unguessable value. Repeated failed logins are slowed down.
+  holding its expiry, signed with a key derived from the passphrase hash so
+  that it cannot be forged. The dashboard keeps no session store, so
+  restarting `serve` keeps logins. Repeated failed logins are slowed down.
 - A login lasts while it is used: every request renews the cookie for another
-  30 days, so a device unused for 30 days asks for the passphrase again. The
-  30 days are a constant of the code, not a profile setting.
-- A login ends early only at logout or `set-passphrase`, which logs out every
-  device at once. Restarting `serve` keeps logins: the cookie carries its own
-  expiry, signed with a key derived from the passphrase hash, so the dashboard
-  keeps no session store.
+  30 days, so a device unused for 30 days asks for the passphrase again. There
+  is no absolute cap on a login's total age. The 30 days are a constant of the
+  code, not a profile setting.
+- Logout deletes the cookie in that browser only. To end a login on a device
+  you no longer control, or a cookie that may have leaked, run
+  `set-passphrase`, which logs out every device at once.
+- `serve` reads the passphrase file on every login and cookie check, or again
+  whenever the file changes, so `set-passphrase` takes effect without a
+  restart.
 - The cookie has no `Secure` flag, because a browser sends such a cookie only
   over HTTPS. The HTTPS upgrade below adds it.
 - **Plain HTTP on the home network is an accepted risk.** Someone on the same
