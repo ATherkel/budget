@@ -51,6 +51,22 @@ class ArchivedExportMismatchError(RuntimeError):
         )
 
 
+class ImportLogInvalidError(RuntimeError):
+    """A complete line of the import log is not a valid entry.
+
+    The whole log is checked before anything is written, so nothing was
+    restored. The message names the line by number, never its content.
+    """
+
+    def __init__(self, line_number: int) -> None:
+        """Name the first line that is not a valid entry."""
+        self.line_number = line_number
+        super().__init__(
+            f"imports.jsonl line {line_number} is not a valid import-log entry; "
+            "nothing was restored. Restore the log from the newest backup set."
+        )
+
+
 class RunConflictError(RuntimeError):
     """Bronze holds a logged run's ID, but not as the log records the run.
 

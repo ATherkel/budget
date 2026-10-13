@@ -10,6 +10,7 @@ out independently of the code that writes the log.
 import json
 import shutil
 import unittest
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -24,6 +25,7 @@ from budget.profiles import Profile
 from budget.replaying import (
     ArchivedExportMismatchError,
     ArchivedExportMissingError,
+    ImportLogInvalidError,
     NotALogPrefixError,
     RunConflictError,
     UnknownRepeatOfError,
@@ -69,11 +71,14 @@ def entry(
     } | changes
 
 
+def line(each: dict[str, object]) -> bytes:
+    """One complete import-log line holding an entry."""
+    return (json.dumps(each) + "\n").encode("utf-8")
+
+
 def write_log(profile: Profile, *entries: dict[str, object]) -> None:
     """Write `imports.jsonl` as complete lines, one per entry."""
-    profile.import_log_file.write_text(
-        "".join(json.dumps(each) + "\n" for each in entries), encoding="utf-8"
-    )
+    profile.import_log_file.write_bytes(b"".join(map(line, entries)))
 
 
 class CompleteLogTests(unittest.TestCase):
@@ -320,6 +325,96 @@ class ConflictTests(unittest.TestCase):
             self._replay(profile, first, second | {"repeat_of": "run-0009"})
 
         assert [run.import_run_id for run in self._held_runs(profile)] == ["run-0001"]
+
+
+def _without(field: str) -> Callable[[dict[str, object]], dict[str, object]]:
+    return lambda each: {key: value for key, value in each.items() if key != field}
+
+
+def _with(**changes: object) -> Callable[[dict[str, object]], dict[str, object]]:
+    return lambda each: each | changes
+
+
+# Each one turns a valid second entry into one replay must refuse.
+INVALID_ENTRIES: dict[str, Callable[[dict[str, object]], dict[str, object]]] = {
+    "a later format": _with(format=2),
+    "a missing field": _without("covers_from"),
+    "an extra field": _with(note="extra"),
+    "a number for a string": _with(account_id=7),
+    "an unknown outcome": _with(outcome="kept"),
+    "an unknown export-date source": _with(exported_on_source="guessed"),
+    "a repeat without its link": _with(outcome="repeat"),
+    "a link on a stored run": _with(repeat_of="run-0001"),
+    "an unreadable date": _with(covers_from="2026-02-30"),
+    "a timestamp without an offset": _with(started_at="2026-05-03T09:00:00"),
+    "a hash that is not SHA-256": _with(payload_sha256="c0ffee"),
+    "another account's folder": _with(archive_path="joint-savings/second.csv"),
+    "a path out of the archive": _with(archive_path="joint-current/../second.csv"),
+    "a second entry for a run": _with(import_run_id="run-0001"),
+}
+
+
+class InvalidLogTests(unittest.TestCase):
+    def _log(self) -> tuple[Profile, bytes, bytes]:
+        """A household with two archived runs; return their two log lines."""
+        profile = household(Path(self.enterContext(TemporaryDirectory())))
+        first_id = archive(profile, "joint-current/first.csv", payload("01.04.2026"))
+        second_id = archive(profile, "joint-current/second.csv", payload("02.04.2026"))
+        first = entry("run-0001", "joint-current/first.csv", first_id)
+        second = entry(
+            "run-0002",
+            "joint-current/second.csv",
+            second_id,
+            started_at=LATER.isoformat(),
+        )
+        return profile, line(first), line(second)
+
+    def _assert_refused_at_line_2(self, profile: Profile, log: bytes) -> None:
+        profile.import_log_file.write_bytes(log)
+        with (
+            writer_lock(profile) as lock,
+            pytest.raises(ImportLogInvalidError, match="line 2") as refusal,
+        ):
+            replay_import_log(lock)
+        assert "second.csv" not in str(refusal.value)
+        with BronzeStore(profile) as store:
+            assert store.import_runs() == ()
+
+    def test_an_invalid_entry_refuses_the_log_before_anything_is_restored(
+        self,
+    ) -> None:
+        for name, spoil in INVALID_ENTRIES.items():
+            with self.subTest(name):
+                profile, first, second = self._log()
+                spoiled = line(spoil(json.loads(second)))
+
+                self._assert_refused_at_line_2(profile, first + spoiled)
+
+    def test_a_line_that_is_no_entry_refuses_the_log(self) -> None:
+        for name, bad_line in (
+            ("blank", b"\n"),
+            ("not JSON", b"{not json\n"),
+            ("not an object", b"[1, 2]\n"),
+        ):
+            with self.subTest(name):
+                profile, first, second = self._log()
+
+                self._assert_refused_at_line_2(profile, first + bad_line + second)
+
+    def test_a_final_line_a_crash_cut_off_is_not_replayed(self) -> None:
+        profile, first, second = self._log()
+        profile.import_log_file.write_bytes(first + second[:-20])
+
+        with writer_lock(profile) as lock:
+            restored = replay_import_log(lock)
+
+        assert [run.import_run_id for run in restored] == ["run-0001"]
+
+    def test_no_import_log_restores_nothing(self) -> None:
+        profile, _, _ = self._log()
+
+        with writer_lock(profile) as lock:
+            assert replay_import_log(lock) == ()
 
 
 class ArchiveProofTests(unittest.TestCase):
