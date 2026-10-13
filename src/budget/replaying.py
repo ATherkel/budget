@@ -9,10 +9,12 @@ store that holds a prefix of it.
 
 import json
 from datetime import date, datetime
+from hashlib import sha256
 from typing import Any
 
 from budget.bronze import BronzeStore, ImportRun
 from budget.locking import WriterLock
+from budget.profiles import Profile
 
 
 class ArchivedExportMissingError(RuntimeError):
@@ -68,6 +70,17 @@ def _logged_run(entry: dict[str, Any]) -> ImportRun:
     )
 
 
+def _archived_export(profile: Profile, run: ImportRun, archive_path: str) -> bytes:
+    """Read a logged run's archived export, proven by the hash its entry names."""
+    try:
+        content = profile.archive_file(archive_path).read_bytes()
+    except FileNotFoundError:
+        raise ArchivedExportMissingError(run.import_run_id) from None
+    if sha256(content).hexdigest() != run.payload_id:
+        raise ArchivedExportMismatchError(run.import_run_id)
+    return content
+
+
 def replay_import_log(lock: WriterLock) -> tuple[ImportRun, ...]:
     """Restore every logged run Bronze lacks; return the runs restored."""
     profile = lock.profile
@@ -77,7 +90,7 @@ def replay_import_log(lock: WriterLock) -> tuple[ImportRun, ...]:
         for line in lines:
             entry = json.loads(line)
             run = _logged_run(entry)
-            content = profile.archive_file(entry["archive_path"]).read_bytes()
+            content = _archived_export(profile, run, entry["archive_path"])
             store.restore_import_run(run, content)
             restored.append(run)
     return tuple(restored)
