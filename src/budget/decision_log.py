@@ -200,7 +200,29 @@ def _shape_problems(entry: Entry, position: int) -> list[str]:
         "supersedes": FieldRule(_lists_ids, "must list decision IDs"),
         **kind.fields,
     }
-    return [*key_problems(entry, fields), *kind.problems(entry)]
+    return [
+        *key_problems(entry, fields),
+        *_repeats(entry, "targets"),
+        *_repeats(entry, "supersedes"),
+        *kind.problems(entry),
+    ]
+
+
+def _repeats(entry: Entry, key: str) -> list[str]:
+    """Name each ID a list key holds more than once.
+
+    A `pair` of one transaction with itself is no transfer, and a decision
+    superseded twice would be withdrawn twice.
+    """
+    values = entry.get(key)
+    if not isinstance(values, list):
+        return []
+    ids = [value for value in values if isinstance(value, str)]
+    return [
+        f"{key} lists {value} more than once"
+        for value in dict.fromkeys(ids)
+        if ids.count(value) > 1
+    ]
 
 
 def _clashes(entry: Entry, in_force: Mapping[str, Entry]) -> list[str]:

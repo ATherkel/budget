@@ -211,6 +211,16 @@ INVALID_LOGS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         line(1) + line(2, decision_id="d-0001"),
         (problem("decision_id d-0001 is already used by entry 1", entry=2),),
     ),
+    (
+        "a supersedes naming one decision twice",
+        line(1) + line(2, targets=["tx-1"], supersedes=["d-0001", "d-0001"]),
+        (problem("supersedes lists d-0001 more than once", 2, "d-0002"),),
+    ),
+    (
+        "a pair of one transaction with itself",
+        line(kind="pair", targets=["tx-a", "tx-a"], category=DROP),
+        (problem("targets lists tx-a more than once"),),
+    ),
 )
 
 
