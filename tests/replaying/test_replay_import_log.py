@@ -24,6 +24,9 @@ from budget.profiles import Profile
 from budget.replaying import (
     ArchivedExportMismatchError,
     ArchivedExportMissingError,
+    NotALogPrefixError,
+    RunConflictError,
+    UnknownRepeatOfError,
     replay_import_log,
 )
 from tests.importing.households import drop, household, payload
@@ -234,6 +237,89 @@ class PrefixTests(unittest.TestCase):
 
             with BronzeStore(original) as before, BronzeStore(restored) as after:
                 assert after.import_runs() == before.import_runs()
+
+
+class ConflictTests(unittest.TestCase):
+    def _two_runs(self) -> tuple[Profile, dict[str, object], dict[str, object]]:
+        """A household with two archived exports and their entries, unlogged."""
+        profile = household(Path(self.enterContext(TemporaryDirectory())))
+        first_id = archive(profile, "joint-current/first.csv", payload("01.04.2026"))
+        second_id = archive(profile, "joint-current/second.csv", payload("02.04.2026"))
+        first = entry("run-0001", "joint-current/first.csv", first_id)
+        second = entry(
+            "run-0002",
+            "joint-current/second.csv",
+            second_id,
+            started_at=LATER.isoformat(),
+        )
+        return profile, first, second
+
+    def _replay(self, profile: Profile, *entries: dict[str, object]) -> None:
+        write_log(profile, *entries)
+        with writer_lock(profile) as lock:
+            replay_import_log(lock)
+
+    def _held_runs(self, profile: Profile) -> tuple[ImportRun, ...]:
+        with BronzeStore(profile) as store:
+            return store.import_runs()
+
+    def test_a_run_bronze_holds_otherwise_than_logged_is_refused(self) -> None:
+        other_bytes = payload("03.04.2026")
+        for changes in (
+            {"covers_from": "2026-03-01"},
+            {"started_at": LATEST.isoformat()},
+            {
+                "payload_sha256": sha256(other_bytes).hexdigest(),
+                "archive_path": "joint-current/other.csv",
+            },
+        ):
+            with self.subTest(changes=sorted(changes)):
+                profile, first, second = self._two_runs()
+                archive(profile, "joint-current/other.csv", other_bytes)
+                self._replay(profile, first | changes)
+                held = self._held_runs(profile)
+
+                with pytest.raises(RunConflictError, match="run-0001"):
+                    self._replay(profile, first, second)
+
+                assert self._held_runs(profile) == held
+
+    def test_bronze_holding_a_later_run_but_not_the_first_is_refused(self) -> None:
+        profile, first, second = self._two_runs()
+        self._replay(profile, second)
+        held = self._held_runs(profile)
+
+        with pytest.raises(NotALogPrefixError):
+            self._replay(profile, first, second)
+
+        assert self._held_runs(profile) == held
+
+    def test_bronze_holding_a_run_the_log_lacks_is_refused(self) -> None:
+        profile, first, second = self._two_runs()
+        self._replay(
+            profile,
+            first,
+            entry(
+                "run-0099",
+                "joint-current/second.csv",
+                sha256(payload("02.04.2026")).hexdigest(),
+                started_at=LAST.isoformat(),
+            ),
+        )
+        held = self._held_runs(profile)
+
+        with pytest.raises(NotALogPrefixError):
+            self._replay(profile, first, second)
+
+        assert self._held_runs(profile) == held
+
+    def test_a_repeat_of_a_run_not_logged_before_it_is_refused(self) -> None:
+        profile, first, second = self._two_runs()
+
+        with pytest.raises(UnknownRepeatOfError, match="run-0002"):
+            self._replay(profile, first, second | {"repeat_of": "run-0009"})
+
+        assert [run.import_run_id for run in self._held_runs(profile)] == ["run-0001"]
 
 
 class ArchiveProofTests(unittest.TestCase):

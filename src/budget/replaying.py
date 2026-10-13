@@ -51,6 +51,55 @@ class ArchivedExportMismatchError(RuntimeError):
         )
 
 
+class RunConflictError(RuntimeError):
+    """Bronze holds a logged run's ID, but not as the log records the run.
+
+    History is never overwritten, so nothing more is restored.
+    """
+
+    def __init__(self, import_run_id: str) -> None:
+        """Name the run Bronze and the log disagree about."""
+        self.import_run_id = import_run_id
+        super().__init__(
+            f"import run {import_run_id}: Bronze holds this run otherwise than "
+            "the import log records it; nothing more was restored. Restore "
+            "Bronze from a backup set that matches the log, or replay into an "
+            "empty store."
+        )
+
+
+class NotALogPrefixError(RuntimeError):
+    """Bronze holds runs that are not the import log's first runs, in order.
+
+    A replay only continues history Bronze already shares with the log, so
+    nothing is restored.
+    """
+
+    def __init__(self) -> None:
+        """State the problem and its remedy, without quoting the log."""
+        super().__init__(
+            "Bronze holds import runs that are not the import log's first runs, "
+            "in order; nothing was restored. Restore Bronze from a backup set "
+            "taken from this log, or replay into an empty store."
+        )
+
+
+class UnknownRepeatOfError(RuntimeError):
+    """A logged repeat names no run restored before it.
+
+    The runs before it stay restored, and nothing of this run is written.
+    """
+
+    def __init__(self, import_run_id: str) -> None:
+        """Name the run whose repeat link points nowhere."""
+        self.import_run_id = import_run_id
+        super().__init__(
+            f"import run {import_run_id}: its log entry repeats a run the log "
+            "does not record before it; nothing of the run was restored. "
+            "Restore the log from the newest backup set."
+        )
+
+
 def _logged_run(entry: dict[str, Any]) -> ImportRun:
     """Read one log entry back as the run it mirrors."""
     archive_path = str(entry["archive_path"])
