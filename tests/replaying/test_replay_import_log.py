@@ -10,11 +10,14 @@ out independently of the code that writes the log.
 import json
 import shutil
 import unittest
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -417,6 +420,81 @@ class InvalidLogTests(unittest.TestCase):
 
         with writer_lock(profile) as lock:
             assert replay_import_log(lock) == ()
+
+
+class InjectedCrashError(Exception):
+    """Stands in for the process dying mid-replay."""
+
+
+@contextmanager
+def crash_at(step: int) -> Iterator[None]:
+    """Fail the `step`-th read of a file or serialisation of a source record.
+
+    Reads happen between runs, and serialisation inside a run's write, so
+    failing each in turn leaves every state a crash can.
+    """
+    calls = 0
+
+    def failing(original: Callable[..., Any]) -> Callable[..., Any]:
+        def step_or_crash(*args: object, **kwargs: object) -> object:
+            nonlocal calls
+            calls += 1
+            if calls == step:
+                raise InjectedCrashError
+            return original(*args, **kwargs)
+
+        return step_or_crash
+
+    with (
+        patch.object(Path, "read_bytes", failing(Path.read_bytes)),
+        patch("json.dumps", failing(json.dumps)),
+    ):
+        yield
+
+
+# More steps than this replay has, so a defect cannot loop forever.
+MOST_STEPS = 40
+
+
+class InterruptedReplayTests(unittest.TestCase):
+    def test_a_crash_at_any_step_leaves_whole_runs_and_a_rerun_finishes(
+        self,
+    ) -> None:
+        original_root = Path(self.enterContext(TemporaryDirectory()))
+        original = imported_household(original_root)
+        with BronzeStore(original) as store:
+            expected = store.import_runs()
+            records = {
+                run.payload_id: store.get_source_records(run.payload_id)
+                for run in expected
+            }
+        step, crashed = 0, True
+        while crashed and step < MOST_STEPS:
+            step += 1
+            with self.subTest(step=step), TemporaryDirectory() as directory:
+                restored = restored_household(Path(directory), original)
+                shutil.copyfile(original.import_log_file, restored.import_log_file)
+                with writer_lock(restored) as lock:
+                    try:
+                        with crash_at(step):
+                            replay_import_log(lock)
+                        crashed = False
+                    except InjectedCrashError:
+                        crashed = True
+
+                with BronzeStore(restored) as store:
+                    held = store.import_runs()
+                    assert held == expected[: len(held)]
+                    for run in held:
+                        assert (
+                            store.get_source_records(run.payload_id)
+                            == (records[run.payload_id])
+                        )
+                with writer_lock(restored) as lock:
+                    replay_import_log(lock)
+                with BronzeStore(restored) as store:
+                    assert store.import_runs() == expected
+        assert not crashed
 
 
 class ArchiveProofTests(unittest.TestCase):
