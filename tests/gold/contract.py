@@ -11,6 +11,8 @@ from collections import Counter
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from budget.gold import GoldRepository, ReportingMonth
 from tests.gold.worked_example import (
     ACCOUNTS,
@@ -153,3 +155,24 @@ class GoldRepositoryContract:
             "category_allocations": [],
             "monthly_balances": [],
         }
+
+    def test_a_bare_string_of_account_ids_is_refused(
+        self, repository: GoldRepository
+    ) -> None:
+        start, end = date(2026, 1, 1), date(2026, 5, 31)
+        # A str is itself a Collection[str], so the type checker lets forgotten
+        # brackets through, and `in` on a str would test for substrings.
+        bare = CURRENT
+
+        with pytest.raises(TypeError):
+            repository.transactions(start_date=start, end_date=end, account_ids=bare)
+        with pytest.raises(TypeError):
+            repository.category_allocations(
+                start_date=start, end_date=end, account_ids=bare
+            )
+        with pytest.raises(TypeError):
+            repository.monthly_balances(
+                start_month=ReportingMonth.of(start),
+                end_month=ReportingMonth.of(end),
+                account_ids=bare,
+            )
