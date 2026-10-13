@@ -30,9 +30,9 @@ from budget.replaying import (
     ArchivedExportMismatchError,
     ArchivedExportMissingError,
     ImportLogInvalidError,
+    InvalidRepeatLinkError,
     NotALogPrefixError,
     RunConflictError,
-    UnknownRepeatOfError,
     replay_import_log,
 )
 from tests.importing.households import drop, household, payload
@@ -247,6 +247,33 @@ class PrefixTests(unittest.TestCase):
             with BronzeStore(original) as before, BronzeStore(restored) as after:
                 assert after.import_runs() == before.import_runs()
 
+    def test_a_log_whose_clock_stepped_back_replays_again_as_a_no_op(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            first_id = archive(
+                profile, "joint-current/first.csv", payload("01.04.2026")
+            )
+            second_id = archive(
+                profile, "joint-current/second.csv", payload("02.04.2026")
+            )
+            # Logged second, but stamped before the first run.
+            stepped_back = datetime(2026, 5, 1, 7, 0, tzinfo=UTC)
+            write_log(
+                profile,
+                entry("run-0001", "joint-current/first.csv", first_id),
+                entry(
+                    "run-0002",
+                    "joint-current/second.csv",
+                    second_id,
+                    started_at=stepped_back.isoformat(),
+                ),
+            )
+            with writer_lock(profile) as lock:
+                assert len(replay_import_log(lock)) == 2
+
+            with writer_lock(profile) as lock:
+                assert replay_import_log(lock) == ()
+
 
 class ConflictTests(unittest.TestCase):
     def _two_runs(self) -> tuple[Profile, dict[str, object], dict[str, object]]:
@@ -325,12 +352,59 @@ class ConflictTests(unittest.TestCase):
     def test_a_repeat_of_a_run_not_logged_before_it_is_refused(self) -> None:
         profile, first, second = self._two_runs()
 
-        with pytest.raises(UnknownRepeatOfError, match="run-0002"):
+        with pytest.raises(InvalidRepeatLinkError, match="run-0002"):
             self._replay(
                 profile, first, second | {"outcome": "repeat", "repeat_of": "run-0009"}
             )
 
         assert [run.import_run_id for run in self._held_runs(profile)] == ["run-0001"]
+
+    def test_a_repeat_must_link_an_earlier_stored_run_of_its_bytes(self) -> None:
+        bytes_a = payload("01.04.2026")
+        hash_a = sha256(bytes_a).hexdigest()
+        refused_path = f"joint-current/refused/{hash_a[:12]}/first.csv"
+        bytes_b = payload("09.04.2026")
+        # How each case logs the linked run, and the bytes archived for it.
+        for name, linked, linked_bytes in (
+            (
+                "of other bytes",
+                {"payload_sha256": sha256(bytes_b).hexdigest()},
+                bytes_b,
+            ),
+            (
+                "of a refused run",
+                {"outcome": "refused", "archive_path": refused_path},
+                bytes_a,
+            ),
+            (
+                "of another account",
+                {
+                    "account_id": "joint-savings",
+                    "archive_path": "joint-savings/first.csv",
+                },
+                bytes_a,
+            ),
+        ):
+            with self.subTest(name):
+                profile = household(Path(self.enterContext(TemporaryDirectory())))
+                first = entry("run-0001", "joint-current/first.csv", hash_a) | linked
+                archive(profile, str(first["archive_path"]), linked_bytes)
+                archive(profile, "joint-current/again.csv", bytes_a)
+                repeat = entry(
+                    "run-0002",
+                    "joint-current/again.csv",
+                    hash_a,
+                    started_at=LATER.isoformat(),
+                    outcome="repeat",
+                    repeat_of="run-0001",
+                )
+
+                with pytest.raises(InvalidRepeatLinkError, match="run-0002"):
+                    self._replay(profile, first, repeat)
+
+                assert [run.import_run_id for run in self._held_runs(profile)] == [
+                    "run-0001"
+                ]
 
 
 def _without(field: str) -> Callable[[dict[str, object]], dict[str, object]]:
@@ -357,6 +431,14 @@ INVALID_ENTRIES: dict[str, Callable[[dict[str, object]], dict[str, object]]] = {
     "another account's folder": _with(archive_path="joint-savings/second.csv"),
     "a path out of the archive": _with(archive_path="joint-current/../second.csv"),
     "a second entry for a run": _with(import_run_id="run-0001"),
+    # Spellings Python reads but the import never writes: replaying them would
+    # leave a log every later import refuses as damaged.
+    "a compact date": _with(covers_from="20260401"),
+    "a week date": _with(covers_from="2026-W14-3"),
+    "a timestamp in Z": _with(started_at="2026-05-03T09:00:00.000005Z"),
+    "a timestamp with a space": _with(started_at="2026-05-03 09:00:00.000005+00:00"),
+    "fields in another order": lambda each: dict(reversed(each.items())),
+    "an unknown source format": _with(source_format="nope"),
 }
 
 
@@ -393,6 +475,25 @@ class InvalidLogTests(unittest.TestCase):
             with self.subTest(name):
                 profile, first, second = self._log()
                 spoiled = line(spoil(json.loads(second)))
+
+                self._assert_refused_at_line_2(profile, first + spoiled)
+
+    def test_an_archive_path_that_is_not_one_folder_per_part_is_refused(
+        self,
+    ) -> None:
+        for changes in (
+            {"account_id": "..", "archive_path": "../second.csv"},
+            {"archive_path": "joint-current/..\\..\\second.csv"},
+            {"account_id": "joint/current", "archive_path": "joint/current/second.csv"},
+        ):
+            with self.subTest(changes["archive_path"]):
+                profile, first, second = self._log()
+                # The export's own bytes stand where the path leads, so only the
+                # path itself can refuse it.
+                escaped = profile.exports / changes["archive_path"]
+                escaped.parent.mkdir(parents=True, exist_ok=True)
+                escaped.write_bytes(payload("02.04.2026"))
+                spoiled = line(json.loads(second) | changes)
 
                 self._assert_refused_at_line_2(profile, first + spoiled)
 

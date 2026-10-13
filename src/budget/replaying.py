@@ -132,7 +132,7 @@ class NotALogPrefixError(RuntimeError):
         )
 
 
-class UnknownRepeatOfError(RuntimeError):
+class InvalidRepeatLinkError(RuntimeError):
     """A logged repeat names no run restored before it.
 
     The runs before it stay restored, and nothing of this run is written.
@@ -302,7 +302,7 @@ def replay_import_log(lock: WriterLock) -> tuple[ImportRun, ...]:
         recorded = {run.import_run_id for run in held}
         for run, archive_path in logged[len(held) :]:
             if run.repeat_of is not None and run.repeat_of not in recorded:
-                raise UnknownRepeatOfError(run.import_run_id)
+                raise InvalidRepeatLinkError(run.import_run_id)
             content = _archived_export(profile, run, archive_path)
             store.restore_import_run(run, content)
             recorded.add(run.import_run_id)
