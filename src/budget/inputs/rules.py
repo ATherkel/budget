@@ -23,6 +23,16 @@ from budget.inputs.rule_checks import KnownIds, rules_problems
 from budget.profiles import RULES_FILE_NAME, Profile
 
 
+def fold(text: str) -> str:
+    """Fold text as a literal pattern matches it: without its case.
+
+    The one fold both sides of a match use, so a pattern and a description can
+    never be folded two different ways; `casefold`, unlike `lower`, also
+    makes "ß" and "SS" one text.
+    """
+    return text.casefold()
+
+
 @dataclass(frozen=True)
 class RuleConditions:
     """A rule's `when` table; an absent condition is `None` or empty.
@@ -41,6 +51,16 @@ class RuleConditions:
     date_to: date | None = None
     bank_category: str | None = None
     bank_subcategory: str | None = None
+
+    @property
+    def folded_contains(self) -> tuple[str, ...]:
+        """The `description_contains` patterns, folded."""
+        return tuple(map(fold, self.description_contains))
+
+    @property
+    def folded_starts_with(self) -> tuple[str, ...]:
+        """The `description_starts_with` patterns, folded."""
+        return tuple(map(fold, self.description_starts_with))
 
 
 @dataclass(frozen=True)

@@ -87,7 +87,10 @@ own facts. Only transfer matching relates transactions to each other.
 
 - `account_id`
 - description text: contains, starts with, or a regular expression, always
-  case-insensitive
+  case-insensitive. A contains or starts-with pattern and the description are
+  compared after Unicode case folding (`budget.inputs.fold`), so "ß" matches
+  "SS". A regular expression uses Python's `re.IGNORECASE`, which does not
+  equate "ß" with "SS".
 - amount: sign, or an inclusive range
 - transaction date: an inclusive range
 - the bank's category labels, where the source supplies them

@@ -42,8 +42,9 @@ class ConfigurationSnapshot:
         """The SHA-256 of the snapshot's canonical content, in hexadecimal.
 
         The content is what the files mean, not how they are written: keys and
-        entries in any order, any TOML spelling, and an amount's trailing zeros
-        all give the same fingerprint.
+        entries in any order, any TOML spelling, a literal pattern's case and
+        an amount's trailing zeros all give the same fingerprint. A regular
+        expression is kept as written: in one, case is syntax.
         """
         canonical = json.dumps(
             _canonical(self),
@@ -104,8 +105,8 @@ def _canonical_when(when: RuleConditions) -> dict[str, object]:
     return _set(
         {
             "account": when.account,
-            "description_contains": _any_of(when.description_contains),
-            "description_starts_with": _any_of(when.description_starts_with),
+            "description_contains": _any_of(when.folded_contains),
+            "description_starts_with": _any_of(when.folded_starts_with),
             "description_regex": _any_of(when.description_regex),
             "amount_sign": when.amount_sign,
             "amount_min": when.amount_min,

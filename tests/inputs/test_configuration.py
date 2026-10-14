@@ -116,6 +116,16 @@ class DocumentedExamplesTests(unittest.TestCase):
             ),
         }
 
+    def test_a_literal_pattern_keeps_its_text_beside_its_folded_form(self) -> None:
+        snapshot = configuration(rules=RULES.replace('"NETTO"', '["Straße", "NETTO"]'))
+        netto = snapshot.rules["r-netto"].when
+        correction = snapshot.rules["r-interest-correction"].when
+
+        assert netto.description_contains == ("Straße", "NETTO")
+        assert netto.folded_contains == ("strasse", "netto")
+        assert correction.description_starts_with == ("RENTEKORR",)
+        assert correction.folded_starts_with == ("rentekorr",)
+
 
 def refusal(
     accounts: str = ACCOUNTS, taxonomy: str = TAXONOMY, rules: str = RULES
@@ -217,6 +227,35 @@ class FingerprintTests(unittest.TestCase):
         # 29 significant digits: one more than Python's default decimal context.
         long = "1234567890123456789012345678"
         assert fingerprint(f"{long}.1") != fingerprint(f"{long}.2")
+
+    def test_a_literal_pattern_is_fingerprinted_without_its_case(self) -> None:
+        documented = configuration().fingerprint
+        for rules in (
+            RULES.replace('"NETTO"', '"netto"'),
+            RULES.replace('"RENTEKORR"', '"Rentekorr"'),
+            RULES.replace('"IKEA"', '["IKEA", "ikea"]'),
+        ):
+            with self.subTest(rules=rules):
+                assert rules != RULES
+                assert configuration(rules=rules).fingerprint == documented
+
+        def fingerprint(pattern: str) -> str:
+            rules = RULES.replace('"NETTO"', pattern)
+            assert rules != RULES
+            return configuration(rules=rules).fingerprint
+
+        assert fingerprint('"STRASSE"') == fingerprint('"straße"')
+
+    def test_a_regex_is_never_folded_into_another_meaning(self) -> None:
+        # In a regex, case is syntax: \S is the opposite of \s.
+        def fingerprint(pattern: str) -> str:
+            rules = RULES.replace(
+                'when.description_contains = "NETTO"',
+                f"when.description_regex = {pattern}",
+            )
+            return configuration(rules=rules).fingerprint
+
+        assert fingerprint('"^NETTO\\\\S"') != fingerprint('"^NETTO\\\\s"')
 
     def test_any_change_of_meaning_changes_the_fingerprint(self) -> None:
         documented = configuration().fingerprint
