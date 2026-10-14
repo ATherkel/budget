@@ -231,7 +231,9 @@ accounts for the same month, never across months. `coverage` is non-additive.
 Analytics, forecasting, APIs, and presentation-facing services depend on this
 protocol only. The persistence technology is not part of this contract.
 All date and month ranges are inclusive. `account_ids=None` means every
-account, and an empty collection means none.
+account, and an empty collection means none. A bare `str` raises `TypeError`:
+it type-checks as a collection of strings, but means a forgotten pair of
+brackets.
 
 ```python
 class GoldRepository(Protocol):
