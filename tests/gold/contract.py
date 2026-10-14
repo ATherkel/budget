@@ -8,6 +8,7 @@ records, so the tests compare them as multisets.
 """
 
 from collections import Counter
+from collections.abc import Callable, Collection, Iterable
 from datetime import date
 from decimal import Decimal
 
@@ -94,6 +95,36 @@ class GoldRepositoryContract:
         # The latest published month is May, so June has no row: no data, not zero.
         assert Counter(current_from_april) == Counter(example_balances(CURRENT, 4, 5))
 
+    @pytest.mark.parametrize("collection", [list, tuple, set])
+    def test_named_accounts_may_be_any_collection(
+        self,
+        repository: GoldRepository,
+        collection: Callable[[Iterable[str]], Collection[str]],
+    ) -> None:
+        account_ids = collection([SAVINGS])
+
+        transactions = repository.transactions(
+            start_date=date(2026, 1, 20),
+            end_date=date(2026, 2, 2),
+            account_ids=account_ids,
+        )
+        allocations = repository.category_allocations(
+            start_date=date(2026, 1, 20),
+            end_date=date(2026, 4, 30),
+            account_ids=account_ids,
+        )
+        snapshots = repository.monthly_balances(
+            start_month=ReportingMonth(2026, 2),
+            end_month=ReportingMonth(2026, 4),
+            account_ids=account_ids,
+        )
+
+        assert Counter(transactions) == Counter(example_transactions("savings-01"))
+        assert Counter(allocations) == Counter(
+            example_allocations("savings-02/interest")
+        )
+        assert Counter(snapshots) == Counter(example_balances(SAVINGS, 2, 3, 4))
+
     def test_the_dimensions_are_the_whole_example(
         self, repository: GoldRepository
     ) -> None:
@@ -156,10 +187,18 @@ class GoldRepositoryContract:
             "monthly_balances": [],
         }
 
+    @pytest.mark.parametrize(
+        ("start", "end"),
+        [
+            (date(2026, 1, 1), date(2026, 5, 31)),
+            # No record falls in this range, so a per-record check never runs.
+            (date(2030, 1, 1), date(2030, 1, 31)),
+        ],
+        ids=["with-records", "without-records"],
+    )
     def test_a_bare_string_of_account_ids_is_refused(
-        self, repository: GoldRepository
+        self, repository: GoldRepository, start: date, end: date
     ) -> None:
-        start, end = date(2026, 1, 1), date(2026, 5, 31)
         # A str is itself a Collection[str], so the type checker lets forgotten
         # brackets through, and `in` on a str would test for substrings.
         bare = CURRENT
