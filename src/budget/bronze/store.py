@@ -174,6 +174,41 @@ def _rebuild_derived_cache(
     )
 
 
+def _record_run(connection: sqlite3.Connection, run: ImportRun, content: bytes) -> None:
+    """Insert one run, and its payload's bytes unless they are stored already."""
+    connection.execute(
+        """
+        INSERT INTO raw_payloads (payload_id, byte_length, content)
+        VALUES (?, ?, ?)
+        ON CONFLICT (payload_id) DO NOTHING
+        """,
+        (run.payload_id, len(content), content),
+    )
+    connection.execute(
+        """
+        INSERT INTO import_runs (
+            import_run_id, payload_id, declared_account_id, source_format,
+            original_filename, exported_on, exported_on_source,
+            covers_from, covers_through, started_at, outcome, repeat_of
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            run.import_run_id,
+            run.payload_id,
+            run.declared_account_id,
+            run.source_format,
+            run.original_filename,
+            run.exported_on.isoformat(),
+            run.exported_on_source,
+            run.covers_from.isoformat(),
+            run.covers_through.isoformat(),
+            run.started_at.isoformat(),
+            run.outcome,
+            run.repeat_of,
+        ),
+    )
+
+
 def _import_run(row: sqlite3.Row) -> ImportRun:
     """Read one `import_runs` row back as the run it records."""
     return ImportRun(
@@ -281,36 +316,23 @@ class BronzeStore:
                 declaration_refused=declaration_refused,
             )
 
-            self._connection.execute(
-                """
-                INSERT INTO raw_payloads (payload_id, byte_length, content)
-                VALUES (?, ?, ?)
-                ON CONFLICT (payload_id) DO NOTHING
-                """,
-                (payload_id, len(content), content),
-            )
-            self._connection.execute(
-                """
-                INSERT INTO import_runs (
-                    import_run_id, payload_id, declared_account_id, source_format,
-                    original_filename, exported_on, exported_on_source,
-                    covers_from, covers_through, started_at, outcome, repeat_of
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    import_run_id,
-                    payload_id,
-                    declaration.declared_account_id,
-                    source_format,
-                    source.name,
-                    exported_on.isoformat(),
-                    exported_on_source,
-                    declaration.covers_from.isoformat(),
-                    declaration.covers_through.isoformat(),
-                    started_at.isoformat(),
-                    _outcome_for(refused=refused, repeat_of=repeat_of),
-                    repeat_of,
+            _record_run(
+                self._connection,
+                ImportRun(
+                    import_run_id=import_run_id,
+                    payload_id=payload_id,
+                    declared_account_id=declaration.declared_account_id,
+                    source_format=source_format,
+                    original_filename=source.name,
+                    exported_on=exported_on,
+                    exported_on_source=exported_on_source,
+                    covers_from=declaration.covers_from,
+                    covers_through=declaration.covers_through,
+                    started_at=started_at,
+                    outcome=_outcome_for(refused=refused, repeat_of=repeat_of),
+                    repeat_of=repeat_of,
                 ),
+                content,
             )
             _rebuild_derived_cache(
                 self._connection,
@@ -320,6 +342,25 @@ class BronzeStore:
             )
 
         return self.get_import_run(import_run_id)
+
+    def restore_import_run(self, run: ImportRun, content: bytes) -> None:
+        """Record a run exactly as history recorded it, with its payload's bytes.
+
+        Nothing about the run is decided again: its ID, timestamp,
+        declarations and outcome are kept. Only the derived cache is
+        re-derived, by this store's parser for the run's format. The payload,
+        the run and the cache commit together.
+        """
+        result = self._parser_for(run.source_format).parse(content)
+        with self._connection:
+            self._connection.execute("BEGIN IMMEDIATE")
+            _record_run(self._connection, run, content)
+            _rebuild_derived_cache(
+                self._connection,
+                payload_id=run.payload_id,
+                source_format=run.source_format,
+                result=result,
+            )
 
     def get_import_run(self, import_run_id: str) -> ImportRun:
         """Return one import run's stored provenance."""
