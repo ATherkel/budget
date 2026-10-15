@@ -78,8 +78,8 @@ def _require_window(window: timedelta) -> None:
     whole = not window.seconds and not window.microseconds
     if not whole or not 0 <= window.days <= MAX_LATE_BOOKING_DAYS:
         message = (
-            f"late_booking_window {window} is not a whole number of days "
-            f"from 0 to {MAX_LATE_BOOKING_DAYS}"
+            "late_booking_window must be a whole number of days from 0 to "
+            f"{MAX_LATE_BOOKING_DAYS}, not {window}"
         )
         raise ValueError(message)
 

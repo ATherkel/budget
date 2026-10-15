@@ -409,9 +409,10 @@ def _optional_table(
 
 
 def _days(path: Path, value: object, key: str, most: int | None = None) -> int:
-    """Return `value`, the key's whole number of 0 or more, and `most` at most.
+    """Return `value` if it is a whole number from 0 to `most`, or else refuse it.
 
-    `key` is the dotted name, such as `backups.keep_all_days`, the refusal names.
+    With `most` as `None` there is no upper bound. The refusal names `key`, the
+    dotted name such as `backups.keep_all_days`.
     """
     # `bool` is an `int` in Python, so `true` must not pass as 1.
     if type(value) is not int or value < 0 or (most is not None and value > most):
