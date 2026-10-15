@@ -42,7 +42,12 @@ KEEP_FOREVER: Final = "forever"
 _RETENTION_KEYS: Final = frozenset({"keep_all_days", "keep_daily_days", "keep_monthly"})
 # Test profiles are never files: the test suite builds each one (ADR-015).
 _FILE_PROFILE_NAMES: Final = (DEVELOPMENT_PROFILE_NAME, PRODUCTION_PROFILE_NAME)
-_SHARED_FILE_KEYS: Final = frozenset({"format", "profile", "paths", "dashboard"})
+_SHARED_FILE_KEYS: Final = frozenset(
+    {"format", "profile", "paths", "dashboard", "gold"}
+)
+# How long after a month ends an export must be produced to show its late
+# bookings, unless `[gold] late_booking_days` says otherwise.
+DEFAULT_LATE_BOOKING_DAYS: Final = 7
 _SHARED_PATH_KEYS: Final = frozenset({"stores", "inbox", "exports", "inputs"})
 # Only production writes backup sets; development only reads production's.
 _FILE_KEYS: Final = {
@@ -178,7 +183,7 @@ class Profile:
     exports: Path
     backups: Path | None = None
     retention: RetentionPolicy = field(default_factory=RetentionPolicy)
-    late_booking_window: timedelta = timedelta(0)
+    late_booking_window: timedelta = timedelta(days=DEFAULT_LATE_BOOKING_DAYS)
     root: Path | None = None
 
     def __post_init__(self) -> None:
@@ -426,6 +431,17 @@ def _retention(path: Path, document: dict[str, object]) -> RetentionPolicy:
     )
 
 
+def _late_booking_window(path: Path, document: dict[str, object]) -> timedelta:
+    """Return the `[gold]` table's late-booking window, or the default."""
+    table = document.get("gold", {})
+    if not isinstance(table, dict):
+        raise ProfileFileError(path, "gold must be a [gold] table")
+    days = table.get("late_booking_days", DEFAULT_LATE_BOOKING_DAYS)
+    if type(days) is not int:
+        raise ProfileFileError(path, "gold.late_booking_days must be a whole number")
+    return timedelta(days=days)
+
+
 def load_profile_file(path: Path) -> Profile:
     """Build the profile that one operator's profile file describes.
 
@@ -448,6 +464,7 @@ def load_profile_file(path: Path) -> Profile:
             exports=_folder_path(path, paths, "exports"),
             backups=_folder_path(path, paths, "backups") if is_production else None,
             retention=_retention(path, document),
+            late_booking_window=_late_booking_window(path, document),
         )
     except ProfileFoldersOverlapError as error:
         raise ProfileFileError(path, str(error)) from None
