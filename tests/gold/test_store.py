@@ -6,14 +6,16 @@ Every store is the test profile's, in a temporary folder, created by
 """
 
 from collections.abc import Iterator
+from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from budget.gold import GoldRepository, GoldResult
+from budget.gold import GoldPublication, GoldRepository, GoldResult
 from budget.gold.recipe import Recipe, RecipeImportRun
 from budget.gold.storage import migrate_gold
-from budget.gold.store import GoldStore
+from budget.gold.store import GoldStore, PointerMove
 from budget.inputs import ConfigurationSnapshot
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
@@ -38,6 +40,18 @@ RECIPE = Recipe(
     python_version="3.12.14",
     sqlite_version="3.53.1",
 )
+
+
+def publication(publication_id: int) -> GoldPublication:
+    """The worked example's publication metadata, under another id."""
+    return replace(PUBLICATION, publication_id=publication_id)
+
+
+def publish(store: GoldStore, publication_id: int) -> GoldPublication:
+    """Publish the worked example as `publication_id`, and return its metadata."""
+    published = publication(publication_id)
+    store.publish(GoldResult(published, RECORDS), RECIPE, CONFIGURATION)
+    return published
 
 
 @pytest.fixture
@@ -72,3 +86,21 @@ class TestStoredPublication(GoldRepositoryContract):
     def repository(self, store: GoldStore) -> GoldRepository:
         store.publish(GoldResult(PUBLICATION, RECORDS), RECIPE, CONFIGURATION)
         return store.open(PUBLICATION.publication_id)
+
+
+def test_a_first_publish_becomes_current(store: GoldStore) -> None:
+    before = datetime.now(UTC)
+
+    first = publish(store, 1)
+
+    after = datetime.now(UTC)
+    assert store.current() == first
+    assert list(store.available()) == [first]
+    [move] = store.pointer_history()
+    assert move == PointerMove(
+        moved_at=move.moved_at,
+        from_publication_id=None,
+        to_publication_id=1,
+        cause="build",
+    )
+    assert before <= move.moved_at <= after

@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from types import TracebackType
-from typing import Final, Self
+from typing import Final, Literal, Self
 
 from budget.gold.models import (
     GoldAccount,
@@ -41,6 +41,22 @@ from budget.silver.storage import (
 )
 
 type Rows = tuple[tuple[object, ...], ...]
+type PointerCause = Literal["build", "undo", "migration"]
+
+
+@dataclass(frozen=True)
+class PointerMove:
+    """One move of the current pointer (`publications.md`, *Pointer history*).
+
+    `from_publication_id` is None for a store's first build. `moved_at` is
+    when the move committed, in UTC.
+    """
+
+    moved_at: datetime
+    from_publication_id: int | None
+    to_publication_id: int
+    cause: PointerCause
+
 
 _SELECT_CURRENT_ID: Final = (
     "SELECT to_publication_id FROM pointer_moves ORDER BY move DESC LIMIT 1"
@@ -176,6 +192,10 @@ class GoldStore:
 
     def next_publication_id(self) -> int:
         """Return the id the next publication must carry."""
+        raise NotImplementedError
+
+    def pointer_history(self) -> Sequence[PointerMove]:
+        """Return every move of the current pointer, oldest first."""
         raise NotImplementedError
 
     def publish(
