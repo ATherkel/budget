@@ -251,6 +251,34 @@ def test_a_longer_late_booking_window_needs_a_later_export() -> None:
     assert _settled(ten_days_after, window=timedelta(days=10))[APRIL] is True
 
 
+def test_a_zero_day_window_is_settled_by_an_export_on_the_months_last_day() -> None:
+    last_day = EvidenceExport(
+        "run-0", CURRENT, date(2026, 4, 30), COVERS_FROM, date(2026, 4, 30)
+    )
+    day_before = EvidenceExport(
+        "run-1", CURRENT, date(2026, 4, 29), COVERS_FROM, date(2026, 4, 29)
+    )
+
+    assert _settled(last_day, window=timedelta(0))[APRIL] is True
+    assert _settled(day_before, window=timedelta(0))[APRIL] is False
+
+
+@pytest.mark.parametrize(
+    "window",
+    [
+        pytest.param(timedelta(days=-1), id="negative"),
+        pytest.param(timedelta(days=7, hours=12), id="a fraction of a day"),
+        pytest.param(timedelta(hours=12), id="under a day"),
+        pytest.param(timedelta(days=7, microseconds=1), id="a microsecond over"),
+    ],
+)
+def test_a_window_that_is_not_whole_days_of_0_or_more_refuses_the_build(
+    window: timedelta,
+) -> None:
+    with pytest.raises(ValueError, match="late_booking_window"):
+        build_from(late_booking_window=window)
+
+
 def test_an_export_whose_range_misses_the_months_last_day_never_settles_it() -> None:
     starts_after = EvidenceExport(
         "run-may", CURRENT, date(2026, 6, 30), date(2026, 5, 1), date(2026, 6, 30)
