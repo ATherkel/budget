@@ -79,9 +79,7 @@ class PointerMove:
     cause: PointerCause
 
 
-_SELECT_CURRENT_ID: Final = (
-    "SELECT to_publication_id FROM pointer_moves ORDER BY move DESC LIMIT 1"
-)
+# Publications, and which of them keep their results.
 _SELECT_RETAINED: Final = (
     "SELECT publications.* FROM publications"
     " JOIN results USING (publication_id) ORDER BY publication_id"
@@ -90,14 +88,14 @@ _SELECT_RETAINED_ONE: Final = (
     "SELECT publications.* FROM publications"
     " JOIN results USING (publication_id) WHERE publication_id = ?"
 )
-
 _SELECT_RESULT: Final = "SELECT 1 FROM results WHERE publication_id = ?"
+_SELECT_NEXT_ID: Final = "SELECT coalesce(max(publication_id), 0) + 1 FROM publications"
 _INSERT_PUBLICATION: Final = (
     "INSERT INTO publications (publication_id, kind, label, known_at, built_at,"
     " replayed_at, contract_version, fingerprint_scheme, result_fingerprint)"
     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
-_SELECT_NEXT_ID: Final = "SELECT coalesce(max(publication_id), 0) + 1 FROM publications"
+_INSERT_RESULT: Final = "INSERT INTO results (publication_id) VALUES (?)"
 # A result is retained while it is current, previous (the last move's
 # origin) or labeled (`publications.md`, *Retention*).
 _SELECT_STALE_IDS: Final = (
@@ -119,12 +117,19 @@ _DELETE_RESULT: Final = (
     "DELETE FROM accounts WHERE publication_id = ?",
     "DELETE FROM results WHERE publication_id = ?",
 )
+
+# The pointer history; the pointer is its last move.
+_SELECT_CURRENT_ID: Final = (
+    "SELECT to_publication_id FROM pointer_moves ORDER BY move DESC LIMIT 1"
+)
 _INSERT_MOVE: Final = (
     "INSERT INTO pointer_moves"
     " (moved_at, from_publication_id, to_publication_id, cause)"
     " VALUES (?, ?, ?, ?)"
 )
 _SELECT_MOVES: Final = "SELECT * FROM pointer_moves ORDER BY move"
+
+# Recipes, kept forever, and each distinct configuration they name.
 _INSERT_SNAPSHOT: Final = (
     "INSERT OR IGNORE INTO configuration_snapshots (fingerprint, content) VALUES (?, ?)"
 )
@@ -142,7 +147,8 @@ _SELECT_RECIPE: Final = "SELECT * FROM recipes WHERE publication_id = ?"
 _SELECT_RECIPE_RUNS: Final = (
     "SELECT import_run_id, payload_id FROM recipe_import_runs WHERE publication_id = ?"
 )
-_INSERT_RESULT: Final = "INSERT INTO results (publication_id) VALUES (?)"
+
+# The result records of one publication.
 _INSERT_ACCOUNTS: Final = (
     "INSERT INTO accounts (publication_id, account_id, display_name,"
     " account_type, ownership_scope, currency, closed_on, coverage_start,"
@@ -238,39 +244,39 @@ class GoldStore:
         That is before the first publish, and after a Gold migration that
         could not convert the current result until the next build.
         """
-        connection = self._connection
-        pointer = connection.execute(_SELECT_CURRENT_ID).fetchone()
-        if pointer is None:
-            return None
-        row = connection.execute(_SELECT_RETAINED_ONE, (pointer[0],)).fetchone()
-        return None if row is None else _publication(row)
+        return _reading(self._connection, _current)
 
     def available(self) -> Sequence[GoldPublication]:
         """Return the publications whose results are retained, oldest first."""
-        rows = self._connection.execute(_SELECT_RETAINED).fetchall()
-        return tuple(_publication(row) for row in rows)
+        return _reading(
+            self._connection,
+            lambda connection: tuple(
+                _publication(row) for row in connection.execute(_SELECT_RETAINED)
+            ),
+        )
 
     def open(self, publication_id: int) -> GoldRepository:
-        """Return a repository bound to one retained publication."""
-        row = self._connection.execute(
-            _SELECT_RETAINED_ONE, (publication_id,)
-        ).fetchone()
-        if row is None:
-            raise PublicationUnavailableError(publication_id)
-        return StoredPublication(self._connection, _publication(row))
+        """Return a repository bound to one retained publication.
+
+        Raises `PublicationUnavailable` when the publication does not exist or
+        its result is no longer retained.
+        """
+        publication = _reading(
+            self._connection,
+            lambda connection: _retained(connection, publication_id),
+        )
+        return StoredPublication(self._connection, publication)
 
     def next_publication_id(self) -> int:
         """Return the id the next publication must carry."""
         return _next_publication_id(self._connection)
 
     def recipe(self, publication_id: int) -> Recipe:
-        """Return the recipe a publication was built from."""
-        connection = self._connection
-        row = connection.execute(_SELECT_RECIPE, (publication_id,)).fetchone()
-        if row is None:
-            raise PublicationUnavailableError(publication_id)
-        runs = connection.execute(_SELECT_RECIPE_RUNS, (publication_id,))
-        return _recipe(row, runs)
+        """Return the recipe a publication was built from, retained or not."""
+        return _reading(
+            self._connection,
+            lambda connection: _stored_recipe(connection, publication_id),
+        )
 
     def pointer_history(self) -> Sequence[PointerMove]:
         """Return every move of the current pointer, oldest first."""
@@ -283,7 +289,17 @@ class GoldStore:
         recipe: Recipe,
         configuration: ConfigurationSnapshot,
     ) -> None:
-        """Store `result` as a new publication and make it current."""
+        """Store `result` as a new publication and make it current.
+
+        The result must carry `next_publication_id()`, and `configuration`
+        must be the snapshot `recipe` names; either refusal writes nothing.
+        The records are encoded before anything is written. One transaction
+        then stores the publication, its recipe, its configuration if new,
+        and its records, and appends a `build` move: that transaction is the
+        commit point, and a failure before it leaves the previous publication
+        current (`operations.md`, *Publishing a Gold build*). A later
+        transaction deletes the results that are no longer retained.
+        """
         if configuration.fingerprint != recipe.configuration_fingerprint:
             raise ConfigurationMismatchError(
                 recipe.configuration_fingerprint, configuration.fingerprint
@@ -403,15 +419,53 @@ class StoredPublication:
         """
         publication_id = self._publication.publication_id
         bound = {**parameters, "publication_id": publication_id}
-        connection = self._connection
-        try:
-            connection.execute("BEGIN")
+
+        def read(connection: sqlite3.Connection) -> tuple[T, ...]:
             retained = connection.execute(_SELECT_RESULT, (publication_id,))
             if retained.fetchone() is None:
                 raise PublicationUnavailableError(publication_id)
             return tuple(decode(row) for row in connection.execute(query, bound))
-        finally:
-            connection.rollback()
+
+        return _reading(self._connection, read)
+
+
+def _reading[T](
+    connection: sqlite3.Connection, read: Callable[[sqlite3.Connection], T]
+) -> T:
+    """Run `read` inside one read transaction, so it sees one state of the store.
+
+    A publish committed by another process lands wholly before or after it.
+    """
+    try:
+        connection.execute("BEGIN")
+        return read(connection)
+    finally:
+        connection.rollback()
+
+
+def _current(connection: sqlite3.Connection) -> GoldPublication | None:
+    """Return the publication the pointer names, while its result is retained."""
+    pointer = connection.execute(_SELECT_CURRENT_ID).fetchone()
+    if pointer is None:
+        return None
+    row = connection.execute(_SELECT_RETAINED_ONE, (pointer[0],)).fetchone()
+    return None if row is None else _publication(row)
+
+
+def _retained(connection: sqlite3.Connection, publication_id: int) -> GoldPublication:
+    """Return a publication whose result is retained, or refuse it."""
+    row = connection.execute(_SELECT_RETAINED_ONE, (publication_id,)).fetchone()
+    if row is None:
+        raise PublicationUnavailableError(publication_id)
+    return _publication(row)
+
+
+def _stored_recipe(connection: sqlite3.Connection, publication_id: int) -> Recipe:
+    """Read one publication's recipe, or refuse a publication never published."""
+    row = connection.execute(_SELECT_RECIPE, (publication_id,)).fetchone()
+    if row is None:
+        raise PublicationUnavailableError(publication_id)
+    return _recipe(row, connection.execute(_SELECT_RECIPE_RUNS, (publication_id,)))
 
 
 @dataclass(frozen=True)
