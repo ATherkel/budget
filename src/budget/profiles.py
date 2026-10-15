@@ -8,6 +8,7 @@ inherit the operator's shell.
 
 import tomllib
 from dataclasses import dataclass, field
+from datetime import timedelta
 from pathlib import Path
 from typing import Final
 
@@ -177,6 +178,7 @@ class Profile:
     exports: Path
     backups: Path | None = None
     retention: RetentionPolicy = field(default_factory=RetentionPolicy)
+    late_booking_window: timedelta = timedelta(0)
     root: Path | None = None
 
     def __post_init__(self) -> None:

@@ -4,6 +4,7 @@
 import inspect
 import os
 import unittest
+from datetime import timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING
@@ -228,6 +229,12 @@ class ProfileTests(unittest.TestCase):
             assert (
                 profile.import_log_file == (root / "inputs" / "imports.jsonl").resolve()
             )
+
+    def test_a_test_profile_has_the_default_late_booking_window(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(Path(directory))
+
+            assert profile.late_booking_window == timedelta(days=7)
 
     def test_a_test_profile_names_its_backups_and_their_staging_inside_its_root(
         self,

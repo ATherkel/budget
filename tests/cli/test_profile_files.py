@@ -10,6 +10,7 @@ import io
 import shutil
 import unittest
 from contextlib import chdir, redirect_stderr
+from datetime import timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -248,6 +249,28 @@ class ProfileFileTests(unittest.TestCase):
             assert RetentionPolicy() == RetentionPolicy(
                 keep_all_days=14, keep_daily_days=365, keep_monthly=None
             )
+
+    def test_a_profile_file_sets_the_late_booking_window_in_whole_days(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            cases = {
+                "no [gold] table": ("", timedelta(days=7)),
+                "ten days": ("\n[gold]\nlate_booking_days = 10\n", timedelta(days=10)),
+                # 0 is legal: an export on a month's last day settles it.
+                "zero days": ("\n[gold]\nlate_booking_days = 0\n", timedelta(0)),
+            }
+            for name in ("development", "production"):
+                for case, (table, expected) in cases.items():
+                    with self.subTest(name=name, case=case):
+                        profile_file = write_profile(folder, name=name)
+                        with profile_file.open("a", encoding="utf-8") as file:
+                            file.write(table)
+
+                        profile = load_profile_file(profile_file)
+
+                        assert profile.late_booking_window == expected
 
     def test_a_development_profile_file_names_no_backups(self) -> None:
         with TemporaryDirectory() as directory:
