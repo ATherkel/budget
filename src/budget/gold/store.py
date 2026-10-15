@@ -55,6 +55,14 @@ class PublicationIdError(ValueError):
         )
 
 
+class StaleResultsWarning(UserWarning):
+    """A publish committed, but deleting the results no longer retained failed.
+
+    The publication is current all the same; the next publish deletes what
+    this one left.
+    """
+
+
 class ConfigurationMismatchError(ValueError):
     """The configuration given is not the snapshot the recipe names."""
 

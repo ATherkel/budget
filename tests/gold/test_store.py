@@ -29,6 +29,7 @@ from budget.gold.store import (
     GoldStore,
     PointerMove,
     PublicationIdError,
+    StaleResultsWarning,
 )
 from budget.inputs import ConfigurationSnapshot
 from budget.profiles import Profile
@@ -254,3 +255,27 @@ def test_a_repository_whose_result_is_deleted_refuses_to_read(
 
     with pytest.raises(PublicationUnavailable):
         read(pinned)
+
+
+def test_a_failed_cleanup_after_a_publish_still_publishes(
+    store: GoldStore, profile: Profile
+) -> None:
+    publish(store, 1)
+    publish(store, 2)
+    # Fault injection at the storage boundary: the cleanup that follows the
+    # next publish's commit cannot delete any result.
+    with closing(sqlite3.connect(profile.gold_store)) as connection, connection:
+        connection.execute(
+            "CREATE TRIGGER refuse_cleanup BEFORE DELETE ON results"
+            " BEGIN SELECT RAISE(ABORT, 'disk said no'); END"
+        )
+
+    with pytest.warns(StaleResultsWarning):
+        third = publish(store, 3)
+
+    assert store.current() == third
+    assert store.next_publication_id() == 4
+    with closing(sqlite3.connect(profile.gold_store)) as connection, connection:
+        connection.execute("DROP TRIGGER refuse_cleanup")
+    fourth = publish(store, 4)
+    assert list(store.available()) == [third, fourth]
