@@ -40,6 +40,7 @@ PROFILE_FILE_FORMAT: Final = 1
 # `keep_monthly = "forever"` keeps the newest set of every month for good.
 KEEP_FOREVER: Final = "forever"
 _RETENTION_KEYS: Final = frozenset({"keep_all_days", "keep_daily_days", "keep_monthly"})
+_GOLD_KEYS: Final = frozenset({"late_booking_days"})
 # Test profiles are never files: the test suite builds each one (ADR-015).
 _FILE_PROFILE_NAMES: Final = (DEVELOPMENT_PROFILE_NAME, PRODUCTION_PROFILE_NAME)
 _SHARED_FILE_KEYS: Final = frozenset(
@@ -392,12 +393,30 @@ def _folder_path(path: Path, paths: dict[str, object], key: str) -> Path:
     return Path(folder)
 
 
-def _days(path: Path, table: dict[str, object], key: str, default: int) -> int:
-    """Return `[backups].<key>`, a whole number of 0 or more, or its default."""
-    value = table.get(key, default)
+def _optional_table(
+    path: Path, document: dict[str, object], name: str, known: frozenset[str]
+) -> dict[str, object]:
+    """Return the `[<name>]` table, empty without one, refusing unknown keys."""
+    table = document.get(name, {})
+    if not isinstance(table, dict):
+        raise ProfileFileError(path, f"{name} must be a [{name}] table")
+    keys: dict[str, object] = {str(key): value for key, value in table.items()}
+    unknown = sorted(set(keys) - known)
+    if unknown:
+        names = ", ".join(f"{name}.{key}" for key in unknown)
+        raise ProfileFileError(path, f"unknown key {names}")
+    return keys
+
+
+def _days(path: Path, value: object, key: str, most: int | None = None) -> int:
+    """Return `value`, the key's whole number of 0 or more, and `most` at most.
+
+    `key` is the dotted name, such as `backups.keep_all_days`, the refusal names.
+    """
     # `bool` is an `int` in Python, so `true` must not pass as 1.
-    if type(value) is not int or value < 0:
-        raise ProfileFileError(path, f"backups.{key} must be a whole number, 0 or more")
+    if type(value) is not int or value < 0 or (most is not None and value > most):
+        bound = "0 or more" if most is None else f"from 0 to {most}"
+        raise ProfileFileError(path, f"{key} must be a whole number, {bound}")
     return value
 
 
@@ -417,40 +436,35 @@ def _months(path: Path, table: dict[str, object]) -> int | None:
 
 def _retention(path: Path, document: dict[str, object]) -> RetentionPolicy:
     """Return the `[backups]` table's retention, or the defaults without one."""
-    table = document.get("backups", {})
-    if not isinstance(table, dict):
-        raise ProfileFileError(path, "backups must be a [backups] table")
-    keys: dict[str, object] = {str(key): value for key, value in table.items()}
-    unknown = sorted(set(keys) - _RETENTION_KEYS)
-    if unknown:
-        names = ", ".join(f"backups.{key}" for key in unknown)
-        raise ProfileFileError(path, f"unknown key {names}")
+    keys = _optional_table(path, document, "backups", _RETENTION_KEYS)
     defaults = RetentionPolicy()
     return RetentionPolicy(
-        keep_all_days=_days(path, keys, "keep_all_days", defaults.keep_all_days),
-        keep_daily_days=_days(path, keys, "keep_daily_days", defaults.keep_daily_days),
+        keep_all_days=_days(
+            path,
+            keys.get("keep_all_days", defaults.keep_all_days),
+            "backups.keep_all_days",
+        ),
+        keep_daily_days=_days(
+            path,
+            keys.get("keep_daily_days", defaults.keep_daily_days),
+            "backups.keep_daily_days",
+        ),
         keep_monthly=_months(path, keys),
     )
 
 
 def _late_booking_window(path: Path, document: dict[str, object]) -> timedelta:
-    """Return the `[gold]` table's late-booking window, or the default."""
-    table = document.get("gold", {})
-    if not isinstance(table, dict):
-        raise ProfileFileError(path, "gold must be a [gold] table")
-    unknown = sorted(str(key) for key in table if key != "late_booking_days")
-    if unknown:
-        names = ", ".join(f"gold.{key}" for key in unknown)
-        raise ProfileFileError(path, f"unknown key {names}")
-    days = table.get("late_booking_days", DEFAULT_LATE_BOOKING_DAYS)
-    # `bool` is an `int` in Python, so `true` must not pass as 1. 0 is legal:
-    # an export produced on a month's last day then settles it.
-    if type(days) is not int or not 0 <= days <= MAX_LATE_BOOKING_DAYS:
-        raise ProfileFileError(
-            path,
-            "gold.late_booking_days must be a whole number "
-            f"from 0 to {MAX_LATE_BOOKING_DAYS}",
-        )
+    """Return the `[gold]` table's late-booking window, or the default.
+
+    0 is legal: an export produced on a month's last day then settles it.
+    """
+    keys = _optional_table(path, document, "gold", _GOLD_KEYS)
+    days = _days(
+        path,
+        keys.get("late_booking_days", DEFAULT_LATE_BOOKING_DAYS),
+        "gold.late_booking_days",
+        MAX_LATE_BOOKING_DAYS,
+    )
     return timedelta(days=days)
 
 
