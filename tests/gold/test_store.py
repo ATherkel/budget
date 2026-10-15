@@ -5,6 +5,7 @@ Every store is the test profile's, in a temporary folder, created by
 `migrate_gold`. All data is the synthetic worked example.
 """
 
+import sqlite3
 from collections.abc import Iterator
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -26,7 +27,7 @@ from budget.inputs import ConfigurationSnapshot
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 from tests.gold.contract import GoldRepositoryContract
-from tests.gold.worked_example import PUBLICATION, RECORDS
+from tests.gold.worked_example import MONTHLY_BALANCES, PUBLICATION, RECORDS
 from tests.gold.worked_silver import REGISTRY, TAXONOMY
 
 CONFIGURATION = ConfigurationSnapshot(accounts=REGISTRY, taxonomy=TAXONOMY, rules={})
@@ -146,3 +147,39 @@ def test_a_publication_never_published_is_unavailable(store: GoldStore) -> None:
 
     with pytest.raises(PublicationUnavailable):
         store.open(2)
+
+
+def test_a_publish_that_fails_before_its_commit_changes_nothing(
+    store: GoldStore,
+) -> None:
+    first = publish(store, 1)
+    # A snapshot repeated at the end fails on the last table written, after
+    # the publication row and every other result row.
+    failing = replace(
+        RECORDS, monthly_balances=(*MONTHLY_BALANCES, MONTHLY_BALANCES[0])
+    )
+
+    with pytest.raises(sqlite3.IntegrityError):
+        store.publish(GoldResult(publication(2), failing), RECIPE, CONFIGURATION)
+
+    assert store.current() == first
+    assert list(store.available()) == [first]
+    assert [move.to_publication_id for move in store.pointer_history()] == [1]
+    assert store.next_publication_id() == 2
+
+
+def test_a_publish_retried_after_a_failure_publishes_normally(
+    store: GoldStore,
+) -> None:
+    first = publish(store, 1)
+    failing = replace(
+        RECORDS, monthly_balances=(*MONTHLY_BALANCES, MONTHLY_BALANCES[0])
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        store.publish(GoldResult(publication(2), failing), RECIPE, CONFIGURATION)
+
+    second = publish(store, 2)
+
+    assert store.current() == second
+    assert list(store.available()) == [first, second]
+    assert store.open(2).accounts() == store.open(1).accounts()
