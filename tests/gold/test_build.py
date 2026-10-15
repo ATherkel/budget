@@ -270,13 +270,24 @@ def test_a_zero_day_window_is_settled_by_an_export_on_the_months_last_day() -> N
         pytest.param(timedelta(days=7, hours=12), id="a fraction of a day"),
         pytest.param(timedelta(hours=12), id="under a day"),
         pytest.param(timedelta(days=7, microseconds=1), id="a microsecond over"),
+        pytest.param(timedelta(days=367), id="over a year"),
+        # Past the last date a month's end plus the window can reach.
+        pytest.param(timedelta(days=3_000_000), id="far too large"),
     ],
 )
-def test_a_window_that_is_not_whole_days_of_0_or_more_refuses_the_build(
+def test_a_window_that_is_not_whole_days_from_0_to_366_refuses_the_build(
     window: timedelta,
 ) -> None:
     with pytest.raises(ValueError, match="late_booking_window"):
         build_from(late_booking_window=window)
+
+
+def test_a_366_day_window_is_the_longest_the_build_accepts() -> None:
+    a_year_after = EvidenceExport(
+        "run-366", CURRENT, date(2027, 5, 1), COVERS_FROM, date(2027, 5, 1)
+    )
+
+    assert _settled(a_year_after, window=timedelta(days=366))[APRIL] is True
 
 
 def test_an_export_whose_range_misses_the_months_last_day_never_settles_it() -> None:

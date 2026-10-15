@@ -130,6 +130,9 @@ class ProfileFileTests(unittest.TestCase):
                 + f"\n[gold]\nlate_booking_days = {value}\n"
                 for problem, value in {
                     "negative": "-1",
+                    "over a year": "367",
+                    # Past what `timedelta` holds: refused, not a traceback.
+                    "far too large": "1000000000",
                     "a fraction": "1.5",
                     "true": "true",
                     "text": '"7"',
@@ -277,6 +280,10 @@ class ProfileFileTests(unittest.TestCase):
                 "ten days": ("\n[gold]\nlate_booking_days = 10\n", timedelta(days=10)),
                 # 0 is legal: an export on a month's last day settles it.
                 "zero days": ("\n[gold]\nlate_booking_days = 0\n", timedelta(0)),
+                "a leap year, the most": (
+                    "\n[gold]\nlate_booking_days = 366\n",
+                    timedelta(days=366),
+                ),
             }
             for name in ("development", "production"):
                 for case, (table, expected) in cases.items():
