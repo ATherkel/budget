@@ -7,6 +7,7 @@ Every store is the test profile's, in a temporary folder, created by
 
 import sqlite3
 from collections.abc import Iterator
+from contextlib import closing
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,7 +23,12 @@ from budget.gold import (
 )
 from budget.gold.recipe import Recipe, RecipeImportRun
 from budget.gold.storage import migrate_gold
-from budget.gold.store import GoldStore, PointerMove, PublicationIdError
+from budget.gold.store import (
+    ConfigurationMismatchError,
+    GoldStore,
+    PointerMove,
+    PublicationIdError,
+)
 from budget.inputs import ConfigurationSnapshot
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
@@ -183,3 +189,38 @@ def test_a_publish_retried_after_a_failure_publishes_normally(
     assert store.current() == second
     assert list(store.available()) == [first, second]
     assert store.open(2).accounts() == store.open(1).accounts()
+
+
+def test_a_recipe_is_kept_after_its_result_is_deleted(store: GoldStore) -> None:
+    for publication_id in (1, 2, 3):
+        publish(store, publication_id)
+
+    kept = store.recipe(1)
+
+    assert kept == RECIPE
+    # Equality leaves the diagnostic versions out, so they are compared alone.
+    assert (kept.python_version, kept.sqlite_version) == ("3.12.14", "3.53.1")
+
+
+def test_a_configuration_other_than_the_recipes_is_refused(store: GoldStore) -> None:
+    other = replace(CONFIGURATION, taxonomy=replace(TAXONOMY, categories={}))
+
+    with pytest.raises(ConfigurationMismatchError):
+        store.publish(GoldResult(publication(1), RECORDS), RECIPE, other)
+
+    assert store.current() is None
+    assert store.next_publication_id() == 1
+
+
+def test_a_configuration_is_stored_once_by_its_fingerprint(
+    store: GoldStore, profile: Profile
+) -> None:
+    publish(store, 1)
+    publish(store, 2)
+
+    with closing(sqlite3.connect(profile.gold_store)) as connection:
+        stored = connection.execute(
+            "SELECT fingerprint, content FROM configuration_snapshots"
+        ).fetchall()
+
+    assert stored == [(CONFIGURATION.fingerprint, CONFIGURATION.canonical_text)]

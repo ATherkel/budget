@@ -55,6 +55,16 @@ class PublicationIdError(ValueError):
         )
 
 
+class ConfigurationMismatchError(ValueError):
+    """The configuration given is not the snapshot the recipe names."""
+
+    def __init__(self, named: str, given: str) -> None:
+        """Name both fingerprints."""
+        super().__init__(
+            f"the recipe names configuration {named}, but {given} was given"
+        )
+
+
 @dataclass(frozen=True)
 class PointerMove:
     """One move of the current pointer (`publications.md`, *Pointer history*).
@@ -234,6 +244,10 @@ class GoldStore:
     def next_publication_id(self) -> int:
         """Return the id the next publication must carry."""
         return _next_publication_id(self._connection)
+
+    def recipe(self, publication_id: int) -> Recipe:
+        """Return the recipe a publication was built from."""
+        raise NotImplementedError
 
     def pointer_history(self) -> Sequence[PointerMove]:
         """Return every move of the current pointer, oldest first."""
