@@ -637,6 +637,81 @@ class DuplicateIncidentTests(unittest.TestCase):
             with BronzeStore(profile) as store:
                 assert store.import_runs() == ()
 
+    def test_continuing_imports_only_the_unaffected_files(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            current = drop(profile, "joint-current", "danske-20260305.csv", content)
+            savings = drop(profile, "joint-savings", "danske-20260305.csv", content)
+            clean_content = payload("02.03.2026")
+            clean = drop(profile, "joint-savings", "danske-20260310.csv", clean_content)
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+
+            status, stdout, stderr = import_(
+                profile_file, "--ranges", str(ranges), typed="y\n", terminal=True
+            )
+
+            # Every incident file is refused and counted; the unaffected
+            # export is stored, archived and logged as it always was.
+            assert (
+                "[1] joint-current  incident: the same bytes are in the inbox "
+                "under another account; it stays in the inbox\n"
+                "[2] joint-savings  incident: the same bytes are in the inbox "
+                "under another account; it stays in the inbox\n"
+                "[3] joint-savings  stored\n"
+                "Silver   1 admitted, 0 quarantined, 0 dropped\n"
+            ) in stdout, stdout
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert not clean.exists()
+            archived = profile.exports / "joint-savings" / "danske-20260310.csv"
+            assert archived.read_bytes() == clean_content
+            assert sorted(_archived(profile)) == [archived]
+            assert current.exists()
+            assert savings.exists()
+            assert current.read_bytes() == content
+            assert savings.read_bytes() == content
+            [entry] = log_entries(profile)
+            assert (entry["account_id"], entry["outcome"]) == (
+                "joint-savings",
+                "stored",
+            )
+            with BronzeStore(profile) as store:
+                accounts = [run.declared_account_id for run in store.import_runs()]
+            assert accounts == ["joint-savings"]
+
+    def test_a_group_whose_member_is_misfiled_refuses_the_whole_group(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            # The filename names another bank account, yet the bytes are the
+            # export the other account's folder holds: the group still stands.
+            misfiled = drop(
+                profile, "joint-current", "Konto-0099999999-20260305.csv", content
+            )
+            readable = drop(profile, "joint-savings", "danske-20260305.csv", content)
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+
+            status, stdout, stderr = import_(
+                profile_file, "--ranges", str(ranges), typed="y\n", terminal=True
+            )
+
+            assert (
+                "[2] joint-savings  incident: the same bytes are in the inbox "
+                "under another account; it stays in the inbox\n"
+            ) in stdout, stdout
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert misfiled.read_bytes() == content
+            assert readable.exists()
+            assert readable.read_bytes() == content
+            assert _archived(profile) == []
+            assert not profile.import_log_file.exists()
+            with BronzeStore(profile) as store:
+                assert store.import_runs() == ()
+
 
 class ProductionImportTests(unittest.TestCase):
     def test_a_production_import_ends_with_a_backup_set_holding_it(self) -> None:
