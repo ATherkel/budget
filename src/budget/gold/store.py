@@ -70,6 +70,17 @@ _STALE_RESULTS_KEPT: Final = (
 )
 
 
+class PublicationKindError(ValueError):
+    """Only a pipeline build is published, since it becomes current at once."""
+
+    def __init__(self, kind: str) -> None:
+        """Name the kind that cannot become current."""
+        super().__init__(
+            f"a publication of kind {kind!r} can never become current; only "
+            "pipeline builds are published"
+        )
+
+
 class ConfigurationMismatchError(ValueError):
     """The configuration given is not the snapshot the recipe names."""
 

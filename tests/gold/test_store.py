@@ -29,6 +29,7 @@ from budget.gold.store import (
     GoldStore,
     PointerMove,
     PublicationIdError,
+    PublicationKindError,
     StaleResultsWarning,
 )
 from budget.inputs import ConfigurationSnapshot
@@ -279,3 +280,14 @@ def test_a_failed_cleanup_after_a_publish_still_publishes(
         connection.execute("DROP TRIGGER refuse_cleanup")
     fourth = publish(store, 4)
     assert list(store.available()) == [third, fourth]
+
+
+def test_a_view_is_never_published_as_current(store: GoldStore) -> None:
+    # publications.md, invariant 6: an as_known_at publication is never current.
+    view = replace(publication(1), kind="as_known_at")
+
+    with pytest.raises(PublicationKindError):
+        store.publish(GoldResult(view, RECORDS), RECIPE, CONFIGURATION)
+
+    assert store.current() is None
+    assert store.next_publication_id() == 1
