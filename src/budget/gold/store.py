@@ -86,6 +86,7 @@ _INSERT_PUBLICATION: Final = (
     " replayed_at, contract_version, fingerprint_scheme, result_fingerprint)"
     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
+_SELECT_NEXT_ID: Final = "SELECT coalesce(max(publication_id), 0) + 1 FROM publications"
 _INSERT_MOVE: Final = (
     "INSERT INTO pointer_moves"
     " (moved_at, from_publication_id, to_publication_id, cause)"
@@ -209,7 +210,7 @@ class GoldStore:
 
     def next_publication_id(self) -> int:
         """Return the id the next publication must carry."""
-        raise NotImplementedError
+        return _next_publication_id(self._connection)
 
     def pointer_history(self) -> Sequence[PointerMove]:
         """Return every move of the current pointer, oldest first."""
@@ -228,6 +229,9 @@ class GoldStore:
         encoded = _encode(publication.publication_id, result.records)
         with self._connection as connection:
             connection.execute("BEGIN IMMEDIATE")
+            expected = _next_publication_id(connection)
+            if publication.publication_id != expected:
+                raise PublicationIdError(publication.publication_id, expected)
             connection.execute(_INSERT_PUBLICATION, _publication_row(publication))
             connection.execute(_INSERT_RESULT, (publication.publication_id,))
             _write(connection, encoded)
@@ -362,6 +366,15 @@ def _encode(publication_id: int, records: GoldRecords) -> _Encoded:
             for s in records.monthly_balances
         ),
     )
+
+
+def _next_publication_id(connection: sqlite3.Connection) -> int:
+    """Return one more than the highest id the store has ever published.
+
+    A publication's metadata is never deleted, so no id is handed out twice.
+    """
+    row = connection.execute(_SELECT_NEXT_ID).fetchone()
+    return int(row[0])
 
 
 def _move_pointer(
