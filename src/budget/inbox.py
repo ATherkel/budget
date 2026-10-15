@@ -78,6 +78,19 @@ class ExportPreview:
 
 
 @dataclass(frozen=True)
+class DuplicateIncident:
+    """One payload the inbox holds under two or more declared accounts.
+
+    Every file in it is impacted, whichever declared account each one sits
+    under: which of them the bank really exported is unknown, so none of them
+    is imported and none is guessed at. `files` are the impacted files, in
+    the order the listing shows them.
+    """
+
+    files: tuple[ExportPreview, ...]
+
+
+@dataclass(frozen=True)
 class FileOutcome:
     """What happened to one inbox file, named by its place in the listing.
 
@@ -245,6 +258,35 @@ def preview(
         first_transaction=parsed.first_transaction_date,
         last_transaction=parsed.last_transaction_date,
         records=len(parsed.records),
+    )
+
+
+def cross_account_duplicates(
+    previews: Sequence[ExportPreview],
+) -> tuple[DuplicateIncident, ...]:
+    """Find every payload the whole inbox holds under two or more accounts.
+
+    The bytes are the evidence, so the scan covers every file the listing
+    shows, including one whose preview was skipped for another reason: a
+    misfiled name, or a format the account's reader cannot read, does not
+    stop the same bytes appearing under another account. A file under no
+    declared account has no account to compare, and one whose bytes cannot be
+    read has no bytes to compare, so neither takes part. Copies under one
+    account alone are repeats, not an incident.
+    """
+    groups: dict[str, list[ExportPreview]] = {}
+    for previewed in previews:
+        if previewed.account_id == NO_ACCOUNT:
+            continue
+        try:
+            payload_id = sha256(previewed.source.read_bytes()).hexdigest()
+        except OSError:
+            continue
+        groups.setdefault(payload_id, []).append(previewed)
+    return tuple(
+        DuplicateIncident(files=tuple(files))
+        for files in groups.values()
+        if len({each.account_id for each in files}) > 1
     )
 
 

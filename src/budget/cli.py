@@ -33,6 +33,7 @@ from budget.importing import (
 )
 from budget.inbox import (
     ExportPreview,
+    cross_account_duplicates,
     import_inbox,
     inbox_exports,
     preview,
@@ -57,7 +58,7 @@ from budget.profiles import (
     ProfileFileError,
     load_profile_file,
 )
-from budget.prompting import ask_ranges
+from budget.prompting import ask_continue_after_duplicates, ask_ranges
 from budget.ranges import load_ranges
 from budget.rebuilding import (
     SilverRebuild,
@@ -259,9 +260,10 @@ def _declared_ranges(
 def _import(profile: Profile, ranges_file: str | None) -> int:
     """Import every inbox export with its declared range, then rebuild Silver.
 
-    Every range is settled before the first file is stored. Returns 3 when
-    any file was refused, misfiled or unreadable and stays in the inbox,
-    else 0.
+    Every range is settled before the first file is stored, and a payload the
+    inbox holds under more than one account is shown before that: nothing is
+    imported unless the person goes on. Returns 3 when any file stays in the
+    inbox unimported, else 0.
     """
     started = perf_counter()
     with writer_lock(profile) as lock:
@@ -276,6 +278,10 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
         require_buildable_accounts(
             profile, {each.account_id for each in previews if not each.skipped}
         )
+        duplicates = cross_account_duplicates(previews)
+        if duplicates and not ask_continue_after_duplicates(duplicates):
+            sys.stdout.write("Nothing was imported.\n")
+            return EXIT_REFUSED_INPUT
         declared = _declared_ranges(previews, accounts, ranges_file)
         if declared is None:
             sys.stdout.write("Nothing was imported.\n")
