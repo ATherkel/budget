@@ -14,9 +14,11 @@ from datetime import timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pytest
+
 from budget.bronze import BronzeStore
 from budget.cli import main
-from budget.profiles import RetentionPolicy, load_profile_file
+from budget.profiles import ProfileFileError, RetentionPolicy, load_profile_file
 from tests.cli.profile_files import development_profile, write_profile
 
 EXIT_OK = 0
@@ -122,6 +124,21 @@ class ProfileFileTests(unittest.TestCase):
             "an inbox that is the export archive": VALID_HEADER
             + absolute.replace(f"exports = '{exports}'", f"exports = '{inbox}'"),
             **self._backup_refusals(stores),
+            **{
+                f"a late_booking_days that is {problem}": VALID_HEADER
+                + absolute
+                + f"\n[gold]\nlate_booking_days = {value}\n"
+                for problem, value in {
+                    "negative": "-1",
+                    "a fraction": "1.5",
+                    "true": "true",
+                    "text": '"7"',
+                }.items()
+            },
+            "an unknown gold key": (
+                VALID_HEADER + absolute + "\n[gold]\nlate_booking_hours = 1\n"
+            ),
+            "a gold key that is not a table": VALID_HEADER + "gold = 7\n" + absolute,
         }
 
     def _backup_refusals(self, stores: Path) -> dict[str, str]:
@@ -271,6 +288,17 @@ class ProfileFileTests(unittest.TestCase):
                         profile = load_profile_file(profile_file)
 
                         assert profile.late_booking_window == expected
+
+    def test_a_refused_late_booking_window_names_its_key(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory))
+            with profile_file.open("a", encoding="utf-8") as file:
+                file.write("\n[gold]\nlate_booking_days = -1\n")
+
+            with pytest.raises(
+                ProfileFileError, match=r"gold\.late_booking_days must be .* 0 or more"
+            ):
+                load_profile_file(profile_file)
 
     def test_a_development_profile_file_names_no_backups(self) -> None:
         with TemporaryDirectory() as directory:
