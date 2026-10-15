@@ -712,6 +712,49 @@ class DuplicateIncidentTests(unittest.TestCase):
             with BronzeStore(profile) as store:
                 assert store.import_runs() == ()
 
+    def test_the_ranges_prompt_asks_nothing_for_an_incident_file(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            current = drop(profile, "joint-current", "danske-20260305.csv", content)
+            savings = drop(profile, "joint-savings", "danske-20260305.csv", content)
+            clean_content = payload("02.03.2026")
+            clean = drop(profile, "joint-savings", "danske-20260310.csv", clean_content)
+            # Go on past the incident, declare the one range the file that
+            # will be imported needs, then confirm.
+            typed = "y\n2026-03-01\n2026-03-04\ny\n"
+
+            status, stdout, stderr = import_(profile_file, typed=typed, terminal=True)
+
+            # The listing keeps every file numbered as the summary numbers it,
+            # says why an incident file stays, and asks a range only for the
+            # file it is going to import.
+            assert (
+                "[1] joint-current  danske-20260305.csv\n"
+                "    exported on    2026-03-05 (from filename)\n"
+                "    transactions   2026-03-01..2026-03-01, 1 source record\n"
+                "    incident: the same bytes are in the inbox under another "
+                "account; it stays in the inbox\n"
+                "[2] joint-savings  danske-20260305.csv\n"
+                "    exported on    2026-03-05 (from filename)\n"
+                "    transactions   2026-03-01..2026-03-01, 1 source record\n"
+                "    incident: the same bytes are in the inbox under another "
+                "account; it stays in the inbox\n"
+                "[3] joint-savings  danske-20260310.csv\n"
+                "    exported on    2026-03-10 (from filename)\n"
+                "    transactions   2026-03-02..2026-03-02, 1 source record\n"
+                "    Enter the range you asked the bank for.\n"
+                "    from:     through: Import 1 file? [y/N] "
+            ) in stdout, stdout
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert not clean.exists()
+            assert current.exists()
+            assert savings.exists()
+            assert current.read_bytes() == content
+            assert savings.read_bytes() == content
+
 
 class ProductionImportTests(unittest.TestCase):
     def test_a_production_import_ends_with_a_backup_set_holding_it(self) -> None:
