@@ -26,6 +26,34 @@ CREATE TABLE publications (
     result_fingerprint TEXT NOT NULL
 ) STRICT;
 
+-- A recipe, kept forever, names its inputs (publications.md, *The Recipe*).
+-- Each distinct configuration is stored once, as the canonical text its
+-- fingerprint hashes.
+CREATE TABLE configuration_snapshots (
+    fingerprint TEXT PRIMARY KEY,
+    content TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE recipes (
+    publication_id INTEGER PRIMARY KEY REFERENCES publications (publication_id),
+    configuration_fingerprint TEXT NOT NULL
+        REFERENCES configuration_snapshots (fingerprint),
+    decision_log_position INTEGER NOT NULL CHECK (decision_log_position >= 0),
+    decision_log_prefix_sha256 TEXT NOT NULL,
+    code_version TEXT,
+    contract_version TEXT NOT NULL,
+    silver_identity_version TEXT NOT NULL,
+    python_version TEXT NOT NULL,
+    sqlite_version TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE recipe_import_runs (
+    publication_id INTEGER NOT NULL REFERENCES recipes (publication_id),
+    import_run_id TEXT NOT NULL,
+    payload_id TEXT NOT NULL,
+    PRIMARY KEY (publication_id, import_run_id)
+) STRICT;
+
 -- One row per publication whose result the store still holds.
 CREATE TABLE results (
     publication_id INTEGER PRIMARY KEY REFERENCES publications (publication_id)

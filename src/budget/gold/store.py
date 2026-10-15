@@ -12,7 +12,7 @@ integer minor units of each account's currency happens here and nowhere else.
 
 import json
 import sqlite3
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -28,7 +28,7 @@ from budget.gold.models import (
     MonthlyBalanceSnapshot,
     ReportingMonth,
 )
-from budget.gold.recipe import Recipe
+from budget.gold.recipe import Recipe, RecipeImportRun
 from budget.gold.repository import GoldRepository, PublicationUnavailableError
 from budget.gold.result import GoldRecords, GoldResult, refuse_bare_string
 from budget.gold.storage import open_gold_connection
@@ -124,6 +124,23 @@ _INSERT_MOVE: Final = (
     " VALUES (?, ?, ?, ?)"
 )
 _SELECT_MOVES: Final = "SELECT * FROM pointer_moves ORDER BY move"
+_INSERT_SNAPSHOT: Final = (
+    "INSERT OR IGNORE INTO configuration_snapshots (fingerprint, content) VALUES (?, ?)"
+)
+_INSERT_RECIPE: Final = (
+    "INSERT INTO recipes (publication_id, configuration_fingerprint,"
+    " decision_log_position, decision_log_prefix_sha256, code_version,"
+    " contract_version, silver_identity_version, python_version,"
+    " sqlite_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+)
+_INSERT_RECIPE_RUNS: Final = (
+    "INSERT INTO recipe_import_runs (publication_id, import_run_id, payload_id)"
+    " VALUES (?, ?, ?)"
+)
+_SELECT_RECIPE: Final = "SELECT * FROM recipes WHERE publication_id = ?"
+_SELECT_RECIPE_RUNS: Final = (
+    "SELECT import_run_id, payload_id FROM recipe_import_runs WHERE publication_id = ?"
+)
 _INSERT_RESULT: Final = "INSERT INTO results (publication_id) VALUES (?)"
 _INSERT_ACCOUNTS: Final = (
     "INSERT INTO accounts (publication_id, account_id, display_name,"
@@ -247,7 +264,12 @@ class GoldStore:
 
     def recipe(self, publication_id: int) -> Recipe:
         """Return the recipe a publication was built from."""
-        raise NotImplementedError
+        connection = self._connection
+        row = connection.execute(_SELECT_RECIPE, (publication_id,)).fetchone()
+        if row is None:
+            raise PublicationUnavailableError(publication_id)
+        runs = connection.execute(_SELECT_RECIPE_RUNS, (publication_id,))
+        return _recipe(row, runs)
 
     def pointer_history(self) -> Sequence[PointerMove]:
         """Return every move of the current pointer, oldest first."""
@@ -261,7 +283,10 @@ class GoldStore:
         configuration: ConfigurationSnapshot,
     ) -> None:
         """Store `result` as a new publication and make it current."""
-        del recipe, configuration
+        if configuration.fingerprint != recipe.configuration_fingerprint:
+            raise ConfigurationMismatchError(
+                recipe.configuration_fingerprint, configuration.fingerprint
+            )
         publication = result.publication()
         encoded = _encode(publication.publication_id, result.records)
         with self._connection as connection:
@@ -271,6 +296,7 @@ class GoldStore:
                 raise PublicationIdError(publication.publication_id, expected)
             connection.execute(_INSERT_PUBLICATION, _publication_row(publication))
             connection.execute(_INSERT_RESULT, (publication.publication_id,))
+            _write_recipe(connection, publication.publication_id, recipe, configuration)
             _write(connection, encoded)
             _move_pointer(connection, publication.publication_id, "build")
         _delete_stale_results(self._connection)
@@ -452,6 +478,56 @@ def _move(row: sqlite3.Row) -> PointerMove:
         from_publication_id=row["from_publication_id"],
         to_publication_id=row["to_publication_id"],
         cause=row["cause"],
+    )
+
+
+def _write_recipe(
+    connection: sqlite3.Connection,
+    publication_id: int,
+    recipe: Recipe,
+    configuration: ConfigurationSnapshot,
+) -> None:
+    """Store a publication's recipe, and its configuration if it is new."""
+    connection.execute(
+        _INSERT_SNAPSHOT, (configuration.fingerprint, configuration.canonical_text)
+    )
+    connection.execute(
+        _INSERT_RECIPE,
+        (
+            publication_id,
+            recipe.configuration_fingerprint,
+            recipe.decision_log_position,
+            recipe.decision_log_prefix_sha256,
+            recipe.code_version,
+            recipe.contract_version,
+            recipe.silver_identity_version,
+            recipe.python_version,
+            recipe.sqlite_version,
+        ),
+    )
+    connection.executemany(
+        _INSERT_RECIPE_RUNS,
+        sorted(
+            (publication_id, run.import_run_id, run.payload_id)
+            for run in recipe.import_runs
+        ),
+    )
+
+
+def _recipe(row: sqlite3.Row, runs: Iterable[sqlite3.Row]) -> Recipe:
+    """Read one `recipes` row and its import runs back as the recipe."""
+    return Recipe(
+        import_runs=frozenset(
+            RecipeImportRun(run["import_run_id"], run["payload_id"]) for run in runs
+        ),
+        configuration_fingerprint=row["configuration_fingerprint"],
+        decision_log_position=row["decision_log_position"],
+        decision_log_prefix_sha256=row["decision_log_prefix_sha256"],
+        code_version=row["code_version"],
+        contract_version=row["contract_version"],
+        silver_identity_version=row["silver_identity_version"],
+        python_version=row["python_version"],
+        sqlite_version=row["sqlite_version"],
     )
 
 
