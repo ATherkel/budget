@@ -330,6 +330,22 @@ class ImportEquivalenceTests(unittest.TestCase):
 
         assert not difference, difference
 
+    # #282: Bronze stores whichever copy of the repeated January export
+    # arrives first, and Silver admits the payload at that copy's date.
+    @unittest.expectedFailure
+    def test_months_imported_newest_first_end_in_the_same_silver(self) -> None:
+        exports = _exports()
+        with TemporaryDirectory() as directory:
+            monthly = _monthly(Path(directory) / "monthly", exports)
+            profile_file, newest_first = _household(Path(directory) / "newest-first")
+            for month in sorted({each.month for each in exports}, reverse=True):
+                batch = [e for e in exports if e.month == month]
+                _import(profile_file, newest_first, batch)
+
+            difference = _first_difference(_silver(monthly), _silver(newest_first))
+
+        assert not difference, difference
+
     def test_the_exports_hold_every_case_the_comparison_must_cover(self) -> None:
         with TemporaryDirectory() as directory:
             silver = _silver(_monthly(Path(directory) / "monthly", _exports()))
