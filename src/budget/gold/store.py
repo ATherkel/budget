@@ -317,8 +317,9 @@ class GoldStore:
     ) -> None:
         """Store `result` as a new publication and make it current.
 
-        The result must carry `next_publication_id()`, and `configuration`
-        must be the snapshot `recipe` names; either refusal writes nothing.
+        The result must be a `pipeline` build carrying `next_publication_id()`,
+        and `configuration` must be the snapshot `recipe` names; each refusal
+        writes nothing.
         The records are encoded before anything is written. One transaction
         then stores the publication, its recipe, its configuration if new,
         and its records, and appends a `build` move: that transaction is the
@@ -332,6 +333,8 @@ class GoldStore:
                 recipe.configuration_fingerprint, configuration.fingerprint
             )
         publication = result.publication()
+        if publication.kind != "pipeline":
+            raise PublicationKindError(publication.kind)
         encoded = _encode(publication.publication_id, result.records)
         with self._connection as connection:
             connection.execute("BEGIN IMMEDIATE")
