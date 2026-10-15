@@ -17,7 +17,7 @@ from budget.inputs.accounts import Account
 from budget.inputs.document import ConfigurationError
 from budget.inputs.snapshot import ConfigurationSnapshot
 from budget.inputs.taxonomy import Taxonomy
-from budget.profiles import ACCOUNTS_FILE_NAME
+from budget.profiles import ACCOUNTS_FILE_NAME, MAX_LATE_BOOKING_DAYS
 from budget.silver.models import AccountEvidence, SilverResult
 
 
@@ -38,9 +38,10 @@ def build(
     the build, so no fact is published without its account. So does an
     account whose `closed_on` falls before its latest booked transaction, so
     no fact falls outside its account's managed period. A window that is
-    negative or not a whole number of days raises `ValueError`.
+    negative, not a whole number of days or over 366 days raises
+    `ValueError`.
     """
-    _require_whole_days(late_booking_window)
+    _require_window(late_booking_window)
     _require_declared_accounts(silver, configuration.accounts)
     transactions = gold_transactions(silver.transactions)
     problems = _closing_problems(configuration.accounts, transactions)
@@ -65,17 +66,20 @@ def build(
     return GoldResult(publication, records)
 
 
-def _require_whole_days(window: timedelta) -> None:
+def _require_window(window: timedelta) -> None:
     """Refuse a late-booking window that profiles could not have set.
 
-    Profiles set it in whole days, 0 or more, so anything else is refused here
-    too rather than truncated to the day `late_bookings_settled` compares.
+    Profiles set it in whole days from 0 to `MAX_LATE_BOOKING_DAYS`, so anything
+    else is refused here too, rather than truncated to the day
+    `late_bookings_settled` compares or overflowing the date it is added to.
     """
     # `timedelta` keeps its days signed and its seconds and microseconds
     # positive, so a negative window always has negative days.
-    if window.days < 0 or window.seconds or window.microseconds:
+    whole = not window.seconds and not window.microseconds
+    if not whole or not 0 <= window.days <= MAX_LATE_BOOKING_DAYS:
         message = (
-            f"late_booking_window {window} is not a whole number of days, 0 or more"
+            f"late_booking_window {window} is not a whole number of days "
+            f"from 0 to {MAX_LATE_BOOKING_DAYS}"
         )
         raise ValueError(message)
 

@@ -48,6 +48,8 @@ _SHARED_FILE_KEYS: Final = frozenset(
 # How long after a month ends an export must be produced to show its late
 # bookings, unless `[gold] late_booking_days` says otherwise.
 DEFAULT_LATE_BOOKING_DAYS: Final = 7
+# No month needs longer than a year to settle, so a longer window is a typo.
+MAX_LATE_BOOKING_DAYS: Final = 366
 _SHARED_PATH_KEYS: Final = frozenset({"stores", "inbox", "exports", "inputs"})
 # Only production writes backup sets; development only reads production's.
 _FILE_KEYS: Final = {
@@ -443,9 +445,11 @@ def _late_booking_window(path: Path, document: dict[str, object]) -> timedelta:
     days = table.get("late_booking_days", DEFAULT_LATE_BOOKING_DAYS)
     # `bool` is an `int` in Python, so `true` must not pass as 1. 0 is legal:
     # an export produced on a month's last day then settles it.
-    if type(days) is not int or days < 0:
+    if type(days) is not int or not 0 <= days <= MAX_LATE_BOOKING_DAYS:
         raise ProfileFileError(
-            path, "gold.late_booking_days must be a whole number, 0 or more"
+            path,
+            "gold.late_booking_days must be a whole number "
+            f"from 0 to {MAX_LATE_BOOKING_DAYS}",
         )
     return timedelta(days=days)
 

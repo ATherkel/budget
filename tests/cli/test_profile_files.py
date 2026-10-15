@@ -303,7 +303,8 @@ class ProfileFileTests(unittest.TestCase):
                 file.write("\n[gold]\nlate_booking_days = -1\n")
 
             with pytest.raises(
-                ProfileFileError, match=r"gold\.late_booking_days must be .* 0 or more"
+                ProfileFileError,
+                match=r"gold\.late_booking_days must be .* from 0 to 366",
             ):
                 load_profile_file(profile_file)
 
