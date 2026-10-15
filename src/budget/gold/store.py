@@ -12,7 +12,7 @@ integer minor units of each account's currency happens here and nowhere else.
 
 import json
 import sqlite3
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -91,6 +91,7 @@ _SELECT_RETAINED_ONE: Final = (
     " JOIN results USING (publication_id) WHERE publication_id = ?"
 )
 
+_SELECT_RESULT: Final = "SELECT 1 FROM results WHERE publication_id = ?"
 _INSERT_PUBLICATION: Final = (
     "INSERT INTO publications (publication_id, kind, label, known_at, built_at,"
     " replayed_at, contract_version, fingerprint_scheme, result_fingerprint)"
@@ -324,11 +325,11 @@ class StoredPublication:
 
     def accounts(self) -> Sequence[GoldAccount]:
         """Return every account inside the reporting boundary."""
-        return tuple(map(_account, self._select(_SELECT_ACCOUNTS, {})))
+        return self._select(_SELECT_ACCOUNTS, {}, _account)
 
     def categories(self) -> Sequence[GoldCategory]:
         """Return every assignable category."""
-        return tuple(map(_category, self._select(_SELECT_CATEGORIES, {})))
+        return self._select(_SELECT_CATEGORIES, {}, _category)
 
     def transactions(
         self,
@@ -338,13 +339,12 @@ class StoredPublication:
         account_ids: Collection[str] | None = None,
     ) -> Sequence[GoldTransaction]:
         """Return the transactions dated from `start_date` through `end_date`."""
-        rows = self._select_range(
+        return self._select_range(
             _SELECT_TRANSACTIONS,
-            start_date.isoformat(),
-            end_date.isoformat(),
+            (start_date.isoformat(), end_date.isoformat()),
             account_ids,
+            _transaction,
         )
-        return tuple(map(_transaction, rows))
 
     def category_allocations(
         self,
@@ -354,13 +354,12 @@ class StoredPublication:
         account_ids: Collection[str] | None = None,
     ) -> Sequence[GoldCategoryAllocation]:
         """Return the allocations dated from `start_date` through `end_date`."""
-        rows = self._select_range(
+        return self._select_range(
             _SELECT_ALLOCATIONS,
-            start_date.isoformat(),
-            end_date.isoformat(),
+            (start_date.isoformat(), end_date.isoformat()),
             account_ids,
+            _allocation,
         )
-        return tuple(map(_allocation, rows))
 
     def monthly_balances(
         self,
@@ -370,30 +369,49 @@ class StoredPublication:
         account_ids: Collection[str] | None = None,
     ) -> Sequence[MonthlyBalanceSnapshot]:
         """Return the snapshots for `start_month` through `end_month`."""
-        rows = self._select_range(
+        return self._select_range(
             _SELECT_BALANCES,
-            _month_text(start_month),
-            _month_text(end_month),
+            (_month_text(start_month), _month_text(end_month)),
             account_ids,
+            _snapshot,
         )
-        return tuple(map(_snapshot, rows))
 
-    def _select_range(
+    def _select_range[T](
         self,
         query: str,
-        start: str,
-        end: str,
+        bounds: tuple[str, str],
         account_ids: Collection[str] | None,
-    ) -> sqlite3.Cursor:
+        decode: Callable[[sqlite3.Row], T],
+    ) -> tuple[T, ...]:
         """Read one inclusive range, limited to the named accounts."""
         refuse_bare_string(account_ids)
         named = None if account_ids is None else json.dumps(list(account_ids))
-        return self._select(query, {"start": start, "end": end, "account_ids": named})
+        start, end = bounds
+        parameters = {"start": start, "end": end, "account_ids": named}
+        return self._select(query, parameters, decode)
 
-    def _select(self, query: str, parameters: Mapping[str, object]) -> sqlite3.Cursor:
-        """Run one read of the bound publication."""
-        bound = {**parameters, "publication_id": self._publication.publication_id}
-        return self._connection.execute(query, bound)
+    def _select[T](
+        self,
+        query: str,
+        parameters: Mapping[str, object],
+        decode: Callable[[sqlite3.Row], T],
+    ) -> tuple[T, ...]:
+        """Read and decode records of the bound publication, while it is retained.
+
+        The check and the read share one read transaction, so a result deleted
+        in between is never read as an empty one.
+        """
+        publication_id = self._publication.publication_id
+        bound = {**parameters, "publication_id": publication_id}
+        connection = self._connection
+        try:
+            connection.execute("BEGIN")
+            retained = connection.execute(_SELECT_RESULT, (publication_id,))
+            if retained.fetchone() is None:
+                raise PublicationUnavailableError(publication_id)
+            return tuple(decode(row) for row in connection.execute(query, bound))
+        finally:
+            connection.rollback()
 
 
 @dataclass(frozen=True)
