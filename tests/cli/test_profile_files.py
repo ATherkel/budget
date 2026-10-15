@@ -297,16 +297,41 @@ class ProfileFileTests(unittest.TestCase):
                         assert profile.late_booking_window == expected
 
     def test_a_refused_late_booking_window_names_its_key(self) -> None:
+        days = r"gold\.late_booking_days must be a whole number, from 0 to 366"
+        cases = {
+            **{
+                f"late_booking_days = {value}": (
+                    "",
+                    f"late_booking_days = {value}",
+                    days,
+                )
+                for value in ("-1", "367", "1000000000", "1.5", "true", '"7"')
+            },
+            "an unknown gold key": (
+                "",
+                "late_booking_hours = 1",
+                r"unknown key gold\.late_booking_hours",
+            ),
+            "a gold key that is not a table": (
+                "gold = 7\n",
+                "",
+                r"gold must be a \[gold\] table",
+            ),
+        }
         with TemporaryDirectory() as directory:
-            profile_file = write_profile(Path(directory))
-            with profile_file.open("a", encoding="utf-8") as file:
-                file.write("\n[gold]\nlate_booking_days = -1\n")
+            for case, (top_level, gold, message) in cases.items():
+                with self.subTest(case):
+                    profile_file = write_profile(Path(directory))
+                    # A top-level key must come before the [paths] table.
+                    text = profile_file.read_text(encoding="utf-8")
+                    profile_file.write_text(
+                        text.replace("\n[paths]", f"{top_level}\n[paths]")
+                        + (f"\n[gold]\n{gold}\n" if gold else ""),
+                        encoding="utf-8",
+                    )
 
-            with pytest.raises(
-                ProfileFileError,
-                match=r"gold\.late_booking_days must be .* from 0 to 366",
-            ):
-                load_profile_file(profile_file)
+                    with pytest.raises(ProfileFileError, match=message):
+                        load_profile_file(profile_file)
 
     def test_a_development_profile_file_names_no_backups(self) -> None:
         with TemporaryDirectory() as directory:
