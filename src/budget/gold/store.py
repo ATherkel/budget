@@ -12,6 +12,7 @@ integer minor units of each account's currency happens here and nowhere else.
 
 import json
 import sqlite3
+import warnings
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -61,6 +62,12 @@ class StaleResultsWarning(UserWarning):
     The publication is current all the same; the next publish deletes what
     this one left.
     """
+
+
+_STALE_RESULTS_KEPT: Final = (
+    "the publication is current, but results no longer retained could not be "
+    "deleted; the next publish deletes them"
+)
 
 
 class ConfigurationMismatchError(ValueError):
@@ -306,7 +313,8 @@ class GoldStore:
         and its records, and appends a `build` move: that transaction is the
         commit point, and a failure before it leaves the previous publication
         current (`operations.md`, *Publishing a Gold build*). A later
-        transaction deletes the results that are no longer retained.
+        transaction deletes the results that are no longer retained; if that
+        fails, `StaleResultsWarning` is issued and the publish still stands.
         """
         if configuration.fingerprint != recipe.configuration_fingerprint:
             raise ConfigurationMismatchError(
@@ -324,7 +332,12 @@ class GoldStore:
             _write_recipe(connection, publication.publication_id, recipe, configuration)
             _write(connection, encoded)
             _move_pointer(connection, publication.publication_id, "build")
-        _delete_stale_results(self._connection)
+        try:
+            _delete_stale_results(self._connection)
+        except sqlite3.Error:
+            # The publish has committed: it is current, and the next publish
+            # deletes what is left, so the caller must not see a failure.
+            warnings.warn(_STALE_RESULTS_KEPT, StaleResultsWarning, stacklevel=2)
 
 
 class StoredPublication:
