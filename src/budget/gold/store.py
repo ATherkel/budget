@@ -44,6 +44,17 @@ type Rows = tuple[tuple[object, ...], ...]
 type PointerCause = Literal["build", "undo", "migration"]
 
 
+class PublicationIdError(ValueError):
+    """A result carries another id than the one the store hands out next."""
+
+    def __init__(self, given: int, expected: int) -> None:
+        """Name both ids, so the caller can see which one it built with."""
+        super().__init__(
+            f"publication {given} cannot be published: the next publication "
+            f"in this store is {expected}"
+        )
+
+
 @dataclass(frozen=True)
 class PointerMove:
     """One move of the current pointer (`publications.md`, *Pointer history*).

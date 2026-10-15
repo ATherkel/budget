@@ -15,7 +15,7 @@ import pytest
 from budget.gold import GoldPublication, GoldRepository, GoldResult
 from budget.gold.recipe import Recipe, RecipeImportRun
 from budget.gold.storage import migrate_gold
-from budget.gold.store import GoldStore, PointerMove
+from budget.gold.store import GoldStore, PointerMove, PublicationIdError
 from budget.inputs import ConfigurationSnapshot
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
@@ -104,3 +104,22 @@ def test_a_first_publish_becomes_current(store: GoldStore) -> None:
         cause="build",
     )
     assert before <= move.moved_at <= after
+
+
+def test_the_store_hands_out_increasing_publication_ids(store: GoldStore) -> None:
+    first = store.next_publication_id()
+    publish(store, first)
+
+    assert (first, store.next_publication_id()) == (1, 2)
+
+
+@pytest.mark.parametrize("given", [1, 3], ids=["reused", "skipped"])
+def test_a_publish_under_another_id_is_refused(store: GoldStore, given: int) -> None:
+    first = publish(store, 1)
+
+    with pytest.raises(PublicationIdError):
+        publish(store, given)
+
+    assert store.current() == first
+    assert list(store.available()) == [first]
+    assert len(store.pointer_history()) == 1
