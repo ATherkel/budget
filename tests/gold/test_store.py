@@ -318,3 +318,14 @@ def test_an_allocation_unlike_its_transaction_is_refused(
         store.publish(GoldResult(publication(1), records), RECIPE, CONFIGURATION)
 
     assert store.current() is None
+
+
+@pytest.mark.parametrize("blank", ["", "   "], ids=["empty", "spaces"])
+def test_a_blank_label_is_refused(store: GoldStore, blank: str) -> None:
+    # A label keeps its result for good, so a blank one would pin it unnamed.
+    labeled = replace(publication(1), label=blank)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        store.publish(GoldResult(labeled, RECORDS), RECIPE, CONFIGURATION)
+
+    assert store.current() is None
