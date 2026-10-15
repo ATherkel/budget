@@ -436,9 +436,17 @@ def _late_booking_window(path: Path, document: dict[str, object]) -> timedelta:
     table = document.get("gold", {})
     if not isinstance(table, dict):
         raise ProfileFileError(path, "gold must be a [gold] table")
+    unknown = sorted(str(key) for key in table if key != "late_booking_days")
+    if unknown:
+        names = ", ".join(f"gold.{key}" for key in unknown)
+        raise ProfileFileError(path, f"unknown key {names}")
     days = table.get("late_booking_days", DEFAULT_LATE_BOOKING_DAYS)
-    if type(days) is not int:
-        raise ProfileFileError(path, "gold.late_booking_days must be a whole number")
+    # `bool` is an `int` in Python, so `true` must not pass as 1. 0 is legal:
+    # an export produced on a month's last day then settles it.
+    if type(days) is not int or days < 0:
+        raise ProfileFileError(
+            path, "gold.late_booking_days must be a whole number, 0 or more"
+        )
     return timedelta(days=days)
 
 
