@@ -13,6 +13,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+from budget.bronze import BronzeStore
 from budget.bronze.parsers.registry import source_parser
 from budget.profiles import Profile, load_profile_file
 from budget.routine_logging import LOG_FILE, LOG_FOLDER
@@ -47,6 +48,13 @@ def _set_names(profile: Profile) -> list[str]:
     """The backup sets the profile's backups folder holds, by name."""
     folder = profile.backup_path(".")
     return sorted(child.name for child in folder.iterdir()) if folder.is_dir() else []
+
+
+def _archived(profile: Profile) -> list[Path]:
+    """Every file the export archive holds."""
+    if not profile.exports.is_dir():
+        return []
+    return sorted(path for path in profile.exports.rglob("*") if path.is_file())
 
 
 def _clean_git() -> mock.Mock:
@@ -151,7 +159,10 @@ class ImportCommandTests(unittest.TestCase):
             other_number = drop(
                 profile, "joint-current", "Konto-0099999999-20260305.csv", content
             )
-            stored = drop(profile, "joint-savings", "danske-20260305.csv", content)
+            # Each account its own bytes: one payload belongs to one account.
+            stored = drop(
+                profile, "joint-savings", "danske-20260305.csv", payload("02.03.2026")
+            )
             # A folder accounts.toml does not name declares no account.
             no_account = drop(profile, "lost-folder", "danske-20260305.csv", content)
             ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
@@ -406,7 +417,11 @@ class ImportCommandTests(unittest.TestCase):
             profile = _household(profile_file, folder)
             content = payload("01.03.2026")
             first = drop(profile, "joint-current", "danske-20260305.csv", content)
-            second = drop(profile, "joint-savings", "danske-20260305.csv", content)
+            # Each account its own bytes: one payload belongs to one account.
+            savings_content = payload("02.03.2026")
+            second = drop(
+                profile, "joint-savings", "danske-20260305.csv", savings_content
+            )
             ranges = _ranges(
                 folder, accounts={"joint-current": ("2026-03-01", "2026-03-04")}
             )
@@ -420,7 +435,7 @@ class ImportCommandTests(unittest.TestCase):
                 " and there is no [default]; nothing was imported\n"
             )
             assert first.read_bytes() == content
-            assert second.read_bytes() == content
+            assert second.read_bytes() == savings_content
             assert not profile.import_log_file.exists()
             assert run_ids(profile.bronze_store) == []
 
@@ -575,6 +590,52 @@ class InteractiveImportTests(unittest.TestCase):
                 assert source.read_bytes() == content
                 assert not profile.import_log_file.exists()
                 assert run_ids(profile.bronze_store) == []
+
+
+class DuplicateIncidentTests(unittest.TestCase):
+    """The whole-inbox preflight for one payload under two accounts."""
+
+    def test_a_cross_account_duplicate_is_reported_and_declining_imports_nothing(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            current = drop(profile, "joint-current", "danske-20260305.csv", content)
+            savings = drop(profile, "joint-savings", "danske-20260305.csv", content)
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+
+            status, stdout, stderr = import_(
+                profile_file, "--ranges", str(ranges), typed="n\n", terminal=True
+            )
+
+            # Every file the same bytes sit under, with what the person needs
+            # to check the bank's own choice: account, filename, export date,
+            # record count and transaction dates.
+            assert (
+                "Cross-account duplicates: 1 incident, 2 files impacted\n"
+                "Duplicate 1 (2 files)\n"
+                "joint-current  danske-20260305.csv\n"
+                "    exported on    2026-03-05 (from filename)\n"
+                "    transactions   2026-03-01..2026-03-01, 1 source record\n"
+                "joint-savings  danske-20260305.csv\n"
+                "    exported on    2026-03-05 (from filename)\n"
+                "    transactions   2026-03-01..2026-03-01, 1 source record\n"
+                "Check which account the bank exported it from, then download the "
+                "affected accounts again; every file above stays in the inbox "
+                "and none of them is imported.\n"
+                "Continue anyway? [y/N] "
+            ) in stdout, stdout
+            assert stdout.endswith("Nothing was imported.\n")
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert current.read_bytes() == content
+            assert savings.read_bytes() == content
+            assert _archived(profile) == []
+            assert not profile.import_log_file.exists()
+            with BronzeStore(profile) as store:
+                assert store.import_runs() == ()
 
 
 class ProductionImportTests(unittest.TestCase):
