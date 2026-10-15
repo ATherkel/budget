@@ -12,8 +12,11 @@ from types import TracebackType
 from typing import Final, Self
 
 from budget.gold.models import GoldPublication
+from budget.gold.recipe import Recipe
 from budget.gold.repository import GoldRepository
+from budget.gold.result import GoldResult
 from budget.gold.storage import open_gold_connection
+from budget.inputs.snapshot import ConfigurationSnapshot
 from budget.profiles import Profile
 
 _SELECT_CURRENT_ID: Final = (
@@ -73,6 +76,19 @@ class GoldStore:
 
     def open(self, publication_id: int) -> GoldRepository:
         """Return a repository bound to one retained publication."""
+        raise NotImplementedError
+
+    def next_publication_id(self) -> int:
+        """Return the id the next publication must carry."""
+        raise NotImplementedError
+
+    def publish(
+        self,
+        result: GoldResult,
+        recipe: Recipe,
+        configuration: ConfigurationSnapshot,
+    ) -> None:
+        """Store `result` as a new publication and make it current."""
         raise NotImplementedError
 
 
