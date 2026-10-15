@@ -189,8 +189,9 @@ remove the only copy.
 Both profiles may set `[gold] late_booking_days`, the late-booking window: how
 many days after a month ends an export must be produced before it settles the
 month's late bookings ([`gold-layer.md`](gold-layer.md#late-bookings-settled)).
-It is a whole number, 0 or more, and defaults to 7 when the table or key is
-absent. 0 lets an export produced on a month's last day settle it. The test
+It is a whole number from 0 to 366, and defaults to 7 when the table or key is
+absent. 0 lets an export produced on a month's last day settle it; no month
+needs longer than a year, so a larger value is refused as a typo. The test
 profile always uses the default. The window is part of each publication's
 recipe ([`publications.md`](publications.md#the-recipe)), so changing it takes
 effect from the next publication and never relabels an earlier one.

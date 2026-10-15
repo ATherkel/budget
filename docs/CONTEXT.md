@@ -125,9 +125,9 @@ fall in a gap between ranges.
 _Avoid_: last import date (the export, not the import, bounds the evidence)
 
 **Late-booking window**:
-How many days after a month ends an export must be produced, counted from its
-*Export date*, before it shows the month's late bookings. It is set per
-profile in whole days, 7 unless changed, and recorded in each recipe. The rule
+How many days after a month's last day an export's *Export date* must fall
+for the export to show the month's late bookings. It is set per profile in
+whole days, 7 unless changed, and recorded in each recipe. The rule
 is in [`gold-layer.md`](architecture/gold-layer.md#late-bookings-settled).
 
 **Monthly balance snapshot**:
