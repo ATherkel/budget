@@ -12,7 +12,13 @@ from pathlib import Path
 
 import pytest
 
-from budget.gold import GoldPublication, GoldRepository, GoldResult
+from budget.gold import (
+    GoldPublication,
+    GoldPublications,
+    GoldRepository,
+    GoldResult,
+    PublicationUnavailable,
+)
 from budget.gold.recipe import Recipe, RecipeImportRun
 from budget.gold.storage import migrate_gold
 from budget.gold.store import GoldStore, PointerMove, PublicationIdError
@@ -123,3 +129,20 @@ def test_a_publish_under_another_id_is_refused(store: GoldStore, given: int) -> 
     assert store.current() == first
     assert list(store.available()) == [first]
     assert len(store.pointer_history()) == 1
+
+
+def test_only_the_current_and_previous_results_are_retained(store: GoldStore) -> None:
+    publications: GoldPublications = store
+    first, second, third = (publish(store, n) for n in (1, 2, 3))
+
+    assert list(publications.available()) == [second, third]
+    assert publications.open(2).publication() == second
+    with pytest.raises(PublicationUnavailable):
+        publications.open(first.publication_id)
+
+
+def test_a_publication_never_published_is_unavailable(store: GoldStore) -> None:
+    publish(store, 1)
+
+    with pytest.raises(PublicationUnavailable):
+        store.open(2)

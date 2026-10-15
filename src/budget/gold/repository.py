@@ -80,3 +80,38 @@ class GoldLineageRepository(Protocol):
     def classification_review_items(self) -> Sequence[ClassificationReviewItem]:
         """Return every open classification review item."""
         ...
+
+
+class PublicationUnavailableError(LookupError):
+    """The publication does not exist, or its result is no longer retained."""
+
+    def __init__(self, publication_id: int) -> None:
+        """Name the publication that cannot be read."""
+        super().__init__(
+            f"publication {publication_id} is not available: it does not exist "
+            "or its result is no longer retained"
+        )
+
+
+# The name `gold-contract.md` gives the refusal; both names are one class.
+PublicationUnavailable = PublicationUnavailableError
+
+
+class GoldPublications(Protocol):
+    """The retained publications of one store; a consumer opens one at a time."""
+
+    def current(self) -> GoldPublication | None:
+        """Return the current publication, or None when there is none."""
+        ...
+
+    def available(self) -> Sequence[GoldPublication]:
+        """Return the publications whose results are retained."""
+        ...
+
+    def open(self, publication_id: int) -> GoldRepository:
+        """Return a repository bound to one publication.
+
+        Raises `PublicationUnavailable` when the publication does not exist or
+        its result is not retained.
+        """
+        ...
