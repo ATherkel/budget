@@ -115,6 +115,9 @@ CREATE TABLE transactions (
         balance_check IN ('opening', 'consistent', 'break', 'missing_balance')
     ),
     PRIMARY KEY (publication_id, transaction_id),
+    -- The target of an allocation's reference, so the two agree on account
+    -- and date (gold-contract.md, invariant 6).
+    UNIQUE (publication_id, transaction_id, account_id, transaction_date),
     FOREIGN KEY (publication_id, account_id)
         REFERENCES accounts (publication_id, account_id)
 ) STRICT;
@@ -128,8 +131,9 @@ CREATE TABLE category_allocations (
     category_id TEXT NOT NULL,
     amount INTEGER NOT NULL,
     PRIMARY KEY (publication_id, allocation_id),
-    FOREIGN KEY (publication_id, transaction_id)
-        REFERENCES transactions (publication_id, transaction_id),
+    FOREIGN KEY (publication_id, transaction_id, account_id, transaction_date)
+        REFERENCES transactions
+            (publication_id, transaction_id, account_id, transaction_date),
     FOREIGN KEY (publication_id, account_id)
         REFERENCES accounts (publication_id, account_id),
     FOREIGN KEY (publication_id, category_id)
