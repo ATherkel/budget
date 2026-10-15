@@ -6,10 +6,10 @@ Every store is the test profile's, in a temporary folder, created by
 """
 
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import closing
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -21,6 +21,7 @@ from budget.gold import (
     GoldResult,
     PublicationUnavailable,
 )
+from budget.gold.models import ReportingMonth
 from budget.gold.recipe import Recipe, RecipeImportRun
 from budget.gold.storage import migrate_gold
 from budget.gold.store import (
@@ -224,3 +225,32 @@ def test_a_configuration_is_stored_once_by_its_fingerprint(
         ).fetchall()
 
     assert stored == [(CONFIGURATION.fingerprint, CONFIGURATION.canonical_text)]
+
+
+START, END = date(2026, 1, 1), date(2026, 5, 31)
+READS: dict[str, Callable[[GoldRepository], object]] = {
+    "accounts": lambda gold: gold.accounts(),
+    "categories": lambda gold: gold.categories(),
+    "transactions": lambda gold: gold.transactions(start_date=START, end_date=END),
+    "category_allocations": lambda gold: gold.category_allocations(
+        start_date=START, end_date=END
+    ),
+    "monthly_balances": lambda gold: gold.monthly_balances(
+        start_month=ReportingMonth.of(START), end_month=ReportingMonth.of(END)
+    ),
+}
+
+
+@pytest.mark.parametrize("read", READS.values(), ids=READS.keys())
+def test_a_repository_whose_result_is_deleted_refuses_to_read(
+    store: GoldStore, read: Callable[[GoldRepository], object]
+) -> None:
+    # publications.md: a page pinned to a publication whose result is deleted
+    # gets PublicationUnavailable, never an empty page that reads as zero.
+    publish(store, 1)
+    pinned = store.open(1)
+    publish(store, 2)
+    publish(store, 3)
+
+    with pytest.raises(PublicationUnavailable):
+        read(pinned)
