@@ -14,7 +14,7 @@ import json
 import sqlite3
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from types import TracebackType
 from typing import Final, Literal, Self
@@ -75,6 +75,12 @@ _INSERT_PUBLICATION: Final = (
     " replayed_at, contract_version, fingerprint_scheme, result_fingerprint)"
     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
+_INSERT_MOVE: Final = (
+    "INSERT INTO pointer_moves"
+    " (moved_at, from_publication_id, to_publication_id, cause)"
+    " VALUES (?, ?, ?, ?)"
+)
+_SELECT_MOVES: Final = "SELECT * FROM pointer_moves ORDER BY move"
 _INSERT_RESULT: Final = "INSERT INTO results (publication_id) VALUES (?)"
 _INSERT_ACCOUNTS: Final = (
     "INSERT INTO accounts (publication_id, account_id, display_name,"
@@ -196,7 +202,8 @@ class GoldStore:
 
     def pointer_history(self) -> Sequence[PointerMove]:
         """Return every move of the current pointer, oldest first."""
-        raise NotImplementedError
+        rows = self._connection.execute(_SELECT_MOVES)
+        return tuple(_move(row) for row in rows)
 
     def publish(
         self,
@@ -213,6 +220,7 @@ class GoldStore:
             connection.execute(_INSERT_PUBLICATION, _publication_row(publication))
             connection.execute(_INSERT_RESULT, (publication.publication_id,))
             _write(connection, encoded)
+            _move_pointer(connection, publication.publication_id, "build")
 
 
 class StoredPublication:
@@ -342,6 +350,32 @@ def _encode(publication_id: int, records: GoldRecords) -> _Encoded:
             _balance_row(publication_id, s, _currency(currencies, s.account_id))
             for s in records.monthly_balances
         ),
+    )
+
+
+def _move_pointer(
+    connection: sqlite3.Connection, to_publication_id: int, cause: PointerCause
+) -> None:
+    """Append one move from the current publication to `to_publication_id`.
+
+    The move is the last statement of its transaction, so `moved_at` is read
+    just before the commit it records.
+    """
+    pointer = connection.execute(_SELECT_CURRENT_ID).fetchone()
+    from_publication_id = None if pointer is None else pointer[0]
+    moved_at = datetime.now(UTC).isoformat()
+    connection.execute(
+        _INSERT_MOVE, (moved_at, from_publication_id, to_publication_id, cause)
+    )
+
+
+def _move(row: sqlite3.Row) -> PointerMove:
+    """Read one `pointer_moves` row."""
+    return PointerMove(
+        moved_at=datetime.fromisoformat(row["moved_at"]),
+        from_publication_id=row["from_publication_id"],
+        to_publication_id=row["to_publication_id"],
+        cause=row["cause"],
     )
 
 
