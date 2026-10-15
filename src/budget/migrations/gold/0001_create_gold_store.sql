@@ -17,7 +17,7 @@ CREATE TABLE store_identity (
 CREATE TABLE publications (
     publication_id INTEGER PRIMARY KEY CHECK (publication_id >= 1),
     kind TEXT NOT NULL CHECK (kind IN ('pipeline', 'as_known_at')),
-    label TEXT,
+    label TEXT CHECK (label IS NULL OR trim(label) <> ''),
     known_at TEXT NOT NULL,
     built_at TEXT NOT NULL,
     replayed_at TEXT,
