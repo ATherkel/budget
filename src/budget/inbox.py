@@ -3,7 +3,10 @@
 
 Each export in `inbox/<account_id>/` is previewed, then imported on its own
 through `import_inbox_file`, under the one writer lock the command holds, and
-Silver is then rebuilt from the Bronze those imports wrote. A misfiled or
+Silver is then rebuilt from the Bronze those imports wrote. A payload the
+inbox holds under more than one declared account is a cross-account duplicate:
+every file in it is refused before the first write, because which account the
+bank really exported it for is unknown. A misfiled or
 unreadable export, or one its format cannot read, is found by its preview,
 before anyone is asked for its range, and never reaches Bronze: it waits
 in the inbox for a fresh download or a reader fix.
@@ -44,8 +47,12 @@ from budget.rebuilding import (
 
 # The outcomes that leave a file in the inbox and make `import` exit 3.
 LEFT_IN_INBOX: Final = frozenset(
-    {"refused", "misfiled", "unreadable", "format failure"}
+    {"refused", "misfiled", "unreadable", "format failure", "incident"}
 )
+# Why an incident file is never imported: the same bytes are in the inbox
+# under another account, and only a person can say which account they belong
+# to.
+INCIDENT_REASON: Final = "the same bytes are in the inbox under another account"
 # How a file in a folder that names no account is shown: the folder's name is
 # typed by hand, so it may carry a bank account number.
 NO_ACCOUNT: Final = "(no account)"
@@ -290,6 +297,13 @@ def cross_account_duplicates(
     )
 
 
+def incident_files(incidents: Sequence[DuplicateIncident]) -> frozenset[Path]:
+    """Name every file the incidents hold, so none of them is imported."""
+    return frozenset(
+        previewed.source for incident in incidents for previewed in incident.files
+    )
+
+
 def refusal_reasons(run: ImportRun, previewed: ExportPreview) -> tuple[str, ...]:
     """Say why Bronze refused a run, as `declared_range_refused` decides it.
 
@@ -359,12 +373,15 @@ def import_inbox(
     lock: WriterLock,
     previews: Sequence[ExportPreview],
     declared: Mapping[Path, Coverage],
+    excluded: frozenset[Path],
 ) -> ImportedInbox:
     """Import each file with its declared range, then rebuild Silver.
 
     `declared` maps each file that is not skipped to the range the person
-    declared for it, all of them settled before this is called. Files are
-    numbered in `previews`' order, the order the person was shown them in.
+    declared for it, all of them settled before this is called, and `excluded`
+    names the files a duplicate incident holds: those are refused as incident
+    files and never presented to Bronze. Files are numbered in `previews`'
+    order, the order the person was shown them in.
     """
     files: list[FileOutcome] = []
     for ordinal, previewed in enumerate(previews, start=1):
@@ -373,6 +390,11 @@ def import_inbox(
                 FileOutcome(
                     ordinal, previewed.account_id, previewed.skipped, previewed.reason
                 )
+            )
+            continue
+        if previewed.source in excluded:
+            files.append(
+                FileOutcome(ordinal, previewed.account_id, "incident", INCIDENT_REASON)
             )
             continue
         imported = import_inbox_file(lock, previewed.source, declared[previewed.source])

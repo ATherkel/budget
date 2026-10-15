@@ -36,6 +36,7 @@ from budget.inbox import (
     cross_account_duplicates,
     import_inbox,
     inbox_exports,
+    incident_files,
     preview,
     require_import_allowed,
 )
@@ -286,7 +287,7 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
         if declared is None:
             sys.stdout.write("Nothing was imported.\n")
             return EXIT_OK
-        imported = import_inbox(lock, previews, declared)
+        imported = import_inbox(lock, previews, declared, incident_files(duplicates))
         sys.stdout.write(summaries.import_summary(imported))
         routine_logging.finished(
             profile,
