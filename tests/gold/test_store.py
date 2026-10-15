@@ -10,6 +10,7 @@ from collections.abc import Callable, Iterator
 from contextlib import closing
 from dataclasses import replace
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -35,6 +36,7 @@ from budget.gold.store import (
 from budget.inputs import ConfigurationSnapshot
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
+from budget.silver import MoneyPrecisionError
 from tests.gold.contract import GoldRepositoryContract
 from tests.gold.worked_example import (
     CATEGORY_ALLOCATIONS,
@@ -329,3 +331,26 @@ def test_a_blank_label_is_refused(store: GoldStore, blank: str) -> None:
         store.publish(GoldResult(labeled, RECORDS), RECIPE, CONFIGURATION)
 
     assert store.current() is None
+
+
+def test_a_labeled_result_is_retained_after_later_publishes(store: GoldStore) -> None:
+    labeled = replace(publication(1), label="March review")
+    store.publish(GoldResult(labeled, RECORDS), RECIPE, CONFIGURATION)
+
+    later = [publish(store, n) for n in (2, 3, 4)]
+
+    assert list(store.available()) == [labeled, *later[1:]]
+    assert store.open(1).publication() == labeled
+
+
+def test_an_amount_its_currency_cannot_hold_writes_nothing(store: GoldStore) -> None:
+    first = publish(store, 1)
+    # Encoding refuses it before the write transaction begins.
+    last = replace(MONTHLY_BALANCES[-1], closing_balance=Decimal("1.005"))
+    records = replace(RECORDS, monthly_balances=(*MONTHLY_BALANCES[:-1], last))
+
+    with pytest.raises(MoneyPrecisionError):
+        store.publish(GoldResult(publication(2), records), RECIPE, CONFIGURATION)
+
+    assert store.current() == first
+    assert store.next_publication_id() == 2
