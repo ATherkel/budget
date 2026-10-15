@@ -29,7 +29,7 @@ from budget.gold.models import (
     ReportingMonth,
 )
 from budget.gold.recipe import Recipe
-from budget.gold.repository import GoldRepository
+from budget.gold.repository import GoldRepository, PublicationUnavailableError
 from budget.gold.result import GoldRecords, GoldResult, refuse_bare_string
 from budget.gold.storage import open_gold_connection
 from budget.inputs.snapshot import ConfigurationSnapshot
@@ -87,6 +87,27 @@ _INSERT_PUBLICATION: Final = (
     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 _SELECT_NEXT_ID: Final = "SELECT coalesce(max(publication_id), 0) + 1 FROM publications"
+# A result is retained while it is current, previous (the last move's
+# origin) or labeled (`publications.md`, *Retention*).
+_SELECT_STALE_IDS: Final = (
+    "WITH last AS (SELECT from_publication_id, to_publication_id"
+    " FROM pointer_moves ORDER BY move DESC LIMIT 1)"
+    " SELECT publication_id FROM results"
+    " WHERE publication_id NOT IN (SELECT to_publication_id FROM last)"
+    " AND publication_id NOT IN"
+    " (SELECT from_publication_id FROM last WHERE from_publication_id NOT NULL)"
+    " AND publication_id NOT IN"
+    " (SELECT publication_id FROM publications WHERE label NOT NULL)"
+)
+# Rows that reference others go first, and `results` last.
+_DELETE_RESULT: Final = (
+    "DELETE FROM monthly_balances WHERE publication_id = ?",
+    "DELETE FROM category_allocations WHERE publication_id = ?",
+    "DELETE FROM transactions WHERE publication_id = ?",
+    "DELETE FROM categories WHERE publication_id = ?",
+    "DELETE FROM accounts WHERE publication_id = ?",
+    "DELETE FROM results WHERE publication_id = ?",
+)
 _INSERT_MOVE: Final = (
     "INSERT INTO pointer_moves"
     " (moved_at, from_publication_id, to_publication_id, cause)"
@@ -206,6 +227,8 @@ class GoldStore:
         row = self._connection.execute(
             _SELECT_RETAINED_ONE, (publication_id,)
         ).fetchone()
+        if row is None:
+            raise PublicationUnavailableError(publication_id)
         return StoredPublication(self._connection, _publication(row))
 
     def next_publication_id(self) -> int:
@@ -236,6 +259,7 @@ class GoldStore:
             connection.execute(_INSERT_RESULT, (publication.publication_id,))
             _write(connection, encoded)
             _move_pointer(connection, publication.publication_id, "build")
+        _delete_stale_results(self._connection)
 
 
 class StoredPublication:
@@ -366,6 +390,20 @@ def _encode(publication_id: int, records: GoldRecords) -> _Encoded:
             for s in records.monthly_balances
         ),
     )
+
+
+def _delete_stale_results(connection: sqlite3.Connection) -> None:
+    """Delete, in one transaction, every result that is no longer retained.
+
+    It runs after the publish it follows has committed, so a failure here
+    never undoes a publish; the next publish deletes what this one left.
+    The publications' metadata and recipes stay.
+    """
+    with connection:
+        connection.execute("BEGIN IMMEDIATE")
+        stale = connection.execute(_SELECT_STALE_IDS).fetchall()
+        for statement in _DELETE_RESULT:
+            connection.executemany(statement, stale)
 
 
 def _next_publication_id(connection: sqlite3.Connection) -> int:
