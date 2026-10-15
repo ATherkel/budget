@@ -36,7 +36,13 @@ from budget.inputs import ConfigurationSnapshot
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 from tests.gold.contract import GoldRepositoryContract
-from tests.gold.worked_example import MONTHLY_BALANCES, PUBLICATION, RECORDS
+from tests.gold.worked_example import (
+    CATEGORY_ALLOCATIONS,
+    MONTHLY_BALANCES,
+    PUBLICATION,
+    RECORDS,
+    SAVINGS,
+)
 from tests.gold.worked_silver import REGISTRY, TAXONOMY
 
 CONFIGURATION = ConfigurationSnapshot(accounts=REGISTRY, taxonomy=TAXONOMY, rules={})
@@ -291,3 +297,24 @@ def test_a_view_is_never_published_as_current(store: GoldStore) -> None:
 
     assert store.current() is None
     assert store.next_publication_id() == 1
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [{"account_id": SAVINGS}, {"transaction_date": date(1999, 1, 1)}],
+    ids=["other-account", "other-date"],
+)
+def test_an_allocation_unlike_its_transaction_is_refused(
+    store: GoldStore, changes: dict[str, object]
+) -> None:
+    # gold-contract.md, invariant 6: an allocation's account_id and
+    # transaction_date equal its transaction's, so reads by account or date
+    # never move category money onto another account or month.
+    first, *rest = CATEGORY_ALLOCATIONS
+    moved = replace(first, **changes)
+    records = replace(RECORDS, category_allocations=(moved, *rest))
+
+    with pytest.raises(sqlite3.IntegrityError):
+        store.publish(GoldResult(publication(1), records), RECIPE, CONFIGURATION)
+
+    assert store.current() is None
