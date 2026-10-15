@@ -21,6 +21,8 @@ from itertools import zip_longest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pytest
+
 from budget.bronze import BronzeStore
 from budget.profiles import Profile
 from budget.silver import ReviewItem, SilverResult, SilverStore
@@ -87,9 +89,9 @@ def _between(rows: Iterable[_Row], first: str, last: str) -> list[_Row]:
 
 @dataclass(frozen=True)
 class _Export:
-    """One export file, the range declared for it, and the month it arrives."""
+    """One export file, the range declared for it, and the batch it arrives in."""
 
-    month: int
+    batch: int
     account_id: str
     name: str
     content: bytes
@@ -174,6 +176,8 @@ def _exports() -> tuple[_Export, ...]:
             "2026-03-01",
             "2026-03-31",
         ),
+        # A day after March's export: runs sharing an export date are
+        # admitted in import order, which the two paths need not share.
         _Export(
             3,
             "joint-current",
@@ -216,6 +220,8 @@ def _import(profile_file: Path, profile: Profile, exports: Sequence[_Export]) ->
     typed = "".join(f"{each.covers_from}\n{each.covers_through}\n" for each in listed)
     status, _, stderr = import_(profile_file, typed=typed + "y\n")
     assert (status, stderr) == (EXIT_OK, "")
+    # Answers out of step with the listing import nothing, yet exit 0.
+    assert not any(path.is_file() for path in profile.inbox.rglob("*"))
 
 
 def _run_names(profile: Profile) -> dict[str, str]:
@@ -258,7 +264,7 @@ def _comparable(result: SilverResult, runs: Mapping[str, str]) -> SilverResult:
     named_items = (
         replace(
             each,
-            review_item_id=items.get(each.review_item_id, each.review_item_id),
+            review_item_id=items[each.review_item_id],
             payload_ids=tuple(each.payload_ids),
         )
         for each in result.review_items
@@ -291,6 +297,10 @@ def _silver(profile: Profile) -> SilverResult:
     return _comparable(result, _run_names(profile))
 
 
+class SilversDifferError(AssertionError):
+    """Two Silvers that should be equal differ; the message names where."""
+
+
 def _first_difference(monthly: SilverResult, at_once: SilverResult) -> str:
     """Name the first row the two Silvers disagree on; empty when they agree."""
     for table in (field.name for field in fields(SilverResult)):
@@ -304,11 +314,16 @@ def _first_difference(monthly: SilverResult, at_once: SilverResult) -> str:
     return ""
 
 
-def _monthly(folder: Path, exports: Sequence[_Export]) -> Profile:
-    """A household that imports `exports` one month at a time, in order."""
+def _monthly(
+    folder: Path, exports: Sequence[_Export], *, newest_first: bool = False
+) -> Profile:
+    """A household that imports `exports` one batch at a time.
+
+    The batches arrive oldest first, as in production, or newest first.
+    """
     profile_file, profile = _household(folder)
-    for month in sorted({each.month for each in exports}):
-        _import(profile_file, profile, [e for e in exports if e.month == month])
+    for batch in sorted({each.batch for each in exports}, reverse=newest_first):
+        _import(profile_file, profile, [e for e in exports if e.batch == batch])
     return profile
 
 
@@ -330,21 +345,26 @@ class ImportEquivalenceTests(unittest.TestCase):
 
         assert not difference, difference
 
-    # #282: Bronze stores whichever copy of the repeated January export
-    # arrives first, and Silver admits the payload at that copy's date.
-    @unittest.expectedFailure
+    # Only the Silvers' difference is expected: a failure while importing
+    # still fails the test.
+    @pytest.mark.xfail(
+        raises=SilversDifferError,
+        strict=True,
+        reason="#282: Bronze stores whichever copy of a repeated export arrives "
+        "first, and Silver admits the payload at that copy's date",
+    )
     def test_months_imported_newest_first_end_in_the_same_silver(self) -> None:
         exports = _exports()
         with TemporaryDirectory() as directory:
             monthly = _monthly(Path(directory) / "monthly", exports)
-            profile_file, newest_first = _household(Path(directory) / "newest-first")
-            for month in sorted({each.month for each in exports}, reverse=True):
-                batch = [e for e in exports if e.month == month]
-                _import(profile_file, newest_first, batch)
+            newest_first = _monthly(
+                Path(directory) / "newest-first", exports, newest_first=True
+            )
 
             difference = _first_difference(_silver(monthly), _silver(newest_first))
 
-        assert not difference, difference
+        if difference:
+            raise SilversDifferError(difference)
 
     def test_the_exports_hold_every_case_the_comparison_must_cover(self) -> None:
         with TemporaryDirectory() as directory:
