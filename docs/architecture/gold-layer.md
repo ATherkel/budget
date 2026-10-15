@@ -156,8 +156,11 @@ months like any other. Silver passes each counted run's export date and range
 on as an `EvidenceExport` ([`silver-layer.md`](silver-layer.md#evidence-ranges)),
 so Gold never reads Bronze. An export whose range starts after the month
 cannot show its late bookings, however late it was produced. The window is 7
-days unless the profile sets another, and the build is given it rather than
-reading a clock or a constant. The flag depends only on recorded export dates
+days unless the profile's `[gold] late_booking_days` sets another whole number
+of days, 0 or more ([`operations.md`](operations.md#selecting-a-profile)). The
+build is given it rather than reading a clock or a constant, refuses one that
+is negative or not whole days, and the recipe records it
+([`publications.md`](publications.md#the-recipe)). The flag depends only on recorded export dates
 and ranges and that window, so a rebuild of the same recipe gives the same
 flags. Analytics combines it with the reference date to decide
 the provisional label
