@@ -826,6 +826,45 @@ class DuplicateIncidentTests(unittest.TestCase):
             with BronzeStore(profile) as store:
                 assert store.import_runs() == ()
 
+    def test_the_group_survives_a_member_that_cannot_be_read_again(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            current = drop(profile, "joint-current", "danske-20260305.csv", content)
+            savings = drop(profile, "joint-savings", "danske-20260305.csv", content)
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            # Another program takes joint-current's file after the preview read
+            # it, so only a preflight that reads the bytes a second time loses
+            # the group. The bytes already read are the evidence.
+            read_bytes = Path.read_bytes
+            reads: dict[Path, int] = {}
+
+            def faulty_second_read(path: Path) -> bytes:
+                reads[path] = reads.get(path, 0) + 1
+                if path == current and reads[path] == 2:
+                    raise PermissionError(13, "Permission denied", str(path))
+                return read_bytes(path)
+
+            with mock.patch.object(
+                Path, "read_bytes", autospec=True, side_effect=faulty_second_read
+            ):
+                status, stdout, stderr = import_(
+                    profile_file, "--ranges", str(ranges), typed="y\n", terminal=True
+                )
+
+            assert (
+                "Cross-account duplicates: 1 incident, 2 files impacted\n" in stdout
+            ), stdout
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert current.read_bytes() == content
+            assert savings.read_bytes() == content
+            assert _archived(profile) == []
+            assert not profile.import_log_file.exists()
+            with BronzeStore(profile) as store:
+                assert store.import_runs() == ()
+
     def test_every_file_impacted_admits_nothing_and_rebuilds_nothing(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
