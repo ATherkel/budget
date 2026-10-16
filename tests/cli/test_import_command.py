@@ -33,6 +33,16 @@ EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
 EXIT_REFUSED_ENVIRONMENT = 4
 NOW = datetime(2026, 3, 5, 18, 5, 11, 120731, tzinfo=UTC)
+# One declared account more than the household fixture holds, for a group that
+# spans three accounts.
+THIRD_ACCOUNT = """
+[account.pension]
+display_name = "Pension"
+account_type = "savings"
+ownership_scope = "person"
+currency = "DKK"
+source_format = "danske-csv-v1"
+"""
 
 
 def _household(profile_file: Path, folder: Path) -> Profile:
@@ -810,6 +820,69 @@ class DuplicateIncidentTests(unittest.TestCase):
             assert not profile.import_log_file.exists()
             with BronzeStore(profile) as store:
                 assert store.import_runs() == ()
+
+
+class DuplicateIncidentCoverageTests(unittest.TestCase):
+    """The detection shapes the issue lists, pinned after the fact."""
+
+    def test_a_group_under_three_accounts_refuses_every_member(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            profile.accounts_file.write_text(ACCOUNTS + THIRD_ACCOUNT, encoding="utf-8")
+            content = payload("01.03.2026")
+            members = [
+                drop(profile, account_id, "danske-20260305.csv", content)
+                for account_id in ("joint-current", "joint-savings", "pension")
+            ]
+
+            status, stdout, stderr = import_(profile_file, typed="y\n", terminal=True)
+
+            assert "Cross-account duplicates: 1 incident, 3 files impacted\n" in stdout
+            assert "Duplicate 1 (3 files)\n" in stdout
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            for member in members:
+                assert member.read_bytes() == content
+            assert _archived(profile) == []
+            assert not profile.import_log_file.exists()
+            with BronzeStore(profile) as store:
+                assert store.import_runs() == ()
+
+    def test_incidents_count_together_however_the_files_were_saved(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            first = payload("01.03.2026")
+            second = payload("02.03.2026")
+            repeat = payload("03.03.2026")
+            # Two groups between the same pair of accounts, one of them with
+            # two copies inside a single account, saved in an order that does
+            # not match the listing: the report follows the listing.
+            drop(profile, "joint-savings", "danske-20260309.csv", second)
+            drop(profile, "joint-current", "danske-20260305.csv", first)
+            drop(profile, "joint-savings", "danske-20260307.csv", first)
+            drop(profile, "joint-current", "danske-20260306.csv", first)
+            drop(profile, "joint-current", "danske-20260308.csv", second)
+            # The same bytes twice under one account are a repeat, not an
+            # incident, however many copies are saved.
+            drop(profile, "joint-savings", "danske-20260310.csv", repeat)
+            drop(profile, "joint-savings", "danske-20260311.csv", repeat)
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+
+            status, stdout, stderr = import_(
+                profile_file, "--ranges", str(ranges), typed="y\n", terminal=True
+            )
+
+            assert "Cross-account duplicates: 2 incidents, 5 files impacted\n" in stdout
+            assert "Duplicate 1 (3 files)\n" in stdout
+            assert "Duplicate 2 (2 files)\n" in stdout
+            log = (profile.stores / LOG_FOLDER / LOG_FILE).read_text(encoding="utf-8")
+            [record] = [json.loads(line) for line in log.splitlines()]
+            assert record["counts"]["incidents"] == 2
+            assert record["counts"]["incident_files"] == 5
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
 
 
 class DuplicateIncidentLogTests(unittest.TestCase):
