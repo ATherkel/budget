@@ -9,11 +9,13 @@ from datetime import date
 from decimal import Decimal
 
 from budget.analytics import (
+    AccountMonth,
     AccountMonthCoverage,
     AccountMonthStatus,
     CategorySpending,
     MoneyInOut,
     MonthlyOverview,
+    Provisional,
     ReportContext,
     ReportCoverage,
     ReportPublication,
@@ -240,5 +242,37 @@ def test_partial_evidence_beside_no_evidence_is_partial() -> None:
         account_months=(
             _month(CURRENT, "Joint current", 2, "partial"),
             _month(NEW, "New current", 2, "no_data"),
+        ),
+    )
+
+
+def test_a_month_with_no_evidence_reports_every_figure_as_unknown() -> None:
+    # report-contract.md, "June, reference date 2026-06-03: no data".
+    context = _context(6, reference_date=date(2026, 6, 3))
+
+    assert monthly_overview(GOLD, context, is_current=True) == MonthlyOverview(
+        context=context,
+        publication=P1,
+        currency="DKK",
+        income=None,
+        expenses=None,
+        net_cash_flow=None,
+        savings_rate=None,
+        categories=(),
+        unclassified=None,
+        adjustments=None,
+        coverage=ReportCoverage(
+            status="no_data",
+            account_months=(
+                _month(CURRENT, "Joint current", 6, "no_data"),
+                _month(SAVINGS, "Joint savings", 6, "no_data"),
+            ),
+        ),
+        provisional=Provisional(
+            reasons=frozenset({"current_month", "late_bookings_unsettled"}),
+            unsettled=(
+                AccountMonth(CURRENT, "Joint current", ReportingMonth(2026, 6)),
+                AccountMonth(SAVINGS, "Joint savings", ReportingMonth(2026, 6)),
+            ),
         ),
     )
