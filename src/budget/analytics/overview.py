@@ -6,9 +6,10 @@ never decides which publication a page reads.
 """
 
 import calendar
+from collections.abc import Collection
 from datetime import date
 
-from budget.analytics.measures import figures
+from budget.analytics.measures import UNKNOWN, Figures, figures
 from budget.analytics.reports import (
     MonthlyOverview,
     ReportContext,
@@ -37,6 +38,21 @@ def _report_publication(gold: GoldRepository, *, is_current: bool) -> ReportPubl
     )
 
 
+def _figures(
+    gold: GoldRepository, month: ReportingMonth, account_ids: Collection[str]
+) -> Figures:
+    """Return the figures of `month`'s transactions on `account_ids`."""
+    start = date(month.year, month.month, 1)
+    end = date(month.year, month.month, calendar.monthrange(month.year, month.month)[1])
+    return figures(
+        gold.transactions(start_date=start, end_date=end, account_ids=account_ids),
+        gold.category_allocations(
+            start_date=start, end_date=end, account_ids=account_ids
+        ),
+        gold.categories(),
+    )
+
+
 def monthly_overview(
     gold: GoldRepository, context: ReportContext, *, is_current: bool
 ) -> MonthlyOverview:
@@ -51,17 +67,10 @@ def monthly_overview(
         context.month,
         context.reference_date,
     )
-    month = context.month
-    start = date(month.year, month.month, 1)
-    end = date(month.year, month.month, calendar.monthrange(month.year, month.month)[1])
-    known = figures(
-        gold.transactions(
-            start_date=start, end_date=end, account_ids=context.account_ids
-        ),
-        gold.category_allocations(
-            start_date=start, end_date=end, account_ids=context.account_ids
-        ),
-        gold.categories(),
+    known = (
+        UNKNOWN
+        if judged.coverage.status == "no_data"
+        else _figures(gold, context.month, context.account_ids)
     )
     return MonthlyOverview(
         context=context,

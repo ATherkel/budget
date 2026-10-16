@@ -25,15 +25,27 @@ ZERO = Decimal("0.00")
 
 @dataclass(frozen=True)
 class Figures:
-    """Every money figure of one month's overview."""
+    """Every money figure of one month's overview; all null without evidence."""
 
-    income: Decimal
-    expenses: Decimal
-    net_cash_flow: Decimal
+    income: Decimal | None
+    expenses: Decimal | None
+    net_cash_flow: Decimal | None
     savings_rate: Decimal | None
     categories: tuple[CategorySpending, ...]
-    unclassified: MoneyInOut
-    adjustments: MoneyInOut
+    unclassified: MoneyInOut | None
+    adjustments: MoneyInOut | None
+
+
+# With no evidence a figure is unknown, never zero (report-contract.md).
+UNKNOWN = Figures(
+    income=None,
+    expenses=None,
+    net_cash_flow=None,
+    savings_rate=None,
+    categories=(),
+    unclassified=None,
+    adjustments=None,
+)
 
 
 def _total(amounts: Iterable[Decimal]) -> Decimal:
