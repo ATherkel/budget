@@ -51,6 +51,17 @@ def _copy_collections(records: GoldRecords | GoldLineageRecords) -> None:
         object.__setattr__(records, record_kind.name, copied)
 
 
+def _refuse_bare_string(account_ids: Collection[str] | None) -> None:
+    """Raise `TypeError` for a str, which `in` would search for substrings.
+
+    The check runs before any record is read, so a query matching no records
+    refuses it too.
+    """
+    if isinstance(account_ids, str):
+        message = "account_ids takes a collection of account ids, not one str"
+        raise TypeError(message)
+
+
 def _named(account_id: str, account_ids: Collection[str] | None) -> bool:
     """Whether `account_ids` names `account_id`; `None` names every account."""
     return account_ids is None or account_id in account_ids
@@ -97,6 +108,7 @@ class GoldResult:
         account_ids: Collection[str] | None = None,
     ) -> Sequence[GoldTransaction]:
         """Return the transactions dated from `start_date` through `end_date`."""
+        _refuse_bare_string(account_ids)
         return tuple(
             transaction
             for transaction in self._records.transactions
@@ -112,6 +124,7 @@ class GoldResult:
         account_ids: Collection[str] | None = None,
     ) -> Sequence[GoldCategoryAllocation]:
         """Return the allocations dated from `start_date` through `end_date`."""
+        _refuse_bare_string(account_ids)
         return tuple(
             allocation
             for allocation in self._records.category_allocations
@@ -127,6 +140,7 @@ class GoldResult:
         account_ids: Collection[str] | None = None,
     ) -> Sequence[MonthlyBalanceSnapshot]:
         """Return the snapshots for `start_month` through `end_month`."""
+        _refuse_bare_string(account_ids)
         return tuple(
             snapshot
             for snapshot in self._records.monthly_balances

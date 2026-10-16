@@ -64,7 +64,7 @@ current household interpretation.
 | `ownership_scope` | `OwnershipScope` | Yes | `household` or `person`. |
 | `currency` | ISO 4217 string | Yes | Currency of every amount and balance on this account. `DKK` in the first release. |
 | `closed_on` | `date`/null | No | Date the account closed; null while open. Ends the account's managed period. |
-| `coverage_start` | `date`/null | No | First day of the account's earliest evidence range (`silver-layer.md`, *Evidence Ranges*), which is the earliest `covers_from` over its admitted import runs, so a quiet account can be `complete` from the start of its first range. Null when the account has no admitted import run. |
+| `coverage_start` | `date`/null | No | First day of the account's earliest evidence range (`silver-layer.md`, *Evidence Ranges*), which is the earliest `covers_from` over its admitted import runs. With `evidence_through`, it lets consumers report an account with no transactions as `no_data` even before it has a managed period (`gold-layer.md`). Null when the account has no admitted import run. |
 | `evidence_through` | `date`/null | No | Last day of the account's latest evidence range (`silver-layer.md`, *Evidence Ranges*). Gold takes it from Silver's ranges and never derives it from an export date. Null when no export of the account has been imported. Days between the two dates can still fall in a gap between ranges. |
 
 ### `GoldCategory`
@@ -169,7 +169,9 @@ accounts for the same month, never across months. `coverage` is non-additive.
    immutable and are never reused for a different meaning. A category or
    account is retired by deactivating it, never by repointing its key. Every
    other attribute may change, and changing one restates history, which is
-   what Type 1 means.
+   what Type 1 means. A Silver transaction on an account the registry no
+   longer declares refuses the build rather than publishing an orphan fact
+   (see [`accounts.toml`](operations.md#accountstoml)).
 2. Each booked Silver transaction on a Gold account yields exactly one
    `GoldTransaction`. Only `booking_status=booked` rows qualify; pending and
    cancelled records remain provenance.
@@ -205,7 +207,10 @@ accounts for the same month, never across months. `coverage` is non-additive.
     `opening_balance + sum(amounts in the month) == closing_balance`.
 13. All first-release accounts use `DKK`. Consumers must never aggregate
     amounts or balances across different currencies.
-14. No `transaction_date` falls after its account's `closed_on`.
+14. No `transaction_date` falls after its account's `closed_on`. The Gold
+    build refuses a `closed_on` that would break this, rather than dropping
+    the transactions after it
+    ([`operations.md`, `accounts.toml`](operations.md#accountstoml)).
 15. A consumer reads exactly one Gold publication at a time, and every record
     it reads belongs to that publication. A consumer reads the current
     publication unless it opens another one explicitly. Identity across
@@ -226,7 +231,9 @@ accounts for the same month, never across months. `coverage` is non-additive.
 Analytics, forecasting, APIs, and presentation-facing services depend on this
 protocol only. The persistence technology is not part of this contract.
 All date and month ranges are inclusive. `account_ids=None` means every
-account, and an empty collection means none.
+account, and an empty collection means none. A bare `str` raises `TypeError`:
+it type-checks as a collection of strings, but means a forgotten pair of
+brackets.
 
 ```python
 class GoldRepository(Protocol):
@@ -339,7 +346,7 @@ class GoldLineageRepository(Protocol):
 | `classification_source` | enum | Yes | `manual`, `transfer_match`, `rule`, or `unclassified`. |
 | `rule_ids` | list of string | Yes | The highest-priority matching rules; they decided only when `classification_source` is `rule`. Empty when no rule matched. |
 | `decision_id` | string/null | Conditional | The manual decision that decided. Required when `classification_source` is `manual`, otherwise null. |
-| `classification_version` | string | Yes | Fingerprint of the classification inputs: the configuration snapshot (account registry, taxonomy, rules, and matching policy) and the effective classification decisions ([`publications.md`](publications.md)). |
+| `classification_version` | string | Yes | Fingerprint of the classification inputs: the configuration snapshot (account registry, taxonomy, and rules) and the effective classification decisions ([`publications.md`](publications.md)). The transfer matching policy and the classifier's code are not part of it; they change with the recipe's code version. |
 | `transfer_evidence` | `TransferEvidence`/null | Conditional | Required on every `transfer`, otherwise null. |
 | `review_item_ids` | list of string | Yes | Open classification review items involving this transaction. Often empty. |
 
@@ -389,7 +396,8 @@ a classified transaction and its single allocation summing to its amount; a
 transaction type that must carry no allocation; manual classification decision
 (visible through lineage); missing balance; chain break that demotes the
 previous month; first managed month (`partial`); complete quiet month; partial
-quiet month crossed by a broken link; `no_data` month beyond evidence; an
+quiet month crossed by a broken link; partial quiet month after a last
+transaction with no balance; `no_data` month beyond evidence; an
 account whose exports lag behind the latest published month; a month whose
 late bookings are settled and one whose covering export was produced less
 than the late-booking window after it ended; closed account; and two categories sharing a

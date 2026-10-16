@@ -75,9 +75,9 @@ A recipe names each input exactly and never by "latest":
 | Part | Content |
 | --- | --- |
 | Data | The set of import runs, each with its `import_run_id` and payload hash. Silver derives admission and quarantine from these; admission is not an input. |
-| Configuration snapshot | The parsed, canonical content of the account registry, category taxonomy, classification rules, and transfer matching policy. It is stored once per distinct content and referenced by its fingerprint. |
+| Configuration snapshot | The parsed, canonical content of the account registry, category taxonomy, and classification rules. It is stored once per distinct content and referenced by its fingerprint. |
 | Decision log position | The last decision-log entry included. The effective decisions are derived from the log up to that entry. |
-| Code version | The commit of the application code, with its locked dependencies, and the Gold contract version and Silver identity version it implements. |
+| Code version | The commit of the application code, with its locked dependencies, and the Gold contract version and Silver identity version it implements. It also determines the transfer matching policy, which is a constant of the code ([`classification.md`](classification.md#inputs)). |
 
 A recipe holds inputs only, so two recipes can be compared before anything is
 built. The recipe also records the Python and SQLite versions that ran the
@@ -96,7 +96,8 @@ any figure moved.
 
 `classification_version` in lineage is the fingerprint of the classification
 inputs: the configuration snapshot and the effective classification
-decisions.
+decisions. The transfer matching policy and the classifier's code are not part
+of it; they change with the recipe's code version.
 
 ## What Reproducible Promises
 
@@ -301,18 +302,26 @@ item, or voids an import run, is an entry in one append-only log:
 - The effective decisions at an entry are those recorded up to it and not
   superseded up to it, excluding `retract` entries, which are never
   effective.
-- An entry that targets a transaction already targeted by an effective
-  decision must list that decision in `supersedes`, and every decision it
-  lists must be effective. Otherwise the entry is rejected when it is
-  recorded, so ADR-011's "at most one decision per transaction" holds by
-  construction. The same validation serves the CLI now and a browser editor
+- Decisions collide only within a group, and a Silver decision never
+  collides with a Gold one:
+  - `classify`, `pair` and `one-sided-transfer` collide on a transaction, so
+    ADR-011's "at most one decision per transaction" holds by construction.
+  - `void-import-run` and `accept-discrepancy` collide on an import run.
+  - `withdrawn` and `same-transaction` exclude each other on a transaction.
+    Several `same-transaction` decisions stand for one transaction, one per
+    `record.payload_id`.
+- An entry that collides with an effective decision must list that decision
+  in `supersedes`. Every decision it lists must be effective, and, unless the
+  entry is a `retract`, must collide with it, so an entry never quietly
+  cancels a decision on another target. Otherwise the entry is rejected when
+  it is recorded. The same validation serves the CLI now and a browser editor
   later ([`operations.md`](operations.md#the-validation-boundary-for-decisions)).
 - One entry can supersede several decisions. A `pair` of two legs that are
   each classified by their own decision supersedes both in one entry, and
   therefore in one build, never passing through a publication where both legs
   are unclassified.
-- Rules, the taxonomy, the account registry, and the matching policy remain
-  edited files. Their history is the configuration snapshots in recipes.
+- Rules, the taxonomy, and the account registry remain edited files. Their
+  history is the configuration snapshots in recipes.
 
 ## Reading a Publication
 
@@ -388,7 +397,10 @@ Notes:
   unclassified out −129.00, one `rule-conflict` opened*. That diff is the cue
   to undo.
 - **Step 6.** The configuration snapshot is taken of parsed content, so a
-  rules file restored to its old meaning gives the same fingerprint.
+  rules file restored to its old meaning gives the same fingerprint. A
+  `contains` or `starts_with` pattern counts by its case-folded text, so
+  changing only its case is no change; a regular expression counts as
+  written.
 - **Step 7.** No fact or allocation changes. The `GoldCategory` row changes,
   so the result fingerprint changes too. Group rollups restate for every
   month: `leisure` −129.00, `housing` +129.00 in February.
