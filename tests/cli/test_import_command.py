@@ -351,6 +351,8 @@ class ImportCommandTests(unittest.TestCase):
                 "misfiled": 1,
                 "unreadable": 0,
                 "format_failure": 0,
+                "incidents": 0,
+                "incident_files": 0,
                 "admitted": 1,
                 "quarantined": 0,
                 "dropped": 0,
@@ -808,6 +810,54 @@ class DuplicateIncidentTests(unittest.TestCase):
             assert not profile.import_log_file.exists()
             with BronzeStore(profile) as store:
                 assert store.import_runs() == ()
+
+
+class DuplicateIncidentLogTests(unittest.TestCase):
+    def test_the_log_counts_the_incident_and_names_nothing(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            # One group of two accounts, one member of it misfiled, so the
+            # count is of the group and not of the outcome it was shown under.
+            drop(profile, "joint-current", "Konto-0099999999-20260305.csv", content)
+            drop(profile, "joint-savings", "danske-20260305.csv", content)
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+
+            status, stdout, stderr = import_(
+                profile_file, "--ranges", str(ranges), typed="y\n", terminal=True
+            )
+
+            log = (profile.stores / LOG_FOLDER / LOG_FILE).read_text(encoding="utf-8")
+            [record] = [json.loads(line) for line in log.splitlines()]
+            assert record["command"] == "import"
+            assert record["counts"] == {
+                "stored": 0,
+                "repeat": 0,
+                "refused": 0,
+                "misfiled": 1,
+                "unreadable": 0,
+                "format_failure": 0,
+                "incidents": 1,
+                "incident_files": 2,
+                "admitted": 0,
+                "quarantined": 0,
+                "dropped": 0,
+            }
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            # The diagnostic is counts, so the log names no file, no account
+            # number and no amount.
+            for value in (
+                "Konto-0099999999",
+                "danske-20260305.csv",
+                "0099999999",
+                "0012345678",
+                "-45,00",
+                "Café",
+            ):
+                assert value not in log, value
+            assert "misfiled: " in stdout
 
 
 class ProductionImportTests(unittest.TestCase):
