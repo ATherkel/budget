@@ -212,3 +212,33 @@ def test_a_selection_with_no_contributing_account_month_is_no_data() -> None:
         status="no_data",
         account_months=(_month(PERSON, "Person current", 2, "outside_history"),),
     )
+
+
+def test_a_partial_account_stays_partial_beside_one_without_history() -> None:
+    assert _coverage(LATER_GOLD, _context(2, CURRENT, PERSON)) == ReportCoverage(
+        status="partial",
+        account_months=(
+            _month(CURRENT, "Joint current", 2, "partial"),
+            _month(PERSON, "Person current", 2, "outside_history"),
+        ),
+    )
+
+
+def test_no_evidence_stays_no_data_beside_an_account_without_history() -> None:
+    assert _coverage(LATER_GOLD, _context(2, NEW, PERSON)) == ReportCoverage(
+        status="no_data",
+        account_months=(
+            _month(NEW, "New current", 2, "no_data"),
+            _month(PERSON, "Person current", 2, "outside_history"),
+        ),
+    )
+
+
+def test_partial_evidence_beside_no_evidence_is_partial() -> None:
+    assert _coverage(LATER_GOLD, _context(2, CURRENT, NEW)) == ReportCoverage(
+        status="partial",
+        account_months=(
+            _month(CURRENT, "Joint current", 2, "partial"),
+            _month(NEW, "New current", 2, "no_data"),
+        ),
+    )
