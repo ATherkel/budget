@@ -15,8 +15,8 @@ for (operations.md, *Profiles*).
 
 Each stage names itself and its own migration folder in a `StageStore`, so the
 runner, the refusals and the connection settings stay in one place while the
-files, the recorded stage and the messages stay stage-specific. Bronze and
-Silver each describe their store this way; Gold's first migration adds its own.
+files, the recorded stage and the messages stay stage-specific. Bronze, Silver
+and Gold each describe their store this way.
 """
 
 import sqlite3
