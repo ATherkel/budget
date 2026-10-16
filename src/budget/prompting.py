@@ -113,11 +113,14 @@ def _show_duplicates(incidents: Sequence[DuplicateIncident]) -> None:
 def ask_continue_after_duplicates(incidents: Sequence[DuplicateIncident]) -> bool:
     """Show each cross-account duplicate, then ask whether to import the rest.
 
-    Only `y` or `yes` goes on; every other answer leaves all the files where
-    they are and imports nothing.
+    Only `y` or `yes` goes on; every other answer, and input that ends before
+    an answer, leaves all the files where they are and imports nothing.
     """
     _show_duplicates(incidents)
-    return input(_CONTINUE_ANYWAY).strip().lower() in _YES
+    try:
+        return input(_CONTINUE_ANYWAY).strip().lower() in _YES
+    except EOFError:
+        return False
 
 
 def ask_ranges(
