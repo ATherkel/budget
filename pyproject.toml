@@ -13,14 +13,15 @@ dependencies = []
 budget = "budget.cli:run"
 
 [build-system]
-requires = ["uv_build>=0.12.23,<0.13.0"]
+requires = ["uv_build>=0.13.0,<0.14.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
     "complexipy>=4",
+    "coverage>=7.16.2",
     "pytest>=8",
-    "ruff>=0.16.10",
+    "ruff>=0.17.0",
     "ty>=0.0.84",
 ]
 

@@ -57,12 +57,15 @@ categories.
   transaction.
 - Every category has a direction, `income` or `expense`, shared by every
   category in its group, so a group rollup never mixes the two.
-- Identifiers are durable and household-assigned, such as `groceries`.
-- The taxonomy needs at least one income and one expense category, plus
+- Identifiers are durable and household-assigned, such as `groceries`. No
+  category may be named `transfer`, `adjustment` or `unknown`.
+- A useful taxonomy has at least one income and one expense category, plus
   categories for money that crosses the reporting boundary without being pay
   or spending: for example, money moved to a savings account that is not
   imported, or contributions from a member's account that is not imported.
-  Such money is never a transfer.
+  Such money is never a transfer. This is guidance, not a configuration
+  error: money no category rule matches stays `unknown` and is raised as an
+  `unclassified` review item.
 
 | Change | Effect |
 | --- | --- |
@@ -84,7 +87,10 @@ own facts. Only transfer matching relates transactions to each other.
 
 - `account_id`
 - description text: contains, starts with, or a regular expression, always
-  case-insensitive
+  case-insensitive. A contains or starts-with pattern and the description are
+  compared after Unicode case folding (`budget.inputs.fold`), so "ß" matches
+  "SS". A regular expression uses Python's `re.IGNORECASE`, which does not
+  equate "ß" with "SS".
 - amount: sign, or an inclusive range
 - transaction date: an inclusive range
 - the bank's category labels, where the source supplies them
@@ -249,6 +255,8 @@ anything is published, and the error lists every offending entry:
 
 - duplicate category, group, rule, or decision identifiers;
 - a category without a group, or a group whose categories differ in direction;
+- a category whose identifier is `transfer`, `adjustment` or `unknown`, the
+  transaction types that carry no category;
 - a rule or decision that references a missing category, including a deleted
   one;
 - a rule with no outcome, several outcomes, or an unparseable pattern;

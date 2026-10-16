@@ -189,7 +189,7 @@ def _inbox_account(profile: Profile, source: Path) -> Account:
     return account
 
 
-def _archive_candidates(run: ImportRun) -> tuple[str, ...]:
+def archive_candidates(run: ImportRun) -> tuple[str, ...]:
     """Name where a run's bytes may be archived, relative to the export archive.
 
     An accepted export keeps its original name in its account's folder, or,
@@ -237,7 +237,7 @@ def _archived_at(
     # holds now.
     candidates = {
         archive_path: profile.archive_file(archive_path)
-        for archive_path in _archive_candidates(run)
+        for archive_path in archive_candidates(run)
         if reserved.get(_place(archive_path), run.payload_id) == run.payload_id
     }
     for archive_path, target in candidates.items():
@@ -336,7 +336,7 @@ def _missing_folders(folder: Path) -> list[Path]:
     return missing
 
 
-def _log_entry(run: ImportRun, archive_path: str) -> bytes:
+def log_entry(run: ImportRun, archive_path: str) -> bytes:
     """Mirror one import run as an `imports.jsonl` line, with its line feed."""
     entry = {
         "format": IMPORT_LOG_FORMAT,
@@ -417,8 +417,8 @@ def _logged_archive_path(run: ImportRun, line: bytes) -> str:
     The entry must be exactly what this code writes for the run, at one of
     the places the run's export may be archived; anything else is damage.
     """
-    for archive_path in _archive_candidates(run):
-        if line == _log_entry(run, archive_path):
+    for archive_path in archive_candidates(run):
+        if line == log_entry(run, archive_path):
             return archive_path
     raise ImportLogDamagedError
 
@@ -467,7 +467,7 @@ def _proving_entry(
             archive_path, archived = _archived_at(profile, run, content, reserved)
         except ArchiveConflictError:
             continue
-        entry = _log_entry(run, archive_path)
+        entry = log_entry(run, archive_path)
         if archived and entry.startswith(state.cut_off):
             return run.import_run_id, archive_path, entry
     return None
@@ -533,7 +533,7 @@ def _bring_log_up_to_date(
         content = store.get_payload(run.payload_id).content
         archive_path = _archive(profile, run, content, reserved)
         reserved[_place(archive_path)] = run.payload_id
-        _append_to_log(profile.import_log_file, _log_entry(run, archive_path))
+        _append_to_log(profile.import_log_file, log_entry(run, archive_path))
         now_logged[run.import_run_id] = archive_path
     return now_logged
 

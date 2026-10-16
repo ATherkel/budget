@@ -7,6 +7,11 @@ A link joins two consecutive booked transactions and spans both their dates.
 It is verified when both balances exist and the later balance is the earlier
 plus the later amount. Bridging a missing balance for `balance_check` does not
 verify either link beside it.
+
+A last, open-ended link runs from the last transaction's date onward. It is
+verified when that transaction states its balance, so no quiet month after a
+last transaction with no balance is complete until a later import adds a
+transaction that states one.
 """
 
 from collections.abc import Iterable, Sequence
@@ -22,7 +27,10 @@ from budget.silver.models import AccountEvidence, EvidenceExport
 
 @dataclass(frozen=True)
 class _Link:
-    """Two consecutive transactions, from the earlier's date to the later's."""
+    """A stretch of the chain, from one transaction's date to the next's.
+
+    After the last transaction it runs onward without end.
+    """
 
     starts: date
     ends: date
@@ -30,15 +38,23 @@ class _Link:
 
 
 def _links(history: Sequence[GoldTransaction]) -> tuple[_Link, ...]:
-    return tuple(
+    last = history[-1]
+    return (
+        *(
+            _Link(
+                starts=earlier.transaction_date,
+                ends=later.transaction_date,
+                verified=earlier.balance_after is not None
+                and later.balance_after is not None
+                and later.balance_after == earlier.balance_after + later.amount,
+            )
+            for earlier, later in pairwise(history)
+        ),
         _Link(
-            starts=earlier.transaction_date,
-            ends=later.transaction_date,
-            verified=earlier.balance_after is not None
-            and later.balance_after is not None
-            and later.balance_after == earlier.balance_after + later.amount,
-        )
-        for earlier, later in pairwise(history)
+            starts=last.transaction_date,
+            ends=date.max,
+            verified=last.balance_after is not None,
+        ),
     )
 
 

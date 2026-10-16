@@ -10,9 +10,11 @@ import unittest
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import get_args
 
 import pytest
 
+from budget.gold.models import TransactionType
 from budget.inputs import (
     AssignAdjustment,
     AssignCategory,
@@ -113,6 +115,16 @@ class DocumentedExamplesTests(unittest.TestCase):
                 AssignAdjustment("Bank's interest correction"),
             ),
         }
+
+    def test_a_literal_pattern_keeps_its_text_beside_its_folded_form(self) -> None:
+        snapshot = configuration(rules=RULES.replace('"NETTO"', '["Straße", "NETTO"]'))
+        netto = snapshot.rules["r-netto"].when
+        correction = snapshot.rules["r-interest-correction"].when
+
+        assert netto.description_contains == ("Straße", "NETTO")
+        assert netto.folded_contains == ("strasse", "netto")
+        assert correction.description_starts_with == ("RENTEKORR",)
+        assert correction.folded_starts_with == ("rentekorr",)
 
 
 def refusal(
@@ -216,6 +228,35 @@ class FingerprintTests(unittest.TestCase):
         long = "1234567890123456789012345678"
         assert fingerprint(f"{long}.1") != fingerprint(f"{long}.2")
 
+    def test_a_literal_pattern_is_fingerprinted_without_its_case(self) -> None:
+        documented = configuration().fingerprint
+        for rules in (
+            RULES.replace('"NETTO"', '"netto"'),
+            RULES.replace('"RENTEKORR"', '"Rentekorr"'),
+            RULES.replace('"IKEA"', '["IKEA", "ikea"]'),
+        ):
+            with self.subTest(rules=rules):
+                assert rules != RULES
+                assert configuration(rules=rules).fingerprint == documented
+
+        def fingerprint(pattern: str) -> str:
+            rules = RULES.replace('"NETTO"', pattern)
+            assert rules != RULES
+            return configuration(rules=rules).fingerprint
+
+        assert fingerprint('"STRASSE"') == fingerprint('"straße"')
+
+    def test_a_regex_is_never_folded_into_another_meaning(self) -> None:
+        # In a regex, case is syntax: \S is the opposite of \s.
+        def fingerprint(pattern: str) -> str:
+            rules = RULES.replace(
+                'when.description_contains = "NETTO"',
+                f"when.description_regex = {pattern}",
+            )
+            return configuration(rules=rules).fingerprint
+
+        assert fingerprint('"^NETTO\\\\S"') != fingerprint('"^NETTO\\\\s"')
+
     def test_any_change_of_meaning_changes_the_fingerprint(self) -> None:
         documented = configuration().fingerprint
         for accounts, taxonomy, rules in (
@@ -271,6 +312,11 @@ class EveryFileTests(unittest.TestCase):
         )
 
 
+# The transaction types that carry no category, in the order the refusal test's
+# file declares them.
+UNCATEGORISED_TYPES = ("transfer", "adjustment", "unknown")
+
+
 class TaxonomyProblemTests(unittest.TestCase):
     def test_every_broken_entry_is_named_with_its_problems(self) -> None:
         # Groups are judged before categories, each in file order.
@@ -312,6 +358,42 @@ name = "Eating out"
             'taxonomy.toml: category "rent": group "housing" is not declared',
             'taxonomy.toml: category "eating-out": group is missing',
         )
+
+    def test_a_transaction_type_is_not_a_category_id(self) -> None:
+        taxonomy = """\
+format = 1
+
+[group.money]
+name = "Money"
+direction = "expense"
+
+[category.transfer]
+name = "Transfer"
+group = "money"
+
+[category.groceries]
+name = "Groceries"
+group = "money"
+
+[category.adjustment]
+name = "Adjustment"
+group = "money"
+
+[category.unknown]
+name = "Unknown"
+group = "money"
+"""
+
+        assert refusal(taxonomy=taxonomy, rules="format = 1\n") == tuple(
+            f'taxonomy.toml: category "{type_name}": '
+            "the ID is a transaction type that carries no category"
+            for type_name in UNCATEGORISED_TYPES
+        )
+
+    def test_the_refused_ids_are_gold_transaction_types(self) -> None:
+        # Inputs must not import Gold, so the loader keeps its own copy of the
+        # names; renaming or removing one of Gold's types fails here.
+        assert set(UNCATEGORISED_TYPES) <= set(get_args(TransactionType.__value__))
 
     def test_each_kind_holds_one_table_per_entry(self) -> None:
         for content, expected in (

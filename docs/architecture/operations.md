@@ -170,6 +170,9 @@ keep_all_days   = 14          # every set from the last 14 days
 keep_daily_days = 365         # then the newest set of each day
 keep_monthly    = "forever"   # then the newest set of each month
 
+[gold]
+late_booking_days = 7         # days after a month ends before an export settles it
+
 [dashboard]
 bind = "192.168.1.20"         # reserve this address for the PC in the router
 port = 8750
@@ -182,6 +185,16 @@ It has no `[backups]` table, because only production writes backup sets. The
 inbox and the export archive are separate folders, neither inside the other:
 otherwise the archive would hold the inbox file itself, and an import would
 remove the only copy.
+
+Both profiles may set `[gold] late_booking_days`, the late-booking window: how
+many days after a month ends an export must be produced before it settles the
+month's late bookings ([`gold-layer.md`](gold-layer.md#late-bookings-settled)).
+It is a whole number from 0 to 366, and defaults to 7 when the table or key is
+absent. 0 lets an export produced on a month's last day settle it; no month
+needs longer than a year, so a larger value is refused as a typo. The test
+profile always uses the default. The window is part of each publication's
+recipe ([`publications.md`](publications.md#the-recipe)), so changing it takes
+effect from the next publication and never relabels an earlier one.
 
 ### Where production lives
 
@@ -302,6 +315,24 @@ that file before Bronze, and the file is never moved to another account
 not the content: it does not catch an export the bank labelled with the wrong
 account.
 
+An account is retired by setting `closed_on`, never by deleting its entry. Once
+its exports are imported, deleting the entry is a configuration error: the Gold
+build refuses, naming each account that Silver holds transactions for and the
+registry does not declare, and the current publication stays as it was. Its
+facts are never dropped silently. Restore the entry, with `closed_on` set if
+the account has closed, and rebuild.
+
+`closed_on` is optional: the date the account closed. It ends the account's
+managed period
+([`MonthlyBalanceSnapshot`](gold-contract.md#monthlybalancesnapshot)), so it
+may not fall before the account's latest booked transaction; a transaction on
+the closing date itself is allowed. The Gold build checks this before building
+anything. A `closed_on` recorded too early is a configuration error naming the
+account, its `closed_on` and its latest transaction date: nothing is built,
+the current publication is unchanged, and the command exits 3
+([Exit codes](#exit-codes)). The fix is to correct the date in
+`accounts.toml`; the build never drops the transactions after it.
+
 ### `taxonomy.toml`
 
 ```toml
@@ -395,8 +426,10 @@ The fields and their rules are defined in
 `same-transaction`, `withdrawn`, `accept-discrepancy` (Silver, issue #5); and
 `retract`, which withdraws an earlier decision without replacing it. It is
 named `retract` so it is not confused with *withdrawn*, which records that the
-bank removed a transaction. A new decision on a target that already has one
-must list the old one in `supersedes`, or the boundary rejects it. One entry
+bank removed a transaction. A new decision that collides with one in force
+must list the old one in `supersedes`, or the boundary rejects it; which
+kinds collide is set out in
+[`publications.md`](publications.md#the-decision-log). One entry
 can supersede several decisions: a `pair` whose two legs each have their own
 `classify` decision lists both. Nothing is edited in place.
 
@@ -408,6 +441,21 @@ The Silver kinds target these:
 | `accept-discrepancy` | one `import_run_id` | none |
 | `withdrawn` | one `transaction_id` | none |
 | `same-transaction` | the existing `transaction_id` | `record`: `{"payload_id": …, "record_ordinal": …}`, the source record that shows it under new text |
+
+The classification kinds
+([`classification.md`](classification.md#manual-decisions)) and `retract`
+target these:
+
+| Kind | `targets` | Other fields |
+| --- | --- | --- |
+| `classify` | one `transaction_id` | exactly one of `category`, a category ID, or `"adjustment": true` |
+| `pair` | two `transaction_id`s | none |
+| `one-sided-transfer` | one `transaction_id` | `counterpart_account_id`: the counterpart Gold account |
+| `retract` | none | none; `supersedes` lists at least one decision |
+
+An entry's `entry` is its line number, counting from 1. `recorded_at` is UTC
+to the second, such as `2026-04-10T17:02:11Z`: an instant has one spelling,
+and no daylight-saving change repeats or skips it.
 
 Two checks guard the log against edits that bypass `decide`:
 
@@ -524,7 +572,7 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | `verify` | Checks integrity, and replays the current publication's recipe to prove it reproduces (ADR-014). | `scratch/` only | No |
 | `dev refresh [--inputs] [--writable]` | Development only: restores production's newest complete backup set into `upstream/`, or with `--writable` into development's own stores. | Development only | No |
 | `serve` | Starts the read-only dashboard. | Nothing | No |
-| `set-passphrase` | Sets the dashboard passphrase. | The passphrase file | No |
+| `set-passphrase` | Sets the dashboard passphrase, which logs out every device. | The passphrase file | No |
 
 Review output shows each transaction with a short handle: the first 8
 characters of its `transaction_id`. `decide` accepts a handle; a handle that
@@ -837,8 +885,22 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   from the internet.
 - One household passphrase guards every page. It is stored as a `scrypt` hash
   in a file under `%APPDATA%\budget\`, never in OneDrive or the repository. A
-  successful login sets an `HttpOnly`, `SameSite=Strict` session cookie.
-  Repeated failed logins are slowed down.
+  successful login sets an `HttpOnly`, `SameSite=Strict` session cookie
+  holding its expiry, signed with a key derived from the passphrase hash so
+  that it cannot be forged. The dashboard keeps no session store, so
+  restarting `serve` keeps logins. Repeated failed logins are slowed down.
+- A login lasts while it is used: every request renews the cookie for another
+  30 days, so a device unused for 30 days asks for the passphrase again. There
+  is no absolute cap on a login's total age. The 30 days are a constant of the
+  code, not a profile setting.
+- Logout deletes the cookie in that browser only. To end a login on a device
+  you no longer control, or a cookie that may have leaked, run
+  `set-passphrase`, which logs out every device at once.
+- `serve` reads the passphrase file on every login and cookie check, or again
+  whenever the file changes, so `set-passphrase` takes effect without a
+  restart.
+- The cookie has no `Secure` flag, because a browser sends such a cookie only
+  over HTTPS. The HTTPS upgrade below adds it.
 - **Plain HTTP on the home network is an accepted risk.** Someone on the same
   Wi-Fi who captures traffic could read the passphrase and pages. HTTPS with a
   locally trusted certificate is the upgrade path if that changes.
