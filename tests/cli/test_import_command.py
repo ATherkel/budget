@@ -785,6 +785,30 @@ class DuplicateIncidentTests(unittest.TestCase):
                 with BronzeStore(profile) as store:
                     assert store.import_runs() == ()
 
+    def test_a_noninteractive_invocation_refuses_without_asking(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            current = drop(profile, "joint-current", "danske-20260305.csv", content)
+            savings = drop(profile, "joint-savings", "danske-20260305.csv", content)
+
+            # Nobody is at a terminal, so the answer below is never read and
+            # nobody is asked: the whole inbox is left alone.
+            status, stdout, stderr = import_(profile_file, typed="y\n")
+
+            assert "Continue anyway?" not in stdout
+            assert "Cross-account duplicates: 1 incident, 2 files impacted\n" in stdout
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert stdout.endswith("Nothing was imported.\n")
+            assert current.read_bytes() == content
+            assert savings.read_bytes() == content
+            assert _archived(profile) == []
+            assert not profile.import_log_file.exists()
+            with BronzeStore(profile) as store:
+                assert store.import_runs() == ()
+
 
 class ProductionImportTests(unittest.TestCase):
     def test_a_production_import_ends_with_a_backup_set_holding_it(self) -> None:
