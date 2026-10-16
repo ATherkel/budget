@@ -980,6 +980,42 @@ class DuplicateIncidentCoverageTests(unittest.TestCase):
             assert record["counts"]["incident_files"] == 5
             assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
 
+    def test_an_unreadable_file_beside_a_group_keeps_its_own_refusal(self) -> None:
+        # A file the platform cannot read has no bytes to compare, so it joins
+        # no group and keeps the refusal its preview found, while the group
+        # beside it is refused all the same.
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            drop(profile, "joint-current", "danske-20260305.csv", content)
+            held = drop(profile, "joint-current", "danske-20260306.csv", content)
+            drop(profile, "joint-savings", "danske-20260305.csv", content)
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            read_bytes = Path.read_bytes
+
+            def held_by_another_program(path: Path) -> bytes:
+                if path == held:
+                    raise PermissionError(13, "Permission denied", str(path))
+                return read_bytes(path)
+
+            with mock.patch.object(
+                Path, "read_bytes", autospec=True, side_effect=held_by_another_program
+            ):
+                status, stdout, stderr = import_(
+                    profile_file, "--ranges", str(ranges), typed="y\n", terminal=True
+                )
+
+            assert "Cross-account duplicates: 1 incident, 2 files impacted\n" in stdout
+            assert "[2] joint-current  unreadable: " in stdout
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert held.read_bytes() == content
+            assert _archived(profile) == []
+            assert not profile.import_log_file.exists()
+            with BronzeStore(profile) as store:
+                assert store.import_runs() == ()
+
 
 class DuplicateIncidentLogTests(unittest.TestCase):
     def test_the_log_counts_the_incident_and_names_nothing(self) -> None:
