@@ -409,7 +409,9 @@ def import_inbox(
         imported = import_inbox_file(lock, previewed.source, declared[previewed.source])
         files.append(_outcome(ordinal, imported, previewed))
     found = tuple(incidents)
-    if all(previewed.skipped for previewed in previews):
+    # Nothing was presented to Bronze when every file was skipped or held by
+    # an incident: then nothing changed, and Silver is left as it stands.
+    if all(previewed.skipped or previewed.source in excluded for previewed in previews):
         return ImportedInbox(files=files, incidents=found, rebuilt=None)
     rebuilt = rebuild_from_silver(lock)
     if lock.profile.name != PRODUCTION_PROFILE_NAME:
