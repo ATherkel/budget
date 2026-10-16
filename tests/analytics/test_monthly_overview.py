@@ -5,6 +5,7 @@ Every expected value is copied from the contract's worked examples, not
 derived from the code under test.
 """
 
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
@@ -276,3 +277,165 @@ def test_a_month_with_no_evidence_reports_every_figure_as_unknown() -> None:
             ),
         ),
     )
+
+
+def _zero_report(context: ReportContext, coverage: ReportCoverage) -> MonthlyOverview:
+    """A report whose evidence shows no money moving."""
+    return MonthlyOverview(
+        context=context,
+        publication=P1,
+        currency="DKK",
+        income=Decimal("0.00"),
+        expenses=Decimal("0.00"),
+        net_cash_flow=Decimal("0.00"),
+        savings_rate=None,
+        categories=(),
+        unclassified=NONE,
+        adjustments=NONE,
+        coverage=coverage,
+        provisional=None,
+    )
+
+
+def test_march_reports_unclassified_money_and_no_rate_without_income() -> None:
+    # report-contract.md, "March: non-positive income and Unclassified money".
+    context = _context(3)
+
+    assert monthly_overview(GOLD, context, is_current=True) == MonthlyOverview(
+        context=context,
+        publication=P1,
+        currency="DKK",
+        income=Decimal("0.00"),
+        expenses=Decimal("1000.00"),
+        net_cash_flow=Decimal("-1000.00"),
+        savings_rate=None,
+        categories=(
+            CategorySpending(
+                "utilities", "Utilities", "housing", "Housing", Decimal("1000.00")
+            ),
+        ),
+        unclassified=MoneyInOut(Decimal("0.00"), Decimal("-450.00"), 1),
+        adjustments=NONE,
+        coverage=ReportCoverage(
+            status="partial",
+            account_months=(_month(CURRENT, "Joint current", 3, "partial"),),
+        ),
+        provisional=None,
+    )
+
+
+def test_may_is_provisional_and_its_zero_activity_is_not_a_confirmed_zero() -> None:
+    # report-contract.md, "May: current month, no activity yet".
+    context = _context(5)
+    partial_may = ReportCoverage(
+        status="partial",
+        account_months=(
+            _month(CURRENT, "Joint current", 5, "partial"),
+            _month(SAVINGS, "Joint savings", 5, "partial"),
+        ),
+    )
+    provisional = Provisional(
+        reasons=frozenset({"current_month", "late_bookings_unsettled"}),
+        unsettled=(
+            AccountMonth(CURRENT, "Joint current", ReportingMonth(2026, 5)),
+            AccountMonth(SAVINGS, "Joint savings", ReportingMonth(2026, 5)),
+        ),
+    )
+
+    report = monthly_overview(GOLD, context, is_current=True)
+
+    assert report == replace(
+        _zero_report(context, partial_may), provisional=provisional
+    )
+
+
+def test_a_quiet_month_is_a_known_zero_only_under_complete_coverage() -> None:
+    # report-contract.md, "March, joint-savings only: a confirmed quiet month".
+    context = _context(3, SAVINGS)
+
+    assert monthly_overview(GOLD, context, is_current=True) == _zero_report(
+        context, ReportCoverage(status="complete", account_months=())
+    )
+
+
+def test_offsetting_unclassified_money_never_nets_to_zero() -> None:
+    offsetting = tuple(
+        GoldTransaction(
+            transaction_id=f"current-offset-{amount}",
+            account_id=CURRENT,
+            transaction_date=date(2026, 4, 10),
+            account_sequence=100 + index,
+            amount=Decimal(amount),
+            description="UNKNOWN",
+            transaction_type="unknown",
+            transfer_group_id=None,
+            balance_after=None,
+            balance_check="missing_balance",
+        )
+        for index, amount in enumerate(("300.00", "-300.00"))
+    )
+    gold = GoldResult(
+        PUBLICATION,
+        replace(RECORDS, transactions=(*RECORDS.transactions, *offsetting)),
+    )
+
+    report = monthly_overview(gold, _context(4, CURRENT), is_current=True)
+
+    assert report.unclassified == MoneyInOut(Decimal("300.00"), Decimal("-300.00"), 2)
+    assert (report.income, report.expenses) == (
+        Decimal("25000.00"),
+        Decimal("8500.00"),
+    )
+
+
+def test_an_account_never_imported_never_makes_a_month_provisional() -> None:
+    report = monthly_overview(LATER_GOLD, _context(3, SAVINGS, NEW), is_current=True)
+
+    assert report.provisional is None
+
+
+def test_the_report_says_when_its_publication_is_no_longer_current() -> None:
+    report = monthly_overview(GOLD, _context(2), is_current=False)
+
+    assert report.publication == replace(P1, is_current=False)
+
+
+def test_a_reversed_income_payment_gives_negative_income_and_no_rate() -> None:
+    # An income-direction Refund is negative (Gold contract invariant 3).
+    reversal = GoldTransaction(
+        transaction_id="savings-reversal",
+        account_id=SAVINGS,
+        transaction_date=date(2026, 3, 31),
+        account_sequence=100,
+        amount=Decimal("-50.00"),
+        description="INTEREST REVERSAL",
+        transaction_type="refund",
+        transfer_group_id=None,
+        balance_after=Decimal("52950.00"),
+        balance_check="consistent",
+    )
+    allocation = GoldCategoryAllocation(
+        allocation_id="savings-reversal/interest",
+        transaction_id="savings-reversal",
+        account_id=SAVINGS,
+        transaction_date=date(2026, 3, 31),
+        category_id="interest",
+        amount=Decimal("-50.00"),
+    )
+    gold = GoldResult(
+        PUBLICATION,
+        replace(
+            RECORDS,
+            transactions=(*RECORDS.transactions, reversal),
+            category_allocations=(*RECORDS.category_allocations, allocation),
+        ),
+    )
+
+    report = monthly_overview(gold, _context(3, SAVINGS), is_current=True)
+
+    assert (report.income, report.expenses, report.savings_rate) == (
+        Decimal("-50.00"),
+        Decimal("0.00"),
+        None,
+    )
+    assert report.categories == ()
