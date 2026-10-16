@@ -67,6 +67,11 @@ def _archived(profile: Profile) -> list[Path]:
     return sorted(path for path in profile.exports.rglob("*") if path.is_file())
 
 
+def _silver_build_state(profile: Profile) -> tuple[bytes, int]:
+    """The Silver store as it stands: its bytes, and when it was last written."""
+    return profile.silver_store.read_bytes(), profile.silver_store.stat().st_mtime_ns
+
+
 def _clean_git() -> mock.Mock:
     """A finished Git call reporting a clean, tracked checkout."""
     completed = mock.Mock()
@@ -820,6 +825,58 @@ class DuplicateIncidentTests(unittest.TestCase):
             assert not profile.import_log_file.exists()
             with BronzeStore(profile) as store:
                 assert store.import_runs() == ()
+
+    def test_every_file_impacted_admits_nothing_and_rebuilds_nothing(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            current = drop(profile, "joint-current", "danske-20260305.csv", content)
+            savings = drop(profile, "joint-savings", "danske-20260305.csv", content)
+            built = _silver_build_state(profile)
+
+            status, stdout, stderr = import_(profile_file, typed="y\n", terminal=True)
+
+            # No file reached Bronze, so there is no Silver rebuild to report
+            # and the summary counts the incident instead.
+            assert (
+                "[1] joint-current  incident: the same bytes are in the inbox "
+                "under another account; it stays in the inbox\n"
+                "[2] joint-savings  incident: the same bytes are in the inbox "
+                "under another account; it stays in the inbox\n"
+                "Nothing was imported.\n"
+            ) in stdout, stdout
+            # Silver is not rebuilt at all, so its store is the same file.
+            assert _silver_build_state(profile) == built
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert current.read_bytes() == content
+            assert savings.read_bytes() == content
+            assert _archived(profile) == []
+            assert not profile.import_log_file.exists()
+            with BronzeStore(profile) as store:
+                assert store.import_runs() == ()
+
+    def test_a_bronze_refused_file_still_rebuilds_silver(self) -> None:
+        # The boundary: a file that is not an incident member is presented to
+        # Bronze, and the refusal it earns leaves the existing rebuild and
+        # backup behaviour alone.
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("05.03.2026")
+            source = drop(profile, "joint-current", "danske-20260305.csv", content)
+            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+
+            status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
+
+            assert "[1] joint-current  refused: " in stdout
+            assert "Silver   0 admitted, 0 quarantined, 0 dropped\n" in stdout
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert source.read_bytes() == content
+            [entry] = log_entries(profile)
+            assert entry["outcome"] == "refused"
 
 
 class DuplicateIncidentCoverageTests(unittest.TestCase):
