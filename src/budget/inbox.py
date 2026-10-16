@@ -71,7 +71,9 @@ class ExportPreview:
     `skipped` names why the file is not imported at all, `misfiled`,
     `unreadable` or `format failure`, and `reason` says how; both are
     empty when it can be imported, and then `exported_on` is the date its
-    filename carries.
+    filename carries. `payload_id` names the bytes the preview read, and is
+    empty when it read none: a file under no declared account, one whose name
+    is misfiled, and one that cannot be read.
     """
 
     source: Path
@@ -82,6 +84,7 @@ class ExportPreview:
     records: int = 0
     skipped: str = ""
     reason: str = ""
+    payload_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -264,6 +267,7 @@ def preview(
             account_id=account.account_id,
             skipped="format failure",
             reason=parsed.failure_reason,
+            payload_id=_payload_id(content),
         )
     return ExportPreview(
         source=source,
@@ -272,7 +276,21 @@ def preview(
         first_transaction=parsed.first_transaction_date,
         last_transaction=parsed.last_transaction_date,
         records=len(parsed.records),
+        payload_id=_payload_id(content),
     )
+
+
+def _payload_id(content: bytes) -> str:
+    """Name bytes as Bronze names a payload: the SHA-256 of the bytes."""
+    return sha256(content).hexdigest()
+
+
+def _read_payload_id(source: Path) -> str | None:
+    """Name a file's bytes now, or `None` when they cannot be read."""
+    try:
+        return _payload_id(source.read_bytes())
+    except OSError:
+        return None
 
 
 def cross_account_duplicates(
@@ -280,10 +298,10 @@ def cross_account_duplicates(
 ) -> tuple[DuplicateIncident, ...]:
     """Find every payload the whole inbox holds under two or more accounts.
 
-    The bytes are the evidence, so the scan covers every file the listing
-    shows, including one whose preview was skipped for another reason: a
-    misfiled name, or a format the account's reader cannot read, does not
-    stop the same bytes appearing under another account. A file under no
+    A preview that read its bytes has already named the payload, and that name
+    is what the groups are built from: a second read could fail after the
+    preview, and a group must never be lost because one did. Only a preview
+    that read nothing - a misfiled name, say - is read here. A file under no
     declared account has no account to compare, and one whose bytes cannot be
     read has no bytes to compare, so neither takes part. Copies under one
     account alone are repeats, not an incident.
@@ -292,9 +310,8 @@ def cross_account_duplicates(
     for previewed in previews:
         if previewed.account_id == NO_ACCOUNT:
             continue
-        try:
-            payload_id = sha256(previewed.source.read_bytes()).hexdigest()
-        except OSError:
+        payload_id = previewed.payload_id or _read_payload_id(previewed.source)
+        if payload_id is None:
             continue
         groups.setdefault(payload_id, []).append(previewed)
     return tuple(
