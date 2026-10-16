@@ -62,6 +62,15 @@ class RuleConditions:
         """The `description_starts_with` patterns, folded."""
         return tuple(map(fold, self.description_starts_with))
 
+    def matches_description(self, description: str) -> bool:
+        """Say whether the description contains one of the rule's patterns.
+
+        The description is folded as the patterns are, so the match is the
+        one the configuration fingerprint assumes (`classification.md`).
+        """
+        text = fold(description)
+        return any(pattern in text for pattern in self.folded_contains)
+
 
 @dataclass(frozen=True)
 class AssignCategory:

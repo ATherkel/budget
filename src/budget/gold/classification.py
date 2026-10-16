@@ -111,9 +111,8 @@ def _outcome(
 
 
 def _matches(when: RuleConditions, transaction: Transaction) -> bool:
-    """Say whether the transaction's text contains one of the rule's patterns."""
-    text = transaction.description.casefold()
-    return any(pattern.casefold() in text for pattern in when.description_contains)
+    """Say whether the transaction meets the rule's conditions."""
+    return when.matches_description(transaction.description)
 
 
 def _derived_type(direction: CategoryDirection, amount: Decimal) -> TransactionType:
