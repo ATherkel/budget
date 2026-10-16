@@ -89,6 +89,12 @@ def _confirmed(count: int) -> bool:
     return input(f"Import {count} {noun}? [y/N] ").strip().lower() in _YES
 
 
+def a_terminal_is_available() -> bool:
+    """Report whether the person can be asked: standard input is a terminal."""
+    isatty = getattr(sys.stdin, "isatty", None)
+    return bool(isatty is not None and isatty())
+
+
 def _show_duplicates(incidents: Sequence[DuplicateIncident]) -> None:
     """Show every file the incidents hold, with what the person must check."""
     counted = sum(len(incident.files) for incident in incidents)
@@ -113,10 +119,13 @@ def _show_duplicates(incidents: Sequence[DuplicateIncident]) -> None:
 def ask_continue_after_duplicates(incidents: Sequence[DuplicateIncident]) -> bool:
     """Show each cross-account duplicate, then ask whether to import the rest.
 
-    Only `y` or `yes` goes on; every other answer, and input that ends before
-    an answer, leaves all the files where they are and imports nothing.
+    Only `y` or `yes` typed at a terminal goes on. With nobody at a terminal
+    to ask, and with every other answer, all the files stay where they are and
+    nothing is imported.
     """
     _show_duplicates(incidents)
+    if not a_terminal_is_available():
+        return False
     try:
         return input(_CONTINUE_ANYWAY).strip().lower() in _YES
     except EOFError:
