@@ -295,7 +295,7 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
         if declared is None:
             sys.stdout.write("Nothing was imported.\n")
             return EXIT_OK
-        imported = import_inbox(lock, previews, declared, excluded)
+        imported = import_inbox(lock, previews, declared, duplicates)
         sys.stdout.write(summaries.import_summary(imported))
         routine_logging.finished(
             profile,

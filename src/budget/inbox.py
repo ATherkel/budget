@@ -124,16 +124,21 @@ class ImportedInbox:
     and neither a rebuild nor a backup follows. `backup` is the set
     written after the rebuild; only production writes one.
     `backup_failure` is why production's set could not be written, if so.
+    `incidents` are the cross-account duplicates the preflight found, so the
+    counts can report them even when a member is refused for another reason.
     """
 
     files: Sequence[FileOutcome]
     rebuilt: SilverRebuild | None
+    incidents: tuple[DuplicateIncident, ...] = ()
     backup: BackupSet | None = None
     backup_failure: Exception | None = None
 
     def counts(self) -> dict[str, int]:
-        """Count the files by outcome and Silver's runs and drops, and nothing else.
+        """Count the files by outcome, the incidents, and Silver's runs and drops.
 
+        The incident counts are of the groups and of every file each one
+        holds, so a member refused for another reason is counted there too.
         These are what the routine log records: never an account, a reason or
         a filename.
         """
@@ -149,6 +154,8 @@ class ImportedInbox:
             "misfiled": outcomes["misfiled"],
             "unreadable": outcomes["unreadable"],
             "format_failure": outcomes["format failure"],
+            "incidents": len(self.incidents),
+            "incident_files": sum(len(each.files) for each in self.incidents),
             "admitted": statuses["accepted"],
             "quarantined": statuses["quarantined"],
             "dropped": sum(1 for item in items if item.kind == "dropped-transaction"),
@@ -373,16 +380,18 @@ def import_inbox(
     lock: WriterLock,
     previews: Sequence[ExportPreview],
     declared: Mapping[Path, Coverage],
-    excluded: frozenset[Path],
+    incidents: Sequence[DuplicateIncident],
 ) -> ImportedInbox:
     """Import each file with its declared range, then rebuild Silver.
 
     `declared` maps each file that is not skipped to the range the person
-    declared for it, all of them settled before this is called, and `excluded`
-    names the files a duplicate incident holds: those are refused as incident
-    files and never presented to Bronze. Files are numbered in `previews`'
-    order, the order the person was shown them in.
+    declared for it, all of them settled before this is called, and
+    `incidents` are the cross-account duplicates the preflight found: every
+    file they hold is refused as an incident file and never presented to
+    Bronze. Files are numbered in `previews`' order, the order the person was
+    shown them in.
     """
+    excluded = incident_files(incidents)
     files: list[FileOutcome] = []
     for ordinal, previewed in enumerate(previews, start=1):
         if previewed.skipped:
@@ -399,16 +408,19 @@ def import_inbox(
             continue
         imported = import_inbox_file(lock, previewed.source, declared[previewed.source])
         files.append(_outcome(ordinal, imported, previewed))
+    found = tuple(incidents)
     if all(previewed.skipped for previewed in previews):
-        return ImportedInbox(files=files, rebuilt=None)
+        return ImportedInbox(files=files, incidents=found, rebuilt=None)
     rebuilt = rebuild_from_silver(lock)
     if lock.profile.name != PRODUCTION_PROFILE_NAME:
-        return ImportedInbox(files=files, rebuilt=rebuilt)
+        return ImportedInbox(files=files, incidents=found, rebuilt=rebuilt)
     # Every production write is followed by a set covering Bronze and the
     # Silver just rebuilt from it. The imports are committed by now, so a set
     # that cannot be written is reported beside them, not instead of them.
     try:
         backup = back_up(lock, now=datetime.now(UTC))
     except BACKUP_FAILURES as error:
-        return ImportedInbox(files=files, rebuilt=rebuilt, backup_failure=error)
-    return ImportedInbox(files=files, rebuilt=rebuilt, backup=backup)
+        return ImportedInbox(
+            files=files, incidents=found, rebuilt=rebuilt, backup_failure=error
+        )
+    return ImportedInbox(files=files, incidents=found, rebuilt=rebuilt, backup=backup)
