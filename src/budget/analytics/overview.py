@@ -6,7 +6,7 @@ never decides which publication a page reads.
 """
 
 import calendar
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from datetime import date
 
 from budget.analytics.measures import UNKNOWN, Figures, figures
@@ -14,17 +14,26 @@ from budget.analytics.reports import (
     MonthlyOverview,
     ReportContext,
     ReportPublication,
+    SelectableAccount,
     SelectionOptions,
 )
 from budget.analytics.trust import trust
-from budget.gold import GoldRepository, ReportingMonth
+from budget.gold import GoldRepository, MonthlyBalanceSnapshot, ReportingMonth
 
-# Every snapshot row: an account's rows after the selected month still tell
-# whether it has a managed period at all.
-_EVERY_MONTH = {
-    "start_month": ReportingMonth(1, 1),
-    "end_month": ReportingMonth(9999, 12),
-}
+
+def _every_row(
+    gold: GoldRepository, account_ids: Collection[str] | None = None
+) -> Sequence[MonthlyBalanceSnapshot]:
+    """Return every snapshot row of `account_ids`, whatever its month.
+
+    An account's rows after the selected month still tell whether it has a
+    managed period at all.
+    """
+    return gold.monthly_balances(
+        start_month=ReportingMonth(1, 1),
+        end_month=ReportingMonth(9999, 12),
+        account_ids=account_ids,
+    )
 
 
 def _report_publication(gold: GoldRepository, *, is_current: bool) -> ReportPublication:
@@ -63,7 +72,7 @@ def monthly_overview(
     accounts = [a for a in gold.accounts() if a.account_id in context.account_ids]
     judged = trust(
         accounts,
-        gold.monthly_balances(account_ids=context.account_ids, **_EVERY_MONTH),
+        _every_row(gold, context.account_ids),
         context.month,
         context.reference_date,
     )
@@ -92,4 +101,22 @@ def selection_options(
     gold: GoldRepository, reference_date: date, *, is_current: bool
 ) -> SelectionOptions:
     """Return what a page may select in the publication `gold` reads."""
-    raise NotImplementedError
+    reference_month = ReportingMonth.of(reference_date)
+    return SelectionOptions(
+        publication=_report_publication(gold, is_current=is_current),
+        accounts=tuple(
+            SelectableAccount(
+                account_id=account.account_id,
+                display_name=account.display_name,
+                account_type=account.account_type,
+                ownership_scope=account.ownership_scope,
+                currency=account.currency,
+            )
+            for account in sorted(gold.accounts(), key=lambda a: a.account_id)
+        ),
+        first_month=min(
+            (row.month for row in _every_row(gold)),
+            default=reference_month,
+        ),
+        last_month=reference_month,
+    )
