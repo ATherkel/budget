@@ -588,7 +588,7 @@ matches more than one transaction is refused.
 | 0 | Done. Open review items and quarantined imports are results, not failures. |
 | 1 | Unexpected error: a defect. Python's own exit status for an unhandled exception. |
 | 2 | Usage error. `argparse`'s own exit status. |
-| 3 | Refused input: a configuration error, a rejected decision, a misfiled export, an import run Bronze refused, or a cross-account duplicate the person did not allow. `import` still publishes the files it stored. |
+| 3 | Refused input: a configuration error, a rejected decision, a misfiled export, an import run Bronze refused, or an inbox file a cross-account duplicate refused. Every file such a group holds is refused, whether or not the person allowed the import of the rest, and `import` still publishes the files it stored. |
 | 4 | Refused environment: no profile, a store from another profile or stage, a missing or newer migration, SQLite below the version floor, uncommitted code in production, running code other than the code version a replayed recipe names (ADR-014), another writing command running, a store locked past its busy timeout, or `restore` into a profile that has stores. |
 | 5 | Verification failed: a fingerprint mismatch, a failed integrity check, a backup set whose checksums do not match its manifest, or an import log that disagrees with Bronze. |
 
