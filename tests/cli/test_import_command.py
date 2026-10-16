@@ -755,6 +755,36 @@ class DuplicateIncidentTests(unittest.TestCase):
             assert current.read_bytes() == content
             assert savings.read_bytes() == content
 
+    def test_an_unanswered_duplicate_prompt_imports_nothing(self) -> None:
+        answers = {"just enter": "\n", "input ends": ""}
+        for case, typed in answers.items():
+            with self.subTest(case), TemporaryDirectory() as directory:
+                folder = Path(directory)
+                profile_file = write_profile(folder)
+                profile = _household(profile_file, folder)
+                content = payload("01.03.2026")
+                current = drop(profile, "joint-current", "danske-20260305.csv", content)
+                savings = drop(profile, "joint-savings", "danske-20260305.csv", content)
+
+                try:
+                    status, stdout, stderr = import_(
+                        profile_file, typed=typed, terminal=True
+                    )
+                except EOFError:
+                    self.fail(
+                        "input ended at duplicate prompt: must refuse with "
+                        "exit 3 rather than raise EOFError"
+                    )
+
+                assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+                assert stdout.endswith("Nothing was imported.\n")
+                assert current.read_bytes() == content
+                assert savings.read_bytes() == content
+                assert _archived(profile) == []
+                assert not profile.import_log_file.exists()
+                with BronzeStore(profile) as store:
+                    assert store.import_runs() == ()
+
 
 class ProductionImportTests(unittest.TestCase):
     def test_a_production_import_ends_with_a_backup_set_holding_it(self) -> None:
