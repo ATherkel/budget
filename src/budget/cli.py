@@ -246,16 +246,23 @@ def _declared_ranges(
     previews: Sequence[ExportPreview],
     accounts: Mapping[str, Account],
     ranges_file: str | None,
+    excluded: frozenset[Path],
 ) -> dict[Path, Coverage] | None:
     """Settle every file's range: from the ranges file, or at the prompt.
 
     Returns `None` when the person did not confirm at the prompt. A ranges
-    file is the person's written declaration, so it asks nothing.
+    file is the person's written declaration, so it asks nothing. A file an
+    incident holds is left out: it is not going to be imported, so it needs no
+    declaration.
     """
     if ranges_file is None:
-        return ask_ranges(previews)
+        return ask_ranges(previews, excluded)
     ranges = load_ranges(Path(ranges_file), accounts)
-    return {each.source: ranges.declared(each) for each in previews if not each.skipped}
+    return {
+        each.source: ranges.declared(each)
+        for each in previews
+        if not each.skipped and each.source not in excluded
+    }
 
 
 def _import(profile: Profile, ranges_file: str | None) -> int:
@@ -283,11 +290,12 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
         if duplicates and not ask_continue_after_duplicates(duplicates):
             sys.stdout.write("Nothing was imported.\n")
             return EXIT_REFUSED_INPUT
-        declared = _declared_ranges(previews, accounts, ranges_file)
+        excluded = incident_files(duplicates)
+        declared = _declared_ranges(previews, accounts, ranges_file, excluded)
         if declared is None:
             sys.stdout.write("Nothing was imported.\n")
             return EXIT_OK
-        imported = import_inbox(lock, previews, declared, incident_files(duplicates))
+        imported = import_inbox(lock, previews, declared, excluded)
         sys.stdout.write(summaries.import_summary(imported))
         routine_logging.finished(
             profile,

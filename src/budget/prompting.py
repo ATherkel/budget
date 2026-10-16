@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Final
 
 from budget.importing import Coverage
-from budget.inbox import NO_ACCOUNT, DuplicateIncident, ExportPreview
+from budget.inbox import INCIDENT_REASON, NO_ACCOUNT, DuplicateIncident, ExportPreview
 
 _INDENT: Final = "    "
 _YES: Final = frozenset({"y", "yes"})
@@ -50,13 +50,19 @@ def _details(previewed: ExportPreview) -> None:
     _say(f"{_INDENT}transactions   {_transactions(previewed)}")
 
 
-def _show(ordinal: int, previewed: ExportPreview) -> None:
-    """Show one file: its account, name, export date and transaction dates."""
+def _show(ordinal: int, previewed: ExportPreview, excluded: frozenset[Path]) -> None:
+    """Show one file: its account, name, dates, and why it is not imported.
+
+    A file an incident holds is named as staying in the inbox, so the person
+    sees why it is asked no range.
+    """
     name = previewed.source.name
     if previewed.account_id == NO_ACCOUNT:
         name = f"{previewed.source.parent.name}/{name}"
     _say(f"[{ordinal}] {previewed.account_id}  {name}")
     _details(previewed)
+    if previewed.source in excluded:
+        _say(f"{_INDENT}incident: {INCIDENT_REASON}; it stays in the inbox")
 
 
 def _ask_date(label: str, previous: date | None) -> date:
@@ -114,18 +120,22 @@ def ask_continue_after_duplicates(incidents: Sequence[DuplicateIncident]) -> boo
     return input(_CONTINUE_ANYWAY).strip().lower() in _YES
 
 
-def ask_ranges(previews: Sequence[ExportPreview]) -> dict[Path, Coverage] | None:
-    """Ask the range of every file that can be imported, then confirm.
+def ask_ranges(
+    previews: Sequence[ExportPreview], excluded: frozenset[Path]
+) -> dict[Path, Coverage] | None:
+    """Ask the range of every file the import will use, then confirm.
 
-    Returns each such file's declared range, or `None` when the person does
-    not confirm or the input ends first: then nothing is to be stored.
+    A file an incident holds is asked no range: it is not going to be
+    imported. Returns each file that will be imported with its declared range,
+    or `None` when the person does not confirm or the input ends first: then
+    nothing is to be stored.
     """
     declared: dict[Path, Coverage] = {}
     previous: Coverage | None = None
     try:
         for ordinal, previewed in enumerate(previews, start=1):
-            _show(ordinal, previewed)
-            if previewed.skipped:
+            _show(ordinal, previewed, excluded)
+            if previewed.skipped or previewed.source in excluded:
                 continue
             _say(f"{_INDENT}Enter the range you asked the bank for.")
             previous = Coverage(
