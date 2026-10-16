@@ -11,14 +11,21 @@ from datetime import date
 
 from budget.analytics.measures import UNKNOWN, Figures, figures
 from budget.analytics.reports import (
+    InvalidSelectionError,
     MonthlyOverview,
     ReportContext,
     ReportPublication,
     SelectableAccount,
     SelectionOptions,
+    SelectionRule,
 )
 from budget.analytics.trust import trust
-from budget.gold import GoldRepository, MonthlyBalanceSnapshot, ReportingMonth
+from budget.gold import (
+    GoldAccount,
+    GoldRepository,
+    MonthlyBalanceSnapshot,
+    ReportingMonth,
+)
 
 
 def _every_row(
@@ -62,14 +69,38 @@ def _figures(
     )
 
 
+def _selected_accounts(
+    gold: GoldRepository, context: ReportContext
+) -> list[GoldAccount]:
+    """Return the accounts `context` selects, or name every rule it breaks."""
+    by_id = {account.account_id: account for account in gold.accounts()}
+    unknown = context.account_ids - by_id.keys()
+    selected = [by_id[account_id] for account_id in context.account_ids - unknown]
+    options = selection_options(gold, context.reference_date, is_current=False)
+    broken: dict[SelectionRule, bool] = {
+        "no_accounts": not context.account_ids,
+        "unknown_account": bool(unknown),
+        # Gold contract invariant 13: never aggregate across currencies.
+        "mixed_currencies": len({account.currency for account in selected}) > 1,
+        "month_out_of_range": not (
+            options.first_month <= context.month <= options.last_month
+        ),
+    }
+    reasons = [rule for rule, is_broken in broken.items() if is_broken]
+    if reasons:
+        raise InvalidSelectionError(reasons, unknown)
+    return selected
+
+
 def monthly_overview(
     gold: GoldRepository, context: ReportContext, *, is_current: bool
 ) -> MonthlyOverview:
     """Return the monthly overview `context` selects from the publication `gold` reads.
 
     `is_current` says whether that publication is current; the caller decides.
+    Raise `InvalidSelectionError` for a context that breaks a selection rule.
     """
-    accounts = [a for a in gold.accounts() if a.account_id in context.account_ids]
+    accounts = _selected_accounts(gold, context)
     judged = trust(
         accounts,
         _every_row(gold, context.account_ids),
