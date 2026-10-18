@@ -68,6 +68,12 @@ _STALE_RESULTS_KEPT: Final = (
     "the publication is current, but results no longer retained could not be "
     "deleted; the next publish deletes them"
 )
+# The primary result codes of a cleanup failure the next publish can outlast:
+# another program holding the store, a full disk, or a failed read or write.
+# Any other error is a defect that would recur on every publish.
+_PASSING_CLEANUP_FAILURES: Final = frozenset(
+    {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_FULL, sqlite3.SQLITE_IOERR}
+)
 
 
 class PublicationKindError(ValueError):
@@ -325,8 +331,10 @@ class GoldStore:
         and its records, and appends a `build` move: that transaction is the
         commit point, and a failure before it leaves the previous publication
         current (`operations.md`, *Publishing a Gold build*). A later
-        transaction deletes the results that are no longer retained; if that
-        fails, `StaleResultsWarning` is issued and the publish still stands.
+        transaction deletes the results that are no longer retained. If the
+        store is busy, full or failing I/O there, `StaleResultsWarning` names
+        the cause and the publish still stands; any other error propagates,
+        with a note that the publication is current.
         """
         if configuration.fingerprint != recipe.configuration_fingerprint:
             raise ConfigurationMismatchError(
@@ -348,10 +356,18 @@ class GoldStore:
             _move_pointer(connection, publication.publication_id, "build")
         try:
             _delete_stale_results(self._connection)
-        except sqlite3.Error:
-            # The publish has committed: it is current, and the next publish
-            # deletes what is left, so the caller must not see a failure.
-            warnings.warn(_STALE_RESULTS_KEPT, StaleResultsWarning, stacklevel=2)
+        except sqlite3.Error as error:
+            # The publish has committed, so a failure here never undoes it.
+            code = getattr(error, "sqlite_errorcode", None)
+            if code is None or code & 0xFF not in _PASSING_CLEANUP_FAILURES:
+                error.add_note(
+                    f"publication {publication.publication_id} is current; "
+                    "only deleting the results no longer retained failed"
+                )
+                raise
+            warnings.warn(
+                f"{_STALE_RESULTS_KEPT}: {error}", StaleResultsWarning, stacklevel=2
+            )
 
 
 class StoredPublication:
