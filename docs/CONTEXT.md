@@ -124,6 +124,12 @@ The last day of an account's latest *evidence range*. Earlier days can still
 fall in a gap between ranges.
 _Avoid_: last import date (the export, not the import, bounds the evidence)
 
+**Late-booking window**:
+How many days after a month's last day an export's *Export date* must fall
+for the export to show the month's late bookings. It is set per profile in
+whole days, 7 unless changed, and recorded in each recipe. The rule
+is in [`gold-layer.md`](architecture/gold-layer.md#late-bookings-settled).
+
 **Monthly balance snapshot**:
 One account's balance position for one reporting month of its Managed period:
 the balance before the month's first transaction, the balance after its last,
