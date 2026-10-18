@@ -20,7 +20,7 @@ from budget.gold import (
     GoldPublications,
     GoldRepository,
     GoldResult,
-    PublicationUnavailable,
+    PublicationUnavailableError,
 )
 from budget.gold.models import ReportingMonth
 from budget.gold.recipe import Recipe, RecipeImportRun
@@ -155,14 +155,14 @@ def test_only_the_current_and_previous_results_are_retained(store: GoldStore) ->
 
     assert list(publications.available()) == [second, third]
     assert publications.open(2).publication() == second
-    with pytest.raises(PublicationUnavailable):
+    with pytest.raises(PublicationUnavailableError):
         publications.open(first.publication_id)
 
 
 def test_a_publication_never_published_is_unavailable(store: GoldStore) -> None:
     publish(store, 1)
 
-    with pytest.raises(PublicationUnavailable):
+    with pytest.raises(PublicationUnavailableError):
         store.open(2)
 
 
@@ -256,13 +256,13 @@ def test_a_repository_whose_result_is_deleted_refuses_to_read(
     store: GoldStore, read: Callable[[GoldRepository], object]
 ) -> None:
     # publications.md: a page pinned to a publication whose result is deleted
-    # gets PublicationUnavailable, never an empty page that reads as zero.
+    # gets PublicationUnavailableError, never an empty page that reads as zero.
     publish(store, 1)
     pinned = store.open(1)
     publish(store, 2)
     publish(store, 3)
 
-    with pytest.raises(PublicationUnavailable):
+    with pytest.raises(PublicationUnavailableError):
         read(pinned)
 
 

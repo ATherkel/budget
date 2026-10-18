@@ -290,7 +290,7 @@ class GoldStore:
     def open(self, publication_id: int) -> GoldRepository:
         """Return a repository bound to one retained publication.
 
-        Raises `PublicationUnavailable` when the publication does not exist or
+        Raises `PublicationUnavailableError` when the publication does not exist or
         its result is no longer retained.
         """
         publication = _reading(

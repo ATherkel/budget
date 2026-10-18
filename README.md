@@ -200,7 +200,7 @@ registered under an ID it does not name is refused.
 `GoldStore` serves them as `GoldPublications`: `current()` is `None` until the
 first publish, `available()` lists the publications whose results are retained,
 and `open(publication_id)` returns a `GoldRepository` bound to one of them, or
-raises `PublicationUnavailable`.
+raises `PublicationUnavailableError`.
 
 ```python
 from budget.gold.storage import migrate_gold

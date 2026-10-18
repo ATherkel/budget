@@ -329,7 +329,8 @@ item, or voids an import run, is an entry in one append-only log:
 class GoldPublications(Protocol):
     def current(self) -> GoldPublication | None: ...  # None before the first build
     def available(self) -> Sequence[GoldPublication]: ...  # retained results
-    def open(self, publication_id: int) -> GoldRepository: ...  # PublicationUnavailable
+    # Raises PublicationUnavailableError.
+    def open(self, publication_id: int) -> GoldRepository: ...
 ```
 
 `GoldRepository` gains `publication() -> GoldPublication`. Every read through
@@ -342,9 +343,9 @@ build finishes while it is open.
 retained result: before a store's first successful build, and between a Gold
 migration that could not convert the current result and the build that
 follows it. The dashboard then says that nothing is published. `open()` raises
-`PublicationUnavailable` when the publication does not exist or its result is
+`PublicationUnavailableError` when the publication does not exist or its result is
 not retained. Example: a page is pinned to P5, two imports run, and P5's
-result is deleted. The page's next request gets `PublicationUnavailable`, and
+result is deleted. The page's next request gets `PublicationUnavailableError`, and
 the dashboard offers the current publication instead.
 
 ## Synthetic Scenarios

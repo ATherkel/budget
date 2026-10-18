@@ -93,10 +93,6 @@ class PublicationUnavailableError(LookupError):
         )
 
 
-# The name `gold-contract.md` gives the refusal; both names are one class.
-PublicationUnavailable = PublicationUnavailableError
-
-
 class GoldPublications(Protocol):
     """The retained publications of one store; a consumer opens one at a time."""
 
@@ -111,7 +107,7 @@ class GoldPublications(Protocol):
     def open(self, publication_id: int) -> GoldRepository:
         """Return a repository bound to one publication.
 
-        Raises `PublicationUnavailable` when the publication does not exist or
+        Raises `PublicationUnavailableError` when the publication does not exist or
         its result is not retained.
         """
         ...
