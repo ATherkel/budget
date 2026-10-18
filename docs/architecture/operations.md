@@ -93,7 +93,7 @@ current, not previous, not labeled) are deleted by a later transaction.
 
 The dashboard reads the pointer from `gold.db` for each page and pins that
 `publication_id` across the page's requests. A page whose publication has
-since been deleted gets `PublicationUnavailable` and is offered the current
+since been deleted gets `PublicationUnavailableError` and is offered the current
 one (ADR-014). Past views (`view --as-was`, `view --known-at`) are
 publications in `gold.db` too, and can never become current. Views, replays
 and `verify` work in scratch stores under the profile's `scratch/` folder,
