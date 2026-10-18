@@ -24,7 +24,7 @@ from budget.gold import (
 )
 from budget.gold.models import ReportingMonth
 from budget.gold.recipe import Recipe, RecipeImportRun
-from budget.gold.storage import migrate_gold
+from budget.gold.storage import migrate_gold, open_gold_connection
 from budget.gold.store import (
     ConfigurationMismatchError,
     GoldStore,
@@ -266,28 +266,54 @@ def test_a_repository_whose_result_is_deleted_refuses_to_read(
         read(pinned)
 
 
-def test_a_failed_cleanup_after_a_publish_still_publishes(
+def test_a_busy_cleanup_after_a_publish_still_publishes(
+    profile: Profile, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Fault injection at the storage boundary: another program takes the
+    # store's write lock between the publish's commit and its cleanup, so the
+    # cleanup waits out the real busy timeout, about five seconds.
+    holder = sqlite3.connect(profile.gold_store, isolation_level=None)
+    writes_begun = 0
+
+    def lock_before_the_cleanup(statement: str) -> None:
+        nonlocal writes_begun
+        if statement == "BEGIN IMMEDIATE":
+            writes_begun += 1
+            if writes_begun == 2:
+                holder.execute("BEGIN EXCLUSIVE")
+
+    def traced(opened: Profile, *, read_only: bool = False) -> sqlite3.Connection:
+        connection = open_gold_connection(opened, read_only=read_only)
+        connection.set_trace_callback(lock_before_the_cleanup)
+        return connection
+
+    monkeypatch.setattr("budget.gold.store.open_gold_connection", traced)
+    with closing(holder), GoldStore(profile) as store:
+        with pytest.warns(StaleResultsWarning, match="database is locked"):
+            first = publish(store, 1)
+        holder.execute("ROLLBACK")
+
+        assert store.current() == first
+
+
+def test_a_cleanup_defect_after_a_publish_propagates(
     store: GoldStore, profile: Profile
 ) -> None:
     publish(store, 1)
     publish(store, 2)
-    # Fault injection at the storage boundary: the cleanup that follows the
-    # next publish's commit cannot delete any result.
+    # A defect, not a passing condition: the cleanup can never delete a result.
     with closing(sqlite3.connect(profile.gold_store)) as connection, connection:
         connection.execute(
             "CREATE TRIGGER refuse_cleanup BEFORE DELETE ON results"
-            " BEGIN SELECT RAISE(ABORT, 'disk said no'); END"
+            " BEGIN SELECT RAISE(ABORT, 'cleanup is broken'); END"
         )
 
-    with pytest.warns(StaleResultsWarning):
-        third = publish(store, 3)
+    with pytest.raises(sqlite3.IntegrityError) as raised:
+        publish(store, 3)
 
-    assert store.current() == third
+    assert "publication 3 is current" in " ".join(raised.value.__notes__)
+    assert store.current() == publication(3)
     assert store.next_publication_id() == 4
-    with closing(sqlite3.connect(profile.gold_store)) as connection, connection:
-        connection.execute("DROP TRIGGER refuse_cleanup")
-    fourth = publish(store, 4)
-    assert list(store.available()) == [third, fourth]
 
 
 def test_a_view_is_never_published_as_current(store: GoldStore) -> None:
