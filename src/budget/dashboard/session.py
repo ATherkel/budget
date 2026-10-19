@@ -23,7 +23,9 @@ def issue(key: bytes, now: datetime) -> str:
     return f"{payload}.{_signature(key, payload)}"
 
 
-def is_genuine(key: bytes, value: str) -> bool:
-    """Report whether `value` is a cookie signed with `key`."""
+def is_valid(key: bytes, value: str, now: datetime) -> bool:
+    """Report whether `value` is a cookie signed with `key` that lasts past `now`."""
     payload, _, signature = value.partition(".")
-    return hmac.compare_digest(signature, _signature(key, payload))
+    if not hmac.compare_digest(signature, _signature(key, payload)):
+        return False
+    return int(payload) > now.timestamp()

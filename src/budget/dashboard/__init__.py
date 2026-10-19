@@ -54,7 +54,9 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     @app.get("/")
     def overview(request: Request) -> Response:
         cookie = request.cookies.get(SESSION_COOKIE)
-        if cookie is None or not session.is_genuine(session_key(profile), cookie):
+        if cookie is None or not session.is_valid(
+            session_key(profile), cookie, clock()
+        ):
             return _send_to_login(request)
         return HTMLResponse("")
 
