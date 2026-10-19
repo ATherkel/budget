@@ -1,7 +1,7 @@
 # Copyright 2026 Therkel
 """`HouseholdReports`: the report interface of `report-contract.md` over Gold."""
 
-from budget.analytics.reports import ReportPublication
+from budget.analytics.reports import NothingPublishedError, ReportPublication
 from budget.gold import GoldPublications
 
 
@@ -16,7 +16,7 @@ class HouseholdReports:
         """Return the current publication."""
         publication = self._publications.current()
         if publication is None:
-            raise NotImplementedError
+            raise NothingPublishedError
         return ReportPublication(
             publication_id=publication.publication_id,
             kind=publication.kind,
