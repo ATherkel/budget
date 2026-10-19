@@ -143,3 +143,19 @@ def test_a_login_unused_for_30_days_asks_for_the_passphrase_again(
     kept = client.get("/")
 
     assert (lapsed.status_code, kept.status_code) == (303, 200)
+
+
+def test_each_visit_renews_the_login_for_30_days_from_that_visit(
+    client: TestClient, clock: Clock
+) -> None:
+    log_in(client)
+    clock.now += timedelta(days=1)
+    client.get("/")
+    # 31 days after logging in, just under 30 since the visit that renewed it.
+    clock.now += timedelta(days=30, seconds=-1)
+    kept = client.get("/")
+    # Just over 30 days after that visit: renewals do not add up.
+    clock.now += timedelta(days=30, seconds=1)
+    lapsed = client.get("/")
+
+    assert (kept.status_code, lapsed.status_code) == (200, 303)
