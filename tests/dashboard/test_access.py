@@ -75,3 +75,21 @@ def test_a_wrong_passphrase_is_refused_without_a_session(client: TestClient) -> 
         login.headers.get_list("set-cookie"),
         overview.status_code,
     ) == (200, True, True, [], 303)
+
+
+def test_a_session_cookie_the_dashboard_did_not_issue_is_refused(
+    client: TestClient,
+) -> None:
+    issued = client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE}).cookies[
+        "session"
+    ]
+    # The issued value with its first character changed, and one made up. The
+    # first character is never encoding padding, so every edit to it counts.
+    edited = ("0" if issued[0] != "0" else "1") + issued[1:]
+    refused = []
+    for forged in (edited, "1"):
+        client.cookies.set("session", forged)
+        response = client.get("/")
+        refused.append((response.status_code, response.headers.get("location")))
+
+    assert refused == [(303, "/login"), (303, "/login")]
