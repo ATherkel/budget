@@ -457,3 +457,69 @@ def test_a_transfer_leg_changes_no_figure_whichever_account_is_selected() -> Non
         Decimal("0.00"),
         Decimal("0.00"),
     )
+
+
+# An account closed in February 2026, after one booked transaction in January.
+CLOSED = "old-current"
+CLOSED_GOLD = GoldResult(
+    PUBLICATION,
+    replace(
+        RECORDS,
+        accounts=(
+            *RECORDS.accounts,
+            replace(
+                RECORDS.accounts[0],
+                account_id=CLOSED,
+                display_name="Old current",
+                closed_on=date(2026, 2, 27),
+                evidence_through=date(2026, 2, 27),
+            ),
+        ),
+        transactions=(
+            *RECORDS.transactions,
+            GoldTransaction(
+                transaction_id="old-01",
+                account_id=CLOSED,
+                transaction_date=date(2026, 1, 10),
+                account_sequence=1,
+                amount=Decimal("-100.00"),
+                description="UNKNOWN",
+                transaction_type="unknown",
+                transfer_group_id=None,
+                balance_after=Decimal("0.00"),
+                balance_check="opening",
+            ),
+        ),
+        monthly_balances=(
+            *RECORDS.monthly_balances,
+            *(
+                MonthlyBalanceSnapshot(
+                    account_id=CLOSED,
+                    month=ReportingMonth(2026, month),
+                    opening_balance=Decimal("100.00")
+                    if month == 1
+                    else Decimal("0.00"),
+                    closing_balance=Decimal("0.00"),
+                    coverage="complete",
+                    late_bookings_settled=True,
+                )
+                for month in (1, 2)
+            ),
+        ),
+    ),
+)
+
+
+def test_a_month_after_an_account_closed_is_outside_its_history() -> None:
+    # report-contract.md, Coverage: outside_history "after the month it closed".
+    report = monthly_overview(
+        CLOSED_GOLD, _context(3, SAVINGS, CLOSED), is_current=True
+    )
+
+    assert (report.coverage, report.provisional) == (
+        ReportCoverage(
+            status="complete",
+            account_months=(_month(CLOSED, "Old current", 3, "outside_history"),),
+        ),
+        None,
+    )
