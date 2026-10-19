@@ -51,21 +51,8 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     """Build the dashboard for `profile`, telling time with `clock`."""
     app = FastAPI()
 
-    @app.get("/")
-    def overview(request: Request) -> Response:
-        cookie = request.cookies.get(SESSION_COOKIE)
-        if cookie is None or not session.is_valid(
-            session_key(profile), cookie, clock()
-        ):
-            return _send_to_login(request)
-        return HTMLResponse("")
-
-    @app.post("/login")
-    def login(passphrase: Annotated[str, Form()]) -> Response:
-        if not passphrase_matches(profile, passphrase):
-            refusal = '<p role="alert">Adgangsfrasen er forkert.</p>'
-            return HTMLResponse(_LOGIN_PAGE.format(message=refusal))
-        response = RedirectResponse("/", status_code=303)
+    def start_session(response: Response) -> Response:
+        """Set a session cookie lasting `LOGIN_LIFETIME` from now."""
         response.set_cookie(
             SESSION_COOKIE,
             session.issue(session_key(profile), clock()),
@@ -73,5 +60,22 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             samesite="strict",
         )
         return response
+
+    @app.get("/")
+    def overview(request: Request) -> Response:
+        cookie = request.cookies.get(SESSION_COOKIE)
+        if cookie is None or not session.is_valid(
+            session_key(profile), cookie, clock()
+        ):
+            return _send_to_login(request)
+        # Every visit renews the login for another 30 days from now.
+        return start_session(HTMLResponse(""))
+
+    @app.post("/login")
+    def login(passphrase: Annotated[str, Form()]) -> Response:
+        if not passphrase_matches(profile, passphrase):
+            refusal = '<p role="alert">Adgangsfrasen er forkert.</p>'
+            return HTMLResponse(_LOGIN_PAGE.format(message=refusal))
+        return start_session(RedirectResponse("/", status_code=303))
 
     return app
