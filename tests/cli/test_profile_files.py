@@ -296,6 +296,20 @@ class ProfileFileTests(unittest.TestCase):
 
                         assert profile.late_booking_window == expected
 
+    def test_a_profile_file_names_the_dashboard_passphrase_file(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            passphrase = folder / "secrets" / "dashboard-passphrase"
+            for name in ("development", "production"):
+                with self.subTest(name=name):
+                    profile_file = write_profile(folder, name=name)
+                    with profile_file.open("a", encoding="utf-8") as file:
+                        file.write(f"\n[dashboard]\npassphrase_file = '{passphrase}'\n")
+
+                    profile = load_profile_file(profile_file)
+
+                    assert profile.passphrase_file == passphrase
+
     def test_a_refused_late_booking_window_names_its_key(self) -> None:
         days = r"gold\.late_booking_days must be a whole number, from 0 to 366"
         cases = {
