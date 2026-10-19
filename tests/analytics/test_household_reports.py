@@ -7,7 +7,7 @@ synthetic worked example published under one or more ids.
 
 from collections.abc import Iterator
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -15,9 +15,10 @@ import pytest
 from budget.analytics import (
     HouseholdReports,
     NothingPublishedError,
+    ReportContext,
     ReportPublication,
 )
-from budget.gold import GoldResult
+from budget.gold import GoldResult, ReportingMonth
 from budget.gold.storage import migrate_gold
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
@@ -75,3 +76,32 @@ def test_with_nothing_published_there_is_no_current_publication(
 ) -> None:
     with pytest.raises(NothingPublishedError):
         HouseholdReports(store).current_publication()
+
+
+def test_a_pinned_overview_turns_not_current_once_a_newer_build_is_current(
+    store: GoldStore,
+) -> None:
+    reports = HouseholdReports(store)
+    publish(store, 1, PUBLICATION.known_at)
+    pinned = ReportContext(
+        publication_id=1,
+        account_ids=frozenset({"joint-current"}),
+        month=ReportingMonth(2026, 4),
+        reference_date=date(2026, 5, 14),
+    )
+    p1 = ReportPublication(
+        publication_id=1,
+        kind="pipeline",
+        label=None,
+        known_at=PUBLICATION.known_at,
+        is_current=True,
+    )
+
+    before = reports.monthly_overview(pinned)
+    publish(store, 2, SECOND_BUILD_AT)
+    after = reports.monthly_overview(pinned)
+
+    assert (before.publication, after.publication) == (
+        p1,
+        replace(p1, is_current=False),
+    )
