@@ -119,6 +119,14 @@ def test_every_broken_rule_is_named_at_once() -> None:
     }
 
 
+def test_a_report_never_answers_a_context_from_another_publication() -> None:
+    # One page never mixes two publications (report-contract.md, ReportContext).
+    context = replace(_context(CURRENT), publication_id=2)
+
+    with pytest.raises(ValueError, match="names publication 2, but publication 1"):
+        monthly_overview(GOLD, context, is_current=True)
+
+
 def test_the_first_selectable_month_is_valid() -> None:
     report = monthly_overview(
         GOLD, _context(CURRENT, month=ReportingMonth(2026, 1)), is_current=True
