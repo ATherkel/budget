@@ -18,6 +18,7 @@ BACKUP_STAGING_FOLDER = "backup-staging"
 BRONZE_STORE_NAME = "bronze.db"
 DECISION_LOG_FILE_NAME = "decisions.jsonl"
 EXPORTS_FOLDER = "exports"
+GOLD_STORE_NAME = "gold.db"
 IMPORT_LOG_FILE_NAME = "imports.jsonl"
 INBOX_FOLDER = "inbox"
 SILVER_STORE_NAME = "silver.db"
@@ -238,6 +239,11 @@ class Profile:
     def silver_store(self) -> Path:
         """The Silver stage store, re-checked against the test root each time."""
         return self._guarded_path(Path(self.stores) / SILVER_STORE_NAME)
+
+    @property
+    def gold_store(self) -> Path:
+        """The Gold stage store, re-checked against the test root each time."""
+        return self._guarded_path(Path(self.stores) / GOLD_STORE_NAME)
 
     @property
     def accounts_file(self) -> Path:

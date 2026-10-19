@@ -302,7 +302,7 @@ class GoldPublications(Protocol):
 one, the previous one, and every labeled one. `current()` returns `None` when
 there is no current publication: before a store's first successful build, and
 between a Gold migration that could not convert the current result and the
-build that follows it. `open()` raises `PublicationUnavailable`
+build that follows it. `open()` raises `PublicationUnavailableError`
 when the publication does not exist or its result is not retained, including
 one deleted after a consumer last opened it.
 
