@@ -36,6 +36,17 @@ _LOGIN_PAGE = """<!doctype html>
 """
 
 
+def _send_to_login(request: Request) -> Response:
+    """Send a reader who is not logged in to the login page.
+
+    A page is redirected. An htmx fragment gets 401 and `HX-Redirect`, so htmx
+    moves the whole page to login rather than painting it into a panel.
+    """
+    if request.headers.get("HX-Request") == "true":
+        return Response(status_code=401, headers={"HX-Redirect": "/login"})
+    return RedirectResponse("/login", status_code=303)
+
+
 def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     """Build the dashboard for `profile`, telling time with `clock`."""
     app = FastAPI()
@@ -44,7 +55,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     def overview(request: Request) -> Response:
         cookie = request.cookies.get(SESSION_COOKIE)
         if cookie is None or not session.is_genuine(session_key(profile), cookie):
-            return RedirectResponse("/login", status_code=303)
+            return _send_to_login(request)
         return HTMLResponse("")
 
     @app.post("/login")
