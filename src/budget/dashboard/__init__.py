@@ -8,6 +8,7 @@ from collections.abc import Callable
 from datetime import datetime
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 
 from budget.profiles import Profile
 
@@ -15,4 +16,10 @@ from budget.profiles import Profile
 def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     """Build the dashboard for `profile`, telling time with `clock`."""
     del profile, clock
-    return FastAPI()
+    app = FastAPI()
+
+    @app.get("/")
+    def overview() -> RedirectResponse:
+        return RedirectResponse("/login", status_code=303)
+
+    return app
