@@ -7,7 +7,7 @@ in-process; nothing is served.
 """
 
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -21,15 +21,37 @@ NOW = datetime(2026, 5, 14, 9, 0, tzinfo=UTC)
 HOUSEHOLD_PHRASE = "correct horse battery staple"
 
 
+class Clock:
+    """The time the dashboard is told; a test moves it forward."""
+
+    def __init__(self) -> None:
+        self.now = NOW
+
+    def __call__(self) -> datetime:
+        return self.now
+
+
 @pytest.fixture
-def client(tmp_path: Path) -> TestClient:
+def clock() -> Clock:
+    return Clock()
+
+
+@pytest.fixture
+def client(tmp_path: Path, clock: Clock) -> TestClient:
     profile = replace(
         make_test_profile(tmp_path),
         passphrase_file=tmp_path / "dashboard-passphrase",
     )
     migrate_gold(profile)
     set_passphrase(profile, HOUSEHOLD_PHRASE)
-    return TestClient(create_app(profile, clock=lambda: NOW), follow_redirects=False)
+    return TestClient(create_app(profile, clock=clock), follow_redirects=False)
+
+
+def log_in(client: TestClient) -> None:
+    response = client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
+    assert (response.status_code, response.headers.get("location")) == (303, "/"), (
+        "the household passphrase did not log in"
+    )
 
 
 def test_a_page_requested_without_logging_in_is_sent_to_the_login_page(
@@ -107,3 +129,17 @@ def test_a_fragment_requested_without_logging_in_is_refused_not_redirected(
         response.headers.get("location"),
         response.headers.get("hx-redirect"),
     ) == (401, None, "/login")
+
+
+def test_a_login_unused_for_30_days_asks_for_the_passphrase_again(
+    client: TestClient, clock: Clock
+) -> None:
+    log_in(client)
+    clock.now += timedelta(days=30, seconds=1)
+    lapsed = client.get("/")
+
+    log_in(client)
+    clock.now += timedelta(days=30, seconds=-1)
+    kept = client.get("/")
+
+    assert (lapsed.status_code, kept.status_code) == (303, 200)
