@@ -78,4 +78,11 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             return HTMLResponse(_LOGIN_PAGE.format(message=refusal))
         return start_session(RedirectResponse("/", status_code=303))
 
+    @app.post("/logout")
+    def logout() -> Response:
+        # This browser only; `set-passphrase` logs out every device.
+        response = RedirectResponse("/login", status_code=303)
+        response.delete_cookie(SESSION_COOKIE, httponly=True, samesite="strict")
+        return response
+
     return app
