@@ -439,3 +439,21 @@ def test_a_reversed_income_payment_gives_negative_income_and_no_rate() -> None:
         None,
     )
     assert report.categories == ()
+
+
+def test_a_transfer_leg_changes_no_figure_whichever_account_is_selected() -> None:
+    # Gold contract invariant 8. In January T1 moves 3,000.00 from joint-current
+    # to joint-savings; one account alone holds a single leg, which cannot cancel.
+    current = monthly_overview(GOLD, _context(1, CURRENT), is_current=True)
+    savings = monthly_overview(GOLD, _context(1, SAVINGS), is_current=True)
+
+    assert (current.income, current.expenses, current.net_cash_flow) == (
+        Decimal("25000.00"),
+        Decimal("842.50"),
+        Decimal("24157.50"),
+    )
+    assert (savings.income, savings.expenses, savings.net_cash_flow) == (
+        Decimal("0.00"),
+        Decimal("0.00"),
+        Decimal("0.00"),
+    )
