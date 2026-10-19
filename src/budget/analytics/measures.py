@@ -69,11 +69,13 @@ def _measure(
     refund_directions: dict[str, CategoryDirection],
 ) -> CategoryDirection | None:
     """Return the measure a transaction counts toward; a Refund takes its category's."""
-    if transaction.transaction_type == "refund":
-        return refund_directions[transaction.transaction_id]
-    if transaction.transaction_type in {"income", "expense"}:
-        return "income" if transaction.transaction_type == "income" else "expense"
-    return None
+    match transaction.transaction_type:
+        case "refund":
+            return refund_directions[transaction.transaction_id]
+        case ("income" | "expense") as measure:
+            return measure
+        case _:
+            return None
 
 
 def _category_spending(
@@ -107,6 +109,9 @@ def figures(
     by_id = {category.category_id: category for category in categories}
     # Gold contract invariant 7: a Refund's allocation carries the category of
     # the movement it reverses, so the category's direction is the Refund's.
+    # Keeping the last allocation per transaction is safe once Refunds split:
+    # every allocation has the transaction's sign (invariant 5), and a Refund's
+    # sign fixes its category's direction (invariant 3).
     refund_directions = {
         allocation.transaction_id: by_id[allocation.category_id].direction
         for allocation in allocations
