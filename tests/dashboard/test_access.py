@@ -60,3 +60,18 @@ def test_the_household_passphrase_logs_in_with_a_private_session_cookie(
         flags,
         overview.status_code,
     ) == (303, "/", [(True, True)], 200)
+
+
+def test_a_wrong_passphrase_is_refused_without_a_session(client: TestClient) -> None:
+    login = client.post("/login", data={"passphrase": "correct horse battery"})
+    overview = client.get("/")
+
+    # The form again, saying why, so the reader can retry. A form login uses
+    # no HTTP authentication scheme, so the refusal is not a 401.
+    assert (
+        login.status_code,
+        "Adgangsfrasen er forkert" in login.text,
+        'name="passphrase"' in login.text,
+        login.headers.get_list("set-cookie"),
+        overview.status_code,
+    ) == (200, True, True, [], 303)
