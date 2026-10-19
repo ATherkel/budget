@@ -57,13 +57,26 @@ def set_passphrase(profile: Profile, passphrase: str) -> None:
     )
 
 
-def passphrase_matches(profile: Profile, candidate: str) -> bool:
-    """Report whether `candidate` is the passphrase set for `profile`.
-
-    The file is read on every check, so `set-passphrase` takes effect at once.
-    """
+def _stored(profile: Profile) -> dict[str, str]:
+    """Read the passphrase file afresh, so `set-passphrase` takes effect at once."""
     stored = json.loads(_passphrase_file(profile).read_text(encoding="utf-8"))
+    return {"salt": str(stored["salt"]), "scrypt": str(stored["scrypt"])}
+
+
+def passphrase_matches(profile: Profile, candidate: str) -> bool:
+    """Report whether `candidate` is the passphrase set for `profile`."""
+    stored = _stored(profile)
     expected = bytes.fromhex(stored["scrypt"])
     return hmac.compare_digest(
         _hash(candidate, bytes.fromhex(stored["salt"])), expected
     )
+
+
+def session_key(profile: Profile) -> bytes:
+    """Return the key that signs session cookies, derived from the stored hash.
+
+    A new passphrase gives a new key, so it invalidates every cookie signed
+    before it.
+    """
+    stored_hash = bytes.fromhex(_stored(profile)["scrypt"])
+    return hashlib.sha256(b"budget dashboard session\0" + stored_hash).digest()
