@@ -476,6 +476,15 @@ def _late_booking_window(path: Path, document: dict[str, object]) -> timedelta:
     return timedelta(days=days)
 
 
+def _passphrase_file(document: dict[str, object]) -> Path | None:
+    """Return `[dashboard].passphrase_file`, or `None` when it is not named."""
+    table = document.get("dashboard")
+    if not isinstance(table, dict):
+        return None
+    value = table.get("passphrase_file")
+    return Path(value) if isinstance(value, str) else None
+
+
 def load_profile_file(path: Path) -> Profile:
     """Build the profile that one operator's profile file describes.
 
@@ -499,6 +508,7 @@ def load_profile_file(path: Path) -> Profile:
             backups=_folder_path(path, paths, "backups") if is_production else None,
             retention=_retention(path, document),
             late_booking_window=_late_booking_window(path, document),
+            passphrase_file=_passphrase_file(document),
         )
     except ProfileFoldersOverlapError as error:
         raise ProfileFileError(path, str(error)) from None
