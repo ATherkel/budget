@@ -130,6 +130,21 @@ def test_a_first_publish_becomes_current(store: GoldStore) -> None:
     assert before <= move.moved_at <= after
 
 
+def test_a_store_opened_read_only_refuses_to_publish(
+    store: GoldStore, profile: Profile
+) -> None:
+    """SQLite itself refuses: the connection is read-only, not only `publish`."""
+    first = publish(store, 1)
+
+    with (
+        GoldStore(profile, read_only=True) as reader,
+        pytest.raises(sqlite3.OperationalError, match="readonly"),
+    ):
+        publish(reader, 2)
+
+    assert store.current() == first
+
+
 def test_the_store_hands_out_increasing_publication_ids(store: GoldStore) -> None:
     first = store.next_publication_id()
     publish(store, first)

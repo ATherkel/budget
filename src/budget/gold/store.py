@@ -249,8 +249,9 @@ _SELECT_BALANCES: Final = (
 class GoldStore:
     """Publish to and read from the Gold store that one profile names."""
 
-    def __init__(self, profile: Profile) -> None:
+    def __init__(self, profile: Profile, *, read_only: bool = False) -> None:
         """Open the migrated Gold store that one profile names."""
+        self._read_only = read_only
         self._connection = open_gold_connection(profile)
 
     def __enter__(self) -> Self:
