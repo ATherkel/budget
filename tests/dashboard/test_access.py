@@ -209,3 +209,29 @@ def test_each_further_lock_doubles_its_wait_up_to_15_minutes(
         clock.now += timedelta(seconds=wait)
 
     assert waits == [30, 60, 120, 240, 480, 900, 900]
+
+
+def test_a_successful_login_resets_the_failures_and_the_doubling(
+    client: TestClient, clock: Clock
+) -> None:
+    def fail(times: int) -> None:
+        for _ in range(times):
+            client.post("/login", data={"passphrase": "wrong guess"})
+
+    def wait_after_five_failures() -> int:
+        fail(5)
+        locked = client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
+        return int(locked.headers.get("retry-after", "0"))
+
+    # Four failures, a login, four more: never five in a row.
+    fail(4)
+    log_in(client)
+    fail(4)
+    not_locked = client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
+    first_wait = wait_after_five_failures()
+    clock.now += timedelta(seconds=first_wait)
+    log_in(client)
+    # After a login, the next lock starts again at 30 seconds, not 60.
+    next_wait = wait_after_five_failures()
+
+    assert (not_locked.status_code, first_wait, next_wait) == (303, 30, 30)
