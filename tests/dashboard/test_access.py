@@ -93,3 +93,17 @@ def test_a_session_cookie_the_dashboard_did_not_issue_is_refused(
         refused.append((response.status_code, response.headers.get("location")))
 
     assert refused == [(303, "/login"), (303, "/login")]
+
+
+def test_a_fragment_requested_without_logging_in_is_refused_not_redirected(
+    client: TestClient,
+) -> None:
+    # htmx marks its requests; a redirect would paint the login page into a panel.
+    # HX-Redirect sends the whole page to login instead, since htmx swaps no 401.
+    response = client.get("/", headers={"HX-Request": "true"})
+
+    assert (
+        response.status_code,
+        response.headers.get("location"),
+        response.headers.get("hx-redirect"),
+    ) == (401, None, "/login")
