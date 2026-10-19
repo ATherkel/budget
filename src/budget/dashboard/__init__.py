@@ -13,6 +13,11 @@ from fastapi.responses import RedirectResponse
 from budget.profiles import Profile
 
 
+def set_passphrase(profile: Profile, passphrase: str) -> None:
+    """Make `passphrase` the one the dashboard of `profile` accepts."""
+    del profile, passphrase
+
+
 def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     """Build the dashboard for `profile`, telling time with `clock`."""
     del profile, clock
