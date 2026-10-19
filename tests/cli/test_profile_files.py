@@ -310,6 +310,26 @@ class ProfileFileTests(unittest.TestCase):
 
                     assert profile.passphrase_file == passphrase
 
+    def test_a_profile_file_names_the_address_and_port_the_dashboard_serves_on(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            for name in ("development", "production"):
+                with self.subTest(name=name):
+                    profile_file = write_profile(folder, name=name)
+                    with profile_file.open("a", encoding="utf-8") as file:
+                        file.write(
+                            '\n[dashboard]\nbind = "192.168.1.20"\nport = 8750\n'
+                        )
+
+                    profile = load_profile_file(profile_file)
+
+                    assert (profile.dashboard_bind, profile.dashboard_port) == (
+                        "192.168.1.20",
+                        8750,
+                    )
+
     def test_a_refused_late_booking_window_names_its_key(self) -> None:
         days = r"gold\.late_booking_days must be a whole number, from 0 to 366"
         cases = {

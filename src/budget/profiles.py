@@ -189,6 +189,8 @@ class Profile:
     retention: RetentionPolicy = field(default_factory=RetentionPolicy)
     late_booking_window: timedelta = timedelta(days=DEFAULT_LATE_BOOKING_DAYS)
     passphrase_file: Path | None = None
+    dashboard_bind: str | None = None
+    dashboard_port: int | None = None
     root: Path | None = None
 
     def __post_init__(self) -> None:
