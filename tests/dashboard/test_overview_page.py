@@ -65,3 +65,28 @@ def test_a_fresh_visit_pins_the_current_publication_every_account_and_this_month
         page.hidden("publication"),
         page.hidden("reference_date"),
     ) == ([("2026-06", "juni 2026")], {CURRENT, SAVINGS}, "2", "2026-06-01")
+
+
+def test_a_report_fragment_repeats_the_context_it_answers(client: TestClient) -> None:
+    # The page drops a fragment whose context is not the reader's selection now.
+    # The pin is neither the current publication nor the clock's day, so only
+    # a fragment that keeps the pin can repeat it; accounts come back sorted.
+    response = client.get(
+        "/report",
+        params={
+            "publication": "1",
+            "reference_date": "2026-05-14",
+            "account": [SAVINGS, CURRENT],
+            "month": "2026-04",
+        },
+        headers={"HX-Request": "true"},
+    )
+
+    echoed = read(response.text).attributes("report")
+    assert (
+        response.status_code,
+        echoed.get("data-publication"),
+        echoed.get("data-reference-date"),
+        echoed.get("data-accounts"),
+        echoed.get("data-month"),
+    ) == (200, "1", "2026-05-14", f"{CURRENT} {SAVINGS}", "2026-04")

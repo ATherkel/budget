@@ -33,6 +33,7 @@ class Page(HTMLParser):
     text: list[str] = field(default_factory=list)
     fields: list[Field] = field(default_factory=list)
     options: list[Option] = field(default_factory=list)
+    elements: dict[str, dict[str, str]] = field(default_factory=dict)
     _hidden_depth: int = 0
     _select: str | None = None
     _option: Option | None = None
@@ -43,6 +44,10 @@ class Page(HTMLParser):
     @override
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
+        if values.get("id"):
+            self.elements[values["id"] or ""] = {
+                key: value or "" for key, value in attrs
+            }
         if tag in {"script", "style", "title"}:
             self._hidden_depth += 1
         elif tag == "input":
@@ -96,6 +101,10 @@ class Page(HTMLParser):
             (f.value for f in self.fields if f.name == name and f.type == "hidden"),
             None,
         )
+
+    def attributes(self, element_id: str) -> dict[str, str]:
+        """Return the attributes of the element with `element_id`, or none."""
+        return self.elements.get(element_id, {})
 
     def selected(self, name: str) -> list[tuple[str, str]]:
         """Return the value and text of each selected option of select `name`."""
