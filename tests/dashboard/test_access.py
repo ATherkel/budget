@@ -159,3 +159,15 @@ def test_each_visit_renews_the_login_for_30_days_from_that_visit(
     lapsed = client.get("/")
 
     assert (kept.status_code, lapsed.status_code) == (200, 303)
+
+
+def test_logging_out_ends_the_login_in_this_browser(client: TestClient) -> None:
+    log_in(client)
+    logout = client.post("/logout")
+    after = client.get("/")
+
+    assert (
+        logout.status_code,
+        logout.headers.get("location"),
+        after.status_code,
+    ) == (303, "/login", 303)
