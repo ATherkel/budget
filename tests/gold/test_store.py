@@ -5,6 +5,7 @@ Every store is the test profile's, in a temporary folder, created by
 `migrate_gold`. All data is the synthetic worked example.
 """
 
+import re
 import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import closing
@@ -37,6 +38,7 @@ from budget.inputs import ConfigurationSnapshot
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 from budget.silver import MoneyPrecisionError
+from budget.sqlstore import StoreBusyError
 from tests.gold.contract import GoldRepositoryContract
 from tests.gold.worked_example import (
     CATEGORY_ALLOCATIONS,
@@ -264,6 +266,23 @@ def test_a_repository_whose_result_is_deleted_refuses_to_read(
 
     with pytest.raises(PublicationUnavailableError):
         read(pinned)
+
+
+def test_migrate_refuses_a_gold_store_another_program_holds(tmp_path: Path) -> None:
+    # Such as DB Browser for SQLite, left open in a write transaction. The
+    # migration waits out the real busy timeout, about five seconds.
+    profile = make_test_profile(tmp_path)
+    profile.gold_store.parent.mkdir(parents=True)
+    with closing(sqlite3.connect(profile.gold_store, isolation_level=None)) as holder:
+        holder.execute("BEGIN EXCLUSIVE")
+
+        with pytest.raises(
+            StoreBusyError, match=f"{re.escape(str(profile.gold_store))} is in use"
+        ):
+            migrate_gold(profile)
+
+        holder.execute("ROLLBACK")
+    assert profile.gold_store.read_bytes() == b""
 
 
 def test_a_busy_cleanup_after_a_publish_still_publishes(
