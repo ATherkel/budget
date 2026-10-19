@@ -12,7 +12,11 @@ from pathlib import Path
 
 import pytest
 
-from budget.analytics import HouseholdReports, ReportPublication
+from budget.analytics import (
+    HouseholdReports,
+    NothingPublishedError,
+    ReportPublication,
+)
 from budget.gold import GoldResult
 from budget.gold.storage import migrate_gold
 from budget.gold.store import GoldStore
@@ -64,3 +68,10 @@ def test_the_current_publication_is_the_one_gold_marks_current(
         known_at=SECOND_BUILD_AT,
         is_current=True,
     )
+
+
+def test_with_nothing_published_there_is_no_current_publication(
+    store: GoldStore,
+) -> None:
+    with pytest.raises(NothingPublishedError):
+        HouseholdReports(store).current_publication()
