@@ -29,6 +29,11 @@ class LoginThrottle:
             return 0
         return math.ceil((self._locked_until - now).total_seconds())
 
+    def succeeded(self) -> None:
+        """Record a successful login: forget the failures and the doubling."""
+        self._failures = 0
+        self._locks = 0
+
     def failed(self, now: datetime) -> None:
         """Record a failed login made at `now`.
 

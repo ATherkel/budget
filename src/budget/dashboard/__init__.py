@@ -91,6 +91,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             throttle.failed(now)
             refusal = '<p role="alert">Adgangsfrasen er forkert.</p>'
             return HTMLResponse(_LOGIN_PAGE.format(message=refusal))
+        throttle.succeeded()
         return start_session(RedirectResponse("/", status_code=303))
 
     @app.post("/logout")
