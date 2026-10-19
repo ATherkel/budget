@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 # Failed logins in a row before login locks.
 FAILURES_BEFORE_LOCK = 5
 FIRST_LOCK = timedelta(seconds=30)
+LONGEST_LOCK = timedelta(minutes=15)
 
 
 class LoginThrottle:
@@ -19,6 +20,7 @@ class LoginThrottle:
     def __init__(self) -> None:
         """Start with no failures and no lock."""
         self._failures = 0
+        self._locks = 0
         self._locked_until: datetime | None = None
 
     def seconds_locked(self, now: datetime) -> int:
@@ -28,8 +30,13 @@ class LoginThrottle:
         return math.ceil((self._locked_until - now).total_seconds())
 
     def failed(self, now: datetime) -> None:
-        """Record a failed login made at `now`."""
+        """Record a failed login made at `now`.
+
+        Every fifth failure in a row locks login, each lock twice as long as
+        the one before, up to `LONGEST_LOCK`.
+        """
         self._failures += 1
         if self._failures >= FAILURES_BEFORE_LOCK:
             self._failures = 0
-            self._locked_until = now + FIRST_LOCK
+            self._locked_until = now + min(FIRST_LOCK * 2**self._locks, LONGEST_LOCK)
+            self._locks += 1
