@@ -14,4 +14,13 @@ class HouseholdReports:
 
     def current_publication(self) -> ReportPublication:
         """Return the current publication."""
-        raise NotImplementedError
+        publication = self._publications.current()
+        if publication is None:
+            raise NotImplementedError
+        return ReportPublication(
+            publication_id=publication.publication_id,
+            kind=publication.kind,
+            label=publication.label,
+            known_at=publication.known_at,
+            is_current=True,
+        )
