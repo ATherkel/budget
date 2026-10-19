@@ -98,8 +98,16 @@ def monthly_overview(
     """Return the monthly overview `context` selects from the publication `gold` reads.
 
     `is_current` says whether that publication is current; the caller decides.
-    Raise `InvalidSelectionError` for a context that breaks a selection rule.
+    Raise `InvalidSelectionError` for a context that breaks a selection rule,
+    and `ValueError` when `gold` reads another publication than `context` names.
     """
+    opened = gold.publication().publication_id
+    if opened != context.publication_id:
+        message = (
+            f"context names publication {context.publication_id}, "
+            f"but publication {opened} is open"
+        )
+        raise ValueError(message)
     accounts = _selected_accounts(gold, context)
     judged = trust(
         accounts,
