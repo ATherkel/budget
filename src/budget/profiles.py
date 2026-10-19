@@ -478,13 +478,32 @@ def _late_booking_window(path: Path, document: dict[str, object]) -> timedelta:
     return timedelta(days=days)
 
 
+def _dashboard(document: dict[str, object]) -> dict[str, object]:
+    """Return the `[dashboard]` table, empty without one."""
+    table = document.get("dashboard")
+    return (
+        {str(key): value for key, value in table.items()}
+        if isinstance(table, dict)
+        else {}
+    )
+
+
 def _passphrase_file(document: dict[str, object]) -> Path | None:
     """Return `[dashboard].passphrase_file`, or `None` when it is not named."""
-    table = document.get("dashboard")
-    if not isinstance(table, dict):
-        return None
-    value = table.get("passphrase_file")
+    value = _dashboard(document).get("passphrase_file")
     return Path(value) if isinstance(value, str) else None
+
+
+def _dashboard_bind(document: dict[str, object]) -> str | None:
+    """Return `[dashboard].bind`, or `None` when it is not named."""
+    value = _dashboard(document).get("bind")
+    return value if isinstance(value, str) else None
+
+
+def _dashboard_port(document: dict[str, object]) -> int | None:
+    """Return `[dashboard].port`, or `None` when it is not named."""
+    value = _dashboard(document).get("port")
+    return value if type(value) is int else None
 
 
 def load_profile_file(path: Path) -> Profile:
@@ -511,6 +530,8 @@ def load_profile_file(path: Path) -> Profile:
             retention=_retention(path, document),
             late_booking_window=_late_booking_window(path, document),
             passphrase_file=_passphrase_file(document),
+            dashboard_bind=_dashboard_bind(document),
+            dashboard_port=_dashboard_port(document),
         )
     except ProfileFoldersOverlapError as error:
         raise ProfileFileError(path, str(error)) from None
