@@ -242,6 +242,22 @@ class MigrateRefusalTests(unittest.TestCase):
             assert f"{store} is in use" in stderr
             assert store.read_bytes() == b""
 
+    def test_a_silver_store_another_program_holds_is_refused(self) -> None:
+        # The command waits out the real busy timeout, about five seconds.
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            store = development_profile(folder).silver_store
+            store.parent.mkdir(parents=True)
+            with closing(sqlite3.connect(store, isolation_level=None)) as holder:
+                holder.execute("BEGIN EXCLUSIVE")
+
+                status, stderr = migrate(write_profile(folder), "--stage", "silver")
+
+                holder.execute("ROLLBACK")
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert f"{store} is in use" in stderr
+            assert store.read_bytes() == b""
+
 
 class MigrateDefectTests(unittest.TestCase):
     def test_a_broken_packaged_migration_is_a_defect_not_a_refusal(self) -> None:
