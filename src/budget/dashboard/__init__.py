@@ -17,6 +17,7 @@ from budget.dashboard.passphrase import (
     session_key,
     set_passphrase,
 )
+from budget.dashboard.throttle import LoginThrottle
 from budget.profiles import Profile
 
 __all__ = ["create_app", "set_passphrase"]
@@ -50,6 +51,7 @@ def _send_to_login(request: Request) -> Response:
 def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     """Build the dashboard for `profile`, telling time with `clock`."""
     app = FastAPI()
+    throttle = LoginThrottle()
 
     def start_session(response: Response) -> Response:
         """Set a session cookie lasting `LOGIN_LIFETIME` from now."""
@@ -73,7 +75,20 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
 
     @app.post("/login")
     def login(passphrase: Annotated[str, Form()]) -> Response:
+        now = clock()
+        wait = throttle.seconds_locked(now)
+        if wait:
+            notice = (
+                '<p role="alert">For mange forkerte forsøg. '
+                f"Prøv igen om {wait} sekunder.</p>"
+            )
+            return HTMLResponse(
+                _LOGIN_PAGE.format(message=notice),
+                status_code=429,
+                headers={"Retry-After": str(wait)},
+            )
         if not passphrase_matches(profile, passphrase):
+            throttle.failed(now)
             refusal = '<p role="alert">Adgangsfrasen er forkert.</p>'
             return HTMLResponse(_LOGIN_PAGE.format(message=refusal))
         return start_session(RedirectResponse("/", status_code=303))
