@@ -1,6 +1,7 @@
 # Copyright 2026 Therkel
 """`HouseholdReports`: the report interface of `report-contract.md` over Gold."""
 
+from budget.analytics import overview
 from budget.analytics.reports import (
     MonthlyOverview,
     NothingPublishedError,
@@ -31,5 +32,14 @@ class HouseholdReports:
         )
 
     def monthly_overview(self, context: ReportContext) -> MonthlyOverview:
-        """Return the monthly overview of the publication `context` names."""
-        raise NotImplementedError
+        """Return the monthly overview of the publication `context` names.
+
+        Whether that publication is current is judged on every call, so a page
+        pinned to it learns when a newer build has become current.
+        """
+        gold = self._publications.open(context.publication_id)
+        current = self._publications.current()
+        is_current = (
+            current is not None and current.publication_id == context.publication_id
+        )
+        return overview.monthly_overview(gold, context, is_current=is_current)
