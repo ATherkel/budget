@@ -43,6 +43,19 @@ def _every_row(
     )
 
 
+def _selectable_months(
+    gold: GoldRepository, reference_date: date
+) -> tuple[ReportingMonth, ReportingMonth]:
+    """Return the first and last selectable month, whichever accounts are selected.
+
+    From the earliest snapshot month, or the reference month when there is
+    none, through the reference month.
+    """
+    reference_month = ReportingMonth.of(reference_date)
+    first_month = min((row.month for row in _every_row(gold)), default=reference_month)
+    return first_month, reference_month
+
+
 def _report_publication(gold: GoldRepository, *, is_current: bool) -> ReportPublication:
     publication = gold.publication()
     return ReportPublication(
@@ -76,15 +89,13 @@ def _selected_accounts(
     by_id = {account.account_id: account for account in gold.accounts()}
     unknown = context.account_ids - by_id.keys()
     selected = [by_id[account_id] for account_id in context.account_ids - unknown]
-    options = selection_options(gold, context.reference_date, is_current=False)
+    first_month, last_month = _selectable_months(gold, context.reference_date)
     broken: dict[SelectionRule, bool] = {
         "no_accounts": not context.account_ids,
         "unknown_account": bool(unknown),
         # Gold contract invariant 13: never aggregate across currencies.
         "mixed_currencies": len({account.currency for account in selected}) > 1,
-        "month_out_of_range": not (
-            options.first_month <= context.month <= options.last_month
-        ),
+        "month_out_of_range": not first_month <= context.month <= last_month,
     }
     reasons = [rule for rule, is_broken in broken.items() if is_broken]
     if reasons:
@@ -140,7 +151,7 @@ def selection_options(
     gold: GoldRepository, reference_date: date, *, is_current: bool
 ) -> SelectionOptions:
     """Return what a page may select in the publication `gold` reads."""
-    reference_month = ReportingMonth.of(reference_date)
+    first_month, last_month = _selectable_months(gold, reference_date)
     return SelectionOptions(
         publication=_report_publication(gold, is_current=is_current),
         accounts=tuple(
@@ -153,9 +164,6 @@ def selection_options(
             )
             for account in sorted(gold.accounts(), key=lambda a: a.account_id)
         ),
-        first_month=min(
-            (row.month for row in _every_row(gold)),
-            default=reference_month,
-        ),
-        last_month=reference_month,
+        first_month=first_month,
+        last_month=last_month,
     )
