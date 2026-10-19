@@ -171,3 +171,26 @@ def test_logging_out_ends_the_login_in_this_browser(client: TestClient) -> None:
         logout.headers.get("location"),
         after.status_code,
     ) == (303, "/login", 303)
+
+
+def test_five_failed_logins_in_a_row_lock_login_for_30_seconds(
+    client: TestClient, clock: Clock
+) -> None:
+    def attempt(passphrase: str) -> int:
+        return client.post("/login", data={"passphrase": passphrase}).status_code
+
+    refused = [attempt("wrong guess") for _ in range(5)]
+    locked = client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
+    clock.now += timedelta(seconds=29)
+    still_locked = attempt(HOUSEHOLD_PHRASE)
+    clock.now += timedelta(seconds=1)
+
+    # Even the right passphrase waits out the lock, and the reader is told so.
+    assert (
+        refused,
+        locked.status_code,
+        locked.headers.get("retry-after"),
+        "Prøv igen om 30 sekunder" in locked.text,
+        still_locked,
+        attempt(HOUSEHOLD_PHRASE),
+    ) == ([200] * 5, 429, "30", True, 429, 303)
