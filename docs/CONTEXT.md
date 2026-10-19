@@ -210,6 +210,19 @@ typically in overlapping exports. Duplicates collapse to one booked
 transaction.
 _Avoid_: repeat, copy
 
+**Cross-account duplicate**:
+One payload sitting in the inbox under two or more declared accounts at
+once, so which account the bank exported it for is unknown. Every file it
+holds is refused together, and only a person's explicit continuation imports
+the files it does not hold.
+_Avoid_: duplicate (that is Silver's collapse of one booked transaction),
+account conflict
+
+**Duplicate incident**:
+One cross-account duplicate as an import reports it: the group of inbox files
+that hold the same bytes.
+_Avoid_: duplicate, incident on its own
+
 **Repeated transaction**:
 One of several distinct booked transactions that look identical: same account,
 date, amount, and text. Each one is kept.
