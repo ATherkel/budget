@@ -2,7 +2,8 @@
 """`GoldStore`: the publications `gold.db` holds, served as `GoldPublications`.
 
 Every store is the test profile's, in a temporary folder, created by
-`migrate_gold`. All data is the synthetic worked example.
+`migrate_gold`, or held empty by a second connection to show that the
+migration refuses it. All data is the synthetic worked example.
 """
 
 import re
