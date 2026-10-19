@@ -194,3 +194,18 @@ def test_five_failed_logins_in_a_row_lock_login_for_30_seconds(
         still_locked,
         attempt(HOUSEHOLD_PHRASE),
     ) == ([200] * 5, 429, "30", True, 429, 303)
+
+
+def test_each_further_lock_doubles_its_wait_up_to_15_minutes(
+    client: TestClient, clock: Clock
+) -> None:
+    waits = []
+    for _ in range(7):
+        for _ in range(5):
+            client.post("/login", data={"passphrase": "wrong guess"})
+        locked = client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
+        wait = int(locked.headers.get("retry-after", "0"))
+        waits.append(wait)
+        clock.now += timedelta(seconds=wait)
+
+    assert waits == [30, 60, 120, 240, 480, 900, 900]
