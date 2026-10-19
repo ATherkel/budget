@@ -10,19 +10,29 @@ from typing import Annotated
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from jinja2 import Environment, PackageLoader, select_autoescape
 
-from budget.dashboard import session
+from budget.analytics import HouseholdReports, NothingPublishedError
+from budget.dashboard import display, session
+from budget.dashboard.display import copenhagen_date
 from budget.dashboard.passphrase import (
     passphrase_matches,
     session_key,
     set_passphrase,
 )
 from budget.dashboard.throttle import LoginThrottle
+from budget.gold import ReportingMonth
+from budget.gold.store import GoldStore
 from budget.profiles import Profile
 
 __all__ = ["create_app", "set_passphrase"]
 
 SESSION_COOKIE = "session"
+
+_TEMPLATES = Environment(
+    loader=PackageLoader("budget.dashboard"),
+    autoescape=select_autoescape(),
+)
 
 _LOGIN_PAGE = """<!doctype html>
 <html lang="da">
@@ -71,7 +81,32 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         ):
             return _send_to_login(request)
         # Every visit renews the login for another 30 days from now.
-        return start_session(HTMLResponse(""))
+        return start_session(HTMLResponse(render_overview()))
+
+    def render_overview() -> str:
+        """Render a fresh visit: the current publication, today, every account."""
+        with GoldStore(profile, read_only=True) as store:
+            reports = HouseholdReports(store)
+            try:
+                publication = reports.current_publication()
+            except NothingPublishedError:
+                return ""
+            reference_date = copenhagen_date(clock())
+            options = reports.selection_options(
+                publication.publication_id, reference_date
+            )
+        months = display.months_between(options.first_month, options.last_month)
+        return _TEMPLATES.get_template("overview.html").render(
+            publication_id=publication.publication_id,
+            reference_date=reference_date.isoformat(),
+            accounts=options.accounts,
+            selected_accounts={account.account_id for account in options.accounts},
+            months=[
+                (display.month_value(month), display.month_label(month))
+                for month in months
+            ],
+            selected_month=display.month_value(ReportingMonth.of(reference_date)),
+        )
 
     @app.post("/login")
     def login(passphrase: Annotated[str, Form()]) -> Response:

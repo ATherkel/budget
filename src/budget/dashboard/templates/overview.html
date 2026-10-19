@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oversigt</title>
+</head>
+<body>
+<main>
+<h1>Oversigt</h1>
+<form method="get" action="/">
+<input type="hidden" name="publication" value="{{ publication_id }}">
+<input type="hidden" name="reference_date" value="{{ reference_date }}">
+<fieldset>
+<legend>Konti</legend>
+{% for account in accounts %}
+<label><input type="checkbox" name="account" value="{{ account.account_id }}"{% if account.account_id in selected_accounts %} checked{% endif %}> {{ account.display_name }}</label>
+{% endfor %}
+</fieldset>
+<label>Måned
+<select name="month">
+{% for value, label in months %}
+<option value="{{ value }}"{% if value == selected_month %} selected{% endif %}>{{ label }}</option>
+{% endfor %}
+</select>
+</label>
+<button>Vis</button>
+</form>
+</main>
+</body>
+</html>

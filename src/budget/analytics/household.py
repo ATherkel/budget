@@ -1,12 +1,15 @@
 # Copyright 2026 Therkel
 """`HouseholdReports`: the report interface of `report-contract.md` over Gold."""
 
+from datetime import date
+
 from budget.analytics import overview
 from budget.analytics.reports import (
     MonthlyOverview,
     NothingPublishedError,
     ReportContext,
     ReportPublication,
+    SelectionOptions,
 )
 from budget.gold import GoldPublications
 
@@ -31,6 +34,19 @@ class HouseholdReports:
             is_current=True,
         )
 
+    def selection_options(
+        self, publication_id: int, reference_date: date
+    ) -> SelectionOptions:
+        """Return what a page may select in one publication on one date."""
+        gold = self._publications.open(publication_id)
+        return overview.selection_options(
+            gold, reference_date, is_current=self._is_current(publication_id)
+        )
+
+    def _is_current(self, publication_id: int) -> bool:
+        current = self._publications.current()
+        return current is not None and current.publication_id == publication_id
+
     def monthly_overview(self, context: ReportContext) -> MonthlyOverview:
         """Return the monthly overview of the publication `context` names.
 
@@ -38,8 +54,6 @@ class HouseholdReports:
         pinned to it learns when a newer build has become current.
         """
         gold = self._publications.open(context.publication_id)
-        current = self._publications.current()
-        is_current = (
-            current is not None and current.publication_id == context.publication_id
+        return overview.monthly_overview(
+            gold, context, is_current=self._is_current(context.publication_id)
         )
-        return overview.monthly_overview(gold, context, is_current=is_current)
