@@ -28,7 +28,12 @@ from budget.gold.models import (
     TransferBasis,
     TransferEvidence,
 )
-from budget.gold.repository import GoldLineageRepository, GoldRepository
+from budget.gold.repository import (
+    GoldLineageRepository,
+    GoldPublications,
+    GoldRepository,
+    PublicationUnavailableError,
+)
 from budget.gold.result import GoldRecords, GoldResult
 
 __all__ = [
@@ -44,6 +49,7 @@ __all__ = [
     "GoldCategoryAllocation",
     "GoldLineageRepository",
     "GoldPublication",
+    "GoldPublications",
     "GoldRecords",
     "GoldRepository",
     "GoldResult",
@@ -52,6 +58,7 @@ __all__ = [
     "MonthlyBalanceSnapshot",
     "OwnershipScope",
     "PublicationKind",
+    "PublicationUnavailableError",
     "ReportingMonth",
     "TransactionType",
     "TransferBasis",
