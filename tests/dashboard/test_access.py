@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from budget.dashboard import create_app, set_passphrase
 from budget.gold.storage import migrate_gold
 from budget.profiles import test_profile as make_test_profile
+from budget.sqlstore import StoreNotFoundError
 
 NOW = datetime(2026, 5, 14, 9, 0, tzinfo=UTC)
 HOUSEHOLD_PHRASE = "correct horse battery staple"
@@ -52,6 +53,20 @@ def log_in(client: TestClient) -> None:
     assert (response.status_code, response.headers.get("location")) == (303, "/"), (
         "the household passphrase did not log in"
     )
+
+
+def test_the_dashboard_refuses_a_profile_whose_gold_store_is_missing(
+    tmp_path: Path,
+) -> None:
+    # Gold never migrated: the dashboard must not start and fail on each page.
+    unmigrated = replace(
+        make_test_profile(tmp_path),
+        passphrase_file=tmp_path / "dashboard-passphrase",
+    )
+    set_passphrase(unmigrated, HOUSEHOLD_PHRASE)
+
+    with pytest.raises(StoreNotFoundError, match="gold"):
+        create_app(unmigrated, clock=Clock())
 
 
 def test_a_page_requested_without_logging_in_is_sent_to_the_login_page(
