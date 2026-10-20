@@ -35,6 +35,12 @@ def month_value(month: ReportingMonth) -> str:
     return f"{month.year:04d}-{month.month:02d}"
 
 
+def parse_month(value: str) -> ReportingMonth:
+    """Return the month a form submitted as `YYYY-MM`."""
+    year, month = value.split("-")
+    return ReportingMonth(int(year), int(month))
+
+
 def month_label(month: ReportingMonth) -> str:
     """Return a month as a Danish reader reads it, such as `juni 2026`."""
     return f"{_MONTH_NAMES[month.month - 1]} {month.year}"

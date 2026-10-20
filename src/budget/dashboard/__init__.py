@@ -5,14 +5,14 @@ It reads Gold only through analytics, opened read-only from one profile.
 """
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from jinja2 import Environment, PackageLoader, select_autoescape
 
-from budget.analytics import HouseholdReports, NothingPublishedError
+from budget.analytics import HouseholdReports, NothingPublishedError, ReportContext
 from budget.dashboard import display, session
 from budget.dashboard.display import copenhagen_date
 from budget.dashboard.passphrase import (
@@ -73,15 +73,45 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         )
         return response
 
+    def logged_in(request: Request) -> bool:
+        cookie = request.cookies.get(SESSION_COOKIE)
+        return cookie is not None and session.is_valid(
+            session_key(profile), cookie, clock()
+        )
+
     @app.get("/")
     def overview(request: Request) -> Response:
-        cookie = request.cookies.get(SESSION_COOKIE)
-        if cookie is None or not session.is_valid(
-            session_key(profile), cookie, clock()
-        ):
+        if not logged_in(request):
             return _send_to_login(request)
         # Every visit renews the login for another 30 days from now.
         return start_session(HTMLResponse(render_overview()))
+
+    @app.get("/report")
+    def report(
+        request: Request,
+        publication: int,
+        reference_date: date,
+        month: str,
+        account: Annotated[list[str], Query()],
+    ) -> Response:
+        if not logged_in(request):
+            return _send_to_login(request)
+        # The pinned context, exactly as the page sent it: never re-resolved.
+        context = ReportContext(
+            publication_id=publication,
+            account_ids=frozenset(account),
+            month=display.parse_month(month),
+            reference_date=reference_date,
+        )
+        with GoldStore(profile, read_only=True) as store:
+            answered = HouseholdReports(store).monthly_overview(context).context
+        fragment = _TEMPLATES.get_template("report.html").render(
+            publication_id=answered.publication_id,
+            reference_date=answered.reference_date.isoformat(),
+            accounts=" ".join(sorted(answered.account_ids)),
+            month=display.month_value(answered.month),
+        )
+        return start_session(HTMLResponse(fragment))
 
     def render_overview() -> str:
         """Render a fresh visit: the current publication, today, every account."""
