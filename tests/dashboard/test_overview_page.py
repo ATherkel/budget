@@ -269,3 +269,22 @@ def test_a_pin_to_a_deleted_publication_offers_the_current_one_explicitly(
         (page.text_of("report"), page.attributes("current-figures").get("href"))
         for page in (restored, fragment)
     ] == [expected, expected]
+
+
+def test_household_figures_are_never_kept_in_a_cache(client: TestClient) -> None:
+    pin = {
+        "publication": "2",
+        "reference_date": "2026-06-01",
+        "account": [CURRENT],
+        "month": "2026-05",
+    }
+    htmx = {"HX-Request": "true"}
+    page = client.get("/")
+    fragment = client.get("/report", params=pin, headers=htmx)
+    refusal = client.get("/report", params={**pin, "month": "2026-07"}, headers=htmx)
+
+    # A shared or back-button cache would keep private figures after logout,
+    # and a refusal still names the household's accounts and choices.
+    assert [
+        response.headers.get("cache-control") for response in (page, fragment, refusal)
+    ] == ["no-store"] * 3
