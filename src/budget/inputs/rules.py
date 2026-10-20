@@ -6,6 +6,7 @@ must hold, and `then` assigns exactly one outcome (`classification.md`,
 *Classification Rules*). File order never matters, so rules are keyed by ID.
 """
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
@@ -66,9 +67,10 @@ class RuleConditions:
         """Say whether the description meets every text condition the rule sets.
 
         A condition the rule leaves empty holds, but a rule that sets none
-        matches no description. The description is folded as the patterns
-        are, so the match is the one the configuration fingerprint assumes
-        (`classification.md`).
+        matches no description. For the literal patterns the description is
+        folded as they are, so the match is the one the configuration
+        fingerprint assumes (`classification.md`); a regex is searched as
+        written, ignoring case, since folding it could change its meaning.
         """
         text = fold(description)
 
@@ -78,10 +80,19 @@ class RuleConditions:
         starts_with = not self.folded_starts_with or any(
             text.startswith(pattern) for pattern in self.folded_starts_with
         )
+        regex = not self.description_regex or any(
+            re.search(pattern, description, re.IGNORECASE)
+            for pattern in self.description_regex
+        )
         return (
             contains
             and starts_with
-            and bool(self.folded_contains or self.folded_starts_with)
+            and regex
+            and bool(
+                self.folded_contains
+                or self.folded_starts_with
+                or self.description_regex
+            )
         )
 
 
