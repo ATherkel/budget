@@ -16,9 +16,10 @@ on different days with different ranges:
     from = 2025-09-06
     through = 2026-09-30
 
-Both ends are inclusive TOML dates, without quotes. The range is declared,
-never inferred (`bronze-layer.md`), so the file is the person's own statement,
-exactly like an answer typed at the prompt. A file that breaks these rules is
+Both ends are inclusive TOML dates, without quotes, and `from` falls on or
+before `through`. The range is declared, never inferred (`bronze-layer.md`),
+so the file is the person's own statement, exactly like an answer typed at
+the prompt. A file that breaks these rules is
 refused whole, listing every problem, before anything is imported. So is an
 `[account.<id>]` that `accounts.toml` does not declare: a misspelt account
 would otherwise fall back to the default without a word.
@@ -122,6 +123,9 @@ def _coverage(where: str, table: object, problems: list[str]) -> Coverage | None
     start = _date(where, table, "from", problems)
     end = _date(where, table, "through", problems)
     if start is None or end is None:
+        return None
+    if start > end:
+        problems.append(f"{where}: from falls after through")
         return None
     return Coverage(covers_from=start, covers_through=end)
 
