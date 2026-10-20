@@ -138,7 +138,12 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     throttle = LoginThrottle()
 
     def start_session(response: Response) -> Response:
-        """Set a session cookie lasting `LOGIN_LIFETIME` from now."""
+        """Set a session cookie lasting `LOGIN_LIFETIME` from now.
+
+        Every logged-in response passes here, so none of them may be cached:
+        each carries the household's figures or choices.
+        """
+        response.headers["Cache-Control"] = "no-store"
         response.set_cookie(
             SESSION_COOKIE,
             session.issue(session_key(profile), clock()),
