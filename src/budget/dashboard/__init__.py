@@ -58,6 +58,46 @@ def _send_to_login(request: Request) -> Response:
     return RedirectResponse("/login", status_code=303)
 
 
+def _render_overview(
+    profile: Profile,
+    clock: Callable[[], datetime],
+    pin: tuple[int, date] | None,
+    accounts: list[str] | None,
+    month: str | None,
+) -> str:
+    """Render the overview page.
+
+    A pinned page keeps its publication, reference date and selection. A fresh
+    visit resolves the current publication and today's Copenhagen date, with
+    every account and this month selected.
+    """
+    with GoldStore(profile, read_only=True) as store:
+        reports = HouseholdReports(store)
+        if pin is None:
+            try:
+                publication_id = reports.current_publication().publication_id
+            except NothingPublishedError:
+                return ""
+            pin = (publication_id, copenhagen_date(clock()))
+        publication_id, reference_date = pin
+        options = reports.selection_options(publication_id, reference_date)
+    months = display.months_between(options.first_month, options.last_month)
+    return _TEMPLATES.get_template("overview.html").render(
+        publication_id=publication_id,
+        reference_date=reference_date.isoformat(),
+        accounts=options.accounts,
+        selected_accounts=(
+            {account.account_id for account in options.accounts}
+            if accounts is None
+            else set(accounts)
+        ),
+        months=[
+            (display.month_value(month), display.month_label(month)) for month in months
+        ],
+        selected_month=month or display.month_value(ReportingMonth.of(reference_date)),
+    )
+
+
 def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     """Build the dashboard for `profile`, telling time with `clock`."""
     app = FastAPI()
@@ -80,11 +120,23 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         )
 
     @app.get("/")
-    def overview(request: Request) -> Response:
+    def overview(
+        request: Request,
+        publication: int | None = None,
+        reference_date: date | None = None,
+        month: str | None = None,
+        account: Annotated[list[str] | None, Query()] = None,
+    ) -> Response:
         if not logged_in(request):
             return _send_to_login(request)
+        pin = (
+            None
+            if publication is None or reference_date is None
+            else (publication, reference_date)
+        )
         # Every visit renews the login for another 30 days from now.
-        return start_session(HTMLResponse(render_overview()))
+        page = _render_overview(profile, clock, pin, account, month)
+        return start_session(HTMLResponse(page))
 
     @app.get("/report")
     def report(
@@ -114,31 +166,6 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             month=display.month_value(answered.month),
         )
         return start_session(HTMLResponse(fragment))
-
-    def render_overview() -> str:
-        """Render a fresh visit: the current publication, today, every account."""
-        with GoldStore(profile, read_only=True) as store:
-            reports = HouseholdReports(store)
-            try:
-                publication = reports.current_publication()
-            except NothingPublishedError:
-                return ""
-            reference_date = copenhagen_date(clock())
-            options = reports.selection_options(
-                publication.publication_id, reference_date
-            )
-        months = display.months_between(options.first_month, options.last_month)
-        return _TEMPLATES.get_template("overview.html").render(
-            publication_id=publication.publication_id,
-            reference_date=reference_date.isoformat(),
-            accounts=options.accounts,
-            selected_accounts={account.account_id for account in options.accounts},
-            months=[
-                (display.month_value(month), display.month_label(month))
-                for month in months
-            ],
-            selected_month=display.month_value(ReportingMonth.of(reference_date)),
-        )
 
     @app.post("/login")
     def login(passphrase: Annotated[str, Form()]) -> Response:
