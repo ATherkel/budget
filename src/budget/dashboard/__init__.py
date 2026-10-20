@@ -84,7 +84,7 @@ def _render_overview(
             try:
                 publication_id = reports.current_publication().publication_id
             except NothingPublishedError:
-                return ""
+                return _TEMPLATES.get_template("nothing_published.html").render()
             pin = (publication_id, copenhagen_date(clock()))
         publication_id, reference_date = pin
         options = reports.selection_options(publication_id, reference_date)
