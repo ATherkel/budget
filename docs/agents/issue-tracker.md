@@ -18,6 +18,29 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 The repository is `ATherkel/budget`. Pass `--repo ATherkel/budget` to `gh issue` and `gh pr` commands, so the command does not depend on which remote or worktree it runs from.
 
+## Milestone groups
+
+| Milestone | Purpose |
+| --- | --- |
+| Release milestones, such as `0.1 Real data in` and `0.2 First dashboard` | Work the owner has planned for that release. |
+| `Later` | Substantive bugs, missing capabilities and improvements worth scheduling, with no release assigned yet. |
+| `Polish` | Optional, low-impact cleanup, harmless inconsistencies, test maintenance and minor diagnostic improvements. No release commitment. |
+
+Use `Polish` when leaving an issue unfixed would not meaningfully affect normal
+use. Examples include clearer error wording, redundant exception entries and
+extra assertions for behaviour that already works. Classify by impact: even a
+small fix belongs in `Later` or a release milestone when it addresses meaningful
+breakage, incorrect reports or missing functionality.
+
+Create a clear polish issue with `--milestone "Polish"`; use
+`--milestone "Later"` for other unscheduled work. Keep the existing issue-type
+and triage labels: `Polish` is a milestone, so a duplicate `spare-time` label is
+unnecessary. Preserve release assignments unless the owner authorizes a move.
+
+Treat `Polish` as an opt-in queue for requested cleanup sessions. Its issues
+should not delay a PR or release; new evidence of material impact calls for
+reclassification into substantive work.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
