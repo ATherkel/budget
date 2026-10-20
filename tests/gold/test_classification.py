@@ -105,3 +105,18 @@ def test_a_rule_matches_only_text_that_meets_every_description_condition() -> No
     )
 
     assert _types(result) == {"both": "expense", "prefix": "unknown", "text": "unknown"}
+
+
+def test_a_rule_matches_text_its_regex_finds_in_any_case() -> None:
+    store = RuleConditions(description_regex=(r"netto \d{4}",))
+    rules = {
+        "r-netto-store": Rule("r-netto-store", 0, store, AssignCategory("groceries"))
+    }
+
+    result = classified(
+        booked("store", CURRENT, date(2026, 2, 24), "-320.00", "Dankort NETTO 0412"),
+        booked("online", CURRENT, date(2026, 2, 25), "-150.00", "NETTO ONLINE"),
+        rules=rules,
+    )
+
+    assert _types(result) == {"store": "expense", "online": "unknown"}
