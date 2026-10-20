@@ -193,3 +193,27 @@ def test_an_empty_account_selection_is_a_prompt_not_a_report(
         fragment.text_of("report"),
         fragment.attributes("report").get("data-month"),
     ) == (200, "Vælg mindst én konto.", None)
+
+
+def test_a_page_opened_with_no_accounts_selected_keeps_them_unticked(
+    client: TestClient,
+) -> None:
+    # A pinned address with no `account` is an empty selection, not a fresh
+    # visit: the boxes stay unticked and the reader is asked to choose.
+    page = read(
+        client.get(
+            "/",
+            params={
+                "publication": "2",
+                "reference_date": "2026-06-01",
+                "month": "2026-05",
+            },
+        ).text
+    )
+
+    # Every account is still offered, so the reader can choose again.
+    assert (
+        page.choices("account"),
+        page.checked("account"),
+        page.text_of("report"),
+    ) == ({CURRENT, SAVINGS}, set(), "Vælg mindst én konto.")

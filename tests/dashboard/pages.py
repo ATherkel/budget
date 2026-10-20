@@ -109,6 +109,10 @@ class Page(HTMLParser):
         """Return the page's visible text, one space between pieces."""
         return " ".join(self.text)
 
+    def choices(self, name: str) -> set[str]:
+        """Return the values of every checkbox called `name`, ticked or not."""
+        return {f.value for f in self.fields if f.name == name and f.type == "checkbox"}
+
     def checked(self, name: str) -> set[str]:
         """Return the values of the checked controls called `name`."""
         return {f.value for f in self.fields if f.name == name and f.checked}
