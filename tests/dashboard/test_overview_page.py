@@ -19,7 +19,7 @@ from budget.gold.storage import migrate_gold
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
-from tests.dashboard.pages import read
+from tests.dashboard.pages import Page, read
 from tests.gold.test_store import CONFIGURATION, RECIPE
 from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
 
@@ -90,3 +90,32 @@ def test_a_report_fragment_repeats_the_context_it_answers(client: TestClient) ->
         echoed.get("data-accounts"),
         echoed.get("data-month"),
     ) == (200, "1", "2026-05-14", f"{CURRENT} {SAVINGS}", "2026-04")
+
+
+def test_a_report_of_a_superseded_publication_offers_the_newer_figures(
+    client: TestClient,
+) -> None:
+    def fragment(publication: str) -> Page:
+        response = client.get(
+            "/report",
+            params={
+                "publication": publication,
+                "reference_date": "2026-06-01",
+                "account": [CURRENT],
+                "month": "2026-04",
+            },
+            headers={"HX-Request": "true"},
+        )
+        return read(response.text)
+
+    # Publication 2 is current; a page pinned to 1 keeps reading 1, and says so.
+    superseded, current = fragment("1"), fragment("2")
+
+    # The reload is a named link, so a screen reader can say where it goes.
+    assert (
+        "Der findes nyere tal." in superseded.visible(),
+        superseded.attributes("newer-figures").get("href"),
+        superseded.text_of("newer-figures"),
+        "Der findes nyere tal." in current.visible(),
+        current.attributes("newer-figures"),
+    ) == (True, "/", "Hent de nyeste tal", False, {})

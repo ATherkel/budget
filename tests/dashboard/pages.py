@@ -34,7 +34,9 @@ class Page(HTMLParser):
     fields: list[Field] = field(default_factory=list)
     options: list[Option] = field(default_factory=list)
     elements: dict[str, dict[str, str]] = field(default_factory=dict)
+    element_text: dict[str, str] = field(default_factory=dict)
     _hidden_depth: int = 0
+    _open: list[tuple[str, str]] = field(default_factory=list)
     _select: str | None = None
     _option: Option | None = None
 
@@ -44,10 +46,12 @@ class Page(HTMLParser):
     @override
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
-        if values.get("id"):
-            self.elements[values["id"] or ""] = {
-                key: value or "" for key, value in attrs
-            }
+        element_id = values.get("id")
+        if element_id:
+            self.elements[element_id] = {key: value or "" for key, value in attrs}
+            self.element_text[element_id] = ""
+            if tag != "input":
+                self._open.append((tag, element_id))
         if tag in {"script", "style", "title"}:
             self._hidden_depth += 1
         elif tag == "input":
@@ -71,6 +75,8 @@ class Page(HTMLParser):
 
     @override
     def handle_endtag(self, tag: str) -> None:
+        if self._open and self._open[-1][0] == tag:
+            self._open.pop()
         if tag in {"script", "style", "title"}:
             self._hidden_depth -= 1
         elif tag == "select":
@@ -84,6 +90,10 @@ class Page(HTMLParser):
         if self._hidden_depth or not words:
             return
         self.text.append(words)
+        for _, element_id in self._open:
+            self.element_text[element_id] = (
+                f"{self.element_text[element_id]} {words}".strip()
+            )
         if self._option is not None:
             self._option.text = f"{self._option.text} {words}".strip()
 
@@ -105,6 +115,10 @@ class Page(HTMLParser):
     def attributes(self, element_id: str) -> dict[str, str]:
         """Return the attributes of the element with `element_id`, or none."""
         return self.elements.get(element_id, {})
+
+    def text_of(self, element_id: str) -> str | None:
+        """Return the visible text inside the element with `element_id`, or None."""
+        return self.element_text.get(element_id)
 
     def selected(self, name: str) -> list[tuple[str, str]]:
         """Return the value and text of each selected option of select `name`."""
