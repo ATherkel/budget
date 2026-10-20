@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
+from budget.analytics import InvalidSelectionError
 from budget.gold import ReportingMonth
 
 COPENHAGEN = ZoneInfo("Europe/Copenhagen")
@@ -33,6 +34,17 @@ def copenhagen_date(now: datetime) -> date:
 def month_value(month: ReportingMonth) -> str:
     """Return a month as a form submits it, `YYYY-MM`."""
     return f"{month.year:04d}-{month.month:02d}"
+
+
+def selection_problems(error: InvalidSelectionError) -> list[str]:
+    """Return a Danish sentence for every selection rule `error` names."""
+    problems = [
+        f"Kontoen {account_id} findes ikke i disse tal."
+        for account_id in error.unknown_account_ids
+    ]
+    if "month_out_of_range" in error.reasons:
+        problems.append("Den valgte måned ligger uden for de måneder, der kan vælges.")
+    return problems
 
 
 def parse_month(value: str) -> ReportingMonth:

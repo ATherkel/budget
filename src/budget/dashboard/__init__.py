@@ -12,7 +12,12 @@ from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from jinja2 import Environment, PackageLoader, select_autoescape
 
-from budget.analytics import HouseholdReports, NothingPublishedError, ReportContext
+from budget.analytics import (
+    HouseholdReports,
+    InvalidSelectionError,
+    NothingPublishedError,
+    ReportContext,
+)
 from budget.dashboard import display, session
 from budget.dashboard.display import copenhagen_date
 from budget.dashboard.passphrase import (
@@ -155,8 +160,15 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             month=display.parse_month(month),
             reference_date=reference_date,
         )
-        with GoldStore(profile, read_only=True) as store:
-            overview_report = HouseholdReports(store).monthly_overview(context)
+        try:
+            with GoldStore(profile, read_only=True) as store:
+                overview_report = HouseholdReports(store).monthly_overview(context)
+        except InvalidSelectionError as error:
+            # A failure is shown, and echoes no context the page could render.
+            explanation = _TEMPLATES.get_template("invalid_selection.html").render(
+                problems=display.selection_problems(error)
+            )
+            return start_session(HTMLResponse(explanation))
         answered = overview_report.context
         fragment = _TEMPLATES.get_template("report.html").render(
             is_current=overview_report.publication.is_current,
