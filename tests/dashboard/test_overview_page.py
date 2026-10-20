@@ -242,3 +242,30 @@ def test_with_nothing_published_the_page_says_so_instead_of_reporting(
         page.text_of("report"),
         page.choices("account"),
     ) == (200, "Der er endnu ingen tal at vise.", set())
+
+
+def test_a_pin_to_a_deleted_publication_offers_the_current_one_explicitly(
+    client: TestClient, profile: Profile
+) -> None:
+    # A third build makes 3 current and keeps 2; publication 1's result is gone.
+    with GoldStore(profile) as store:
+        third = replace(PUBLICATION, publication_id=3)
+        store.publish(GoldResult(third, RECORDS), RECIPE, CONFIGURATION)
+    pin = {
+        "publication": "1",
+        "reference_date": "2026-05-14",
+        "account": [CURRENT],
+        "month": "2026-04",
+    }
+    # Back or forward to the old page, and a fragment it asks for.
+    restored = read(client.get("/", params=pin).text)
+    fragment = read(
+        client.get("/report", params=pin, headers={"HX-Request": "true"}).text
+    )
+
+    # Never the current figures in its place: the reader chooses to go there.
+    expected = ("Disse tal findes ikke længere. Vis de nyeste tal", "/")
+    assert [
+        (page.text_of("report"), page.attributes("current-figures").get("href"))
+        for page in (restored, fragment)
+    ] == [expected, expected]
