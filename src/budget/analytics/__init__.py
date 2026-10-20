@@ -25,6 +25,7 @@ from budget.analytics.reports import (
     SelectionOptions,
     SelectionRule,
 )
+from budget.gold import PublicationUnavailableError
 
 __all__ = [
     "AccountMonth",
@@ -38,6 +39,7 @@ __all__ = [
     "NothingPublishedError",
     "Provisional",
     "ProvisionalReason",
+    "PublicationUnavailableError",
     "ReportContext",
     "ReportCoverage",
     "ReportPublication",

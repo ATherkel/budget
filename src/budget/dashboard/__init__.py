@@ -16,6 +16,7 @@ from budget.analytics import (
     HouseholdReports,
     InvalidSelectionError,
     NothingPublishedError,
+    PublicationUnavailableError,
     ReportContext,
 )
 from budget.dashboard import display, session
@@ -87,7 +88,11 @@ def _render_overview(
                 return _TEMPLATES.get_template("nothing_published.html").render()
             pin = (publication_id, copenhagen_date(clock()))
         publication_id, reference_date = pin
-        options = reports.selection_options(publication_id, reference_date)
+        try:
+            options = reports.selection_options(publication_id, reference_date)
+        except PublicationUnavailableError:
+            # Offered, never substituted: the reader chooses the current figures.
+            return _TEMPLATES.get_template("unavailable_page.html").render()
     months = display.months_between(options.first_month, options.last_month)
     return _TEMPLATES.get_template("overview.html").render(
         publication_id=publication_id,
@@ -115,6 +120,8 @@ def _render_report(profile: Profile, context: ReportContext) -> str:
         return _TEMPLATES.get_template("invalid_selection.html").render(
             problems=display.selection_problems(error)
         )
+    except PublicationUnavailableError:
+        return _TEMPLATES.get_template("unavailable.html").render()
     answered = overview_report.context
     return _TEMPLATES.get_template("report.html").render(
         is_current=overview_report.publication.is_current,
