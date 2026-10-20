@@ -133,7 +133,12 @@ def _render_report(profile: Profile, context: ReportContext) -> str:
 
 
 def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
-    """Build the dashboard for `profile`, telling time with `clock`."""
+    """Build the dashboard for `profile`, telling time with `clock`.
+
+    Raises `StoreNotFoundError` when the profile's Gold store does not exist,
+    so a dashboard that cannot report refuses to start.
+    """
+    GoldStore(profile, read_only=True).close()
     app = FastAPI()
     throttle = LoginThrottle()
 
