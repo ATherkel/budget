@@ -217,3 +217,28 @@ def test_a_page_opened_with_no_accounts_selected_keeps_them_unticked(
         page.checked("account"),
         page.text_of("report"),
     ) == ({CURRENT, SAVINGS}, set(), "Vælg mindst én konto.")
+
+
+def test_with_nothing_published_the_page_says_so_instead_of_reporting(
+    tmp_path: Path,
+) -> None:
+    profile = replace(
+        make_test_profile(tmp_path),
+        passphrase_file=tmp_path / "dashboard-passphrase",
+    )
+    migrate_gold(profile)
+    set_passphrase(profile, HOUSEHOLD_PHRASE)
+    client = TestClient(
+        create_app(profile, clock=lambda: JUST_AFTER_MIDNIGHT), follow_redirects=False
+    )
+    client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
+
+    response = client.get("/")
+    page = read(response.text)
+
+    # Absence is said in words, never shown as an empty or zero report.
+    assert (
+        response.status_code,
+        page.text_of("report"),
+        page.choices("account"),
+    ) == (200, "Der er endnu ingen tal at vise.", set())
