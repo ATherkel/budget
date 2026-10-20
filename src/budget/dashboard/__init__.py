@@ -103,6 +103,26 @@ def _render_overview(
     )
 
 
+def _render_report(profile: Profile, context: ReportContext) -> str:
+    """Render the report fragment `context` asks for, or why it cannot be shown."""
+    try:
+        with GoldStore(profile, read_only=True) as store:
+            overview_report = HouseholdReports(store).monthly_overview(context)
+    except InvalidSelectionError as error:
+        # A failure is shown, and echoes no context the page could render.
+        return _TEMPLATES.get_template("invalid_selection.html").render(
+            problems=display.selection_problems(error)
+        )
+    answered = overview_report.context
+    return _TEMPLATES.get_template("report.html").render(
+        is_current=overview_report.publication.is_current,
+        publication_id=answered.publication_id,
+        reference_date=answered.reference_date.isoformat(),
+        accounts=" ".join(sorted(answered.account_ids)),
+        month=display.month_value(answered.month),
+    )
+
+
 def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     """Build the dashboard for `profile`, telling time with `clock`."""
     app = FastAPI()
@@ -149,10 +169,14 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         publication: int,
         reference_date: date,
         month: str,
-        account: Annotated[list[str], Query()],
+        account: Annotated[list[str] | None, Query()] = None,
     ) -> Response:
         if not logged_in(request):
             return _send_to_login(request)
+        if not account:
+            # An empty selection is a prompt, never a report of nothing.
+            prompt = _TEMPLATES.get_template("no_accounts.html").render()
+            return start_session(HTMLResponse(prompt))
         # The pinned context, exactly as the page sent it: never re-resolved.
         context = ReportContext(
             publication_id=publication,
@@ -160,24 +184,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             month=display.parse_month(month),
             reference_date=reference_date,
         )
-        try:
-            with GoldStore(profile, read_only=True) as store:
-                overview_report = HouseholdReports(store).monthly_overview(context)
-        except InvalidSelectionError as error:
-            # A failure is shown, and echoes no context the page could render.
-            explanation = _TEMPLATES.get_template("invalid_selection.html").render(
-                problems=display.selection_problems(error)
-            )
-            return start_session(HTMLResponse(explanation))
-        answered = overview_report.context
-        fragment = _TEMPLATES.get_template("report.html").render(
-            is_current=overview_report.publication.is_current,
-            publication_id=answered.publication_id,
-            reference_date=answered.reference_date.isoformat(),
-            accounts=" ".join(sorted(answered.account_ids)),
-            month=display.month_value(answered.month),
-        )
-        return start_session(HTMLResponse(fragment))
+        return start_session(HTMLResponse(_render_report(profile, context)))
 
     @app.post("/login")
     def login(passphrase: Annotated[str, Form()]) -> Response:
