@@ -171,3 +171,25 @@ def test_an_invalid_selection_is_explained_naming_every_rule_it_breaks(
         "Kontoen closed-current findes ikke i disse tal." in fragment.visible(),
         fragment.attributes("report").get("data-month"),
     ) == (200, True, True, None)
+
+
+def test_an_empty_account_selection_is_a_prompt_not_a_report(
+    client: TestClient,
+) -> None:
+    # A form whose account boxes are all unticked sends no `account` at all.
+    response = client.get(
+        "/report",
+        params={
+            "publication": "2",
+            "reference_date": "2026-06-01",
+            "month": "2026-05",
+        },
+        headers={"HX-Request": "true"},
+    )
+    fragment = read(response.text)
+
+    assert (
+        response.status_code,
+        fragment.text_of("report"),
+        fragment.attributes("report").get("data-month"),
+    ) == (200, "Vælg mindst én konto.", None)
