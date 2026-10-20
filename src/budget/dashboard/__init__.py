@@ -104,8 +104,10 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             reference_date=reference_date,
         )
         with GoldStore(profile, read_only=True) as store:
-            answered = HouseholdReports(store).monthly_overview(context).context
+            overview_report = HouseholdReports(store).monthly_overview(context)
+        answered = overview_report.context
         fragment = _TEMPLATES.get_template("report.html").render(
+            is_current=overview_report.publication.is_current,
             publication_id=answered.publication_id,
             reference_date=answered.reference_date.isoformat(),
             accounts=" ".join(sorted(answered.account_ids)),
