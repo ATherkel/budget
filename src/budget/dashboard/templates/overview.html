@@ -26,6 +26,11 @@
 </label>
 <button>Vis</button>
 </form>
+{% if not selected_accounts %}
+<section id="report" role="status">
+<p>Vælg mindst én konto.</p>
+</section>
+{% endif %}
 </main>
 </body>
 </html>

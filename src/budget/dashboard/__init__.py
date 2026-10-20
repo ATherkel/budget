@@ -76,6 +76,8 @@ def _render_overview(
     visit resolves the current publication and today's Copenhagen date, with
     every account and this month selected.
     """
+    # A pinned address without accounts is an empty selection, not a fresh visit.
+    fresh = pin is None
     with GoldStore(profile, read_only=True) as store:
         reports = HouseholdReports(store)
         if pin is None:
@@ -93,8 +95,8 @@ def _render_overview(
         accounts=options.accounts,
         selected_accounts=(
             {account.account_id for account in options.accounts}
-            if accounts is None
-            else set(accounts)
+            if fresh
+            else set(accounts or ())
         ),
         months=[
             (display.month_value(month), display.month_label(month)) for month in months
