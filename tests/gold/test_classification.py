@@ -9,6 +9,7 @@ from datetime import date
 from decimal import Decimal
 
 from budget.gold import GoldCategoryAllocation, GoldResult, TransactionType
+from budget.inputs import AssignCategory, Rule, RuleConditions
 from tests.gold.classification_example import CURRENT, SAVINGS, booked, classified
 
 
@@ -88,3 +89,19 @@ def test_a_rule_matches_text_that_starts_with_its_pattern_in_any_case() -> None:
     assert [(a.transaction_id, a.category_id) for a in _allocations(result)] == [
         ("cafe", "eating-out")
     ]
+
+
+def test_a_rule_matches_only_text_that_meets_every_description_condition() -> None:
+    luna = RuleConditions(
+        description_contains=("LUNA",), description_starts_with=("MOBILEPAY",)
+    )
+    rules = {"r-luna": Rule("r-luna", 0, luna, AssignCategory("eating-out"))}
+
+    result = classified(
+        booked("both", CURRENT, date(2026, 2, 21), "-85.00", "MobilePay Cafe Luna"),
+        booked("prefix", CURRENT, date(2026, 2, 22), "-40.00", "MobilePay Netto"),
+        booked("text", CURRENT, date(2026, 2, 23), "-60.00", "Cafe Luna"),
+        rules=rules,
+    )
+
+    assert _types(result) == {"both": "expense", "prefix": "unknown", "text": "unknown"}
