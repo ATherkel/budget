@@ -119,3 +119,28 @@ def test_a_report_of_a_superseded_publication_offers_the_newer_figures(
         "Der findes nyere tal." in current.visible(),
         current.attributes("newer-figures"),
     ) == (True, "/", "Hent de nyeste tal", False, {})
+
+
+def test_a_page_opened_with_a_pinned_selection_keeps_it(client: TestClient) -> None:
+    # The page's own form submits here, and back or forward reopens it: the pin
+    # and the selection come from the address, never from the clock or Gold.
+    page = read(
+        client.get(
+            "/",
+            params={
+                "publication": "1",
+                "reference_date": "2026-05-14",
+                "account": [SAVINGS],
+                "month": "2026-04",
+            },
+        ).text
+    )
+
+    # The months on offer end at the pinned date's month, not today's.
+    assert (
+        page.hidden("publication"),
+        page.hidden("reference_date"),
+        page.checked("account"),
+        page.selected("month"),
+        page.offered("month")[-1],
+    ) == ("1", "2026-05-14", {SAVINGS}, [("2026-04", "april 2026")], "2026-05")

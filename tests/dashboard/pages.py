@@ -120,6 +120,10 @@ class Page(HTMLParser):
         """Return the visible text inside the element with `element_id`, or None."""
         return self.element_text.get(element_id)
 
+    def offered(self, name: str) -> list[str]:
+        """Return the values of every option of select `name`, in order."""
+        return [o.value for o in self.options if o.select == name]
+
     def selected(self, name: str) -> list[tuple[str, str]]:
         """Return the value and text of each selected option of select `name`."""
         return [
