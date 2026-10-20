@@ -144,3 +144,30 @@ def test_a_page_opened_with_a_pinned_selection_keeps_it(client: TestClient) -> N
         page.selected("month"),
         page.offered("month")[-1],
     ) == ("1", "2026-05-14", {SAVINGS}, [("2026-04", "april 2026")], "2026-05")
+
+
+def test_an_invalid_selection_is_explained_naming_every_rule_it_breaks(
+    client: TestClient,
+) -> None:
+    # July lies after the pinned date's month, the last one that can be chosen,
+    # and the second account is not in the publication.
+    response = client.get(
+        "/report",
+        params={
+            "publication": "2",
+            "reference_date": "2026-06-01",
+            "account": [CURRENT, "closed-current"],
+            "month": "2026-07",
+        },
+        headers={"HX-Request": "true"},
+    )
+    fragment = read(response.text)
+
+    # A failure is shown, never a report: it echoes no context to render.
+    assert (
+        response.status_code,
+        "Den valgte måned ligger uden for de måneder, der kan vælges."
+        in fragment.visible(),
+        "Kontoen closed-current findes ikke i disse tal." in fragment.visible(),
+        fragment.attributes("report").get("data-month"),
+    ) == (200, True, True, None)
