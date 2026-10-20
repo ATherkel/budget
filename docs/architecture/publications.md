@@ -191,10 +191,43 @@ Every move of the pointer appends one row:
 | `to_publication_id` | The publication current after the move. |
 | `cause` | `build`, `undo`, or `migration`. |
 
-The publication current at a moment is the `to_publication_id` of the last
-move at or before it. The previous current publication is the
+Outside a recorded recovery gap, the publication current at a moment is the
+`to_publication_id` of the last move at or before it. Within a recovery gap,
+that history is unavailable. The previous current publication is the
 `from_publication_id` of the last move. The printed diff and the dashboard
 banner show the cause.
+
+### Publication recovery
+
+Whole-profile restore recovers Gold's recipes, retained results and pointer
+history from the selected backup. Surviving import and decision logs can
+recover newer household facts and decisions, but do not reconstruct the exact
+publication history after that backup. Restoring a coherent set does not merge
+publication history from stores the operator moved aside.
+
+Restore records a durable recovery boundary. It reports that the interval
+between the backup's recoverable history and recovery has unavailable
+publication history; future as-was queries in that gap must not infer that the
+backup's current publication remained current throughout. References to lost
+publications must never silently resolve to different publications created
+after recovery. Increasing integers within a restored store alone are not
+sufficient to distinguish those histories; recovery must preserve that
+distinction in publication references without changing the identity of
+publications recovered from the backup.
+
+Catch-up evaluates recovered imports, decisions, configuration and code under
+the ordinary recipe rules. A changed recipe creates a fresh current
+publication at recovery time, without inventing historical publication IDs or
+pointer moves. An unchanged recipe publishes nothing. After a successful new
+build, undo returns to the backup's current publication when its result is
+still usable after migration. It cannot return to a lost pre-failure
+publication; an unavailable undo target is reported explicitly. When no build
+occurs, the restored pointer history retains its usual undo behavior.
+
+The promise to retain every recipe applies to normal operation and the history
+present in the recovered backup. Disaster recovery cannot promise to recover
+post-backup recipes, labels, results or pointer moves without another durable
+source. Exact recovery of that later publication history is outside issue #121.
 
 ### Past views
 
