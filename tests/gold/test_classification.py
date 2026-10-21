@@ -99,6 +99,16 @@ def test_a_rule_matches_a_bank_label_in_any_case() -> None:
     assert _types(result) == {"foetex": "expense"}
 
 
+def test_a_rule_matches_only_a_transaction_on_its_account() -> None:
+    # r-interest: account is joint-savings and text contains INTEREST.
+    result = classified(
+        booked("savings", SAVINGS, date(2026, 3, 31), "12.00", "INTEREST"),
+        booked("current", CURRENT, date(2026, 3, 31), "12.00", "INTEREST"),
+    )
+
+    assert _types(result) == {"savings": "income", "current": "unknown"}
+
+
 def test_a_rule_that_sets_no_condition_matches_no_transaction() -> None:
     rules = {"r-empty": Rule("r-empty", 0, RuleConditions(), AssignCategory("gifts"))}
 
