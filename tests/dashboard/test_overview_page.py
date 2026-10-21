@@ -307,3 +307,24 @@ def test_a_page_shows_the_report_for_its_own_selection(client: TestClient) -> No
         "Den valgte måned ligger uden for de måneder, der kan vælges."
         in (out_of_range.text_of("report") or ""),
     ) == (True, True)
+
+
+def test_a_report_fetched_in_place_moves_the_address_to_its_own_page(
+    client: TestClient,
+) -> None:
+    # Back and forward then reopen the page for each selection the reader made.
+    response = client.get(
+        "/report",
+        params={
+            "publication": "2",
+            "reference_date": "2026-06-01",
+            "account": [SAVINGS, CURRENT],
+            "month": "2026-05",
+        },
+        headers={"HX-Request": "true"},
+    )
+
+    assert response.headers.get("hx-push-url") == (
+        "/?publication=2&reference_date=2026-06-01"
+        f"&account={CURRENT}&account={SAVINGS}&month=2026-05"
+    )
