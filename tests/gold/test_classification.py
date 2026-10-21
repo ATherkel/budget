@@ -5,6 +5,7 @@ Each test reproduces a rule-only scenario of that doc, numbered as it numbers
 them, over the doc's synthetic setup (`tests/gold/classification_example.py`).
 """
 
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
@@ -57,6 +58,18 @@ def test_2_a_positive_amount_in_an_expense_category_is_a_refund_netting_it() -> 
     assert _types(result) == {"netto": "expense", "return": "refund"}
     groceries = [a for a in _allocations(result) if a.category_id == "groceries"]
     assert sum(a.amount for a in groceries) == Decimal("-520.00")
+
+
+def test_3_a_bank_label_classifies_only_through_a_rule_that_tests_it() -> None:
+    # r-bank-groceries (priority -10): bank category label is Groceries.
+    foetex = booked("foetex", CURRENT, date(2026, 2, 14), "-310.00", "FOETEX 88")
+
+    result = classified(replace(foetex, bank_category="Groceries"))
+
+    assert _types(result) == {"foetex": "expense"}
+    assert [(a.transaction_id, a.category_id) for a in _allocations(result)] == [
+        ("foetex", "groceries")
+    ]
 
 
 def test_4_equal_priority_rules_that_disagree_leave_a_rule_conflict() -> None:
