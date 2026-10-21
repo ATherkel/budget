@@ -26,6 +26,9 @@ def issue(key: bytes, now: datetime) -> str:
 def is_valid(key: bytes, value: str, now: datetime) -> bool:
     """Report whether `value` is a cookie signed with `key` that lasts past `now`."""
     payload, _, signature = value.partition(".")
-    if not hmac.compare_digest(signature, _signature(key, payload)):
+    # Compared as bytes: a cookie may hold any text, and `compare_digest`
+    # refuses non-ASCII strings instead of saying they differ.
+    expected = _signature(key, payload).encode()
+    if not hmac.compare_digest(signature.encode(errors="replace"), expected):
         return False
     return int(payload) > now.timestamp()
