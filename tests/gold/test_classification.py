@@ -90,6 +90,15 @@ def test_a_rule_matches_only_a_transaction_that_meets_text_and_label() -> None:
     assert _types(result) == {"shop": "expense", "text": "unknown", "other": "unknown"}
 
 
+def test_a_rule_matches_a_bank_label_in_any_case() -> None:
+    # r-bank-groceries: bank category label is Groceries.
+    foetex = booked("foetex", CURRENT, date(2026, 2, 14), "-310.00", "FOETEX 88")
+
+    result = classified(replace(foetex, bank_category="GROCERIES"))
+
+    assert _types(result) == {"foetex": "expense"}
+
+
 def test_a_rule_that_sets_no_condition_matches_no_transaction() -> None:
     rules = {"r-empty": Rule("r-empty", 0, RuleConditions(), AssignCategory("gifts"))}
 
