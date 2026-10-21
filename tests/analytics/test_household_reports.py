@@ -165,6 +165,37 @@ def test_selection_options_expose_the_same_unavailable_recovery(
     assert (raised.value.publication_id, raised.value.current_publication_id) == (1, 3)
 
 
+def test_unavailable_selection_options_without_current_offer_no_replacement(
+    gold_store: GoldStore,
+) -> None:
+    with pytest.raises(PublicationUnavailableError) as raised:
+        HouseholdReports(gold_store).selection_options(42, date(2026, 5, 14))
+
+    assert (raised.value.publication_id, raised.value.current_publication_id) == (
+        42,
+        None,
+    )
+
+
+def test_unavailable_overview_without_current_offers_no_replacement(
+    gold_store: GoldStore,
+) -> None:
+    context = ReportContext(
+        publication_id=42,
+        account_ids=frozenset({"joint-current"}),
+        month=ReportingMonth(2026, 2),
+        reference_date=date(2026, 5, 14),
+    )
+
+    with pytest.raises(PublicationUnavailableError) as raised:
+        HouseholdReports(gold_store).monthly_overview(context)
+
+    assert (raised.value.publication_id, raised.value.current_publication_id) == (
+        42,
+        None,
+    )
+
+
 def test_monthly_overview_keeps_the_existing_selection_failure(
     gold_store: GoldStore,
 ) -> None:
