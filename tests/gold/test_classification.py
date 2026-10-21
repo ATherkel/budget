@@ -53,6 +53,21 @@ def test_2_a_positive_amount_in_an_expense_category_is_a_refund_netting_it() -> 
     assert sum(a.amount for a in groceries) == Decimal("-520.00")
 
 
+def test_4_equal_priority_rules_that_disagree_leave_a_rule_conflict() -> None:
+    # r-mobilepay (starts with MOBILEPAY) says eating-out; r-netto (contains
+    # NETTO) says groceries. Both have priority 0.
+    result = classified(
+        booked("conflict", CURRENT, date(2026, 2, 20), "-85.00", "MOBILEPAY NETTO")
+    )
+
+    assert _types(result) == {"conflict": "unknown"}
+    assert _allocations(result) == []
+    assert [
+        (i.kind, i.transaction_ids, i.rule_ids, i.decision_id, i.reason)
+        for i in result.classification_review_items()
+    ] == [("rule-conflict", ("conflict",), ("r-mobilepay", "r-netto"), None, None)]
+
+
 def test_6_and_15_an_income_category_is_income_in_and_a_refund_out() -> None:
     result = classified(
         booked("from-bo", CURRENT, date(2026, 2, 1), "4000.00", "FROM BO"),
