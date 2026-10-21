@@ -14,7 +14,7 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 - **Cite a repository file** in an issue, PR or comment: link its lines at the commit that holds them, `https://github.com/ATherkel/budget/blob/<sha>/<path>?plain=1#L<from>-L<to>`, and quote the text. Take `<sha>` from `git rev-parse origin/main` after `git fetch origin`, or from the pushed PR head for lines a PR adds or changes. Keep `?plain=1` for Markdown files: GitHub renders them without line numbers, so the anchor alone neither scrolls to nor highlights the lines. The link keeps pointing at those lines however the file changes later; a bare `path:line` drifts with every edit.
-- **Milestone**: a new issue goes in milestone `Later` (`gh issue create --milestone "Later"`) unless the owner puts it in a release milestone.
+- **Milestone**: a new issue goes in `Polish` when it passes the Polish test and in `Later` otherwise; see [Milestone groups](#milestone-groups).
 
 The repository is `ATherkel/budget`. Pass `--repo ATherkel/budget` to `gh issue` and `gh pr` commands, so the command does not depend on which remote or worktree it runs from.
 
@@ -22,20 +22,20 @@ The repository is `ATherkel/budget`. Pass `--repo ATherkel/budget` to `gh issue`
 
 | Milestone | Purpose |
 | --- | --- |
-| Release milestones, such as `0.1 Real data in` and `0.2 First dashboard` | Work the owner has planned for that release. |
-| `Later` | Substantive bugs, missing capabilities and improvements worth scheduling, with no release assigned yet. |
+| `Later` | Substantive bugs, missing capabilities and improvements worth scheduling. |
 | `Polish` | Optional, low-impact cleanup, harmless inconsistencies, test maintenance and minor diagnostic improvements. No release commitment. |
 
 Use `Polish` when leaving an issue unfixed would not meaningfully affect normal
 use. Examples include clearer error wording, redundant exception entries and
 extra assertions for behaviour that already works. Classify by impact: even a
-small fix belongs in `Later` or a release milestone when it addresses meaningful
-breakage, incorrect reports or missing functionality.
+small fix belongs in `Later` when it addresses meaningful breakage, incorrect
+reports, missing functionality, or a correctness, security, accessibility or
+data-integrity problem.
 
 Create a clear polish issue with `--milestone "Polish"`; use
-`--milestone "Later"` for other unscheduled work. Keep the existing issue-type
-and triage labels: `Polish` is a milestone, so a duplicate `spare-time` label is
-unnecessary. Preserve release assignments unless the owner authorizes a move.
+`--milestone "Later"` for other new work. Keep the existing issue-type and
+triage labels. Other milestones are the owner's: don't move an issue out of a
+milestone the owner assigned unless the owner authorizes it.
 
 Treat `Polish` as an opt-in queue for requested cleanup sessions. Its issues
 should not delay a PR or release; new evidence of material impact calls for
