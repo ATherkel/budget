@@ -1,10 +1,10 @@
 # Copyright 2026 Therkel
 """The production household-report adapter over Gold publications."""
 
-import calendar
 from dataclasses import replace
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime
 from typing import Final
+from zoneinfo import ZoneInfo
 
 from budget.analytics.overview import monthly_overview as build_monthly_overview
 from budget.analytics.overview import selection_options as build_selection_options
@@ -43,23 +43,12 @@ class PublicationUnavailableError(GoldPublicationUnavailableError):
             self.add_note(f"current publication: {current_publication_id}")
 
 
-_CET: Final = timedelta(hours=1)
-_CEST: Final = timedelta(hours=2)
-
-
-def _last_sunday(year: int, month: int) -> date:
-    """Return the last Sunday in `year` and `month`."""
-    last = date(year, month, calendar.monthrange(year, month)[1])
-    return last - timedelta(days=(last.weekday() - 6) % 7)
+_COPENHAGEN: Final = ZoneInfo("Europe/Copenhagen")
 
 
 def _copenhagen_date(moment: datetime) -> date:
     """Return the Copenhagen date of a recorded UTC moment."""
-    utc = moment.astimezone(UTC)
-    summer_start = datetime.combine(_last_sunday(utc.year, 3), time(1), tzinfo=UTC)
-    summer_end = datetime.combine(_last_sunday(utc.year, 10), time(1), tzinfo=UTC)
-    offset = _CEST if summer_start <= utc < summer_end else _CET
-    return (utc + offset).date()
+    return moment.astimezone(_COPENHAGEN).date()
 
 
 def _reference_date(publication: GoldPublication, requested: date) -> date:

@@ -7,7 +7,9 @@ authors = [
     { name = "Therkel", email = "antherkelsen@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "tzdata>=2026.5",
+]
 
 [project.scripts]
 budget = "budget.cli:run"
