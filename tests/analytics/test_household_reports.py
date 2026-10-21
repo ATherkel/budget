@@ -1,9 +1,10 @@
 # Copyright 2026 Therkel
 """The production household reports over a real test-profile Gold store."""
 
+import sqlite3
 from collections.abc import Iterator
 from dataclasses import replace
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,15 @@ def _publish(store: GoldStore, publication_id: int) -> GoldPublication:
     publication = replace(PUBLICATION, publication_id=publication_id)
     store.publish(GoldResult(publication, RECORDS), RECIPE, CONFIGURATION)
     return publication
+
+
+def _make_known_at(profile: Profile, publication_id: int) -> None:
+    """Make an already retained publication an explicit as-known-at view."""
+    with sqlite3.connect(profile.gold_store) as connection:
+        connection.execute(
+            "UPDATE publications SET kind = 'as_known_at' WHERE publication_id = ?",
+            (publication_id,),
+        )
 
 
 def test_current_publication_returns_the_current_build(gold_store: GoldStore) -> None:
@@ -170,3 +180,35 @@ def test_monthly_overview_keeps_the_existing_selection_failure(
         HouseholdReports(gold_store).monthly_overview(context)
 
     assert raised.value.reasons == {"no_accounts"}
+
+
+def test_as_known_at_uses_the_known_date_in_copenhagen(
+    profile: Profile, gold_store: GoldStore
+) -> None:
+    # 22:30 UTC on 30 June is already 1 July in Copenhagen.
+    known_at = datetime(2026, 6, 30, 22, 30, tzinfo=UTC)
+    view = replace(
+        PUBLICATION,
+        publication_id=1,
+        kind="pipeline",
+        label="Known at",
+        known_at=known_at,
+    )
+    gold_store.publish(GoldResult(view, RECORDS), RECIPE, CONFIGURATION)
+    _publish(gold_store, 2)
+    _publish(gold_store, 3)
+    _make_known_at(profile, 1)
+    context = ReportContext(
+        publication_id=1,
+        account_ids=frozenset({"joint-current", "joint-savings"}),
+        month=ReportingMonth(2026, 7),
+        reference_date=date(2026, 5, 14),
+    )
+
+    report = HouseholdReports(gold_store).monthly_overview(context)
+
+    assert report.context == replace(context, reference_date=date(2026, 7, 1))
+    assert (report.publication.kind, report.publication.is_current) == (
+        "as_known_at",
+        False,
+    )
