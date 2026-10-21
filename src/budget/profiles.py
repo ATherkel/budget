@@ -216,9 +216,12 @@ class Profile:
                     _FOLDER_NAMES[first], _FOLDER_NAMES[second]
                 )
         root = None if self.root is None else Path(self.root).resolve()
-        if root is not None and not all(
-            folder.is_relative_to(root) for folder in folders.values()
-        ):
+        # The passphrase file is no folder, but a test must not write it
+        # outside its root either.
+        guarded = list(folders.values())
+        if self.passphrase_file is not None:
+            guarded.append(Path(self.passphrase_file).resolve())
+        if root is not None and not all(path.is_relative_to(root) for path in guarded):
             raise ProfilePathOutsideRootError
         for field_name, folder in folders.items():
             object.__setattr__(self, field_name, folder)
