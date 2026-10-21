@@ -6,11 +6,13 @@ It reads Gold only through analytics, opened read-only from one profile.
 
 from collections.abc import Callable
 from datetime import date, datetime
+from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, PackageLoader, select_autoescape
 
 from budget.analytics import (
@@ -36,6 +38,8 @@ from budget.profiles import Profile
 __all__ = ["create_app", "set_passphrase"]
 
 SESSION_COOKIE = "session"
+
+_STATIC = Path(__file__).parent / "static"
 
 _TEMPLATES = Environment(
     loader=PackageLoader("budget.dashboard"),
@@ -162,6 +166,8 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     require_passphrase(profile)
     GoldStore(profile, read_only=True).close()
     app = FastAPI()
+    # The htmx script ships in the package: nothing is fetched from the internet.
+    app.mount("/static", StaticFiles(directory=_STATIC), name="static")
     throttle = LoginThrottle()
 
     def start_session(response: Response) -> Response:

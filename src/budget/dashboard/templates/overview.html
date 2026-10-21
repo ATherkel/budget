@@ -4,11 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Oversigt</title>
+{# No page snapshots in browser storage: a history miss reloads the page. #}
+<meta name="htmx-config" content='{"historyCacheSize": 0, "refreshOnHistoryMiss": true}'>
+<script src="/static/htmx.min.js" defer></script>
 </head>
 <body>
 <main>
 <h1>Oversigt</h1>
-<form method="get" action="/">
+{# Without scripts the form reloads the page; htmx swaps only the report, and
+   a newer change replaces any request still outstanding. #}
+<form method="get" action="/" hx-get="/report" hx-target="#report" hx-swap="outerHTML" hx-sync="this:replace" hx-trigger="submit, change">
 <input type="hidden" name="publication" value="{{ publication_id }}">
 <input type="hidden" name="reference_date" value="{{ reference_date }}">
 <fieldset>
