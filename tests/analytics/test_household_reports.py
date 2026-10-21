@@ -17,7 +17,7 @@ from budget.analytics import (
     ReportContext,
     ReportPublication,
 )
-from budget.gold import GoldPublication, GoldResult, ReportingMonth
+from budget.gold import GoldPublication, GoldRecords, GoldResult, ReportingMonth
 from budget.gold.storage import migrate_gold
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
@@ -215,3 +215,25 @@ def test_as_known_at_uses_the_known_date_in_copenhagen(
         False,
     )
     assert options.last_month == ReportingMonth(2026, 7)
+
+
+def test_as_known_at_uses_historical_copenhagen_summer_time(
+    profile: Profile, gold_store: GoldStore
+) -> None:
+    # Denmark's summer-time period ended in September in 1995.
+    known_at = datetime(1995, 9, 30, 22, 30, tzinfo=UTC)
+    view = replace(
+        PUBLICATION,
+        publication_id=1,
+        kind="pipeline",
+        label="1995 known at",
+        known_at=known_at,
+    )
+    gold_store.publish(GoldResult(view, GoldRecords()), RECIPE, CONFIGURATION)
+    _publish(gold_store, 2)
+    _make_known_at(profile, 1)
+
+    options = HouseholdReports(gold_store).selection_options(1, date(1995, 9, 1))
+
+    assert options.first_month == ReportingMonth(1995, 9)
+    assert options.last_month == ReportingMonth(1995, 9)
