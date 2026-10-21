@@ -205,10 +205,13 @@ def test_as_known_at_uses_the_known_date_in_copenhagen(
         reference_date=date(2026, 5, 14),
     )
 
-    report = HouseholdReports(gold_store).monthly_overview(context)
+    reports = HouseholdReports(gold_store)
+    report = reports.monthly_overview(context)
+    options = reports.selection_options(1, date(2026, 5, 14))
 
     assert report.context == replace(context, reference_date=date(2026, 7, 1))
     assert (report.publication.kind, report.publication.is_current) == (
         "as_known_at",
         False,
     )
+    assert options.last_month == ReportingMonth(2026, 7)

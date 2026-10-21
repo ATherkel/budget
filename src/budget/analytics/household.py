@@ -1,7 +1,10 @@
 # Copyright 2026 Therkel
 """The production household-report adapter over Gold publications."""
 
-from datetime import date
+import calendar
+from dataclasses import replace
+from datetime import UTC, date, datetime, time, timedelta
+from typing import Final
 
 from budget.analytics.overview import monthly_overview as build_monthly_overview
 from budget.analytics.overview import selection_options as build_selection_options
@@ -38,6 +41,32 @@ class PublicationUnavailableError(GoldPublicationUnavailableError):
         self.current_publication_id = current_publication_id
         if current_publication_id is not None:
             self.add_note(f"current publication: {current_publication_id}")
+
+
+_CET: Final = timedelta(hours=1)
+_CEST: Final = timedelta(hours=2)
+
+
+def _last_sunday(year: int, month: int) -> date:
+    """Return the last Sunday in `year` and `month`."""
+    last = date(year, month, calendar.monthrange(year, month)[1])
+    return last - timedelta(days=(last.weekday() - 6) % 7)
+
+
+def _copenhagen_date(moment: datetime) -> date:
+    """Return the Copenhagen date of a recorded UTC moment."""
+    utc = moment.astimezone(UTC)
+    summer_start = datetime.combine(_last_sunday(utc.year, 3), time(1), tzinfo=UTC)
+    summer_end = datetime.combine(_last_sunday(utc.year, 10), time(1), tzinfo=UTC)
+    offset = _CEST if summer_start <= utc < summer_end else _CET
+    return (utc + offset).date()
+
+
+def _reference_date(publication: GoldPublication, requested: date) -> date:
+    """Use a past view's known date in Copenhagen; keep a page's pipeline date."""
+    if publication.kind == "as_known_at":
+        return _copenhagen_date(publication.known_at)
+    return requested
 
 
 def _report_publication(
@@ -88,7 +117,7 @@ class HouseholdReports:
             current = self._publications.current()
             return build_selection_options(
                 gold,
-                reference_date,
+                _reference_date(publication, reference_date),
                 is_current=_is_current(publication, current),
             )
         except GoldPublicationUnavailableError as error:
@@ -99,6 +128,10 @@ class HouseholdReports:
         try:
             gold = self._publications.open(context.publication_id)
             publication = gold.publication()
+            context = replace(
+                context,
+                reference_date=_reference_date(publication, context.reference_date),
+            )
             return build_monthly_overview(
                 gold,
                 context,
