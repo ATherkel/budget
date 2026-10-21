@@ -277,6 +277,10 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         )
         return start_session(fragment)
 
+    @app.get("/login")
+    def login_page() -> Response:
+        return HTMLResponse(_LOGIN_PAGE.format(message=""))
+
     @app.post("/login")
     def login(passphrase: Annotated[str, Form()]) -> Response:
         # One login at a time, from the lock check to recording the outcome.
