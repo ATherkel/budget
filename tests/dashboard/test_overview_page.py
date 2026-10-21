@@ -288,3 +288,22 @@ def test_household_figures_are_never_kept_in_a_cache(client: TestClient) -> None
     assert [
         response.headers.get("cache-control") for response in (page, fragment, refusal)
     ] == ["no-store"] * 3
+
+
+def test_a_page_shows_the_report_for_its_own_selection(client: TestClient) -> None:
+    # Back or forward reopens a page; it must say what its report says,
+    # without waiting for a script to fetch the region.
+    pin = {
+        "publication": "1",
+        "reference_date": "2026-05-14",
+        "account": [CURRENT],
+        "month": "2026-04",
+    }
+    superseded = read(client.get("/", params=pin).text)
+    out_of_range = read(client.get("/", params={**pin, "month": "2026-07"}).text)
+
+    assert (
+        "Der findes nyere tal." in (superseded.text_of("report") or ""),
+        "Den valgte måned ligger uden for de måneder, der kan vælges."
+        in (out_of_range.text_of("report") or ""),
+    ) == (True, True)
