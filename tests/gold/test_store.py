@@ -23,7 +23,6 @@ from budget.gold import (
     PublicationUnavailableError,
 )
 from budget.gold.models import ReportingMonth
-from budget.gold.recipe import Recipe, RecipeImportRun
 from budget.gold.storage import migrate_gold, open_gold_connection
 from budget.gold.store import (
     ConfigurationMismatchError,
@@ -33,11 +32,11 @@ from budget.gold.store import (
     PublicationKindError,
     StaleResultsWarning,
 )
-from budget.inputs import ConfigurationSnapshot
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 from budget.silver import MoneyPrecisionError
 from tests.gold.contract import GoldRepositoryContract
+from tests.gold.publishing import CONFIGURATION, RECIPE
 from tests.gold.worked_example import (
     CATEGORY_ALLOCATIONS,
     MONTHLY_BALANCES,
@@ -45,25 +44,7 @@ from tests.gold.worked_example import (
     RECORDS,
     SAVINGS,
 )
-from tests.gold.worked_silver import REGISTRY, TAXONOMY
-
-CONFIGURATION = ConfigurationSnapshot(accounts=REGISTRY, taxonomy=TAXONOMY, rules={})
-RECIPE = Recipe(
-    import_runs=frozenset(
-        {
-            RecipeImportRun("run-current", "a" * 64),
-            RecipeImportRun("run-savings", "b" * 64),
-        }
-    ),
-    configuration_fingerprint=CONFIGURATION.fingerprint,
-    decision_log_position=0,
-    decision_log_prefix_sha256="c" * 64,
-    code_version=None,
-    contract_version="0.2",
-    silver_identity_version="1",
-    python_version="3.12.14",
-    sqlite_version="3.53.1",
-)
+from tests.gold.worked_silver import TAXONOMY
 
 
 def publication(publication_id: int) -> GoldPublication:

@@ -20,7 +20,7 @@ from budget.gold.store import GoldStore
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 from tests.dashboard.pages import Page, read
-from tests.gold.test_store import CONFIGURATION, RECIPE
+from tests.gold.publishing import CONFIGURATION, RECIPE
 from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
 
 HOUSEHOLD_PHRASE = "correct horse battery staple"

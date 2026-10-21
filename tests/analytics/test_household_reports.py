@@ -23,7 +23,7 @@ from budget.gold.storage import migrate_gold
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
-from tests.gold.test_store import CONFIGURATION, RECIPE
+from tests.gold.publishing import CONFIGURATION, RECIPE
 from tests.gold.worked_example import PUBLICATION, RECORDS
 
 SECOND_BUILD_AT = datetime(2026, 5, 16, 7, 30, tzinfo=UTC)
