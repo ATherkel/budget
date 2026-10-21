@@ -26,6 +26,7 @@ from budget.backups import (
 )
 from budget.bronze.storage import BRONZE_STAGE, bronze_stage
 from budget.codeversion import UncommittedCodeError, require_committed_code
+from budget.dashboard.passphrase import set_passphrase
 from budget.importing import (
     Coverage,
     ImportLogAheadOfBronzeError,
@@ -59,7 +60,7 @@ from budget.profiles import (
     ProfileFileError,
     load_profile_file,
 )
-from budget.prompting import ask_continue_after_duplicates, ask_ranges
+from budget.prompting import ask_continue_after_duplicates, ask_passphrase, ask_ranges
 from budget.ranges import load_ranges
 from budget.rebuilding import (
     SilverRebuild,
@@ -176,6 +177,10 @@ def _parser() -> argparse.ArgumentParser:
         "--kind", choices=REVIEW_KINDS, help="list one kind of item only, no runs"
     )
     review.add_argument("--account", help="list one account's items and runs only")
+    commands.add_parser(
+        "set-passphrase",
+        help="set the dashboard passphrase, which logs out every device",
+    )
     return parser
 
 
@@ -327,6 +332,13 @@ def _review(profile: Profile, kind: str | None, account: str | None) -> None:
     sys.stdout.write(summary)
 
 
+def _set_passphrase(profile: Profile) -> None:
+    """Ask for the new dashboard passphrase twice, then store its hash."""
+    passphrase = ask_passphrase("New dashboard passphrase: ")
+    ask_passphrase("Type it again: ")
+    set_passphrase(profile, passphrase)
+
+
 def _rebuild_counts(rebuilt: SilverRebuild) -> dict[str, int]:
     """Return the rebuild counts a routine log records, and nothing else."""
     outcomes = Counter(run.outcome for run in rebuilt.runs)
@@ -357,6 +369,8 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         _rebuild(profile, arguments.from_stage)
     elif arguments.command == "review":
         _review(profile, arguments.kind, arguments.account)
+    elif arguments.command == "set-passphrase":
+        _set_passphrase(profile)
     else:
         _migrate(profile, arguments.stage, new_store=arguments.new_store)
     return EXIT_OK
