@@ -48,6 +48,7 @@ class _Outcome:
     category_id: str | None = None
     # The kind of review item the outcome raises, if any.
     review_kind: ClassificationReviewKind | None = None
+    rule_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -99,7 +100,16 @@ def _outcome(
     ]
     if not matching:
         return _Outcome("unknown", review_kind="unclassified")
+
     winner = max(matching, key=lambda rule: rule.priority)
+    ties = [rule for rule in matching if rule.priority == winner.priority]
+    if any(rule.then != winner.then for rule in ties):
+        return _Outcome(
+            "unknown",
+            review_kind="rule-conflict",
+            rule_ids=tuple(sorted(rule.rule_id for rule in ties)),
+        )
+
     match winner.then:
         case AssignCategory(category_id=category_id):
             taxonomy = configuration.taxonomy
@@ -148,7 +158,7 @@ def _review_item(
         review_item_id=hash_parts([outcome.review_kind, transaction.transaction_id]),
         kind=outcome.review_kind,
         transaction_ids=(transaction.transaction_id,),
-        rule_ids=(),
+        rule_ids=outcome.rule_ids or (),
         decision_id=None,
         reason=None,
     )
