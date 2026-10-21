@@ -14,13 +14,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from budget.dashboard import create_app, set_passphrase
-from budget.gold.storage import migrate_gold
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 from budget.sqlstore import StoreNotFoundError
+from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
 
 NOW = datetime(2026, 5, 14, 9, 0, tzinfo=UTC)
-HOUSEHOLD_PHRASE = "correct horse battery staple"
 
 
 class Clock:
@@ -40,13 +39,7 @@ def clock() -> Clock:
 
 @pytest.fixture
 def profile(tmp_path: Path) -> Profile:
-    profile = replace(
-        make_test_profile(tmp_path),
-        passphrase_file=tmp_path / "dashboard-passphrase",
-    )
-    migrate_gold(profile)
-    set_passphrase(profile, HOUSEHOLD_PHRASE)
-    return profile
+    return dashboard_profile(tmp_path)
 
 
 @pytest.fixture

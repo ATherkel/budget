@@ -13,29 +13,22 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from budget.dashboard import create_app, set_passphrase
+from budget.dashboard import create_app
 from budget.gold import GoldResult
-from budget.gold.storage import migrate_gold
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
-from budget.profiles import test_profile as make_test_profile
+from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
 from tests.dashboard.pages import Page, read
 from tests.gold.publishing import CONFIGURATION, RECIPE
 from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
 
-HOUSEHOLD_PHRASE = "correct horse battery staple"
 # 00:30 on 1 June in Copenhagen, still 31 May in UTC.
 JUST_AFTER_MIDNIGHT = datetime(2026, 5, 31, 22, 30, tzinfo=UTC)
 
 
 @pytest.fixture
 def profile(tmp_path: Path) -> Profile:
-    profile = replace(
-        make_test_profile(tmp_path),
-        passphrase_file=tmp_path / "dashboard-passphrase",
-    )
-    migrate_gold(profile)
-    set_passphrase(profile, HOUSEHOLD_PHRASE)
+    profile = dashboard_profile(tmp_path)
     with GoldStore(profile) as store:
         for publication_id in (1, 2):
             published = replace(PUBLICATION, publication_id=publication_id)
@@ -222,14 +215,9 @@ def test_a_page_opened_with_no_accounts_selected_keeps_them_unticked(
 def test_with_nothing_published_the_page_says_so_instead_of_reporting(
     tmp_path: Path,
 ) -> None:
-    profile = replace(
-        make_test_profile(tmp_path),
-        passphrase_file=tmp_path / "dashboard-passphrase",
-    )
-    migrate_gold(profile)
-    set_passphrase(profile, HOUSEHOLD_PHRASE)
     client = TestClient(
-        create_app(profile, clock=lambda: JUST_AFTER_MIDNIGHT), follow_redirects=False
+        create_app(dashboard_profile(tmp_path), clock=lambda: JUST_AFTER_MIDNIGHT),
+        follow_redirects=False,
     )
     client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
 
