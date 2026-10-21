@@ -8,8 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from budget.analytics import HouseholdReports, NothingPublishedError, ReportPublication
-from budget.gold import GoldPublication, GoldResult
+from budget.analytics import (
+    HouseholdReports,
+    NothingPublishedError,
+    ReportContext,
+    ReportPublication,
+)
+from budget.gold import GoldPublication, GoldResult, ReportingMonth
 from budget.gold.storage import migrate_gold
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
@@ -82,4 +87,37 @@ def test_selection_options_open_the_requested_superseded_publication(
     assert [account.display_name for account in options.accounts] == [
         "Old Joint current",
         "Old Joint savings",
+    ]
+
+
+def test_monthly_overview_keeps_reading_a_superseded_pipeline_page(
+    gold_store: GoldStore,
+) -> None:
+    old_records = replace(
+        RECORDS,
+        accounts=tuple(
+            replace(account, display_name=f"Pinned {account.display_name}")
+            for account in RECORDS.accounts
+        ),
+    )
+    old = replace(PUBLICATION, publication_id=1)
+    gold_store.publish(GoldResult(old, old_records), RECIPE, CONFIGURATION)
+    _publish(gold_store, 2)
+    context = ReportContext(
+        publication_id=1,
+        account_ids=frozenset({"joint-current", "joint-savings"}),
+        month=ReportingMonth(2026, 6),
+        reference_date=date(2026, 6, 3),
+    )
+
+    report = HouseholdReports(gold_store).monthly_overview(context)
+
+    assert (report.publication.publication_id, report.publication.is_current) == (
+        1,
+        False,
+    )
+    assert report.context == context
+    assert [row.display_name for row in report.coverage.account_months] == [
+        "Pinned Joint current",
+        "Pinned Joint savings",
     ]

@@ -4,7 +4,12 @@
 from datetime import date
 
 from budget.analytics.overview import selection_options as build_selection_options
-from budget.analytics.reports import ReportPublication, SelectionOptions
+from budget.analytics.reports import (
+    MonthlyOverview,
+    ReportContext,
+    ReportPublication,
+    SelectionOptions,
+)
 from budget.gold import GoldPublication, GoldPublications
 
 
@@ -58,3 +63,7 @@ class HouseholdReports:
                 and current.publication_id == publication.publication_id
             ),
         )
+
+    def monthly_overview(self, context: ReportContext) -> MonthlyOverview:
+        """Return the overview from the publication pinned in `context`."""
+        raise NotImplementedError
