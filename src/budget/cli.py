@@ -148,6 +148,17 @@ class PassphraseMismatchError(Exception):
         )
 
 
+class NoPassphraseFileError(Exception):
+    """The profile names nowhere to keep the dashboard passphrase."""
+
+    def __init__(self, profile: str) -> None:
+        """Name the setting the profile file needs."""
+        super().__init__(
+            f"the {profile} profile names no [dashboard] passphrase_file; "
+            "add it to the profile file first"
+        )
+
+
 class EmptyPassphraseError(Exception):
     """An empty passphrase would guard the dashboard with nothing."""
 
@@ -354,6 +365,9 @@ def _review(profile: Profile, kind: str | None, account: str | None) -> None:
 
 def _set_passphrase(profile: Profile) -> None:
     """Ask for the new dashboard passphrase twice, then store its hash."""
+    # Refused before asking, so no one types a passphrase that cannot be kept.
+    if profile.passphrase_file is None:
+        raise NoPassphraseFileError(profile.name)
     passphrase = ask_passphrase("New dashboard passphrase: ")
     confirmation = ask_passphrase("Type it again: ")
     if not passphrase:
@@ -423,6 +437,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
     except (
         ProfileFileError,
         ConfigurationError,
+        NoPassphraseFileError,
         EmptyPassphraseError,
         PassphraseMismatchError,
     ) as error:
