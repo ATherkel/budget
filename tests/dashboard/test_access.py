@@ -99,6 +99,20 @@ def test_the_household_passphrase_logs_in_with_a_private_session_cookie(
     ) == (303, "/", [(True, True)], 200)
 
 
+def test_a_session_cookie_with_letters_outside_ascii_is_refused_not_an_error(
+    client: TestClient,
+) -> None:
+    # Cookie unquoting can hand the dashboard any text; refusing it keeps
+    # that browser able to log in again instead of failing on every page.
+    client.cookies.set("session", '"9999999999.\\346"')
+    response = client.get("/")
+
+    assert (response.status_code, response.headers.get("location")) == (
+        303,
+        "/login",
+    )
+
+
 def test_the_browser_keeps_a_login_for_30_days_not_until_it_closes(
     client: TestClient,
 ) -> None:
