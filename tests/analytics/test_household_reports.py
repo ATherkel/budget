@@ -10,6 +10,7 @@ import pytest
 
 from budget.analytics import (
     HouseholdReports,
+    InvalidSelectionError,
     NothingPublishedError,
     PublicationUnavailableError,
     ReportContext,
@@ -140,3 +141,32 @@ def test_an_unavailable_pinned_result_offers_the_current_id(
         HouseholdReports(gold_store).monthly_overview(context)
 
     assert (raised.value.publication_id, raised.value.current_publication_id) == (1, 3)
+
+
+def test_selection_options_expose_the_same_unavailable_recovery(
+    gold_store: GoldStore,
+) -> None:
+    for publication_id in (1, 2, 3):
+        _publish(gold_store, publication_id)
+
+    with pytest.raises(PublicationUnavailableError) as raised:
+        HouseholdReports(gold_store).selection_options(1, date(2026, 5, 14))
+
+    assert (raised.value.publication_id, raised.value.current_publication_id) == (1, 3)
+
+
+def test_monthly_overview_keeps_the_existing_selection_failure(
+    gold_store: GoldStore,
+) -> None:
+    _publish(gold_store, 1)
+    context = ReportContext(
+        publication_id=1,
+        account_ids=frozenset(),
+        month=ReportingMonth(2026, 2),
+        reference_date=date(2026, 5, 14),
+    )
+
+    with pytest.raises(InvalidSelectionError) as raised:
+        HouseholdReports(gold_store).monthly_overview(context)
+
+    assert raised.value.reasons == {"no_accounts"}

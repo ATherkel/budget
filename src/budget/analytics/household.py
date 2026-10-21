@@ -65,6 +65,12 @@ class HouseholdReports:
         """Read reports from `publications`."""
         self._publications = publications
 
+    def _unavailable(self, publication_id: int) -> PublicationUnavailableError:
+        """Build the explicit failure from Gold's current state."""
+        current = self._publications.current()
+        current_id = None if current is None else current.publication_id
+        return PublicationUnavailableError(publication_id, current_id)
+
     def current_publication(self) -> ReportPublication:
         """Return the current publication's report identity."""
         publication = self._publications.current()
@@ -76,21 +82,27 @@ class HouseholdReports:
         self, publication_id: int, reference_date: date
     ) -> SelectionOptions:
         """Return what can be selected in the requested publication."""
-        gold = self._publications.open(publication_id)
-        publication = gold.publication()
-        current = self._publications.current()
-        return build_selection_options(
-            gold,
-            reference_date,
-            is_current=_is_current(publication, current),
-        )
+        try:
+            gold = self._publications.open(publication_id)
+            publication = gold.publication()
+            current = self._publications.current()
+            return build_selection_options(
+                gold,
+                reference_date,
+                is_current=_is_current(publication, current),
+            )
+        except GoldPublicationUnavailableError as error:
+            raise self._unavailable(publication_id) from error
 
     def monthly_overview(self, context: ReportContext) -> MonthlyOverview:
         """Return the overview from the publication pinned in `context`."""
-        gold = self._publications.open(context.publication_id)
-        publication = gold.publication()
-        return build_monthly_overview(
-            gold,
-            context,
-            is_current=_is_current(publication, self._publications.current()),
-        )
+        try:
+            gold = self._publications.open(context.publication_id)
+            publication = gold.publication()
+            return build_monthly_overview(
+                gold,
+                context,
+                is_current=_is_current(publication, self._publications.current()),
+            )
+        except GoldPublicationUnavailableError as error:
+            raise self._unavailable(context.publication_id) from error
