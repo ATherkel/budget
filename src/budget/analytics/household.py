@@ -11,7 +11,13 @@ from budget.analytics.reports import (
     ReportPublication,
     SelectionOptions,
 )
-from budget.gold import GoldPublication, GoldPublications
+from budget.gold import (
+    GoldPublication,
+    GoldPublications,
+)
+from budget.gold import (
+    PublicationUnavailableError as GoldPublicationUnavailableError,
+)
 
 
 class NothingPublishedError(LookupError):
@@ -20,6 +26,18 @@ class NothingPublishedError(LookupError):
     def __init__(self) -> None:
         """Say that no publication exists."""
         super().__init__("nothing is published: Gold has no current publication")
+
+
+class PublicationUnavailableError(GoldPublicationUnavailableError):
+    """A report read names a publication whose retained result is unavailable."""
+
+    def __init__(self, publication_id: int, current_publication_id: int | None) -> None:
+        """Keep the failed id and the current id a page may offer instead."""
+        super().__init__(publication_id)
+        self.publication_id = publication_id
+        self.current_publication_id = current_publication_id
+        if current_publication_id is not None:
+            self.add_note(f"current publication: {current_publication_id}")
 
 
 def _report_publication(

@@ -11,6 +11,7 @@ import pytest
 from budget.analytics import (
     HouseholdReports,
     NothingPublishedError,
+    PublicationUnavailableError,
     ReportContext,
     ReportPublication,
 )
@@ -121,3 +122,21 @@ def test_monthly_overview_keeps_reading_a_superseded_pipeline_page(
         "Pinned Joint current",
         "Pinned Joint savings",
     ]
+
+
+def test_an_unavailable_pinned_result_offers_the_current_id(
+    gold_store: GoldStore,
+) -> None:
+    for publication_id in (1, 2, 3):
+        _publish(gold_store, publication_id)
+    context = ReportContext(
+        publication_id=1,
+        account_ids=frozenset({"joint-current", "joint-savings"}),
+        month=ReportingMonth(2026, 2),
+        reference_date=date(2026, 5, 14),
+    )
+
+    with pytest.raises(PublicationUnavailableError) as raised:
+        HouseholdReports(gold_store).monthly_overview(context)
+
+    assert (raised.value.publication_id, raised.value.current_publication_id) == (1, 3)
