@@ -309,6 +309,33 @@ def test_a_page_shows_the_report_for_its_own_selection(client: TestClient) -> No
     ) == (True, True)
 
 
+def test_a_month_that_is_not_a_month_is_explained_not_an_error(
+    client: TestClient,
+) -> None:
+    # A hand-edited or truncated address names no month that can be chosen.
+    explained = []
+    for month in ("2026-13", "maj"):
+        response = client.get(
+            "/report",
+            params={
+                "publication": "2",
+                "reference_date": "2026-06-01",
+                "account": [CURRENT],
+                "month": month,
+            },
+            headers={"HX-Request": "true"},
+        )
+        explained.append(
+            (
+                response.status_code,
+                "Den valgte måned ligger uden for de måneder, der kan vælges."
+                in response.text,
+            )
+        )
+
+    assert explained == [(200, True), (200, True)]
+
+
 def test_a_report_fetched_in_place_moves_the_address_to_its_own_page(
     client: TestClient,
 ) -> None:
