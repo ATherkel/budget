@@ -355,3 +355,35 @@ def test_a_report_fetched_in_place_moves_the_address_to_its_own_page(
         "/?publication=2&reference_date=2026-06-01"
         f"&account={CURRENT}&account={SAVINGS}&month=2026-05"
     )
+
+
+def test_text_from_the_address_is_shown_as_text_never_run_as_markup(
+    client: TestClient,
+) -> None:
+    # A crafted link names an account that is really markup, once as an
+    # element and once breaking out of an attribute.
+    crafted = (
+        '"><script id="injected">alert(1)</script>',
+        '" id="injected" onmouseover="alert(1)',
+    )
+    pages = []
+    for account in crafted:
+        response = client.get(
+            "/report",
+            params={
+                "publication": "2",
+                "reference_date": "2026-06-01",
+                "account": [account],
+                "month": "2026-05",
+            },
+            headers={"HX-Request": "true"},
+        )
+        fragment = read(response.text)
+        pages.append(
+            (
+                fragment.attributes("injected"),
+                f"Kontoen {account} findes ikke i disse tal." in fragment.visible(),
+            )
+        )
+
+    assert pages == [({}, True), ({}, True)]
