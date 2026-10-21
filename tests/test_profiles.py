@@ -4,6 +4,7 @@
 import inspect
 import os
 import unittest
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -85,6 +86,18 @@ class ProfileTests(unittest.TestCase):
                 )
 
             assert not (root.parent / "elsewhere").exists()
+
+    def test_a_test_profile_passphrase_file_may_not_escape_its_root(self) -> None:
+        # A test that set a passphrase outside its folder would write a real
+        # file there, perhaps over the household's own.
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            with pytest.raises(ProfilePathOutsideRootError):
+                replace(
+                    make_test_profile(root),
+                    passphrase_file=root / ".." / "dashboard-passphrase",
+                )
 
     def test_a_symlinked_stores_folder_may_not_escape_its_root(self) -> None:
         with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
