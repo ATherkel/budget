@@ -95,19 +95,37 @@ def _render_overview(
             # Offered, never substituted: the reader chooses the current figures.
             return _TEMPLATES.get_template("unavailable_page.html").render()
     months = display.months_between(options.first_month, options.last_month)
+    selected_accounts = (
+        {account.account_id for account in options.accounts}
+        if fresh
+        else set(accounts or ())
+    )
+    selected_month = month or display.month_value(ReportingMonth.of(reference_date))
+    # The page carries its own report, so back, forward and a page without
+    # scripts show what the selection's report says.
+    report = (
+        _render_report(
+            profile,
+            ReportContext(
+                publication_id=publication_id,
+                account_ids=frozenset(selected_accounts),
+                month=display.parse_month(selected_month),
+                reference_date=reference_date,
+            ),
+        )
+        if selected_accounts
+        else None
+    )
     return _TEMPLATES.get_template("overview.html").render(
         publication_id=publication_id,
         reference_date=reference_date.isoformat(),
         accounts=options.accounts,
-        selected_accounts=(
-            {account.account_id for account in options.accounts}
-            if fresh
-            else set(accounts or ())
-        ),
+        selected_accounts=selected_accounts,
         months=[
             (display.month_value(month), display.month_label(month)) for month in months
         ],
-        selected_month=month or display.month_value(ReportingMonth.of(reference_date)),
+        selected_month=selected_month,
+        report=report,
     )
 
 

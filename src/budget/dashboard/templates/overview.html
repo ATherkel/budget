@@ -26,7 +26,9 @@
 </label>
 <button>Vis</button>
 </form>
-{% if not selected_accounts %}
+{% if report %}
+{{ report | safe }}
+{% else %}
 <section id="report" role="status">
 <p>Vælg mindst én konto.</p>
 </section>
