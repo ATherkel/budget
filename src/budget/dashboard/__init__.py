@@ -4,7 +4,7 @@
 It reads Gold only through analytics, opened read-only from one profile.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from datetime import date, datetime
 from pathlib import Path
 from typing import Annotated
@@ -109,15 +109,7 @@ def _render_overview(
     # The page carries its own report, so back, forward and a page without
     # scripts show what the selection's report says.
     report = (
-        _render_report(
-            profile,
-            ReportContext(
-                publication_id=publication_id,
-                account_ids=frozenset(selected_accounts),
-                month=display.parse_month(selected_month),
-                reference_date=reference_date,
-            ),
-        )
+        _render_report(profile, pin, selected_accounts, selected_month)
         if selected_accounts
         else None
     )
@@ -161,9 +153,24 @@ def _refuse_login(
     return None
 
 
-def _render_report(profile: Profile, context: ReportContext) -> str:
-    """Render the report fragment `context` asks for, or why it cannot be shown."""
+def _render_report(
+    profile: Profile,
+    pin: tuple[int, date],
+    accounts: Collection[str],
+    month: str,
+) -> str:
+    """Render the report fragment a selection asks for, or why it cannot be shown.
+
+    The pinned context is used exactly as the page sent it: never re-resolved.
+    """
+    publication_id, reference_date = pin
     try:
+        context = ReportContext(
+            publication_id=publication_id,
+            account_ids=frozenset(accounts),
+            month=display.parse_month(month),
+            reference_date=reference_date,
+        )
         with GoldStore(profile, read_only=True) as store:
             overview_report = HouseholdReports(store).monthly_overview(context)
     except InvalidSelectionError as error:
@@ -254,13 +261,6 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             # An empty selection is a prompt, never a report of nothing.
             prompt = _TEMPLATES.get_template("no_accounts.html").render()
             return start_session(HTMLResponse(prompt))
-        # The pinned context, exactly as the page sent it: never re-resolved.
-        context = ReportContext(
-            publication_id=publication,
-            account_ids=frozenset(account),
-            month=display.parse_month(month),
-            reference_date=reference_date,
-        )
         # The address becomes this selection's own page, so back and forward
         # reopen each selection the reader made.
         page = "/?" + urlencode(
@@ -272,7 +272,8 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             ]
         )
         fragment = HTMLResponse(
-            _render_report(profile, context), headers={"HX-Push-Url": page}
+            _render_report(profile, (publication, reference_date), account, month),
+            headers={"HX-Push-Url": page},
         )
         return start_session(fragment)
 

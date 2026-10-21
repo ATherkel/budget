@@ -48,9 +48,17 @@ def selection_problems(error: InvalidSelectionError) -> list[str]:
 
 
 def parse_month(value: str) -> ReportingMonth:
-    """Return the month a form submitted as `YYYY-MM`."""
-    year, month = value.split("-")
-    return ReportingMonth(int(year), int(month))
+    """Return the month a form submitted as `YYYY-MM`.
+
+    Text that names no calendar month is, like a month outside the range, a
+    month that cannot be chosen: `InvalidSelectionError` with
+    `month_out_of_range`.
+    """
+    try:
+        year, month = value.split("-")
+        return ReportingMonth(int(year), int(month))
+    except ValueError:
+        raise InvalidSelectionError(["month_out_of_range"]) from None
 
 
 def month_label(month: ReportingMonth) -> str:
