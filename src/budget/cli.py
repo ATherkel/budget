@@ -16,6 +16,8 @@ from pathlib import Path
 from time import perf_counter
 from typing import Final, NoReturn
 
+import uvicorn
+
 from budget import routine_logging, sqlstore, summaries
 from budget.backups import (
     BackupVerificationError,
@@ -26,7 +28,8 @@ from budget.backups import (
 )
 from budget.bronze.storage import BRONZE_STAGE, bronze_stage
 from budget.codeversion import UncommittedCodeError, require_committed_code
-from budget.dashboard.passphrase import set_passphrase
+from budget.dashboard import create_app
+from budget.dashboard.passphrase import PassphraseNotSetError, set_passphrase
 from budget.importing import (
     Coverage,
     ImportLogAheadOfBronzeError,
@@ -78,6 +81,8 @@ EXIT_USAGE: Final = 2
 EXIT_REFUSED_INPUT: Final = 3
 EXIT_REFUSED_ENVIRONMENT: Final = 4
 EXIT_VERIFICATION_FAILED: Final = 5
+# The port in operations.md's example profile, for a profile that names none.
+DEFAULT_DASHBOARD_PORT: Final = 8750
 # The store errors operations.md lists as a refused environment, for every
 # stage. Any other store error, such as a broken packaged migration, is a
 # defect: exit 1.
@@ -208,6 +213,7 @@ def _parser() -> argparse.ArgumentParser:
         "--kind", choices=REVIEW_KINDS, help="list one kind of item only, no runs"
     )
     review.add_argument("--account", help="list one account's items and runs only")
+    commands.add_parser("serve", help="start the read-only dashboard")
     commands.add_parser(
         "set-passphrase",
         help="set the dashboard passphrase, which logs out every device",
@@ -377,6 +383,16 @@ def _set_passphrase(profile: Profile) -> None:
     set_passphrase(profile, passphrase)
 
 
+def _serve(profile: Profile) -> None:
+    """Serve the read-only dashboard until stopped, after its refusals."""
+    app = create_app(profile, clock=lambda: datetime.now(UTC))
+    uvicorn.run(
+        app,
+        host=profile.dashboard_bind or "127.0.0.1",
+        port=profile.dashboard_port or DEFAULT_DASHBOARD_PORT,
+    )
+
+
 def _rebuild_counts(rebuilt: SilverRebuild) -> dict[str, int]:
     """Return the rebuild counts a routine log records, and nothing else."""
     outcomes = Counter(run.outcome for run in rebuilt.runs)
@@ -409,6 +425,8 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         _review(profile, arguments.kind, arguments.account)
     elif arguments.command == "set-passphrase":
         _set_passphrase(profile)
+    elif arguments.command == "serve":
+        _serve(profile)
     else:
         _migrate(profile, arguments.stage, new_store=arguments.new_store)
     return EXIT_OK
@@ -456,6 +474,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         UnsupportedStoresError,
         LostStoreError,
         NoBackupsFolderError,
+        PassphraseNotSetError,
         *_STORE_ENVIRONMENT_REFUSALS,
     ) as error:
         return _refuse(error, EXIT_REFUSED_ENVIRONMENT)

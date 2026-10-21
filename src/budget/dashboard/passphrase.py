@@ -33,6 +33,23 @@ def _hash(passphrase: str, salt: bytes) -> bytes:
     )
 
 
+class PassphraseNotSetError(Exception):
+    """No passphrase guards the dashboard yet, so it must not start."""
+
+    def __init__(self, profile: str) -> None:
+        """Name the command that sets one."""
+        super().__init__(
+            f"no dashboard passphrase is set for the {profile} profile: "
+            "run `budget set-passphrase` first"
+        )
+
+
+def require_passphrase(profile: Profile) -> None:
+    """Refuse a profile whose dashboard has no passphrase set."""
+    if profile.passphrase_file is None or not profile.passphrase_file.exists():
+        raise PassphraseNotSetError(profile.name)
+
+
 def _passphrase_file(profile: Profile) -> Path:
     if profile.passphrase_file is None:
         message = f"the {profile.name} profile names no [dashboard] passphrase_file"

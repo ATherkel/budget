@@ -23,6 +23,7 @@ from budget.dashboard import display, session
 from budget.dashboard.display import copenhagen_date
 from budget.dashboard.passphrase import (
     passphrase_matches,
+    require_passphrase,
     session_key,
     set_passphrase,
 )
@@ -135,9 +136,11 @@ def _render_report(profile: Profile, context: ReportContext) -> str:
 def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     """Build the dashboard for `profile`, telling time with `clock`.
 
-    Raises `StoreNotFoundError` when the profile's Gold store does not exist,
-    so a dashboard that cannot report refuses to start.
+    Raises `PassphraseNotSetError` when no passphrase guards it, and
+    `StoreNotFoundError` when the profile's Gold store does not exist, so a
+    dashboard that is unguarded or cannot report refuses to start.
     """
+    require_passphrase(profile)
     GoldStore(profile, read_only=True).close()
     app = FastAPI()
     throttle = LoginThrottle()
