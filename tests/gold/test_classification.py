@@ -90,6 +90,16 @@ def test_a_rule_matches_only_a_transaction_that_meets_text_and_label() -> None:
     assert _types(result) == {"shop": "expense", "text": "unknown", "other": "unknown"}
 
 
+def test_a_rule_that_sets_no_condition_matches_no_transaction() -> None:
+    rules = {"r-empty": Rule("r-empty", 0, RuleConditions(), AssignCategory("gifts"))}
+
+    result = classified(
+        booked("cash", CURRENT, date(2026, 2, 3), "-200.00", "ATM 17"), rules=rules
+    )
+
+    assert _types(result) == {"cash": "unknown"}
+
+
 def test_4_equal_priority_rules_that_disagree_leave_a_rule_conflict() -> None:
     # r-mobilepay (starts with MOBILEPAY) says eating-out; r-netto (contains
     # NETTO) says groceries. Both have priority 0.
