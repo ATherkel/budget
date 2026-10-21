@@ -113,6 +113,18 @@ def test_a_session_cookie_with_letters_outside_ascii_is_refused_not_an_error(
     )
 
 
+def test_the_login_page_a_reader_is_sent_to_asks_for_the_passphrase(
+    client: TestClient,
+) -> None:
+    # Every guarded page redirects here, so it must answer, not 405.
+    response = client.get("/login")
+
+    assert (response.status_code, 'name="passphrase"' in response.text) == (
+        200,
+        True,
+    )
+
+
 def test_the_browser_keeps_a_login_for_30_days_not_until_it_closes(
     client: TestClient,
 ) -> None:
