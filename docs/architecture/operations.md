@@ -174,6 +174,7 @@ keep_monthly    = "forever"   # then the newest set of each month
 late_booking_days = 7         # days after a month ends before an export settles it
 
 [dashboard]
+passphrase_file = 'C:\Users\household\AppData\Roaming\budget\production-passphrase'
 bind = "192.168.1.20"         # reserve this address for the PC in the router
 port = 8750
 ```
@@ -884,15 +885,25 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   firewall rule allows the port on private networks only. Nothing is reachable
   from the internet.
 - One household passphrase guards every page. It is stored as a `scrypt` hash
-  in a file under `%APPDATA%\budget\`, never in OneDrive or the repository. A
-  successful login sets an `HttpOnly`, `SameSite=Strict` session cookie
-  holding its expiry, signed with a key derived from the passphrase hash so
-  that it cannot be forged. The dashboard keeps no session store, so
-  restarting `serve` keeps logins. Repeated failed logins are slowed down.
+  in the file the profile's `[dashboard] passphrase_file` names: an absolute
+  path, under `%APPDATA%\budget\` in production, never in OneDrive or the
+  repository. `set-passphrase` asks for it twice, refuses an empty passphrase
+  or a confirmation that does not match, and replaces the file whole, so
+  `serve` never reads a half-written one. `serve` refuses to start until a
+  passphrase is set. A successful login sets an `HttpOnly`, `SameSite=Strict`
+  session cookie holding its expiry, signed with a key derived from the
+  passphrase hash so that it cannot be forged. The dashboard keeps no session
+  store, so restarting `serve` keeps logins.
+- Repeated failed logins are slowed down: after 5 failures in a row, every
+  login is refused (HTTP 429) for 30 seconds, and each further lock is twice
+  as long, up to 15 minutes. After a lock ends, 5 more failures lock again. A
+  successful login resets the count and the doubling. These are constants of
+  the code, and one count serves the whole household.
 - A login lasts while it is used: every request renews the cookie for another
-  30 days, so a device unused for 30 days asks for the passphrase again. There
-  is no absolute cap on a login's total age. The 30 days are a constant of the
-  code, not a profile setting.
+  30 days, so a device unused for 30 days asks for the passphrase again. The
+  cookie's `Max-Age` is the same 30 days, so closing the browser keeps it.
+  There is no absolute cap on a login's total age. The 30 days are a constant
+  of the code, not a profile setting.
 - Logout deletes the cookie in that browser only. To end a login on a device
   you no longer control, or a cookie that may have leaked, run
   `set-passphrase`, which logs out every device at once.
@@ -904,8 +915,10 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
 - **Plain HTTP on the home network is an accepted risk.** Someone on the same
   Wi-Fi who captures traffic could read the passphrase and pages. HTTPS with a
   locally trusted certificate is the upgrade path if that changes.
-- The dashboard opens `gold.db` read-only and is given no other store's
-  path. It has no route that writes, apart from login and logout.
+- The dashboard opens `gold.db` read-only and opens no other store. It is
+  built from the profile, which also names the other stores' paths, but it
+  reads Gold only through analytics. It has no route that writes, apart from
+  login and logout, and no response it sends may be cached.
 - The production address is fixed in the profile, so reserve it for the PC in
   the router; otherwise `serve` fails to start when the router hands out
   another one.
@@ -947,9 +960,11 @@ and run at least once in development against a restored production backup.
 
 - `uv` with a uv-managed Python 3.12 or newer, whose SQLite meets ADR-013's
   floor, on the household machine and in CI.
-- The CLI uses only the standard library: `argparse`, `tomllib`, `json`,
-  `sqlite3`, `hashlib`, `logging`. The dashboard adds its presentation stack
-  (FastAPI, Jinja, HTMX, Plotly) when it is built.
+- The pipeline commands use only the standard library: `argparse`,
+  `tomllib`, `json`, `sqlite3`, `hashlib`, `logging`. The dashboard, behind
+  `serve` and `set-passphrase`, adds its presentation stack: FastAPI with
+  uvicorn, Jinja, and htmx, whose script ships inside the package so nothing
+  is fetched from the internet. Plotly arrives with the first chart.
 - `git` on the household machine, so a production build can name its commit
   and refuse uncommitted code (ADR-014).
 - The existing quality gate: ruff, ty, complexipy, pytest.
