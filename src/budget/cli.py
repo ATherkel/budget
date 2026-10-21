@@ -164,6 +164,17 @@ class NoPassphraseFileError(Exception):
         )
 
 
+class NoPassphraseTypedError(Exception):
+    """The input ended before the passphrase and its confirmation were read."""
+
+    def __init__(self) -> None:
+        """Say why nothing changed."""
+        super().__init__(
+            "no passphrase was typed, or no confirmation; "
+            "the dashboard passphrase is unchanged"
+        )
+
+
 class EmptyPassphraseError(Exception):
     """An empty passphrase would guard the dashboard with nothing."""
 
@@ -374,8 +385,11 @@ def _set_passphrase(profile: Profile) -> None:
     # Refused before asking, so no one types a passphrase that cannot be kept.
     if profile.passphrase_file is None:
         raise NoPassphraseFileError(profile.name)
-    passphrase = ask_passphrase("New dashboard passphrase: ")
-    confirmation = ask_passphrase("Type it again: ")
+    try:
+        passphrase = ask_passphrase("New dashboard passphrase: ")
+        confirmation = ask_passphrase("Type it again: ")
+    except EOFError:
+        raise NoPassphraseTypedError from None
     if not passphrase:
         raise EmptyPassphraseError
     if confirmation != passphrase:
@@ -456,6 +470,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         ProfileFileError,
         ConfigurationError,
         NoPassphraseFileError,
+        NoPassphraseTypedError,
         EmptyPassphraseError,
         PassphraseMismatchError,
     ) as error:
