@@ -122,10 +122,11 @@ def _outcome(
 
 def _matches(when: RuleConditions, transaction: Transaction) -> bool:
     """Say whether the transaction meets the rule's conditions."""
-    return when.matches_description(transaction.description) or (
-        when.bank_category is not None
-        and when.bank_category == transaction.bank_category
+    description_holds = when.matches_description(transaction.description)
+    bank_category_holds = (
+        when.bank_category is None or when.bank_category == transaction.bank_category
     )
+    return description_holds and bank_category_holds
 
 
 def _derived_type(direction: CategoryDirection, amount: Decimal) -> TransactionType:

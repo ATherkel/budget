@@ -66,8 +66,8 @@ class RuleConditions:
     def matches_description(self, description: str) -> bool:
         """Say whether the description meets every text condition the rule sets.
 
-        A condition the rule leaves empty holds, but a rule that sets none
-        matches no description. For the literal patterns the description is
+        A condition the rule leaves empty holds, so a rule that sets none
+        holds for every description. For the literal patterns the description is
         folded as they are, so the match is the one the configuration
         fingerprint assumes (`classification.md`); a regex is searched as
         written, ignoring case, since folding it could change its meaning.
@@ -84,16 +84,7 @@ class RuleConditions:
             re.search(pattern, description, re.IGNORECASE)
             for pattern in self.description_regex
         )
-        return (
-            contains
-            and starts_with
-            and regex
-            and bool(
-                self.folded_contains
-                or self.folded_starts_with
-                or self.description_regex
-            )
-        )
+        return contains and starts_with and regex
 
 
 @dataclass(frozen=True)
