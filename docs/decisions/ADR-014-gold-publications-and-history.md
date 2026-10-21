@@ -8,11 +8,8 @@ type: decisions
 that a Gold migration cannot convert is also extracted and recorded as a legacy
 publication, and retention keeps its pre-migration backup.
 
-Recovery clarification (issue #121): whole-profile recovery preserves the Gold
-history in the selected backup and rebuilds current reports from recoverable
-inputs. It does not promise exact post-backup publication history. A durable
-recovery boundary prevents false as-was answers and ambiguous publication
-references; see [Publication recovery](../architecture/publications.md#publication-recovery).
+Gold history made after the backup set that `restore` uses is lost; see
+[Publication recovery](../architecture/publications.md#publication-recovery).
 
 ## Context
 

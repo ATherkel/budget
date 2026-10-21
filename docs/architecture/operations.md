@@ -469,11 +469,10 @@ Two checks guard the log against edits that bypass `decide`:
 Every entry ends with a line feed. A final line without one was cut off by a
 crash while it was being written, and is treated as never written: `check` reports it, and `decide`
 refuses until the partial line is deleted. No build has read it, so deleting
-it is the one safe hand edit. If an earlier entry is damaged, preserve the
-surviving log and the backed-up copy. Recovery stops for an explicit operator
-choice; it never silently replaces an existing shorter, conflicting, or damaged
-decision log with a backup. An operator may explicitly recover the backed-up
-log and record missing decisions again after inspecting the preserved evidence.
+it is the one safe hand edit. If an earlier entry is ever damaged, copy the
+log back from the newest backup set, whose manifest records its length, and
+record again the decisions made since. `restore` stops on a damaged log
+instead of replacing it.
 
 ### `imports.jsonl`: the import log
 
@@ -569,7 +568,7 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | `view --as-was <date> \| --known-at <date> --label <text>` | Builds or finds a past view (ADR-014). Without options, lists retained and legacy publications. | `gold.db`, through a scratch store | Never current |
 | `label <publication_id> <text>` / `unlabel …` | Keeps a result beyond the retention rule, or stops keeping it. | `gold.db` | No |
 | `backup` | Writes a backup set of production and names it. Also runs automatically; see below. | The backups folder | No |
-| `restore [<backup set>]` | Restores the newest complete set, or the one named, into an empty profile, catches up with the import log, then runs `verify`. | Every store | Yes, if it caught up |
+| `restore [<backup set>]` | Restores the newest complete set, or the one named, into an empty profile and catches up with the import log. | Every store | Yes, if it caught up |
 | `restore --from-archive` | Last resort: rebuilds Bronze from the archive and the import log, then Silver and Gold. | Every store | Yes |
 | `verify` | Checks integrity, and replays the current publication's recipe to prove it reproduces (ADR-014). | `scratch/` only | No |
 | `dev refresh [--inputs] [--writable]` | Development only: restores production's newest complete backup set into `upstream/`, or with `--writable` into development's own stores. | Development only | No |
@@ -725,7 +724,7 @@ On the new machine: install the code version the newest backup set's manifest
 names, write the production profile, run `budget restore`, then
 `budget serve`. `restore` takes the newest complete set, replays every import
 that the live `imports.jsonl` lists beyond the set, from the export archive,
-rebuilds with any decisions recorded since, and runs `verify`. Nothing is
+and rebuilds with any decisions recorded since. Nothing is
 missing, provided OneDrive had synchronised the inputs folder and the export
 archive.
 
@@ -868,32 +867,16 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
 - **`restore`** writes only into a profile with no stores. It takes the newest
   complete set unless one is named, checks every SHA-256 against the
   manifest, runs `PRAGMA integrity_check`, and migrates stores older than the
-  code. Recovery restores every supported store in the chosen manifest as one
-  coherent set; it never repairs one store beside surviving live stores. The
-  operator preserves existing stores by moving them aside before restoring;
-  restore neither deletes nor overwrites them. Missing-store refusals must
-  describe this whole-profile recovery procedure.
-  It prefers available live household inputs, using backed-up copies where
-  absent. A surviving decision log must validate and contain the backup's
-  matching prefix; its identifiers, timestamps, supersessions and retractions
-  are preserved. A shorter, conflicting or damaged existing log stops recovery
-  without replacing either copy. A missing log may fall back to the backup,
-  with the recovery limit explicitly reported.
-  Import replay reconciles recorded history with restored Bronze before
-  catching up from the archive; it does not blindly slice a possibly changed
-  live log at the manifest's byte length. Conflicting history refuses, and
-  recoverable later runs are never discarded.
-  Catch-up evaluates the recipe from recovered imports, decisions,
-  configuration and code. A changed recipe builds a new current publication;
-  an equal recipe leaves the restored current publication in place. Gold
-  history is recovered through the backup only, with a durable recovery
-  boundary and the limitations defined in
-  [Publication recovery](publications.md#publication-recovery).
-  Before success, restore checks backup checksums, SQLite integrity, restored
-  Bronze payloads and run history, import-log agreement and decision-log
-  consistency. Interruption must not expose a partial restore as complete.
-  Full historical recipe replay by `verify` remains deferred beyond the first
-  dashboard release; integrity checks are required independently of it.
+  code. It restores every store in the set together, never one beside
+  surviving stores: to recover a damaged profile, first move its `.db` files
+  and `gold\legacy\` out of the profile folder. It then catches up: it uses the
+  live inputs, or the set's copy of any that are missing, replays the import
+  log under [its rules](#importsjsonl-the-import-log), taking each file from
+  the export archive, and builds a new publication if the recipe changed. A
+  surviving decision log must extend the set's copy, or `restore` stops.
+  Publications made after the set are lost
+  ([Publication recovery](publications.md#publication-recovery)). It does not
+  run `verify`, whose recipe replay is deferred.
 - **`verify`** runs `PRAGMA integrity_check` on every store, then replays the
   current publication's recipe from Bronze in a scratch store and compares the
   result fingerprint with the recorded one. It refuses to run when the running
