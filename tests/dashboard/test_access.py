@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 from budget.dashboard import create_app, set_passphrase
 from budget.gold.storage import migrate_gold
+from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 from budget.sqlstore import StoreNotFoundError
 
@@ -38,13 +39,18 @@ def clock() -> Clock:
 
 
 @pytest.fixture
-def client(tmp_path: Path, clock: Clock) -> TestClient:
+def profile(tmp_path: Path) -> Profile:
     profile = replace(
         make_test_profile(tmp_path),
         passphrase_file=tmp_path / "dashboard-passphrase",
     )
     migrate_gold(profile)
     set_passphrase(profile, HOUSEHOLD_PHRASE)
+    return profile
+
+
+@pytest.fixture
+def client(profile: Profile, clock: Clock) -> TestClient:
     return TestClient(create_app(profile, clock=clock), follow_redirects=False)
 
 
@@ -289,3 +295,15 @@ def test_a_successful_login_resets_the_failures_and_the_doubling(
     next_wait = wait_after_five_failures()
 
     assert (not_locked.status_code, first_wait, next_wait) == (303, 30, 30)
+
+
+def test_setting_a_new_passphrase_logs_out_every_device(
+    client: TestClient, profile: Profile
+) -> None:
+    log_in(client)
+    set_passphrase(profile, "a new household phrase")
+    logged_out = client.get("/")
+    # Logged out because the passphrase changed, not because the file broke.
+    again = client.post("/login", data={"passphrase": "a new household phrase"})
+
+    assert (logged_out.status_code, again.status_code) == (303, 303)
