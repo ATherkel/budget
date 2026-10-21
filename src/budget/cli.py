@@ -148,6 +148,16 @@ class PassphraseMismatchError(Exception):
         )
 
 
+class EmptyPassphraseError(Exception):
+    """An empty passphrase would guard the dashboard with nothing."""
+
+    def __init__(self) -> None:
+        """Say why nothing changed."""
+        super().__init__(
+            "the passphrase is empty; the dashboard passphrase is unchanged"
+        )
+
+
 def _parser() -> argparse.ArgumentParser:
     """Build the command-line grammar."""
     parser = argparse.ArgumentParser(prog="budget")
@@ -345,7 +355,10 @@ def _review(profile: Profile, kind: str | None, account: str | None) -> None:
 def _set_passphrase(profile: Profile) -> None:
     """Ask for the new dashboard passphrase twice, then store its hash."""
     passphrase = ask_passphrase("New dashboard passphrase: ")
-    if ask_passphrase("Type it again: ") != passphrase:
+    confirmation = ask_passphrase("Type it again: ")
+    if not passphrase:
+        raise EmptyPassphraseError
+    if confirmation != passphrase:
         raise PassphraseMismatchError
     set_passphrase(profile, passphrase)
 
@@ -407,7 +420,12 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         return usage.code if isinstance(usage.code, int) else EXIT_USAGE
     try:
         return _run(arguments, environ)
-    except (ProfileFileError, ConfigurationError, PassphraseMismatchError) as error:
+    except (
+        ProfileFileError,
+        ConfigurationError,
+        EmptyPassphraseError,
+        PassphraseMismatchError,
+    ) as error:
         return _refuse(error, EXIT_REFUSED_INPUT)
     except (
         NoProfileSelectedError,
