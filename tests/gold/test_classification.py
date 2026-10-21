@@ -10,7 +10,13 @@ from decimal import Decimal
 
 from budget.gold import GoldCategoryAllocation, GoldResult, TransactionType
 from budget.inputs import AssignCategory, Rule, RuleConditions
-from tests.gold.classification_example import CURRENT, SAVINGS, booked, classified
+from tests.gold.classification_example import (
+    CURRENT,
+    RULES,
+    SAVINGS,
+    booked,
+    classified,
+)
 
 
 def _types(result: GoldResult) -> dict[str, TransactionType]:
@@ -66,6 +72,21 @@ def test_4_equal_priority_rules_that_disagree_leave_a_rule_conflict() -> None:
         (i.kind, i.transaction_ids, i.rule_ids, i.decision_id, i.reason)
         for i in result.classification_review_items()
     ] == [("rule-conflict", ("conflict",), ("r-mobilepay", "r-netto"), None, None)]
+
+
+def test_4_a_rule_conflict_is_the_same_whatever_order_the_rules_are_in() -> None:
+    # File order never matters (classification.md, Priority and conflicts).
+    conflict = booked(
+        "conflict", CURRENT, date(2026, 2, 20), "-85.00", "MOBILEPAY NETTO"
+    )
+    reversed_rules = dict(reversed(list(RULES.items())))
+
+    as_written = classified(conflict)
+    as_reversed = classified(conflict, rules=reversed_rules)
+
+    assert list(as_reversed.classification_review_items()) == list(
+        as_written.classification_review_items()
+    )
 
 
 def test_6_and_15_an_income_category_is_income_in_and_a_refund_out() -> None:
