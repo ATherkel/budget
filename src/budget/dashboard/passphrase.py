@@ -8,9 +8,12 @@ passphrase, and lives outside OneDrive and the repository.
 import hashlib
 import hmac
 import json
+import os
 import secrets
+import tempfile
 from pathlib import Path
 
+from budget.durability import sync_folder
 from budget.profiles import Profile
 
 # scrypt's cost: 2**15 x 8 blocks is 32 MiB and a fraction of a second, so a
@@ -60,18 +63,31 @@ def _passphrase_file(profile: Profile) -> Path:
 def set_passphrase(profile: Profile, passphrase: str) -> None:
     """Make `passphrase` the one the dashboard of `profile` accepts."""
     salt = secrets.token_bytes(16)
+    content = json.dumps(
+        {
+            "format": _FORMAT,
+            "salt": salt.hex(),
+            "scrypt": _hash(passphrase, salt).hex(),
+        }
+    ).encode("utf-8")
     path = _passphrase_file(profile)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {
-                "format": _FORMAT,
-                "salt": salt.hex(),
-                "scrypt": _hash(passphrase, salt).hex(),
-            }
-        ),
-        encoding="utf-8",
+    # Written beside it, then swapped in whole: `serve` reads the file on every
+    # check, so it must never see a half-written one, even after a crash.
+    descriptor, partial_name = tempfile.mkstemp(
+        dir=path.parent, prefix=".", suffix=".partial"
     )
+    partial = Path(partial_name)
+    try:
+        with os.fdopen(descriptor, "wb") as file:
+            file.write(content)
+            file.flush()
+            os.fsync(file.fileno())
+        partial.replace(path)
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
+    sync_folder(path.parent)
 
 
 def _stored(profile: Profile) -> dict[str, str]:
