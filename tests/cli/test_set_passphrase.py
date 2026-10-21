@@ -99,3 +99,13 @@ def test_an_empty_passphrase_is_refused(tmp_path: Path) -> None:
     ).status_code
 
     assert (status, "empty" in stderr, kept) == (3, True, 303)
+
+
+def test_a_profile_that_names_no_passphrase_file_is_refused(tmp_path: Path) -> None:
+    # No [dashboard] table: there is nowhere to keep the passphrase, and the
+    # operator is told before typing it (nothing is piped in to be read).
+    profile_file = write_profile(tmp_path)
+
+    status, _, stderr = set_passphrase(profile_file, "")
+
+    assert (status, "passphrase_file" in stderr) == (3, True)
