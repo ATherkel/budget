@@ -7,6 +7,7 @@ It reads Gold only through analytics, opened read-only from one profile.
 from collections.abc import Callable
 from datetime import date, datetime
 from typing import Annotated
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -224,7 +225,20 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             month=display.parse_month(month),
             reference_date=reference_date,
         )
-        return start_session(HTMLResponse(_render_report(profile, context)))
+        # The address becomes this selection's own page, so back and forward
+        # reopen each selection the reader made.
+        page = "/?" + urlencode(
+            [
+                ("publication", publication),
+                ("reference_date", reference_date.isoformat()),
+                *(("account", each) for each in sorted(account)),
+                ("month", month),
+            ]
+        )
+        fragment = HTMLResponse(
+            _render_report(profile, context), headers={"HX-Push-Url": page}
+        )
+        return start_session(fragment)
 
     @app.post("/login")
     def login(passphrase: Annotated[str, Form()]) -> Response:
