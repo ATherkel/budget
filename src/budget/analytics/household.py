@@ -1,7 +1,9 @@
 # Copyright 2026 Therkel
 """The production household-report adapter over Gold publications."""
 
-from budget.analytics.reports import ReportPublication
+from datetime import date
+
+from budget.analytics.reports import ReportPublication, SelectionOptions
 from budget.gold import GoldPublications
 
 
@@ -32,3 +34,9 @@ class HouseholdReports:
             known_at=publication.known_at,
             is_current=True,
         )
+
+    def selection_options(
+        self, publication_id: int, reference_date: date
+    ) -> SelectionOptions:
+        """Return what can be selected in the requested publication."""
+        raise NotImplementedError

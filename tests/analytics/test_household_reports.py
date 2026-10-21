@@ -3,11 +3,12 @@
 
 from collections.abc import Iterator
 from dataclasses import replace
+from datetime import date
 from pathlib import Path
 
 import pytest
 
-from budget.analytics import HouseholdReports, ReportPublication
+from budget.analytics import HouseholdReports, NothingPublishedError, ReportPublication
 from budget.gold import GoldPublication, GoldResult
 from budget.gold.storage import migrate_gold
 from budget.gold.store import GoldStore
@@ -48,3 +49,37 @@ def test_current_publication_returns_the_current_build(gold_store: GoldStore) ->
         known_at=publication.known_at,
         is_current=True,
     )
+
+
+def test_before_the_first_build_nothing_is_published(gold_store: GoldStore) -> None:
+    reports = HouseholdReports(gold_store)
+
+    with pytest.raises(NothingPublishedError):
+        reports.current_publication()
+    assert gold_store.current() is None
+
+
+def test_selection_options_open_the_requested_superseded_publication(
+    gold_store: GoldStore,
+) -> None:
+    old_records = replace(
+        RECORDS,
+        accounts=tuple(
+            replace(account, display_name=f"Old {account.display_name}")
+            for account in RECORDS.accounts
+        ),
+    )
+    old = replace(PUBLICATION, publication_id=1)
+    gold_store.publish(GoldResult(old, old_records), RECIPE, CONFIGURATION)
+    _publish(gold_store, 2)
+
+    options = HouseholdReports(gold_store).selection_options(1, date(2026, 5, 14))
+
+    assert (options.publication.publication_id, options.publication.is_current) == (
+        1,
+        False,
+    )
+    assert [account.display_name for account in options.accounts] == [
+        "Old Joint current",
+        "Old Joint savings",
+    ]
