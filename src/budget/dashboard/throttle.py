@@ -6,6 +6,7 @@ One counter for the whole server, since there is one household passphrase
 """
 
 import math
+import threading
 from datetime import datetime, timedelta
 
 # Failed logins in a row before login locks.
@@ -19,6 +20,10 @@ class LoginThrottle:
 
     def __init__(self) -> None:
         """Start with no failures and no lock."""
+        # Logins run on parallel threads. Hold `guard` from the lock check
+        # through recording the outcome, or guesses sent together all pass the
+        # check before any is counted, and five becomes forty.
+        self.guard = threading.Lock()
         self._failures = 0
         self._locks = 0
         self._locked_until: datetime | None = None
