@@ -3,6 +3,7 @@
 
 from datetime import date
 
+from budget.analytics.overview import monthly_overview as build_monthly_overview
 from budget.analytics.overview import selection_options as build_selection_options
 from budget.analytics.reports import (
     MonthlyOverview,
@@ -34,6 +35,11 @@ def _report_publication(
     )
 
 
+def _is_current(publication: GoldPublication, current: GoldPublication | None) -> bool:
+    """Whether `publication` is current at the moment the report is read."""
+    return current is not None and current.publication_id == publication.publication_id
+
+
 class HouseholdReports:
     """Reports resolved from and pinned to the publications in one Gold store."""
 
@@ -58,12 +64,15 @@ class HouseholdReports:
         return build_selection_options(
             gold,
             reference_date,
-            is_current=(
-                current is not None
-                and current.publication_id == publication.publication_id
-            ),
+            is_current=_is_current(publication, current),
         )
 
     def monthly_overview(self, context: ReportContext) -> MonthlyOverview:
         """Return the overview from the publication pinned in `context`."""
-        raise NotImplementedError
+        gold = self._publications.open(context.publication_id)
+        publication = gold.publication()
+        return build_monthly_overview(
+            gold,
+            context,
+            is_current=_is_current(publication, self._publications.current()),
+        )
