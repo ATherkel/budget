@@ -79,3 +79,23 @@ def test_a_confirmation_that_does_not_match_changes_nothing(tmp_path: Path) -> N
         False,
         303,
     )
+
+
+def test_an_empty_passphrase_is_refused(tmp_path: Path) -> None:
+    profile_file = write_profile(tmp_path)
+    passphrase_file = tmp_path / "secrets" / "dashboard-passphrase"
+    with profile_file.open("a", encoding="utf-8") as file:
+        file.write(f"\n[dashboard]\npassphrase_file = '{passphrase_file}'\n")
+    profile = load_profile_file(profile_file)
+    migrate_gold(profile)
+    first_status, _, _ = set_passphrase(profile_file, f"{FIRST}\n{FIRST}\n")
+    assert first_status == 0, "set-passphrase did not succeed"
+
+    # Enter pressed twice: the household would be guarded by nothing.
+    status, _, stderr = set_passphrase(profile_file, "\n\n")
+    dashboard = TestClient(create_app(profile, clock=lambda: NOW))
+    kept = dashboard.post(
+        "/login", data={"passphrase": FIRST}, follow_redirects=False
+    ).status_code
+
+    assert (status, "empty" in stderr, kept) == (3, True, 303)
