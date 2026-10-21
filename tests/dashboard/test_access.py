@@ -99,6 +99,19 @@ def test_the_household_passphrase_logs_in_with_a_private_session_cookie(
     ) == (303, "/", [(True, True)], 200)
 
 
+def test_the_browser_keeps_a_login_for_30_days_not_until_it_closes(
+    client: TestClient,
+) -> None:
+    # A cookie without a lifetime dies with the browser; a restart would
+    # ask for the passphrase long before 30 days of disuse.
+    login = client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
+
+    assert [
+        "max-age=2592000" in cookie.lower()
+        for cookie in login.headers.get_list("set-cookie")
+    ] == [True]
+
+
 def test_a_wrong_passphrase_is_refused_without_a_session(client: TestClient) -> None:
     login = client.post("/login", data={"passphrase": "correct horse battery"})
     overview = client.get("/")
