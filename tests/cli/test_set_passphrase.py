@@ -53,3 +53,29 @@ def test_the_passphrase_set_last_is_the_one_the_dashboard_accepts(
         log_in(FIRST),
         FIRST in output or SECOND in output,
     ) == ([0, 0], 303, 200, False)
+
+
+def test_a_confirmation_that_does_not_match_changes_nothing(tmp_path: Path) -> None:
+    profile_file = write_profile(tmp_path)
+    passphrase_file = tmp_path / "secrets" / "dashboard-passphrase"
+    with profile_file.open("a", encoding="utf-8") as file:
+        file.write(f"\n[dashboard]\npassphrase_file = '{passphrase_file}'\n")
+    profile = load_profile_file(profile_file)
+    migrate_gold(profile)
+    first_status, _, _ = set_passphrase(profile_file, f"{FIRST}\n{FIRST}\n")
+    assert first_status == 0, "set-passphrase did not succeed"
+
+    # A typo in the confirmation must not set a phrase nobody knows.
+    status, _, stderr = set_passphrase(profile_file, f"{SECOND}\n{SECOND}x\n")
+    dashboard = TestClient(create_app(profile, clock=lambda: NOW))
+    kept = dashboard.post(
+        "/login", data={"passphrase": FIRST}, follow_redirects=False
+    ).status_code
+
+    # The refusal says why, without repeating what was typed.
+    assert (status, "do not match" in stderr, SECOND in stderr, kept) == (
+        3,
+        True,
+        False,
+        303,
+    )
