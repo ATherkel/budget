@@ -72,6 +72,24 @@ def test_3_a_bank_label_classifies_only_through_a_rule_that_tests_it() -> None:
     ]
 
 
+def test_a_rule_matches_only_a_transaction_that_meets_text_and_label() -> None:
+    netto = RuleConditions(description_contains=("NETTO",), bank_category="Groceries")
+    rules = {
+        "r-netto-shop": Rule("r-netto-shop", 0, netto, AssignCategory("groceries"))
+    }
+    shop = booked("shop", CURRENT, date(2026, 2, 15), "-90.00", "NETTO 0412")
+    other = booked("other", CURRENT, date(2026, 2, 16), "-70.00", "FOETEX 88")
+
+    result = classified(
+        replace(shop, bank_category="Groceries"),
+        replace(shop, transaction_id="text", bank_category="Leisure"),
+        replace(other, bank_category="Groceries"),
+        rules=rules,
+    )
+
+    assert _types(result) == {"shop": "expense", "text": "unknown", "other": "unknown"}
+
+
 def test_4_equal_priority_rules_that_disagree_leave_a_rule_conflict() -> None:
     # r-mobilepay (starts with MOBILEPAY) says eating-out; r-netto (contains
     # NETTO) says groceries. Both have priority 0.
