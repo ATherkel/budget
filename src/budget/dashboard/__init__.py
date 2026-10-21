@@ -49,10 +49,13 @@ _TEMPLATES = Environment(
 _LOGIN_PAGE = """<!doctype html>
 <html lang="da">
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Log ind</title>
 {message}
 <form method="post" action="/login">
-<label>Adgangsfrase <input type="password" name="passphrase" autofocus></label>
+<label>Adgangsfrase
+<input type="password" name="passphrase" autocomplete="current-password" autofocus>
+</label>
 <button>Log ind</button>
 </form>
 </html>
