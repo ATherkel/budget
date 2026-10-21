@@ -21,7 +21,7 @@ dev = [
     "complexipy>=4",
     "coverage>=7.16.2",
     "pytest>=8",
-    "ruff>=0.17.0",
+    "ruff>=0.17.1",
     "ty>=0.0.84",
 ]
 
