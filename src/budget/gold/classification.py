@@ -21,7 +21,7 @@ from budget.gold.models import (
     TransactionType,
 )
 from budget.hashing import hash_parts
-from budget.inputs.rules import AssignCategory, RuleConditions
+from budget.inputs.rules import AssignCategory, RuleConditions, fold
 from budget.inputs.snapshot import ConfigurationSnapshot
 from budget.silver.models import Transaction
 
@@ -127,8 +127,9 @@ def _matches(when: RuleConditions, transaction: Transaction) -> bool:
     matches nothing, so it cannot silently classify every transaction.
     """
     description_holds = when.matches_description(transaction.description)
-    bank_category_holds = (
-        when.bank_category is None or when.bank_category == transaction.bank_category
+    bank_category_holds = when.bank_category is None or (
+        transaction.bank_category is not None
+        and fold(when.bank_category) == fold(transaction.bank_category)
     )
     sets_a_condition = bool(
         when.description_contains
