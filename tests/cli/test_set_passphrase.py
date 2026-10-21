@@ -109,3 +109,17 @@ def test_a_profile_that_names_no_passphrase_file_is_refused(tmp_path: Path) -> N
     status, _, stderr = set_passphrase(profile_file, "")
 
     assert (status, "passphrase_file" in stderr) == (3, True)
+
+
+def test_input_that_ends_before_the_confirmation_is_refused(tmp_path: Path) -> None:
+    # A closed or empty pipe: a refusal, not a crash.
+    profile_file = write_profile(tmp_path)
+    passphrase_file = tmp_path / "secrets" / "dashboard-passphrase"
+    with profile_file.open("a", encoding="utf-8") as file:
+        file.write(f"\n[dashboard]\npassphrase_file = '{passphrase_file}'\n")
+
+    runs = [set_passphrase(profile_file, typed) for typed in ("", f"{FIRST}\n")]
+
+    assert [
+        (status, "no passphrase was typed" in stderr) for status, _, stderr in runs
+    ] == [(3, True), (3, True)]
