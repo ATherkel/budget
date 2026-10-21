@@ -1,0 +1,50 @@
+# Copyright 2026 Therkel
+"""The production household reports over a real test-profile Gold store."""
+
+from collections.abc import Iterator
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+from budget.analytics import HouseholdReports, ReportPublication
+from budget.gold import GoldPublication, GoldResult
+from budget.gold.storage import migrate_gold
+from budget.gold.store import GoldStore
+from budget.profiles import Profile
+from budget.profiles import test_profile as make_test_profile
+from tests.gold.test_store import CONFIGURATION, RECIPE
+from tests.gold.worked_example import PUBLICATION, RECORDS
+
+
+@pytest.fixture
+def profile(tmp_path: Path) -> Profile:
+    """Create and migrate the ephemeral Gold store this module tests."""
+    migrated = make_test_profile(tmp_path)
+    migrate_gold(migrated)
+    return migrated
+
+
+@pytest.fixture
+def gold_store(profile: Profile) -> Iterator[GoldStore]:
+    """Yield the one real Gold store used by a test."""
+    with GoldStore(profile) as store:
+        yield store
+
+
+def _publish(store: GoldStore, publication_id: int) -> GoldPublication:
+    publication = replace(PUBLICATION, publication_id=publication_id)
+    store.publish(GoldResult(publication, RECORDS), RECIPE, CONFIGURATION)
+    return publication
+
+
+def test_current_publication_returns_the_current_build(gold_store: GoldStore) -> None:
+    publication = _publish(gold_store, 1)
+
+    assert HouseholdReports(gold_store).current_publication() == ReportPublication(
+        publication_id=1,
+        kind="pipeline",
+        label=None,
+        known_at=publication.known_at,
+        is_current=True,
+    )
