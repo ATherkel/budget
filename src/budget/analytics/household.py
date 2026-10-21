@@ -1,8 +1,6 @@
 # Copyright 2026 Therkel
 """The production household-report adapter over Gold publications."""
 
-from typing import Final
-
 from budget.analytics.reports import ReportPublication
 from budget.gold import GoldPublications
 
@@ -15,9 +13,6 @@ class NothingPublishedError(LookupError):
         super().__init__("nothing is published: Gold has no current publication")
 
 
-NOTHING_PUBLISHED: Final = NothingPublishedError()
-
-
 class HouseholdReports:
     """Reports resolved from and pinned to the publications in one Gold store."""
 
@@ -27,4 +22,13 @@ class HouseholdReports:
 
     def current_publication(self) -> ReportPublication:
         """Return the current publication's report identity."""
-        raise NotImplementedError(NOTHING_PUBLISHED)
+        publication = self._publications.current()
+        if publication is None:
+            raise NothingPublishedError
+        return ReportPublication(
+            publication_id=publication.publication_id,
+            kind=publication.kind,
+            label=publication.label,
+            known_at=publication.known_at,
+            is_current=True,
+        )
