@@ -330,6 +330,56 @@ class ProfileFileTests(unittest.TestCase):
                         8750,
                     )
 
+    def test_a_refused_dashboard_setting_names_its_key(self) -> None:
+        # A relative passphrase file would land wherever the command runs,
+        # perhaps in OneDrive or the repository; a typo must not be ignored.
+        port = r"dashboard\.port must be a whole number, from 1 to 65535"
+        cases = {
+            "a relative passphrase file": (
+                "",
+                "passphrase_file = 'secrets/dashboard-passphrase'",
+                r"dashboard\.passphrase_file must be an absolute path",
+            ),
+            "a passphrase file that is not text": (
+                "",
+                "passphrase_file = 5",
+                r"dashboard\.passphrase_file must be a path in quotes",
+            ),
+            **{
+                f"port = {value}": ("", f"port = {value}", port)
+                for value in ('"8750"', "0", "65536", "true", "8750.5")
+            },
+            "a bind address that is not text": (
+                "",
+                "bind = 5",
+                r"dashboard\.bind must be an address in quotes",
+            ),
+            "an unknown dashboard key": (
+                "",
+                'address = "127.0.0.1"',
+                r"unknown key dashboard\.address",
+            ),
+            "a dashboard key that is not a table": (
+                "dashboard = 7\n",
+                "",
+                r"dashboard must be a \[dashboard\] table",
+            ),
+        }
+        with TemporaryDirectory() as directory:
+            for case, (top_level, dashboard, message) in cases.items():
+                with self.subTest(case):
+                    profile_file = write_profile(Path(directory))
+                    # A top-level key must come before the [paths] table.
+                    text = profile_file.read_text(encoding="utf-8")
+                    profile_file.write_text(
+                        text.replace("\n[paths]", f"{top_level}\n[paths]")
+                        + (f"\n[dashboard]\n{dashboard}\n" if dashboard else ""),
+                        encoding="utf-8",
+                    )
+
+                    with pytest.raises(ProfileFileError, match=message):
+                        load_profile_file(profile_file)
+
     def test_a_refused_late_booking_window_names_its_key(self) -> None:
         days = r"gold\.late_booking_days must be a whole number, from 0 to 366"
         cases = {
