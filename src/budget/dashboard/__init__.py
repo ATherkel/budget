@@ -207,6 +207,9 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         response.set_cookie(
             SESSION_COOKIE,
             session.issue(session_key(profile), clock()),
+            # Relative, so the browser keeps it across restarts for as long as
+            # the signed expiry inside it allows.
+            max_age=int(session.LOGIN_LIFETIME.total_seconds()),
             httponly=True,
             samesite="strict",
         )
