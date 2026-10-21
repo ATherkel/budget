@@ -63,6 +63,11 @@ class RuleConditions:
         """The `description_starts_with` patterns, folded."""
         return tuple(map(fold, self.description_starts_with))
 
+    @property
+    def folded_bank_category(self) -> str | None:
+        """The `bank_category` label, folded, or `None` when it is unset."""
+        return None if self.bank_category is None else fold(self.bank_category)
+
     def matches_description(self, description: str) -> bool:
         """Say whether the description meets every text condition the rule sets.
 
