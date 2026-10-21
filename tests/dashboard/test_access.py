@@ -233,6 +233,14 @@ def test_logging_out_ends_the_login_in_this_browser(client: TestClient) -> None:
     ) == (303, "/login", 303)
 
 
+def test_following_a_link_to_logout_logs_no_one_out(client: TestClient) -> None:
+    # A link, a prefetch or another site can only make a GET.
+    log_in(client)
+    client.get("/logout")
+
+    assert client.get("/").status_code == 200
+
+
 def test_five_failed_logins_in_a_row_lock_login_for_30_seconds(
     client: TestClient, clock: Clock
 ) -> None:
