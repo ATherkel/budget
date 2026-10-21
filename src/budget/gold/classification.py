@@ -121,12 +121,22 @@ def _outcome(
 
 
 def _matches(when: RuleConditions, transaction: Transaction) -> bool:
-    """Say whether the transaction meets the rule's conditions."""
+    """Say whether the transaction meets every condition the rule sets.
+
+    A condition the rule leaves unset holds, but a rule that sets none
+    matches nothing, so it cannot silently classify every transaction.
+    """
     description_holds = when.matches_description(transaction.description)
     bank_category_holds = (
         when.bank_category is None or when.bank_category == transaction.bank_category
     )
-    return description_holds and bank_category_holds
+    sets_a_condition = bool(
+        when.description_contains
+        or when.description_starts_with
+        or when.description_regex
+        or when.bank_category is not None
+    )
+    return description_holds and bank_category_holds and sets_a_condition
 
 
 def _derived_type(direction: CategoryDirection, amount: Decimal) -> TransactionType:
