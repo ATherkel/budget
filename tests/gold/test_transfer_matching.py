@@ -279,3 +279,54 @@ def test_an_ambiguous_sets_legs_skip_later_stages() -> None:
     assert _types(result)["to-savings"] == "unknown"
     assert _types(result)["later"] == "unknown"
     assert _unmatched(result) == []
+
+
+def test_a_leg_paired_same_day_is_not_offered_a_day_later() -> None:
+    # Taken all at once, the two incoming legs would compete.
+    result = classified(
+        booked("out", CURRENT, date(2026, 3, 10), "-700.00", "TO SAVINGS"),
+        booked("same-day", SAVINGS, date(2026, 3, 10), "700.00", "FROM CURRENT"),
+        booked("next-day", SAVINGS, date(2026, 3, 11), "700.00", "FROM CURRENT"),
+    )
+
+    assert _groups(result) == {frozenset({"out", "same-day"})}
+    assert [ids for ids, _ in _unmatched(result)] == [("next-day",)]
+    assert not [
+        i
+        for i in result.classification_review_items()
+        if i.kind == "ambiguous-transfer"
+    ]
+
+
+def test_a_leftover_repeated_leg_pairs_at_a_later_stage() -> None:
+    result = classified(
+        _nth("a1", ANNA, "BUDGET JOINT", "-2000.00", 1),
+        _nth("a2", ANNA, "BUDGET JOINT", "-2000.00", 2),
+        _nth("c1", CURRENT, "BUDGET FROM ANNA", "2000.00", 1),
+        booked("c-late", CURRENT, date(2026, 3, 3), "2000.00", "BUDGET FROM ANNA"),
+    )
+    claim = ("r-budget-transfer",)
+
+    assert _groups(result) == {frozenset({"a1", "c1"}), frozenset({"a2", "c-late"})}
+    assert _evidence(result, "a2")["a2"][2] == TransferEvidence(
+        "date_gap", CURRENT, "c-late", 1, claim
+    )
+
+
+def test_19_a_pair_beats_the_category_rule_on_its_unclaimed_leg() -> None:
+    # Anna's account stands in for Bo's once it is imported.
+    result = classified(
+        booked("budget", ANNA, date(2026, 2, 1), "-4000.00", "BUDGET"),
+        booked("from-bo", CURRENT, date(2026, 2, 1), "4000.00", "FROM BO"),
+    )
+
+    assert _types(result) == {"budget": "transfer", "from-bo": "transfer"}
+    assert (
+        list(result.category_allocations(start_date=date.min, end_date=date.max)) == []
+    )
+    assert _evidence(result, "from-bo")["from-bo"] == (
+        "transfer_match",
+        ("r-contribution-bo",),
+        TransferEvidence("same_day", ANNA, "budget", 0, ("r-budget-transfer",)),
+        (),
+    )
