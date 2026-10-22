@@ -63,6 +63,8 @@ class _Outcome:
     adjustment_reason: str | None = None
     # Why the review item was raised, where its kind names reasons.
     review_reason: str | None = None
+    # Every transaction the review item names, when it is not this one alone.
+    review_transaction_ids: tuple[str, ...] = ()
     # Whether the winning rule claims the transaction as a transfer leg.
     claims_transfer: bool = False
     transfer_group_id: str | None = None
@@ -119,7 +121,9 @@ def classify(
             for t, o in outcomes
             if o.category_id is not None
         ),
-        review_items=tuple(item for item in items.values() if item is not None),
+        review_items=tuple(
+            {i.review_item_id: i for i in items.values() if i is not None}.values()
+        ),
         lineage=tuple(
             _lineage(facts[t.transaction_id], o, version, items[t.transaction_id])
             for t, o in outcomes
@@ -138,6 +142,14 @@ def _settled(
             rule_ids=rule_result.rule_ids,
             transfer_group_id=leg.transfer_group_id,
             transfer_evidence=leg.evidence,
+        )
+    held = matching.ambiguous.get(transaction_id)
+    if held is not None:
+        return _Outcome(
+            "unknown",
+            review_kind="ambiguous-transfer",
+            rule_ids=held.claim_rule_ids,
+            review_transaction_ids=held.transaction_ids,
         )
     reason = matching.unmatched.get(transaction_id)
     if reason is None:
@@ -279,10 +291,11 @@ def _review_item(
     if outcome.review_kind is None:
         return None
 
+    transaction_ids = outcome.review_transaction_ids or (transaction.transaction_id,)
     return ClassificationReviewItem(
-        review_item_id=hash_parts([outcome.review_kind, transaction.transaction_id]),
+        review_item_id=hash_parts([outcome.review_kind, *transaction_ids]),
         kind=outcome.review_kind,
-        transaction_ids=(transaction.transaction_id,),
+        transaction_ids=transaction_ids,
         rule_ids=outcome.rule_ids or (),
         decision_id=None,
         reason=outcome.review_reason,
