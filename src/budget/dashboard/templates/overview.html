@@ -11,6 +11,8 @@
 <body>
 <main>
 <h1>Oversigt</h1>
+{# Logout is a POST so that following a link can never end a login. #}
+<form id="logout" method="post" action="/logout"><button>Log ud</button></form>
 {# Without scripts the form reloads the page; htmx swaps only the report, and
    a newer change replaces any request still outstanding. #}
 <form method="get" action="/" hx-get="/report" hx-target="#report" hx-swap="outerHTML" hx-sync="this:replace" hx-trigger="submit, change">
