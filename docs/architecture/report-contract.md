@@ -82,7 +82,9 @@ publication. `selection_options()` and `monthly_overview()` raise
 `PublicationUnavailableError` when the named publication's result is not retained,
 and `monthly_overview()` raises `InvalidSelection` for a context that breaks a
 rule under [`ReportContext`](#reportcontext). A failure is never returned as an
-empty or zero report.
+empty or zero report. In code each failure carries an `Error` suffix, as the
+lint rules require: `NothingPublishedError`, `PublicationUnavailableError` and
+`InvalidSelectionError`.
 
 ### `ReportContext`
 
