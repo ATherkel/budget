@@ -129,9 +129,9 @@ def _matches(when: RuleConditions, transaction: Transaction) -> bool:
     """
     account_holds = when.account is None or when.account == transaction.account_id
     description_holds = when.matches_description(transaction.description)
-    bank_category_holds = when.bank_category is None or (
-        transaction.bank_category is not None
-        and fold(when.bank_category) == fold(transaction.bank_category)
+    bank_category_holds = _label_holds(when.bank_category, transaction.bank_category)
+    bank_subcategory_holds = _label_holds(
+        when.bank_subcategory, transaction.bank_subcategory
     )
     amount_sign_holds = when.amount_sign is None or (
         when.amount_sign == _sign(transaction.amount)
@@ -151,6 +151,7 @@ def _matches(when: RuleConditions, transaction: Transaction) -> bool:
         or when.date_from is not None
         or when.date_to is not None
         or when.bank_category is not None
+        or when.bank_subcategory is not None
     )
     return (
         account_holds
@@ -159,8 +160,14 @@ def _matches(when: RuleConditions, transaction: Transaction) -> bool:
         and amount_range_holds
         and date_range_holds
         and bank_category_holds
+        and bank_subcategory_holds
         and sets_a_condition
     )
+
+
+def _label_holds(wanted: str | None, label: str | None) -> bool:
+    """Say whether a bank label meets the rule's, in any case; unset holds."""
+    return wanted is None or (label is not None and fold(wanted) == fold(label))
 
 
 def _within[T: (Decimal, date)](value: T, low: T | None, high: T | None) -> bool:
