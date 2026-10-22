@@ -22,7 +22,12 @@ from budget.gold.models import (
     TransactionType,
 )
 from budget.hashing import hash_parts
-from budget.inputs.rules import AssignCategory, RuleConditions, fold
+from budget.inputs.rules import (
+    AssignAdjustment,
+    AssignCategory,
+    RuleConditions,
+    fold,
+)
 from budget.inputs.snapshot import ConfigurationSnapshot
 from budget.silver.models import Transaction
 
@@ -119,6 +124,8 @@ def _outcome(
                     "unknown", review_kind="sign-mismatch", rule_ids=rule_ids
                 )
             return _Outcome(transaction_type, category_id, rule_ids=rule_ids)
+        case AssignAdjustment():
+            return _Outcome("adjustment", rule_ids=rule_ids)
         case _:
             return _Outcome("unknown")
 
