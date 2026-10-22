@@ -135,21 +135,30 @@ def _matches(when: RuleConditions, transaction: Transaction) -> bool:
     amount_sign_holds = when.amount_sign is None or (
         when.amount_sign == _sign(transaction.amount)
     )
+    amount_range_holds = _within(transaction.amount, when.amount_min, when.amount_max)
     sets_a_condition = bool(
         when.account is not None
         or when.description_contains
         or when.description_starts_with
         or when.description_regex
         or when.amount_sign is not None
+        or when.amount_min is not None
+        or when.amount_max is not None
         or when.bank_category is not None
     )
     return (
         account_holds
         and description_holds
         and amount_sign_holds
+        and amount_range_holds
         and bank_category_holds
         and sets_a_condition
     )
+
+
+def _within(amount: Decimal, low: Decimal | None, high: Decimal | None) -> bool:
+    """Say whether the amount lies in the inclusive range; an unset bound holds."""
+    return (low is None or amount >= low) and (high is None or amount <= high)
 
 
 def _sign(amount: Decimal) -> _Sign | None:
