@@ -126,18 +126,22 @@ def _matches(when: RuleConditions, transaction: Transaction) -> bool:
     A condition the rule leaves unset holds, but a rule that sets none
     matches nothing, so it cannot silently classify every transaction.
     """
+    account_holds = when.account is None or when.account == transaction.account_id
     description_holds = when.matches_description(transaction.description)
     bank_category_holds = when.bank_category is None or (
         transaction.bank_category is not None
         and fold(when.bank_category) == fold(transaction.bank_category)
     )
     sets_a_condition = bool(
-        when.description_contains
+        when.account is not None
+        or when.description_contains
         or when.description_starts_with
         or when.description_regex
         or when.bank_category is not None
     )
-    return description_holds and bank_category_holds and sets_a_condition
+    return (
+        account_holds and description_holds and bank_category_holds and sets_a_condition
+    )
 
 
 def _derived_type(direction: CategoryDirection, amount: Decimal) -> TransactionType:
