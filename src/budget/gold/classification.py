@@ -56,6 +56,8 @@ class _Outcome:
     # The kind of review item the outcome raises, if any.
     review_kind: ClassificationReviewKind | None = None
     rule_ids: tuple[str, ...] = ()
+    # The explanation an adjustment carries into lineage.
+    adjustment_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -123,6 +125,7 @@ def _lineage(
         classification_version=classification_version,
         transfer_evidence=None,
         review_item_ids=() if review_item is None else (review_item.review_item_id,),
+        adjustment_reason=outcome.adjustment_reason,
     )
 
 
@@ -155,8 +158,8 @@ def _outcome(
                     "unknown", review_kind="sign-mismatch", rule_ids=rule_ids
                 )
             return _Outcome(transaction_type, category_id, rule_ids=rule_ids)
-        case AssignAdjustment():
-            return _Outcome("adjustment", rule_ids=rule_ids)
+        case AssignAdjustment(reason=reason):
+            return _Outcome("adjustment", rule_ids=rule_ids, adjustment_reason=reason)
         case _:
             return _Outcome("unknown", rule_ids=rule_ids)
 
