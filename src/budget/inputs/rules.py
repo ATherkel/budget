@@ -6,8 +6,9 @@ must hold, and `then` assigns exactly one outcome (`classification.md`,
 *Classification Rules*). File order never matters, so rules are keyed by ID.
 """
 
+import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import date
 from decimal import Decimal
 from types import MappingProxyType
@@ -61,6 +62,47 @@ class RuleConditions:
     def folded_starts_with(self) -> tuple[str, ...]:
         """The `description_starts_with` patterns, folded."""
         return tuple(map(fold, self.description_starts_with))
+
+    @property
+    def folded_bank_category(self) -> str | None:
+        """The `bank_category` label, folded, or `None` when it is unset."""
+        return None if self.bank_category is None else fold(self.bank_category)
+
+    @property
+    def folded_bank_subcategory(self) -> str | None:
+        """The `bank_subcategory` label, folded, or `None` when it is unset."""
+        return None if self.bank_subcategory is None else fold(self.bank_subcategory)
+
+    @property
+    def sets_a_condition(self) -> bool:
+        """Say whether the rule sets any condition at all.
+
+        It reads every field, so a condition added later cannot be left out.
+        """
+        return any(getattr(self, f.name) not in (None, ()) for f in fields(self))
+
+    def matches_description(self, description: str) -> bool:
+        """Say whether the description meets every text condition the rule sets.
+
+        A condition the rule leaves empty holds, so a rule that sets none
+        holds for every description. For the literal patterns the description is
+        folded as they are, so the match is the one the configuration
+        fingerprint assumes (`classification.md`); a regex is searched as
+        written, ignoring case, since folding it could change its meaning.
+        """
+        text = fold(description)
+
+        contains = not self.folded_contains or any(
+            pattern in text for pattern in self.folded_contains
+        )
+        starts_with = not self.folded_starts_with or any(
+            text.startswith(pattern) for pattern in self.folded_starts_with
+        )
+        regex = not self.description_regex or any(
+            re.search(pattern, description, re.IGNORECASE)
+            for pattern in self.description_regex
+        )
+        return contains and starts_with and regex
 
 
 @dataclass(frozen=True)
