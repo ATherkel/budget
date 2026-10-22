@@ -114,7 +114,7 @@ def _canonical_when(when: RuleConditions) -> dict[str, object]:
             "date_from": when.date_from,
             "date_to": when.date_to,
             "bank_category": when.folded_bank_category,
-            "bank_subcategory": when.bank_subcategory,
+            "bank_subcategory": when.folded_bank_subcategory,
         }
     )
 

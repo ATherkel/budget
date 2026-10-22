@@ -68,6 +68,11 @@ class RuleConditions:
         """The `bank_category` label, folded, or `None` when it is unset."""
         return None if self.bank_category is None else fold(self.bank_category)
 
+    @property
+    def folded_bank_subcategory(self) -> str | None:
+        """The `bank_subcategory` label, folded, or `None` when it is unset."""
+        return None if self.bank_subcategory is None else fold(self.bank_subcategory)
+
     def matches_description(self, description: str) -> bool:
         """Say whether the description meets every text condition the rule sets.
 
