@@ -90,3 +90,5 @@ def added_migrations(sql_by_folder: Mapping[Path, str]) -> Iterator[None]:
 
 # Where the installed package keeps the Silver migrations, for `added_migration`.
 SILVER_MIGRATIONS = MIGRATIONS.parent / "silver"
+# Where the installed package keeps the Gold migrations, for `added_migration`.
+GOLD_MIGRATIONS = MIGRATIONS.parent / "gold"
