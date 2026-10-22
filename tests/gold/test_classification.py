@@ -197,6 +197,20 @@ def test_a_rule_matches_a_bank_subcategory_in_any_case() -> None:
     assert _types(result) == {"bread": "expense", "meat": "unknown", "none": "unknown"}
 
 
+def test_a_category_rule_on_a_zero_amount_leaves_a_sign_mismatch() -> None:
+    # classification.md, after the scenarios: zero-amount INTEREST ADJ.
+    result = classified(
+        booked("zero", SAVINGS, date(2026, 3, 31), "0.00", "INTEREST ADJ")
+    )
+
+    assert _types(result) == {"zero": "unknown"}
+    assert _allocations(result) == []
+    assert [
+        (i.kind, i.transaction_ids, i.rule_ids, i.decision_id, i.reason)
+        for i in result.classification_review_items()
+    ] == [("sign-mismatch", ("zero",), ("r-interest",), None, None)]
+
+
 def test_a_rule_that_sets_no_condition_matches_no_transaction() -> None:
     rules = {"r-empty": Rule("r-empty", 0, RuleConditions(), AssignCategory("gifts"))}
 
