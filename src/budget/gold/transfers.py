@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Literal
 
-from budget.gold.models import GoldTransaction, TransferEvidence
+from budget.gold.models import GoldTransaction, TransferBasis, TransferEvidence
 from budget.hashing import hash_parts
 
 type UnmatchedReason = Literal["counterpart-may-not-be-imported", "no-candidate"]
@@ -51,8 +51,9 @@ def match_transfers(
     paired: dict[str, PairedLeg] = {}
     for gap in range(MAX_DATE_GAP.days + 1):
         available = [t for t in transactions if t.transaction_id not in paired]
-        for out, into in _lone_pairs(_candidates(available, claims, gap)):
-            paired.update(_pair(out, into, claims, gap))
+        for legs in _connected_sets(_candidates(available, claims, gap)):
+            for out, into, basis in _settle(legs):
+                paired.update(_pair(out, into, claims, gap, basis))
 
     latest = _latest_dates(transactions)
     return Matching(
@@ -78,24 +79,58 @@ def _candidates(
         for into in legs
         if into.amount == -out.amount
         and into.account_id != out.account_id
-        and abs((into.transaction_date - out.transaction_date).days) == gap
+        and _gap(out, into) == gap
         and (out.transaction_id in claims or into.transaction_id in claims)
     ]
 
 
-def _lone_pairs(
+def _connected_sets(
     candidates: Sequence[tuple[GoldTransaction, GoldTransaction]],
-) -> list[tuple[GoldTransaction, GoldTransaction]]:
-    """Keep the candidates whose legs are candidates for nothing else."""
-    uses: dict[str, int] = {}
+) -> list[list[GoldTransaction]]:
+    """Group the candidates' legs into sets joined by any candidate pair."""
+    set_of: dict[str, list[GoldTransaction]] = {}
     for out, into in candidates:
-        for leg in (out, into):
-            uses[leg.transaction_id] = uses.get(leg.transaction_id, 0) + 1
-    return [
-        (out, into)
-        for out, into in candidates
-        if uses[out.transaction_id] == uses[into.transaction_id] == 1
-    ]
+        joined = set_of.get(out.transaction_id, [out])
+        other = set_of.get(into.transaction_id, [into])
+        if other is not joined:
+            joined.extend(leg for leg in other if leg not in joined)
+        for leg in joined:
+            set_of[leg.transaction_id] = joined
+    unique = {id(legs): legs for legs in set_of.values()}
+    return list(unique.values())
+
+
+def _settle(
+    legs: Sequence[GoldTransaction],
+) -> list[tuple[GoldTransaction, GoldTransaction, TransferBasis]]:
+    """Pair a set's legs where no guess is needed (*Stages*)."""
+    outs = sorted((t for t in legs if t.amount < 0), key=_booked_order)
+    ins = sorted((t for t in legs if t.amount > 0), key=_booked_order)
+    if len(outs) == len(ins) == 1:
+        return [
+            (outs[0], ins[0], "same_day" if _gap(outs[0], ins[0]) == 0 else "date_gap")
+        ]
+    if _repeated(outs) and _repeated(ins):
+        return [
+            (out, into, "repeated_legs") for out, into in zip(outs, ins, strict=False)
+        ]
+    return []
+
+
+def _booked_order(leg: GoldTransaction) -> tuple[str, int]:
+    return (leg.account_id, leg.account_sequence)
+
+
+def _repeated(legs: Sequence[GoldTransaction]) -> bool:
+    """Say whether the legs are interchangeable: one account, date, amount, text."""
+    return (
+        len({(t.account_id, t.transaction_date, t.amount, t.description) for t in legs})
+        == 1
+    )
+
+
+def _gap(out: GoldTransaction, into: GoldTransaction) -> int:
+    return abs((into.transaction_date - out.transaction_date).days)
 
 
 def _pair(
@@ -103,6 +138,7 @@ def _pair(
     into: GoldTransaction,
     claims: Mapping[str, tuple[str, ...]],
     gap: int,
+    basis: TransferBasis,
 ) -> dict[str, PairedLeg]:
     """Join two legs in one group, each naming the other as its evidence."""
     group_id = hash_parts(sorted([out.transaction_id, into.transaction_id]))
@@ -115,7 +151,7 @@ def _pair(
         leg.transaction_id: PairedLeg(
             group_id,
             TransferEvidence(
-                basis="same_day" if gap == 0 else "date_gap",
+                basis=basis,
                 counterpart_account_id=other.account_id,
                 counterpart_transaction_id=other.transaction_id,
                 date_gap_days=gap,
