@@ -10,11 +10,19 @@ from datetime import date
 from decimal import Decimal
 
 from budget.gold import GoldCategoryAllocation, GoldResult, TransactionType
-from budget.inputs import AssignAdjustment, AssignCategory, Rule, RuleConditions
+from budget.inputs import (
+    AssignAdjustment,
+    AssignCategory,
+    ConfigurationSnapshot,
+    Rule,
+    RuleConditions,
+)
 from tests.gold.classification_example import (
+    ACCOUNTS,
     CURRENT,
     RULES,
     SAVINGS,
+    TAXONOMY,
     booked,
     classified,
 )
@@ -225,6 +233,51 @@ def test_an_adjustment_rule_gives_an_adjustment_with_no_category() -> None:
     assert _types(result) == {"fix": "adjustment"}
     assert _allocations(result) == []
     assert list(result.classification_review_items()) == []
+
+
+def test_lineage_names_the_rules_and_review_items_behind_each_type() -> None:
+    result = classified(
+        booked("netto", CURRENT, date(2026, 2, 2), "-640.00", "NETTO 0412"),
+        booked("cash", CURRENT, date(2026, 2, 3), "-200.00", "ATM 17"),
+        booked("conflict", CURRENT, date(2026, 2, 20), "-85.00", "MOBILEPAY NETTO"),
+    )
+    version = ConfigurationSnapshot(
+        accounts=ACCOUNTS, taxonomy=TAXONOMY, rules=RULES
+    ).fingerprint
+    items = {
+        i.transaction_ids: i.review_item_id
+        for i in result.classification_review_items()
+    }
+
+    lineage = {
+        line.transaction_id: line
+        for line in result.transaction_lineage(["netto", "cash", "conflict"])
+    }
+
+    assert {
+        tid: (
+            line.silver_transaction_id,
+            line.classification_source,
+            line.rule_ids,
+            line.decision_id,
+            line.classification_version,
+            line.transfer_evidence,
+            line.review_item_ids,
+        )
+        for tid, line in lineage.items()
+    } == {
+        "netto": ("netto", "rule", ("r-netto",), None, version, None, ()),
+        "cash": ("cash", "unclassified", (), None, version, None, (items[("cash",)],)),
+        "conflict": (
+            "conflict",
+            "unclassified",
+            ("r-mobilepay", "r-netto"),
+            None,
+            version,
+            None,
+            (items[("conflict",)],),
+        ),
+    }
 
 
 def test_a_rule_that_sets_no_condition_matches_no_transaction() -> None:
