@@ -294,7 +294,14 @@ class _ConnectionOwner:
 
 
 class GoldStore:
-    """Publish to and read from the Gold store that one profile names."""
+    """Publish to and read from the Gold store that one profile names.
+
+    The store owns one SQLite connection. Open, use, and close it on the thread
+    that created it within one synchronous request or task. `read_only=True`
+    opens the supported reporting connection through SQLite `mode=ro`; the
+    default mode remains writable for publishing. Repositories returned by
+    `open()` borrow this owner and cannot outlive the store.
+    """
 
     def __init__(self, profile: Profile, *, read_only: bool = False) -> None:
         """Open the migrated Gold store that one profile names."""

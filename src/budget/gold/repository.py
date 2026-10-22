@@ -129,7 +129,13 @@ class GoldStoreReadOnlyError(RuntimeError):
 
 
 class GoldPublications(Protocol):
-    """The retained publications of one store; a consumer opens one at a time."""
+    """The retained publications of one request-scoped Gold store.
+
+    The implementation owns one connection. Open, use, and close it on the
+    thread that created it within one synchronous request or task. Do not
+    cache or share the object across server threads. A repository returned by
+    `open()` borrows the same owner and cannot be used after that owner closes.
+    """
 
     def current(self) -> GoldPublication | None:
         """Return the current publication, or None when there is none."""

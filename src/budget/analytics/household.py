@@ -77,7 +77,14 @@ def _is_current(publication: GoldPublication, current: GoldPublication | None) -
 
 
 class HouseholdReports:
-    """Reports resolved from and pinned to the publications in one Gold store."""
+    """Reports resolved from and pinned to one request's Gold publications.
+
+    A report adapter borrows the publications object and never owns its
+    connection. Open, use, and close that object on one thread within one
+    synchronous request. The returned report DTOs carry the pinned context and
+    remain usable after the store closes; lifecycle errors are not translated
+    into `NothingPublishedError` or `PublicationUnavailableError`.
+    """
 
     def __init__(self, publications: GoldPublications) -> None:
         """Read reports from `publications`."""
