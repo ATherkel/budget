@@ -269,6 +269,20 @@ def test_12_competing_legs_stay_unknown_with_one_ambiguous_item() -> None:
     )
 
 
+def test_12_lineage_keeps_each_held_legs_own_rules_and_the_item_the_claims() -> None:
+    result = classified(*_scenario_12())
+    (item,) = result.classification_review_items()
+
+    assert item.rule_ids == ("r-savings-transfer",)
+    assert {
+        tid: line[1] for tid, line in _evidence(result, *_types(result)).items()
+    } == {
+        "to-savings": ("r-savings-transfer",),
+        "dentist": ("r-dentist",),
+        "from-current": ("r-savings-transfer",),
+    }
+
+
 def test_an_ambiguous_sets_legs_skip_later_stages() -> None:
     # A day later, joint-savings has an unclaimed +1,500.00 that only the
     # claimed to-savings could pair with; but to-savings is held for review.
