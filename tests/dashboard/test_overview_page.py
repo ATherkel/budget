@@ -444,3 +444,19 @@ def test_the_report_is_swapped_inside_one_persistent_live_region(
         "report" in page.elements,
         read(fragment.text).attributes("report").get("role"),
     ) == ("polite", "/report", "#report-region", "innerHTML", True, None)
+
+
+def test_the_overview_loads_htmx_and_its_form_asks_for_the_report(
+    client: TestClient,
+) -> None:
+    # Without the script the form still reloads the page, so a missing script
+    # or a form wired to the wrong address would go unnoticed.
+    html = client.get("/").text
+    form = read(html).attributes("selection")
+
+    assert (
+        '<script src="/static/htmx.min.js"' in html,
+        client.get("/static/htmx.min.js").status_code,
+        form.get("hx-get"),
+        form.get("hx-target"),
+    ) == (True, 200, "/report", "#report-region")
