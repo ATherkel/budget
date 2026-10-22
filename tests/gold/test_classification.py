@@ -109,6 +109,23 @@ def test_a_rule_matches_only_a_transaction_on_its_account() -> None:
     assert _types(result) == {"savings": "income", "current": "unknown"}
 
 
+def test_a_rule_matches_only_an_amount_of_its_sign() -> None:
+    spend = RuleConditions(description_contains=("NETTO",), amount_sign="negative")
+    rules = {"r-spend": Rule("r-spend", 0, spend, AssignCategory("groceries"))}
+
+    result = classified(
+        booked("out", CURRENT, date(2026, 2, 2), "-640.00", "NETTO 0412"),
+        booked("in", CURRENT, date(2026, 2, 12), "120.00", "NETTO 0412"),
+        booked("zero", CURRENT, date(2026, 2, 13), "0.00", "NETTO 0412"),
+        rules=rules,
+    )
+
+    assert _types(result) == {"out": "expense", "in": "unknown", "zero": "unknown"}
+    assert [(a.transaction_id, a.category_id) for a in _allocations(result)] == [
+        ("out", "groceries")
+    ]
+
+
 def test_a_rule_that_sets_no_condition_matches_no_transaction() -> None:
     rules = {"r-empty": Rule("r-empty", 0, RuleConditions(), AssignCategory("gifts"))}
 
