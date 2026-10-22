@@ -158,6 +158,30 @@ def test_a_rule_matches_an_amount_in_its_inclusive_range() -> None:
     }
 
 
+def test_a_rule_matches_a_date_in_its_inclusive_range() -> None:
+    february = RuleConditions(
+        description_contains=("NETTO",),
+        date_from=date(2026, 2, 1),
+        date_to=date(2026, 2, 28),
+    )
+    rules = {"r-feb": Rule("r-feb", 0, february, AssignCategory("groceries"))}
+
+    result = classified(
+        booked("first", CURRENT, date(2026, 2, 1), "-10.00", "NETTO 0412"),
+        booked("last", CURRENT, date(2026, 2, 28), "-10.00", "NETTO 0412"),
+        booked("before", CURRENT, date(2026, 1, 31), "-10.00", "NETTO 0412"),
+        booked("after", CURRENT, date(2026, 3, 1), "-10.00", "NETTO 0412"),
+        rules=rules,
+    )
+
+    assert _types(result) == {
+        "first": "expense",
+        "last": "expense",
+        "before": "unknown",
+        "after": "unknown",
+    }
+
+
 def test_a_rule_that_sets_no_condition_matches_no_transaction() -> None:
     rules = {"r-empty": Rule("r-empty", 0, RuleConditions(), AssignCategory("gifts"))}
 
