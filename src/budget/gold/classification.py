@@ -104,19 +104,21 @@ def _outcome(
 
     winner = max(matching, key=lambda rule: rule.priority)
     ties = [rule for rule in matching if rule.priority == winner.priority]
+    rule_ids = tuple(sorted(rule.rule_id for rule in ties))
     if any(rule.then != winner.then for rule in ties):
-        return _Outcome(
-            "unknown",
-            review_kind="rule-conflict",
-            rule_ids=tuple(sorted(rule.rule_id for rule in ties)),
-        )
+        return _Outcome("unknown", review_kind="rule-conflict", rule_ids=rule_ids)
 
     match winner.then:
         case AssignCategory(category_id=category_id):
             taxonomy = configuration.taxonomy
             group_id = taxonomy.categories[category_id].group_id
             direction = taxonomy.groups[group_id].direction
-            return _Outcome(_derived_type(direction, transaction.amount), category_id)
+            transaction_type = _derived_type(direction, transaction.amount)
+            if transaction_type == "unknown":
+                return _Outcome(
+                    "unknown", review_kind="sign-mismatch", rule_ids=rule_ids
+                )
+            return _Outcome(transaction_type, category_id, rule_ids=rule_ids)
         case _:
             return _Outcome("unknown")
 
