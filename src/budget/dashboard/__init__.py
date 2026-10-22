@@ -11,6 +11,7 @@ from typing import Annotated
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, PackageLoader, select_autoescape
@@ -209,6 +210,18 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     # The htmx script ships in the package: nothing is fetched from the internet.
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")
     throttle = LoginThrottle()
+
+    @app.exception_handler(RequestValidationError)
+    def malformed_address(request: Request, _error: RequestValidationError) -> Response:
+        """Explain a malformed address in Danish, never as FastAPI's JSON.
+
+        htmx swaps only a 2xx, so the fragment answers 200 while the page is a 400.
+        """
+        if request.url.path == "/report":
+            fragment = _TEMPLATES.get_template("invalid_address.html").render()
+            return HTMLResponse(fragment)
+        page = _TEMPLATES.get_template("invalid_address_page.html").render()
+        return HTMLResponse(page, status_code=400)
 
     def start_session(response: Response) -> Response:
         """Set a session cookie lasting `LOGIN_LIFETIME` from now.
