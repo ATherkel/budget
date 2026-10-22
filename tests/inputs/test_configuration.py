@@ -254,6 +254,17 @@ class FingerprintTests(unittest.TestCase):
         assert rules != RULES
         assert configuration(rules=rules).fingerprint == configuration().fingerprint
 
+    def test_a_bank_subcategory_is_fingerprinted_without_its_case(self) -> None:
+        def fingerprint(subcategory: str) -> str:
+            category = 'when.bank_category = "Groceries"'
+            rules = RULES.replace(
+                category, f'{category}\nwhen.bank_subcategory = "{subcategory}"'
+            )
+            assert rules != RULES
+            return configuration(rules=rules).fingerprint
+
+        assert fingerprint("BAKERY") == fingerprint("Bakery")
+
     def test_a_regex_is_never_folded_into_another_meaning(self) -> None:
         # In a regex, case is syntax: \S is the opposite of \s.
         def fingerprint(pattern: str) -> str:
