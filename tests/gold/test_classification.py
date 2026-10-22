@@ -126,6 +126,38 @@ def test_a_rule_matches_only_an_amount_of_its_sign() -> None:
     ]
 
 
+def test_a_rule_matches_an_amount_in_its_inclusive_range() -> None:
+    # Like r-furniture in operations.md: an IKEA purchase from -5000.00 to
+    # -1000.00 outranks r-home. The setup has no furniture category, so gifts
+    # stands in for it.
+    big = RuleConditions(
+        description_contains=("IKEA",),
+        amount_min=Decimal("-5000.00"),
+        amount_max=Decimal("-1000.00"),
+    )
+    rules = {
+        **RULES,
+        "r-furniture": Rule("r-furniture", 10, big, AssignCategory("gifts")),
+    }
+
+    result = classified(
+        booked("sofa", CURRENT, date(2026, 2, 7), "-2400.00", "IKEA 551"),
+        booked("edge", CURRENT, date(2026, 2, 8), "-1000.00", "IKEA 551"),
+        booked("floor", CURRENT, date(2026, 2, 9), "-5000.00", "IKEA 551"),
+        booked("lamp", CURRENT, date(2026, 2, 10), "-400.00", "IKEA 551"),
+        booked("kitchen", CURRENT, date(2026, 2, 11), "-5000.01", "IKEA 551"),
+        rules=rules,
+    )
+
+    assert {(a.transaction_id, a.category_id) for a in _allocations(result)} == {
+        ("sofa", "gifts"),
+        ("edge", "gifts"),
+        ("floor", "gifts"),
+        ("lamp", "household-goods"),
+        ("kitchen", "household-goods"),
+    }
+
+
 def test_a_rule_that_sets_no_condition_matches_no_transaction() -> None:
     rules = {"r-empty": Rule("r-empty", 0, RuleConditions(), AssignCategory("gifts"))}
 
