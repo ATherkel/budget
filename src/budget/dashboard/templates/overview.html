@@ -15,7 +15,7 @@
 <form id="logout" method="post" action="/logout"><button>Log ud</button></form>
 {# Without scripts the form reloads the page; htmx swaps only the report, and
    a newer change replaces any request still outstanding. #}
-<form method="get" action="/" hx-get="/report" hx-target="#report" hx-swap="outerHTML" hx-sync="this:replace" hx-trigger="submit, change">
+<form id="selection" method="get" action="/" hx-get="/report" hx-target="#report-region" hx-swap="innerHTML" hx-sync="this:replace" hx-trigger="submit, change">
 <input type="hidden" name="publication" value="{{ publication_id }}">
 <input type="hidden" name="reference_date" value="{{ reference_date }}">
 <fieldset>
@@ -33,13 +33,15 @@
 </label>
 <button>Vis</button>
 </form>
+{# The wrapper stays on the page and htmx swaps only what is inside it: a live
+   region that is replaced along with its content is often not announced. #}
+<div id="report-region" aria-live="polite">
 {% if report %}
 {{ report | safe }}
 {% else %}
-<section id="report" role="status">
-<p>Vælg mindst én konto.</p>
-</section>
+{% include "no_accounts.html" %}
 {% endif %}
+</div>
 </main>
 </body>
 </html>
