@@ -65,6 +65,8 @@ class _Outcome:
     review_reason: str | None = None
     # Every transaction the review item names, when it is not this one alone.
     review_transaction_ids: tuple[str, ...] = ()
+    # The rules the review item names, when they are not `rule_ids`.
+    review_rule_ids: tuple[str, ...] | None = None
     # Whether the winning rule claims the transaction as a transfer leg.
     claims_transfer: bool = False
     transfer_group_id: str | None = None
@@ -148,7 +150,8 @@ def _settled(
         return _Outcome(
             "unknown",
             review_kind="ambiguous-transfer",
-            rule_ids=held.claim_rule_ids,
+            rule_ids=rule_result.rule_ids,
+            review_rule_ids=held.claim_rule_ids,
             review_transaction_ids=held.transaction_ids,
         )
     reason = matching.unmatched.get(transaction_id)
@@ -296,7 +299,11 @@ def _review_item(
         review_item_id=hash_parts([outcome.review_kind, *transaction_ids]),
         kind=outcome.review_kind,
         transaction_ids=transaction_ids,
-        rule_ids=outcome.rule_ids or (),
+        rule_ids=(
+            outcome.rule_ids
+            if outcome.review_rule_ids is None
+            else outcome.review_rule_ids
+        ),
         decision_id=None,
         reason=outcome.review_reason,
     )
