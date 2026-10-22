@@ -132,23 +132,38 @@ def _matches(when: RuleConditions, transaction: Transaction) -> bool:
         transaction.bank_category is not None
         and fold(when.bank_category) == fold(transaction.bank_category)
     )
+    amount_sign_holds = when.amount_sign is None or (
+        when.amount_sign == _sign(transaction.amount)
+    )
     sets_a_condition = bool(
         when.account is not None
         or when.description_contains
         or when.description_starts_with
         or when.description_regex
+        or when.amount_sign is not None
         or when.bank_category is not None
     )
     return (
-        account_holds and description_holds and bank_category_holds and sets_a_condition
+        account_holds
+        and description_holds
+        and amount_sign_holds
+        and bank_category_holds
+        and sets_a_condition
     )
+
+
+def _sign(amount: Decimal) -> _Sign | None:
+    """Name the amount's sign; zero has none."""
+    if amount == Decimal(0):
+        return None
+    return "positive" if amount > 0 else "negative"
 
 
 def _derived_type(direction: CategoryDirection, amount: Decimal) -> TransactionType:
     """Derive a category's type from its direction and the amount's sign."""
-    if amount == Decimal(0):
+    sign = _sign(amount)
+    if sign is None:
         return "unknown"
-    sign: _Sign = "positive" if amount > 0 else "negative"
     return _CATEGORY_TYPES[(direction, sign)]
 
 
