@@ -100,13 +100,32 @@ class GoldStoreLifecycleError(RuntimeError):
 class GoldStoreClosedError(GoldStoreLifecycleError):
     """The Gold store has already been closed."""
 
+    def __init__(self) -> None:
+        """Say how to make another request."""
+        super().__init__(
+            "the Gold store is closed; open a new store within this request"
+        )
+
 
 class GoldStoreThreadError(GoldStoreLifecycleError):
     """The Gold store was used from a thread other than its creating thread."""
 
+    def __init__(self) -> None:
+        """Say where the replacement store must be opened."""
+        super().__init__(
+            "the Gold store was used from another thread; open a new store "
+            "inside the thread that reads it"
+        )
+
 
 class GoldStoreReadOnlyError(RuntimeError):
     """A write was attempted through a read-only Gold store."""
+
+    def __init__(self) -> None:
+        """Name the mode publishing needs."""
+        super().__init__(
+            "the Gold store was opened read-only; publishing needs a writable store"
+        )
 
 
 class GoldPublications(Protocol):
