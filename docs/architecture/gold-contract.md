@@ -349,6 +349,7 @@ class GoldLineageRepository(Protocol):
 | `classification_version` | string | Yes | Fingerprint of the classification inputs: the configuration snapshot (account registry, taxonomy, and rules) and the effective classification decisions ([`publications.md`](publications.md)). The transfer matching policy and the classifier's code are not part of it; they change with the recipe's code version. |
 | `transfer_evidence` | `TransferEvidence`/null | Conditional | Required on every `transfer`, otherwise null. |
 | `review_item_ids` | list of string | Yes | Open classification review items involving this transaction. Often empty. |
+| `adjustment_reason` | string/null | Conditional | The explanation invariant 3 asks of an adjustment: the reason its rule or decision gives. Required on every `adjustment`, otherwise null. |
 
 The classification fields describe how the transaction's type and its
 allocations were derived. While a classified transaction has exactly one
@@ -430,6 +431,7 @@ migrating from either version finds the whole path in one place.
 | `category_id` on the transaction | `GoldCategoryAllocation`, a fact at the grain of one category allocation of one transaction | Category assignment is its own grain. Writing it this way now means splitting a transaction later changes no grain, no interface, and no consumer query (ADR-008). |
 | `classification_source` value `imported` | Removed; `transfer_match` added | Bank categories never classify on their own (ADR-011). |
 | No transfer evidence or review items | `TransferEvidence`, `rule_ids`, `decision_id`, and `classification_review_items` in lineage | Transfers need auditable evidence, and the CLI review workflow needs a stable source (ADR-011, ADR-012). |
+| No adjustment explanation | `adjustment_reason` in lineage | Invariant 3 asks every adjustment for an explanation, and `classification.md` says lineage keeps its reason (issue #170). |
 | `boundary_transactions()` *(0.2 draft)* | Removed | Consumers fetched the links into and out of a period only to judge coverage themselves. Gold now publishes coverage, so nothing reads them (ADR-007). |
 | `day_sequence` on the transaction *(0.2 draft)* | `account_sequence` | Ordering within a date is Silver's (ADR-009). Gold publishes one account-wide order instead, so a consumer never reconstructs it from two fields. |
 | `category_direction` on the transaction *(0.2 draft)* | `GoldCategory.direction` | Direction is an attribute of the category. Copying it onto every fact row lets the two disagree. |

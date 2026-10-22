@@ -155,6 +155,8 @@ class GoldTransactionLineage:
     classification_version: str
     transfer_evidence: TransferEvidence | None
     review_item_ids: tuple[str, ...]
+    # The explanation an `adjustment` carries; `None` for every other type.
+    adjustment_reason: str | None
 
 
 @dataclass(frozen=True)
