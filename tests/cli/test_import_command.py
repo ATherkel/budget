@@ -618,6 +618,36 @@ class InteractiveImportTests(unittest.TestCase):
                 "joint-savings": ("2026-03-01", "2026-03-04"),
             }
 
+    def test_enter_after_an_inverted_range_offers_the_file_before(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            drop(profile, "joint-current", "danske-20260305.csv", payload("01.03.2026"))
+            drop(profile, "joint-savings", "danske-20260305.csv", payload("02.03.2026"))
+            # The second file's inverted pair is refused; Enter twice then
+            # takes the first file's range, not the pair just typed.
+            typed = "2026-03-01\n2026-03-04\n2026-03-04\n2026-03-02\n\n\ny\n"
+
+            status, stdout, stderr = import_(profile_file, typed=typed)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "    the range starts after it ends: from must fall on or "
+                "before through\n"
+                "    from [2026-03-01]: "
+                "    through [2026-03-04]: "
+                "Import 2 files? [y/N] "
+            ) in stdout
+            ranges = {
+                entry["account_id"]: (entry["covers_from"], entry["covers_through"])
+                for entry in log_entries(profile)
+            }
+            assert ranges == {
+                "joint-current": ("2026-03-01", "2026-03-04"),
+                "joint-savings": ("2026-03-01", "2026-03-04"),
+            }
+
     def test_nothing_is_stored_unless_the_person_confirms(self) -> None:
         answers = {
             "no": "2026-03-01\n2026-03-04\nn\n",

@@ -19,10 +19,10 @@ on different days with different ranges:
 Both ends are inclusive TOML dates, without quotes, and `from` falls on or
 before `through`. The range is declared, never inferred (`bronze-layer.md`),
 so the file is the person's own statement, exactly like an answer typed at
-the prompt. A file that breaks these rules is
-refused whole, listing every problem, before anything is imported. So is an
-`[account.<id>]` that `accounts.toml` does not declare: a misspelt account
-would otherwise fall back to the default without a word.
+the prompt. A file that breaks these rules is refused whole, listing every
+problem, before anything is imported. So is an `[account.<id>]` that
+`accounts.toml` does not declare: a misspelt account would otherwise fall
+back to the default without a word.
 """
 
 import tomllib
