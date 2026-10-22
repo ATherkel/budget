@@ -76,6 +76,7 @@ A recipe names each input exactly and never by "latest":
 | --- | --- |
 | Data | The set of import runs, each with its `import_run_id` and payload hash. Silver derives admission and quarantine from these; admission is not an input. |
 | Configuration snapshot | The parsed, canonical content of the account registry, category taxonomy, and classification rules. It is stored once per distinct content and referenced by its fingerprint. |
+| Late-booking window | The profile's `[gold] late_booking_days` at the build, in whole days ([`operations.md`](operations.md#selecting-a-profile)). `late_bookings_settled` depends on it, so changing it requires a new publication, and an earlier publication keeps the window its recipe records. |
 | Decision log position | The last decision-log entry included. The effective decisions are derived from the log up to that entry. |
 | Code version | The commit of the application code, with its locked dependencies, and the Gold contract version and Silver identity version it implements. It also determines the transfer matching policy, which is a constant of the code ([`classification.md`](classification.md#inputs)). |
 
@@ -329,7 +330,8 @@ item, or voids an import run, is an entry in one append-only log:
 class GoldPublications(Protocol):
     def current(self) -> GoldPublication | None: ...  # None before the first build
     def available(self) -> Sequence[GoldPublication]: ...  # retained results
-    def open(self, publication_id: int) -> GoldRepository: ...  # PublicationUnavailable
+    # Raises PublicationUnavailableError.
+    def open(self, publication_id: int) -> GoldRepository: ...
 ```
 
 `GoldRepository` gains `publication() -> GoldPublication`. Every read through
@@ -342,9 +344,9 @@ build finishes while it is open.
 retained result: before a store's first successful build, and between a Gold
 migration that could not convert the current result and the build that
 follows it. The dashboard then says that nothing is published. `open()` raises
-`PublicationUnavailable` when the publication does not exist or its result is
+`PublicationUnavailableError` when the publication does not exist or its result is
 not retained. Example: a page is pinned to P5, two imports run, and P5's
-result is deleted. The page's next request gets `PublicationUnavailable`, and
+result is deleted. The page's next request gets `PublicationUnavailableError`, and
 the dashboard offers the current publication instead.
 
 ## Synthetic Scenarios

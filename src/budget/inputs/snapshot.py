@@ -38,22 +38,26 @@ class ConfigurationSnapshot:
     rules: Mapping[str, Rule]
 
     @property
-    def fingerprint(self) -> str:
-        """The SHA-256 of the snapshot's canonical content, in hexadecimal.
+    def canonical_text(self) -> str:
+        """The snapshot's canonical content, as the JSON its fingerprint hashes.
 
         The content is what the files mean, not how they are written: keys and
         entries in any order, any TOML spelling, a literal pattern's case and
-        an amount's trailing zeros all give the same fingerprint. A regular
+        an amount's trailing zeros all give the same text. A regular
         expression is kept as written: in one, case is syntax.
         """
-        canonical = json.dumps(
+        return json.dumps(
             _canonical(self),
             sort_keys=True,
             separators=(",", ":"),
             ensure_ascii=False,
             default=_json_value,
         )
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    @property
+    def fingerprint(self) -> str:
+        """The SHA-256 of `canonical_text`, in hexadecimal."""
+        return hashlib.sha256(self.canonical_text.encode("utf-8")).hexdigest()
 
 
 def _canonical_amount(amount: Decimal) -> str:

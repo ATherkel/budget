@@ -79,10 +79,12 @@ class HouseholdReports(Protocol):
 
 `current_publication()` raises `NothingPublished` when Gold has no current
 publication. `selection_options()` and `monthly_overview()` raise
-`PublicationUnavailable` when the named publication's result is not retained,
+`PublicationUnavailableError` when the named publication's result is not retained,
 and `monthly_overview()` raises `InvalidSelection` for a context that breaks a
 rule under [`ReportContext`](#reportcontext). A failure is never returned as an
-empty or zero report.
+empty or zero report. In code each failure carries an `Error` suffix, as the
+lint rules require: `NothingPublishedError`, `PublicationUnavailableError` and
+`InvalidSelectionError`.
 
 ### `ReportContext`
 
@@ -143,7 +145,7 @@ A page pinned to a publication keeps reading it after a newer build becomes
 current, for as long as its result is retained, so the page's parts never mix
 two publications. `is_current` turns false on the first report read after the
 newer build, so the page can say that newer figures exist and offer a reload.
-Once the result is deleted, the next read raises `PublicationUnavailable`, and
+Once the result is deleted, the next read raises `PublicationUnavailableError`, and
 the page offers the current publication explicitly instead of substituting it.
 
 ### `MonthlyOverview`
@@ -280,10 +282,10 @@ first `A`.
 **Failures.** A failure carries no report and no echoed context, so it is
 matched to the active request generation and the candidate selection it was
 raised for instead. `NothingPublished`, `InvalidSelection` and
-`PublicationUnavailable` must not be made to invent an echoed valid
+`PublicationUnavailableError` must not be made to invent an echoed valid
 `ReportContext`. A failure raised for the current generation displays: an
 `InvalidSelection` names the rules it broke, `NothingPublished` says no
-publication exists, and `PublicationUnavailable` offers the current publication
+publication exists, and `PublicationUnavailableError` offers the current publication
 explicitly. A failure whose generation is superseded is discarded, so a late
 error cannot replace the result of a newer successful selection either.
 
@@ -300,7 +302,7 @@ selection, and the mode. Going back or forward restores that state even when an
 explicit refresh has resolved another context since, validates it against the
 publication it pins rather than against what is current now, and reads again
 under a fresh request generation. A restored context whose publication result
-is no longer retained stays explicit as `PublicationUnavailable`; a restored
+is no longer retained stays explicit as `PublicationUnavailableError`; a restored
 selection that breaks a rule stays explicit as `InvalidSelection` naming the
 rules it broke; a restored empty selection restores the prompt. No restored
 state falls back to the current publication, to the default selection, or to
@@ -317,7 +319,7 @@ shows, which issue #179 implements; presentation owns the destination and the
 way it is reached.
 
 **Ownership in 0.2.** Pinning the publication, the notice that a newer build
-exists, `PublicationUnavailable` recovery, and the coverage and provisional
+exists, `PublicationUnavailableError` recovery, and the coverage and provisional
 explanation are 0.2 responsibilities (issues #103, #104, #180 and #111). The
 history picker and history-specific verification arrive later (issue #109).
 
@@ -422,7 +424,7 @@ future.
 **A newer build.** A page pinned to P1 keeps reading P1 after P2 becomes
 current, and every report it reads then has `is_current` false. After P3 is
 built, P1 is neither current nor previous, and unless it is labeled its result
-is deleted: the page's next read raises `PublicationUnavailable`.
+is deleted: the page's next read raises `PublicationUnavailableError`.
 
 **Selection transitions.** These run on the same P1 and reference date, in
 February, with `A` meaning the selection `{joint-current}` and `B` meaning
@@ -441,7 +443,7 @@ February, with `A` meaning the selection `{joint-current}` and `B` meaning
   current then, and reads again under a fresh request generation. This holds
   when an explicit refresh has since resolved P2: history entries that pin P1
   still restore P1 while its result is retained, and stay an explicit
-  `PublicationUnavailable` once it is deleted. A restored empty selection
+  `PublicationUnavailableError` once it is deleted. A restored empty selection
   restores the prompt instead of reading.
 - *A failure that stays visible.* An explicit refresh resolves a fresh context;
   with no current publication the page shows `NothingPublished` instead of an
@@ -457,5 +459,5 @@ February, with `A` meaning the selection `{joint-current}` and `B` meaning
 - *Publication removal and supersession.* A page pinned to P1 keeps reading P1
   while P2 is current, with `is_current` false and the superseded-page notice.
   Changing account or month still reads P1. Once P3 is built and P1's result is
-  deleted, the next read raises `PublicationUnavailable`, and the page offers
+  deleted, the next read raises `PublicationUnavailableError`, and the page offers
   the current publication explicitly rather than substituting it.

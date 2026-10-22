@@ -53,7 +53,7 @@ def _copy_collections(records: GoldRecords | GoldLineageRecords) -> None:
         object.__setattr__(records, record_kind.name, copied)
 
 
-def _refuse_bare_string(account_ids: Collection[str] | None) -> None:
+def refuse_bare_string(account_ids: Collection[str] | None) -> None:
     """Raise `TypeError` for a str, which `in` would search for substrings.
 
     The check runs before any record is read, so a query matching no records
@@ -90,6 +90,11 @@ class GoldResult:
         self._records = records
         self._lineage = GoldLineageRecords() if lineage is None else lineage
 
+    @property
+    def records(self) -> GoldRecords:
+        """Every record of the build, for a store that persists the result."""
+        return self._records
+
     def publication(self) -> GoldPublication:
         """Return the publication these records belong to."""
         return self._publication
@@ -110,7 +115,7 @@ class GoldResult:
         account_ids: Collection[str] | None = None,
     ) -> Sequence[GoldTransaction]:
         """Return the transactions dated from `start_date` through `end_date`."""
-        _refuse_bare_string(account_ids)
+        refuse_bare_string(account_ids)
         return tuple(
             transaction
             for transaction in self._records.transactions
@@ -126,7 +131,7 @@ class GoldResult:
         account_ids: Collection[str] | None = None,
     ) -> Sequence[GoldCategoryAllocation]:
         """Return the allocations dated from `start_date` through `end_date`."""
-        _refuse_bare_string(account_ids)
+        refuse_bare_string(account_ids)
         return tuple(
             allocation
             for allocation in self._records.category_allocations
@@ -142,7 +147,7 @@ class GoldResult:
         account_ids: Collection[str] | None = None,
     ) -> Sequence[MonthlyBalanceSnapshot]:
         """Return the snapshots for `start_month` through `end_month`."""
-        _refuse_bare_string(account_ids)
+        refuse_bare_string(account_ids)
         return tuple(
             snapshot
             for snapshot in self._records.monthly_balances

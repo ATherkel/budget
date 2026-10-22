@@ -18,7 +18,7 @@ from budget.inputs.accounts import Account
 from budget.inputs.document import ConfigurationError
 from budget.inputs.snapshot import ConfigurationSnapshot
 from budget.inputs.taxonomy import Taxonomy
-from budget.profiles import ACCOUNTS_FILE_NAME
+from budget.profiles import ACCOUNTS_FILE_NAME, MAX_LATE_BOOKING_DAYS
 from budget.silver.models import AccountEvidence, SilverResult
 
 
@@ -37,8 +37,11 @@ def build(
     ends. A Silver transaction on an account the registry does not declare
     refuses the build, so no fact is published without its account. So does
     an account whose `closed_on` falls before its latest booked transaction,
-    so no fact falls outside its account's managed period.
+    so no fact falls outside its account's managed period. A window that is
+    negative, not a whole number of days or over 366 days raises
+    `ValueError`.
     """
+    _require_window(late_booking_window)
     _require_declared_accounts(silver, configuration.accounts)
     transactions = gold_transactions(silver.transactions)
     problems = _closing_problems(configuration.accounts, transactions)
@@ -67,6 +70,24 @@ def build(
         transaction_lineage=classified.lineage,
     )
     return GoldResult(publication, records, lineage)
+
+
+def _require_window(window: timedelta) -> None:
+    """Refuse a late-booking window that profiles could not have set.
+
+    Profiles set it in whole days from 0 to `MAX_LATE_BOOKING_DAYS`, so anything
+    else is refused here too, rather than truncated to the day
+    `late_bookings_settled` compares or overflowing the date it is added to.
+    """
+    # `timedelta` keeps its days signed and its seconds and microseconds
+    # positive, so a negative window always has negative days.
+    whole = not window.seconds and not window.microseconds
+    if not whole or not 0 <= window.days <= MAX_LATE_BOOKING_DAYS:
+        message = (
+            "late_booking_window must be a whole number of days from 0 to "
+            f"{MAX_LATE_BOOKING_DAYS}, not {window}"
+        )
+        raise ValueError(message)
 
 
 def _require_declared_accounts(

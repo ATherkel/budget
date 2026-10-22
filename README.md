@@ -112,15 +112,16 @@ each access, so a folder or file replaced by a symlink is refused instead of
 followed. The command line below builds a development or production profile
 from a profile file; a test profile is never a file.
 
-`migrate_bronze` and `migrate_silver` are the only operations that create or
-upgrade a store. Both run one shared runner, `budget.sqlstore`, over their own
-numbered SQL files, `migrations/bronze/` and `migrations/silver/`, which ship
+`migrate_bronze`, `migrate_silver` and `migrate_gold` are the only operations
+that create or upgrade a store. All three run one shared runner,
+`budget.sqlstore`, over their own numbered SQL files, `migrations/bronze/`,
+`migrations/silver/` and `migrations/gold/`, which ship
 inside the installed wheel and sdist so an installation can migrate without a
 source checkout. Each store records its own `PRAGMA user_version` and a one-row
 `store_identity` naming the profile and stage. The runner applies every
 pending file in one transaction, so a migration that fails leaves the store at
-the version it had. Gold's store will run the same runner over
-`migrations/gold/`. Opening a store never creates or changes the schema: it
+the version it had. `budget migrate` and the backup sets do not include Gold
+yet (issue #257). Opening a store never creates or changes the schema: it
 requires an existing file, `mode=rw`, a version this code knows, and a
 matching identity, and it sets `foreign_keys = ON`, `busy_timeout = 5000` and
 `synchronous = FULL`. A new store is created in WAL mode.
@@ -192,6 +193,37 @@ by `budget migrate`, which backs the store up first (see below).
 `BronzeStore(profile, parsers=...)` accepts an optional mapping for
 tests that need two versions of one format; the mapping is copied, and a parser
 registered under an ID it does not name is refused.
+
+## Gold publications
+
+`gold.db` holds Gold publications (ADR-014, `docs/architecture/publications.md`).
+`GoldStore` serves them as `GoldPublications`: `current()` is `None` until the
+first publish, `available()` lists the publications whose results are retained,
+and `open(publication_id)` returns a `GoldRepository` bound to one of them, or
+raises `PublicationUnavailableError`.
+
+```python
+from budget.gold.storage import migrate_gold
+from budget.gold.store import GoldStore
+
+migrate_gold(profile)
+
+with GoldStore(profile) as store:
+    publication_id = store.next_publication_id()
+    # ... build a GoldResult bound to a GoldPublication with that id ...
+    store.publish(result, recipe, configuration)
+    gold = store.open(publication_id)
+```
+
+`publish` takes the `GoldResult`, its `Recipe` and the `ConfigurationSnapshot`
+the recipe names. In one transaction it stores the publication, the recipe, the
+configuration's canonical text (once per fingerprint) and the records, and
+appends a `build` move to the pointer history. A failure before that commit
+leaves the previous publication current. A later transaction deletes every
+result that is neither current, previous nor labeled; recipes and publication
+metadata are kept forever. Every Gold table is keyed by `publication_id` first
+and every repository read filters on one, so a hand-written query against
+`gold.db` must do the same or it adds retained publications together.
 
 ## Importing the inbox: `budget import`
 
