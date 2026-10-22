@@ -390,7 +390,7 @@ def _set_passphrase(profile: Profile) -> None:
         confirmation = ask_passphrase("Type it again: ")
     except EOFError:
         raise NoPassphraseTypedError from None
-    if not passphrase:
+    if not passphrase.strip():
         raise EmptyPassphraseError
     if confirmation != passphrase:
         raise PassphraseMismatchError
