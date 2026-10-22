@@ -3,6 +3,7 @@
 
 import sqlite3
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -12,12 +13,19 @@ import pytest
 from budget.analytics import (
     HouseholdReports,
     InvalidSelectionError,
+    MonthlyOverview,
     NothingPublishedError,
     PublicationUnavailableError,
     ReportContext,
     ReportPublication,
 )
-from budget.gold import GoldPublication, GoldRecords, GoldResult, ReportingMonth
+from budget.gold import (
+    GoldPublication,
+    GoldRecords,
+    GoldResult,
+    GoldStoreClosedError,
+    ReportingMonth,
+)
 from budget.gold.storage import migrate_gold
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
@@ -74,6 +82,82 @@ def test_before_the_first_build_nothing_is_published(gold_store: GoldStore) -> N
     with pytest.raises(NothingPublishedError):
         reports.current_publication()
     assert gold_store.current() is None
+
+
+def test_a_report_data_object_survives_a_read_only_request_scope(
+    profile: Profile,
+) -> None:
+    with GoldStore(profile) as writer:
+        _publish(writer, 1)
+    context = ReportContext(
+        publication_id=1,
+        account_ids=frozenset({"joint-current", "joint-savings"}),
+        month=ReportingMonth(2026, 2),
+        reference_date=date(2026, 5, 14),
+    )
+
+    def read() -> MonthlyOverview:
+        with GoldStore(profile, read_only=True) as reader:
+            return HouseholdReports(reader).monthly_overview(context)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(read) for _ in range(2)]
+
+    reports = [future.result() for future in futures]
+    assert [report.context for report in reports] == [context, context]
+
+
+def test_closed_store_lifecycle_errors_propagate_from_reports(
+    gold_store: GoldStore,
+) -> None:
+    _publish(gold_store, 1)
+    reports = HouseholdReports(gold_store)
+    context = ReportContext(
+        publication_id=1,
+        account_ids=frozenset({"joint-current", "joint-savings"}),
+        month=ReportingMonth(2026, 2),
+        reference_date=date(2026, 5, 14),
+    )
+    gold_store.close()
+
+    with pytest.raises(GoldStoreClosedError):
+        reports.current_publication()
+    with pytest.raises(GoldStoreClosedError):
+        reports.selection_options(1, date(2026, 5, 14))
+    with pytest.raises(GoldStoreClosedError):
+        reports.monthly_overview(context)
+
+
+def test_read_only_reports_keep_superseded_and_deleted_recovery(
+    profile: Profile,
+) -> None:
+    with GoldStore(profile) as writer:
+        _publish(writer, 1)
+        _publish(writer, 2)
+    context = ReportContext(
+        publication_id=1,
+        account_ids=frozenset({"joint-current", "joint-savings"}),
+        month=ReportingMonth(2026, 2),
+        reference_date=date(2026, 5, 14),
+    )
+
+    with GoldStore(profile, read_only=True) as reader:
+        report = HouseholdReports(reader).monthly_overview(context)
+
+    assert (report.publication.publication_id, report.publication.is_current) == (
+        1,
+        False,
+    )
+
+    with GoldStore(profile) as writer:
+        _publish(writer, 3)
+    with (
+        GoldStore(profile, read_only=True) as reader,
+        pytest.raises(PublicationUnavailableError) as raised,
+    ):
+        HouseholdReports(reader).monthly_overview(context)
+
+    assert (raised.value.publication_id, raised.value.current_publication_id) == (1, 3)
 
 
 def test_selection_options_open_the_requested_superseded_publication(

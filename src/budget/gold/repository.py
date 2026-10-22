@@ -93,6 +93,22 @@ class PublicationUnavailableError(LookupError):
         )
 
 
+class GoldStoreLifecycleError(RuntimeError):
+    """Base class for use of a Gold store outside its supported lifetime."""
+
+
+class GoldStoreClosedError(GoldStoreLifecycleError):
+    """The Gold store has already been closed."""
+
+
+class GoldStoreThreadError(GoldStoreLifecycleError):
+    """The Gold store was used from a thread other than its creating thread."""
+
+
+class GoldStoreReadOnlyError(RuntimeError):
+    """A write was attempted through a read-only Gold store."""
+
+
 class GoldPublications(Protocol):
     """The retained publications of one store; a consumer opens one at a time."""
 
