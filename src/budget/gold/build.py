@@ -62,7 +62,10 @@ def build(
             late_booking_window,
         ),
     )
-    lineage = GoldLineageRecords(classification_review_items=classified.review_items)
+    lineage = GoldLineageRecords(
+        classification_review_items=classified.review_items,
+        transaction_lineage=classified.lineage,
+    )
     return GoldResult(publication, records, lineage)
 
 

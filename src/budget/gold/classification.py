@@ -19,6 +19,7 @@ from budget.gold.models import (
     ClassificationReviewKind,
     GoldCategoryAllocation,
     GoldTransaction,
+    GoldTransactionLineage,
     TransactionType,
 )
 from budget.hashing import hash_parts
@@ -64,6 +65,7 @@ class Classified:
     transactions: tuple[GoldTransaction, ...]
     allocations: tuple[GoldCategoryAllocation, ...]
     review_items: tuple[ClassificationReviewItem, ...]
+    lineage: tuple[GoldTransactionLineage, ...]
 
 
 def classify(
@@ -80,6 +82,8 @@ def classify(
     outcomes = [
         (t, _outcome(facts[t.transaction_id], configuration)) for t in transactions
     ]
+    items = {t.transaction_id: _review_item(t, o) for t, o in outcomes}
+    version = configuration.fingerprint
     return Classified(
         transactions=tuple(
             replace(t, transaction_type=o.transaction_type) for t, o in outcomes
@@ -89,9 +93,36 @@ def classify(
             for t, o in outcomes
             if o.category_id is not None
         ),
-        review_items=tuple(
-            item for t, o in outcomes if (item := _review_item(t, o)) is not None
+        review_items=tuple(item for item in items.values() if item is not None),
+        lineage=tuple(
+            _lineage(facts[t.transaction_id], o, version, items[t.transaction_id])
+            for t, o in outcomes
         ),
+    )
+
+
+def _lineage(
+    silver: Transaction,
+    outcome: _Outcome,
+    classification_version: str,
+    review_item: ClassificationReviewItem | None,
+) -> GoldTransactionLineage:
+    """Record which rules and review item stand behind one transaction's type.
+
+    The rules decided only when they gave the transaction a type; until
+    decisions exist, the configuration's fingerprint is the classification
+    version.
+    """
+    decided = bool(outcome.rule_ids) and outcome.transaction_type != "unknown"
+    return GoldTransactionLineage(
+        transaction_id=silver.transaction_id,
+        silver_transaction_id=silver.transaction_id,
+        classification_source="rule" if decided else "unclassified",
+        rule_ids=outcome.rule_ids,
+        decision_id=None,
+        classification_version=classification_version,
+        transfer_evidence=None,
+        review_item_ids=() if review_item is None else (review_item.review_item_id,),
     )
 
 
@@ -127,7 +158,7 @@ def _outcome(
         case AssignAdjustment():
             return _Outcome("adjustment", rule_ids=rule_ids)
         case _:
-            return _Outcome("unknown")
+            return _Outcome("unknown", rule_ids=rule_ids)
 
 
 def _matches(when: RuleConditions, transaction: Transaction) -> bool:

@@ -12,6 +12,7 @@ from budget.gold.models import (
     GoldCategoryAllocation,
     GoldPublication,
     GoldTransaction,
+    GoldTransactionLineage,
     MonthlyBalanceSnapshot,
     ReportingMonth,
 )
@@ -37,6 +38,7 @@ class GoldLineageRecords:
     """The privileged lineage records of one build; never for analytics."""
 
     classification_review_items: Sequence[ClassificationReviewItem] = ()
+    transaction_lineage: Sequence[GoldTransactionLineage] = ()
 
     def __post_init__(self) -> None:
         """Copy each collection, so a caller's later change never reaches Gold."""
@@ -146,6 +148,19 @@ class GoldResult:
             for snapshot in self._records.monthly_balances
             if start_month <= snapshot.month <= end_month
             and _named(snapshot.account_id, account_ids)
+        )
+
+    def transaction_lineage(
+        self, transaction_ids: Collection[str]
+    ) -> Sequence[GoldTransactionLineage]:
+        """Return the lineage of each named transaction."""
+        if isinstance(transaction_ids, str):
+            message = "transaction_ids takes a collection of ids, not one str"
+            raise TypeError(message)
+        return tuple(
+            line
+            for line in self._lineage.transaction_lineage
+            if line.transaction_id in transaction_ids
         )
 
     def classification_review_items(self) -> Sequence[ClassificationReviewItem]:
