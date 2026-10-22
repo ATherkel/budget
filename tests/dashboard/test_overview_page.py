@@ -46,6 +46,18 @@ def client(profile: Profile) -> TestClient:
     return client
 
 
+def test_the_overview_offers_a_way_to_log_out(client: TestClient) -> None:
+    # On a shared device a reader must be able to end a 30-day login.
+    page = read(client.get("/").text)
+    logout = page.attributes("logout")
+
+    assert (
+        logout.get("method", "").lower(),
+        logout.get("action"),
+        page.text_of("logout"),
+    ) == ("post", "/logout", "Log ud")
+
+
 def test_a_fresh_visit_pins_the_current_publication_every_account_and_this_month(
     client: TestClient,
 ) -> None:
