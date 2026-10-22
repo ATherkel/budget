@@ -9,7 +9,13 @@ it numbers them, over the doc's synthetic setup
 from dataclasses import replace
 from datetime import date
 
-from budget.gold import GoldResult, GoldTransaction, TransactionType, TransferEvidence
+from budget.gold import (
+    ClassificationSource,
+    GoldResult,
+    GoldTransaction,
+    TransactionType,
+    TransferEvidence,
+)
 from budget.silver import Transaction
 from tests.gold.classification_example import ANNA, CURRENT, SAVINGS, booked, classified
 
@@ -88,7 +94,12 @@ def _transactions(result: GoldResult) -> dict[str, GoldTransaction]:
     }
 
 
-def _evidence(result: GoldResult, *transaction_ids: str) -> dict[str, object]:
+type _Line = tuple[
+    ClassificationSource, tuple[str, ...], TransferEvidence | None, tuple[str, ...]
+]
+
+
+def _evidence(result: GoldResult, *transaction_ids: str) -> dict[str, _Line]:
     return {
         line.transaction_id: (
             line.classification_source,
