@@ -127,41 +127,16 @@ def _matches(when: RuleConditions, transaction: Transaction) -> bool:
     A condition the rule leaves unset holds, but a rule that sets none
     matches nothing, so it cannot silently classify every transaction.
     """
-    account_holds = when.account is None or when.account == transaction.account_id
-    description_holds = when.matches_description(transaction.description)
-    bank_category_holds = _label_holds(when.bank_category, transaction.bank_category)
-    bank_subcategory_holds = _label_holds(
-        when.bank_subcategory, transaction.bank_subcategory
-    )
-    amount_sign_holds = when.amount_sign is None or (
-        when.amount_sign == _sign(transaction.amount)
-    )
-    amount_range_holds = _within(transaction.amount, when.amount_min, when.amount_max)
-    date_range_holds = _within(
-        transaction.transaction_date, when.date_from, when.date_to
-    )
-    sets_a_condition = bool(
-        when.account is not None
-        or when.description_contains
-        or when.description_starts_with
-        or when.description_regex
-        or when.amount_sign is not None
-        or when.amount_min is not None
-        or when.amount_max is not None
-        or when.date_from is not None
-        or when.date_to is not None
-        or when.bank_category is not None
-        or when.bank_subcategory is not None
-    )
-    return (
-        account_holds
-        and description_holds
-        and amount_sign_holds
-        and amount_range_holds
-        and date_range_holds
-        and bank_category_holds
-        and bank_subcategory_holds
-        and sets_a_condition
+    return when.sets_a_condition and all(
+        (
+            when.account is None or when.account == transaction.account_id,
+            when.matches_description(transaction.description),
+            when.amount_sign is None or when.amount_sign == _sign(transaction.amount),
+            _within(transaction.amount, when.amount_min, when.amount_max),
+            _within(transaction.transaction_date, when.date_from, when.date_to),
+            _label_holds(when.bank_category, transaction.bank_category),
+            _label_holds(when.bank_subcategory, transaction.bank_subcategory),
+        )
     )
 
 

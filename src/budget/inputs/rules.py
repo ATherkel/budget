@@ -8,7 +8,7 @@ must hold, and `then` assigns exactly one outcome (`classification.md`,
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import date
 from decimal import Decimal
 from types import MappingProxyType
@@ -72,6 +72,14 @@ class RuleConditions:
     def folded_bank_subcategory(self) -> str | None:
         """The `bank_subcategory` label, folded, or `None` when it is unset."""
         return None if self.bank_subcategory is None else fold(self.bank_subcategory)
+
+    @property
+    def sets_a_condition(self) -> bool:
+        """Say whether the rule sets any condition at all.
+
+        It reads every field, so a condition added later cannot be left out.
+        """
+        return any(getattr(self, f.name) not in (None, ()) for f in fields(self))
 
     def matches_description(self, description: str) -> bool:
         """Say whether the description meets every text condition the rule sets.
