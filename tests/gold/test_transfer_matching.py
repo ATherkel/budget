@@ -140,3 +140,50 @@ def test_13_the_next_import_pairs_the_waiting_leg_and_drops_its_item() -> None:
 
     assert _types(result) == {"to-savings": "transfer", "from-current": "transfer"}
     assert _unmatched(result) == []
+
+
+def test_9_a_pair_3_days_apart_spans_a_month_boundary_on_date_gap() -> None:
+    result = classified(
+        booked("out", CURRENT, date(2026, 1, 30), "-5000.00", "TO SAVINGS"),
+        booked("in", SAVINGS, date(2026, 2, 2), "5000.00", "FROM CURRENT"),
+    )
+    claim = ("r-savings-transfer",)
+
+    assert _types(result) == {"out": "transfer", "in": "transfer"}
+    assert [
+        t.transaction_id
+        for t in result.transactions(
+            start_date=date(2026, 1, 1), end_date=date(2026, 1, 31)
+        )
+    ] == ["out"]
+    assert [
+        t.transaction_id
+        for t in result.transactions(
+            start_date=date(2026, 2, 1), end_date=date(2026, 2, 28)
+        )
+    ] == ["in"]
+    assert (
+        list(result.category_allocations(start_date=date.min, end_date=date.max)) == []
+    )
+    assert _evidence(result, "out")["out"][2] == TransferEvidence(
+        "date_gap", SAVINGS, "in", 3, claim
+    )
+
+
+def test_legs_4_days_apart_are_not_candidates() -> None:
+    result = classified(
+        booked("out", CURRENT, date(2026, 1, 29), "-5000.00", "TO SAVINGS"),
+        booked("in", SAVINGS, date(2026, 2, 2), "5000.00", "FROM CURRENT"),
+    )
+
+    assert _types(result) == {"out": "unknown", "in": "unknown"}
+    assert sorted(ids for ids, _ in _unmatched(result)) == [("in",), ("out",)]
+
+
+def test_10_a_coincidence_without_a_claim_is_not_a_transfer() -> None:
+    result = classified(
+        booked("ikea", CURRENT, date(2026, 3, 10), "-250.00", "IKEA 551"),
+        booked("carl", ANNA, date(2026, 3, 10), "250.00", "MOBILEPAY CARL"),
+    )
+
+    assert _types(result) == {"ikea": "expense", "carl": "refund"}
