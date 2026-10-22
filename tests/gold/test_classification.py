@@ -235,6 +235,26 @@ def test_an_adjustment_rule_gives_an_adjustment_with_no_category() -> None:
     assert list(result.classification_review_items()) == []
 
 
+def test_lineage_keeps_an_adjustments_reason_and_only_an_adjustments() -> None:
+    correction = RuleConditions(account=SAVINGS, description_starts_with=("RENTEKORR",))
+    outcome = AssignAdjustment("Bank's interest correction")
+    rules = {
+        **RULES,
+        "r-correction": Rule("r-correction", 0, correction, outcome),
+    }
+
+    result = classified(
+        booked("fix", SAVINGS, date(2026, 3, 31), "-7.25", "RENTEKORR 2026"),
+        booked("netto", CURRENT, date(2026, 2, 2), "-640.00", "NETTO 0412"),
+        rules=rules,
+    )
+
+    assert {
+        line.transaction_id: line.adjustment_reason
+        for line in result.transaction_lineage(["fix", "netto"])
+    } == {"fix": "Bank's interest correction", "netto": None}
+
+
 def test_lineage_names_the_rules_and_review_items_behind_each_type() -> None:
     result = classified(
         booked("netto", CURRENT, date(2026, 2, 2), "-640.00", "NETTO 0412"),
