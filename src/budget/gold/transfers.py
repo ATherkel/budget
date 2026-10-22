@@ -29,10 +29,21 @@ class PairedLeg:
 
 
 @dataclass(frozen=True)
+class AmbiguousSet:
+    """A candidate set Gold will not guess at: every leg waits for review."""
+
+    # In booked order: account, then account_sequence.
+    transaction_ids: tuple[str, ...]
+    claim_rule_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Matching:
     """What transfer matching decided, by transaction_id."""
 
     paired: Mapping[str, PairedLeg]
+    # Each leg held in an ambiguous set, and that set.
+    ambiguous: Mapping[str, AmbiguousSet]
     # Each unpaired claimed leg, and why it found no pair.
     unmatched: Mapping[str, UnmatchedReason]
 
@@ -49,19 +60,30 @@ def match_transfers(
     transactions, which may be waiting for their first import.
     """
     paired: dict[str, PairedLeg] = {}
+    ambiguous: dict[str, AmbiguousSet] = {}
     for gap in range(MAX_DATE_GAP.days + 1):
-        available = [t for t in transactions if t.transaction_id not in paired]
+        available = [
+            t
+            for t in transactions
+            if t.transaction_id not in paired and t.transaction_id not in ambiguous
+        ]
         for legs in _connected_sets(_candidates(available, claims, gap)):
-            for out, into, basis in _settle(legs):
+            pairs = _settle(legs)
+            if pairs is None:
+                ambiguous.update(_hold(legs, claims))
+            for out, into, basis in pairs or ():
                 paired.update(_pair(out, into, claims, gap, basis))
 
     latest = _latest_dates(transactions)
     return Matching(
         paired=paired,
+        ambiguous=ambiguous,
         unmatched={
             t.transaction_id: _unmatched_reason(t, latest, account_ids)
             for t in transactions
-            if t.transaction_id in claims and t.transaction_id not in paired
+            if t.transaction_id in claims
+            and t.transaction_id not in paired
+            and t.transaction_id not in ambiguous
         },
     )
 
@@ -102,8 +124,12 @@ def _connected_sets(
 
 def _settle(
     legs: Sequence[GoldTransaction],
-) -> list[tuple[GoldTransaction, GoldTransaction, TransferBasis]]:
-    """Pair a set's legs where no guess is needed (*Stages*)."""
+) -> list[tuple[GoldTransaction, GoldTransaction, TransferBasis]] | None:
+    """Pair a set's legs where no guess is needed; `None` if one would be.
+
+    A lone pair pairs. Repeated legs are interchangeable, so they pair in
+    booked order and any leftover stays for a later stage (*Stages*).
+    """
     outs = sorted((t for t in legs if t.amount < 0), key=_booked_order)
     ins = sorted((t for t in legs if t.amount > 0), key=_booked_order)
     if len(outs) == len(ins) == 1:
@@ -114,7 +140,28 @@ def _settle(
         return [
             (out, into, "repeated_legs") for out, into in zip(outs, ins, strict=False)
         ]
-    return []
+    return None
+
+
+def _hold(
+    legs: Sequence[GoldTransaction], claims: Mapping[str, tuple[str, ...]]
+) -> dict[str, AmbiguousSet]:
+    """Hold every leg of an ambiguous set, which raises one item for them all."""
+    ordered = sorted(legs, key=_booked_order)
+    held = AmbiguousSet(
+        transaction_ids=tuple(t.transaction_id for t in ordered),
+        claim_rule_ids=_claim_rules(ordered, claims),
+    )
+    return {t.transaction_id: held for t in ordered}
+
+
+def _claim_rules(
+    legs: Sequence[GoldTransaction], claims: Mapping[str, tuple[str, ...]]
+) -> tuple[str, ...]:
+    """Name every rule claiming any of the legs, once each, sorted."""
+    return tuple(
+        sorted({rule_id for t in legs for rule_id in claims.get(t.transaction_id, ())})
+    )
 
 
 def _booked_order(leg: GoldTransaction) -> tuple[str, int]:
@@ -142,11 +189,7 @@ def _pair(
 ) -> dict[str, PairedLeg]:
     """Join two legs in one group, each naming the other as its evidence."""
     group_id = hash_parts(sorted([out.transaction_id, into.transaction_id]))
-    claim_rule_ids = tuple(
-        sorted(
-            {*claims.get(out.transaction_id, ()), *claims.get(into.transaction_id, ())}
-        )
-    )
+    claim_rule_ids = _claim_rules((out, into), claims)
     return {
         leg.transaction_id: PairedLeg(
             group_id,
