@@ -6,9 +6,11 @@ it numbers them, over the doc's synthetic setup
 (`tests/gold/classification_example.py`).
 """
 
+from dataclasses import replace
 from datetime import date
 
 from budget.gold import GoldResult, GoldTransaction, TransactionType, TransferEvidence
+from budget.silver import Transaction
 from tests.gold.classification_example import ANNA, CURRENT, SAVINGS, booked, classified
 
 
@@ -187,3 +189,37 @@ def test_10_a_coincidence_without_a_claim_is_not_a_transfer() -> None:
     )
 
     assert _types(result) == {"ikea": "expense", "carl": "refund"}
+
+
+def _groups(result: GoldResult) -> set[frozenset[str]]:
+    by_group: dict[str, set[str]] = {}
+    for t in _transactions(result).values():
+        if t.transfer_group_id is not None:
+            by_group.setdefault(t.transfer_group_id, set()).add(t.transaction_id)
+    return {frozenset(ids) for ids in by_group.values()}
+
+
+def _nth(
+    transaction_id: str, account_id: str, text: str, amount: str, n: int
+) -> Transaction:
+    leg = booked(transaction_id, account_id, date(2026, 3, 2), amount, text)
+    return replace(leg, day_sequence=n)
+
+
+def test_11_repeated_legs_pair_in_account_sequence_order() -> None:
+    # The ids run against the booked order on joint-current, so pairing by id
+    # would join other legs.
+    result = classified(
+        _nth("a1", ANNA, "BUDGET JOINT", "-2000.00", 1),
+        _nth("a2", ANNA, "BUDGET JOINT", "-2000.00", 2),
+        _nth("c2", CURRENT, "BUDGET FROM ANNA", "2000.00", 1),
+        _nth("c1", CURRENT, "BUDGET FROM ANNA", "2000.00", 2),
+    )
+    claim = ("r-budget-transfer",)
+
+    assert set(_types(result).values()) == {"transfer"}
+    assert _groups(result) == {frozenset({"a1", "c2"}), frozenset({"a2", "c1"})}
+    assert _evidence(result, "a1")["a1"][2] == TransferEvidence(
+        "repeated_legs", CURRENT, "c2", 0, claim
+    )
+    assert list(result.classification_review_items()) == []
