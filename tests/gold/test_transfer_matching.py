@@ -234,3 +234,48 @@ def test_11_repeated_legs_pair_in_account_sequence_order() -> None:
         "repeated_legs", CURRENT, "c2", 0, claim
     )
     assert list(result.classification_review_items()) == []
+
+
+def _scenario_12() -> tuple[Transaction, ...]:
+    return (
+        booked("to-savings", CURRENT, date(2026, 3, 5), "-1500.00", "TO SAVINGS"),
+        booked("dentist", CURRENT, date(2026, 3, 5), "-1500.00", "DENTIST 7"),
+        booked("from-current", SAVINGS, date(2026, 3, 5), "1500.00", "FROM CURRENT"),
+    )
+
+
+def test_12_competing_legs_stay_unknown_with_one_ambiguous_item() -> None:
+    result = classified(*_scenario_12())
+    (item,) = result.classification_review_items()
+
+    assert _types(result) == {
+        "to-savings": "unknown",
+        "dentist": "unknown",
+        "from-current": "unknown",
+    }
+    assert (item.kind, set(item.transaction_ids)) == (
+        "ambiguous-transfer",
+        {"to-savings", "dentist", "from-current"},
+    )
+    assert {
+        tid: line[3] for tid, line in _evidence(result, *_types(result)).items()
+    } == {
+        "to-savings": (item.review_item_id,),
+        "dentist": (item.review_item_id,),
+        "from-current": (item.review_item_id,),
+    }
+    assert (
+        list(result.category_allocations(start_date=date.min, end_date=date.max)) == []
+    )
+
+
+def test_an_ambiguous_sets_legs_skip_later_stages() -> None:
+    # A day later, joint-savings has an unclaimed +1,500.00 that only the
+    # claimed to-savings could pair with; but to-savings is held for review.
+    later = booked("later", SAVINGS, date(2026, 3, 6), "1500.00", "DEPOSIT")
+
+    result = classified(*_scenario_12(), later)
+
+    assert _types(result)["to-savings"] == "unknown"
+    assert _types(result)["later"] == "unknown"
+    assert _unmatched(result) == []
