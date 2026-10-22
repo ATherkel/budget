@@ -22,6 +22,7 @@ from budget.gold.models import (
     GoldTransactionLineage,
     TransactionType,
 )
+from budget.gold.transfers import Matching, match_transfers
 from budget.hashing import hash_parts
 from budget.inputs.rules import (
     AssignAdjustment,
@@ -60,6 +61,8 @@ class _Outcome:
     adjustment_reason: str | None = None
     # Why the review item was raised, where its kind names reasons.
     review_reason: str | None = None
+    # Whether the winning rule claims the transaction as a transfer leg.
+    claims_transfer: bool = False
 
 
 @dataclass(frozen=True)
@@ -83,8 +86,18 @@ def classify(
     transaction's parent row.
     """
     facts = {t.transaction_id: t for t in silver}
+    by_rule = {
+        t.transaction_id: _outcome(facts[t.transaction_id], configuration)
+        for t in transactions
+    }
+    matching = match_transfers(
+        transactions,
+        claimed={tid for tid, o in by_rule.items() if o.claims_transfer},
+        account_ids=configuration.accounts.keys(),
+    )
     outcomes = [
-        (t, _outcome(facts[t.transaction_id], configuration)) for t in transactions
+        (t, _settled(by_rule[t.transaction_id], t.transaction_id, matching))
+        for t in transactions
     ]
     items = {t.transaction_id: _review_item(t, o) for t, o in outcomes}
     version = configuration.fingerprint
@@ -103,6 +116,16 @@ def classify(
             for t, o in outcomes
         ),
     )
+
+
+def _settled(
+    rule_result: _Outcome, transaction_id: str, matching: Matching
+) -> _Outcome:
+    """Settle a rule result against transfer matching (*Precedence*)."""
+    reason = matching.unmatched.get(transaction_id)
+    if reason is None:
+        return rule_result
+    return replace(rule_result, review_reason=reason)
 
 
 def _lineage(
@@ -167,7 +190,7 @@ def _outcome(
                 "unknown",
                 review_kind="unmatched-transfer",
                 rule_ids=rule_ids,
-                review_reason="no-candidate",
+                claims_transfer=True,
             )
 
 
