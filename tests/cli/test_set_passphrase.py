@@ -109,3 +109,15 @@ def test_input_that_ends_before_the_confirmation_is_refused(tmp_path: Path) -> N
     assert [
         (status, "no passphrase was typed" in stderr) for status, _, stderr in runs
     ] == [(3, True), (3, True)]
+
+
+def test_a_passphrase_of_only_spaces_is_refused_as_empty(tmp_path: Path) -> None:
+    profile_file = write_dashboard_profile(tmp_path)
+    profile = _migrated(profile_file)
+    first_status, _, _ = set_passphrase(profile_file, f"{FIRST}\n{FIRST}\n")
+    assert first_status == 0, "set-passphrase did not succeed"
+
+    # The login page treats these as empty too, so they could never log in.
+    status, _, stderr = set_passphrase(profile_file, "   \n   \n")
+
+    assert (status, "empty" in stderr, _logs_in(profile, FIRST)) == (3, True, 303)
