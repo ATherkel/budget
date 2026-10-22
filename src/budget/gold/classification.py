@@ -58,6 +58,8 @@ class _Outcome:
     rule_ids: tuple[str, ...] = ()
     # The explanation an adjustment carries into lineage.
     adjustment_reason: str | None = None
+    # Why the review item was raised, where its kind names reasons.
+    review_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -161,7 +163,12 @@ def _outcome(
         case AssignAdjustment(reason=reason):
             return _Outcome("adjustment", rule_ids=rule_ids, adjustment_reason=reason)
         case _:
-            return _Outcome("unknown", rule_ids=rule_ids)
+            return _Outcome(
+                "unknown",
+                review_kind="unmatched-transfer",
+                rule_ids=rule_ids,
+                review_reason="no-candidate",
+            )
 
 
 def _matches(when: RuleConditions, transaction: Transaction) -> bool:
@@ -235,5 +242,5 @@ def _review_item(
         transaction_ids=(transaction.transaction_id,),
         rule_ids=outcome.rule_ids or (),
         decision_id=None,
-        reason=None,
+        reason=outcome.review_reason,
     )
