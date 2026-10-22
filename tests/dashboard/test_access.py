@@ -145,7 +145,7 @@ def test_a_wrong_passphrase_is_refused_without_a_session(client: TestClient) -> 
     # no HTTP authentication scheme, so the refusal is not a 401.
     assert (
         login.status_code,
-        "Adgangsfrasen er forkert" in login.text,
+        "Adgangskoden er forkert" in login.text,
         'name="passphrase"' in login.text,
         login.headers.get_list("set-cookie"),
         overview.status_code,
@@ -165,7 +165,7 @@ def test_an_empty_passphrase_is_wrong_and_is_not_counted_toward_the_lockout(
     assert [
         (
             response.status_code,
-            "Adgangsfrasen er forkert" in response.text,
+            "Adgangskoden er forkert" in response.text,
             response.headers.get_list("set-cookie"),
         )
         for response in empties

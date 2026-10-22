@@ -54,7 +54,7 @@ _LOGIN_PAGE = """<!doctype html>
 <title>Log ind</title>
 {message}
 <form method="post" action="/login">
-<label>Adgangsfrase
+<label>Adgangskode
 <input type="password" name="passphrase" autocomplete="current-password" autofocus>
 </label>
 <button>Log ind</button>
@@ -154,7 +154,7 @@ def _refuse_login(
     if blank or not passphrase_matches(profile, passphrase):
         if not blank:
             throttle.failed(now)
-        refusal = '<p role="alert">Adgangsfrasen er forkert.</p>'
+        refusal = '<p role="alert">Adgangskoden er forkert.</p>'
         return HTMLResponse(_LOGIN_PAGE.format(message=refusal))
     throttle.succeeded()
     return None
