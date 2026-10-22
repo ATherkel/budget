@@ -17,10 +17,12 @@ from budget.gold.models import (
     CategoryDirection,
     ClassificationReviewItem,
     ClassificationReviewKind,
+    ClassificationSource,
     GoldCategoryAllocation,
     GoldTransaction,
     GoldTransactionLineage,
     TransactionType,
+    TransferEvidence,
 )
 from budget.gold.transfers import Matching, match_transfers
 from budget.hashing import hash_parts
@@ -63,6 +65,8 @@ class _Outcome:
     review_reason: str | None = None
     # Whether the winning rule claims the transaction as a transfer leg.
     claims_transfer: bool = False
+    transfer_group_id: str | None = None
+    transfer_evidence: TransferEvidence | None = None
 
 
 @dataclass(frozen=True)
@@ -92,7 +96,7 @@ def classify(
     }
     matching = match_transfers(
         transactions,
-        claimed={tid for tid, o in by_rule.items() if o.claims_transfer},
+        claims={tid: o.rule_ids for tid, o in by_rule.items() if o.claims_transfer},
         account_ids=configuration.accounts.keys(),
     )
     outcomes = [
@@ -103,7 +107,12 @@ def classify(
     version = configuration.fingerprint
     return Classified(
         transactions=tuple(
-            replace(t, transaction_type=o.transaction_type) for t, o in outcomes
+            replace(
+                t,
+                transaction_type=o.transaction_type,
+                transfer_group_id=o.transfer_group_id,
+            )
+            for t, o in outcomes
         ),
         allocations=tuple(
             _allocation(t, o.category_id)
@@ -122,6 +131,14 @@ def _settled(
     rule_result: _Outcome, transaction_id: str, matching: Matching
 ) -> _Outcome:
     """Settle a rule result against transfer matching (*Precedence*)."""
+    leg = matching.paired.get(transaction_id)
+    if leg is not None:
+        return _Outcome(
+            "transfer",
+            rule_ids=rule_result.rule_ids,
+            transfer_group_id=leg.transfer_group_id,
+            transfer_evidence=leg.evidence,
+        )
     reason = matching.unmatched.get(transaction_id)
     if reason is None:
         return rule_result
@@ -141,14 +158,17 @@ def _lineage(
     version.
     """
     decided = bool(outcome.rule_ids) and outcome.transaction_type != "unknown"
+    source: ClassificationSource = "rule" if decided else "unclassified"
+    if outcome.transfer_evidence is not None:
+        source = "transfer_match"
     return GoldTransactionLineage(
         transaction_id=silver.transaction_id,
         silver_transaction_id=silver.transaction_id,
-        classification_source="rule" if decided else "unclassified",
+        classification_source=source,
         rule_ids=outcome.rule_ids,
         decision_id=None,
         classification_version=classification_version,
-        transfer_evidence=None,
+        transfer_evidence=outcome.transfer_evidence,
         review_item_ids=() if review_item is None else (review_item.review_item_id,),
         adjustment_reason=outcome.adjustment_reason,
     )
