@@ -4,13 +4,14 @@
 from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
 
+from budget.gold.classification import classify
 from budget.gold.models import (
     GoldAccount,
     GoldCategory,
     GoldPublication,
     GoldTransaction,
 )
-from budget.gold.result import GoldRecords, GoldResult
+from budget.gold.result import GoldLineageRecords, GoldRecords, GoldResult
 from budget.gold.snapshots import monthly_balances
 from budget.gold.transactions import gold_transactions
 from budget.inputs.accounts import Account
@@ -30,14 +31,13 @@ def build(
 ) -> GoldResult:
     """Derive Gold from a Silver result and the household's configuration.
 
-    Nothing is classified yet: every transaction is `unknown`, and no category
-    allocation, lineage or review item is published. The result is bound to
-    `publication`, which the caller supplies. A month's late bookings are
-    settled by an export produced `late_booking_window` or more after it ends.
-    A Silver transaction on an account the registry does not declare refuses
-    the build, so no fact is published without its account. So does an
-    account whose `closed_on` falls before its latest booked transaction, so
-    no fact falls outside its account's managed period. A window that is
+    Transactions are classified by the configuration's rules. The result is
+    bound to `publication`, which the caller supplies. A month's late bookings
+    are settled by an export produced `late_booking_window` or more after it
+    ends. A Silver transaction on an account the registry does not declare
+    refuses the build, so no fact is published without its account. So does
+    an account whose `closed_on` falls before its latest booked transaction,
+    so no fact falls outside its account's managed period. A window that is
     negative, not a whole number of days or over 366 days raises
     `ValueError`.
     """
@@ -51,19 +51,25 @@ def build(
         _account(account, silver.account_evidence)
         for account in configuration.accounts.values()
     )
+    classified = classify(transactions, silver.transactions, configuration)
     records = GoldRecords(
         accounts=gold_accounts,
         categories=_categories(configuration.taxonomy),
-        transactions=transactions,
+        transactions=classified.transactions,
+        category_allocations=classified.allocations,
         monthly_balances=monthly_balances(
             gold_accounts,
-            transactions,
+            classified.transactions,
             silver.account_evidence,
             silver.evidence_exports,
             late_booking_window,
         ),
     )
-    return GoldResult(publication, records)
+    lineage = GoldLineageRecords(
+        classification_review_items=classified.review_items,
+        transaction_lineage=classified.lineage,
+    )
+    return GoldResult(publication, records, lineage)
 
 
 def _require_window(window: timedelta) -> None:

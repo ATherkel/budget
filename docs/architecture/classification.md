@@ -93,7 +93,8 @@ own facts. Only transfer matching relates transactions to each other.
   equate "ß" with "SS".
 - amount: sign, or an inclusive range
 - transaction date: an inclusive range
-- the bank's category labels, where the source supplies them
+- the bank's category labels, where the source supplies them, compared after
+  the same case folding, so `Groceries` matches `GROCERIES`
 
 Bank category labels are provenance. A rule may test them, but they never
 become Gold categories on their own and no fallback copies them: Danske files
