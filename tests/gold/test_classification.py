@@ -10,7 +10,7 @@ from datetime import date
 from decimal import Decimal
 
 from budget.gold import GoldCategoryAllocation, GoldResult, TransactionType
-from budget.inputs import AssignCategory, Rule, RuleConditions
+from budget.inputs import AssignAdjustment, AssignCategory, Rule, RuleConditions
 from tests.gold.classification_example import (
     CURRENT,
     RULES,
@@ -209,6 +209,22 @@ def test_a_category_rule_on_a_zero_amount_leaves_a_sign_mismatch() -> None:
         (i.kind, i.transaction_ids, i.rule_ids, i.decision_id, i.reason)
         for i in result.classification_review_items()
     ] == [("sign-mismatch", ("zero",), ("r-interest",), None, None)]
+
+
+def test_an_adjustment_rule_gives_an_adjustment_with_no_category() -> None:
+    # As r-interest-correction in operations.md.
+    correction = RuleConditions(account=SAVINGS, description_starts_with=("RENTEKORR",))
+    outcome = AssignAdjustment("Bank's interest correction")
+    rules = {"r-correction": Rule("r-correction", 0, correction, outcome)}
+
+    result = classified(
+        booked("fix", SAVINGS, date(2026, 3, 31), "-7.25", "RENTEKORR 2026"),
+        rules=rules,
+    )
+
+    assert _types(result) == {"fix": "adjustment"}
+    assert _allocations(result) == []
+    assert list(result.classification_review_items()) == []
 
 
 def test_a_rule_that_sets_no_condition_matches_no_transaction() -> None:
