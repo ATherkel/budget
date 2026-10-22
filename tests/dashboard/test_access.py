@@ -152,6 +152,27 @@ def test_a_wrong_passphrase_is_refused_without_a_session(client: TestClient) -> 
     ) == (200, True, True, [], 303)
 
 
+def test_an_empty_passphrase_is_wrong_and_is_not_counted_toward_the_lockout(
+    client: TestClient,
+) -> None:
+    # A form sent empty is not a guess: it gets the Danish refusal, not
+    # FastAPI's English 422, and cannot lock the household out.
+    empties = [
+        client.post("/login", data=data)
+        for data in ({"passphrase": ""}, {"passphrase": "   "}, {}) * 5
+    ]
+
+    assert [
+        (
+            response.status_code,
+            "Adgangsfrasen er forkert" in response.text,
+            response.headers.get_list("set-cookie"),
+        )
+        for response in empties
+    ] == [(200, True, [])] * 15
+    log_in(client)
+
+
 def test_a_session_cookie_the_dashboard_did_not_issue_is_refused(
     client: TestClient,
 ) -> None:
