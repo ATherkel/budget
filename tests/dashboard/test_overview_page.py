@@ -417,4 +417,30 @@ def test_a_malformed_address_is_explained_in_danish_not_as_json(
         page.headers["content-type"].split(";")[0],
         "Adressen er ikke gyldig." in read(page.text).visible(),
         read(page.text).attributes("current-figures").get("href"),
-    ) == (200, "text/html", True, "alert", 400, "text/html", True, "/")
+    ) == (200, "text/html", True, None, 400, "text/html", True, "/")
+
+
+def test_the_report_is_swapped_inside_one_persistent_live_region(
+    client: TestClient,
+) -> None:
+    # A screen reader announces changes to a live region that was already on the
+    # page; one swapped in with its content is often missed. So the form swaps
+    # the inside of a wrapper that stays, and a fragment has no live role of
+    # its own to announce twice.
+    page = read(client.get("/").text)
+    region = page.attributes("report-region")
+    form = page.attributes("selection")
+    fragment = client.get(
+        "/report",
+        params={"publication": "2", "reference_date": "2026-06-01", "month": "2026-05"},
+        headers={"HX-Request": "true"},
+    )
+
+    assert (
+        region.get("aria-live"),
+        form.get("hx-get"),
+        form.get("hx-target"),
+        form.get("hx-swap"),
+        "report" in page.elements,
+        read(fragment.text).attributes("report").get("role"),
+    ) == ("polite", "/report", "#report-region", "innerHTML", True, None)
