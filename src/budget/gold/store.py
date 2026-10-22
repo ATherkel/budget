@@ -17,7 +17,7 @@ from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from threading import get_ident
+from threading import current_thread
 from types import TracebackType
 from typing import Final, Literal, Self
 
@@ -256,18 +256,18 @@ _SELECT_BALANCES: Final = (
 class _ConnectionOwner:
     """One Gold connection, usable only while open on its creating thread."""
 
-    __slots__ = ("_closed", "_connection", "_read_only", "_thread_id")
+    __slots__ = ("_closed", "_connection", "_read_only", "_thread")
 
     def __init__(self, profile: Profile, *, read_only: bool) -> None:
         """Open the requested connection and record who owns it."""
         self._connection = open_gold_connection(profile, read_only=read_only)
         self._read_only = read_only
-        self._thread_id = get_ident()
+        self._thread = current_thread()
         self._closed = False
 
     def ensure_usable(self) -> None:
         """Refuse use from another thread or after this owner has closed."""
-        if get_ident() != self._thread_id:
+        if current_thread() is not self._thread:
             raise GoldStoreThreadError
         if self._closed:
             raise GoldStoreClosedError
@@ -285,7 +285,7 @@ class _ConnectionOwner:
 
     def close(self) -> None:
         """Close once on the owner thread, leaving a wrong-thread owner open."""
-        if get_ident() != self._thread_id:
+        if current_thread() is not self._thread:
             raise GoldStoreThreadError
         if self._closed:
             return
