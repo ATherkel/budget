@@ -8,7 +8,7 @@ it numbers them, over the doc's synthetic setup
 
 from datetime import date
 
-from budget.gold import GoldResult, TransactionType
+from budget.gold import GoldResult, GoldTransaction, TransactionType, TransferEvidence
 from tests.gold.classification_example import ANNA, CURRENT, SAVINGS, booked, classified
 
 
@@ -77,3 +77,66 @@ def test_a_counterpart_transaction_exactly_3_days_later_rules_out_waiting() -> N
     )
 
     assert _unmatched(result) == [(("to-savings",), "no-candidate")]
+
+
+def _transactions(result: GoldResult) -> dict[str, GoldTransaction]:
+    return {
+        t.transaction_id: t
+        for t in result.transactions(start_date=date.min, end_date=date.max)
+    }
+
+
+def _evidence(result: GoldResult, *transaction_ids: str) -> dict[str, object]:
+    return {
+        line.transaction_id: (
+            line.classification_source,
+            line.rule_ids,
+            line.transfer_evidence,
+            line.review_item_ids,
+        )
+        for line in result.transaction_lineage(transaction_ids)
+    }
+
+
+def test_8_same_day_legs_that_cancel_are_one_transfer() -> None:
+    result = classified(
+        booked("out", CURRENT, date(2026, 1, 20), "-3000.00", "TO SAVINGS"),
+        booked("in", SAVINGS, date(2026, 1, 20), "3000.00", "FROM CURRENT"),
+    )
+    transactions = _transactions(result)
+
+    assert _types(result) == {"out": "transfer", "in": "transfer"}
+    group = transactions["out"].transfer_group_id
+    assert group is not None
+    assert transactions["in"].transfer_group_id == group
+    assert (
+        list(result.category_allocations(start_date=date.min, end_date=date.max)) == []
+    )
+    assert list(result.classification_review_items()) == []
+    claim = ("r-savings-transfer",)
+    assert _evidence(result, "out", "in") == {
+        "out": (
+            "transfer_match",
+            claim,
+            TransferEvidence("same_day", SAVINGS, "in", 0, claim),
+            (),
+        ),
+        "in": (
+            "transfer_match",
+            claim,
+            TransferEvidence("same_day", CURRENT, "out", 0, claim),
+            (),
+        ),
+    }
+
+
+def test_13_the_next_import_pairs_the_waiting_leg_and_drops_its_item() -> None:
+    waiting = booked("to-savings", CURRENT, date(2026, 4, 29), "-800.00", "TO SAVINGS")
+    arrived = booked(
+        "from-current", SAVINGS, date(2026, 4, 29), "800.00", "FROM CURRENT"
+    )
+
+    result = classified(waiting, arrived)
+
+    assert _types(result) == {"to-savings": "transfer", "from-current": "transfer"}
+    assert _unmatched(result) == []
