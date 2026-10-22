@@ -148,8 +148,11 @@ def _refuse_login(
             status_code=429,
             headers={"Retry-After": str(wait)},
         )
-    if not passphrase_matches(profile, passphrase):
-        throttle.failed(now)
+    # An empty form is not a guess, so it is refused without being counted.
+    blank = not passphrase.strip()
+    if blank or not passphrase_matches(profile, passphrase):
+        if not blank:
+            throttle.failed(now)
         refusal = '<p role="alert">Adgangsfrasen er forkert.</p>'
         return HTMLResponse(_LOGIN_PAGE.format(message=refusal))
     throttle.succeeded()
@@ -285,7 +288,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         return HTMLResponse(_LOGIN_PAGE.format(message=""))
 
     @app.post("/login")
-    def login(passphrase: Annotated[str, Form()]) -> Response:
+    def login(passphrase: Annotated[str, Form()] = "") -> Response:
         # One login at a time, from the lock check to recording the outcome.
         with throttle.guard:
             refused = _refuse_login(profile, throttle, clock(), passphrase)
