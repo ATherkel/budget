@@ -182,6 +182,21 @@ def test_a_rule_matches_a_date_in_its_inclusive_range() -> None:
     }
 
 
+def test_a_rule_matches_a_bank_subcategory_in_any_case() -> None:
+    bakery = RuleConditions(bank_subcategory="Bakery")
+    rules = {"r-bakery": Rule("r-bakery", 0, bakery, AssignCategory("eating-out"))}
+    bread = booked("bread", CURRENT, date(2026, 2, 17), "-45.00", "LAGKAGEHUSET")
+
+    result = classified(
+        replace(bread, bank_subcategory="BAKERY"),
+        replace(bread, transaction_id="meat", bank_subcategory="Butcher"),
+        replace(bread, transaction_id="none"),
+        rules=rules,
+    )
+
+    assert _types(result) == {"bread": "expense", "meat": "unknown", "none": "unknown"}
+
+
 def test_a_rule_that_sets_no_condition_matches_no_transaction() -> None:
     rules = {"r-empty": Rule("r-empty", 0, RuleConditions(), AssignCategory("gifts"))}
 
