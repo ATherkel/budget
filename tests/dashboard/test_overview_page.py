@@ -387,3 +387,34 @@ def test_text_from_the_address_is_shown_as_text_never_run_as_markup(
         )
 
     assert pages == [({}, True), ({}, True)]
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"publication": "abc", "reference_date": "2026-06-01", "month": "2026-05"},
+        {"publication": "2", "reference_date": "not-a-date", "month": "2026-05"},
+        {"publication": "2", "reference_date": "2026-13-45", "month": "2026-05"},
+    ],
+)
+def test_a_malformed_address_is_explained_in_danish_not_as_json(
+    client: TestClient, params: dict[str, str]
+) -> None:
+    # htmx swaps only a 2xx, so the fragment answers 200; the page is a 400.
+    fragment = client.get(
+        "/report",
+        params={**params, "account": [CURRENT]},
+        headers={"HX-Request": "true"},
+    )
+    page = client.get("/", params=params)
+
+    assert (
+        fragment.status_code,
+        fragment.headers["content-type"].split(";")[0],
+        "Adressen er ikke gyldig." in read(fragment.text).visible(),
+        read(fragment.text).attributes("report").get("role"),
+        page.status_code,
+        page.headers["content-type"].split(";")[0],
+        "Adressen er ikke gyldig." in read(page.text).visible(),
+        read(page.text).attributes("current-figures").get("href"),
+    ) == (200, "text/html", True, "alert", 400, "text/html", True, "/")
