@@ -8,6 +8,7 @@ and a classified transaction has one allocation for its whole amount (ADR-008).
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from datetime import date
 from decimal import Decimal
 from types import MappingProxyType
 from typing import Literal
@@ -136,6 +137,9 @@ def _matches(when: RuleConditions, transaction: Transaction) -> bool:
         when.amount_sign == _sign(transaction.amount)
     )
     amount_range_holds = _within(transaction.amount, when.amount_min, when.amount_max)
+    date_range_holds = _within(
+        transaction.transaction_date, when.date_from, when.date_to
+    )
     sets_a_condition = bool(
         when.account is not None
         or when.description_contains
@@ -144,6 +148,8 @@ def _matches(when: RuleConditions, transaction: Transaction) -> bool:
         or when.amount_sign is not None
         or when.amount_min is not None
         or when.amount_max is not None
+        or when.date_from is not None
+        or when.date_to is not None
         or when.bank_category is not None
     )
     return (
@@ -151,14 +157,15 @@ def _matches(when: RuleConditions, transaction: Transaction) -> bool:
         and description_holds
         and amount_sign_holds
         and amount_range_holds
+        and date_range_holds
         and bank_category_holds
         and sets_a_condition
     )
 
 
-def _within(amount: Decimal, low: Decimal | None, high: Decimal | None) -> bool:
-    """Say whether the amount lies in the inclusive range; an unset bound holds."""
-    return (low is None or amount >= low) and (high is None or amount <= high)
+def _within[T: (Decimal, date)](value: T, low: T | None, high: T | None) -> bool:
+    """Say whether the value lies in the inclusive range; an unset bound holds."""
+    return (low is None or value >= low) and (high is None or value <= high)
 
 
 def _sign(amount: Decimal) -> _Sign | None:
