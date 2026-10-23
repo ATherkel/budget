@@ -23,6 +23,7 @@ from budget.backups import (
     PUBLISHING_SUFFIX,
     BackupVerificationError,
     BackupWriteError,
+    LostStoreError,
     UnsupportedStoresError,
     back_up,
     complete_backup_sets,
@@ -397,6 +398,23 @@ class UnsupportedStoreTests(unittest.TestCase):
                     back_up(lock, now=NOW)
 
                 assert complete_backup_sets(profile) == ()
+
+    def test_a_lost_gold_store_its_sets_hold_stops_a_backup(self) -> None:
+        # A set without it would claim a complete copy of a profile that has
+        # lost a store, and retention would in time prune the sets holding it.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            migrate_silver(profile)
+            migrate_gold(profile)
+            with writer_lock(profile) as lock:
+                held = back_up(lock, now=NOW - timedelta(days=1))
+                for lost in profile.stores.glob("gold.db*"):
+                    lost.unlink()
+
+                with pytest.raises(LostStoreError, match="no Gold store"):
+                    back_up(lock, now=NOW)
+
+            assert complete_backup_sets(profile) == (held,)
 
     def test_a_lost_store_only_a_damaged_set_holds_does_not_stop_a_backup(
         self,
