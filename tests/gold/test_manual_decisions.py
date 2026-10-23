@@ -159,6 +159,30 @@ def test_a_category_decision_on_a_zero_amount_is_not_applicable() -> None:
     }
 
 
+def _not_applicable(result: GoldResult) -> tuple[tuple[str, ...], str | None]:
+    (item,) = [
+        i
+        for i in result.classification_review_items()
+        if i.kind == "decision-not-applicable"
+    ]
+    return item.transaction_ids, item.reason
+
+
+def test_a_pair_whose_amounts_do_not_cancel_is_not_applicable() -> None:
+    # A transfer that lost a fee never pairs (classification.md, issue #47).
+    result = classified(
+        booked("to-savings", CURRENT, date(2026, 2, 16), "-1000.00", "TO SAVINGS"),
+        booked("from-current", SAVINGS, date(2026, 2, 16), "995.00", "FROM CURRENT"),
+        decisions=[Pair("d-0010", ("to-savings", "from-current"))],
+    )
+
+    assert _types(result) == {"to-savings": "unknown", "from-current": "unknown"}
+    assert _not_applicable(result) == (
+        ("to-savings", "from-current"),
+        "amounts-do-not-cancel",
+    )
+
+
 def _before_savings_history(*decisions: GoldDecision) -> GoldResult:
     """Scenario 16: a transfer into savings before its managed period starts."""
     return classified(
