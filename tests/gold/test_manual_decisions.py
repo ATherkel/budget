@@ -14,6 +14,7 @@ import pytest
 from budget.gold import (
     GoldResult,
     GoldTransactionLineage,
+    ReportingMonth,
     TransactionType,
     TransferEvidence,
 )
@@ -429,8 +430,17 @@ def test_invariant_17_a_groupless_transfer_is_one_sided_outside_its_counterpart(
     assert [t.transaction_id for t in groupless] == ["early"]
     evidence = _lineage(result, "early").transfer_evidence
     assert evidence is not None
-    # joint-savings' managed period starts in 2026-02, its first booking.
     assert (evidence.basis, evidence.counterpart_account_id) == ("one_sided", SAVINGS)
+    # The counterpart's managed period starts in the month of its first booked
+    # transaction (gold-contract.md); the leg's month comes before it.
+    first_booked = min(
+        t.transaction_date
+        for t in result.transactions(start_date=date.min, end_date=date.max)
+        if t.account_id == SAVINGS
+    )
+    assert ReportingMonth.of(groupless[0].transaction_date) < ReportingMonth.of(
+        first_booked
+    )
 
 
 def test_invariant_19_every_type_traces_to_its_source_and_unknown_to_an_item() -> None:
