@@ -154,6 +154,37 @@ class NewProductionStoreTests(unittest.TestCase):
             assert isinstance(stores, dict)
             assert set(stores) == {"bronze", "silver"}
 
+    def test_a_retry_after_gold_was_cut_off_names_the_stage_to_start(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder, name="production")
+            for stage in ("bronze", "silver"):
+                started = migrate(profile_file, "--stage", stage, "--new-store")
+                assert started[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            sets = complete_backup_sets(production)
+            # A `--stage gold --new-store` cut off inside Gold's migration:
+            # Gold left empty at version 0, and no set written after it.
+            with closing(sqlite3.connect(production.gold_store)) as store:
+                store.execute("PRAGMA journal_mode = WAL")
+
+            status, stderr = migrate(profile_file, "--new-store")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "budget migrate --stage gold --new-store" in stderr
+            assert user_version(production.gold_store) == 0
+            assert complete_backup_sets(production) == sets
+
+            status, stderr = migrate(profile_file, "--stage", "gold", "--new-store")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            newest, *_ = complete_backup_sets(production)
+            stores = manifest(newest.path)["stores"]
+            assert isinstance(stores, dict)
+            assert set(stores) == {"bronze", "silver", "gold"}
+
     def test_silver_is_refused_beside_a_bronze_store_no_set_can_hold(
         self,
     ) -> None:
