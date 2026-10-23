@@ -215,6 +215,26 @@ def test_18_every_decision_naming_a_missing_category_refuses_the_build() -> None
     assert ("d-0013" in second, "furniture" in second) == (True, True)
 
 
+def test_two_decisions_targeting_one_transaction_refuse_the_build() -> None:
+    # Applied in turn, d-0016 would leave from-current a group on one leg alone.
+    legs = (
+        booked("to-savings", CURRENT, date(2026, 1, 20), "-3000.00", "TO SAVINGS"),
+        booked("from-current", SAVINGS, date(2026, 1, 20), "3000.00", "FROM CURRENT"),
+    )
+
+    with pytest.raises(ConfigurationError) as refused:
+        classified(
+            *legs,
+            decisions=[
+                Pair("d-0002", ("to-savings", "from-current")),
+                Classify("d-0016", "to-savings", "gifts"),
+            ],
+        )
+
+    (problem,) = refused.value.problems
+    assert all(text in problem for text in ("d-0002", "d-0016", "to-savings"))
+
+
 def test_a_one_sided_counterpart_missing_from_the_registry_refuses_the_build() -> None:
     leg = booked("to-bo", CURRENT, date(2026, 2, 1), "-4000.00", "BUDGET TO BO")
 
