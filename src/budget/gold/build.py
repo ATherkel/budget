@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
 
 from budget.gold.classification import classify
-from budget.gold.decisions import Classify, GoldDecision
+from budget.gold.decisions import Classify, GoldDecision, OneSidedTransfer
 from budget.gold.models import (
     GoldAccount,
     GoldCategory,
@@ -153,16 +153,32 @@ def _decision_problems(
     """Name every decision the configuration alone shows cannot hold.
 
     `classification.md`, *Configuration errors*: a decision may not reference
-    a missing category, including a deleted one.
+    a missing category, including a deleted one, and a one-sided transfer's
+    counterpart must be in the account registry.
     """
-    categories = configuration.taxonomy.categories
     return tuple(
-        f'{DECISION_LOG_FILE_NAME}: decision "{decision.decision_id}": category '
-        f'"{decision.category_id}" is not in the taxonomy; record a decision '
-        "that supersedes it; nothing was published"
+        f'{DECISION_LOG_FILE_NAME}: decision "{decision.decision_id}": {problem}; '
+        "record a decision that supersedes it; nothing was published"
         for decision in decisions
-        if isinstance(decision, Classify) and decision.category_id not in categories
+        if (problem := _decision_problem(decision, configuration)) is not None
     )
+
+
+def _decision_problem(
+    decision: GoldDecision, configuration: ConfigurationSnapshot
+) -> str | None:
+    """Say what the configuration shows wrong with one decision, if anything."""
+    match decision:
+        case Classify(category_id=category_id) if (
+            category_id not in configuration.taxonomy.categories
+        ):
+            return f'category "{category_id}" is not in the taxonomy'
+        case OneSidedTransfer(counterpart_account_id=account_id) if (
+            account_id not in configuration.accounts
+        ):
+            return f'counterpart account "{account_id}" is not in {ACCOUNTS_FILE_NAME}'
+        case _:
+            return None
 
 
 def _closed_too_early(account_id: str, closed_on: date, latest: date) -> str:
