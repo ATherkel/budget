@@ -6,8 +6,9 @@ ADR-011). A category's type follows from its direction and the amount's sign,
 and a classified transaction has one allocation for its whole amount (ADR-008).
 """
 
+import json
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import date
 from decimal import Decimal
 from types import MappingProxyType
@@ -134,7 +135,7 @@ def classify(
         for t in transactions
     ]
     items = {t.transaction_id: _review_item(t, o) for t, o in outcomes}
-    version = configuration.fingerprint
+    version = _classification_version(configuration, decisions)
     return Classified(
         transactions=tuple(
             replace(
@@ -162,6 +163,28 @@ def classify(
             )
             for t, o in outcomes
         ),
+    )
+
+
+def _classification_version(
+    configuration: ConfigurationSnapshot, decisions: Sequence[GoldDecision]
+) -> str:
+    """Fingerprint the classification inputs (`publications.md`).
+
+    They are the configuration snapshot and the effective decisions, each
+    decision written as its kind and fields, in any order. With no decisions
+    in force, the configuration's fingerprint is the version.
+    """
+    if not decisions:
+        return configuration.fingerprint
+    return hash_parts(
+        [
+            configuration.fingerprint,
+            *sorted(
+                json.dumps([type(d).__name__, asdict(d)], sort_keys=True)
+                for d in decisions
+            ),
+        ]
     )
 
 
