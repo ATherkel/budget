@@ -13,7 +13,7 @@ from decimal import Decimal
 from types import MappingProxyType
 from typing import Literal
 
-from budget.gold.decisions import GoldDecision
+from budget.gold.decisions import Classify, GoldDecision
 from budget.gold.models import (
     CategoryDirection,
     ClassificationReviewItem,
@@ -72,6 +72,8 @@ class _Outcome:
     claims_transfer: bool = False
     transfer_group_id: str | None = None
     transfer_evidence: TransferEvidence | None = None
+    # The manual decision that decided, if one did.
+    decision_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -95,19 +97,23 @@ def classify(
     A rule tests the Silver row's own facts, so `silver` must hold every
     transaction's parent row.
     """
-    del decisions
     facts = {t.transaction_id: t for t in silver}
     by_rule = {
         t.transaction_id: _outcome(facts[t.transaction_id], configuration)
         for t in transactions
     }
+    decided = _decided(decisions, facts, by_rule, configuration)
     matching = match_transfers(
         transactions,
         claims={tid: o.rule_ids for tid, o in by_rule.items() if o.claims_transfer},
         closed_on={a.account_id: a.closed_on for a in configuration.accounts.values()},
     )
     outcomes = [
-        (t, _settled(by_rule[t.transaction_id], t.transaction_id, matching))
+        (
+            t,
+            decided.get(t.transaction_id)
+            or _settled(by_rule[t.transaction_id], t.transaction_id, matching),
+        )
         for t in transactions
     ]
     items = {t.transaction_id: _review_item(t, o) for t, o in outcomes}
@@ -134,6 +140,35 @@ def classify(
             for t, o in outcomes
         ),
     )
+
+
+def _decided(
+    decisions: Sequence[GoldDecision],
+    facts: Mapping[str, Transaction],
+    by_rule: Mapping[str, _Outcome],
+    configuration: ConfigurationSnapshot,
+) -> dict[str, _Outcome]:
+    """Settle each transaction an applicable decision targets (*Precedence*).
+
+    The rules that matched stay in the outcome for lineage, though they did
+    not decide.
+    """
+    decided: dict[str, _Outcome] = {}
+    for decision in decisions:
+        match decision:
+            case Classify(transaction_id=tid, category_id=category_id):
+                transaction_type = _category_type(
+                    category_id, facts[tid].amount, configuration
+                )
+                decided[tid] = _Outcome(
+                    transaction_type,
+                    category_id,
+                    rule_ids=by_rule[tid].rule_ids,
+                    decision_id=decision.decision_id,
+                )
+            case _:
+                pass
+    return decided
 
 
 def _settled(
@@ -179,12 +214,14 @@ def _lineage(
     source: ClassificationSource = "rule" if decided else "unclassified"
     if outcome.transfer_evidence is not None:
         source = "transfer_match"
+    if outcome.decision_id is not None:
+        source = "manual"
     return GoldTransactionLineage(
         transaction_id=silver.transaction_id,
         silver_transaction_id=silver.transaction_id,
         classification_source=source,
         rule_ids=outcome.rule_ids,
-        decision_id=None,
+        decision_id=outcome.decision_id,
         classification_version=classification_version,
         transfer_evidence=outcome.transfer_evidence,
         review_item_ids=() if review_item is None else (review_item.review_item_id,),
@@ -212,10 +249,9 @@ def _outcome(
 
     match winner.then:
         case AssignCategory(category_id=category_id):
-            taxonomy = configuration.taxonomy
-            group_id = taxonomy.categories[category_id].group_id
-            direction = taxonomy.groups[group_id].direction
-            transaction_type = _derived_type(direction, transaction.amount)
+            transaction_type = _category_type(
+                category_id, transaction.amount, configuration
+            )
             if transaction_type == "unknown":
                 return _Outcome(
                     "unknown", review_kind="sign-mismatch", rule_ids=rule_ids
@@ -266,6 +302,15 @@ def _sign(amount: Decimal) -> _Sign | None:
     if amount == Decimal(0):
         return None
     return "positive" if amount > 0 else "negative"
+
+
+def _category_type(
+    category_id: str, amount: Decimal, configuration: ConfigurationSnapshot
+) -> TransactionType:
+    """Derive the type a category gives this amount, through its group."""
+    taxonomy = configuration.taxonomy
+    group_id = taxonomy.categories[category_id].group_id
+    return _derived_type(taxonomy.groups[group_id].direction, amount)
 
 
 def _derived_type(direction: CategoryDirection, amount: Decimal) -> TransactionType:
