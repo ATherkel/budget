@@ -1,8 +1,9 @@
 # Copyright 2026 Therkel
-"""Classification by rules: each transaction's type and its one allocation.
+"""Classification: each transaction's type and its one allocation.
 
-The highest-priority matching rule decides (`classification.md`, *Precedence*;
-ADR-011). A category's type follows from its direction and the amount's sign,
+An applicable manual decision decides first, then a transfer pair, then the
+highest-priority matching rule (`classification.md`, *Precedence*; ADR-011).
+A category's type follows from its direction and the amount's sign,
 and a classified transaction has one allocation for its whole amount (ADR-008).
 """
 
@@ -390,10 +391,9 @@ def _lineage(
 ) -> GoldTransactionLineage:
     """Record which rules, decision and review items stand behind one type.
 
-    The rules decided only when they gave the transaction a type. Of
-    `review_items`, lineage keeps those that name this transaction; until
-    decisions enter it, the configuration's fingerprint is the classification
-    version.
+    The rules decided only when they gave the transaction a type, and no
+    applicable decision did. Of `review_items`, lineage keeps those that name
+    this transaction.
     """
     decided = bool(outcome.rule_ids) and outcome.transaction_type != "unknown"
     source: ClassificationSource = "rule" if decided else "unclassified"
