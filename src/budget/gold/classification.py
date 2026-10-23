@@ -220,6 +220,8 @@ def _inapplicable(decision: GoldDecision, inputs: _Inputs) -> str | None:
             out, into = inputs.transactions[first], inputs.transactions[second]
             if out.amount + into.amount != 0:
                 return "amounts-do-not-cancel"
+            if out.account_id == into.account_id:
+                return "same-account"
         case _:
             pass
     return None
