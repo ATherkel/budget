@@ -216,6 +216,10 @@ def _inapplicable(decision: GoldDecision, inputs: _Inputs) -> str | None:
         case Classify(transaction_id=tid):
             if _sign(inputs.transactions[tid].amount) is None:
                 return "zero-amount"
+        case Pair(transaction_ids=(first, second)):
+            out, into = inputs.transactions[first], inputs.transactions[second]
+            if out.amount + into.amount != 0:
+                return "amounts-do-not-cancel"
         case _:
             pass
     return None
