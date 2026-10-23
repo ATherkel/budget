@@ -13,7 +13,13 @@ from decimal import Decimal
 from types import MappingProxyType
 from typing import Literal
 
-from budget.gold.decisions import Classify, ClassifyAdjustment, GoldDecision, Pair
+from budget.gold.decisions import (
+    Classify,
+    ClassifyAdjustment,
+    GoldDecision,
+    OneSidedTransfer,
+    Pair,
+)
 from budget.gold.models import (
     CategoryDirection,
     ClassificationReviewItem,
@@ -214,8 +220,24 @@ def _applied(decision: GoldDecision, inputs: _Inputs) -> dict[str, _Outcome]:
                 )
                 for tid, leg in legs.items()
             }
-        case _:
-            return {}
+        case OneSidedTransfer(
+            transaction_id=tid, counterpart_account_id=counterpart_account_id
+        ):
+            evidence = TransferEvidence(
+                basis="one_sided",
+                counterpart_account_id=counterpart_account_id,
+                counterpart_transaction_id=None,
+                date_gap_days=None,
+                claim_rule_ids=inputs.claims.get(tid, ()),
+            )
+            return {
+                tid: _Outcome(
+                    "transfer",
+                    rule_ids=inputs.by_rule[tid].rule_ids,
+                    transfer_evidence=evidence,
+                    decision_id=decision.decision_id,
+                )
+            }
 
 
 def _settled(
