@@ -198,6 +198,36 @@ def test_a_pair_on_one_account_is_not_applicable() -> None:
     assert _not_applicable(result) == (("netto", "return"), "same-account")
 
 
+def _one_account_pair(returned: str) -> GoldResult:
+    return classified(
+        booked("netto", CURRENT, date(2026, 2, 2), "-640.00", "NETTO 0412"),
+        booked("return", CURRENT, date(2026, 2, 2), returned, "NETTO 0412"),
+        decisions=[Pair("d-0011", ("netto", "return"))],
+    )
+
+
+def test_a_classified_transaction_still_lists_its_not_applicable_item() -> None:
+    result = _one_account_pair("640.00")
+    (item,) = result.classification_review_items()
+
+    # The rules classify both legs, yet each names the decision's item.
+    assert _lineage(result, "netto").review_item_ids == (item.review_item_id,)
+    assert _lineage(result, "return").review_item_ids == (item.review_item_id,)
+
+
+def test_a_not_applicable_items_identity_survives_rebuilds_and_its_reason() -> None:
+    same_account = _one_account_pair("640.00")
+    not_cancelling = _one_account_pair("600.00")
+
+    def item_id(result: GoldResult) -> str:
+        (item,) = result.classification_review_items()
+        return item.review_item_id
+
+    assert _not_applicable(not_cancelling)[1] == "amounts-do-not-cancel"
+    assert item_id(same_account) == item_id(_one_account_pair("640.00"))
+    assert item_id(same_account) == item_id(not_cancelling)
+
+
 def test_18_every_decision_naming_a_missing_category_refuses_the_build() -> None:
     netto = booked("netto", CURRENT, date(2026, 2, 2), "-640.00", "NETTO 0412")
 
