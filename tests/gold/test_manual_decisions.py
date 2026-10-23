@@ -8,6 +8,8 @@ it numbers them, over the doc's synthetic setup
 
 from datetime import date
 
+import pytest
+
 from budget.gold import (
     GoldResult,
     GoldTransactionLineage,
@@ -21,6 +23,7 @@ from budget.gold.decisions import (
     OneSidedTransfer,
     Pair,
 )
+from budget.inputs import ConfigurationError
 from tests.gold.classification_example import CURRENT, SAVINGS, booked, classified
 
 
@@ -192,6 +195,23 @@ def test_a_pair_on_one_account_is_not_applicable() -> None:
 
     assert _types(result) == {"netto": "expense", "return": "refund"}
     assert _not_applicable(result) == (("netto", "return"), "same-account")
+
+
+def test_18_every_decision_naming_a_missing_category_refuses_the_build() -> None:
+    netto = booked("netto", CURRENT, date(2026, 2, 2), "-640.00", "NETTO 0412")
+
+    with pytest.raises(ConfigurationError) as refused:
+        classified(
+            netto,
+            decisions=[
+                Classify("d-0012", "netto", "food-out"),
+                Classify("d-0013", "ikea", "furniture"),
+            ],
+        )
+
+    first, second = refused.value.problems
+    assert ("d-0012" in first, "food-out" in first) == (True, True)
+    assert ("d-0013" in second, "furniture" in second) == (True, True)
 
 
 def _before_savings_history(*decisions: GoldDecision) -> GoldResult:
