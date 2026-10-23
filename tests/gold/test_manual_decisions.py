@@ -110,6 +110,23 @@ def test_12_a_pair_decision_settles_competing_legs_and_frees_the_third() -> None
     assert list(result.classification_review_items()) == []
 
 
+def test_17_a_decision_whose_target_is_missing_is_not_applicable() -> None:
+    result = classified(
+        booked("netto", CURRENT, date(2026, 2, 2), "-640.00", "NETTO 0412"),
+        decisions=[Classify("d-0004", "withdrawn-by-bank", "groceries")],
+    )
+
+    assert _types(result) == {"netto": "expense"}
+    (item,) = result.classification_review_items()
+    assert (
+        item.kind,
+        item.transaction_ids,
+        item.rule_ids,
+        item.decision_id,
+        item.reason,
+    ) == ("decision-not-applicable", (), (), "d-0004", "target-missing")
+
+
 def _before_savings_history(*decisions: GoldDecision) -> GoldResult:
     """Scenario 16: a transfer into savings before its managed period starts."""
     return classified(
