@@ -13,7 +13,7 @@ from decimal import Decimal
 from types import MappingProxyType
 from typing import Literal
 
-from budget.gold.decisions import Classify, GoldDecision
+from budget.gold.decisions import Classify, ClassifyAdjustment, GoldDecision
 from budget.gold.models import (
     CategoryDirection,
     ClassificationReviewItem,
@@ -164,6 +164,13 @@ def _decided(
                     transaction_type,
                     category_id,
                     rule_ids=by_rule[tid].rule_ids,
+                    decision_id=decision.decision_id,
+                )
+            case ClassifyAdjustment(transaction_id=tid, reason=reason):
+                decided[tid] = _Outcome(
+                    "adjustment",
+                    rule_ids=by_rule[tid].rule_ids,
+                    adjustment_reason=reason,
                     decision_id=decision.decision_id,
                 )
             case _:
