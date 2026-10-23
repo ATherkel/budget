@@ -131,8 +131,9 @@ def classify(
     outcomes = [
         (
             t,
-            decided.outcomes.get(t.transaction_id)
-            or _settled(by_rule[t.transaction_id], t.transaction_id, matching),
+            _settled(by_rule[t.transaction_id], t.transaction_id, matching)
+            if (manual := decided.outcomes.get(t.transaction_id)) is None
+            else manual,
         )
         for t in transactions
     ]
