@@ -283,6 +283,24 @@ class MigrateRefusalTests(unittest.TestCase):
             assert f"{store} is in use" in stderr
             assert store.read_bytes() == b""
 
+    def test_a_gold_store_another_program_holds_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            store = development_profile(folder).gold_store
+            store.parent.mkdir(parents=True)
+            with (
+                closing(sqlite3.connect(store, isolation_level=None)) as holder,
+                _short_busy_timeout(),
+            ):
+                holder.execute("BEGIN EXCLUSIVE")
+
+                status, stderr = migrate(write_profile(folder), "--stage", "gold")
+
+                holder.execute("ROLLBACK")
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert f"{store} is in use" in stderr
+            assert store.read_bytes() == b""
+
     def test_a_silver_store_another_program_writes_to_is_refused_an_upgrade(
         self,
     ) -> None:
