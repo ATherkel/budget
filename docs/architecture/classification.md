@@ -230,7 +230,9 @@ A manual decision is a recorded human ruling. Classification uses three kinds:
 - A one-sided transfer's managed-period test runs by month: the counterpart's
   managed period runs from the month of its first booked transaction to the
   month of its `closed_on`, if any. An account with no booked transaction has
-  no managed period yet.
+  no managed period yet. The period's other end, the latest published month,
+  never matters here: a transaction's own account has evidence through its
+  date, so no transaction date falls after that month.
 
 Review items are never marked resolved. A decision removes the cause, and the
 item disappears on the next build.

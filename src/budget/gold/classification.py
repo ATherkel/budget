@@ -254,7 +254,8 @@ def _managed_in(account_id: str, day: date, inputs: _Inputs) -> bool:
 
     The period runs from the month of the account's first booked transaction
     to the month of `closed_on`, if any (`gold-contract.md`,
-    *MonthlyBalanceSnapshot*); an account with none has no period yet.
+    *MonthlyBalanceSnapshot*); an account with none has no period yet. Its cap
+    at the latest published month never binds: no transaction falls after it.
     """
     booked = [
         t.transaction_date
