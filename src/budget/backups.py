@@ -27,6 +27,7 @@ from typing import Final
 from budget.bronze import BronzeStore
 from budget.bronze.storage import bronze_stage
 from budget.durability import sync_folder
+from budget.gold.storage import gold_stage
 from budget.importing import (
     ImportLogAheadOfBronzeError,
     ImportLogDamagedError,
@@ -36,6 +37,7 @@ from budget.locking import WriterLock
 from budget.profiles import (
     BRONZE_STORE_NAME,
     DECISION_LOG_FILE_NAME,
+    GOLD_STORE_NAME,
     IMPORT_LOG_FILE_NAME,
     INPUTS_FOLDER,
     SILVER_STORE_NAME,
@@ -58,9 +60,9 @@ PUBLISHING_SUFFIX: Final = ".partial"
 _PACKAGE: Final = Path(__file__).resolve().parent
 _SOURCE_SUFFIXES: Final = frozenset({".py", ".sql"})
 _IMPORT_LOG_IN_SET: Final = f"{INPUTS_FOLDER}/{IMPORT_LOG_FILE_NAME}"
-# What Gold keeps in the stores folder (operations.md, Stores), which no set
-# covers until Gold has a store.
-_UNCOVERED_STAGE_STORES: Final = frozenset({"gold.db", "gold"})
+# Gold's legacy extracts (operations.md, Stores), which no set covers until
+# the history release writes them.
+_UNCOVERED_STAGE_STORES: Final = frozenset({"gold"})
 # The stores a set covers, with the files SQLite keeps beside each, and the
 # writer lock.
 _COVERED_FILES: Final = frozenset(
@@ -68,7 +70,7 @@ _COVERED_FILES: Final = frozenset(
         WRITER_LOCK_NAME,
         *(
             f"{store}{suffix}"
-            for store in (BRONZE_STORE_NAME, SILVER_STORE_NAME)
+            for store in (BRONZE_STORE_NAME, SILVER_STORE_NAME, GOLD_STORE_NAME)
             for suffix in ("", "-wal", "-shm", "-journal")
         ),
     }
@@ -258,8 +260,8 @@ def _covered_stores(profile: Profile) -> tuple[StageStore, ...]:
     yet, or only a file an interrupted start left empty, is still copied whole
     without it.
     """
-    silver = silver_stage(profile)
-    return (bronze_stage(profile), *((silver,) if is_started(silver) else ()))
+    later = (silver_stage(profile), gold_stage(profile))
+    return (bronze_stage(profile), *(store for store in later if is_started(store)))
 
 
 def _copy_inputs(profile: Profile, staging: Path) -> dict[str, bytes]:
