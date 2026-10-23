@@ -20,10 +20,14 @@ class Classify:
 
 @dataclass(frozen=True)
 class ClassifyAdjustment:
-    """Classify one transaction as an adjustment, which takes no category."""
+    """Classify one transaction as an adjustment, which takes no category.
+
+    `reason` is the decision's own, the explanation every adjustment carries.
+    """
 
     decision_id: str
     transaction_id: str
+    reason: str
 
 
 @dataclass(frozen=True)

@@ -428,7 +428,7 @@ class _Replay:
 def _classify(entry: Entry) -> Classify | ClassifyAdjustment:
     (target,) = entry["targets"]
     if entry.get("adjustment") is True:
-        return ClassifyAdjustment(entry["decision_id"], target)
+        return ClassifyAdjustment(entry["decision_id"], target, "")
     return Classify(entry["decision_id"], target, entry["category"])
 
 
