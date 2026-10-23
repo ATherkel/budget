@@ -1,6 +1,7 @@
 # Copyright 2026 Therkel
 """The Gold build: one publication's records from Silver and the household inputs."""
 
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
 
@@ -153,8 +154,9 @@ def _decision_problems(
     """Name every decision the configuration alone shows cannot hold.
 
     `classification.md`, *Configuration errors*: a decision may not reference
-    a missing category, including a deleted one, and a one-sided transfer's
-    counterpart must be in the account registry.
+    a missing category, including a deleted one; a one-sided transfer's
+    counterpart must be in the account registry; and no two decisions may
+    share an identifier or a target.
     """
     return (
         *(
@@ -164,6 +166,12 @@ def _decision_problems(
             if (problem := _decision_problem(decision, configuration)) is not None
         ),
         *_overlap_problems(decisions),
+        *(
+            f'{DECISION_LOG_FILE_NAME}: decision identifier "{decision_id}" is '
+            "used more than once; nothing was published"
+            for decision_id, count in Counter(d.decision_id for d in decisions).items()
+            if count > 1
+        ),
     )
 
 
