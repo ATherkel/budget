@@ -17,7 +17,14 @@ from budget.gold import (
     TransferEvidence,
 )
 from budget.silver import Transaction
-from tests.gold.classification_example import ANNA, CURRENT, SAVINGS, booked, classified
+from tests.gold.classification_example import (
+    ACCOUNTS,
+    ANNA,
+    CURRENT,
+    SAVINGS,
+    booked,
+    classified,
+)
 
 
 def _types(result: GoldResult) -> dict[str, TransactionType]:
@@ -74,6 +81,19 @@ def test_an_account_with_no_transactions_also_may_be_waiting() -> None:
     )
 
     assert _unmatched(result) == [(("to-savings",), "counterpart-may-not-be-imported")]
+
+
+def test_an_account_closed_before_the_window_is_not_waiting() -> None:
+    # Anna's account closed well before the leg's date - 3, so no counterpart
+    # can still arrive there; joint-savings is imported past the window.
+    closed = {**ACCOUNTS, ANNA: replace(ACCOUNTS[ANNA], closed_on=date(2026, 1, 31))}
+    result = classified(
+        booked("to-savings", CURRENT, date(2026, 2, 16), "-1000.00", "TO SAVINGS"),
+        booked("interest", SAVINGS, date(2026, 2, 27), "12.00", "INTEREST"),
+        accounts=closed,
+    )
+
+    assert _unmatched(result) == [(("to-savings",), "no-candidate")]
 
 
 def test_a_counterpart_transaction_exactly_3_days_later_rules_out_waiting() -> None:
