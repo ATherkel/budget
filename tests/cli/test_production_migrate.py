@@ -20,6 +20,7 @@ import pytest
 from budget.backups import back_up, complete_backup_sets
 from budget.bronze import BronzeStore
 from budget.bronze.storage import ForeignKeyViolationError
+from budget.gold.store import GoldStore
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
 from budget.silver import SilverStore
@@ -78,13 +79,17 @@ class NewProductionStoreTests(unittest.TestCase):
             production = load_profile_file(profile_file)
             with BronzeStore(production), SilverStore(production):
                 pass
+            with GoldStore(production):
+                pass
             (backup,) = complete_backup_sets(production)
             assert run_ids(backup.path / "bronze.db") == []
             assert user_version(backup.path / "silver.db") == 1
+            assert user_version(backup.path / "gold.db") == 1
             assert manifest(backup.path)["profile"] == "production"
             assert manifest(backup.path)["stores"] == {
                 "bronze": {"path": "bronze.db", "schema_version": 1},
                 "silver": {"path": "silver.db", "schema_version": 1},
+                "gold": {"path": "gold.db", "schema_version": 1},
             }
 
     def test_silver_is_refused_where_production_has_no_bronze_store(self) -> None:
@@ -148,6 +153,37 @@ class NewProductionStoreTests(unittest.TestCase):
             stores = manifest(backup.path)["stores"]
             assert isinstance(stores, dict)
             assert set(stores) == {"bronze", "silver"}
+
+    def test_a_retry_after_gold_was_cut_off_names_the_stage_to_start(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder, name="production")
+            for stage in ("bronze", "silver"):
+                started = migrate(profile_file, "--stage", stage, "--new-store")
+                assert started[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            sets = complete_backup_sets(production)
+            # A `--stage gold --new-store` cut off inside Gold's migration:
+            # Gold left empty at version 0, and no set written after it.
+            with closing(sqlite3.connect(production.gold_store)) as store:
+                store.execute("PRAGMA journal_mode = WAL")
+
+            status, stderr = migrate(profile_file, "--new-store")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "budget migrate --stage gold --new-store" in stderr
+            assert user_version(production.gold_store) == 0
+            assert complete_backup_sets(production) == sets
+
+            status, stderr = migrate(profile_file, "--stage", "gold", "--new-store")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            newest, *_ = complete_backup_sets(production)
+            stores = manifest(newest.path)["stores"]
+            assert isinstance(stores, dict)
+            assert set(stores) == {"bronze", "silver", "gold"}
 
     def test_silver_is_refused_beside_a_bronze_store_no_set_can_hold(
         self,
@@ -280,6 +316,39 @@ class NewProductionStoreTests(unittest.TestCase):
             assert not production.silver_store.exists()
             assert complete_backup_sets(production) == sets
 
+    def test_a_new_gold_store_is_refused_where_a_backup_set_holds_one(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            sets = complete_backup_sets(production)
+            # Gold's store is lost, but the set that holds it is not.
+            for lost in production.stores.glob("gold.db*"):
+                lost.unlink()
+
+            status, stderr = migrate(profile_file, "--stage", "gold", "--new-store")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "Gold store must be restored" in stderr
+            assert not production.gold_store.exists()
+            assert complete_backup_sets(production) == sets
+
+    def test_gold_is_refused_where_production_has_no_bronze_store(self) -> None:
+        # Every set holds Bronze, so a Gold store started alone could never
+        # be backed up.
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder, name="production")
+
+            status, stderr = migrate(profile_file, "--stage", "gold", "--new-store")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "budget migrate --stage bronze --new-store" in stderr
+            assert not (folder / "stores").exists()
+            assert not (folder / "backups").exists()
+
 
 class SilverBesideBronzeTests(unittest.TestCase):
     """A production profile whose stores and sets predate Silver's backups."""
@@ -325,6 +394,50 @@ class SilverBesideBronzeTests(unittest.TestCase):
             assert user_version(production.bronze_store) == 1
             assert not production.silver_store.exists()
             assert complete_backup_sets(production) == sets
+
+
+class GoldBesideSilverTests(unittest.TestCase):
+    """A production profile whose stores and sets predate Gold's backups."""
+
+    def test_a_missing_gold_store_is_refused_with_the_stage_that_starts_it(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            for stage in ("bronze", "silver"):
+                started = migrate(profile_file, "--stage", stage, "--new-store")
+                assert started[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            sets = complete_backup_sets(production)
+
+            status, stderr = migrate(profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "budget migrate --stage gold --new-store" in stderr
+            assert not production.gold_store.exists()
+            assert complete_backup_sets(production) == sets
+
+    def test_gold_is_started_beside_existing_stores_when_asked(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            for stage in ("bronze", "silver"):
+                started = migrate(profile_file, "--stage", stage, "--new-store")
+                assert started[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            before_gold = complete_backup_sets(production)
+
+            status, stderr = migrate(profile_file, "--stage", "gold", "--new-store")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            with GoldStore(production):
+                pass
+            newest, *older = complete_backup_sets(production)
+            assert tuple(older) == before_gold
+            assert manifest(newest.path)["stores"] == {
+                "bronze": {"path": "bronze.db", "schema_version": 1},
+                "silver": {"path": "silver.db", "schema_version": 1},
+                "gold": {"path": "gold.db", "schema_version": 1},
+            }
 
 
 class OlderProductionStoreTests(unittest.TestCase):
@@ -400,7 +513,8 @@ class FailedBackupTests(unittest.TestCase):
             production.import_log_file.write_bytes(b"\n")
 
         def another_store(production: Profile) -> None:
-            with closing(sqlite3.connect(production.stores / "gold.db")) as store:
+            other = production.stores / "household.sqlite"
+            with closing(sqlite3.connect(other)) as store:
                 store.execute("CREATE TABLE marker (x TEXT)")
 
         cases = {
@@ -417,7 +531,7 @@ class FailedBackupTests(unittest.TestCase):
             "a store no backup set covers": (
                 another_store,
                 EXIT_REFUSED_ENVIRONMENT,
-                "gold.db",
+                "household.sqlite",
             ),
         }
         for case, (break_backup, expected_status, message) in cases.items():

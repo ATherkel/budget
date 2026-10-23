@@ -3,8 +3,9 @@
 
 The runner, the numbered SQL files under `budget/migrations/gold/` inside the
 installed package, and every refusal around them come from the generic store
-runner (`budget.sqlstore`). This module names the Gold stage. Registering it
-with `budget migrate` and the backup sets is issue #257's.
+runner (`budget.sqlstore`). This module names the Gold stage, which
+`budget migrate` migrates after Silver and every backup set holds once it is
+started.
 """
 
 import sqlite3

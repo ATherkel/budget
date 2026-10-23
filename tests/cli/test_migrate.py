@@ -1,5 +1,5 @@
 # Copyright 2026 Therkel
-"""`budget migrate`: creating and upgrading a profile's Bronze and Silver stores.
+"""`budget migrate`: creating and upgrading a profile's Bronze, Silver and Gold stores.
 
 Every test passes `main` an explicit environment, so a `BUDGET_PROFILE` set in
 the operator's shell never reaches a test.
@@ -22,6 +22,7 @@ from budget.bronze.storage import (
     StoreIdentityError,
 )
 from budget.cli import main
+from budget.gold.store import GoldStore
 from budget.profiles import test_profile as make_test_profile
 from budget.silver import SilverStore, migrate_silver
 from tests.bronze.migration_resources import (
@@ -98,7 +99,19 @@ class MigrateTests(unittest.TestCase):
             with SilverStore(development):
                 pass
 
-    def test_migrate_creates_both_stores_when_no_stage_is_named(self) -> None:
+    def test_the_gold_stage_can_be_migrated(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+
+            status, _ = migrate(write_profile(folder), "--stage", "gold")
+
+            assert status == EXIT_OK
+            development = development_profile(folder)
+            assert development.gold_store.exists()
+            with GoldStore(development):
+                pass
+
+    def test_migrate_creates_every_store_when_no_stage_is_named(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
 
@@ -108,7 +121,10 @@ class MigrateTests(unittest.TestCase):
             development = development_profile(folder)
             assert development.bronze_store.exists()
             assert development.silver_store.exists()
+            assert development.gold_store.exists()
             with BronzeStore(development), SilverStore(development):
+                pass
+            with GoldStore(development):
                 pass
 
 
@@ -123,16 +139,6 @@ class MigrateRefusalTests(unittest.TestCase):
 
             assert status == EXIT_REFUSED_ENVIRONMENT
             assert "production" in stderr
-            assert not (folder / "stores").exists()
-
-    def test_a_stage_that_is_not_built_yet_is_refused(self) -> None:
-        with TemporaryDirectory() as directory:
-            folder = Path(directory)
-
-            status, stderr = migrate(write_profile(folder), "--stage", "gold")
-
-            assert status == EXIT_REFUSED_ENVIRONMENT
-            assert "gold" in stderr
             assert not (folder / "stores").exists()
 
     def test_a_store_of_another_profile_is_refused(self) -> None:
@@ -271,6 +277,24 @@ class MigrateRefusalTests(unittest.TestCase):
                 holder.execute("BEGIN EXCLUSIVE")
 
                 status, stderr = migrate(write_profile(folder), "--stage", "silver")
+
+                holder.execute("ROLLBACK")
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert f"{store} is in use" in stderr
+            assert store.read_bytes() == b""
+
+    def test_a_gold_store_another_program_holds_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            store = development_profile(folder).gold_store
+            store.parent.mkdir(parents=True)
+            with (
+                closing(sqlite3.connect(store, isolation_level=None)) as holder,
+                _short_busy_timeout(),
+            ):
+                holder.execute("BEGIN EXCLUSIVE")
+
+                status, stderr = migrate(write_profile(folder), "--stage", "gold")
 
                 holder.execute("ROLLBACK")
             assert status == EXIT_REFUSED_ENVIRONMENT
