@@ -214,6 +214,16 @@ def test_18_every_decision_naming_a_missing_category_refuses_the_build() -> None
     assert ("d-0013" in second, "furniture" in second) == (True, True)
 
 
+def test_a_one_sided_counterpart_missing_from_the_registry_refuses_the_build() -> None:
+    leg = booked("to-bo", CURRENT, date(2026, 2, 1), "-4000.00", "BUDGET TO BO")
+
+    with pytest.raises(ConfigurationError) as refused:
+        classified(leg, decisions=[OneSidedTransfer("d-0014", "to-bo", "bo-current")])
+
+    (problem,) = refused.value.problems
+    assert ("d-0014" in problem, "bo-current" in problem) == (True, True)
+
+
 def _before_savings_history(*decisions: GoldDecision) -> GoldResult:
     """Scenario 16: a transfer into savings before its managed period starts."""
     return classified(
