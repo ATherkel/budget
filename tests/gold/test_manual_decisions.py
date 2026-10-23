@@ -235,6 +235,21 @@ def test_two_decisions_targeting_one_transaction_refuse_the_build() -> None:
     assert all(text in problem for text in ("d-0002", "d-0016", "to-savings"))
 
 
+def test_two_decisions_sharing_an_identifier_refuse_the_build() -> None:
+    with pytest.raises(ConfigurationError) as refused:
+        classified(
+            booked("ikea", CURRENT, date(2026, 2, 7), "-2400.00", "IKEA 551"),
+            booked("netto", CURRENT, date(2026, 2, 2), "-640.00", "NETTO 0412"),
+            decisions=[
+                Classify("d-0001", "ikea", "gifts"),
+                Classify("d-0001", "netto", "groceries"),
+            ],
+        )
+
+    (problem,) = refused.value.problems
+    assert "d-0001" in problem
+
+
 def test_a_one_sided_counterpart_missing_from_the_registry_refuses_the_build() -> None:
     leg = booked("to-bo", CURRENT, date(2026, 2, 1), "-4000.00", "BUDGET TO BO")
 
