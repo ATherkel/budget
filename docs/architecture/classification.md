@@ -181,7 +181,8 @@ An unpaired leg whose rule result is a transfer claim is `unknown`, with an
 - `counterpart-may-not-be-imported`: some other Gold account has no booked
   transaction on or after the leg's transaction date plus 3 days, so the other
   leg may arrive with the next import. This is only a hint: a quiet account
-  also triggers it.
+  also triggers it. A Gold account closed before the leg's transaction date
+  minus 3 days doesn't count, because no counterpart can fall there.
 - `no-candidate`: otherwise.
 
 A transfer that loses a fee, such as 1,000.00 out and 995.00 in, never pairs,
