@@ -212,6 +212,12 @@ def _inapplicable(decision: GoldDecision, inputs: _Inputs) -> str | None:
     """Say why a decision does not apply, or `None` when it does."""
     if any(tid not in inputs.transactions for tid in _targets(decision)):
         return "target-missing"
+    match decision:
+        case Classify(transaction_id=tid):
+            if _sign(inputs.transactions[tid].amount) is None:
+                return "zero-amount"
+        case _:
+            pass
     return None
 
 
