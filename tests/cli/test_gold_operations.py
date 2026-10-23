@@ -23,6 +23,7 @@ from budget.profiles import Profile, load_profile_file
 from budget.silver import SilverStore
 from tests.backups.sets import gold_publications, manifest, run_ids
 from tests.cli.commands import backup, import_, migrate
+from tests.cli.imports import clean_git, write_ranges
 from tests.cli.profile_files import write_profile
 from tests.gold.publishing import RECIPE
 from tests.gold.worked_example import PUBLICATION
@@ -32,29 +33,11 @@ from tests.importing.households import ACCOUNTS, drop, log_entries, payload
 EXIT_OK = 0
 
 
-def _clean_git() -> mock.Mock:
-    """A finished Git call reporting a clean, tracked checkout."""
-    completed = mock.Mock()
-    completed.returncode = 0
-    completed.stdout = ""
-    completed.stderr = ""
-    return completed
-
-
-def _import(profile_file: Path, ranges: Path) -> tuple[int, str, str]:
-    """Run `budget import` from committed code, as production requires."""
-    with mock.patch("subprocess.run", return_value=_clean_git()):
+def _import(profile_file: Path, start: str, end: str) -> tuple[int, str, str]:
+    """Run `budget import` over one declared range, from committed code."""
+    ranges = write_ranges(profile_file.parent, default=(start, end))
+    with mock.patch("subprocess.run", return_value=clean_git()):
         return import_(profile_file, "--ranges", str(ranges))
-
-
-def _ranges(folder: Path, start: str, end: str) -> Path:
-    """Write a ranges file declaring one default range."""
-    path = folder / "ranges.toml"
-    path.write_text(
-        f"format = 1\n\n[default]\nfrom = {start}\nthrough = {end}\n",
-        encoding="utf-8",
-    )
-    return path
 
 
 def _build_and_publish(profile: Profile) -> None:
@@ -87,7 +70,7 @@ class GoldOperationsTests(unittest.TestCase):
             profile.inputs.mkdir(parents=True, exist_ok=True)
             profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
             drop(profile, "joint-current", "danske-20260305.csv", payload("01.03.2026"))
-            first = _import(profile_file, _ranges(folder, "2026-03-01", "2026-03-04"))
+            first = _import(profile_file, "2026-03-01", "2026-03-04")
             assert first[0::2] == (EXIT_OK, "")
             _build_and_publish(profile)
 
@@ -98,7 +81,7 @@ class GoldOperationsTests(unittest.TestCase):
             assert gold_publications(published.path / "gold.db") == [1]
             drop(profile, "joint-current", "danske-20260310.csv", payload("08.03.2026"))
 
-            again = _import(profile_file, _ranges(folder, "2026-03-05", "2026-03-09"))
+            again = _import(profile_file, "2026-03-05", "2026-03-09")
 
             assert again[0::2] == (EXIT_OK, "")
             newest = complete_backup_sets(profile)[0]
@@ -110,7 +93,7 @@ class GoldOperationsTests(unittest.TestCase):
             logged = sorted(
                 str(entry["import_run_id"]) for entry in log_entries(profile)
             )
-            assert len(logged) == len(("first import", "second import"))
+            assert len(logged) == 2
             assert sorted(run_ids(newest.path / "bronze.db")) == logged
 
 
