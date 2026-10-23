@@ -393,10 +393,13 @@ class UnsupportedStoreTests(unittest.TestCase):
 
                 with (
                     writer_lock(profile) as lock,
-                    pytest.raises(UnsupportedStoresError, match=relative.parts[0]),
+                    pytest.raises(
+                        UnsupportedStoresError, match=relative.parts[0]
+                    ) as refusal,
                 ):
                     back_up(lock, now=NOW)
 
+                assert "the Bronze, Silver and Gold stores" in str(refusal.value)
                 assert complete_backup_sets(profile) == ()
 
     def test_a_lost_gold_store_its_sets_hold_stops_a_backup(self) -> None:
