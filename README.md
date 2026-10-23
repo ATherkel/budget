@@ -391,6 +391,43 @@ Silver quarantines its run: a quarantine is a result, not a failure, and the
 file was stored, archived and removed from the inbox. `budget review` prints
 nothing when no item is open, and exits 0.
 
+## The dashboard: `budget serve`
+
+`budget serve` starts the household's read-only dashboard over Gold, in Danish.
+It is a shell for now: it logs in, pins a publication and a date, lets the
+reader pick accounts and a month, and says plainly when there is nothing
+published, a newer build exists, or a selection breaks a rule. The overview's
+figures come with #104. Nothing builds a real Gold publication yet (`budget
+migrate --stage gold` is still refused), so on a real profile `serve` shows
+"nothing published".
+
+Name where the passphrase hash lives, and optionally the address and port, in
+the profile file; `bind` defaults to `127.0.0.1` and `port` to 8750.
+`passphrase_file` must be an absolute path outside OneDrive and the repository:
+
+```toml
+[dashboard]
+passphrase_file = 'C:\Users\<you>\AppData\Roaming\budget\dashboard-passphrase'
+bind = "127.0.0.1"
+port = 8750
+```
+
+```powershell
+budget set-passphrase   # asks twice; never echoes; replaces the hash and logs out every device
+budget serve            # refuses to start until a passphrase is set and Gold exists
+```
+
+Open the address `serve` is bound to and log in with the passphrase. A login
+lasts 30 days from the last visit, five failures in a row lock login for 30
+seconds (doubling to 15 minutes), and "Log ud" ends the login in that
+browser. [operations.md](docs/architecture/operations.md#dashboard-access)
+holds the rules.
+
+To try it on made-up figures, publish the worked example from
+`tests/gold/worked_example.py` into a throwaway test profile's Gold store with
+`GoldStore.publish`, as `tests/dashboard/test_overview_page.py` does, and serve
+`create_app(profile, clock=...)` with uvicorn.
+
 ## Command line
 
 `uv sync` installs a `budget` command; `python -m budget` runs the same thing.

@@ -249,9 +249,13 @@ _SELECT_BALANCES: Final = (
 class GoldStore:
     """Publish to and read from the Gold store that one profile names."""
 
-    def __init__(self, profile: Profile) -> None:
-        """Open the migrated Gold store that one profile names."""
-        self._connection = open_gold_connection(profile)
+    def __init__(self, profile: Profile, *, read_only: bool = False) -> None:
+        """Open the migrated Gold store that one profile names.
+
+        With `read_only`, SQLite refuses every write, so a reader such as the
+        dashboard can never publish or delete a result.
+        """
+        self._connection = open_gold_connection(profile, read_only=read_only)
 
     def __enter__(self) -> Self:
         """Return the open store for a `with` block."""

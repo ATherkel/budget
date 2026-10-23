@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oversigt</title>
+{# No page snapshots in browser storage: a history miss reloads the page. #}
+<meta name="htmx-config" content='{"historyCacheSize": 0, "refreshOnHistoryMiss": true}'>
+<script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+<main>
+<h1>Oversigt</h1>
+{# Logout is a POST so that following a link can never end a login. #}
+<form id="logout" method="post" action="/logout"><button>Log ud</button></form>
+{# Without scripts the form reloads the page; htmx swaps only the report, and
+   a newer change replaces any request still outstanding. #}
+<form id="selection" method="get" action="/" hx-get="/report" hx-target="#report-region" hx-swap="innerHTML" hx-sync="this:replace" hx-trigger="submit, change">
+<input type="hidden" name="publication" value="{{ publication_id }}">
+<input type="hidden" name="reference_date" value="{{ reference_date }}">
+<fieldset>
+<legend>Konti</legend>
+{% for account in accounts %}
+<label><input type="checkbox" name="account" value="{{ account.account_id }}"{% if account.account_id in selected_accounts %} checked{% endif %}> {{ account.display_name }}</label>
+{% endfor %}
+</fieldset>
+<label>Måned
+<select name="month">
+{% for value, label in months %}
+<option value="{{ value }}"{% if value == selected_month %} selected{% endif %}>{{ label }}</option>
+{% endfor %}
+</select>
+</label>
+<button>Vis</button>
+</form>
+{# The wrapper stays on the page and htmx swaps only what is inside it: a live
+   region that is replaced along with its content is often not announced. #}
+<div id="report-region" aria-live="polite">
+{% if report %}
+{{ report | safe }}
+{% else %}
+{% include "no_accounts.html" %}
+{% endif %}
+</div>
+</main>
+</body>
+</html>

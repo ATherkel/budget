@@ -42,6 +42,9 @@ PROFILE_FILE_FORMAT: Final = 1
 KEEP_FOREVER: Final = "forever"
 _RETENTION_KEYS: Final = frozenset({"keep_all_days", "keep_daily_days", "keep_monthly"})
 _GOLD_KEYS: Final = frozenset({"late_booking_days"})
+_DASHBOARD_KEYS: Final = frozenset({"passphrase_file", "bind", "port"})
+MIN_PORT: Final = 1
+MAX_PORT: Final = 65535
 # Test profiles are never files: the test suite builds each one (ADR-015).
 _FILE_PROFILE_NAMES: Final = (DEVELOPMENT_PROFILE_NAME, PRODUCTION_PROFILE_NAME)
 _SHARED_FILE_KEYS: Final = frozenset(
@@ -188,6 +191,9 @@ class Profile:
     backups: Path | None = None
     retention: RetentionPolicy = field(default_factory=RetentionPolicy)
     late_booking_window: timedelta = timedelta(days=DEFAULT_LATE_BOOKING_DAYS)
+    passphrase_file: Path | None = None
+    dashboard_bind: str | None = None
+    dashboard_port: int | None = None
     root: Path | None = None
 
     def __post_init__(self) -> None:
@@ -210,9 +216,12 @@ class Profile:
                     _FOLDER_NAMES[first], _FOLDER_NAMES[second]
                 )
         root = None if self.root is None else Path(self.root).resolve()
-        if root is not None and not all(
-            folder.is_relative_to(root) for folder in folders.values()
-        ):
+        # The passphrase file is no folder, but a test must not write it
+        # outside its root either.
+        guarded = list(folders.values())
+        if self.passphrase_file is not None:
+            guarded.append(Path(self.passphrase_file).resolve())
+        if root is not None and not all(path.is_relative_to(root) for path in guarded):
             raise ProfilePathOutsideRootError
         for field_name, folder in folders.items():
             object.__setattr__(self, field_name, folder)
@@ -475,6 +484,48 @@ def _late_booking_window(path: Path, document: dict[str, object]) -> timedelta:
     return timedelta(days=days)
 
 
+def _passphrase_file(path: Path, dashboard: dict[str, object]) -> Path | None:
+    """Return `[dashboard].passphrase_file`, an absolute path, or `None`.
+
+    A relative path would resolve against wherever a command runs, perhaps in
+    OneDrive or the repository, where the hash must never be.
+    """
+    value = dashboard.get("passphrase_file")
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ProfileFileError(
+            path, "dashboard.passphrase_file must be a path in quotes"
+        )
+    if not Path(value).is_absolute():
+        raise ProfileFileError(
+            path, "dashboard.passphrase_file must be an absolute path"
+        )
+    return Path(value)
+
+
+def _dashboard_bind(path: Path, dashboard: dict[str, object]) -> str | None:
+    """Return `[dashboard].bind`, or `None` when it is not named."""
+    value = dashboard.get("bind")
+    if value is not None and not isinstance(value, str):
+        raise ProfileFileError(path, "dashboard.bind must be an address in quotes")
+    return value
+
+
+def _dashboard_port(path: Path, dashboard: dict[str, object]) -> int | None:
+    """Return `[dashboard].port`, a whole number from 1 to 65535, or `None`."""
+    value = dashboard.get("port")
+    if value is None:
+        return None
+    # `bool` is an `int` in Python, so `true` must not pass as 1.
+    if type(value) is not int or not MIN_PORT <= value <= MAX_PORT:
+        raise ProfileFileError(
+            path,
+            f"dashboard.port must be a whole number, from {MIN_PORT} to {MAX_PORT}",
+        )
+    return value
+
+
 def load_profile_file(path: Path) -> Profile:
     """Build the profile that one operator's profile file describes.
 
@@ -486,6 +537,7 @@ def load_profile_file(path: Path) -> Profile:
     name = _profile_name(path, document)
     _require_known_keys(path, document, known=_FILE_KEYS[name], prefix="", profile=name)
     paths = _paths_table(path, document, name)
+    dashboard = _optional_table(path, document, "dashboard", _DASHBOARD_KEYS)
     # Only production writes backup sets, so only it names where they go.
     is_production = name == PRODUCTION_PROFILE_NAME
     try:
@@ -498,6 +550,9 @@ def load_profile_file(path: Path) -> Profile:
             backups=_folder_path(path, paths, "backups") if is_production else None,
             retention=_retention(path, document),
             late_booking_window=_late_booking_window(path, document),
+            passphrase_file=_passphrase_file(path, dashboard),
+            dashboard_bind=_dashboard_bind(path, dashboard),
+            dashboard_port=_dashboard_port(path, dashboard),
         )
     except ProfileFoldersOverlapError as error:
         raise ProfileFileError(path, str(error)) from None
