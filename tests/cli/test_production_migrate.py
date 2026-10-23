@@ -20,6 +20,7 @@ import pytest
 from budget.backups import back_up, complete_backup_sets
 from budget.bronze import BronzeStore
 from budget.bronze.storage import ForeignKeyViolationError
+from budget.gold.store import GoldStore
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
 from budget.silver import SilverStore
@@ -78,13 +79,17 @@ class NewProductionStoreTests(unittest.TestCase):
             production = load_profile_file(profile_file)
             with BronzeStore(production), SilverStore(production):
                 pass
+            with GoldStore(production):
+                pass
             (backup,) = complete_backup_sets(production)
             assert run_ids(backup.path / "bronze.db") == []
             assert user_version(backup.path / "silver.db") == 1
+            assert user_version(backup.path / "gold.db") == 1
             assert manifest(backup.path)["profile"] == "production"
             assert manifest(backup.path)["stores"] == {
                 "bronze": {"path": "bronze.db", "schema_version": 1},
                 "silver": {"path": "silver.db", "schema_version": 1},
+                "gold": {"path": "gold.db", "schema_version": 1},
             }
 
     def test_silver_is_refused_where_production_has_no_bronze_store(self) -> None:

@@ -1089,7 +1089,7 @@ class ProductionImportTests(unittest.TestCase):
             backup_set = profile.backup_path(written)
             stores = manifest(backup_set)["stores"]
             assert isinstance(stores, dict)
-            assert set(stores) == {"bronze", "silver"}
+            assert set(stores) == {"bronze", "silver", "gold"}
             assert run_ids(backup_set / "bronze.db") == [entry["import_run_id"]]
 
     def test_a_backup_that_fails_after_the_imports_says_what_was_done(
