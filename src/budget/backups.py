@@ -398,9 +398,9 @@ def _require_no_lost_store(profile: Profile) -> None:
     is to `_covered_stores`. Only a complete set counts, as for a new store
     (`migrate`): a damaged one restores nothing.
     """
-    silver = silver_stage(profile)
-    if not is_started(silver) and complete_set_holds(profile, silver.stage):
-        raise LostStoreError(silver.label)
+    for store in (silver_stage(profile), gold_stage(profile)):
+        if not is_started(store) and complete_set_holds(profile, store.stage):
+            raise LostStoreError(store.label)
 
 
 def require_backup_allowed(profile: Profile) -> None:
