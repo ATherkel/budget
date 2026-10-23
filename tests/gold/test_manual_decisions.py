@@ -8,9 +8,14 @@ it numbers them, over the doc's synthetic setup
 
 from datetime import date
 
-from budget.gold import GoldResult, GoldTransactionLineage, TransactionType
-from budget.gold.decisions import Classify, ClassifyAdjustment
-from tests.gold.classification_example import CURRENT, booked, classified
+from budget.gold import (
+    GoldResult,
+    GoldTransactionLineage,
+    TransactionType,
+    TransferEvidence,
+)
+from budget.gold.decisions import Classify, ClassifyAdjustment, Pair
+from tests.gold.classification_example import CURRENT, SAVINGS, booked, classified
 
 
 def _types(result: GoldResult) -> dict[str, TransactionType]:
@@ -61,3 +66,39 @@ def test_an_adjustment_decision_gives_an_adjustment_with_the_decisions_reason() 
         line.decision_id,
         line.adjustment_reason,
     ) == ("manual", "d-0005", "Opening balance fix")
+
+
+def test_12_a_pair_decision_settles_competing_legs_and_frees_the_third() -> None:
+    result = classified(
+        booked("to-savings", CURRENT, date(2026, 3, 5), "-1500.00", "TO SAVINGS"),
+        booked("dentist", CURRENT, date(2026, 3, 5), "-1500.00", "DENTIST 7"),
+        booked("from-current", SAVINGS, date(2026, 3, 5), "1500.00", "FROM CURRENT"),
+        decisions=[Pair("d-0002", ("to-savings", "from-current"))],
+    )
+
+    assert _types(result) == {
+        "to-savings": "transfer",
+        "dentist": "expense",
+        "from-current": "transfer",
+    }
+    groups = {
+        t.transaction_id: t.transfer_group_id
+        for t in result.transactions(start_date=date.min, end_date=date.max)
+    }
+    assert groups["to-savings"] is not None
+    assert groups["to-savings"] == groups["from-current"]
+    assert groups["dentist"] is None
+    out = _lineage(result, "to-savings")
+    assert (out.classification_source, out.decision_id, out.transfer_evidence) == (
+        "manual",
+        "d-0002",
+        TransferEvidence(
+            basis="manual_pair",
+            counterpart_account_id=SAVINGS,
+            counterpart_transaction_id="from-current",
+            date_gap_days=0,
+            claim_rule_ids=("r-savings-transfer",),
+        ),
+    )
+    assert _lineage(result, "dentist").classification_source == "rule"
+    assert list(result.classification_review_items()) == []
