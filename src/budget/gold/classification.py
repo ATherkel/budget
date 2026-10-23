@@ -21,6 +21,7 @@ from budget.gold.decisions import (
     GoldDecision,
     OneSidedTransfer,
     Pair,
+    log_kind,
 )
 from budget.gold.models import (
     CategoryDirection,
@@ -173,17 +174,13 @@ def _classification_version(
     """Fingerprint the classification inputs (`publications.md`).
 
     They are the configuration snapshot and the effective decisions, each
-    decision written as its kind and fields, in any order. With no decisions
-    in force, the configuration's fingerprint is the version.
+    decision written as its decision-log kind and fields, in any order.
     """
-    if not decisions:
-        return configuration.fingerprint
     return hash_parts(
         [
             configuration.fingerprint,
             *sorted(
-                json.dumps([type(d).__name__, asdict(d)], sort_keys=True)
-                for d in decisions
+                json.dumps([log_kind(d), asdict(d)], sort_keys=True) for d in decisions
             ),
         ]
     )

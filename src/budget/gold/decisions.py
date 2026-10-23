@@ -50,6 +50,17 @@ class OneSidedTransfer:
 type GoldDecision = Classify | ClassifyAdjustment | Pair | OneSidedTransfer
 
 
+def log_kind(decision: GoldDecision) -> str:
+    """Name the decision's kind as the decision log writes it."""
+    match decision:
+        case Classify() | ClassifyAdjustment():
+            return "classify"
+        case Pair():
+            return "pair"
+        case OneSidedTransfer():
+            return "one-sided-transfer"
+
+
 def targets(decision: GoldDecision) -> tuple[str, ...]:
     """Name the transactions a decision targets."""
     if isinstance(decision, Pair):
