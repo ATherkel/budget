@@ -127,6 +127,21 @@ def test_17_a_decision_whose_target_is_missing_is_not_applicable() -> None:
     ) == ("decision-not-applicable", (), (), "d-0004", "target-missing")
 
 
+def test_a_pair_missing_one_leg_leaves_the_other_as_if_undecided() -> None:
+    result = classified(
+        booked("to-savings", CURRENT, date(2026, 2, 16), "-1000.00", "TO SAVINGS"),
+        decisions=[Pair("d-0009", ("to-savings", "withdrawn-by-bank"))],
+    )
+
+    assert _types(result) == {"to-savings": "unknown"}
+    items = {i.kind: i for i in result.classification_review_items()}
+    assert items.keys() == {"unmatched-transfer", "decision-not-applicable"}
+    assert items["decision-not-applicable"].transaction_ids == ("to-savings",)
+    line = _lineage(result, "to-savings")
+    assert (line.classification_source, line.decision_id) == ("unclassified", None)
+    assert set(line.review_item_ids) == {i.review_item_id for i in items.values()}
+
+
 def _before_savings_history(*decisions: GoldDecision) -> GoldResult:
     """Scenario 16: a transfer into savings before its managed period starts."""
     return classified(
