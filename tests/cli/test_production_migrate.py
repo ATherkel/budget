@@ -399,6 +399,24 @@ class SilverBesideBronzeTests(unittest.TestCase):
 class GoldBesideSilverTests(unittest.TestCase):
     """A production profile whose stores and sets predate Gold's backups."""
 
+    def test_a_missing_gold_store_is_refused_with_the_stage_that_starts_it(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            for stage in ("bronze", "silver"):
+                started = migrate(profile_file, "--stage", stage, "--new-store")
+                assert started[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            sets = complete_backup_sets(production)
+
+            status, stderr = migrate(profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "budget migrate --stage gold --new-store" in stderr
+            assert not production.gold_store.exists()
+            assert complete_backup_sets(production) == sets
+
     def test_gold_is_started_beside_existing_stores_when_asked(self) -> None:
         with TemporaryDirectory() as directory:
             profile_file = write_profile(Path(directory), name="production")
@@ -407,11 +425,6 @@ class GoldBesideSilverTests(unittest.TestCase):
                 assert started[0] == EXIT_OK
             production = load_profile_file(profile_file)
             before_gold = complete_backup_sets(production)
-
-            status, stderr = migrate(profile_file)
-
-            assert status == EXIT_REFUSED_ENVIRONMENT
-            assert "budget migrate --stage gold --new-store" in stderr
 
             status, stderr = migrate(profile_file, "--stage", "gold", "--new-store")
 
