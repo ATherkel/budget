@@ -130,7 +130,7 @@ class UnsupportedStoresError(RuntimeError):
         """Name what was found in the stores folder."""
         super().__init__(
             f"the stores folder holds {', '.join(names)}, which no backup set "
-            "covers yet: only the Bronze and Silver stores are backed up; "
+            "covers yet: only the Bronze, Silver and Gold stores are backed up; "
             "nothing was published"
         )
 
