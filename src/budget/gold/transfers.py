@@ -6,13 +6,17 @@ needs a rule's transfer claim on at least one leg, and an unpaired claim stays
 `unknown` with a reason a person can act on.
 """
 
+from collections import defaultdict
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from budget.gold.models import GoldTransaction, TransferBasis, TransferEvidence
 from budget.hashing import hash_parts
+
+if TYPE_CHECKING:
+    from decimal import Decimal
 
 type UnmatchedReason = Literal["counterpart-may-not-be-imported", "no-candidate"]
 
@@ -93,17 +97,30 @@ def _candidates(
     claims: Mapping[str, tuple[str, ...]],
     gap: int,
 ) -> list[tuple[GoldTransaction, GoldTransaction]]:
-    """List the (outgoing, incoming) candidate pairs exactly `gap` days apart."""
-    return [
-        (out, into)
-        for out in legs
-        if out.amount < 0
-        for into in legs
-        if into.amount == -out.amount
-        and into.account_id != out.account_id
-        and _gap(out, into) == gap
-        and (out.transaction_id in claims or into.transaction_id in claims)
-    ]
+    """List the (outgoing, incoming) candidate pairs exactly `gap` days apart.
+
+    Every candidate has a claimed leg, so only the claimed legs look for an
+    opposite amount; the pairs keep the legs' order, outgoing leg first.
+    """
+    position = {t.transaction_id: i for i, t in enumerate(legs)}
+    by_amount: defaultdict[Decimal, list[GoldTransaction]] = defaultdict(list)
+    for leg in legs:
+        by_amount[leg.amount].append(leg)
+    found = {
+        (position[out.transaction_id], position[into.transaction_id])
+        for claimed in legs
+        if claimed.transaction_id in claims and claimed.amount != 0
+        for other in by_amount.get(-claimed.amount, ())
+        for out, into in (_outgoing_first(claimed, other),)
+        if into.account_id != out.account_id and _gap(out, into) == gap
+    }
+    return [(legs[out], legs[into]) for out, into in sorted(found)]
+
+
+def _outgoing_first(
+    leg: GoldTransaction, other: GoldTransaction
+) -> tuple[GoldTransaction, GoldTransaction]:
+    return (leg, other) if leg.amount < 0 else (other, leg)
 
 
 def _connected_sets(
