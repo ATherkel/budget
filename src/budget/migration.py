@@ -22,6 +22,7 @@ from budget.backups import (
     require_supported_stores,
 )
 from budget.bronze.storage import BRONZE_STAGE, bronze_stage
+from budget.gold.storage import GOLD_STAGE, gold_stage
 from budget.locking import WriterLock
 from budget.profiles import PRODUCTION_PROFILE_NAME, Profile
 from budget.silver.storage import SILVER_STAGE, silver_stage
@@ -73,6 +74,7 @@ class MigratedWithoutBackupError(RuntimeError):
 _STAGE_STORES: Final[dict[str, Callable[[Profile], StageStore]]] = {
     BRONZE_STAGE: bronze_stage,
     SILVER_STAGE: silver_stage,
+    GOLD_STAGE: gold_stage,
 }
 MIGRATED_STAGES: Final = tuple(_STAGE_STORES)
 
