@@ -1213,7 +1213,7 @@ class ProductionImportTests(unittest.TestCase):
         cases = {
             "uncommitted code": (EXIT_REFUSED_ENVIRONMENT, "uncommitted"),
             "a decision": (EXIT_REFUSED_INPUT, "decisions.jsonl"),
-            "a store no set covers": (EXIT_REFUSED_ENVIRONMENT, "gold.db"),
+            "a store no set covers": (EXIT_REFUSED_ENVIRONMENT, "holds gold,"),
         }
         for case, (expected, named) in cases.items():
             with self.subTest(case), TemporaryDirectory() as directory:
@@ -1235,7 +1235,8 @@ class ProductionImportTests(unittest.TestCase):
                         '{"decision_id": "d-0001"}\n', encoding="utf-8"
                     )
                 if case == "a store no set covers":
-                    (profile.stores / "gold.db").write_bytes(b"")
+                    # Gold's legacy extracts, which no set covers yet.
+                    (profile.stores / "gold").mkdir()
 
                 with mock.patch("subprocess.run", return_value=git):
                     status, stdout, stderr = import_(
