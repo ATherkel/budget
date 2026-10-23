@@ -10,6 +10,7 @@ from datetime import date
 from decimal import Decimal
 
 from budget.gold import GoldCategoryAllocation, GoldResult, TransactionType
+from budget.hashing import hash_parts
 from budget.inputs import (
     AssignAdjustment,
     AssignCategory,
@@ -261,9 +262,14 @@ def test_lineage_names_the_rules_and_review_items_behind_each_type() -> None:
         booked("cash", CURRENT, date(2026, 2, 3), "-200.00", "ATM 17"),
         booked("conflict", CURRENT, date(2026, 2, 20), "-85.00", "MOBILEPAY NETTO"),
     )
-    version = ConfigurationSnapshot(
-        accounts=ACCOUNTS, taxonomy=TAXONOMY, rules=RULES
-    ).fingerprint
+    # The configuration's fingerprint, then the decisions in force: none here.
+    version = hash_parts(
+        [
+            ConfigurationSnapshot(
+                accounts=ACCOUNTS, taxonomy=TAXONOMY, rules=RULES
+            ).fingerprint
+        ]
+    )
     items = {
         i.transaction_ids: i.review_item_id
         for i in result.classification_review_items()
