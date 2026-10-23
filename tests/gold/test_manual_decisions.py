@@ -6,6 +6,7 @@ it numbers them, over the doc's synthetic setup
 (`tests/gold/classification_example.py`).
 """
 
+from dataclasses import replace
 from datetime import date
 
 import pytest
@@ -222,6 +223,24 @@ def test_a_one_sided_counterpart_missing_from_the_registry_refuses_the_build() -
 
     (problem,) = refused.value.problems
     assert ("d-0014" in problem, "bo-current" in problem) == (True, True)
+
+
+def test_the_classification_version_fingerprints_the_decisions_too() -> None:
+    def version(*decisions: GoldDecision) -> str:
+        result = classified(
+            booked("netto", CURRENT, date(2026, 2, 2), "-640.00", "NETTO 0412"),
+            booked("ikea", CURRENT, date(2026, 2, 7), "-2400.00", "IKEA 551"),
+            decisions=decisions,
+        )
+        return _lineage(result, "netto").classification_version
+
+    gifts = Classify("d-0001", "ikea", "gifts")
+    assert version(gifts) == version(gifts)
+    # The decision is on ikea, yet every transaction's version changes with it.
+    assert (
+        len({version(), version(gifts), version(replace(gifts, category_id="rent"))})
+        == 3
+    )
 
 
 def _before_savings_history(*decisions: GoldDecision) -> GoldResult:
