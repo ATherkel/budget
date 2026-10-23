@@ -85,7 +85,7 @@ def _utc_now() -> datetime:
 
 
 def _stage_stores(profile: Profile, stages: Collection[str]) -> list[StageStore]:
-    """Name the profile's store for each of `stages`, Bronze before Silver."""
+    """Name the profile's store for each of `stages`: Bronze, Silver, then Gold."""
     return [
         stage_store(profile)
         for stage, stage_store in _STAGE_STORES.items()
@@ -159,8 +159,8 @@ def _require_every_store_new(stores: list[StageStore]) -> None:
 def _require_nothing_to_restore(profile: Profile, stores: list[StageStore]) -> None:
     """Refuse a new store where a complete backup set holds one to restore.
 
-    A set written before backups covered Silver holds no Silver store, so it
-    never stands in the way of starting one. Sets are read only for a store
+    A set written before backups covered Silver or Gold holds no such store,
+    so it never stands in the way of starting one. Sets are read only for a store
     still to start, and then only those whose manifest lists it.
     """
     for store in stores:
@@ -177,7 +177,8 @@ def migrate_profile(
 ) -> None:
     """Create or upgrade the locked profile's stores for `stages`.
 
-    Bronze is migrated before Silver, each in its own transaction. In
+    Bronze is migrated first, then Silver, then Gold, each in its own
+    transaction. In
     production, the first store found to need a change takes one backup set
     of every store before it changes, held for recovery; a set follows once
     every stage is migrated, if any changed. `new_store` asks for a new
