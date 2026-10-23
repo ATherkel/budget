@@ -7,7 +7,7 @@ needs a rule's transfer claim on at least one leg, and an unpaired claim stays
 """
 
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Literal
@@ -56,13 +56,16 @@ def match_transfers(
     transactions: Sequence[GoldTransaction],
     claims: Mapping[str, tuple[str, ...]],
     closed_on: Mapping[str, date | None],
+    decided: Collection[str],
 ) -> Matching:
     """Pair the legs that cancel, in stages by date gap (*Stages*).
 
     `claims` maps each claimed leg's transaction_id to the rules claiming it.
     `closed_on` maps every Gold account to its closing date, if any. It
     includes accounts with no transactions, which may be waiting for their
-    first import.
+    first import. The transactions in `decided` are settled by an applicable
+    manual decision, so they are never candidates (*Candidates*); they still
+    show how far their accounts are imported.
     """
     paired: dict[str, PairedLeg] = {}
     ambiguous: dict[str, AmbiguousSet] = {}
@@ -70,14 +73,16 @@ def match_transfers(
         available = [
             t
             for t in transactions
-            if t.transaction_id not in paired and t.transaction_id not in ambiguous
+            if t.transaction_id not in paired
+            and t.transaction_id not in ambiguous
+            and t.transaction_id not in decided
         ]
         for legs in _connected_sets(_candidates(available, claims, gap)):
             pairs = _settle(legs)
             if pairs is None:
                 ambiguous.update(_hold(legs, claims))
             for out, into, basis in pairs or ():
-                paired.update(_pair(out, into, claims, gap, basis))
+                paired.update(pair_legs(out, into, claims, gap, basis))
 
     latest = _latest_dates(transactions)
     return Matching(
@@ -89,6 +94,7 @@ def match_transfers(
             if t.transaction_id in claims
             and t.transaction_id not in paired
             and t.transaction_id not in ambiguous
+            and t.transaction_id not in decided
         },
     )
 
@@ -113,7 +119,7 @@ def _candidates(
         if claimed.transaction_id in claims and claimed.amount != 0
         for other in by_amount.get(-claimed.amount, ())
         for out, into in (_outgoing_first(claimed, other),)
-        if into.account_id != out.account_id and _gap(out, into) == gap
+        if into.account_id != out.account_id and date_gap(out, into) == gap
     }
     return [(legs[out], legs[into]) for out, into in sorted(found)]
 
@@ -152,7 +158,11 @@ def _settle(
     ins = sorted((t for t in legs if t.amount > 0), key=_booked_order)
     if len(outs) == len(ins) == 1:
         return [
-            (outs[0], ins[0], "same_day" if _gap(outs[0], ins[0]) == 0 else "date_gap")
+            (
+                outs[0],
+                ins[0],
+                "same_day" if date_gap(outs[0], ins[0]) == 0 else "date_gap",
+            )
         ]
     if _repeated(outs) and _repeated(ins):
         return [
@@ -194,11 +204,12 @@ def _repeated(legs: Sequence[GoldTransaction]) -> bool:
     )
 
 
-def _gap(out: GoldTransaction, into: GoldTransaction) -> int:
+def date_gap(out: GoldTransaction, into: GoldTransaction) -> int:
+    """Count the days between two legs' transaction dates."""
     return abs((into.transaction_date - out.transaction_date).days)
 
 
-def _pair(
+def pair_legs(
     out: GoldTransaction,
     into: GoldTransaction,
     claims: Mapping[str, tuple[str, ...]],

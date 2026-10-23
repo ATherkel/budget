@@ -13,7 +13,7 @@ from decimal import Decimal
 from types import MappingProxyType
 from typing import Literal
 
-from budget.gold.decisions import Classify, ClassifyAdjustment, GoldDecision
+from budget.gold.decisions import Classify, ClassifyAdjustment, GoldDecision, Pair
 from budget.gold.models import (
     CategoryDirection,
     ClassificationReviewItem,
@@ -25,7 +25,7 @@ from budget.gold.models import (
     TransactionType,
     TransferEvidence,
 )
-from budget.gold.transfers import Matching, match_transfers
+from budget.gold.transfers import Matching, date_gap, match_transfers, pair_legs
 from budget.hashing import hash_parts
 from budget.inputs.rules import (
     AssignAdjustment,
@@ -102,11 +102,21 @@ def classify(
         t.transaction_id: _outcome(facts[t.transaction_id], configuration)
         for t in transactions
     }
-    decided = _decided(decisions, facts, by_rule, configuration)
+    claims = {tid: o.rule_ids for tid, o in by_rule.items() if o.claims_transfer}
+    decided = _decided(
+        decisions,
+        _Inputs(
+            {t.transaction_id: t for t in transactions},
+            by_rule,
+            claims,
+            configuration,
+        ),
+    )
     matching = match_transfers(
         transactions,
-        claims={tid: o.rule_ids for tid, o in by_rule.items() if o.claims_transfer},
+        claims=claims,
         closed_on={a.account_id: a.closed_on for a in configuration.accounts.values()},
+        decided=decided.keys(),
     )
     outcomes = [
         (
@@ -142,12 +152,18 @@ def classify(
     )
 
 
-def _decided(
-    decisions: Sequence[GoldDecision],
-    facts: Mapping[str, Transaction],
-    by_rule: Mapping[str, _Outcome],
-    configuration: ConfigurationSnapshot,
-) -> dict[str, _Outcome]:
+@dataclass(frozen=True)
+class _Inputs:
+    """What a decision is applied against, by transaction_id."""
+
+    transactions: Mapping[str, GoldTransaction]
+    by_rule: Mapping[str, _Outcome]
+    # The rules claiming each claimed leg as a transfer.
+    claims: Mapping[str, tuple[str, ...]]
+    configuration: ConfigurationSnapshot
+
+
+def _decided(decisions: Sequence[GoldDecision], inputs: _Inputs) -> dict[str, _Outcome]:
     """Settle each transaction an applicable decision targets (*Precedence*).
 
     The rules that matched stay in the outcome for lineage, though they did
@@ -155,27 +171,51 @@ def _decided(
     """
     decided: dict[str, _Outcome] = {}
     for decision in decisions:
-        match decision:
-            case Classify(transaction_id=tid, category_id=category_id):
-                transaction_type = _category_type(
-                    category_id, facts[tid].amount, configuration
-                )
-                decided[tid] = _Outcome(
+        decided.update(_applied(decision, inputs))
+    return decided
+
+
+def _applied(decision: GoldDecision, inputs: _Inputs) -> dict[str, _Outcome]:
+    """Give each transaction one decision targets its outcome."""
+    match decision:
+        case Classify(transaction_id=tid, category_id=category_id):
+            transaction_type = _category_type(
+                category_id, inputs.transactions[tid].amount, inputs.configuration
+            )
+            return {
+                tid: _Outcome(
                     transaction_type,
                     category_id,
-                    rule_ids=by_rule[tid].rule_ids,
+                    rule_ids=inputs.by_rule[tid].rule_ids,
                     decision_id=decision.decision_id,
                 )
-            case ClassifyAdjustment(transaction_id=tid, reason=reason):
-                decided[tid] = _Outcome(
+            }
+        case ClassifyAdjustment(transaction_id=tid, reason=reason):
+            return {
+                tid: _Outcome(
                     "adjustment",
-                    rule_ids=by_rule[tid].rule_ids,
+                    rule_ids=inputs.by_rule[tid].rule_ids,
                     adjustment_reason=reason,
                     decision_id=decision.decision_id,
                 )
-            case _:
-                pass
-    return decided
+            }
+        case Pair(transaction_ids=(first, second)):
+            out, into = inputs.transactions[first], inputs.transactions[second]
+            legs = pair_legs(
+                out, into, inputs.claims, date_gap(out, into), "manual_pair"
+            )
+            return {
+                tid: _Outcome(
+                    "transfer",
+                    rule_ids=inputs.by_rule[tid].rule_ids,
+                    transfer_group_id=leg.transfer_group_id,
+                    transfer_evidence=leg.evidence,
+                    decision_id=decision.decision_id,
+                )
+                for tid, leg in legs.items()
+            }
+        case _:
+            return {}
 
 
 def _settled(
