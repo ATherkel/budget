@@ -24,8 +24,9 @@ from budget.backups import (
     UnsupportedStoresError,
     back_up,
 )
-from budget.bronze.storage import BRONZE_STAGE, bronze_stage
+from budget.bronze.storage import bronze_stage
 from budget.codeversion import UncommittedCodeError, require_committed_code
+from budget.gold.storage import GOLD_STAGE
 from budget.importing import (
     Coverage,
     ImportLogAheadOfBronzeError,
@@ -70,8 +71,6 @@ from budget.reviewing import REVIEW_KINDS, open_reviews
 from budget.silver.storage import SILVER_STAGE
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
-GOLD_STAGE: Final = "gold"
-STAGES: Final = (BRONZE_STAGE, SILVER_STAGE, GOLD_STAGE)
 EXIT_OK: Final = 0
 EXIT_USAGE: Final = 2
 EXIT_REFUSED_INPUT: Final = 3
@@ -135,7 +134,9 @@ def _parser() -> argparse.ArgumentParser:
     migrate = commands.add_parser(
         "migrate", help="create or upgrade the profile's stores"
     )
-    migrate.add_argument("--stage", choices=STAGES, help="migrate one stage only")
+    migrate.add_argument(
+        "--stage", choices=MIGRATED_STAGES, help="migrate one stage only"
+    )
     migrate.add_argument(
         "--new-store",
         action="store_true",
@@ -146,7 +147,7 @@ def _parser() -> argparse.ArgumentParser:
     rebuild.add_argument(
         "--from",
         dest="from_stage",
-        choices=STAGES,
+        choices=MIGRATED_STAGES,
         default=GOLD_STAGE,
         help="the stage to rebuild from",
     )
