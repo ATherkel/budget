@@ -9,7 +9,7 @@ it numbers them, over the doc's synthetic setup
 from datetime import date
 
 from budget.gold import GoldResult, GoldTransactionLineage, TransactionType
-from budget.gold.decisions import Classify
+from budget.gold.decisions import Classify, ClassifyAdjustment
 from tests.gold.classification_example import CURRENT, booked, classified
 
 
@@ -43,3 +43,21 @@ def test_7_a_manual_decision_beats_a_rule_and_lineage_still_names_the_rule() -> 
         ("r-home",),
     )
     assert list(result.classification_review_items()) == []
+
+
+def test_an_adjustment_decision_gives_an_adjustment_with_the_decisions_reason() -> None:
+    result = classified(
+        booked("netto", CURRENT, date(2026, 2, 2), "-640.00", "NETTO 0412"),
+        decisions=[ClassifyAdjustment("d-0005", "netto", "Opening balance fix")],
+    )
+
+    assert _types(result) == {"netto": "adjustment"}
+    assert (
+        list(result.category_allocations(start_date=date.min, end_date=date.max)) == []
+    )
+    line = _lineage(result, "netto")
+    assert (
+        line.classification_source,
+        line.decision_id,
+        line.adjustment_reason,
+    ) == ("manual", "d-0005", "Opening balance fix")
