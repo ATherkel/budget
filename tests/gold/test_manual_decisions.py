@@ -14,7 +14,13 @@ from budget.gold import (
     TransactionType,
     TransferEvidence,
 )
-from budget.gold.decisions import Classify, ClassifyAdjustment, Pair
+from budget.gold.decisions import (
+    Classify,
+    ClassifyAdjustment,
+    GoldDecision,
+    OneSidedTransfer,
+    Pair,
+)
 from tests.gold.classification_example import CURRENT, SAVINGS, booked, classified
 
 
@@ -101,4 +107,38 @@ def test_12_a_pair_decision_settles_competing_legs_and_frees_the_third() -> None
         ),
     )
     assert _lineage(result, "dentist").classification_source == "rule"
+    assert list(result.classification_review_items()) == []
+
+
+def _before_savings_history(*decisions: GoldDecision) -> GoldResult:
+    """Scenario 16: a transfer into savings before its managed period starts."""
+    return classified(
+        booked("to-savings", CURRENT, date(2025, 12, 15), "-10000.00", "TO SAVINGS"),
+        # joint-savings' first booked transaction starts its managed period.
+        booked("interest", SAVINGS, date(2026, 1, 31), "1.00", "INTEREST"),
+        decisions=decisions,
+    )
+
+
+def test_16_a_one_sided_transfer_has_no_group_and_names_its_counterpart() -> None:
+    result = _before_savings_history(OneSidedTransfer("d-0003", "to-savings", SAVINGS))
+
+    (leg,) = [
+        t
+        for t in result.transactions(start_date=date.min, end_date=date.max)
+        if t.transaction_id == "to-savings"
+    ]
+    assert (leg.transaction_type, leg.transfer_group_id) == ("transfer", None)
+    line = _lineage(result, "to-savings")
+    assert (line.classification_source, line.decision_id, line.transfer_evidence) == (
+        "manual",
+        "d-0003",
+        TransferEvidence(
+            basis="one_sided",
+            counterpart_account_id=SAVINGS,
+            counterpart_transaction_id=None,
+            date_gap_days=None,
+            claim_rule_ids=("r-savings-transfer",),
+        ),
+    )
     assert list(result.classification_review_items()) == []
