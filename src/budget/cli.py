@@ -94,17 +94,6 @@ _STORE_ENVIRONMENT_REFUSALS: Final = (
 )
 
 
-class StageNotBuiltError(Exception):
-    """The named stage has no store in this code yet."""
-
-    def __init__(self, stage: str) -> None:
-        """Name the stage, rather than pretend to migrate it."""
-        super().__init__(
-            f"the {stage} stage is not built yet: only {BRONZE_STAGE} and "
-            f"{SILVER_STAGE} can be migrated"
-        )
-
-
 class NoProfileSelectedError(Exception):
     """Neither `--profile` nor `BUDGET_PROFILE` names a profile file."""
 
@@ -195,9 +184,7 @@ def _selected_profile_file(
 
 
 def _migrate(profile: Profile, stage: str | None, *, new_store: bool) -> None:
-    """Create or upgrade the stores this code has: Bronze and Silver, for now."""
-    if stage is not None and stage not in MIGRATED_STAGES:
-        raise StageNotBuiltError(stage)
+    """Create or upgrade the profile's stores: every stage, or the one named."""
     stages = MIGRATED_STAGES if stage is None else (stage,)
     # Refusals that touch nothing come first; the lock guards the mutation.
     require_migration_allowed(profile, stages=stages, new_store=new_store)
@@ -386,7 +373,6 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         return _refuse(error, EXIT_REFUSED_INPUT)
     except (
         NoProfileSelectedError,
-        StageNotBuiltError,
         RebuildFromStageNotBuiltError,
         UncommittedCodeError,
         WriterLockHeldError,
