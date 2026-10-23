@@ -470,8 +470,8 @@ set holds the Bronze, Silver and Gold stores, each snapshotted through
 SQLite's backup API, so production migrates every stage as development does.
 A missing production store is started only with `--new-store`, only where
 none of the stores it would start is started already, Silver's and Gold's
-only beside a Bronze store a set can hold, and only when no complete backup set holds one
-that could restore it instead. A store file left empty by an interrupted
+only beside a Bronze store a set can hold, and only when no complete backup
+set holds one that could restore it instead. A store file left empty by an interrupted
 start counts as missing: rerunning `--new-store` starts it, or, where an
 earlier stage's store was started, names the `--stage` that starts the rest.
 `budget backup` writes a set of production by hand and prints its name.

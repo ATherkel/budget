@@ -394,8 +394,8 @@ def _require_no_lost_store(profile: Profile) -> None:
 
     Only Silver's and Gold's stores may be missing from a set; Bronze's is
     always snapshotted. A file an interrupted start left empty is missing
-    too, as it is to `_covered_stores`. Only a complete set counts, as for a new store
-    (`migrate`): a damaged one restores nothing.
+    too, as it is to `_covered_stores`. Only a complete set counts, as for a
+    new store (`migrate`): a damaged one restores nothing.
     """
     for store in (silver_stage(profile), gold_stage(profile)):
         if not is_started(store) and complete_set_holds(profile, store.stage):

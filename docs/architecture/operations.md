@@ -828,10 +828,10 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   store, and after every `migrate` that changed anything, a new store
   included; and by `budget backup`. A `migrate` that changes more than one
   store, which it does in the order Bronze, Silver, Gold, takes one set
-  before the first change and one after the last. A
-  migration that changes nothing writes no set. After every `import` that
-  presented a file to Bronze, once Silver is rebuilt; an import whose inbox
-  is empty, or that is not confirmed, writes none. Only production writes
+  before the first change and one after the last. A migration that changes
+  nothing writes no set. After every `import` that presented a file to
+  Bronze, once Silver is rebuilt; an import whose inbox is empty, or that is
+  not confirmed, writes none. Only production writes
   backup sets. What would refuse that set refuses the import before its
   first Bronze write; a set that still cannot be written leaves the imports
   committed, exits 4, and says to run `budget backup`.
