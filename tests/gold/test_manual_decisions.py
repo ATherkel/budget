@@ -142,6 +142,23 @@ def test_a_pair_missing_one_leg_leaves_the_other_as_if_undecided() -> None:
     assert set(line.review_item_ids) == {i.review_item_id for i in items.values()}
 
 
+def _reasons(result: GoldResult) -> dict[str, str | None]:
+    return {i.kind: i.reason for i in result.classification_review_items()}
+
+
+def test_a_category_decision_on_a_zero_amount_is_not_applicable() -> None:
+    result = classified(
+        booked("netto", CURRENT, date(2026, 2, 2), "0.00", "NETTO 0412"),
+        decisions=[Classify("d-0006", "netto", "groceries")],
+    )
+
+    assert _types(result) == {"netto": "unknown"}
+    assert _reasons(result) == {
+        "sign-mismatch": None,
+        "decision-not-applicable": "zero-amount",
+    }
+
+
 def _before_savings_history(*decisions: GoldDecision) -> GoldResult:
     """Scenario 16: a transfer into savings before its managed period starts."""
     return classified(
