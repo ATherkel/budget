@@ -101,7 +101,7 @@ def classify(
     matching = match_transfers(
         transactions,
         claims={tid: o.rule_ids for tid, o in by_rule.items() if o.claims_transfer},
-        account_ids=configuration.accounts.keys(),
+        closed_on={a.account_id: a.closed_on for a in configuration.accounts.values()},
     )
     outcomes = [
         (t, _settled(by_rule[t.transaction_id], t.transaction_id, matching))

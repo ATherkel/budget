@@ -7,7 +7,7 @@ needs a rule's transfer claim on at least one leg, and an unpaired claim stays
 """
 
 from collections import defaultdict
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Literal
@@ -55,13 +55,14 @@ class Matching:
 def match_transfers(
     transactions: Sequence[GoldTransaction],
     claims: Mapping[str, tuple[str, ...]],
-    account_ids: Collection[str],
+    closed_on: Mapping[str, date | None],
 ) -> Matching:
     """Pair the legs that cancel, in stages by date gap (*Stages*).
 
     `claims` maps each claimed leg's transaction_id to the rules claiming it.
-    `account_ids` names every Gold account, including those with no
-    transactions, which may be waiting for their first import.
+    `closed_on` maps every Gold account to its closing date, if any. It
+    includes accounts with no transactions, which may be waiting for their
+    first import.
     """
     paired: dict[str, PairedLeg] = {}
     ambiguous: dict[str, AmbiguousSet] = {}
@@ -83,7 +84,7 @@ def match_transfers(
         paired=paired,
         ambiguous=ambiguous,
         unmatched={
-            t.transaction_id: _unmatched_reason(t, latest, account_ids)
+            t.transaction_id: _unmatched_reason(t, latest, closed_on)
             for t in transactions
             if t.transaction_id in claims
             and t.transaction_id not in paired
@@ -237,17 +238,20 @@ def _latest_dates(transactions: Sequence[GoldTransaction]) -> dict[str, date]:
 def _unmatched_reason(
     leg: GoldTransaction,
     latest: Mapping[str, date],
-    account_ids: Collection[str],
+    closed_on: Mapping[str, date | None],
 ) -> UnmatchedReason:
     """Hint that the other leg may arrive with an account's next import.
 
     Some other account with nothing booked on or after the window's end may
-    simply not be imported that far yet; a quiet account looks the same.
+    simply not be imported that far yet; a quiet account looks the same. An
+    account closed before the window starts can hold no counterpart.
     """
+    window_start = leg.transaction_date - MAX_DATE_GAP
     window_end = leg.transaction_date + MAX_DATE_GAP
     waiting = any(
         account_id != leg.account_id
+        and (closed is None or closed >= window_start)
         and (account_id not in latest or latest[account_id] < window_end)
-        for account_id in account_ids
+        for account_id, closed in closed_on.items()
     )
     return "counterpart-may-not-be-imported" if waiting else "no-candidate"
