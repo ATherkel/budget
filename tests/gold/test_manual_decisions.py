@@ -226,3 +226,18 @@ def test_16_a_one_sided_transfer_has_no_group_and_names_its_counterpart() -> Non
         ),
     )
     assert list(result.classification_review_items()) == []
+
+
+def test_a_one_sided_transfer_inside_the_counterparts_period_is_not_applicable() -> (
+    None
+):
+    # The managed period runs by month: joint-savings' first booking on
+    # 2026-01-31 starts it on 2026-01-01, so 2026-01-15 falls inside it.
+    result = classified(
+        booked("to-savings", CURRENT, date(2026, 1, 15), "-10000.00", "TO SAVINGS"),
+        booked("interest", SAVINGS, date(2026, 1, 31), "1.00", "INTEREST"),
+        decisions=[OneSidedTransfer("d-0003", "to-savings", SAVINGS)],
+    )
+
+    assert _types(result)["to-savings"] == "unknown"
+    assert _not_applicable(result) == (("to-savings",), "inside-managed-period")
