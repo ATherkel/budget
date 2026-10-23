@@ -290,3 +290,90 @@ def test_a_one_sided_transfer_inside_the_counterparts_period_is_not_applicable()
 
     assert _types(result)["to-savings"] == "unknown"
     assert _not_applicable(result) == (("to-savings",), "inside-managed-period")
+
+
+def _every_decision_outcome() -> GoldResult:
+    """Every decision kind, applicable and not, beside rules and matching."""
+    return classified(
+        booked("ikea", CURRENT, date(2026, 2, 7), "-2400.00", "IKEA 551"),
+        booked("fix", CURRENT, date(2026, 2, 9), "-7.25", "ATM 17"),
+        booked("to-savings", CURRENT, date(2026, 3, 5), "-1500.00", "TO SAVINGS"),
+        booked("dentist", CURRENT, date(2026, 3, 5), "-1500.00", "DENTIST 7"),
+        booked("from-current", SAVINGS, date(2026, 3, 5), "1500.00", "FROM CURRENT"),
+        booked("early", CURRENT, date(2025, 12, 15), "-10000.00", "TO SAVINGS"),
+        booked("inside", CURRENT, date(2026, 3, 20), "-300.00", "TO SAVINGS"),
+        booked("zero", CURRENT, date(2026, 2, 2), "0.00", "NETTO 0412"),
+        booked("fee-out", CURRENT, date(2026, 2, 16), "-1000.00", "TO SAVINGS"),
+        booked("fee-in", SAVINGS, date(2026, 2, 16), "995.00", "FROM CURRENT"),
+        booked("netto", CURRENT, date(2026, 2, 2), "-640.00", "NETTO 0412"),
+        booked("return", CURRENT, date(2026, 2, 2), "640.00", "NETTO 0412"),
+        decisions=[
+            Classify("d-0001", "ikea", "gifts"),
+            ClassifyAdjustment("d-0005", "fix", "Opening balance fix"),
+            Pair("d-0002", ("to-savings", "from-current")),
+            OneSidedTransfer("d-0003", "early", SAVINGS),
+            OneSidedTransfer("d-0015", "inside", SAVINGS),
+            Classify("d-0004", "withdrawn-by-bank", "groceries"),
+            Classify("d-0006", "zero", "groceries"),
+            Pair("d-0010", ("fee-out", "fee-in")),
+            Pair("d-0011", ("netto", "return")),
+        ],
+    )
+
+
+def test_every_not_applicable_reason_is_exercised() -> None:
+    reasons = {
+        i.reason
+        for i in _every_decision_outcome().classification_review_items()
+        if i.kind == "decision-not-applicable"
+    }
+
+    assert reasons == {
+        "target-missing",
+        "zero-amount",
+        "amounts-do-not-cancel",
+        "same-account",
+        "inside-managed-period",
+    }
+
+
+def test_invariant_17_a_groupless_transfer_is_one_sided_outside_its_counterpart() -> (
+    None
+):
+    result = _every_decision_outcome()
+    groupless = [
+        t
+        for t in result.transactions(start_date=date.min, end_date=date.max)
+        if t.transaction_type == "transfer" and t.transfer_group_id is None
+    ]
+
+    assert [t.transaction_id for t in groupless] == ["early"]
+    evidence = _lineage(result, "early").transfer_evidence
+    assert evidence is not None
+    # joint-savings' managed period starts in 2026-02, its first booking.
+    assert (evidence.basis, evidence.counterpart_account_id) == ("one_sided", SAVINGS)
+
+
+def test_invariant_19_every_type_traces_to_its_source_and_unknown_to_an_item() -> None:
+    result = _every_decision_outcome()
+    transactions = list(result.transactions(start_date=date.min, end_date=date.max))
+    lineage = {
+        line.transaction_id: line
+        for line in result.transaction_lineage([t.transaction_id for t in transactions])
+    }
+    open_items = {i.review_item_id for i in result.classification_review_items()}
+
+    for transaction in transactions:
+        line = lineage[transaction.transaction_id]
+        if transaction.transaction_type == "unknown":
+            assert line.classification_source == "unclassified", line
+            assert line.review_item_ids, line
+            assert set(line.review_item_ids) <= open_items, line
+        elif line.classification_source == "manual":
+            assert line.decision_id is not None, line
+        else:
+            assert line.decision_id is None, line
+            assert line.classification_source in {"rule", "transfer_match"}, line
+    assert {
+        tid for tid, line in lineage.items() if line.classification_source == "manual"
+    } == {"ikea", "fix", "to-savings", "from-current", "early"}
