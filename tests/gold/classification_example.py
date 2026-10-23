@@ -141,6 +141,7 @@ def classified(
     *transactions: Transaction,
     rules: Mapping[str, Rule] = RULES,
     taxonomy: Taxonomy = TAXONOMY,
+    accounts: Mapping[str, Account] = ACCOUNTS,
 ) -> GoldResult:
     """Run the Gold build over these transactions and the doc's configuration."""
     return build(
@@ -155,7 +156,7 @@ def classified(
             review_items=(),
         ),
         configuration=ConfigurationSnapshot(
-            accounts=ACCOUNTS, taxonomy=taxonomy, rules=rules
+            accounts=accounts, taxonomy=taxonomy, rules=rules
         ),
         publication=PUBLICATION,
         late_booking_window=LATE_BOOKING_WINDOW,

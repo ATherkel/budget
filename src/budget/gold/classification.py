@@ -17,11 +17,14 @@ from budget.gold.models import (
     CategoryDirection,
     ClassificationReviewItem,
     ClassificationReviewKind,
+    ClassificationSource,
     GoldCategoryAllocation,
     GoldTransaction,
     GoldTransactionLineage,
     TransactionType,
+    TransferEvidence,
 )
+from budget.gold.transfers import Matching, match_transfers
 from budget.hashing import hash_parts
 from budget.inputs.rules import (
     AssignAdjustment,
@@ -58,6 +61,16 @@ class _Outcome:
     rule_ids: tuple[str, ...] = ()
     # The explanation an adjustment carries into lineage.
     adjustment_reason: str | None = None
+    # Why the review item was raised, where its kind names reasons.
+    review_reason: str | None = None
+    # Every transaction the review item names, when it is not this one alone.
+    review_transaction_ids: tuple[str, ...] = ()
+    # The rules the review item names, when they are not `rule_ids`.
+    review_rule_ids: tuple[str, ...] | None = None
+    # Whether the winning rule claims the transaction as a transfer leg.
+    claims_transfer: bool = False
+    transfer_group_id: str | None = None
+    transfer_evidence: TransferEvidence | None = None
 
 
 @dataclass(frozen=True)
@@ -81,26 +94,70 @@ def classify(
     transaction's parent row.
     """
     facts = {t.transaction_id: t for t in silver}
+    by_rule = {
+        t.transaction_id: _outcome(facts[t.transaction_id], configuration)
+        for t in transactions
+    }
+    matching = match_transfers(
+        transactions,
+        claims={tid: o.rule_ids for tid, o in by_rule.items() if o.claims_transfer},
+        closed_on={a.account_id: a.closed_on for a in configuration.accounts.values()},
+    )
     outcomes = [
-        (t, _outcome(facts[t.transaction_id], configuration)) for t in transactions
+        (t, _settled(by_rule[t.transaction_id], t.transaction_id, matching))
+        for t in transactions
     ]
     items = {t.transaction_id: _review_item(t, o) for t, o in outcomes}
     version = configuration.fingerprint
     return Classified(
         transactions=tuple(
-            replace(t, transaction_type=o.transaction_type) for t, o in outcomes
+            replace(
+                t,
+                transaction_type=o.transaction_type,
+                transfer_group_id=o.transfer_group_id,
+            )
+            for t, o in outcomes
         ),
         allocations=tuple(
             _allocation(t, o.category_id)
             for t, o in outcomes
             if o.category_id is not None
         ),
-        review_items=tuple(item for item in items.values() if item is not None),
+        review_items=tuple(
+            {i.review_item_id: i for i in items.values() if i is not None}.values()
+        ),
         lineage=tuple(
             _lineage(facts[t.transaction_id], o, version, items[t.transaction_id])
             for t, o in outcomes
         ),
     )
+
+
+def _settled(
+    rule_result: _Outcome, transaction_id: str, matching: Matching
+) -> _Outcome:
+    """Settle a rule result against transfer matching (*Precedence*)."""
+    leg = matching.paired.get(transaction_id)
+    if leg is not None:
+        return _Outcome(
+            "transfer",
+            rule_ids=rule_result.rule_ids,
+            transfer_group_id=leg.transfer_group_id,
+            transfer_evidence=leg.evidence,
+        )
+    held = matching.ambiguous.get(transaction_id)
+    if held is not None:
+        return _Outcome(
+            "unknown",
+            review_kind="ambiguous-transfer",
+            rule_ids=rule_result.rule_ids,
+            review_rule_ids=held.claim_rule_ids,
+            review_transaction_ids=held.transaction_ids,
+        )
+    reason = matching.unmatched.get(transaction_id)
+    if reason is None:
+        return rule_result
+    return replace(rule_result, review_reason=reason)
 
 
 def _lineage(
@@ -116,14 +173,17 @@ def _lineage(
     version.
     """
     decided = bool(outcome.rule_ids) and outcome.transaction_type != "unknown"
+    source: ClassificationSource = "rule" if decided else "unclassified"
+    if outcome.transfer_evidence is not None:
+        source = "transfer_match"
     return GoldTransactionLineage(
         transaction_id=silver.transaction_id,
         silver_transaction_id=silver.transaction_id,
-        classification_source="rule" if decided else "unclassified",
+        classification_source=source,
         rule_ids=outcome.rule_ids,
         decision_id=None,
         classification_version=classification_version,
-        transfer_evidence=None,
+        transfer_evidence=outcome.transfer_evidence,
         review_item_ids=() if review_item is None else (review_item.review_item_id,),
         adjustment_reason=outcome.adjustment_reason,
     )
@@ -161,7 +221,12 @@ def _outcome(
         case AssignAdjustment(reason=reason):
             return _Outcome("adjustment", rule_ids=rule_ids, adjustment_reason=reason)
         case _:
-            return _Outcome("unknown", rule_ids=rule_ids)
+            return _Outcome(
+                "unknown",
+                review_kind="unmatched-transfer",
+                rule_ids=rule_ids,
+                claims_transfer=True,
+            )
 
 
 def _matches(when: RuleConditions, transaction: Transaction) -> bool:
@@ -229,11 +294,16 @@ def _review_item(
     if outcome.review_kind is None:
         return None
 
+    transaction_ids = outcome.review_transaction_ids or (transaction.transaction_id,)
     return ClassificationReviewItem(
-        review_item_id=hash_parts([outcome.review_kind, transaction.transaction_id]),
+        review_item_id=hash_parts([outcome.review_kind, *transaction_ids]),
         kind=outcome.review_kind,
-        transaction_ids=(transaction.transaction_id,),
-        rule_ids=outcome.rule_ids or (),
+        transaction_ids=transaction_ids,
+        rule_ids=(
+            outcome.rule_ids
+            if outcome.review_rule_ids is None
+            else outcome.review_rule_ids
+        ),
         decision_id=None,
-        reason=None,
+        reason=outcome.review_reason,
     )
