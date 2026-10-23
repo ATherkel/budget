@@ -1190,6 +1190,10 @@ class ProductionImportTests(unittest.TestCase):
             "uncommitted code": (EXIT_REFUSED_ENVIRONMENT, "uncommitted"),
             "a decision": (EXIT_REFUSED_INPUT, "decisions.jsonl"),
             "a store no set covers": (EXIT_REFUSED_ENVIRONMENT, "holds gold,"),
+            "a lost Gold store": (
+                EXIT_REFUSED_ENVIRONMENT,
+                "Gold store must be restored",
+            ),
         }
         for case, (expected, named) in cases.items():
             with self.subTest(case), TemporaryDirectory() as directory:
@@ -1213,6 +1217,10 @@ class ProductionImportTests(unittest.TestCase):
                 if case == "a store no set covers":
                     # Gold's legacy extracts, which no set covers yet.
                     (profile.stores / "gold").mkdir()
+                if case == "a lost Gold store":
+                    # The set `migrate --new-store` wrote holds Gold.
+                    for lost in profile.stores.glob("gold.db*"):
+                        lost.unlink()
 
                 with mock.patch("subprocess.run", return_value=git):
                     status, stdout, stderr = import_(
