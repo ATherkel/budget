@@ -118,6 +118,23 @@ def holding_silver(profile: Profile) -> sqlite3.Connection:
     return connection
 
 
+def holding_gold(profile: Profile) -> sqlite3.Connection:
+    """Open a reader on the live Gold store, as `holding` does for Bronze."""
+    connection = sqlite3.connect(profile.gold_store)
+    connection.execute("SELECT count(*) FROM publications").fetchone()
+    return connection
+
+
+def gold_publications(store: Path) -> list[int]:
+    """The publication ids a Gold store file holds, unchanged."""
+    uri = f"{store.as_uri()}?mode=ro&immutable=1"
+    with closing(sqlite3.connect(uri, uri=True)) as connection:
+        rows = connection.execute(
+            "SELECT publication_id FROM publications ORDER BY publication_id"
+        )
+        return [int(row[0]) for row in rows]
+
+
 def add_silver_currency(profile: Profile, account_id: str, currency: str) -> None:
     """Commit one row to the live Silver store, as a build would."""
     with closing(sqlite3.connect(profile.silver_store)) as connection:

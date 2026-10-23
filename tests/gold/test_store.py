@@ -2,9 +2,11 @@
 """`GoldStore`: the publications `gold.db` holds, served as `GoldPublications`.
 
 Every store is the test profile's, in a temporary folder, created by
-`migrate_gold`. All data is the synthetic worked example.
+`migrate_gold`, or held, empty or migrated, by a second connection to show
+that the migration refuses it. All data is the synthetic worked example.
 """
 
+import re
 import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import closing
@@ -15,15 +17,14 @@ from pathlib import Path
 
 import pytest
 
+from budget import sqlstore
 from budget.gold import (
-    GoldPublication,
     GoldPublications,
     GoldRepository,
     GoldResult,
     PublicationUnavailableError,
 )
 from budget.gold.models import ReportingMonth
-from budget.gold.recipe import Recipe, RecipeImportRun
 from budget.gold.storage import migrate_gold, open_gold_connection
 from budget.gold.store import (
     ConfigurationMismatchError,
@@ -33,11 +34,13 @@ from budget.gold.store import (
     PublicationKindError,
     StaleResultsWarning,
 )
-from budget.inputs import ConfigurationSnapshot
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 from budget.silver import MoneyPrecisionError
+from budget.sqlstore import StoreBusyError
+from tests.bronze.migration_resources import GOLD_MIGRATIONS, added_migration
 from tests.gold.contract import GoldRepositoryContract
+from tests.gold.publishing import CONFIGURATION, RECIPE, publication, publish
 from tests.gold.worked_example import (
     CATEGORY_ALLOCATIONS,
     MONTHLY_BALANCES,
@@ -45,37 +48,7 @@ from tests.gold.worked_example import (
     RECORDS,
     SAVINGS,
 )
-from tests.gold.worked_silver import REGISTRY, TAXONOMY
-
-CONFIGURATION = ConfigurationSnapshot(accounts=REGISTRY, taxonomy=TAXONOMY, rules={})
-RECIPE = Recipe(
-    import_runs=frozenset(
-        {
-            RecipeImportRun("run-current", "a" * 64),
-            RecipeImportRun("run-savings", "b" * 64),
-        }
-    ),
-    configuration_fingerprint=CONFIGURATION.fingerprint,
-    decision_log_position=0,
-    decision_log_prefix_sha256="c" * 64,
-    code_version=None,
-    contract_version="0.2",
-    silver_identity_version="1",
-    python_version="3.12.14",
-    sqlite_version="3.53.1",
-)
-
-
-def publication(publication_id: int) -> GoldPublication:
-    """The worked example's publication metadata, under another id."""
-    return replace(PUBLICATION, publication_id=publication_id)
-
-
-def publish(store: GoldStore, publication_id: int) -> GoldPublication:
-    """Publish the worked example as `publication_id`, and return its metadata."""
-    published = publication(publication_id)
-    store.publish(GoldResult(published, RECORDS), RECIPE, CONFIGURATION)
-    return published
+from tests.gold.worked_silver import TAXONOMY
 
 
 @pytest.fixture
@@ -264,6 +237,56 @@ def test_a_repository_whose_result_is_deleted_refuses_to_read(
 
     with pytest.raises(PublicationUnavailableError):
         read(pinned)
+
+
+@pytest.fixture
+def short_busy_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Wait 100 ms for a held store instead of the real five seconds."""
+    monkeypatch.setattr(sqlstore, "BUSY_TIMEOUT_MS", 100)
+
+
+@pytest.mark.usefixtures("short_busy_timeout")
+def test_migrate_refuses_a_gold_store_another_program_holds(tmp_path: Path) -> None:
+    # Such as DB Browser for SQLite, left open in a write transaction.
+    profile = make_test_profile(tmp_path)
+    profile.gold_store.parent.mkdir(parents=True)
+    with closing(sqlite3.connect(profile.gold_store, isolation_level=None)) as holder:
+        holder.execute("BEGIN EXCLUSIVE")
+
+        with pytest.raises(
+            StoreBusyError, match=f"{re.escape(str(profile.gold_store))} is in use"
+        ):
+            migrate_gold(profile)
+
+        holder.execute("ROLLBACK")
+    assert profile.gold_store.read_bytes() == b""
+
+
+@pytest.mark.usefixtures("short_busy_timeout")
+def test_migrate_refuses_to_upgrade_a_gold_store_another_program_writes_to(
+    profile: Profile,
+) -> None:
+    # A migrated store is in WAL mode, where a writer leaves reads open: the
+    # refusal comes only when the pending migration starts to write.
+    store = profile.gold_store
+    with closing(sqlite3.connect(store)) as reader:
+        version = reader.execute("PRAGMA user_version").fetchone()[0]
+    with (
+        closing(sqlite3.connect(store, isolation_level=None)) as holder,
+        added_migration(
+            "CREATE TABLE marker (x TEXT) STRICT;\n", folder=GOLD_MIGRATIONS
+        ),
+    ):
+        holder.execute("BEGIN IMMEDIATE")
+
+        with pytest.raises(StoreBusyError, match=f"{re.escape(str(store))} is in use"):
+            migrate_gold(profile)
+
+        holder.execute("ROLLBACK")
+    with closing(sqlite3.connect(store)) as reader:
+        assert reader.execute("PRAGMA user_version").fetchone()[0] == version
+        tables = reader.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        assert "marker" not in {name for (name,) in tables}
 
 
 def test_a_busy_cleanup_after_a_publish_still_publishes(

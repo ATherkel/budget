@@ -20,6 +20,7 @@ from budget.routine_logging import LOG_FILE, LOG_FOLDER
 from budget.silver import SilverStore
 from tests.backups.sets import manifest, run_ids
 from tests.cli.commands import import_, migrate
+from tests.cli.imports import clean_git, write_ranges
 from tests.cli.profile_files import development_profile, write_profile
 from tests.importing.households import (
     ACCOUNTS,
@@ -72,31 +73,6 @@ def _silver_build_state(profile: Profile) -> tuple[bytes, int]:
     return profile.silver_store.read_bytes(), profile.silver_store.stat().st_mtime_ns
 
 
-def _clean_git() -> mock.Mock:
-    """A finished Git call reporting a clean, tracked checkout."""
-    completed = mock.Mock()
-    completed.returncode = 0
-    completed.stdout = ""
-    completed.stderr = ""
-    return completed
-
-
-def _ranges(
-    folder: Path,
-    default: tuple[str, str] | None = None,
-    accounts: dict[str, tuple[str, str]] | None = None,
-) -> Path:
-    """Write a ranges file: a default range and per-account ranges."""
-    lines = ["format = 1"]
-    if default is not None:
-        lines += ["", "[default]", f"from = {default[0]}", f"through = {default[1]}"]
-    for account_id, (start, end) in (accounts or {}).items():
-        lines += ["", f"[account.{account_id}]", f"from = {start}", f"through = {end}"]
-    path = folder / "ranges.toml"
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return path
-
-
 class ImportCommandTests(unittest.TestCase):
     def test_an_inbox_export_is_imported_then_silver_is_rebuilt(self) -> None:
         with TemporaryDirectory() as directory:
@@ -105,7 +81,7 @@ class ImportCommandTests(unittest.TestCase):
             profile = _household(profile_file, folder)
             content = payload("01.03.2026")
             source = drop(profile, "joint-current", "danske-20260305.csv", content)
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
             status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
@@ -138,7 +114,7 @@ class ImportCommandTests(unittest.TestCase):
             stored = drop(
                 profile, "joint-savings", "danske-20260305.csv", payload("02.03.2026")
             )
-            ranges = _ranges(
+            ranges = write_ranges(
                 folder,
                 accounts={
                     "joint-current": ("2026-03-02", "2026-03-04"),
@@ -180,7 +156,7 @@ class ImportCommandTests(unittest.TestCase):
             )
             # A folder accounts.toml does not name declares no account.
             no_account = drop(profile, "lost-folder", "danske-20260305.csv", content)
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
             status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
@@ -217,7 +193,7 @@ class ImportCommandTests(unittest.TestCase):
             content = payload("01.03.2026")
             locked = drop(profile, "joint-current", "danske-20260305.csv", content)
             stored = drop(profile, "joint-savings", "danske-20260305.csv", content)
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
             # Windows refuses every read of a file another program holds
             # without sharing it.
             read_bytes = Path.read_bytes
@@ -250,7 +226,7 @@ class ImportCommandTests(unittest.TestCase):
             profile.inbox.mkdir(parents=True)
             stray = profile.inbox / "danske-20260305.csv"
             stray.write_bytes(content)
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
             status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
@@ -271,7 +247,7 @@ class ImportCommandTests(unittest.TestCase):
             nested = profile.inbox / "joint-current" / "old" / "danske-20260305.csv"
             nested.parent.mkdir(parents=True)
             nested.write_bytes(content)
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
             status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
@@ -297,7 +273,7 @@ class ImportCommandTests(unittest.TestCase):
                 payload("01.03.2026", "02.03.2026"),
             )
             drop(profile, "joint-savings", "danske-20260305.csv", payload("01.03.2026"))
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
             status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
@@ -324,7 +300,7 @@ class ImportCommandTests(unittest.TestCase):
             stored = drop(
                 profile, "joint-savings", "danske-20260305.csv", payload("01.03.2026")
             )
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
             reason = source_parser("danske-csv-v1").parse(content).failure_reason
             assert reason is not None
 
@@ -351,7 +327,7 @@ class ImportCommandTests(unittest.TestCase):
             drop(profile, "joint-current", stored_name, payload("01.03.2026"))
             # Refused: a transaction falls after the declared range ends.
             drop(profile, "joint-savings", stored_name, payload("05.03.2026"))
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
             status, summary, stderr = import_(profile_file, "--ranges", str(ranges))
 
@@ -398,7 +374,7 @@ class ImportCommandTests(unittest.TestCase):
             source = drop(
                 profile, "joint-current", "danske-20260305.csv", payload("01.03.2026")
             )
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
             # Windows refuses to delete a file another program holds open.
             unlink = Path.unlink
 
@@ -439,7 +415,7 @@ class ImportCommandTests(unittest.TestCase):
             second = drop(
                 profile, "joint-savings", "danske-20260305.csv", savings_content
             )
-            ranges = _ranges(
+            ranges = write_ranges(
                 folder, accounts={"joint-current": ("2026-03-01", "2026-03-04")}
             )
 
@@ -622,7 +598,7 @@ class DuplicateIncidentTests(unittest.TestCase):
             content = payload("01.03.2026")
             current = drop(profile, "joint-current", "danske-20260305.csv", content)
             savings = drop(profile, "joint-savings", "danske-20260305.csv", content)
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
             status, stdout, stderr = import_(
                 profile_file, "--ranges", str(ranges), typed="n\n", terminal=True
@@ -664,7 +640,7 @@ class DuplicateIncidentTests(unittest.TestCase):
             savings = drop(profile, "joint-savings", "danske-20260305.csv", content)
             clean_content = payload("02.03.2026")
             clean = drop(profile, "joint-savings", "danske-20260310.csv", clean_content)
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
             status, stdout, stderr = import_(
                 profile_file, "--ranges", str(ranges), typed="y\n", terminal=True
@@ -710,7 +686,7 @@ class DuplicateIncidentTests(unittest.TestCase):
                 profile, "joint-current", "Konto-0099999999-20260305.csv", content
             )
             readable = drop(profile, "joint-savings", "danske-20260305.csv", content)
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
             status, stdout, stderr = import_(
                 profile_file, "--ranges", str(ranges), typed="y\n", terminal=True
@@ -834,7 +810,7 @@ class DuplicateIncidentTests(unittest.TestCase):
             content = payload("01.03.2026")
             current = drop(profile, "joint-current", "danske-20260305.csv", content)
             savings = drop(profile, "joint-savings", "danske-20260305.csv", content)
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
             # Another program takes joint-current's file after the preview read
             # it, so only a preflight that reads the bytes a second time loses
             # the group. The bytes already read are the evidence.
@@ -906,7 +882,7 @@ class DuplicateIncidentTests(unittest.TestCase):
             profile = _household(profile_file, folder)
             content = payload("05.03.2026")
             source = drop(profile, "joint-current", "danske-20260305.csv", content)
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
             status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
@@ -965,7 +941,7 @@ class DuplicateIncidentCoverageTests(unittest.TestCase):
             # incident, however many copies are saved.
             drop(profile, "joint-savings", "danske-20260310.csv", repeat)
             drop(profile, "joint-savings", "danske-20260311.csv", repeat)
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
             status, stdout, stderr = import_(
                 profile_file, "--ranges", str(ranges), typed="y\n", terminal=True
@@ -992,7 +968,7 @@ class DuplicateIncidentCoverageTests(unittest.TestCase):
             drop(profile, "joint-current", "danske-20260305.csv", content)
             held = drop(profile, "joint-current", "danske-20260306.csv", content)
             drop(profile, "joint-savings", "danske-20260305.csv", content)
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
             read_bytes = Path.read_bytes
 
             def held_by_another_program(path: Path) -> bytes:
@@ -1028,7 +1004,7 @@ class DuplicateIncidentLogTests(unittest.TestCase):
             # count is of the group and not of the outcome it was shown under.
             drop(profile, "joint-current", "Konto-0099999999-20260305.csv", content)
             drop(profile, "joint-savings", "danske-20260305.csv", content)
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
             status, stdout, stderr = import_(
                 profile_file, "--ranges", str(ranges), typed="y\n", terminal=True
@@ -1076,10 +1052,10 @@ class ProductionImportTests(unittest.TestCase):
             profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
             sets_before = _set_names(profile)
             drop(profile, "joint-current", "danske-20260305.csv", payload("01.03.2026"))
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
             # Production builds only from committed code; Git is the boundary.
-            with mock.patch("subprocess.run", return_value=_clean_git()):
+            with mock.patch("subprocess.run", return_value=clean_git()):
                 status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
             assert (status, stderr) == (EXIT_OK, "")
@@ -1089,7 +1065,7 @@ class ProductionImportTests(unittest.TestCase):
             backup_set = profile.backup_path(written)
             stores = manifest(backup_set)["stores"]
             assert isinstance(stores, dict)
-            assert set(stores) == {"bronze", "silver"}
+            assert set(stores) == {"bronze", "silver", "gold"}
             assert run_ids(backup_set / "bronze.db") == [entry["import_run_id"]]
 
     def test_a_backup_that_fails_after_the_imports_says_what_was_done(
@@ -1105,7 +1081,7 @@ class ProductionImportTests(unittest.TestCase):
             source = drop(
                 profile, "joint-current", "danske-20260305.csv", payload("01.03.2026")
             )
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
             # The clock names the set after a folder that already exists, and
             # a set never replaces another, so it cannot be written.
             profile.backup_path(NOW.strftime("%Y-%m-%dT%H-%M-%S.%fZ")).mkdir()
@@ -1113,7 +1089,7 @@ class ProductionImportTests(unittest.TestCase):
             clock.now.return_value = NOW
 
             with (
-                mock.patch("subprocess.run", return_value=_clean_git()),
+                mock.patch("subprocess.run", return_value=clean_git()),
                 mock.patch("budget.inbox.datetime", clock),
             ):
                 status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
@@ -1141,14 +1117,14 @@ class ProductionImportTests(unittest.TestCase):
                 profile.inputs.mkdir(parents=True, exist_ok=True)
                 profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
                 (profile.inbox / "joint-current").mkdir(parents=True)
-                _ranges(folder, default=("2026-03-01", "2026-03-04"))
+                write_ranges(folder, default=("2026-03-01", "2026-03-04"))
                 sets_before = _set_names(profile)
                 options = [
                     str(folder / option) if option.endswith(".toml") else option
                     for option in mode
                 ]
 
-                with mock.patch("subprocess.run", return_value=_clean_git()):
+                with mock.patch("subprocess.run", return_value=clean_git()):
                     status, stdout, stderr = import_(profile_file, *options)
 
                 assert (status, stderr) == (EXIT_OK, "")
@@ -1168,9 +1144,9 @@ class ProductionImportTests(unittest.TestCase):
             sets_before = _set_names(profile)
             content = payload("01.03.2026")
             drop(profile, "lost-folder", "danske-20260305.csv", content)
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
-            with mock.patch("subprocess.run", return_value=_clean_git()):
+            with mock.patch("subprocess.run", return_value=clean_git()):
                 status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
             assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
@@ -1194,9 +1170,9 @@ class ProductionImportTests(unittest.TestCase):
             sets_before = _set_names(profile)
             content = payload("01.03.2026")
             source = drop(profile, "joint-current", "danske-20260305.csv", content)
-            ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
-            with mock.patch("subprocess.run", return_value=_clean_git()):
+            with mock.patch("subprocess.run", return_value=clean_git()):
                 status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
             assert status == EXIT_REFUSED_INPUT
@@ -1213,7 +1189,11 @@ class ProductionImportTests(unittest.TestCase):
         cases = {
             "uncommitted code": (EXIT_REFUSED_ENVIRONMENT, "uncommitted"),
             "a decision": (EXIT_REFUSED_INPUT, "decisions.jsonl"),
-            "a store no set covers": (EXIT_REFUSED_ENVIRONMENT, "gold.db"),
+            "a store no set covers": (EXIT_REFUSED_ENVIRONMENT, "holds gold,"),
+            "a lost Gold store": (
+                EXIT_REFUSED_ENVIRONMENT,
+                "Gold store must be restored",
+            ),
         }
         for case, (expected, named) in cases.items():
             with self.subTest(case), TemporaryDirectory() as directory:
@@ -1226,8 +1206,8 @@ class ProductionImportTests(unittest.TestCase):
                 sets_before = _set_names(profile)
                 content = payload("01.03.2026")
                 source = drop(profile, "joint-current", "danske-20260305.csv", content)
-                ranges = _ranges(folder, default=("2026-03-01", "2026-03-04"))
-                git = _clean_git()
+                ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
+                git = clean_git()
                 if case == "uncommitted code":
                     git.stdout = " M src/budget/cli.py\n"
                 if case == "a decision":
@@ -1235,7 +1215,12 @@ class ProductionImportTests(unittest.TestCase):
                         '{"decision_id": "d-0001"}\n', encoding="utf-8"
                     )
                 if case == "a store no set covers":
-                    (profile.stores / "gold.db").write_bytes(b"")
+                    # Gold's legacy extracts, which no set covers yet.
+                    (profile.stores / "gold").mkdir()
+                if case == "a lost Gold store":
+                    # The set `migrate --new-store` wrote holds Gold.
+                    for lost in profile.stores.glob("gold.db*"):
+                        lost.unlink()
 
                 with mock.patch("subprocess.run", return_value=git):
                     status, stdout, stderr = import_(

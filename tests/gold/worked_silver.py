@@ -156,6 +156,7 @@ def build_from(
         configuration=ConfigurationSnapshot(
             accounts=accounts, taxonomy=TAXONOMY, rules={}
         ),
+        decisions=(),
         publication=PUBLICATION,
         late_booking_window=late_booking_window,
     )

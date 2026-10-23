@@ -93,7 +93,8 @@ own facts. Only transfer matching relates transactions to each other.
   equate "ß" with "SS".
 - amount: sign, or an inclusive range
 - transaction date: an inclusive range
-- the bank's category labels, where the source supplies them
+- the bank's category labels, where the source supplies them, compared after
+  the same case folding, so `Groceries` matches `GROCERIES`
 
 Bank category labels are provenance. A rule may test them, but they never
 become Gold categories on their own and no fallback copies them: Danske files
@@ -180,7 +181,8 @@ An unpaired leg whose rule result is a transfer claim is `unknown`, with an
 - `counterpart-may-not-be-imported`: some other Gold account has no booked
   transaction on or after the leg's transaction date plus 3 days, so the other
   leg may arrive with the next import. This is only a hint: a quiet account
-  also triggers it.
+  also triggers it. A Gold account closed before the leg's transaction date
+  minus 3 days doesn't count, because no counterpart can fall there.
 - `no-candidate`: otherwise.
 
 A transfer that loses a fee, such as 1,000.00 out and 995.00 in, never pairs,
@@ -221,6 +223,16 @@ A manual decision is a recorded human ruling. Classification uses three kinds:
 - A decision that is not applicable changes nothing: the transaction is
   classified as if the decision did not exist, and a `decision-not-applicable`
   review item names it. Gold never moves a decision to a similar transaction.
+  The item's reason names the condition that failed: `target-missing`,
+  `zero-amount` (a category meets a zero amount), `amounts-do-not-cancel`,
+  `same-account`, or `inside-managed-period`. It lists the decision's targets
+  still present, so none when a single target is missing.
+- A one-sided transfer's managed-period test runs by month: the counterpart's
+  managed period runs from the month of its first booked transaction to the
+  month of its `closed_on`, if any. An account with no booked transaction has
+  no managed period yet. The period's other end, the latest published month,
+  never matters here: a transaction's own account has evidence through its
+  date, so no transaction date falls after that month.
 
 Review items are never marked resolved. A decision removes the cause, and the
 item disappears on the next build.
