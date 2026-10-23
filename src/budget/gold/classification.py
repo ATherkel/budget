@@ -1,18 +1,29 @@
 # Copyright 2026 Therkel
-"""Classification by rules: each transaction's type and its one allocation.
+"""Classification: each transaction's type and its one allocation.
 
-The highest-priority matching rule decides (`classification.md`, *Precedence*;
-ADR-011). A category's type follows from its direction and the amount's sign,
+An applicable manual decision decides first, then a transfer pair, then the
+highest-priority matching rule (`classification.md`, *Precedence*; ADR-011).
+A category's type follows from its direction and the amount's sign,
 and a classified transaction has one allocation for its whole amount (ADR-008).
 """
 
+import json
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import date
 from decimal import Decimal
 from types import MappingProxyType
 from typing import Literal
 
+from budget.gold.decisions import (
+    Classify,
+    ClassifyAdjustment,
+    GoldDecision,
+    OneSidedTransfer,
+    Pair,
+    log_kind,
+    targets,
+)
 from budget.gold.models import (
     CategoryDirection,
     ClassificationReviewItem,
@@ -21,10 +32,11 @@ from budget.gold.models import (
     GoldCategoryAllocation,
     GoldTransaction,
     GoldTransactionLineage,
+    ReportingMonth,
     TransactionType,
     TransferEvidence,
 )
-from budget.gold.transfers import Matching, match_transfers
+from budget.gold.transfers import Matching, date_gap, match_transfers, pair_legs
 from budget.hashing import hash_parts
 from budget.inputs.rules import (
     AssignAdjustment,
@@ -71,6 +83,8 @@ class _Outcome:
     claims_transfer: bool = False
     transfer_group_id: str | None = None
     transfer_evidence: TransferEvidence | None = None
+    # The manual decision that decided, if one did.
+    decision_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -87,6 +101,7 @@ def classify(
     transactions: Sequence[GoldTransaction],
     silver: Iterable[Transaction],
     configuration: ConfigurationSnapshot,
+    decisions: Sequence[GoldDecision],
 ) -> Classified:
     """Type each transaction, allocate each classified one whole, and raise items.
 
@@ -98,17 +113,33 @@ def classify(
         t.transaction_id: _outcome(facts[t.transaction_id], configuration)
         for t in transactions
     }
+    claims = {tid: o.rule_ids for tid, o in by_rule.items() if o.claims_transfer}
+    decided = _decided(
+        decisions,
+        _Inputs(
+            {t.transaction_id: t for t in transactions},
+            by_rule,
+            claims,
+            configuration,
+        ),
+    )
     matching = match_transfers(
         transactions,
-        claims={tid: o.rule_ids for tid, o in by_rule.items() if o.claims_transfer},
+        claims=claims,
         closed_on={a.account_id: a.closed_on for a in configuration.accounts.values()},
+        decided=decided.outcomes.keys(),
     )
     outcomes = [
-        (t, _settled(by_rule[t.transaction_id], t.transaction_id, matching))
+        (
+            t,
+            _settled(by_rule[t.transaction_id], t.transaction_id, matching)
+            if (manual := decided.outcomes.get(t.transaction_id)) is None
+            else manual,
+        )
         for t in transactions
     ]
     items = {t.transaction_id: _review_item(t, o) for t, o in outcomes}
-    version = configuration.fingerprint
+    version = _classification_version(configuration, decisions)
     return Classified(
         transactions=tuple(
             replace(
@@ -123,14 +154,199 @@ def classify(
             for t, o in outcomes
             if o.category_id is not None
         ),
-        review_items=tuple(
-            {i.review_item_id: i for i in items.values() if i is not None}.values()
+        review_items=(
+            *{i.review_item_id: i for i in items.values() if i is not None}.values(),
+            *decided.not_applicable,
         ),
         lineage=tuple(
-            _lineage(facts[t.transaction_id], o, version, items[t.transaction_id])
+            _lineage(
+                facts[t.transaction_id],
+                o,
+                version,
+                (items[t.transaction_id], *decided.not_applicable),
+            )
             for t, o in outcomes
         ),
     )
+
+
+def _classification_version(
+    configuration: ConfigurationSnapshot, decisions: Sequence[GoldDecision]
+) -> str:
+    """Fingerprint the classification inputs (`publications.md`).
+
+    They are the configuration snapshot and the effective decisions, each
+    decision written as its decision-log kind and fields, in any order.
+    """
+    return hash_parts(
+        [
+            configuration.fingerprint,
+            *sorted(
+                json.dumps([log_kind(d), asdict(d)], sort_keys=True) for d in decisions
+            ),
+        ]
+    )
+
+
+@dataclass(frozen=True)
+class _Inputs:
+    """What a decision is applied against, by transaction_id."""
+
+    transactions: Mapping[str, GoldTransaction]
+    by_rule: Mapping[str, _Outcome]
+    # The rules claiming each claimed leg as a transfer.
+    claims: Mapping[str, tuple[str, ...]]
+    configuration: ConfigurationSnapshot
+
+
+@dataclass(frozen=True)
+class _Decided:
+    """The outcomes applicable decisions give, and the items the rest raise."""
+
+    outcomes: Mapping[str, _Outcome]
+    not_applicable: tuple[ClassificationReviewItem, ...]
+
+
+def _decided(decisions: Sequence[GoldDecision], inputs: _Inputs) -> _Decided:
+    """Settle each transaction an applicable decision targets (*Precedence*).
+
+    The rules that matched stay in the outcome for lineage, though they did
+    not decide. A decision that is not applicable changes nothing and raises
+    a `decision-not-applicable` item naming it (*Manual Decisions*).
+    """
+    outcomes: dict[str, _Outcome] = {}
+    not_applicable: list[ClassificationReviewItem] = []
+    for decision in decisions:
+        reason = _inapplicable(decision, inputs)
+        if reason is None:
+            outcomes.update(_applied(decision, inputs))
+        else:
+            not_applicable.append(_not_applicable_item(decision, reason, inputs))
+    return _Decided(outcomes, tuple(not_applicable))
+
+
+def _inapplicable(decision: GoldDecision, inputs: _Inputs) -> str | None:
+    """Say why a decision does not apply, or `None` when it does."""
+    if any(tid not in inputs.transactions for tid in targets(decision)):
+        return "target-missing"
+    match decision:
+        case Classify(transaction_id=tid):
+            if _sign(inputs.transactions[tid].amount) is None:
+                return "zero-amount"
+        case Pair(transaction_ids=(first, second)):
+            out, into = inputs.transactions[first], inputs.transactions[second]
+            if out.amount + into.amount != 0:
+                return "amounts-do-not-cancel"
+            if out.account_id == into.account_id:
+                return "same-account"
+        case OneSidedTransfer(transaction_id=tid, counterpart_account_id=account_id):
+            if _managed_in(
+                account_id, inputs.transactions[tid].transaction_date, inputs
+            ):
+                return "inside-managed-period"
+        case _:
+            pass
+    return None
+
+
+def _managed_in(account_id: str, day: date, inputs: _Inputs) -> bool:
+    """Say whether the day's month is in the account's managed period.
+
+    The period runs from the month of the account's first booked transaction
+    to the month of `closed_on`, if any (`gold-contract.md`,
+    *MonthlyBalanceSnapshot*); an account with none has no period yet. Its cap
+    at the latest published month never binds: no transaction falls after it.
+    """
+    booked = [
+        t.transaction_date
+        for t in inputs.transactions.values()
+        if t.account_id == account_id
+    ]
+    if not booked:
+        return False
+    month = ReportingMonth.of(day)
+    closed_on = inputs.configuration.accounts[account_id].closed_on
+    return ReportingMonth.of(min(booked)) <= month and (
+        closed_on is None or month <= ReportingMonth.of(closed_on)
+    )
+
+
+def _not_applicable_item(
+    decision: GoldDecision, reason: str, inputs: _Inputs
+) -> ClassificationReviewItem:
+    """Raise the item naming a decision that is not applicable.
+
+    It names the targets still present; none when a single target is missing.
+    """
+    present = tuple(tid for tid in targets(decision) if tid in inputs.transactions)
+    kind: ClassificationReviewKind = "decision-not-applicable"
+    return ClassificationReviewItem(
+        review_item_id=hash_parts([kind, decision.decision_id, *present]),
+        kind=kind,
+        transaction_ids=present,
+        rule_ids=(),
+        decision_id=decision.decision_id,
+        reason=reason,
+    )
+
+
+def _applied(decision: GoldDecision, inputs: _Inputs) -> dict[str, _Outcome]:
+    """Give each transaction one decision targets its outcome."""
+    match decision:
+        case Classify(transaction_id=tid, category_id=category_id):
+            transaction_type = _category_type(
+                category_id, inputs.transactions[tid].amount, inputs.configuration
+            )
+            return {
+                tid: _Outcome(
+                    transaction_type,
+                    category_id,
+                    rule_ids=inputs.by_rule[tid].rule_ids,
+                    decision_id=decision.decision_id,
+                )
+            }
+        case ClassifyAdjustment(transaction_id=tid, reason=reason):
+            return {
+                tid: _Outcome(
+                    "adjustment",
+                    rule_ids=inputs.by_rule[tid].rule_ids,
+                    adjustment_reason=reason,
+                    decision_id=decision.decision_id,
+                )
+            }
+        case Pair(transaction_ids=(first, second)):
+            out, into = inputs.transactions[first], inputs.transactions[second]
+            legs = pair_legs(
+                out, into, inputs.claims, date_gap(out, into), "manual_pair"
+            )
+            return {
+                tid: _Outcome(
+                    "transfer",
+                    rule_ids=inputs.by_rule[tid].rule_ids,
+                    transfer_group_id=leg.transfer_group_id,
+                    transfer_evidence=leg.evidence,
+                    decision_id=decision.decision_id,
+                )
+                for tid, leg in legs.items()
+            }
+        case OneSidedTransfer(
+            transaction_id=tid, counterpart_account_id=counterpart_account_id
+        ):
+            evidence = TransferEvidence(
+                basis="one_sided",
+                counterpart_account_id=counterpart_account_id,
+                counterpart_transaction_id=None,
+                date_gap_days=None,
+                claim_rule_ids=inputs.claims.get(tid, ()),
+            )
+            return {
+                tid: _Outcome(
+                    "transfer",
+                    rule_ids=inputs.by_rule[tid].rule_ids,
+                    transfer_evidence=evidence,
+                    decision_id=decision.decision_id,
+                )
+            }
 
 
 def _settled(
@@ -164,27 +380,33 @@ def _lineage(
     silver: Transaction,
     outcome: _Outcome,
     classification_version: str,
-    review_item: ClassificationReviewItem | None,
+    review_items: Iterable[ClassificationReviewItem | None],
 ) -> GoldTransactionLineage:
-    """Record which rules and review item stand behind one transaction's type.
+    """Record which rules, decision and review items stand behind one type.
 
-    The rules decided only when they gave the transaction a type; until
-    decisions exist, the configuration's fingerprint is the classification
-    version.
+    The rules decided only when they gave the transaction a type, and no
+    applicable decision did. Of `review_items`, lineage keeps those that name
+    this transaction.
     """
     decided = bool(outcome.rule_ids) and outcome.transaction_type != "unknown"
     source: ClassificationSource = "rule" if decided else "unclassified"
     if outcome.transfer_evidence is not None:
         source = "transfer_match"
+    if outcome.decision_id is not None:
+        source = "manual"
     return GoldTransactionLineage(
         transaction_id=silver.transaction_id,
         silver_transaction_id=silver.transaction_id,
         classification_source=source,
         rule_ids=outcome.rule_ids,
-        decision_id=None,
+        decision_id=outcome.decision_id,
         classification_version=classification_version,
         transfer_evidence=outcome.transfer_evidence,
-        review_item_ids=() if review_item is None else (review_item.review_item_id,),
+        review_item_ids=tuple(
+            item.review_item_id
+            for item in review_items
+            if item is not None and silver.transaction_id in item.transaction_ids
+        ),
         adjustment_reason=outcome.adjustment_reason,
     )
 
@@ -209,10 +431,9 @@ def _outcome(
 
     match winner.then:
         case AssignCategory(category_id=category_id):
-            taxonomy = configuration.taxonomy
-            group_id = taxonomy.categories[category_id].group_id
-            direction = taxonomy.groups[group_id].direction
-            transaction_type = _derived_type(direction, transaction.amount)
+            transaction_type = _category_type(
+                category_id, transaction.amount, configuration
+            )
             if transaction_type == "unknown":
                 return _Outcome(
                     "unknown", review_kind="sign-mismatch", rule_ids=rule_ids
@@ -263,6 +484,15 @@ def _sign(amount: Decimal) -> _Sign | None:
     if amount == Decimal(0):
         return None
     return "positive" if amount > 0 else "negative"
+
+
+def _category_type(
+    category_id: str, amount: Decimal, configuration: ConfigurationSnapshot
+) -> TransactionType:
+    """Derive the type a category gives this amount, through its group."""
+    taxonomy = configuration.taxonomy
+    group_id = taxonomy.categories[category_id].group_id
+    return _derived_type(taxonomy.groups[group_id].direction, amount)
 
 
 def _derived_type(direction: CategoryDirection, amount: Decimal) -> TransactionType:
