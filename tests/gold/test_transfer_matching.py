@@ -96,6 +96,24 @@ def test_an_account_closed_before_the_window_is_not_waiting() -> None:
     assert _unmatched(result) == [(("to-savings",), "no-candidate")]
 
 
+def test_a_zero_amount_claim_is_never_a_leg() -> None:
+    # Two zero amounts 3 days apart cancel, but a zero amount is neither
+    # outgoing nor incoming, so the claim stays unpaired.
+    result = classified(
+        booked("zero-out", CURRENT, date(2026, 2, 16), "0.00", "TO SAVINGS"),
+        booked("zero-in", SAVINGS, date(2026, 2, 19), "0.00", "FROM CURRENT"),
+        booked("cafe", ANNA, date(2026, 2, 27), "-85.00", "MOBILEPAY CARL"),
+    )
+
+    types = _types(result)
+
+    assert (types["zero-out"], types["zero-in"]) == ("unknown", "unknown")
+    assert sorted(ids for ids, _ in _unmatched(result)) == [
+        ("zero-in",),
+        ("zero-out",),
+    ]
+
+
 def test_a_counterpart_transaction_exactly_3_days_later_rules_out_waiting() -> None:
     # "on or after the leg's transaction date plus 3 days" is inclusive.
     result = classified(
