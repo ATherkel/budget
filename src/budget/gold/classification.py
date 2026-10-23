@@ -122,12 +122,12 @@ def classify(
         transactions,
         claims=claims,
         closed_on={a.account_id: a.closed_on for a in configuration.accounts.values()},
-        decided=decided.keys(),
+        decided=decided.outcomes.keys(),
     )
     outcomes = [
         (
             t,
-            decided.get(t.transaction_id)
+            decided.outcomes.get(t.transaction_id)
             or _settled(by_rule[t.transaction_id], t.transaction_id, matching),
         )
         for t in transactions
@@ -148,8 +148,9 @@ def classify(
             for t, o in outcomes
             if o.category_id is not None
         ),
-        review_items=tuple(
-            {i.review_item_id: i for i in items.values() if i is not None}.values()
+        review_items=(
+            *{i.review_item_id: i for i in items.values() if i is not None}.values(),
+            *decided.not_applicable,
         ),
         lineage=tuple(
             _lineage(facts[t.transaction_id], o, version, items[t.transaction_id])
@@ -169,16 +170,63 @@ class _Inputs:
     configuration: ConfigurationSnapshot
 
 
-def _decided(decisions: Sequence[GoldDecision], inputs: _Inputs) -> dict[str, _Outcome]:
+@dataclass(frozen=True)
+class _Decided:
+    """The outcomes applicable decisions give, and the items the rest raise."""
+
+    outcomes: Mapping[str, _Outcome]
+    not_applicable: tuple[ClassificationReviewItem, ...]
+
+
+def _decided(decisions: Sequence[GoldDecision], inputs: _Inputs) -> _Decided:
     """Settle each transaction an applicable decision targets (*Precedence*).
 
     The rules that matched stay in the outcome for lineage, though they did
-    not decide.
+    not decide. A decision that is not applicable changes nothing and raises
+    a `decision-not-applicable` item naming it (*Manual Decisions*).
     """
-    decided: dict[str, _Outcome] = {}
+    outcomes: dict[str, _Outcome] = {}
+    not_applicable: list[ClassificationReviewItem] = []
     for decision in decisions:
-        decided.update(_applied(decision, inputs))
-    return decided
+        reason = _inapplicable(decision, inputs)
+        if reason is None:
+            outcomes.update(_applied(decision, inputs))
+        else:
+            not_applicable.append(_not_applicable_item(decision, reason, inputs))
+    return _Decided(outcomes, tuple(not_applicable))
+
+
+def _targets(decision: GoldDecision) -> tuple[str, ...]:
+    """Name the transactions a decision targets."""
+    if isinstance(decision, Pair):
+        return decision.transaction_ids
+    return (decision.transaction_id,)
+
+
+def _inapplicable(decision: GoldDecision, inputs: _Inputs) -> str | None:
+    """Say why a decision does not apply, or `None` when it does."""
+    if any(tid not in inputs.transactions for tid in _targets(decision)):
+        return "target-missing"
+    return None
+
+
+def _not_applicable_item(
+    decision: GoldDecision, reason: str, inputs: _Inputs
+) -> ClassificationReviewItem:
+    """Raise the item naming a decision that is not applicable.
+
+    It names the targets still present; none when a single target is missing.
+    """
+    present = tuple(tid for tid in _targets(decision) if tid in inputs.transactions)
+    kind: ClassificationReviewKind = "decision-not-applicable"
+    return ClassificationReviewItem(
+        review_item_id=hash_parts([kind, decision.decision_id, *present]),
+        kind=kind,
+        transaction_ids=present,
+        rule_ids=(),
+        decision_id=decision.decision_id,
+        reason=reason,
+    )
 
 
 def _applied(decision: GoldDecision, inputs: _Inputs) -> dict[str, _Outcome]:
