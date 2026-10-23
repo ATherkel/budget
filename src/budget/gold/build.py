@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
 
 from budget.gold.classification import classify
-from budget.gold.decisions import GoldDecision
+from budget.gold.decisions import Classify, GoldDecision
 from budget.gold.models import (
     GoldAccount,
     GoldCategory,
@@ -19,7 +19,11 @@ from budget.inputs.accounts import Account
 from budget.inputs.document import ConfigurationError
 from budget.inputs.snapshot import ConfigurationSnapshot
 from budget.inputs.taxonomy import Taxonomy
-from budget.profiles import ACCOUNTS_FILE_NAME, MAX_LATE_BOOKING_DAYS
+from budget.profiles import (
+    ACCOUNTS_FILE_NAME,
+    DECISION_LOG_FILE_NAME,
+    MAX_LATE_BOOKING_DAYS,
+)
 from budget.silver.models import AccountEvidence, SilverResult
 
 
@@ -47,7 +51,10 @@ def build(
     _require_window(late_booking_window)
     _require_declared_accounts(silver, configuration.accounts)
     transactions = gold_transactions(silver.transactions)
-    problems = _closing_problems(configuration.accounts, transactions)
+    problems = (
+        *_closing_problems(configuration.accounts, transactions),
+        *_decision_problems(decisions, configuration),
+    )
     if problems:
         raise ConfigurationError(problems)
     gold_accounts = tuple(
@@ -137,6 +144,24 @@ def _closing_problems(
         if (closed_on := accounts[account_id].closed_on) is not None
         and (latest := latest_transaction.get(account_id)) is not None
         and closed_on < latest
+    )
+
+
+def _decision_problems(
+    decisions: Sequence[GoldDecision], configuration: ConfigurationSnapshot
+) -> tuple[str, ...]:
+    """Name every decision the configuration alone shows cannot hold.
+
+    `classification.md`, *Configuration errors*: a decision may not reference
+    a missing category, including a deleted one.
+    """
+    categories = configuration.taxonomy.categories
+    return tuple(
+        f'{DECISION_LOG_FILE_NAME}: decision "{decision.decision_id}": category '
+        f'"{decision.category_id}" is not in the taxonomy; record a decision '
+        "that supersedes it; nothing was published"
+        for decision in decisions
+        if isinstance(decision, Classify) and decision.category_id not in categories
     )
 
 
