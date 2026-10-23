@@ -13,6 +13,7 @@ from decimal import Decimal
 from types import MappingProxyType
 from typing import Literal
 
+from budget.gold.decisions import GoldDecision
 from budget.gold.models import (
     CategoryDirection,
     ClassificationReviewItem,
@@ -87,12 +88,14 @@ def classify(
     transactions: Sequence[GoldTransaction],
     silver: Iterable[Transaction],
     configuration: ConfigurationSnapshot,
+    decisions: Sequence[GoldDecision],
 ) -> Classified:
     """Type each transaction, allocate each classified one whole, and raise items.
 
     A rule tests the Silver row's own facts, so `silver` must hold every
     transaction's parent row.
     """
+    del decisions
     facts = {t.transaction_id: t for t in silver}
     by_rule = {
         t.transaction_id: _outcome(facts[t.transaction_id], configuration)

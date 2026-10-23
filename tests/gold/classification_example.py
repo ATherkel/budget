@@ -6,12 +6,13 @@ supplies its own Silver transactions, named by a short invented identifier.
 Every account, text and amount is invented.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import date
 from typing import Literal
 
 from budget.gold import CategoryDirection, GoldResult, build
+from budget.gold.decisions import GoldDecision
 from budget.inputs import (
     Account,
     AssignCategory,
@@ -142,8 +143,9 @@ def classified(
     rules: Mapping[str, Rule] = RULES,
     taxonomy: Taxonomy = TAXONOMY,
     accounts: Mapping[str, Account] = ACCOUNTS,
+    decisions: Sequence[GoldDecision] = (),
 ) -> GoldResult:
-    """Run the Gold build over these transactions and the doc's configuration."""
+    """Run the Gold build over these transactions, decisions and configuration."""
     return build(
         silver=SilverResult(
             transactions=transactions,
@@ -158,6 +160,7 @@ def classified(
         configuration=ConfigurationSnapshot(
             accounts=accounts, taxonomy=taxonomy, rules=rules
         ),
+        decisions=decisions,
         publication=PUBLICATION,
         late_booking_window=LATE_BOOKING_WINDOW,
     )

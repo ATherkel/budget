@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
 
 from budget.gold.classification import classify
+from budget.gold.decisions import GoldDecision
 from budget.gold.models import (
     GoldAccount,
     GoldCategory,
@@ -26,12 +27,14 @@ def build(
     *,
     silver: SilverResult,
     configuration: ConfigurationSnapshot,
+    decisions: Sequence[GoldDecision],
     publication: GoldPublication,
     late_booking_window: timedelta,
 ) -> GoldResult:
-    """Derive Gold from a Silver result and the household's configuration.
+    """Derive Gold from a Silver result, the household's configuration and decisions.
 
-    Transactions are classified by the configuration's rules. The result is
+    Transactions are classified by the effective manual decisions, then
+    transfer matching, then the configuration's rules. The result is
     bound to `publication`, which the caller supplies. A month's late bookings
     are settled by an export produced `late_booking_window` or more after it
     ends. A Silver transaction on an account the registry does not declare
@@ -51,7 +54,7 @@ def build(
         _account(account, silver.account_evidence)
         for account in configuration.accounts.values()
     )
-    classified = classify(transactions, silver.transactions, configuration)
+    classified = classify(transactions, silver.transactions, configuration, decisions)
     records = GoldRecords(
         accounts=gold_accounts,
         categories=_categories(configuration.taxonomy),
