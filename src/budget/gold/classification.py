@@ -22,6 +22,7 @@ from budget.gold.decisions import (
     OneSidedTransfer,
     Pair,
     log_kind,
+    targets,
 )
 from budget.gold.models import (
     CategoryDirection,
@@ -224,16 +225,9 @@ def _decided(decisions: Sequence[GoldDecision], inputs: _Inputs) -> _Decided:
     return _Decided(outcomes, tuple(not_applicable))
 
 
-def _targets(decision: GoldDecision) -> tuple[str, ...]:
-    """Name the transactions a decision targets."""
-    if isinstance(decision, Pair):
-        return decision.transaction_ids
-    return (decision.transaction_id,)
-
-
 def _inapplicable(decision: GoldDecision, inputs: _Inputs) -> str | None:
     """Say why a decision does not apply, or `None` when it does."""
-    if any(tid not in inputs.transactions for tid in _targets(decision)):
+    if any(tid not in inputs.transactions for tid in targets(decision)):
         return "target-missing"
     match decision:
         case Classify(transaction_id=tid):
@@ -283,7 +277,7 @@ def _not_applicable_item(
 
     It names the targets still present; none when a single target is missing.
     """
-    present = tuple(tid for tid in _targets(decision) if tid in inputs.transactions)
+    present = tuple(tid for tid in targets(decision) if tid in inputs.transactions)
     kind: ClassificationReviewKind = "decision-not-applicable"
     return ClassificationReviewItem(
         review_item_id=hash_parts([kind, decision.decision_id, *present]),
