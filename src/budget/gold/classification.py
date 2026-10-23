@@ -153,7 +153,12 @@ def classify(
             *decided.not_applicable,
         ),
         lineage=tuple(
-            _lineage(facts[t.transaction_id], o, version, items[t.transaction_id])
+            _lineage(
+                facts[t.transaction_id],
+                o,
+                version,
+                (items[t.transaction_id], *decided.not_applicable),
+            )
             for t, o in outcomes
         ),
     )
@@ -319,12 +324,13 @@ def _lineage(
     silver: Transaction,
     outcome: _Outcome,
     classification_version: str,
-    review_item: ClassificationReviewItem | None,
+    review_items: Iterable[ClassificationReviewItem | None],
 ) -> GoldTransactionLineage:
-    """Record which rules and review item stand behind one transaction's type.
+    """Record which rules, decision and review items stand behind one type.
 
-    The rules decided only when they gave the transaction a type; until
-    decisions exist, the configuration's fingerprint is the classification
+    The rules decided only when they gave the transaction a type. Of
+    `review_items`, lineage keeps those that name this transaction; until
+    decisions enter it, the configuration's fingerprint is the classification
     version.
     """
     decided = bool(outcome.rule_ids) and outcome.transaction_type != "unknown"
@@ -341,7 +347,11 @@ def _lineage(
         decision_id=outcome.decision_id,
         classification_version=classification_version,
         transfer_evidence=outcome.transfer_evidence,
-        review_item_ids=() if review_item is None else (review_item.review_item_id,),
+        review_item_ids=tuple(
+            item.review_item_id
+            for item in review_items
+            if item is not None and silver.transaction_id in item.transaction_ids
+        ),
         adjustment_reason=outcome.adjustment_reason,
     )
 
