@@ -183,6 +183,17 @@ def test_a_pair_whose_amounts_do_not_cancel_is_not_applicable() -> None:
     )
 
 
+def test_a_pair_on_one_account_is_not_applicable() -> None:
+    result = classified(
+        booked("netto", CURRENT, date(2026, 2, 2), "-640.00", "NETTO 0412"),
+        booked("return", CURRENT, date(2026, 2, 2), "640.00", "NETTO 0412"),
+        decisions=[Pair("d-0011", ("netto", "return"))],
+    )
+
+    assert _types(result) == {"netto": "expense", "return": "refund"}
+    assert _not_applicable(result) == (("netto", "return"), "same-account")
+
+
 def _before_savings_history(*decisions: GoldDecision) -> GoldResult:
     """Scenario 16: a transfer into savings before its managed period starts."""
     return classified(
