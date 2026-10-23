@@ -28,6 +28,7 @@ from budget.gold.models import (
     GoldCategoryAllocation,
     GoldTransaction,
     GoldTransactionLineage,
+    ReportingMonth,
     TransactionType,
     TransferEvidence,
 )
@@ -222,9 +223,35 @@ def _inapplicable(decision: GoldDecision, inputs: _Inputs) -> str | None:
                 return "amounts-do-not-cancel"
             if out.account_id == into.account_id:
                 return "same-account"
+        case OneSidedTransfer(transaction_id=tid, counterpart_account_id=account_id):
+            if _managed_in(
+                account_id, inputs.transactions[tid].transaction_date, inputs
+            ):
+                return "inside-managed-period"
         case _:
             pass
     return None
+
+
+def _managed_in(account_id: str, day: date, inputs: _Inputs) -> bool:
+    """Say whether the day's month is in the account's managed period.
+
+    The period runs from the month of the account's first booked transaction
+    to the month of `closed_on`, if any (`gold-contract.md`,
+    *MonthlyBalanceSnapshot*); an account with none has no period yet.
+    """
+    booked = [
+        t.transaction_date
+        for t in inputs.transactions.values()
+        if t.account_id == account_id
+    ]
+    if not booked:
+        return False
+    month = ReportingMonth.of(day)
+    closed_on = inputs.configuration.accounts[account_id].closed_on
+    return ReportingMonth.of(min(booked)) <= month and (
+        closed_on is None or month <= ReportingMonth.of(closed_on)
+    )
 
 
 def _not_applicable_item(
