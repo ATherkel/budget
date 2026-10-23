@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
 
 from budget.gold.classification import classify
-from budget.gold.decisions import Classify, GoldDecision, OneSidedTransfer
+from budget.gold.decisions import Classify, GoldDecision, OneSidedTransfer, targets
 from budget.gold.models import (
     GoldAccount,
     GoldCategory,
@@ -156,11 +156,32 @@ def _decision_problems(
     a missing category, including a deleted one, and a one-sided transfer's
     counterpart must be in the account registry.
     """
+    return (
+        *(
+            f'{DECISION_LOG_FILE_NAME}: decision "{decision.decision_id}": '
+            f"{problem}; record a decision that supersedes it; nothing was published"
+            for decision in decisions
+            if (problem := _decision_problem(decision, configuration)) is not None
+        ),
+        *_overlap_problems(decisions),
+    )
+
+
+def _overlap_problems(decisions: Sequence[GoldDecision]) -> tuple[str, ...]:
+    """Name every transaction more than one decision targets.
+
+    A transaction is targeted by at most one decision; a `pair` counts for
+    both of its transactions (`classification.md`, *Manual Decisions*).
+    """
+    deciding: dict[str, list[str]] = {}
+    for decision in decisions:
+        for transaction_id in targets(decision):
+            deciding.setdefault(transaction_id, []).append(decision.decision_id)
     return tuple(
-        f'{DECISION_LOG_FILE_NAME}: decision "{decision.decision_id}": {problem}; '
-        "record a decision that supersedes it; nothing was published"
-        for decision in decisions
-        if (problem := _decision_problem(decision, configuration)) is not None
+        f'{DECISION_LOG_FILE_NAME}: transaction "{transaction_id}" is targeted by '
+        f"{', '.join(decision_ids)}; supersede all but one; nothing was published"
+        for transaction_id, decision_ids in deciding.items()
+        if len(decision_ids) > 1
     )
 
 

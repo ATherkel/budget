@@ -48,3 +48,10 @@ class OneSidedTransfer:
 
 
 type GoldDecision = Classify | ClassifyAdjustment | Pair | OneSidedTransfer
+
+
+def targets(decision: GoldDecision) -> tuple[str, ...]:
+    """Name the transactions a decision targets."""
+    if isinstance(decision, Pair):
+        return decision.transaction_ids
+    return (decision.transaction_id,)
