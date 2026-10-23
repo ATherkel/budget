@@ -24,7 +24,7 @@ from budget.silver import SilverStore
 from tests.backups.sets import gold_publications, manifest, run_ids
 from tests.cli.commands import backup, import_, migrate
 from tests.cli.profile_files import write_profile
-from tests.gold.test_store import RECIPE
+from tests.gold.publishing import RECIPE
 from tests.gold.worked_example import PUBLICATION
 from tests.gold.worked_silver import TAXONOMY
 from tests.importing.households import ACCOUNTS, drop, log_entries, payload

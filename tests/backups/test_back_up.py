@@ -52,7 +52,7 @@ from tests.backups.sets import (
     silver_accounts,
 )
 from tests.bronze.migration_resources import SILVER_MIGRATIONS, added_migration
-from tests.gold.test_store import publish
+from tests.gold.publishing import publish
 from tests.importing.households import household
 
 REPOSITORY = Path(__file__).resolve().parents[2]
