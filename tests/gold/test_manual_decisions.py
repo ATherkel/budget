@@ -308,6 +308,20 @@ def test_the_classification_version_fingerprints_the_decisions_too() -> None:
     )
 
 
+def test_the_classification_version_ignores_the_order_of_the_decisions() -> None:
+    def version(*decisions: GoldDecision) -> str:
+        result = classified(
+            booked("netto", CURRENT, date(2026, 2, 2), "-640.00", "NETTO 0412"),
+            booked("ikea", CURRENT, date(2026, 2, 7), "-2400.00", "IKEA 551"),
+            decisions=decisions,
+        )
+        return _lineage(result, "netto").classification_version
+
+    gifts = Classify("d-0001", "ikea", "gifts")
+    fix = ClassifyAdjustment("d-0005", "netto", "Opening balance fix")
+    assert version(gifts, fix) == version(fix, gifts)
+
+
 def _before_savings_history(*decisions: GoldDecision) -> GoldResult:
     """Scenario 16: a transfer into savings before its managed period starts."""
     return classified(
