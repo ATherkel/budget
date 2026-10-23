@@ -365,6 +365,37 @@ class SilverBesideBronzeTests(unittest.TestCase):
             assert complete_backup_sets(production) == sets
 
 
+class GoldBesideSilverTests(unittest.TestCase):
+    """A production profile whose stores and sets predate Gold's backups."""
+
+    def test_gold_is_started_beside_existing_stores_when_asked(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            for stage in ("bronze", "silver"):
+                started = migrate(profile_file, "--stage", stage, "--new-store")
+                assert started[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            before_gold = complete_backup_sets(production)
+
+            status, stderr = migrate(profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "budget migrate --stage gold --new-store" in stderr
+
+            status, stderr = migrate(profile_file, "--stage", "gold", "--new-store")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            with GoldStore(production):
+                pass
+            newest, *older = complete_backup_sets(production)
+            assert tuple(older) == before_gold
+            assert manifest(newest.path)["stores"] == {
+                "bronze": {"path": "bronze.db", "schema_version": 1},
+                "silver": {"path": "silver.db", "schema_version": 1},
+                "gold": {"path": "gold.db", "schema_version": 1},
+            }
+
+
 class OlderProductionStoreTests(unittest.TestCase):
     def test_an_older_store_is_backed_up_before_and_after_it_is_migrated(
         self,
