@@ -20,7 +20,8 @@ from budget.routine_logging import LOG_FILE, LOG_FOLDER
 from budget.silver import SilverStore
 from tests.backups.sets import manifest, run_ids
 from tests.cli.commands import import_, migrate
-from tests.cli.imports import clean_git, write_ranges
+from tests.cli.imports import clean_checkout, clean_git, write_ranges
+from tests.cli.pipelines import write_inputs
 from tests.cli.profile_files import development_profile, write_profile
 from tests.importing.households import (
     ACCOUNTS,
@@ -51,7 +52,7 @@ def _household(profile_file: Path, folder: Path) -> Profile:
     assert migrate(profile_file)[0] == EXIT_OK
     profile = development_profile(folder)
     profile.inputs.mkdir(parents=True, exist_ok=True)
-    profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+    write_inputs(profile)
     return profile
 
 
@@ -902,7 +903,7 @@ class DuplicateIncidentCoverageTests(unittest.TestCase):
             folder = Path(directory)
             profile_file = write_profile(folder)
             profile = _household(profile_file, folder)
-            profile.accounts_file.write_text(ACCOUNTS + THIRD_ACCOUNT, encoding="utf-8")
+            write_inputs(profile, ACCOUNTS + THIRD_ACCOUNT)
             content = payload("01.03.2026")
             members = [
                 drop(profile, account_id, "danske-20260305.csv", content)
@@ -1049,13 +1050,13 @@ class ProductionImportTests(unittest.TestCase):
             assert migrate(profile_file, "--new-store") == (EXIT_OK, "")
             profile = load_profile_file(profile_file)
             profile.inputs.mkdir(parents=True, exist_ok=True)
-            profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+            write_inputs(profile)
             sets_before = _set_names(profile)
             drop(profile, "joint-current", "danske-20260305.csv", payload("01.03.2026"))
             ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
             # Production builds only from committed code; Git is the boundary.
-            with mock.patch("subprocess.run", return_value=clean_git()):
+            with mock.patch("subprocess.run", side_effect=clean_checkout):
                 status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
             assert (status, stderr) == (EXIT_OK, "")
@@ -1077,7 +1078,7 @@ class ProductionImportTests(unittest.TestCase):
             assert migrate(profile_file, "--new-store") == (EXIT_OK, "")
             profile = load_profile_file(profile_file)
             profile.inputs.mkdir(parents=True, exist_ok=True)
-            profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+            write_inputs(profile)
             source = drop(
                 profile, "joint-current", "danske-20260305.csv", payload("01.03.2026")
             )
@@ -1089,7 +1090,7 @@ class ProductionImportTests(unittest.TestCase):
             clock.now.return_value = NOW
 
             with (
-                mock.patch("subprocess.run", return_value=clean_git()),
+                mock.patch("subprocess.run", side_effect=clean_checkout),
                 mock.patch("budget.inbox.datetime", clock),
             ):
                 status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
@@ -1115,7 +1116,7 @@ class ProductionImportTests(unittest.TestCase):
                 assert migrate(profile_file, "--new-store") == (EXIT_OK, "")
                 profile = load_profile_file(profile_file)
                 profile.inputs.mkdir(parents=True, exist_ok=True)
-                profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+                write_inputs(profile)
                 (profile.inbox / "joint-current").mkdir(parents=True)
                 write_ranges(folder, default=("2026-03-01", "2026-03-04"))
                 sets_before = _set_names(profile)
@@ -1124,7 +1125,7 @@ class ProductionImportTests(unittest.TestCase):
                     for option in mode
                 ]
 
-                with mock.patch("subprocess.run", return_value=clean_git()):
+                with mock.patch("subprocess.run", side_effect=clean_checkout):
                     status, stdout, stderr = import_(profile_file, *options)
 
                 assert (status, stderr) == (EXIT_OK, "")
@@ -1140,13 +1141,13 @@ class ProductionImportTests(unittest.TestCase):
             assert migrate(profile_file, "--new-store") == (EXIT_OK, "")
             profile = load_profile_file(profile_file)
             profile.inputs.mkdir(parents=True, exist_ok=True)
-            profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+            write_inputs(profile)
             sets_before = _set_names(profile)
             content = payload("01.03.2026")
             drop(profile, "lost-folder", "danske-20260305.csv", content)
             ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
-            with mock.patch("subprocess.run", return_value=clean_git()):
+            with mock.patch("subprocess.run", side_effect=clean_checkout):
                 status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
             assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
@@ -1163,16 +1164,15 @@ class ProductionImportTests(unittest.TestCase):
             profile = load_profile_file(profile_file)
             profile.inputs.mkdir(parents=True, exist_ok=True)
             # accounts.toml takes any currency text; Silver's build does not.
-            profile.accounts_file.write_text(
-                ACCOUNTS.replace('currency = "DKK"', 'currency = "ZZZ"', 1),
-                encoding="utf-8",
+            write_inputs(
+                profile, ACCOUNTS.replace('currency = "DKK"', 'currency = "ZZZ"', 1)
             )
             sets_before = _set_names(profile)
             content = payload("01.03.2026")
             source = drop(profile, "joint-current", "danske-20260305.csv", content)
             ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
-            with mock.patch("subprocess.run", return_value=clean_git()):
+            with mock.patch("subprocess.run", side_effect=clean_checkout):
                 status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
             assert status == EXIT_REFUSED_INPUT
@@ -1202,7 +1202,7 @@ class ProductionImportTests(unittest.TestCase):
                 assert migrate(profile_file, "--new-store") == (EXIT_OK, "")
                 profile = load_profile_file(profile_file)
                 profile.inputs.mkdir(parents=True, exist_ok=True)
-                profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+                write_inputs(profile)
                 sets_before = _set_names(profile)
                 content = payload("01.03.2026")
                 source = drop(profile, "joint-current", "danske-20260305.csv", content)
