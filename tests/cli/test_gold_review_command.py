@@ -262,6 +262,24 @@ class GoldReviewCommandTests(unittest.TestCase):
             assert AMBIGUOUS_A[:8] in savings
             assert AMBIGUOUS_B[:8] in savings
 
+    def test_an_all_missing_decision_renders_its_decision_without_targets(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            _seed_gold_kinds(development_profile(folder))
+
+            status, stdout, stderr = review(profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout.splitlines() == [
+                AMBIGUOUS_LINE,
+                UNMATCHED_LINE,
+                DECISION_LINE,
+            ]
+            assert "targets " not in DECISION_LINE
+
 
 if __name__ == "__main__":
     unittest.main()
