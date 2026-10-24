@@ -44,6 +44,7 @@ class Household:
 
 def household(folder: Path) -> Household:
     """Write and migrate a profile, then import one export and build Silver."""
+    folder.mkdir(parents=True, exist_ok=True)
     profile_file = write_profile(folder)
     assert migrate(profile_file)[0] == 0
     profile = development_profile(folder)
