@@ -63,7 +63,6 @@ from budget.profiles import (
 from budget.prompting import ask_continue_after_duplicates, ask_ranges
 from budget.ranges import load_ranges
 from budget.rebuilding import (
-    GoldRebuild,
     SilverRebuild,
     rebuild_from_gold,
     rebuild_from_silver,
@@ -234,18 +233,7 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
             counts={**counts, "published": int(published.published)},
             duration_ms=_milliseconds(started),
         )
-        sys.stdout.write(summary + _gold_line(published))
-
-
-def _gold_line(rebuilt: GoldRebuild) -> str:
-    """Say whether a Gold rebuild published, and which publication is current."""
-    number = rebuilt.publication.publication_id
-    if rebuilt.published:
-        return f"Gold     published publication {number}\n"
-    return (
-        "Gold     the recipe is unchanged; nothing was published "
-        f"(publication {number} stays current)\n"
-    )
+        sys.stdout.write(summary + summaries.gold_line(published) + "\n")
 
 
 def _declared_ranges(
