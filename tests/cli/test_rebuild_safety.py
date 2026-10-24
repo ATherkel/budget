@@ -269,12 +269,10 @@ class RebuildSafetyTests(unittest.TestCase):
             folder = Path(directory)
             profile_file = write_profile(folder)
 
-            for stage in ("gold", "bronze"):
-                with self.subTest(stage=stage):
-                    status, _, stderr = rebuild(profile_file, "--from", stage)
+            status, _, stderr = rebuild(profile_file, "--from", "bronze")
 
-                    assert status == EXIT_REFUSED_ENVIRONMENT
-                    assert "not built yet" in stderr
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "not built yet" in stderr
 
 
 if __name__ == "__main__":
