@@ -24,7 +24,7 @@ from budget.backups import (
     UnsupportedStoresError,
     back_up,
 )
-from budget.bronze.storage import bronze_stage
+from budget.bronze.storage import BRONZE_STAGE, bronze_stage
 from budget.codeversion import UncommittedCodeError, require_committed_code
 from budget.gold.storage import GOLD_STAGE
 from budget.importing import (
@@ -64,6 +64,7 @@ from budget.prompting import ask_continue_after_duplicates, ask_ranges
 from budget.ranges import load_ranges
 from budget.rebuilding import (
     SilverRebuild,
+    rebuild_from_bronze,
     rebuild_from_gold,
     rebuild_from_silver,
     require_buildable_accounts,
@@ -101,16 +102,6 @@ class NoProfileSelectedError(Exception):
         """Say how to select a profile, since there is no default."""
         super().__init__(
             f"no profile selected: pass --profile <file> or set {PROFILE_VARIABLE}"
-        )
-
-
-class RebuildFromStageNotBuiltError(Exception):
-    """The stage a rebuild would read from has no reader in this code yet."""
-
-    def __init__(self, stage: str) -> None:
-        """Name the one stage reading that exists, rather than pretend."""
-        super().__init__(
-            f"rebuilding from {stage} is not built yet: only --from {SILVER_STAGE} is"
         )
 
 
@@ -215,14 +206,14 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
     replacement it writes, and the summary and completion log belong to that
     same lock.
     """
-    if from_stage not in {SILVER_STAGE, GOLD_STAGE}:
-        raise RebuildFromStageNotBuiltError(from_stage)
     started = perf_counter()
     with writer_lock(profile) as lock:
         require_committed_code(lock.profile)
         summary = ""
         counts: dict[str, int] = {}
-        if from_stage == SILVER_STAGE:
+        if from_stage == BRONZE_STAGE:
+            rebuild_from_bronze(lock)
+        if from_stage in {BRONZE_STAGE, SILVER_STAGE}:
             rebuilt = rebuild_from_silver(lock)
             summary = summaries.rebuild_summary(rebuilt)
             counts = _rebuild_counts(rebuilt)
@@ -380,7 +371,6 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         return _refuse(error, EXIT_REFUSED_INPUT)
     except (
         NoProfileSelectedError,
-        RebuildFromStageNotBuiltError,
         UncommittedCodeError,
         WriterLockHeldError,
         StoresFolderUnavailableError,
