@@ -5,6 +5,7 @@ Every profile and result is synthetic. The command seam is the CLI itself, so
 these tests observe what an operator receives rather than private query calls.
 """
 
+import json
 import sqlite3
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -25,7 +26,9 @@ from budget.gold import (
 )
 from budget.gold.storage import migrate_gold
 from budget.gold.store import GoldStore
+from budget.locking import writer_lock
 from budget.profiles import Profile
+from budget.routine_logging import LOG_FILE
 from budget.silver import ReviewItem, SilverResult, SilverStore, migrate_silver
 from tests.cli.commands import review
 from tests.cli.profile_files import development_profile, write_profile
@@ -395,6 +398,52 @@ class GoldReviewCommandTests(unittest.TestCase):
             assert pinned == (EXIT_OK, f"{PINNED_LINE}\n", "")
             assert later == (EXIT_OK, f"{LATER_LINE}\n", "")
             assert retained == (2, 3)
+
+    def test_review_is_read_only_and_keeps_private_gold_details_out_of_logs(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            _seed_gold_kinds(profile)
+            before = profile.gold_store.read_bytes()
+
+            with writer_lock(profile):
+                status, stdout, stderr = review(profile_file)
+
+            after = profile.gold_store.read_bytes()
+            records = [
+                json.loads(line)
+                for line in profile.log_file(LOG_FILE)
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            assert (status, stderr) == (EXIT_OK, "")
+            assert after == before
+            assert stdout.splitlines() == [
+                AMBIGUOUS_LINE,
+                UNMATCHED_LINE,
+                DECISION_LINE,
+            ]
+            for private in (
+                AMBIGUOUS_A,
+                AMBIGUOUS_B,
+                "target-missing",
+                "no-candidate",
+            ):
+                assert private not in stdout
+            assert "review_item_kinds" in records[-1]
+            logged = json.dumps(records, sort_keys=True)
+            for private in (
+                AMBIGUOUS_A,
+                AMBIGUOUS_B,
+                AMBIGUOUS_ITEM,
+                "r-savings-transfer",
+                "target-missing",
+                "no-candidate",
+            ):
+                assert private not in logged
 
 
 if __name__ == "__main__":
