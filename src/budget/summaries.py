@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from budget.bronze.models import ImportRun
 from budget.inbox import LEFT_IN_INBOX, FileOutcome, ImportedInbox
 from budget.rebuilding import SilverRebuild
-from budget.reviewing import OpenReview, OpenReviews
+from budget.reviewing import OpenGoldReview, OpenReview, OpenReviews
 from budget.silver import ImportRunResult, ReviewItem, SilverResult
 
 
@@ -183,13 +183,33 @@ def _file_line(outcome: FileOutcome, quarantined: Mapping[str, tuple[str, ...]])
 
 
 def review_summary(reviews: OpenReviews) -> str:
-    """Report each open item, then each unshown quarantined run; else nothing."""
+    """Report Silver and Gold items, then each unshown quarantined run."""
     return "".join(
         [
             *(_review_line(entry) for entry in reviews.items),
+            *(_gold_review_line(entry) for entry in reviews.gold_items),
             *(_quarantined_line(run) for run in reviews.runs),
         ]
     )
+
+
+def _gold_review_line(entry: OpenGoldReview) -> str:
+    """One Gold item: stable references, publication and target handles."""
+    item = entry.item
+    handles = ", ".join(transaction_id[:8] for transaction_id in item.transaction_ids)
+    parts = [
+        item.review_item_id,
+        item.kind,
+        "gold",
+        f"publication {entry.publication_id}",
+    ]
+    if handles:
+        parts.append(f"targets {handles}")
+    if item.rule_ids:
+        parts.append(f"rules {', '.join(item.rule_ids)}")
+    if item.decision_id is not None:
+        parts.append(f"decision {item.decision_id}")
+    return "  ".join(parts) + "\n"
 
 
 def _quarantined_line(run: ImportRunResult) -> str:

@@ -283,6 +283,14 @@ on every build, so an item exists exactly while its cause does. A
 `review_item_id` derives from the kind and the transaction or decision
 identifiers involved, so it is stable across rebuilds.
 
+Each build stores its review items atomically with the publication. `budget
+review` reads the current publication through one SQLite snapshot, so a
+concurrent publish or retention cleanup cannot combine two results or make the
+selected one disappear mid-read. The stored target and rule identifier lists
+keep their order. A `decision-not-applicable` item names its decision
+identifier and any targets still present; a wholly missing target is not
+invented into the publication.
+
 | Kind | Raised when | Transaction is | Settled by |
 | --- | --- | --- | --- |
 | `unclassified` | no rule matches | `unknown` | a new rule or a `classify` decision |
