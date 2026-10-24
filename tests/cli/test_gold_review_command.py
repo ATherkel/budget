@@ -228,6 +228,40 @@ class GoldReviewCommandTests(unittest.TestCase):
             assert RULE_A in stdout
             assert RULE_B in stdout
 
+    def test_review_lists_transfer_items_and_filters_kind(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            _seed_gold_kinds(profile)
+
+            ambiguous_status, ambiguous, ambiguous_stderr = review(
+                profile_file, "--kind", "ambiguous-transfer"
+            )
+            unmatched_status, unmatched, unmatched_stderr = review(
+                profile_file, "--kind", "unmatched-transfer"
+            )
+
+            assert (ambiguous_status, ambiguous_stderr) == (EXIT_OK, "")
+            assert ambiguous.splitlines() == [AMBIGUOUS_LINE]
+            assert (unmatched_status, unmatched_stderr) == (EXIT_OK, "")
+            assert unmatched.splitlines() == [UNMATCHED_LINE]
+
+    def test_account_filter_keeps_every_target_of_a_matching_gold_item(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            _seed_gold_kinds(development_profile(folder))
+
+            status, savings, stderr = review(profile_file, "--account", "joint-savings")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert savings.splitlines() == [AMBIGUOUS_LINE]
+            assert AMBIGUOUS_A[:8] in savings
+            assert AMBIGUOUS_B[:8] in savings
+
 
 if __name__ == "__main__":
     unittest.main()
