@@ -5,11 +5,16 @@ Every profile and result is synthetic. The command seam is the CLI itself, so
 these tests observe what an operator receives rather than private query calls.
 """
 
+import sqlite3
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Event
+from typing import cast
+from unittest import mock
 
 from budget.gold import (
     ClassificationReviewItem,
@@ -279,6 +284,117 @@ class GoldReviewCommandTests(unittest.TestCase):
                 DECISION_LINE,
             ]
             assert "targets " not in DECISION_LINE
+
+    def test_silver_review_survives_an_absent_or_unpublished_gold_store(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            _store_silver(profile, _silver_with_item())
+
+            absent = review(profile_file)
+            migrate_gold(profile)
+            unpublished = review(profile_file)
+
+            assert absent == (EXIT_OK, f"{SILVER_LINE}\n", "")
+            assert unpublished == absent
+
+    def test_review_pins_the_publication_while_release_retention_removes_it(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            _store_silver(profile, _empty_silver())
+            _publish(
+                profile,
+                (
+                    ClassificationReviewItem(
+                        review_item_id=PINNED_ITEM,
+                        kind="sign-mismatch",
+                        transaction_ids=(GOLD_TRANSACTION,),
+                        rule_ids=("r-netto",),
+                        decision_id=None,
+                        reason=None,
+                    ),
+                ),
+            )
+            reading = Event()
+            release = Event()
+            paused = Event()
+            connect = sqlite3.connect
+
+            def pause_before_selecting_targets(
+                connection: sqlite3.Connection,
+                statement: str,
+                parameters: object = (),
+            ) -> sqlite3.Cursor:
+                if "classification_review_targets" in statement and not paused.is_set():
+                    paused.set()
+                    reading.set()
+                    assert release.wait(5)
+                typed = cast("SqlParameters", parameters)
+                return sqlite3.Connection.execute(connection, statement, typed)
+
+            pausing_connection = type(
+                "PausingConnection",
+                (sqlite3.Connection,),
+                {"execute": pause_before_selecting_targets},
+            )
+
+            def pausing_connect(
+                database: str, *, uri: bool = False
+            ) -> sqlite3.Connection:
+                return connect(database, uri=uri, factory=pausing_connection)
+
+            with (
+                ThreadPoolExecutor(max_workers=1) as executor,
+                mock.patch("sqlite3.connect", new=pausing_connect),
+            ):
+                future = executor.submit(review, profile_file)
+                try:
+                    assert reading.wait(5)
+                    with GoldStore(profile) as store:
+                        _publish_numbered(
+                            store,
+                            2,
+                            (
+                                ClassificationReviewItem(
+                                    review_item_id=NEXT_ITEM,
+                                    kind="unclassified",
+                                    transaction_ids=(UNMATCHED_TRANSACTION,),
+                                    rule_ids=(),
+                                    decision_id=None,
+                                    reason=None,
+                                ),
+                            ),
+                        )
+                        _publish_numbered(
+                            store,
+                            3,
+                            (
+                                ClassificationReviewItem(
+                                    review_item_id=LATER_ITEM,
+                                    kind="decision-not-applicable",
+                                    transaction_ids=(DECISION_TRANSACTION,),
+                                    rule_ids=(),
+                                    decision_id="d-0004",
+                                    reason="zero-amount",
+                                ),
+                            ),
+                        )
+                finally:
+                    release.set()
+                pinned = future.result(timeout=5)
+
+            later = review(profile_file)
+            with GoldStore(profile) as store:
+                retained = tuple(p.publication_id for p in store.available())
+
+            assert pinned == (EXIT_OK, f"{PINNED_LINE}\n", "")
+            assert later == (EXIT_OK, f"{LATER_LINE}\n", "")
+            assert retained == (2, 3)
 
 
 if __name__ == "__main__":
