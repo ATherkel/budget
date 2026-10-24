@@ -12,17 +12,36 @@ decision refuses the rebuild rather than silently build as if the household had
 made none. That guard runs before anything is read or replaced.
 """
 
+import platform
+import sqlite3
 from collections.abc import Collection, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import datetime
 from typing import Final
 
 from budget.bronze import BronzeStore
 from budget.bronze.models import ImportRun
-from budget.inputs import ConfigurationError, load_accounts
+from budget.codeversion import committed_code_version
+from budget.decision_log import read_decision_log
+from budget.gold import GoldPublication, GoldResult, build
+from budget.gold.fingerprint import (
+    CONTRACT_VERSION,
+    FINGERPRINT_SCHEME,
+    result_fingerprint,
+)
+from budget.gold.recipe import Recipe, RecipeImportRun
+from budget.gold.store import GoldStore
+from budget.inputs import ConfigurationError, load_accounts, load_configuration
 from budget.locking import WriterLock
 from budget.profiles import ACCOUNTS_FILE_NAME, Profile
-from budget.silver import SilverBuildInputs, SilverResult, rebuild_silver
+from budget.silver import (
+    SilverBuildInputs,
+    SilverResult,
+    SilverStore,
+    rebuild_silver,
+)
 from budget.silver.currencies import UnknownCurrencyError, minor_unit_places
+from budget.silver.identity import IDENTITY_VERSION
 
 DECISION_LOG_NAME: Final = "decisions.jsonl"
 _UNREADABLE_DECISIONS: Final = (
@@ -43,6 +62,18 @@ class SilverRebuild:
 
     runs: Sequence[ImportRun]
     result: SilverResult
+
+
+@dataclass(frozen=True)
+class GoldRebuild:
+    """What one Gold rebuild left current, and whether it published it.
+
+    A recipe equal to the current publication's builds and publishes nothing,
+    so `publication` is then the one that was already current.
+    """
+
+    publication: GoldPublication
+    published: bool
 
 
 def bronze_inputs(profile: Profile) -> SilverBuildInputs:
@@ -140,6 +171,62 @@ def _unknown_currency(account_id: str) -> str:
         "supported by this Silver build; correct it in accounts.toml before "
         "rebuilding; nothing was written"
     )
+
+
+def rebuild_from_gold(lock: WriterLock, *, now: datetime) -> GoldRebuild:
+    """Publish the locked profile's Gold from its stored Silver and inputs.
+
+    The recipe names the profile's import runs, its configuration, its decision
+    log and the code that builds; Silver is taken as it stands. `now` only
+    stamps the publication's `built_at` and `known_at`: no figure reads it.
+    """
+    profile = lock.profile
+    configuration = load_configuration(profile)
+    log = read_decision_log(profile)
+    with BronzeStore(profile) as bronze:
+        runs = bronze.import_runs()
+    with SilverStore(profile) as silver_store:
+        silver = silver_store.read()
+    recipe = Recipe(
+        import_runs=frozenset(
+            RecipeImportRun(run.import_run_id, run.payload_id) for run in runs
+        ),
+        configuration_fingerprint=configuration.fingerprint,
+        decision_log_position=log.position,
+        decision_log_prefix_sha256=log.prefix_sha256,
+        code_version=committed_code_version(profile),
+        contract_version=CONTRACT_VERSION,
+        silver_identity_version=IDENTITY_VERSION,
+        python_version=platform.python_version(),
+        sqlite_version=sqlite3.sqlite_version,
+    )
+    with GoldStore(profile) as gold:
+        current = gold.current()
+        if current is not None and gold.recipe(current.publication_id) == recipe:
+            return GoldRebuild(publication=current, published=False)
+        draft = GoldPublication(
+            publication_id=gold.next_publication_id(),
+            kind="pipeline",
+            label=None,
+            known_at=now,
+            built_at=now,
+            replayed_at=None,
+            contract_version=CONTRACT_VERSION,
+            fingerprint_scheme=FINGERPRINT_SCHEME,
+            result_fingerprint="",
+        )
+        built = build(
+            silver=silver,
+            configuration=configuration,
+            decisions=log.gold,
+            publication=draft,
+            late_booking_window=profile.late_booking_window,
+        )
+        publication = replace(draft, result_fingerprint=result_fingerprint(built))
+        gold.publish(
+            GoldResult(publication, built.records, built.lineage), recipe, configuration
+        )
+    return GoldRebuild(publication=publication, published=True)
 
 
 def rebuild_from_silver(lock: WriterLock) -> SilverRebuild:
