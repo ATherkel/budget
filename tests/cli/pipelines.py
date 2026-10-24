@@ -12,10 +12,10 @@ from pathlib import Path
 
 from budget.importing import Coverage, import_inbox_file
 from budget.locking import writer_lock
-from budget.profiles import Profile
+from budget.profiles import Profile, load_profile_file
 from budget.rebuilding import rebuild_from_silver
 from tests.cli.commands import migrate
-from tests.cli.profile_files import development_profile, write_profile
+from tests.cli.profile_files import write_profile
 from tests.importing.households import ACCOUNTS, drop, payload
 
 TAXONOMY = """\
@@ -42,12 +42,13 @@ class Household:
     import_run_id: str
 
 
-def household(folder: Path) -> Household:
+def household(folder: Path, *, name: str = "development") -> Household:
     """Write and migrate a profile, then import one export and build Silver."""
     folder.mkdir(parents=True, exist_ok=True)
-    profile_file = write_profile(folder)
-    assert migrate(profile_file)[0] == 0
-    profile = development_profile(folder)
+    profile_file = write_profile(folder, name=name)
+    options = ("--new-store",) if name == "production" else ()
+    assert migrate(profile_file, *options)[0] == 0
+    profile = load_profile_file(profile_file)
     profile.inputs.mkdir(parents=True, exist_ok=True)
     profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
     profile.input_file("taxonomy.toml").write_text(TAXONOMY, encoding="utf-8")
