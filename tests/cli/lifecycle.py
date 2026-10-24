@@ -112,9 +112,10 @@ def import_export(
     name: str,
     rows: tuple[tuple[str, str, str, str], ...],
     through: date,
+    account_id: str = "joint-current",
 ) -> None:
     """Import one export covering February through `through`, then build Silver."""
-    source = drop(profile, "joint-current", name, export(rows))
+    source = drop(profile, account_id, name, export(rows))
     with writer_lock(profile) as lock:
         import_inbox_file(lock, source, Coverage(date(2026, 2, 1), through))
         rebuild_from_silver(lock)
