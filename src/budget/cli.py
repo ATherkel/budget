@@ -29,6 +29,7 @@ from budget.backups import (
     require_backup_allowed,
 )
 from budget.bronze.storage import BRONZE_STAGE, bronze_stage
+from budget.bronze.store import ConflictingDeclaredFormatsError
 from budget.codeversion import UncommittedCodeError, require_committed_code
 from budget.dashboard import create_app
 from budget.dashboard.passphrase import PassphraseNotSetError, set_passphrase
@@ -576,6 +577,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
     except (
         ProfileFileError,
         ConfigurationError,
+        ConflictingDeclaredFormatsError,
         NoPassphraseFileError,
         NoPassphraseTypedError,
         EmptyPassphraseError,

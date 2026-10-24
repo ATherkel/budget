@@ -446,6 +446,10 @@ class BronzeStore:
             "SELECT DISTINCT payload_id, source_format FROM import_runs"
             " ORDER BY payload_id, source_format"
         ).fetchall()
+        payload_ids = [row["payload_id"] for row in declared]
+        for payload_id in payload_ids:
+            if payload_ids.count(payload_id) > 1:
+                raise ConflictingDeclaredFormatsError(payload_id)
         parsed = [
             (
                 row["payload_id"],
