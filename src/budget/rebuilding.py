@@ -65,9 +65,14 @@ class SilverRebuild:
 
 @dataclass(frozen=True)
 class GoldRebuild:
-    """What one Gold rebuild published."""
+    """What one Gold rebuild left current, and whether it published it.
+
+    A recipe equal to the current publication's builds and publishes nothing,
+    so `publication` is then the one that was already current.
+    """
 
     publication: GoldPublication
+    published: bool
 
 
 def bronze_inputs(profile: Profile) -> SilverBuildInputs:
@@ -195,6 +200,9 @@ def rebuild_from_gold(lock: WriterLock, *, now: datetime) -> GoldRebuild:
         sqlite_version=sqlite3.sqlite_version,
     )
     with GoldStore(profile) as gold:
+        current = gold.current()
+        if current is not None and gold.recipe(current.publication_id) == recipe:
+            return GoldRebuild(publication=current, published=False)
         draft = GoldPublication(
             publication_id=gold.next_publication_id(),
             kind="pipeline",
@@ -217,7 +225,7 @@ def rebuild_from_gold(lock: WriterLock, *, now: datetime) -> GoldRebuild:
         gold.publish(
             GoldResult(publication, built.records, built.lineage), recipe, configuration
         )
-    return GoldRebuild(publication=publication)
+    return GoldRebuild(publication=publication, published=True)
 
 
 def rebuild_from_silver(lock: WriterLock) -> SilverRebuild:
