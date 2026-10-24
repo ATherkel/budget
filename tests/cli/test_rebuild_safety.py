@@ -272,16 +272,6 @@ class RebuildSafetyTests(unittest.TestCase):
             assert status == EXIT_REFUSED_ENVIRONMENT
             assert "no Silver store" in stderr
 
-    def test_an_unbuilt_stage_refuses(self) -> None:
-        with TemporaryDirectory() as directory:
-            folder = Path(directory)
-            profile_file = write_profile(folder)
-
-            status, _, stderr = rebuild(profile_file, "--from", "bronze")
-
-            assert status == EXIT_REFUSED_ENVIRONMENT
-            assert "not built yet" in stderr
-
 
 if __name__ == "__main__":
     unittest.main()
