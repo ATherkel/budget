@@ -382,7 +382,13 @@ Confidence is a named evidence basis, not a score.
 | `reason` | string/null | No | Detail, such as `counterpart-may-not-be-imported`, `no-candidate`, or `target-missing`. |
 
 Gold derives review items afresh on every build, so an item exists exactly
-while its cause does. Silver's import review items (issue #5) are separate.
+while its cause does. A retained publication stores its review items and their
+existing target and rule identifiers atomically with its result. The privileged
+review reader selects the current publication in one SQLite read snapshot and
+does not expose this reader through the analytics interface. A non-applicable
+decision remains discoverable by its decision identifier and any surviving
+targets; a missing target is not reconstructed. Silver's import review items
+(issue #5) are separate.
 
 Each publication's recipe (its import runs, configuration snapshot,
 decision-log position, and code version) is privileged metadata for the CLI
