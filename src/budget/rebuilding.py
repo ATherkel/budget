@@ -310,6 +310,12 @@ def _plan_gold(
     return _GoldPlan(recipe, household.configuration, result)
 
 
+def rebuild_from_bronze(lock: WriterLock) -> None:
+    """Regenerate the locked profile's Bronze source records from its payloads."""
+    with BronzeStore(lock.profile) as store:
+        store.rebuild_derived_records()
+
+
 def _publish(profile: Profile, plan: _GoldPlan | GoldRebuild) -> GoldRebuild:
     """Publish a planned build, or report the publication already current."""
     if isinstance(plan, GoldRebuild):
