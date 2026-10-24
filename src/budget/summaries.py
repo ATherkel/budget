@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from budget.bronze.models import ImportRun
 from budget.inbox import LEFT_IN_INBOX, FileOutcome, ImportedInbox
-from budget.rebuilding import SilverRebuild
+from budget.rebuilding import GoldRebuild, SilverRebuild
 from budget.reviewing import OpenReview, OpenReviews
 from budget.silver import ImportRunResult, ReviewItem, SilverResult
 
@@ -34,6 +34,17 @@ def rebuild_summary(rebuild: SilverRebuild) -> str:
     lines = [_bronze_line(rebuild.runs), *_account_lines(rows, rebuild.result)]
     lines.extend(_run_line(row) for row in rows)
     return "\n".join(lines) + "\n"
+
+
+def gold_line(rebuilt: GoldRebuild) -> str:
+    """Say whether a Gold rebuild published, and which publication is current."""
+    number = rebuilt.publication.publication_id
+    if rebuilt.published:
+        return f"Gold     published publication {number}"
+    return (
+        "Gold     the recipe is unchanged; nothing was published "
+        f"(publication {number} stays current)"
+    )
 
 
 def _row(run: ImportRun, rebuild: SilverRebuild) -> _Row:
@@ -149,6 +160,8 @@ def import_summary(imported: ImportedInbox) -> str:
         f"Silver   {counts['admitted']} admitted, {counts['quarantined']}"
         f" quarantined, {counts['dropped']} dropped"
     )
+    if imported.published is not None:
+        lines.append(gold_line(imported.published))
     if imported.backup is not None:
         lines.append(f"Backup   backup set {imported.backup.name} written")
     return "\n".join(lines) + "\n"

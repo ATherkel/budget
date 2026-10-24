@@ -220,31 +220,20 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
     started = perf_counter()
     with writer_lock(profile) as lock:
         require_committed_code(lock.profile)
-        if from_stage == GOLD_STAGE:
-            published = rebuild_from_gold(lock, now=datetime.now(UTC))
-            number = published.publication.publication_id
-            sys.stdout.write(
-                f"Gold     published publication {number}\n"
-                if published.published
-                else "Gold     the recipe is unchanged; nothing was published "
-                f"(publication {number} stays current)\n"
-            )
-            routine_logging.finished(
-                profile,
-                "rebuild",
-                counts={"published": int(published.published)},
-                duration_ms=_milliseconds(started),
-            )
-            return
-        rebuilt = rebuild_from_silver(lock)
-        summary = summaries.rebuild_summary(rebuilt)
+        summary = ""
+        counts: dict[str, int] = {}
+        if from_stage == SILVER_STAGE:
+            rebuilt = rebuild_from_silver(lock)
+            summary = summaries.rebuild_summary(rebuilt)
+            counts = _rebuild_counts(rebuilt)
+        published = rebuild_from_gold(lock, now=datetime.now(UTC))
         routine_logging.finished(
             profile,
             "rebuild",
-            counts=_rebuild_counts(rebuilt),
+            counts={**counts, "published": int(published.published)},
             duration_ms=_milliseconds(started),
         )
-        sys.stdout.write(summary)
+        sys.stdout.write(summary + summaries.gold_line(published) + "\n")
 
 
 def _declared_ranges(

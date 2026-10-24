@@ -42,8 +42,13 @@ class Household:
     import_run_id: str
 
 
-def household(folder: Path, *, name: str = "development") -> Household:
-    """Write and migrate a profile, then import one export and build Silver."""
+def household(
+    folder: Path, *, name: str = "development", silver: bool = True
+) -> Household:
+    """Write and migrate a profile, import one export, and build its Silver.
+
+    `silver=False` leaves Silver empty, as before the first rebuild.
+    """
     folder.mkdir(parents=True, exist_ok=True)
     profile_file = write_profile(folder, name=name)
     options = ("--new-store",) if name == "production" else ()
@@ -60,5 +65,14 @@ def household(folder: Path, *, name: str = "development") -> Household:
             source,
             Coverage(covers_from=date(2026, 3, 1), covers_through=date(2026, 3, 4)),
         )
-        rebuild_from_silver(lock)
+        if silver:
+            rebuild_from_silver(lock)
     return Household(profile_file, profile, imported.import_run.import_run_id)
+
+
+def write_inputs(profile: Profile, accounts: str = ACCOUNTS) -> None:
+    """Write the household's `accounts.toml`, `taxonomy.toml` and `rules.toml`."""
+    profile.inputs.mkdir(parents=True, exist_ok=True)
+    profile.accounts_file.write_text(accounts, encoding="utf-8")
+    profile.input_file("taxonomy.toml").write_text(TAXONOMY, encoding="utf-8")
+    profile.input_file("rules.toml").write_text(RULES, encoding="utf-8")
