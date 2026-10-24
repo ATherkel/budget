@@ -132,6 +132,27 @@ def ask_continue_after_duplicates(incidents: Sequence[DuplicateIncident]) -> boo
         return False
 
 
+def _ask_coverage(previous: Coverage | None) -> Coverage:
+    """Ask for one inclusive range until from falls on or before through.
+
+    Offers the previous file's range on Enter, never the inverted pair just
+    typed, so a slip is not carried forward as a default.
+    """
+    while True:
+        covers_from = _ask_date(
+            "from", None if previous is None else previous.covers_from
+        )
+        covers_through = _ask_date(
+            "through", None if previous is None else previous.covers_through
+        )
+        if covers_from <= covers_through:
+            return Coverage(covers_from=covers_from, covers_through=covers_through)
+        _say(
+            f"{_INDENT}the range starts after it ends: from must fall on or "
+            "before through"
+        )
+
+
 def ask_ranges(
     previews: Sequence[ExportPreview], excluded: frozenset[Path]
 ) -> dict[Path, Coverage] | None:
@@ -150,14 +171,7 @@ def ask_ranges(
             if previewed.skipped or previewed.source in excluded:
                 continue
             _say(f"{_INDENT}Enter the range you asked the bank for.")
-            previous = Coverage(
-                covers_from=_ask_date(
-                    "from", None if previous is None else previous.covers_from
-                ),
-                covers_through=_ask_date(
-                    "through", None if previous is None else previous.covers_through
-                ),
-            )
+            previous = _ask_coverage(previous)
             declared[previewed.source] = previous
         confirmed = not declared or _confirmed(len(declared))
     except EOFError:
