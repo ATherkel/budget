@@ -203,7 +203,8 @@ def _gold_review_line(entry: OpenGoldReview) -> str:
         "gold",
         f"publication {entry.publication_id}",
     ]
-    parts.append(f"targets {handles}")
+    if handles:
+        parts.append(f"targets {handles}")
     if item.rule_ids:
         parts.append(f"rules {', '.join(item.rule_ids)}")
     if item.decision_id is not None:
