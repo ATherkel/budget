@@ -13,9 +13,12 @@ from tempfile import TemporaryDirectory
 
 from budget.bronze import BronzeStore
 from budget.gold.store import GoldStore
+from budget.importing import Coverage, import_inbox_file
+from budget.locking import writer_lock
 from budget.silver import SilverStore
 from tests.cli.commands import rebuild
-from tests.cli.pipelines import household
+from tests.cli.pipelines import EXPORT, household
+from tests.importing.households import drop
 
 EXIT_OK = 0
 EXPORT_FIELDS = {
@@ -56,6 +59,36 @@ class RebuildFromBronzeTests(unittest.TestCase):
                     start_date=date(2026, 3, 1), end_date=date(2026, 3, 31)
                 )
             assert [t.description for t in transactions] == ["Café"]
+
+
+class ProvenanceTests(unittest.TestCase):
+    def test_a_rebuild_is_not_an_import_and_keeps_every_run_and_the_log(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory), silver=False)
+            profile = built.profile
+            # The same bytes presented again, and a declaration Bronze refuses.
+            for name, through in (
+                ("danske-20260310.csv", date(2026, 3, 9)),
+                ("danske-20260312.csv", date(2026, 3, 20)),
+            ):
+                source = drop(profile, "joint-current", name, EXPORT)
+                with writer_lock(profile) as lock:
+                    import_inbox_file(lock, source, Coverage(date(2026, 3, 1), through))
+            with BronzeStore(profile) as bronze:
+                runs_before = bronze.import_runs()
+            log_before = profile.import_log_file.read_bytes()
+            assert [run.outcome for run in runs_before] == [
+                "stored",
+                "repeat",
+                "refused",
+            ]
+
+            status, _, stderr = rebuild(built.profile_file, "--from", "bronze")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            with BronzeStore(profile) as bronze:
+                assert bronze.import_runs() == runs_before
+            assert profile.import_log_file.read_bytes() == log_before
 
 
 if __name__ == "__main__":
