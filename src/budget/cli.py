@@ -286,11 +286,16 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
         if from_stage == GOLD_STAGE:
             published = rebuild_from_gold(lock, now=datetime.now(UTC))
             number = published.publication.publication_id
-            sys.stdout.write(f"Gold     published publication {number}\n")
+            sys.stdout.write(
+                f"Gold     published publication {number}\n"
+                if published.published
+                else "Gold     the recipe is unchanged; nothing was published "
+                f"(publication {number} stays current)\n"
+            )
             routine_logging.finished(
                 profile,
                 "rebuild",
-                counts={"published": 1},
+                counts={"published": int(published.published)},
                 duration_ms=_milliseconds(started),
             )
             return
