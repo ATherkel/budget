@@ -21,6 +21,7 @@ from typing import Final
 
 from budget.bronze import BronzeStore
 from budget.bronze.models import ImportRun
+from budget.codeversion import committed_code_version
 from budget.decision_log import read_decision_log
 from budget.gold import GoldPublication, GoldResult, build
 from budget.gold.fingerprint import (
@@ -193,7 +194,7 @@ def rebuild_from_gold(lock: WriterLock, *, now: datetime) -> GoldRebuild:
         configuration_fingerprint=configuration.fingerprint,
         decision_log_position=log.position,
         decision_log_prefix_sha256=log.prefix_sha256,
-        code_version=None,
+        code_version=committed_code_version(profile),
         contract_version=CONTRACT_VERSION,
         silver_identity_version=IDENTITY_VERSION,
         python_version=platform.python_version(),
