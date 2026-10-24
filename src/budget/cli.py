@@ -25,6 +25,7 @@ from budget.backups import (
     back_up,
 )
 from budget.bronze.storage import BRONZE_STAGE, bronze_stage
+from budget.bronze.store import ConflictingDeclaredFormatsError
 from budget.codeversion import UncommittedCodeError, require_committed_code
 from budget.gold.storage import GOLD_STAGE
 from budget.importing import (
@@ -367,7 +368,11 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         return usage.code if isinstance(usage.code, int) else EXIT_USAGE
     try:
         return _run(arguments, environ)
-    except (ProfileFileError, ConfigurationError) as error:
+    except (
+        ProfileFileError,
+        ConfigurationError,
+        ConflictingDeclaredFormatsError,
+    ) as error:
         return _refuse(error, EXIT_REFUSED_INPUT)
     except (
         NoProfileSelectedError,
