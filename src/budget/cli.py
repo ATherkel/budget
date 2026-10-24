@@ -69,6 +69,7 @@ from budget.prompting import ask_continue_after_duplicates, ask_passphrase, ask_
 from budget.ranges import load_ranges
 from budget.rebuilding import (
     SilverRebuild,
+    rebuild_from_gold,
     rebuild_from_silver,
     require_buildable_accounts,
 )
@@ -277,11 +278,22 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
     replacement it writes, and the summary and completion log belong to that
     same lock.
     """
-    if from_stage != SILVER_STAGE:
+    if from_stage not in {SILVER_STAGE, GOLD_STAGE}:
         raise RebuildFromStageNotBuiltError(from_stage)
     started = perf_counter()
     with writer_lock(profile) as lock:
         require_committed_code(lock.profile)
+        if from_stage == GOLD_STAGE:
+            published = rebuild_from_gold(lock, now=datetime.now(UTC))
+            number = published.publication.publication_id
+            sys.stdout.write(f"Gold     published publication {number}\n")
+            routine_logging.finished(
+                profile,
+                "rebuild",
+                counts={"published": 1},
+                duration_ms=_milliseconds(started),
+            )
+            return
         rebuilt = rebuild_from_silver(lock)
         summary = summaries.rebuild_summary(rebuilt)
         routine_logging.finished(
