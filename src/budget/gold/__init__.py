@@ -32,6 +32,10 @@ from budget.gold.repository import (
     GoldLineageRepository,
     GoldPublications,
     GoldRepository,
+    GoldStoreClosedError,
+    GoldStoreLifecycleError,
+    GoldStoreReadOnlyError,
+    GoldStoreThreadError,
     PublicationUnavailableError,
 )
 from budget.gold.result import GoldLineageRecords, GoldRecords, GoldResult
@@ -54,6 +58,10 @@ __all__ = [
     "GoldRecords",
     "GoldRepository",
     "GoldResult",
+    "GoldStoreClosedError",
+    "GoldStoreLifecycleError",
+    "GoldStoreReadOnlyError",
+    "GoldStoreThreadError",
     "GoldTransaction",
     "GoldTransactionLineage",
     "MonthlyBalanceSnapshot",

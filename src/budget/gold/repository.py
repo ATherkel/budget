@@ -93,8 +93,49 @@ class PublicationUnavailableError(LookupError):
         )
 
 
+class GoldStoreLifecycleError(RuntimeError):
+    """Base class for use of a Gold store outside its supported lifetime."""
+
+
+class GoldStoreClosedError(GoldStoreLifecycleError):
+    """The Gold store has already been closed."""
+
+    def __init__(self) -> None:
+        """Say how to make another request."""
+        super().__init__(
+            "the Gold store is closed; open a new store within this request"
+        )
+
+
+class GoldStoreThreadError(GoldStoreLifecycleError):
+    """The Gold store was used from a thread other than its creating thread."""
+
+    def __init__(self) -> None:
+        """Say where the replacement store must be opened."""
+        super().__init__(
+            "the Gold store was used from another thread; open a new store "
+            "inside the thread that reads it"
+        )
+
+
+class GoldStoreReadOnlyError(RuntimeError):
+    """A write was attempted through a read-only Gold store."""
+
+    def __init__(self) -> None:
+        """Name the mode publishing needs."""
+        super().__init__(
+            "the Gold store was opened read-only; publishing needs a writable store"
+        )
+
+
 class GoldPublications(Protocol):
-    """The retained publications of one store; a consumer opens one at a time."""
+    """The retained publications of one request-scoped Gold store.
+
+    The implementation owns one connection. Open, use, and close it on the
+    thread that created it within one synchronous request or task. Do not
+    cache or share the object across server threads. A repository returned by
+    `open()` borrows the same owner and cannot be used after that owner closes.
+    """
 
     def current(self) -> GoldPublication | None:
         """Return the current publication, or None when there is none."""
