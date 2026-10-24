@@ -22,6 +22,7 @@ import pytest
 
 from budget import sqlstore
 from budget.gold import (
+    GoldPublication,
     GoldPublications,
     GoldRepository,
     GoldResult,
