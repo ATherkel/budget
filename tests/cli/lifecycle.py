@@ -191,3 +191,19 @@ def correct_ikea_to_gifts(profile: Profile) -> None:
     profile.input_file("decisions.jsonl").write_text(
         json.dumps(entry) + "\n", encoding="utf-8"
     )
+
+
+def retract_the_correction(profile: Profile) -> None:
+    """Log decision 2: withdraw decision 1, restoring the earlier meaning."""
+    entry = {
+        "format": 1,
+        "entry": 2,
+        "decision_id": "d-0002",
+        "recorded_at": "2026-04-11T09:00:00Z",
+        "kind": "retract",
+        "targets": [],
+        "reason": "It was furniture after all",
+        "supersedes": ["d-0001"],
+    }
+    with profile.input_file("decisions.jsonl").open("a", encoding="utf-8") as log:
+        log.write(json.dumps(entry) + "\n")
