@@ -7,6 +7,7 @@ Silver admits both exports. The rules, the taxonomy and every figure are
 invented.
 """
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
@@ -19,7 +20,7 @@ from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
 from budget.rebuilding import rebuild_from_silver
 from budget.silver import SilverStore
-from tests.cli.commands import migrate
+from tests.cli.commands import migrate, rebuild
 from tests.cli.profile_files import write_profile
 from tests.importing.households import ACCOUNTS, drop
 
@@ -162,3 +163,30 @@ def february_by_category(publication: GoldRepository) -> Mapping[str, Decimal]:
             totals.get(allocation.category_id, Decimal(0)) + allocation.amount
         )
     return totals
+
+
+def at_second_publication(folder: Path) -> Lifecycle:
+    """Publish P1 from run-1, then P2 once run-2 brings the late booking."""
+    household = lifecycle(folder)
+    assert rebuild(household.profile_file)[0] == 0
+    import_run_2(household.profile)
+    assert rebuild(household.profile_file)[0] == 0
+    return household
+
+
+def correct_ikea_to_gifts(profile: Profile) -> None:
+    """Log decision 1: the IKEA purchase was a gift, not household goods."""
+    entry = {
+        "format": 1,
+        "entry": 1,
+        "decision_id": "d-0001",
+        "recorded_at": "2026-04-10T17:02:11Z",
+        "kind": "classify",
+        "targets": [transaction_id(profile, "IKEA 551")],
+        "category": "gifts",
+        "reason": "A present, not furniture",
+        "supersedes": [],
+    }
+    profile.input_file("decisions.jsonl").write_text(
+        json.dumps(entry) + "\n", encoding="utf-8"
+    )
