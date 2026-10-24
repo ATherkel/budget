@@ -84,12 +84,12 @@ class NewProductionStoreTests(unittest.TestCase):
             (backup,) = complete_backup_sets(production)
             assert run_ids(backup.path / "bronze.db") == []
             assert user_version(backup.path / "silver.db") == 1
-            assert user_version(backup.path / "gold.db") == 1
+            assert user_version(backup.path / "gold.db") == 2
             assert manifest(backup.path)["profile"] == "production"
             assert manifest(backup.path)["stores"] == {
                 "bronze": {"path": "bronze.db", "schema_version": 1},
                 "silver": {"path": "silver.db", "schema_version": 1},
-                "gold": {"path": "gold.db", "schema_version": 1},
+                "gold": {"path": "gold.db", "schema_version": 2},
             }
 
     def test_silver_is_refused_where_production_has_no_bronze_store(self) -> None:
@@ -436,7 +436,7 @@ class GoldBesideSilverTests(unittest.TestCase):
             assert manifest(newest.path)["stores"] == {
                 "bronze": {"path": "bronze.db", "schema_version": 1},
                 "silver": {"path": "silver.db", "schema_version": 1},
-                "gold": {"path": "gold.db", "schema_version": 1},
+                "gold": {"path": "gold.db", "schema_version": 2},
             }
 
 
