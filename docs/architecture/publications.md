@@ -196,6 +196,14 @@ move at or before it. The previous current publication is the
 `from_publication_id` of the last move. The printed diff and the dashboard
 banner show the cause.
 
+### Publication recovery
+
+`restore` brings back Gold's recipes, results and pointer history as they
+stood in the backup set; publications, labels and pointer moves made after it
+are lost. If the recipe changed since, catch-up builds a new current
+publication, and undo returns from it to the set's current one while that
+result is still usable. How the gap is recorded is left to issue #121.
+
 ### Past views
 
 A view is always built by the CLI and never by the dashboard, which stays

@@ -27,6 +27,7 @@ from typing import Final
 from budget.bronze import BronzeStore
 from budget.bronze.storage import bronze_stage
 from budget.durability import sync_folder
+from budget.gold.storage import gold_stage
 from budget.importing import (
     ImportLogAheadOfBronzeError,
     ImportLogDamagedError,
@@ -36,6 +37,7 @@ from budget.locking import WriterLock
 from budget.profiles import (
     BRONZE_STORE_NAME,
     DECISION_LOG_FILE_NAME,
+    GOLD_STORE_NAME,
     IMPORT_LOG_FILE_NAME,
     INPUTS_FOLDER,
     SILVER_STORE_NAME,
@@ -58,9 +60,9 @@ PUBLISHING_SUFFIX: Final = ".partial"
 _PACKAGE: Final = Path(__file__).resolve().parent
 _SOURCE_SUFFIXES: Final = frozenset({".py", ".sql"})
 _IMPORT_LOG_IN_SET: Final = f"{INPUTS_FOLDER}/{IMPORT_LOG_FILE_NAME}"
-# What Gold keeps in the stores folder (operations.md, Stores), which no set
-# covers until Gold has a store.
-_UNCOVERED_STAGE_STORES: Final = frozenset({"gold.db", "gold"})
+# Gold's legacy extracts (operations.md, Stores), which no set covers until
+# the history release writes them.
+_UNCOVERED_STAGE_STORES: Final = frozenset({"gold"})
 # The stores a set covers, with the files SQLite keeps beside each, and the
 # writer lock.
 _COVERED_FILES: Final = frozenset(
@@ -68,7 +70,7 @@ _COVERED_FILES: Final = frozenset(
         WRITER_LOCK_NAME,
         *(
             f"{store}{suffix}"
-            for store in (BRONZE_STORE_NAME, SILVER_STORE_NAME)
+            for store in (BRONZE_STORE_NAME, SILVER_STORE_NAME, GOLD_STORE_NAME)
             for suffix in ("", "-wal", "-shm", "-journal")
         ),
     }
@@ -119,16 +121,16 @@ class BackupVerificationError(RuntimeError):
 class UnsupportedStoresError(RuntimeError):
     """The stores folder holds a store this backup does not cover.
 
-    Only the Bronze and Silver stores are backed up so far. A set that left
-    another store out would claim to be a complete copy of the profile, so
-    none is written.
+    Only the Bronze, Silver and Gold stores are backed up so far; Gold's
+    legacy extracts are not. A set that left another store out would claim
+    to be a complete copy of the profile, so none is written.
     """
 
     def __init__(self, names: list[str]) -> None:
         """Name what was found in the stores folder."""
         super().__init__(
             f"the stores folder holds {', '.join(names)}, which no backup set "
-            "covers yet: only the Bronze and Silver stores are backed up; "
+            "covers yet: only the Bronze, Silver and Gold stores are backed up; "
             "nothing was published"
         )
 
@@ -251,15 +253,15 @@ class _StagedSet:
 
 
 def _covered_stores(profile: Profile) -> tuple[StageStore, ...]:
-    """Name the stores a set of this profile holds: Bronze, and Silver's if any.
+    """Name the stores a set of this profile holds: Bronze, then Silver and Gold.
 
     Bronze's is always snapshotted, so a profile without one is refused. A
-    Silver store is snapshotted where it is started; a profile that has none
-    yet, or only a file an interrupted start left empty, is still copied whole
-    without it.
+    Silver or Gold store is snapshotted where it is started; a profile that
+    has none yet, or only a file an interrupted start left empty, is still
+    copied whole without it.
     """
-    silver = silver_stage(profile)
-    return (bronze_stage(profile), *((silver,) if is_started(silver) else ()))
+    later = (silver_stage(profile), gold_stage(profile))
+    return (bronze_stage(profile), *(store for store in later if is_started(store)))
 
 
 def _copy_inputs(profile: Profile, staging: Path) -> dict[str, bytes]:
@@ -370,12 +372,11 @@ def _is_another_store(entry: Path) -> bool:
 
 
 def require_supported_stores(profile: Profile) -> None:
-    """Refuse a stores folder holding any store besides Bronze and Silver.
+    """Refuse a stores folder holding any store besides Bronze, Silver and Gold.
 
-    Gold's store, its legacy publications, and any other SQLite database are
-    refused, even an empty file being created as one. The covered stores' own
-    WAL and shared-memory files, the lock and folders such as `logs` are not
-    stores.
+    Gold's `gold` folder of legacy publications, even empty, and any other
+    SQLite database are refused. The covered stores' own WAL and
+    shared-memory files, the lock and folders such as `logs` are not stores.
     """
     if not profile.stores.is_dir():
         return
@@ -391,14 +392,14 @@ def require_supported_stores(profile: Profile) -> None:
 def _require_no_lost_store(profile: Profile) -> None:
     """Refuse a backup while a store the profile's sets hold is missing.
 
-    Only Silver's store may be missing from a set; Bronze's is always
-    snapshotted. A file an interrupted start left empty is missing too, as it
-    is to `_covered_stores`. Only a complete set counts, as for a new store
-    (`migrate`): a damaged one restores nothing.
+    Only Silver's and Gold's stores may be missing from a set; Bronze's is
+    always snapshotted. A file an interrupted start left empty is missing
+    too, as it is to `_covered_stores`. Only a complete set counts, as for a
+    new store (`migrate`): a damaged one restores nothing.
     """
-    silver = silver_stage(profile)
-    if not is_started(silver) and complete_set_holds(profile, silver.stage):
-        raise LostStoreError(silver.label)
+    for store in (silver_stage(profile), gold_stage(profile)):
+        if not is_started(store) and complete_set_holds(profile, store.stage):
+            raise LostStoreError(store.label)
 
 
 def require_backup_allowed(profile: Profile) -> None:

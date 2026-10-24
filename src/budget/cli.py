@@ -26,10 +26,11 @@ from budget.backups import (
     UnsupportedStoresError,
     back_up,
 )
-from budget.bronze.storage import BRONZE_STAGE, bronze_stage
+from budget.bronze.storage import bronze_stage
 from budget.codeversion import UncommittedCodeError, require_committed_code
 from budget.dashboard import create_app
 from budget.dashboard.passphrase import PassphraseNotSetError, set_passphrase
+from budget.gold.storage import GOLD_STAGE
 from budget.importing import (
     Coverage,
     ImportLogAheadOfBronzeError,
@@ -74,8 +75,6 @@ from budget.reviewing import REVIEW_KINDS, open_reviews
 from budget.silver.storage import SILVER_STAGE
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
-GOLD_STAGE: Final = "gold"
-STAGES: Final = (BRONZE_STAGE, SILVER_STAGE, GOLD_STAGE)
 EXIT_OK: Final = 0
 EXIT_USAGE: Final = 2
 EXIT_REFUSED_INPUT: Final = 3
@@ -98,17 +97,6 @@ _STORE_ENVIRONMENT_REFUSALS: Final = (
     sqlstore.MigrationRequiredError,
     sqlstore.UnsupportedStoreVersionError,
 )
-
-
-class StageNotBuiltError(Exception):
-    """The named stage has no store in this code yet."""
-
-    def __init__(self, stage: str) -> None:
-        """Name the stage, rather than pretend to migrate it."""
-        super().__init__(
-            f"the {stage} stage is not built yet: only {BRONZE_STAGE} and "
-            f"{SILVER_STAGE} can be migrated"
-        )
 
 
 class NoProfileSelectedError(Exception):
@@ -194,7 +182,9 @@ def _parser() -> argparse.ArgumentParser:
     migrate = commands.add_parser(
         "migrate", help="create or upgrade the profile's stores"
     )
-    migrate.add_argument("--stage", choices=STAGES, help="migrate one stage only")
+    migrate.add_argument(
+        "--stage", choices=MIGRATED_STAGES, help="migrate one stage only"
+    )
     migrate.add_argument(
         "--new-store",
         action="store_true",
@@ -205,7 +195,7 @@ def _parser() -> argparse.ArgumentParser:
     rebuild.add_argument(
         "--from",
         dest="from_stage",
-        choices=STAGES,
+        choices=MIGRATED_STAGES,
         default=GOLD_STAGE,
         help="the stage to rebuild from",
     )
@@ -248,9 +238,7 @@ def _selected_profile_file(
 
 
 def _migrate(profile: Profile, stage: str | None, *, new_store: bool) -> None:
-    """Create or upgrade the stores this code has: Bronze and Silver, for now."""
-    if stage is not None and stage not in MIGRATED_STAGES:
-        raise StageNotBuiltError(stage)
+    """Create or upgrade the profile's stores: every stage, or the one named."""
     stages = MIGRATED_STAGES if stage is None else (stage,)
     # Refusals that touch nothing come first; the lock guards the mutation.
     require_migration_allowed(profile, stages=stages, new_store=new_store)
@@ -477,7 +465,6 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         return _refuse(error, EXIT_REFUSED_INPUT)
     except (
         NoProfileSelectedError,
-        StageNotBuiltError,
         RebuildFromStageNotBuiltError,
         UncommittedCodeError,
         WriterLockHeldError,

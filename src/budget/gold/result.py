@@ -1,16 +1,18 @@
 # Copyright 2026 Therkel
-"""`GoldResult`: one build's Gold records, answering `GoldRepository` in memory."""
+"""`GoldResult`: one build's Gold records, answering both interfaces in memory."""
 
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass, fields
 from datetime import date
 
 from budget.gold.models import (
+    ClassificationReviewItem,
     GoldAccount,
     GoldCategory,
     GoldCategoryAllocation,
     GoldPublication,
     GoldTransaction,
+    GoldTransactionLineage,
     MonthlyBalanceSnapshot,
     ReportingMonth,
 )
@@ -28,10 +30,27 @@ class GoldRecords:
 
     def __post_init__(self) -> None:
         """Copy each collection, so a caller's later change never reaches Gold."""
-        for record_kind in fields(self):
-            copied = tuple(getattr(self, record_kind.name))
-            # A frozen dataclass sets its own fields only through object.
-            object.__setattr__(self, record_kind.name, copied)
+        _copy_collections(self)
+
+
+@dataclass(frozen=True)
+class GoldLineageRecords:
+    """The privileged lineage records of one build; never for analytics."""
+
+    classification_review_items: Sequence[ClassificationReviewItem] = ()
+    transaction_lineage: Sequence[GoldTransactionLineage] = ()
+
+    def __post_init__(self) -> None:
+        """Copy each collection, so a caller's later change never reaches Gold."""
+        _copy_collections(self)
+
+
+def _copy_collections(records: GoldRecords | GoldLineageRecords) -> None:
+    """Replace each collection of frozen records with a tuple copy."""
+    for record_kind in fields(records):
+        copied = tuple(getattr(records, record_kind.name))
+        # A frozen dataclass sets its own fields only through object.
+        object.__setattr__(records, record_kind.name, copied)
 
 
 def refuse_bare_string(account_ids: Collection[str] | None) -> None:
@@ -51,18 +70,25 @@ def _named(account_id: str, account_ids: Collection[str] | None) -> bool:
 
 
 class GoldResult:
-    """One build's records, bound to one publication; a `GoldRepository`.
+    """One build's records, bound to one publication.
 
-    Analytics tests build one from synthetic records, so they need neither a
-    store nor the Gold build.
+    It is both a `GoldRepository` and a `GoldLineageRepository`. Analytics tests
+    build one from synthetic records, so they need neither a store nor the Gold
+    build.
     """
 
-    __slots__ = ("_publication", "_records")
+    __slots__ = ("_lineage", "_publication", "_records")
 
-    def __init__(self, publication: GoldPublication, records: GoldRecords) -> None:
-        """Bind `records` to `publication`."""
+    def __init__(
+        self,
+        publication: GoldPublication,
+        records: GoldRecords,
+        lineage: GoldLineageRecords | None = None,
+    ) -> None:
+        """Bind `records` and `lineage` to `publication`; no lineage is empty."""
         self._publication = publication
         self._records = records
+        self._lineage = GoldLineageRecords() if lineage is None else lineage
 
     @property
     def records(self) -> GoldRecords:
@@ -128,3 +154,20 @@ class GoldResult:
             if start_month <= snapshot.month <= end_month
             and _named(snapshot.account_id, account_ids)
         )
+
+    def transaction_lineage(
+        self, transaction_ids: Collection[str]
+    ) -> Sequence[GoldTransactionLineage]:
+        """Return the lineage of each named transaction."""
+        if isinstance(transaction_ids, str):
+            message = "transaction_ids takes a collection of ids, not one str"
+            raise TypeError(message)
+        return tuple(
+            line
+            for line in self._lineage.transaction_lineage
+            if line.transaction_id in transaction_ids
+        )
+
+    def classification_review_items(self) -> Sequence[ClassificationReviewItem]:
+        """Return every open classification review item."""
+        return self._lineage.classification_review_items

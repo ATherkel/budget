@@ -8,6 +8,9 @@ type: decisions
 that a Gold migration cannot convert is also extracted and recorded as a legacy
 publication, and retention keeps its pre-migration backup.
 
+Gold history made after the backup set that `restore` uses is lost; see
+[Publication recovery](../architecture/publications.md#publication-recovery).
+
 ## Context
 
 Principle 3 says Gold is reproducible from Silver. It is not: a Gold build

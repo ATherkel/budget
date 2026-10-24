@@ -120,8 +120,8 @@ inside the installed wheel and sdist so an installation can migrate without a
 source checkout. Each store records its own `PRAGMA user_version` and a one-row
 `store_identity` naming the profile and stage. The runner applies every
 pending file in one transaction, so a migration that fails leaves the store at
-the version it had. `budget migrate` and the backup sets do not include Gold
-yet (issue #257). Opening a store never creates or changes the schema: it
+the version it had. `budget migrate` runs all three, and the backup sets hold
+every store started. Opening a store never creates or changes the schema: it
 requires an existing file, `mode=rw`, a version this code knows, and a
 matching identity, and it sets `foreign_keys = ON`, `busy_timeout = 5000` and
 `synchronous = FULL`. A new store is created in WAL mode.
@@ -265,7 +265,7 @@ The exit status is 3, because two files stayed in the inbox. Each file is
 imported on its own: `joint-current`'s export was stored, archived under
 `exports\joint-current\`, logged in `inputs\imports.jsonl`, and removed from
 the inbox, whatever happened to the others. Then Silver was rebuilt from
-everything Bronze holds. In production a backup set of both stores follows,
+everything Bronze holds. In production a backup set of every store follows,
 and the summary ends `Backup   backup set <name> written`.
 
 The summary names a file by its number in the listing, never by its
@@ -469,21 +469,19 @@ be absolute, and the inbox and exports folders may not overlap. `profile` is
 budget --profile "$env:APPDATA\budget\development.toml" migrate
 ```
 
-`migrate` creates or upgrades the profile's Bronze and Silver stores, Bronze
-first, and `--stage bronze` or `--stage silver` names one of them. Every stage
-goes through the same runner, so each one refuses the same way: a store
-recorded for another profile or another stage, or at a schema version this
-code does not know, is left as it is and refused with exit 4. `--stage gold`
-is refused with exit 4 until that store exists. A run that succeeds prints
-nothing:
+`migrate` creates or upgrades the profile's Bronze, Silver and Gold stores, in
+that order, and `--stage bronze`, `--stage silver` or `--stage gold` names one
+of them. Every stage goes through the same runner, so each one refuses the
+same way: a store recorded for another profile or another stage, or at a
+schema version this code does not know, is left as it is and refused with
+exit 4. A run that succeeds prints nothing:
 
 ```powershell
 $env:BUDGET_PROFILE = "$env:APPDATA\budget\development.toml"
 budget migrate --stage bronze; $LASTEXITCODE   # 0: bronze.db created or upgraded
 budget migrate --stage silver; $LASTEXITCODE   # 0: silver.db created or upgraded
-budget migrate; $LASTEXITCODE                  # 0: both, already current
-budget migrate --stage gold; $LASTEXITCODE     # 4
-# budget: the gold stage is not built yet: only bronze and silver can be migrated
+budget migrate --stage gold; $LASTEXITCODE     # 0: gold.db created or upgraded
+budget migrate; $LASTEXITCODE                  # 0: all three, already current
 ```
 
 Had `bronze.db` been replaced by a copy of `silver.db`, `migrate` would refuse
@@ -505,12 +503,12 @@ are published in, and may hold a `[backups]` table of retention keys
 not overlap the stores, inputs, inbox or exports folders. In production,
 `migrate` writes a verified backup set before it changes an existing store
 and another after, and a migration that fails commits none of its steps. A
-set holds the Bronze store and the Silver store, each snapshotted through
-SQLite's backup API, so production migrates both stages as development does.
+set holds the Bronze, Silver and Gold stores, each snapshotted through
+SQLite's backup API, so production migrates every stage as development does.
 A missing production store is started only with `--new-store`, only where
-none of the stores it would start is started already, Silver's only beside a
-Bronze store a set can hold, and only when no complete backup set holds one
-that could restore it instead. A store file left empty by an interrupted
+none of the stores it would start is started already, Silver's and Gold's
+only beside a Bronze store a set can hold, and only when no complete backup
+set holds one that could restore it instead. A store file left empty by an interrupted
 start counts as missing: rerunning `--new-store` starts it, or, where an
 earlier stage's store was started, names the `--stage` that starts the rest.
 `budget backup` writes a set of production by hand and prints its name.
@@ -519,43 +517,45 @@ rebuild that follows them.
 [operations.md](docs/architecture/operations.md#backup-and-restore) describes
 the sets, their manifest and retention.
 
-A new production profile starts both stores in one run, then writes its
+A new production profile starts all three stores in one run, then writes its
 first set:
 
 ```powershell
 $env:BUDGET_PROFILE = "$env:APPDATA\budget\production.toml"
-budget migrate --new-store; $LASTEXITCODE   # 0: bronze.db and silver.db created, then a backup set
-budget migrate; $LASTEXITCODE               # 0: both already current, so no new set
+budget migrate --new-store; $LASTEXITCODE   # 0: bronze.db, silver.db and gold.db created, then a backup set
+budget migrate; $LASTEXITCODE               # 0: all already current, so no new set
 budget backup; $LASTEXITCODE                # 0
 # backup set 2026-10-06T15-28-41.154905Z written
 budget migrate --new-store; $LASTEXITCODE   # 4
 # budget: C:\Users\<you>\AppData\Local\budget\production\bronze.db is already a Bronze store: migrate it without --new-store
 ```
 
-A production profile whose Bronze store and sets come from before sets held
-Silver has no Silver store yet. `migrate` refuses, before Bronze changes,
-until Silver's is started. Its older sets hold Bronze alone; they stay
-complete and are kept like any other set, and since they hold no Silver
-store, they do not stop one being started:
+A production profile whose stores and sets come from before sets held Silver
+or Gold has no store of that stage yet. `migrate` refuses, before Bronze
+changes, until the first missing one is started. Its older sets hold Bronze
+alone, or Bronze and Silver; they stay complete and are kept like any other
+set, and since they hold no store of the later stage, they do not stop one
+being started:
 
 ```powershell
 budget migrate; $LASTEXITCODE                              # 4
 # budget: the production profile has no Silver store: start one with `budget migrate --stage silver --new-store`, unless production had one, which must be restored from a backup set instead
-budget migrate --stage silver --new-store; $LASTEXITCODE   # 0: silver.db created, then a set of both stores
+budget migrate --stage silver --new-store; $LASTEXITCODE   # 0: silver.db created, then a set
+budget migrate --stage gold --new-store; $LASTEXITCODE     # 0: gold.db created, then a set of all three stores
 ```
 
-Once a complete set holds a Silver store, a lost one must be restored, not
-started anew, and no backup is written until it is; a file an interrupted
-start left empty in its place counts as lost. Before then, a backup leaves
-such a file out. A backup is still refused
-while the stores folder holds a store no set covers, such as Gold's, since
-the set would not be a complete copy of the profile. All three exit 4 and
-write nothing:
+Once a complete set holds a Silver or Gold store, a lost one must be
+restored, not started anew, and no backup is written until it is; a file an
+interrupted start left empty in its place counts as lost. Before then, a
+backup leaves such a file out. A backup is still refused while the stores
+folder holds a store no set covers, such as Gold's `gold\` folder of legacy
+extracts, since the set would not be a complete copy of the profile. All
+three exit 4 and write nothing:
 
 ```text
 budget: the backups folder holds complete backup sets of this profile, so its Silver store must be restored from the newest that holds one, not started anew; nothing was written
 budget: the stores folder has no Silver store, but backup sets of this profile hold one: the Silver store must be restored from the newest that holds one; nothing was published
-budget: the stores folder holds gold.db, which no backup set covers yet: only the Bronze and Silver stores are backed up; nothing was published
+budget: the stores folder holds gold, which no backup set covers yet: only the Bronze, Silver and Gold stores are backed up; nothing was published
 ```
 
 | Exit | Meaning |

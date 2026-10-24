@@ -23,12 +23,15 @@ from budget.backups import (
     PUBLISHING_SUFFIX,
     BackupVerificationError,
     BackupWriteError,
+    LostStoreError,
     UnsupportedStoresError,
     back_up,
     complete_backup_sets,
     hold_for_recovery,
 )
 from budget.bronze import migrate_bronze
+from budget.gold.storage import migrate_gold
+from budget.gold.store import GoldStore
 from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.locking import writer_lock
 from budget.profiles import Profile, RetentionPolicy
@@ -39,7 +42,9 @@ from tests.backups.sets import (
     checksum,
     copied_run_ids,
     damaged_rereads,
+    gold_publications,
     holding,
+    holding_gold,
     holding_silver,
     import_one,
     manifest,
@@ -47,6 +52,7 @@ from tests.backups.sets import (
     silver_accounts,
 )
 from tests.bronze.migration_resources import SILVER_MIGRATIONS, added_migration
+from tests.gold.publishing import publish
 from tests.importing.households import household
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -125,6 +131,36 @@ class BackUpTests(unittest.TestCase):
             assert written["stores"] == {
                 "bronze": {"path": "bronze.db", "schema_version": 1},
                 "silver": {"path": "silver.db", "schema_version": 1},
+            }
+            assert complete_backup_sets(profile) == (backup,)
+
+    def test_a_set_holds_a_snapshot_of_gold_beside_bronze_and_silver(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile = household(folder / "household")
+            migrate_silver(profile)
+            migrate_gold(profile)
+            with closing(holding_gold(profile)), writer_lock(profile) as lock:
+                with GoldStore(profile) as gold:
+                    publish(gold, 1)
+                # The publication is still in Gold's WAL file: a copy of the
+                # store file alone would miss it.
+                copy = folder / "copied-gold.db"
+                shutil.copyfile(profile.gold_store, copy)
+                assert gold_publications(copy) == []
+
+                backup = back_up(lock, now=NOW)
+
+            store = backup.path / "gold.db"
+            written = manifest(backup.path)
+            files = written["files"]
+            assert isinstance(files, dict)
+            assert files["gold.db"] == checksum(store)
+            assert gold_publications(store) == [1]
+            assert written["stores"] == {
+                "bronze": {"path": "bronze.db", "schema_version": 1},
+                "silver": {"path": "silver.db", "schema_version": 1},
+                "gold": {"path": "gold.db", "schema_version": 1},
             }
             assert complete_backup_sets(profile) == (backup,)
 
@@ -337,11 +373,11 @@ class UnsupportedStoreTests(unittest.TestCase):
     def test_a_profile_with_a_store_this_backup_cannot_cover_is_refused(
         self,
     ) -> None:
-        # Bronze and Silver are covered; Gold has no store in this code yet.
+        # The Bronze, Silver and Gold stores are covered; Gold's legacy
+        # extracts are not until the history release writes them.
         cases = {
-            "a Gold store": Path("gold.db"),
             "a legacy publication": Path("gold") / "legacy" / "publication-1.db",
-            "an empty Gold store being created": Path("gold.db"),
+            "an empty legacy folder": Path("gold"),
             "a store under any other name": Path("household.sqlite"),
         }
         for case, relative in cases.items():
@@ -350,18 +386,38 @@ class UnsupportedStoreTests(unittest.TestCase):
                 store = profile.stores / relative
                 store.parent.mkdir(parents=True, exist_ok=True)
                 if case.startswith("an empty"):
-                    store.write_bytes(b"")
+                    store.mkdir()
                 else:
                     with closing(sqlite3.connect(store)) as connection:
                         connection.execute("CREATE TABLE marker (x TEXT)")
 
                 with (
                     writer_lock(profile) as lock,
-                    pytest.raises(UnsupportedStoresError, match=relative.parts[0]),
+                    pytest.raises(
+                        UnsupportedStoresError, match=relative.parts[0]
+                    ) as refusal,
                 ):
                     back_up(lock, now=NOW)
 
+                assert "the Bronze, Silver and Gold stores" in str(refusal.value)
                 assert complete_backup_sets(profile) == ()
+
+    def test_a_lost_gold_store_its_sets_hold_stops_a_backup(self) -> None:
+        # A set without it would claim a complete copy of a profile that has
+        # lost a store, and retention would in time prune the sets holding it.
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            migrate_silver(profile)
+            migrate_gold(profile)
+            with writer_lock(profile) as lock:
+                held = back_up(lock, now=NOW - timedelta(days=1))
+                for lost in profile.stores.glob("gold.db*"):
+                    lost.unlink()
+
+                with pytest.raises(LostStoreError, match="no Gold store"):
+                    back_up(lock, now=NOW)
+
+            assert complete_backup_sets(profile) == (held,)
 
     def test_a_lost_store_only_a_damaged_set_holds_does_not_stop_a_backup(
         self,
