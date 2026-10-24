@@ -19,7 +19,7 @@ from budget.gold.store import GoldStore
 from budget.inputs import load_configuration
 from budget.locking import WriterLock, writer_lock
 from budget.rebuilding import GoldRebuild, rebuild_from_gold
-from budget.silver import VoidImportRun
+from budget.silver import SilverStore, VoidImportRun
 from tests.cli.commands import rebuild
 from tests.cli.pipelines import (
     EXPORT,
@@ -136,6 +136,29 @@ class WriterLockTests(unittest.TestCase):
             assert "another command is running" in second_stderr
             with GoldStore(built.profile) as gold:
                 assert [m.to_publication_id for m in gold.pointer_history()] == [1]
+
+
+class FromSilverTests(unittest.TestCase):
+    def test_rebuild_from_silver_rebuilds_silver_then_publishes_gold(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory), silver=False)
+            with SilverStore(built.profile) as silver:
+                assert silver.read().transactions == ()
+
+            status, stdout, stderr = rebuild(built.profile_file, "--from", "silver")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "1 admitted" in stdout
+            assert "published publication 1" in stdout
+            with SilverStore(built.profile) as silver:
+                assert [t.description for t in silver.read().transactions] == ["Café"]
+            with GoldStore(built.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                transactions = gold.open(current.publication_id).transactions(
+                    start_date=date(2026, 3, 1), end_date=date(2026, 3, 31)
+                )
+                assert [t.description for t in transactions] == ["Café"]
 
 
 class RecipeNamesSilversRunsTests(unittest.TestCase):

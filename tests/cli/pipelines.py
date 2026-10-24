@@ -71,6 +71,14 @@ def household(
     return Household(profile_file, profile, imported.import_run.import_run_id)
 
 
+def write_inputs(profile: Profile, accounts: str = ACCOUNTS) -> None:
+    """Write the household's `accounts.toml`, `taxonomy.toml` and `rules.toml`."""
+    profile.inputs.mkdir(parents=True, exist_ok=True)
+    profile.accounts_file.write_text(accounts, encoding="utf-8")
+    profile.input_file("taxonomy.toml").write_text(TAXONOMY, encoding="utf-8")
+    profile.input_file("rules.toml").write_text(RULES, encoding="utf-8")
+
+
 def present_again(profile: Profile, name: str, through: date) -> str:
     """Present the household's export again under a new filename and range.
 
