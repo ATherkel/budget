@@ -17,6 +17,7 @@ import pytest
 
 from budget.bronze import BronzeStore, ImportDeclaration, ImportRun
 from budget.bronze.parsers.base import ParserResult
+from budget.bronze.store import ConflictingDeclaredFormatsError
 from budget.profiles import Profile
 from tests.bronze.test_store import LineParser, migrated_profile
 
@@ -169,6 +170,41 @@ class AtomicityTests(unittest.TestCase):
 
     def test_a_record_that_cannot_be_stored_rolls_the_whole_rebuild_back(self) -> None:
         self._unchanged_after(_UnstorableParser("only"))
+
+
+class _SecondFormat(LineParser):
+    """Another declared format, which happens to read the same bytes."""
+
+    source_format = "synthetic-lines-v2"
+
+
+class ConflictingFormatsTests(unittest.TestCase):
+    def test_a_payload_declared_as_two_formats_is_refused_not_guessed(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile = migrated_profile(root)
+            parsers = {
+                FORMAT: LineParser("datum"),
+                _SecondFormat.source_format: _SecondFormat("other"),
+            }
+            with BronzeStore(profile, parsers=parsers) as store:
+                run = _import(store, root, "synthetic-20260914.csv", FIRST_EXPORT)
+                other = ImportDeclaration(
+                    declared_account_id="daily-account",
+                    source_format=_SecondFormat.source_format,
+                    exported_on=date(2026, 9, 14),
+                    covers_from=date(2026, 9, 1),
+                    covers_through=date(2026, 9, 13),
+                )
+                store.import_file(root / "synthetic-20260914.csv", other)
+                before = store.get_source_records(run.payload_id)
+
+                with pytest.raises(ConflictingDeclaredFormatsError) as refusal:
+                    store.rebuild_derived_records()
+
+                assert run.payload_id in str(refusal.value)
+                assert store.get_source_records(run.payload_id) == before
+                assert store.get_format_failures(run.payload_id) == ()
 
 
 if __name__ == "__main__":

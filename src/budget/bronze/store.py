@@ -57,6 +57,17 @@ class ParserFormatMismatchError(ValueError):
         )
 
 
+class ConflictingDeclaredFormatsError(ValueError):
+    """A retained payload was declared as more than one source format."""
+
+    def __init__(self, payload_id: str) -> None:
+        """Name the payload; which declared format is right is not ours to guess."""
+        super().__init__(
+            f"payload {payload_id} was declared as more than one source format; "
+            "nothing was rebuilt"
+        )
+
+
 def _parsers_for(
     parsers: Mapping[str, SourceParser] | None,
 ) -> Mapping[str, SourceParser]:
