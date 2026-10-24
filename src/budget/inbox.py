@@ -28,7 +28,7 @@ from budget.backups import (
 )
 from budget.bronze.models import ImportRun
 from budget.bronze.parsers.registry import source_parser
-from budget.codeversion import require_committed_code
+from budget.codeversion import committed_code_version, require_committed_code
 from budget.decision_log import read_decision_log
 from budget.importing import (
     Coverage,
@@ -37,11 +37,13 @@ from budget.importing import (
     import_inbox_file,
 )
 from budget.importing import InboxImport as InboxFileImport
-from budget.inputs import Account, MisfiledExportError
+from budget.inputs import Account, MisfiledExportError, load_configuration
 from budget.locking import WriterLock
 from budget.profiles import PRODUCTION_PROFILE_NAME, Profile
 from budget.rebuilding import (
+    GoldRebuild,
     SilverRebuild,
+    rebuild_from_gold,
     rebuild_from_silver,
 )
 
@@ -121,11 +123,12 @@ class FileOutcome:
 
 @dataclass(frozen=True)
 class ImportedInbox:
-    """Every inbox file's outcome, the Silver rebuild and production's backup.
+    """Every inbox file's outcome, the rebuilds and production's backup.
 
     `rebuilt` is `None` when no file reached Bronze: then nothing changed,
-    and neither a rebuild nor a backup follows. `backup` is the set
-    written after the rebuild; only production writes one.
+    and neither a rebuild nor a backup follows. `published` is what the Gold
+    rebuild after the Silver one left current. `backup` is the set
+    written after the rebuilds; only production writes one.
     `backup_failure` is why production's set could not be written, if so.
     `incidents` are the cross-account duplicates the preflight found, so the
     counts can report them even when a member is refused for another reason.
@@ -134,6 +137,7 @@ class ImportedInbox:
     files: Sequence[FileOutcome]
     rebuilt: SilverRebuild | None
     incidents: tuple[DuplicateIncident, ...] = ()
+    published: GoldRebuild | None = None
     backup: BackupSet | None = None
     backup_failure: Exception | None = None
 
@@ -173,15 +177,18 @@ class ImportedInbox:
 def require_import_allowed(profile: Profile) -> None:
     """Refuse, before anything is asked or stored, what would refuse later.
 
-    The Silver rebuild refuses uncommitted code in production and a decision
-    log it cannot read; production's backup refuses a stores folder no set
-    can cover. Found only after the Bronze writes, any of them would leave
-    production written without the build and backup that must follow.
+    The rebuilds refuse uncommitted code in production, a decision log they
+    cannot read and household inputs that do not load; production's backup
+    refuses a stores folder no set can cover. Found only after the Bronze
+    writes, any of them would leave production written without the build and
+    backup that must follow.
     """
     require_committed_code(profile)
     read_decision_log(profile)
+    load_configuration(profile)
     if profile.name == PRODUCTION_PROFILE_NAME:
         require_backup_allowed(profile)
+    committed_code_version(profile)
 
 
 def inbox_exports(profile: Profile) -> tuple[Path, ...]:
@@ -431,8 +438,11 @@ def import_inbox(
     if all(previewed.skipped or previewed.source in excluded for previewed in previews):
         return ImportedInbox(files=files, incidents=found, rebuilt=None)
     rebuilt = rebuild_from_silver(lock)
+    published = rebuild_from_gold(lock, now=datetime.now(UTC))
     if lock.profile.name != PRODUCTION_PROFILE_NAME:
-        return ImportedInbox(files=files, incidents=found, rebuilt=rebuilt)
+        return ImportedInbox(
+            files=files, incidents=found, rebuilt=rebuilt, published=published
+        )
     # Every production write is followed by a set covering Bronze and the
     # Silver just rebuilt from it. The imports are committed by now, so a set
     # that cannot be written is reported beside them, not instead of them.
@@ -440,6 +450,16 @@ def import_inbox(
         backup = back_up(lock, now=datetime.now(UTC))
     except BACKUP_FAILURES as error:
         return ImportedInbox(
-            files=files, incidents=found, rebuilt=rebuilt, backup_failure=error
+            files=files,
+            incidents=found,
+            rebuilt=rebuilt,
+            published=published,
+            backup_failure=error,
         )
-    return ImportedInbox(files=files, incidents=found, rebuilt=rebuilt, backup=backup)
+    return ImportedInbox(
+        files=files,
+        incidents=found,
+        rebuilt=rebuilt,
+        published=published,
+        backup=backup,
+    )
