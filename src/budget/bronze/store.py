@@ -57,6 +57,17 @@ class ParserFormatMismatchError(ValueError):
         )
 
 
+class ConflictingDeclaredFormatsError(ValueError):
+    """A retained payload was declared as more than one source format."""
+
+    def __init__(self, payload_id: str) -> None:
+        """Name the payload; which declared format is right is not ours to guess."""
+        super().__init__(
+            f"payload {payload_id} was declared as more than one source format; "
+            "nothing was rebuilt"
+        )
+
+
 def _parsers_for(
     parsers: Mapping[str, SourceParser] | None,
 ) -> Mapping[str, SourceParser]:
@@ -420,3 +431,41 @@ class BronzeStore:
             )
             for row in rows
         )
+
+    def rebuild_derived_records(self) -> None:
+        """Regenerate every payload's source records and format failures.
+
+        Each retained payload is parsed again, from its stored bytes, by the
+        parser of the format its import runs declared, exactly as an import
+        parses it. Every payload is parsed before anything is written, and all
+        of them are replaced in one transaction, so a parser that raises
+        leaves the earlier derived state as it was. The bytes and every import
+        run are untouched: a rebuild is not an import.
+        """
+        declared = self._connection.execute(
+            "SELECT DISTINCT payload_id, source_format FROM import_runs"
+            " ORDER BY payload_id, source_format"
+        ).fetchall()
+        payload_ids = [row["payload_id"] for row in declared]
+        for payload_id in payload_ids:
+            if payload_ids.count(payload_id) > 1:
+                raise ConflictingDeclaredFormatsError(payload_id)
+        parsed = [
+            (
+                row["payload_id"],
+                row["source_format"],
+                self._parser_for(row["source_format"]).parse(
+                    self.get_payload(row["payload_id"]).content
+                ),
+            )
+            for row in declared
+        ]
+        with self._connection:
+            self._connection.execute("BEGIN IMMEDIATE")
+            for payload_id, source_format, result in parsed:
+                _rebuild_derived_cache(
+                    self._connection,
+                    payload_id=payload_id,
+                    source_format=source_format,
+                    result=result,
+                )

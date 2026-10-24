@@ -220,6 +220,12 @@ def rebuild_from_gold(lock: WriterLock, *, now: datetime) -> GoldRebuild:
     return GoldRebuild(publication=publication, published=True)
 
 
+def rebuild_from_bronze(lock: WriterLock) -> None:
+    """Regenerate the locked profile's Bronze source records from its payloads."""
+    with BronzeStore(lock.profile) as store:
+        store.rebuild_derived_records()
+
+
 def rebuild_from_silver(lock: WriterLock) -> SilverRebuild:
     """Rebuild the locked profile's Silver from its Bronze store.
 
