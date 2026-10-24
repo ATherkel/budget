@@ -18,6 +18,7 @@ from tests.cli.lifecycle import (
     at_second_publication,
     correct_ikea_to_gifts,
     february_by_category,
+    retract_the_correction,
 )
 
 EXIT_OK = 0
@@ -84,6 +85,30 @@ class RuleChangeTests(unittest.TestCase):
                     if each.description == "NETFLIX.COM"
                 ]
                 assert netflix.transaction_type == "unknown"
+
+
+class RetractedDecisionTests(unittest.TestCase):
+    def test_a_decision_added_and_retracted_gives_the_earlier_result(self) -> None:
+        with TemporaryDirectory() as directory:
+            household = at_second_publication(Path(directory))
+            with GoldStore(household.profile) as gold:
+                second = gold.current()
+            assert second is not None
+            correct_ikea_to_gifts(household.profile)
+            assert rebuild(household.profile_file)[0] == EXIT_OK
+            retract_the_correction(household.profile)
+
+            status, stdout, stderr = rebuild(household.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 4" in stdout
+            with GoldStore(household.profile) as gold:
+                third, fourth = gold.available()
+                assert (third.publication_id, fourth.publication_id) == (3, 4)
+                assert gold.recipe(4).decision_log_position == 2
+                assert gold.recipe(4) != gold.recipe(2)
+                assert third.result_fingerprint != second.result_fingerprint
+                assert fourth.result_fingerprint == second.result_fingerprint
 
 
 if __name__ == "__main__":
