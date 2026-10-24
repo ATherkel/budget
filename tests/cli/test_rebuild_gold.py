@@ -58,5 +58,25 @@ class FirstPublicationTests(unittest.TestCase):
                 assert [t.description for t in transactions] == ["Café"]
 
 
+class UnchangedRecipeTests(unittest.TestCase):
+    def test_a_second_rebuild_with_nothing_changed_publishes_nothing(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            with GoldStore(built.profile) as gold:
+                moves = gold.pointer_history()
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "nothing was published" in stdout
+            with GoldStore(built.profile) as gold:
+                assert gold.pointer_history() == moves
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
+                assert gold.next_publication_id() == 2
+
+
 if __name__ == "__main__":
     unittest.main()
