@@ -25,7 +25,7 @@ class LoginThrottle:
         # check before any is counted, and five becomes forty.
         self.guard = threading.Lock()
         self._failures = 0
-        self._locks = 0
+        self._lock_duration = FIRST_LOCK
         self._locked_until: datetime | None = None
 
     def seconds_locked(self, now: datetime) -> int:
@@ -37,7 +37,7 @@ class LoginThrottle:
     def succeeded(self) -> None:
         """Record a successful login: forget the failures and the doubling."""
         self._failures = 0
-        self._locks = 0
+        self._lock_duration = FIRST_LOCK
 
     def failed(self, now: datetime) -> None:
         """Record a failed login made at `now`.
@@ -48,5 +48,5 @@ class LoginThrottle:
         self._failures += 1
         if self._failures >= FAILURES_BEFORE_LOCK:
             self._failures = 0
-            self._locked_until = now + min(FIRST_LOCK * 2**self._locks, LONGEST_LOCK)
-            self._locks += 1
+            self._locked_until = now + self._lock_duration
+            self._lock_duration = min(self._lock_duration * 2, LONGEST_LOCK)

@@ -1,0 +1,49 @@
+COMMAND: git diff --check
+RESULT: passed (exit 0)
+## codex/pr310-review-fixes
+ M README.md
+ M pyproject.toml
+ M src/budget/cli.py
+ M src/budget/dashboard/__init__.py
+ M src/budget/dashboard/passphrase.py
+ M src/budget/dashboard/templates/invalid_address.html
+ M src/budget/dashboard/templates/invalid_address_page.html
+ M src/budget/dashboard/templates/invalid_selection.html
+ M src/budget/dashboard/templates/no_accounts.html
+ M src/budget/dashboard/templates/nothing_published.html
+ M src/budget/dashboard/templates/overview.html
+ M src/budget/dashboard/templates/report.html
+ M src/budget/dashboard/templates/unavailable.html
+ M src/budget/dashboard/templates/unavailable_page.html
+ M src/budget/dashboard/throttle.py
+ M tests/dashboard/test_access.py
+ M tests/dashboard/test_overview_page.py
+ M uv.lock
+?? docs/agent-work/
+?? src/budget/dashboard/static/app.css
+?? src/budget/dashboard/static/app.js
+?? src/budget/dashboard/templates/base.html
+?? src/budget/dashboard/templates/login.html
+?? src/budget/demo.py
+?? tests/cli/test_demo.py
+?? tests/dashboard/test_overview_browser.py
+?? tests/dashboard/test_throttle.py
+ README.md                                          |  53 +++++++--
+ pyproject.toml                                     |   1 +
+ src/budget/cli.py                                  |  30 +++++
+ src/budget/dashboard/__init__.py                   | 123 ++++++++++++---------
+ src/budget/dashboard/passphrase.py                 |  43 +++++--
+ .../dashboard/templates/invalid_address.html       |   5 +-
+ .../dashboard/templates/invalid_address_page.html  |  23 ++--
+ .../dashboard/templates/invalid_selection.html     |   8 +-
+ src/budget/dashboard/templates/no_accounts.html    |   8 +-
+ .../dashboard/templates/nothing_published.html     |  33 +++---
+ src/budget/dashboard/templates/overview.html       |  70 ++++++++----
+ src/budget/dashboard/templates/report.html         |   7 +-
+ src/budget/dashboard/templates/unavailable.html    |   7 +-
+ .../dashboard/templates/unavailable_page.html      |  23 ++--
+ src/budget/dashboard/throttle.py                   |   8 +-
+ tests/dashboard/test_access.py                     |  69 ++++++++++++
+ tests/dashboard/test_overview_page.py              |  40 +++++++
+ uv.lock                                            | 100 +++++++++++++++++
+ 18 files changed, 500 insertions(+), 151 deletions(-)

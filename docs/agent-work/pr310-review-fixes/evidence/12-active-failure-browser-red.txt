@@ -1,0 +1,29 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______ test_active_request_failure_is_visible_accessible_and_retryable _______
+
+page = <Page url='http://127.0.0.1:61950/?publication=2&reference_date=2026-06-01&account=joint-current&account=joint-savings&month=2026-06'>
+dashboard = BrowserDashboard(url='http://127.0.0.1:61950', profile=Profile(name='test', stores=WindowsPath('C:/Users/Therkel/Docum.../Users/Therkel/Documents/GitHub/budget/qa_tmp_8ca29b4fcb4e4a46858b902c5f19779a/base/test_active_request_failure_is0')))
+
+    def test_active_request_failure_is_visible_accessible_and_retryable(
+        page: Page,
+        dashboard: BrowserDashboard,
+    ) -> None:
+        log_in(page, dashboard)
+        page.route("**/report?*", lambda route: route.abort("failed"))
+
+        page.get_by_label("Joint savings").uncheck()
+
+        alert = page.get_by_role("alert")
+>       expect(alert).to_be_visible()
+E       AssertionError: Locator expected to be visible
+E       Actual value: None
+E       Error: element(s) not found
+E       Call log:
+E         - Expect "to_be_visible" with timeout 5000ms
+E         - waiting for get_by_role("alert")
+
+tests\dashboard\test_overview_browser.py:170: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/dashboard/test_overview_browser.py::test_active_request_failure_is_visible_accessible_and_retryable
+1 failed in 8.02s

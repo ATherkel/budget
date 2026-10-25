@@ -1,0 +1,2 @@
+COMMAND: uv run --no-sync ruff format --check .
+241 files already formatted

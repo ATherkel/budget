@@ -1,0 +1,2 @@
+COMMAND: uv run --no-sync ty check
+All checks passed!

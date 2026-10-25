@@ -1,0 +1,25 @@
+COMMAND: uv run --no-sync pytest -p no:cacheprovider --basetemp <TEMP>/base tests/dashboard/test_overview_page.py::test_the_shared_shell_describes_network_access_factually -q
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________ test_the_shared_shell_describes_network_access_factually ___________
+
+client = <starlette.testclient.TestClient object at 0x000002A42C184D40>
+
+    def test_the_shared_shell_describes_network_access_factually(
+        client: TestClient,
+    ) -> None:
+        page = read(client.get("/").text)
+
+>       assert (
+            "Kun p� denne maskine" not in page.visible(),
+            "Beskyttet adgang" in page.visible(),
+        ) == (True, True)
+E       assert (False, False) == (True, True)
+E
+E         At index 0 diff: False != True
+E         Use -v to get more diff
+
+tests\dashboard\test_overview_page.py:66: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/dashboard/test_overview_page.py::test_the_shared_shell_describes_network_access_factually
+1 failed in 1.94s

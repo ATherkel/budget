@@ -394,12 +394,16 @@ nothing when no item is open, and exits 0.
 ## The dashboard: `budget serve`
 
 `budget serve` starts the household's read-only dashboard over Gold, in Danish.
-It is a shell for now: it logs in, pins a publication and a date, lets the
-reader pick accounts and a month, and says plainly when there is nothing
-published, a newer build exists, or a selection breaks a rule. The overview's
-figures come with #104. Nothing builds a real Gold publication yet (`budget
-migrate --stage gold` is still refused), so on a real profile `serve` shows
-"nothing published".
+It logs in, pins one Gold publication and reference date, lets the reader pick
+accounts and a month, and says plainly when there is nothing published, a
+newer build exists, or a selection cannot be shown. The dashboard shell is
+responsive on phones and desktop browsers, supports keyboard use, and exposes
+loading, empty, unavailable and request-failure states. Numerical financial
+reports remain in #104.
+
+Gold migration and publication storage are implemented. A profile's dashboard
+still shows the shell until a publication exists; `budget serve` never creates
+or changes Gold.
 
 Name where the passphrase hash lives, and optionally the address and port, in
 the profile file; `bind` defaults to `127.0.0.1` and `port` to 8750.
@@ -423,15 +427,44 @@ seconds (doubling to 15 minutes), and "Log ud" ends the login in that
 browser. [operations.md](docs/architecture/operations.md#dashboard-access)
 holds the rules.
 
-To try it on made-up figures, publish the worked example from
-`tests/gold/worked_example.py` into a throwaway test profile's Gold store with
-`GoldStore.publish`, as `tests/dashboard/test_overview_page.py` does, and serve
-`create_app(profile, clock=...)` with uvicorn.
+To run the complete dashboard without an existing profile or household data,
+create a new isolated synthetic development demo from this checkout:
+
+```powershell
+$demo = Join-Path $env:TEMP ("budget-demo-" + [guid]::NewGuid().ToString("N"))
+uv run budget demo --directory $demo --port 8765
+```
+
+The command creates only the new folder, publishes synthetic demo accounts,
+sets a demo-only login, and starts the real `budget serve` path on
+`http://127.0.0.1:8765`. It never reads or changes a profile outside that
+folder and refuses to reuse an existing target. Open the address, sign in with
+`budget-demo`, and expect two checked demo accounts (`Demo current` and
+`Demo savings`), the current month, and the report shell. The shell deliberately
+shows no financial figures; those belong to #104.
+
+Stop the foreground command with `Ctrl+C`, then remove only the isolated demo
+folder:
+
+```powershell
+Remove-Item -LiteralPath $demo -Recurse
+```
+
+Tests continue to use ephemeral test profiles. This command uses a separate
+development profile and leaves household configuration untouched.
+
+The real-browser dashboard tests require Google Chrome installed. Playwright is
+pinned as a development dependency, but the tests launch the installed Chrome
+channel rather than downloading a browser:
+
+```powershell
+uv run pytest tests/dashboard/test_overview_browser.py
+```
 
 ## Command line
 
 `uv sync` installs a `budget` command; `python -m budget` runs the same thing.
-Every command needs a profile file, named by `--profile` or, failing that, the
+Every command except `demo` needs a profile file, named by `--profile` or, failing that, the
 `BUDGET_PROFILE` environment variable. There is no default profile. Keep
 profile files outside the repository, for example in `%APPDATA%\budget\`. This
 PowerShell writes a development profile there, and refuses to replace one that

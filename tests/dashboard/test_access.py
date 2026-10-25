@@ -235,6 +235,75 @@ def test_each_visit_renews_the_login_for_30_days_from_that_visit(
     assert (kept.status_code, lapsed.status_code) == (200, 303)
 
 
+def test_renewal_never_upgrades_a_session_authorized_before_passphrase_rotation(
+    client: TestClient,
+    profile: Profile,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    log_in(client)
+    pin = {
+        "publication": "1",
+        "reference_date": "2026-06-01",
+        "account": "joint-current",
+        "month": "2026-05",
+    }
+    read_text = Path.read_text
+    rotated = False
+
+    def rotate_after_read(
+        path: Path,
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> str:
+        nonlocal rotated
+        content = read_text(path, encoding=encoding, errors=errors)
+        if path == profile.passphrase_file and not rotated:
+            rotated = True
+            set_passphrase(profile, "a rotated household phrase")
+        return content
+
+    monkeypatch.setattr(Path, "read_text", rotate_after_read)
+    renewed = client.get("/", params=pin)
+    after_rotation = client.get("/", params=pin)
+
+    assert (rotated, renewed.status_code, after_rotation.status_code) == (
+        True,
+        200,
+        303,
+    )
+
+
+def test_login_never_issues_a_new_key_cookie_after_credential_rotation(
+    profile: Profile,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = TestClient(create_app(profile, clock=lambda: NOW), follow_redirects=False)
+    read_text = Path.read_text
+    rotated = False
+
+    def rotate_after_read(
+        path: Path,
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> str:
+        nonlocal rotated
+        content = read_text(path, encoding=encoding, errors=errors)
+        if path == profile.passphrase_file and not rotated:
+            rotated = True
+            set_passphrase(profile, "a rotated household phrase")
+        return content
+
+    monkeypatch.setattr(Path, "read_text", rotate_after_read)
+    login = client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
+    after_rotation = client.get("/")
+
+    assert (rotated, login.status_code, after_rotation.status_code) == (
+        True,
+        303,
+        303,
+    )
+
+
 def test_logging_out_ends_the_login_in_this_browser(client: TestClient) -> None:
     log_in(client)
     logout = client.post("/logout")

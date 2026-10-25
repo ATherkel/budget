@@ -1,0 +1,25 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________ test_a_fresh_page_names_the_fully_pinned_history_entry ____________
+
+client = <starlette.testclient.TestClient object at 0x000001C49E7275F0>
+
+    def test_a_fresh_page_names_the_fully_pinned_history_entry(
+        client: TestClient,
+    ) -> None:
+        page = read(client.get("/").text)
+
+>       assert page.attributes("overview").get("data-canonical-url") == (
+            "/?publication=2&reference_date=2026-06-01"
+            f"&account={CURRENT}&account={SAVINGS}&month=2026-06"
+        )
+E       AssertionError: assert None == '/?publication=2&reference_date=2026-06-01&account=joint-current&account=joint-savings&month=2026-06'
+E        +  where None = <built-in method get of dict object at 0x000001C49F859F80>('data-canonical-url')
+E        +    where <built-in method get of dict object at 0x000001C49F859F80> = {}.get
+E        +      where {} = attributes('overview')
+E        +        where attributes = Page(text=['Oversigt', 'Log ud', 'Konti', 'Joint current', 'Joint savings', 'M�ned', 'januar 2026', 'februar 2026', 'm...026 maj 2026 juni 2026 Vis', 'report-region': '', 'report': ''}, _hidden_depth=0, _open=[], _select=None, _option=None).attributes
+
+tests\dashboard\test_overview_page.py:80: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/dashboard/test_overview_page.py::test_a_fresh_page_names_the_fully_pinned_history_entry
+1 failed in 1.93s

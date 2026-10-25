@@ -1,16 +1,17 @@
-<!doctype html>
-<html lang="da">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Oversigt</title>
-</head>
-<body>
-<main>
-<h1>Oversigt</h1>
-<section id="report" role="status">
-<p>Der er endnu ingen tal at vise.</p>
-</section>
-</main>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Oversigt · Budget{% endblock %}
+{% block header_actions %}
+<span class="header-note">Intet datasæt</span>
+{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">Husstandsøkonomi</p>
+    <h1>Oversigt</h1>
+  </div>
+</div>
+<div class="empty-state" role="status">
+  <h2>Ingen offentliggjorte tal</h2>
+  <p id="report">Der er endnu ingen tal at vise.</p>
+</div>
+{% endblock %}

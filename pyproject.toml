@@ -27,6 +27,7 @@ dev = [
     "complexipy>=4",
     "coverage>=7.16.2",
     "httpx2>=2.13.1",
+    "playwright==1.57.0",
     "pytest>=8",
     "ruff>=0.17.1",
     "ty>=0.0.84",

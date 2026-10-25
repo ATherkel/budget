@@ -30,6 +30,7 @@ from budget.bronze.storage import bronze_stage
 from budget.codeversion import UncommittedCodeError, require_committed_code
 from budget.dashboard import create_app
 from budget.dashboard.passphrase import PassphraseNotSetError, set_passphrase
+from budget.demo import DEFAULT_DEMO_PORT, DemoDirectoryExistsError, create_demo_profile
 from budget.gold.storage import GOLD_STAGE
 from budget.importing import (
     Coverage,
@@ -219,6 +220,15 @@ def _parser() -> argparse.ArgumentParser:
         "set-passphrase",
         help="set the dashboard passphrase, which logs out every device",
     )
+    demo = commands.add_parser(
+        "demo",
+        help="create an isolated synthetic development dashboard and start it",
+    )
+    demo.add_argument(
+        "--directory",
+        help="a new folder for this demo; defaults to a fresh temporary folder",
+    )
+    demo.add_argument("--port", type=int, default=DEFAULT_DEMO_PORT)
     return parser
 
 
@@ -395,6 +405,22 @@ def _serve(profile: Profile) -> None:
     )
 
 
+def _demo(directory: str | None, port: int) -> None:
+    """Create a synthetic development profile, then use the real serve path."""
+    profile = create_demo_profile(
+        None if directory is None else Path(directory), port=port
+    )
+    url = f"http://127.0.0.1:{port}"
+    sys.stdout.write(
+        f"Synthetic dashboard: {url}\n"
+        f"Login passphrase: budget-demo\n"
+        f"Demo folder: {profile.stores.parent}\n"
+        "Press Ctrl+C to stop. Delete the demo folder when finished.\n"
+    )
+    sys.stdout.flush()
+    _serve(profile)
+
+
 def _rebuild_counts(rebuilt: SilverRebuild) -> dict[str, int]:
     """Return the rebuild counts a routine log records, and nothing else."""
     outcomes = Counter(run.outcome for run in rebuilt.runs)
@@ -415,6 +441,9 @@ def _milliseconds(started: float) -> int:
 
 def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
     """Select and load the profile, run the command, and return its status."""
+    if arguments.command == "demo":
+        _demo(arguments.directory, arguments.port)
+        return EXIT_OK
     profile_file = _selected_profile_file(arguments.profile, environ)
     profile = load_profile_file(profile_file)
     if arguments.command == "import":
@@ -461,6 +490,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         NoPassphraseTypedError,
         EmptyPassphraseError,
         PassphraseMismatchError,
+        DemoDirectoryExistsError,
     ) as error:
         return _refuse(error, EXIT_REFUSED_INPUT)
     except (

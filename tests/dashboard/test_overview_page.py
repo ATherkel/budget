@@ -58,6 +58,17 @@ def test_the_overview_offers_a_way_to_log_out(client: TestClient) -> None:
     ) == ("post", "/logout", "Log ud")
 
 
+def test_the_shared_shell_describes_network_access_factually(
+    client: TestClient,
+) -> None:
+    page = read(client.get("/").text)
+
+    assert (
+        "Kun på denne maskine" not in page.visible(),
+        "Beskyttet adgang" in page.visible(),
+    ) == (True, True)
+
+
 def test_a_fresh_visit_pins_the_current_publication_every_account_and_this_month(
     client: TestClient,
 ) -> None:
@@ -70,6 +81,17 @@ def test_a_fresh_visit_pins_the_current_publication_every_account_and_this_month
         page.hidden("publication"),
         page.hidden("reference_date"),
     ) == ([("2026-06", "juni 2026")], {CURRENT, SAVINGS}, "2", "2026-06-01")
+
+
+def test_a_fresh_page_names_the_fully_pinned_history_entry(
+    client: TestClient,
+) -> None:
+    page = read(client.get("/").text)
+
+    assert page.attributes("overview").get("data-canonical-url") == (
+        "/?publication=2&reference_date=2026-06-01"
+        f"&account={CURRENT}&account={SAVINGS}&month=2026-06"
+    )
 
 
 def test_a_report_fragment_repeats_the_context_it_answers(client: TestClient) -> None:
@@ -198,6 +220,24 @@ def test_an_empty_account_selection_is_a_prompt_not_a_report(
         fragment.text_of("report"),
         fragment.attributes("report").get("data-month"),
     ) == (200, "Vælg mindst én konto.", None)
+
+
+def test_an_empty_selection_still_moves_the_address_to_its_pinned_page(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        "/report",
+        params={
+            "publication": "2",
+            "reference_date": "2026-06-01",
+            "month": "2026-05",
+        },
+        headers={"HX-Request": "true"},
+    )
+
+    assert response.headers.get("hx-push-url") == (
+        "/?publication=2&reference_date=2026-06-01&month=2026-05"
+    )
 
 
 def test_a_page_opened_with_no_accounts_selected_keeps_them_unticked(

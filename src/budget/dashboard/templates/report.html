@@ -1,5 +1,8 @@
-<section id="report" data-publication="{{ publication_id }}" data-reference-date="{{ reference_date }}" data-accounts="{{ accounts }}" data-month="{{ month }}">
+<section id="report" class="report-content" data-publication="{{ publication_id }}" data-reference-date="{{ reference_date }}" data-accounts="{{ accounts }}" data-month="{{ month }}" aria-labelledby="report-ready-title">
 {% if not is_current %}
-<p>Der findes nyere tal. <a id="newer-figures" href="/">Hent de nyeste tal</a></p>
+<p class="notice notice--warning">Der findes nyere tal. <a id="newer-figures" href="/">Hent de nyeste tal</a></p>
 {% endif %}
+<p class="eyebrow">Rapporten er indlæst</p>
+<h3 id="report-ready-title">{{ month_label }}</h3>
+<p class="report-note">Alle valg hører til samme offentliggjorte datasæt. Økonomiske tal vises ikke i denne version.</p>
 </section>

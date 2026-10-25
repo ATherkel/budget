@@ -1,0 +1,34 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______ test_demo_creates_a_development_profile_and_starts_the_dashboard _______
+
+tmp_path = WindowsPath('C:/Users/Therkel/Documents/GitHub/budget/qa_tmp_479fcc83f5124a6495c2e313ccee3b84/base/test_demo_creates_a_developmen0')
+
+    def test_demo_creates_a_development_profile_and_starts_the_dashboard(
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / "synthetic-dashboard"
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with (
+            redirect_stdout(stdout),
+            redirect_stderr(stderr),
+            mock.patch("budget.cli.uvicorn.run") as serve,
+        ):
+            status = main(
+                ["demo", "--directory", str(target), "--port", "8877"],
+                environ={},
+            )
+
+>       assert status == 0, stderr.getvalue()
+E       AssertionError: usage: budget [-h] [--profile PROFILE]
+E                       {migrate,backup,rebuild,import,review,serve,set-passphrase} ...
+E         budget: error: argument command: invalid choice: 'demo' (choose from migrate, backup, rebuild, import, review, serve, set-passphrase)
+E
+E       assert 2 == 0
+
+tests\cli\test_demo.py:35: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/cli/test_demo.py::test_demo_creates_a_development_profile_and_starts_the_dashboard
+1 failed in 0.81s

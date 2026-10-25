@@ -11,6 +11,7 @@ import json
 import os
 import secrets
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 from budget.durability import sync_folder
@@ -45,6 +46,30 @@ class PassphraseNotSetError(Exception):
             f"no dashboard passphrase is set for the {profile} profile: "
             "run `budget set-passphrase` first"
         )
+
+
+@dataclass(frozen=True)
+class CredentialSnapshot:
+    """One immutable read of the stored credential.
+
+    Verification and session issuance use this same object. A passphrase
+    rotation between the two operations therefore cannot turn an authorization
+    checked against the old credential into a cookie signed with the new one.
+    """
+
+    salt: bytes
+    passphrase_hash: bytes
+
+    def matches(self, candidate: str) -> bool:
+        """Report whether `candidate` made this snapshot."""
+        return hmac.compare_digest(_hash(candidate, self.salt), self.passphrase_hash)
+
+    @property
+    def session_key(self) -> bytes:
+        """Return the cookie-signing key derived from this snapshot."""
+        return hashlib.sha256(
+            b"budget dashboard session\0" + self.passphrase_hash
+        ).digest()
 
 
 def require_passphrase(profile: Profile) -> None:
@@ -90,19 +115,18 @@ def set_passphrase(profile: Profile, passphrase: str) -> None:
     sync_folder(path.parent)
 
 
-def _stored(profile: Profile) -> dict[str, str]:
-    """Read the passphrase file afresh, so `set-passphrase` takes effect at once."""
+def read_credentials(profile: Profile) -> CredentialSnapshot:
+    """Read the stored credential once, so rotation takes effect at once."""
     stored = json.loads(_passphrase_file(profile).read_text(encoding="utf-8"))
-    return {"salt": str(stored["salt"]), "scrypt": str(stored["scrypt"])}
+    return CredentialSnapshot(
+        salt=bytes.fromhex(str(stored["salt"])),
+        passphrase_hash=bytes.fromhex(str(stored["scrypt"])),
+    )
 
 
 def passphrase_matches(profile: Profile, candidate: str) -> bool:
     """Report whether `candidate` is the passphrase set for `profile`."""
-    stored = _stored(profile)
-    expected = bytes.fromhex(stored["scrypt"])
-    return hmac.compare_digest(
-        _hash(candidate, bytes.fromhex(stored["salt"])), expected
-    )
+    return read_credentials(profile).matches(candidate)
 
 
 def session_key(profile: Profile) -> bytes:
@@ -111,5 +135,4 @@ def session_key(profile: Profile) -> bytes:
     A new passphrase gives a new key, so it invalidates every cookie signed
     before it.
     """
-    stored_hash = bytes.fromhex(_stored(profile)["scrypt"])
-    return hashlib.sha256(b"budget dashboard session\0" + stored_hash).digest()
+    return read_credentials(profile).session_key

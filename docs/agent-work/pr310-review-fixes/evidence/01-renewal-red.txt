@@ -1,0 +1,53 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_ test_renewal_never_upgrades_a_session_authorized_before_passphrase_rotation _
+
+client = <starlette.testclient.TestClient object at 0x000001CCFD0D5E50>
+profile = Profile(name='test', stores=WindowsPath('C:/Users/Therkel/Documents/GitHub/budget/qa_tmp_758a6c7d53c444dda41c9c250881c...:/Users/Therkel/Documents/GitHub/budget/qa_tmp_758a6c7d53c444dda41c9c250881c9ae/base/test_renewal_never_upgrades_a_0'))
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001CCFD0D5A00>
+
+    def test_renewal_never_upgrades_a_session_authorized_before_passphrase_rotation(
+        client: TestClient,
+        profile: Profile,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        log_in(client)
+        pin = {
+            "publication": "1",
+            "reference_date": "2026-06-01",
+            "account": "joint-current",
+            "month": "2026-05",
+        }
+        read_text = Path.read_text
+        rotated = False
+
+        def rotate_after_read(
+            path: Path,
+            encoding: str | None = None,
+            errors: str | None = None,
+        ) -> str:
+            nonlocal rotated
+            content = read_text(path, encoding=encoding, errors=errors)
+            if path == profile.passphrase_file and not rotated:
+                rotated = True
+                set_passphrase(profile, "a rotated household phrase")
+            return content
+
+        monkeypatch.setattr(Path, "read_text", rotate_after_read)
+        renewed = client.get("/", params=pin)
+        after_rotation = client.get("/", params=pin)
+
+>       assert (rotated, renewed.status_code, after_rotation.status_code) == (
+            True,
+            200,
+            303,
+        )
+E       assert (True, 200, 200) == (True, 200, 303)
+E
+E         At index 2 diff: 200 != 303
+E         Use -v to get more diff
+
+tests\dashboard\test_access.py:269: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/dashboard/test_access.py::test_renewal_never_upgrades_a_session_authorized_before_passphrase_rotation
+1 failed in 2.15s

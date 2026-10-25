@@ -26,9 +26,9 @@ from budget.analytics import (
 from budget.dashboard import display, session
 from budget.dashboard.display import copenhagen_date
 from budget.dashboard.passphrase import (
-    passphrase_matches,
+    CredentialSnapshot,
+    read_credentials,
     require_passphrase,
-    session_key,
     set_passphrase,
 )
 from budget.dashboard.throttle import LoginThrottle
@@ -47,21 +47,6 @@ _TEMPLATES = Environment(
     autoescape=select_autoescape(),
 )
 
-_LOGIN_PAGE = """<!doctype html>
-<html lang="da">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Log ind</title>
-{message}
-<form method="post" action="/login">
-<label>Adgangskode
-<input type="password" name="passphrase" autocomplete="current-password" autofocus>
-</label>
-<button>Log ind</button>
-</form>
-</html>
-"""
-
 
 def _send_to_login(request: Request) -> Response:
     """Send a reader who is not logged in to the login page.
@@ -72,6 +57,40 @@ def _send_to_login(request: Request) -> Response:
     if request.headers.get("HX-Request") == "true":
         return Response(status_code=401, headers={"HX-Redirect": "/login"})
     return RedirectResponse("/login", status_code=303)
+
+
+def _logged_in(
+    request: Request,
+    profile: Profile,
+    clock: Callable[[], datetime],
+) -> CredentialSnapshot | None:
+    """Return the credential that authorized `request`, if any."""
+    cookie = request.cookies.get(SESSION_COOKIE)
+    if cookie is None:
+        return None
+    credentials = read_credentials(profile)
+    return (
+        credentials
+        if session.is_valid(credentials.session_key, cookie, clock())
+        else None
+    )
+
+
+def _pinned_url(
+    publication_id: int,
+    reference_date: date,
+    accounts: Collection[str],
+    month: str,
+) -> str:
+    """Return the complete page address for one pinned selection."""
+    return "/?" + urlencode(
+        [
+            ("publication", publication_id),
+            ("reference_date", reference_date.isoformat()),
+            *(("account", account) for account in sorted(accounts)),
+            ("month", month),
+        ]
+    )
 
 
 def _render_overview(
@@ -117,9 +136,13 @@ def _render_overview(
         if selected_accounts
         else None
     )
+    canonical_url = _pinned_url(
+        publication_id, reference_date, selected_accounts, selected_month
+    )
     return _TEMPLATES.get_template("overview.html").render(
         publication_id=publication_id,
         reference_date=reference_date.isoformat(),
+        canonical_url=canonical_url,
         accounts=options.accounts,
         selected_accounts=selected_accounts,
         months=[
@@ -131,7 +154,10 @@ def _render_overview(
 
 
 def _refuse_login(
-    profile: Profile, throttle: LoginThrottle, now: datetime, passphrase: str
+    credentials: CredentialSnapshot,
+    throttle: LoginThrottle,
+    now: datetime,
+    passphrase: str,
 ) -> Response | None:
     """Return why a login made at `now` is refused, or None when it succeeds.
 
@@ -140,22 +166,22 @@ def _refuse_login(
     """
     wait = throttle.seconds_locked(now)
     if wait:
-        notice = (
-            '<p role="alert">For mange forkerte forsøg. '
-            f"Prøv igen om {wait} sekunder.</p>"
-        )
+        notice = f"For mange forkerte forsøg. Prøv igen om {wait} sekunder."
         return HTMLResponse(
-            _LOGIN_PAGE.format(message=notice),
+            _TEMPLATES.get_template("login.html").render(message=notice),
             status_code=429,
             headers={"Retry-After": str(wait)},
         )
     # An empty form is not a guess, so it is refused without being counted.
     blank = not passphrase.strip()
-    if blank or not passphrase_matches(profile, passphrase):
+    if blank or not credentials.matches(passphrase):
         if not blank:
             throttle.failed(now)
-        refusal = '<p role="alert">Adgangskoden er forkert.</p>'
-        return HTMLResponse(_LOGIN_PAGE.format(message=refusal))
+        return HTMLResponse(
+            _TEMPLATES.get_template("login.html").render(
+                message="Adgangskoden er forkert."
+            )
+        )
     throttle.succeeded()
     return None
 
@@ -172,10 +198,11 @@ def _render_report(
     """
     publication_id, reference_date = pin
     try:
+        selected_month = display.parse_month(month)
         context = ReportContext(
             publication_id=publication_id,
             account_ids=frozenset(accounts),
-            month=display.parse_month(month),
+            month=selected_month,
             reference_date=reference_date,
         )
         with GoldStore(profile, read_only=True) as store:
@@ -194,6 +221,7 @@ def _render_report(
         reference_date=answered.reference_date.isoformat(),
         accounts=" ".join(sorted(answered.account_ids)),
         month=display.month_value(answered.month),
+        month_label=display.month_label(answered.month),
     )
 
 
@@ -223,7 +251,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         page = _TEMPLATES.get_template("invalid_address_page.html").render()
         return HTMLResponse(page, status_code=400)
 
-    def start_session(response: Response) -> Response:
+    def start_session(response: Response, credentials: CredentialSnapshot) -> Response:
         """Set a session cookie lasting `LOGIN_LIFETIME` from now.
 
         Every logged-in response passes here, so none of them may be cached:
@@ -232,7 +260,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         response.headers["Cache-Control"] = "no-store"
         response.set_cookie(
             SESSION_COOKIE,
-            session.issue(session_key(profile), clock()),
+            session.issue(credentials.session_key, clock()),
             # Relative, so the browser keeps it across restarts for as long as
             # the signed expiry inside it allows.
             max_age=int(session.LOGIN_LIFETIME.total_seconds()),
@@ -240,12 +268,6 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             samesite="strict",
         )
         return response
-
-    def logged_in(request: Request) -> bool:
-        cookie = request.cookies.get(SESSION_COOKIE)
-        return cookie is not None and session.is_valid(
-            session_key(profile), cookie, clock()
-        )
 
     @app.get("/")
     def overview(
@@ -255,7 +277,8 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         month: str | None = None,
         account: Annotated[list[str] | None, Query()] = None,
     ) -> Response:
-        if not logged_in(request):
+        authenticated_as = _logged_in(request, profile, clock)
+        if authenticated_as is None:
             return _send_to_login(request)
         pin = (
             None
@@ -264,7 +287,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         )
         # Every visit renews the login for another 30 days from now.
         page = _render_overview(profile, clock, pin, account, month)
-        return start_session(HTMLResponse(page))
+        return start_session(HTMLResponse(page), authenticated_as)
 
     @app.get("/report")
     def report(
@@ -274,40 +297,38 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         month: str,
         account: Annotated[list[str] | None, Query()] = None,
     ) -> Response:
-        if not logged_in(request):
+        authenticated_as = _logged_in(request, profile, clock)
+        if authenticated_as is None:
             return _send_to_login(request)
+        page = _pinned_url(publication, reference_date, account or (), month)
         if not account:
             # An empty selection is a prompt, never a report of nothing.
             prompt = _TEMPLATES.get_template("no_accounts.html").render()
-            return start_session(HTMLResponse(prompt))
+            return start_session(
+                HTMLResponse(prompt, headers={"HX-Push-Url": page}),
+                authenticated_as,
+            )
         # The address becomes this selection's own page, so back and forward
         # reopen each selection the reader made.
-        page = "/?" + urlencode(
-            [
-                ("publication", publication),
-                ("reference_date", reference_date.isoformat()),
-                *(("account", each) for each in sorted(account)),
-                ("month", month),
-            ]
-        )
         fragment = HTMLResponse(
             _render_report(profile, (publication, reference_date), account, month),
             headers={"HX-Push-Url": page},
         )
-        return start_session(fragment)
+        return start_session(fragment, authenticated_as)
 
     @app.get("/login")
     def login_page() -> Response:
-        return HTMLResponse(_LOGIN_PAGE.format(message=""))
+        return HTMLResponse(_TEMPLATES.get_template("login.html").render(message=""))
 
     @app.post("/login")
     def login(passphrase: Annotated[str, Form()] = "") -> Response:
         # One login at a time, from the lock check to recording the outcome.
         with throttle.guard:
-            refused = _refuse_login(profile, throttle, clock(), passphrase)
+            credentials = read_credentials(profile)
+            refused = _refuse_login(credentials, throttle, clock(), passphrase)
         if refused is not None:
             return refused
-        return start_session(RedirectResponse("/", status_code=303))
+        return start_session(RedirectResponse("/", status_code=303), credentials)
 
     @app.post("/logout")
     def logout() -> Response:
