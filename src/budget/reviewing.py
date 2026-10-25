@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from budget.gold import ClassificationReviewItem
+from budget.gold.models import GoldReviewTarget
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
 from budget.silver import ImportRunResult, ReviewItem, SilverStore
@@ -47,6 +48,7 @@ class OpenGoldReview:
 
     item: ClassificationReviewItem
     publication_id: int
+    targets: tuple[GoldReviewTarget, ...]
 
 
 @dataclass(frozen=True)
@@ -112,8 +114,15 @@ def _gold_reviews(
         published = store.classification_reviews(kind=kind, account=account)
     if published is None:
         return ()
+    by_item: dict[str, list[GoldReviewTarget]] = {}
+    for target in published.targets:
+        by_item.setdefault(target.review_item_id, []).append(target)
     return tuple(
-        OpenGoldReview(item=item, publication_id=published.publication_id)
+        OpenGoldReview(
+            item=item,
+            publication_id=published.publication_id,
+            targets=tuple(by_item.get(item.review_item_id, ())),
+        )
         for item in published.items
     )
 

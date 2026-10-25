@@ -26,6 +26,7 @@ from budget.gold.models import (
     GoldCategory,
     GoldCategoryAllocation,
     GoldPublication,
+    GoldReviewTarget,
     GoldTransaction,
     MonthlyBalanceSnapshot,
     ReportingMonth,
@@ -123,6 +124,7 @@ class PublishedClassificationReviews:
 
     publication_id: int
     items: tuple[ClassificationReviewItem, ...]
+    targets: tuple[GoldReviewTarget, ...]
 
 
 # Publications, and which of them keep their results.
@@ -230,8 +232,8 @@ _INSERT_REVIEW_ITEMS: Final = (
 )
 _INSERT_REVIEW_TARGETS: Final = (
     "INSERT INTO classification_review_targets"
-    " (publication_id, review_item_id, ordinal, transaction_id)"
-    " VALUES (?, ?, ?, ?)"
+    " (publication_id, review_item_id, ordinal, transaction_id, bank_category)"
+    " VALUES (?, ?, ?, ?, ?)"
 )
 _INSERT_REVIEW_RULES: Final = (
     "INSERT INTO classification_review_rules"
@@ -291,9 +293,19 @@ _SELECT_REVIEW_ITEMS: Final = (
     " ORDER BY items.ordinal"
 )
 _SELECT_REVIEW_TARGETS: Final = (
-    "SELECT targets.* FROM classification_review_targets AS targets"
+    "SELECT targets.review_item_id, targets.transaction_id,"
+    " targets.bank_category, transactions.account_id,"
+    " transactions.transaction_date, transactions.amount,"
+    " transactions.description, accounts.currency"
+    " FROM classification_review_targets AS targets"
     " JOIN classification_review_items AS items"
     " USING (publication_id, review_item_id)"
+    " LEFT JOIN transactions"
+    " ON transactions.publication_id = targets.publication_id"
+    " AND transactions.transaction_id = targets.transaction_id"
+    " LEFT JOIN accounts"
+    " ON accounts.publication_id = transactions.publication_id"
+    " AND accounts.account_id = transactions.account_id"
     " WHERE targets.publication_id = :publication_id"
     " ORDER BY items.ordinal, targets.ordinal"
 )
@@ -624,8 +636,9 @@ def _classification_reviews(
         "account": account,
     }
     rows = connection.execute(_SELECT_REVIEW_ITEMS, parameters).fetchall()
+    target_rows = connection.execute(_SELECT_REVIEW_TARGETS, parameters).fetchall()
     targets = _identifiers_by_item(
-        connection.execute(_SELECT_REVIEW_TARGETS, parameters),
+        target_rows,
         "transaction_id",
     )
     rules = _identifiers_by_item(
@@ -644,6 +657,9 @@ def _classification_reviews(
                 reason=row["reason"],
             )
             for row in rows
+        ),
+        targets=tuple(
+            _review_target(row) for row in target_rows if row["account_id"] is not None
         ),
     )
 
@@ -683,6 +699,9 @@ def _encode(
     writes nothing.
     """
     currencies = {a.account_id: a.currency for a in records.accounts}
+    bank_categories = {
+        line.transaction_id: line.bank_category for line in lineage.transaction_lineage
+    }
     return _Encoded(
         accounts=tuple(_account_row(publication_id, a) for a in records.accounts),
         categories=tuple(_category_row(publication_id, c) for c in records.categories),
@@ -708,6 +727,7 @@ def _encode(
                 item.review_item_id,
                 ordinal,
                 transaction_id,
+                bank_categories.get(transaction_id),
             )
             for item in lineage.classification_review_items
             for ordinal, transaction_id in enumerate(item.transaction_ids)
@@ -1048,6 +1068,20 @@ def _review_item_row(
         item.kind,
         item.decision_id,
         item.reason,
+    )
+
+
+def _review_target(row: sqlite3.Row) -> GoldReviewTarget:
+    """Read one target's published transaction context."""
+    return GoldReviewTarget(
+        review_item_id=row["review_item_id"],
+        transaction_id=row["transaction_id"],
+        account_id=row["account_id"],
+        transaction_date=date.fromisoformat(row["transaction_date"]),
+        amount=from_minor_units(row["amount"], row["currency"]),
+        currency=row["currency"],
+        description=row["description"],
+        bank_category=row["bank_category"],
     )
 
 

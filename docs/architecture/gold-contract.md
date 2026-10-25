@@ -349,7 +349,10 @@ class GoldLineageRepository(Protocol):
 | `classification_version` | string | Yes | Fingerprint of the classification inputs: the configuration snapshot (account registry, taxonomy, and rules) and the effective classification decisions ([`publications.md`](publications.md)). The transfer matching policy and the classifier's code are not part of it; they change with the recipe's code version. |
 | `transfer_evidence` | `TransferEvidence`/null | Conditional | Required on every `transfer`, otherwise null. |
 | `review_item_ids` | list of string | Yes | Open classification review items involving this transaction. Often empty. |
+| `bank_category` | string/null | Optional | The bank's category label, retained as privileged provenance for rule explanation and review. It never becomes a Gold Category. Null means the source supplied none or an older publication did not retain it. |
 | `adjustment_reason` | string/null | Conditional | The explanation invariant 3 asks of an adjustment: the reason its rule or decision gives. Required on every `adjustment`, otherwise null. |
+
+🤖 Added by Codex (DeepSeek V4.1 Flash)
 
 The classification fields describe how the transaction's type and its
 allocations were derived. While a classified transaction has exactly one
