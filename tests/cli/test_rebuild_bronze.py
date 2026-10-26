@@ -176,6 +176,11 @@ def _delete_taxonomy(profile: Profile) -> None:
     profile.input_file("taxonomy.toml").unlink()
 
 
+def _break_taxonomy(profile: Profile) -> None:
+    profile.input_file("taxonomy.toml").write_text("[group.food
+", encoding="utf-8")
+
+
 def _close_early(profile: Profile) -> None:
     write_inputs(
         profile,
@@ -221,6 +226,9 @@ class RefusedRebuildTests(unittest.TestCase):
 
     def test_a_missing_taxonomy_changes_no_store(self) -> None:
         self._leaves_bronze_and_silver_untouched(_delete_taxonomy, "taxonomy.toml")
+
+    def test_a_malformed_taxonomy_changes_no_store(self) -> None:
+        self._leaves_bronze_and_silver_untouched(_break_taxonomy, "taxonomy.toml")
 
     def test_an_account_closed_before_its_transaction_changes_no_store(self) -> None:
         self._leaves_bronze_and_silver_untouched(_close_early, "closed_on")
