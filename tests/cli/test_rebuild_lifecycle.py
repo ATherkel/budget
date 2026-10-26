@@ -18,6 +18,8 @@ from tests.cli.lifecycle import (
     at_second_publication,
     correct_ikea_to_gifts,
     february_by_category,
+    import_run_2,
+    lifecycle,
     retract_the_correction,
 )
 
@@ -30,6 +32,28 @@ id = "r-net"
 when.description_contains = "NET"
 then.category = "groceries"
 """
+
+
+class FirstTwoPublicationsTests(unittest.TestCase):
+    def test_the_lifecycles_first_two_publications_have_their_figures(self) -> None:
+        with TemporaryDirectory() as directory:
+            household = lifecycle(Path(directory))
+            assert rebuild(household.profile_file)[0] == EXIT_OK
+            import_run_2(household.profile)
+            assert rebuild(household.profile_file)[0] == EXIT_OK
+
+            with GoldStore(household.profile) as gold:
+                assert [each.publication_id for each in gold.available()] == [1, 2]
+                assert february_by_category(gold.open(1)) == {
+                    "groceries": Decimal("-520.00"),
+                    "household-goods": Decimal("-2400.00"),
+                    "streaming": Decimal("-129.00"),
+                }
+                assert february_by_category(gold.open(2)) == {
+                    "groceries": Decimal("-820.00"),
+                    "household-goods": Decimal("-2400.00"),
+                    "streaming": Decimal("-129.00"),
+                }
 
 
 class CategoryCorrectionTests(unittest.TestCase):
