@@ -210,6 +210,7 @@ def rebuild_from_gold(lock: WriterLock, *, now: datetime) -> GoldRebuild:
         code_version=committed_code_version(profile),
         contract_version=CONTRACT_VERSION,
         silver_identity_version=IDENTITY_VERSION,
+        late_booking_days=profile.late_booking_window.days,
         python_version=platform.python_version(),
         sqlite_version=sqlite3.sqlite_version,
     )
