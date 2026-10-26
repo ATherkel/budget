@@ -18,7 +18,7 @@ from budget.gold.recipe import Recipe, RecipeImportRun
 from budget.gold.store import GoldStore
 from budget.inputs import load_configuration
 from budget.locking import WriterLock, writer_lock
-from budget.rebuilding import GoldRebuild, rebuild_from_gold
+from budget.rebuilding import GoldRebuild, HouseholdInputs, rebuild_from_gold
 from budget.silver import SilverStore, VoidImportRun
 from tests.cli.commands import rebuild
 from tests.cli.pipelines import (
@@ -119,10 +119,10 @@ class WriterLockTests(unittest.TestCase):
             overlapping: list[tuple[int, str, str]] = []
 
             def rebuild_while_another_command_runs(
-                lock: WriterLock, *, now: datetime
+                lock: WriterLock, *, now: datetime, inputs: HouseholdInputs
             ) -> GoldRebuild:
                 overlapping.append(rebuild(built.profile_file))
-                return rebuild_from_gold(lock, now=now)
+                return rebuild_from_gold(lock, now=now, inputs=inputs)
 
             with mock.patch(
                 "budget.cli.rebuild_from_gold", rebuild_while_another_command_runs
