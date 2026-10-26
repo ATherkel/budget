@@ -132,7 +132,12 @@ SILVER = SilverResult(
     ),
     evidence_exports=tuple(
         EvidenceExport(
-            f"run-{account_id}", account_id, EXPORTED_ON, COVERS_FROM, EXPORTED_ON
+            f"run-{account_id}",
+            "payload",
+            account_id,
+            EXPORTED_ON,
+            COVERS_FROM,
+            EXPORTED_ON,
         )
         for account_id in (CURRENT, SAVINGS)
     ),

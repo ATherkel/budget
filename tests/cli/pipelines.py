@@ -6,14 +6,15 @@ the household's inputs written and one export imported and built into Silver.
 Every account, text and amount is invented.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 
 from budget.importing import Coverage, import_inbox_file
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
-from budget.rebuilding import rebuild_from_silver
+from budget.rebuilding import bronze_inputs, rebuild_from_silver
+from budget.silver import SilverDecision, rebuild_silver
 from tests.cli.commands import migrate
 from tests.cli.profile_files import write_profile
 from tests.importing.households import ACCOUNTS, drop, payload
@@ -42,8 +43,13 @@ class Household:
     import_run_id: str
 
 
-def household(folder: Path, *, name: str = "development") -> Household:
-    """Write and migrate a profile, then import one export and build Silver."""
+def household(
+    folder: Path, *, name: str = "development", silver: bool = True
+) -> Household:
+    """Write and migrate a profile, import one export, and build its Silver.
+
+    `silver=False` leaves Silver empty, as before the first rebuild.
+    """
     folder.mkdir(parents=True, exist_ok=True)
     profile_file = write_profile(folder, name=name)
     options = ("--new-store",) if name == "production" else ()
@@ -60,5 +66,26 @@ def household(folder: Path, *, name: str = "development") -> Household:
             source,
             Coverage(covers_from=date(2026, 3, 1), covers_through=date(2026, 3, 4)),
         )
-        rebuild_from_silver(lock)
+        if silver:
+            rebuild_from_silver(lock)
     return Household(profile_file, profile, imported.import_run.import_run_id)
+
+
+def present_again(profile: Profile, name: str, through: date) -> str:
+    """Present the household's export again under a new filename and range.
+
+    A range that ends on or before the new export date is a repeat of the
+    stored payload; one that ends after it is refused. Silver is not rebuilt.
+    Returns the new run's identifier.
+    """
+    source = drop(profile, "joint-current", name, EXPORT)
+    with writer_lock(profile) as lock:
+        imported = import_inbox_file(lock, source, Coverage(date(2026, 3, 1), through))
+    return imported.import_run.import_run_id
+
+
+def rebuild_silver_with(profile: Profile, *decisions: SilverDecision) -> None:
+    """Rebuild Silver from Bronze under the given Silver decisions."""
+    with writer_lock(profile) as lock:
+        inputs = replace(bronze_inputs(profile), decisions=decisions)
+        rebuild_silver(lock, inputs=inputs)
