@@ -156,7 +156,3 @@ class InvalidSelectionError(ValueError):
         if self.unknown_account_ids:
             message += f"; unknown accounts: {', '.join(self.unknown_account_ids)}"
         super().__init__(message)
-
-
-class NothingPublishedError(LookupError):
-    """`NothingPublished`: Gold has no current publication to report from."""
