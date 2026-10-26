@@ -215,6 +215,7 @@ def _evidence_exports(counted: Iterable[ImportRun]) -> tuple[EvidenceExport, ...
             (
                 EvidenceExport(
                     import_run_id=run.import_run_id,
+                    payload_id=run.payload_id,
                     account_id=run.declared_account_id,
                     exported_on=run.exported_on,
                     covers_from=run.covers_from,
@@ -231,6 +232,7 @@ def _result(judged: Admission) -> ImportRunResult:
     each = judged.each
     return ImportRunResult(
         import_run_id=each.run.import_run_id,
+        payload_id=each.run.payload_id,
         account_id=each.account_id,
         status="accepted" if judged.admitted else "quarantined",
         covered_from=each.run.covers_from,

@@ -64,6 +64,17 @@ class SilverRebuild:
     result: SilverResult
 
 
+class SilverNotBuiltError(RuntimeError):
+    """Gold was asked to publish from a Silver no build has ever filled."""
+
+    def __init__(self) -> None:
+        """Say which command builds Silver first."""
+        super().__init__(
+            "Silver has never been built, so there is nothing to publish; run "
+            "`budget rebuild --from silver` first; nothing was published"
+        )
+
+
 @dataclass(frozen=True)
 class GoldRebuild:
     """What one Gold rebuild left current, and whether it published it.
@@ -176,20 +187,22 @@ def _unknown_currency(account_id: str) -> str:
 def rebuild_from_gold(lock: WriterLock, *, now: datetime) -> GoldRebuild:
     """Publish the locked profile's Gold from its stored Silver and inputs.
 
-    The recipe names the profile's import runs, its configuration, its decision
-    log and the code that builds; Silver is taken as it stands. `now` only
+    The recipe names the import runs Silver was built from, the profile's
+    configuration, its decision log and the code that builds; Gold never
+    reads Bronze, and Silver is taken as it stands. `now` only
     stamps the publication's `built_at` and `known_at`: no figure reads it.
     """
     profile = lock.profile
     configuration = load_configuration(profile)
     log = read_decision_log(profile)
-    with BronzeStore(profile) as bronze:
-        runs = bronze.import_runs()
     with SilverStore(profile) as silver_store:
+        if not silver_store.is_built():
+            raise SilverNotBuiltError
         silver = silver_store.read()
     recipe = Recipe(
         import_runs=frozenset(
-            RecipeImportRun(run.import_run_id, run.payload_id) for run in runs
+            RecipeImportRun(run.import_run_id, run.payload_id)
+            for run in (*silver.import_run_results, *silver.evidence_exports)
         ),
         configuration_fingerprint=configuration.fingerprint,
         decision_log_position=log.position,
