@@ -9,19 +9,27 @@ that the migration refuses it. All data is the synthetic worked example.
 import re
 import sqlite3
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from queue import Queue
+from threading import Thread
 
 import pytest
 
 from budget import sqlstore
 from budget.gold import (
+    GoldPublication,
     GoldPublications,
     GoldRepository,
     GoldResult,
+    GoldStoreClosedError,
+    GoldStoreLifecycleError,
+    GoldStoreReadOnlyError,
+    GoldStoreThreadError,
     PublicationUnavailableError,
 )
 from budget.gold.models import ReportingMonth
@@ -52,6 +60,27 @@ from tests.gold.worked_example import (
 from tests.gold.worked_silver import TAXONOMY
 
 
+def _assert_raises_in_thread(
+    error_type: type[Exception], action: Callable[[], object]
+) -> None:
+    outcome: Queue[Exception] = Queue()
+
+    def run() -> None:
+        try:
+            action()
+        except (GoldStoreLifecycleError, sqlite3.Error) as error:
+            outcome.put(error)
+        else:
+            outcome.put(AssertionError("the operation did not fail"))
+
+    thread = Thread(target=run)
+    thread.start()
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+    outcome_value = outcome.get_nowait()
+    assert isinstance(outcome_value, error_type), outcome_value
+
+
 @pytest.fixture
 def profile(tmp_path: Path) -> Profile:
     migrated = make_test_profile(tmp_path)
@@ -75,6 +104,101 @@ def test_a_new_store_has_no_current_publication(tmp_path: Path) -> None:
 
     assert current is None
     assert available == []
+
+
+def test_a_read_only_store_refuses_publish_without_writing(profile: Profile) -> None:
+    with GoldStore(profile) as writer:
+        first = publish(writer, 1)
+
+    with GoldStore(profile, read_only=True) as reader:
+        assert reader.current() == first
+        assert reader.open(first.publication_id).accounts()
+        with pytest.raises(GoldStoreReadOnlyError):
+            reader.publish(GoldResult(publication(2), RECORDS), RECIPE, CONFIGURATION)
+
+    with GoldStore(profile) as writer:
+        assert writer.current() == first
+        assert list(writer.available()) == [first]
+        assert writer.next_publication_id() == 2
+
+
+CLOSED_ACTIONS: dict[str, Callable[[GoldStore, GoldRepository], object]] = {
+    "current": lambda store, _repository: store.current(),
+    "available": lambda store, _repository: store.available(),
+    "open": lambda store, _repository: store.open(1),
+    "next publication id": lambda store, _repository: store.next_publication_id(),
+    "recipe": lambda store, _repository: store.recipe(1),
+    "pointer history": lambda store, _repository: store.pointer_history(),
+    "classification reviews": lambda store, _repository: store.classification_reviews(),
+    "publish": lambda store, _repository: store.publish(
+        GoldResult(publication(2), RECORDS), RECIPE, CONFIGURATION
+    ),
+    "cached publication metadata": lambda _store, repository: repository.publication(),
+    "repository accounts": lambda _store, repository: repository.accounts(),
+}
+
+
+@pytest.mark.parametrize("action", CLOSED_ACTIONS.values(), ids=CLOSED_ACTIONS.keys())
+def test_every_public_operation_refuses_a_closed_store(
+    profile: Profile, action: Callable[[GoldStore, GoldRepository], object]
+) -> None:
+    store = GoldStore(profile)
+    publish(store, 1)
+    repository = store.open(1)
+    store.close()
+
+    store.close()
+    with pytest.raises(GoldStoreClosedError):
+        action(store, repository)
+
+
+def test_a_wrong_thread_read_or_close_does_not_release_the_owner(
+    profile: Profile,
+) -> None:
+    with GoldStore(profile) as store:
+        first = publish(store, 1)
+
+        _assert_raises_in_thread(GoldStoreThreadError, store.current)
+        assert store.current() == first
+        _assert_raises_in_thread(GoldStoreThreadError, store.classification_reviews)
+        assert store.classification_reviews() is not None
+
+        _assert_raises_in_thread(GoldStoreThreadError, store.close)
+        assert store.current() == first
+
+
+@pytest.mark.parametrize(
+    "read",
+    [
+        lambda repository: repository.publication(),
+        lambda repository: repository.accounts(),
+    ],
+    ids=["cached-metadata", "data"],
+)
+def test_a_borrowed_repository_refuses_its_owner_from_another_thread(
+    profile: Profile, read: Callable[[GoldRepository], object]
+) -> None:
+    with GoldStore(profile) as store:
+        publish(store, 1)
+        repository = store.open(1)
+
+        _assert_raises_in_thread(GoldStoreThreadError, lambda: read(repository))
+        assert repository.publication().publication_id == 1
+        assert repository.accounts()
+
+
+def test_each_thread_can_open_its_own_read_only_reader(profile: Profile) -> None:
+    with GoldStore(profile) as writer:
+        first = publish(writer, 1)
+
+    def read() -> GoldPublication | None:
+        with GoldStore(profile, read_only=True) as reader:
+            return reader.current()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(read) for _ in range(2)]
+
+    assert [future.result() for future in futures] == [first, first]
 
 
 class TestStoredPublication(GoldRepositoryContract):

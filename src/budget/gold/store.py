@@ -17,6 +17,7 @@ from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from threading import current_thread
 from types import TracebackType
 from typing import Final, Literal, Self
 
@@ -32,7 +33,13 @@ from budget.gold.models import (
     ReportingMonth,
 )
 from budget.gold.recipe import Recipe, RecipeImportRun
-from budget.gold.repository import GoldRepository, PublicationUnavailableError
+from budget.gold.repository import (
+    GoldRepository,
+    GoldStoreClosedError,
+    GoldStoreReadOnlyError,
+    GoldStoreThreadError,
+    PublicationUnavailableError,
+)
 from budget.gold.result import (
     GoldLineageRecords,
     GoldRecords,
@@ -318,12 +325,59 @@ _SELECT_REVIEW_RULES: Final = (
 )
 
 
+class _ConnectionOwner:
+    """One Gold connection, usable only while open on its creating thread."""
+
+    __slots__ = ("_closed", "_connection", "_read_only", "_thread")
+
+    def __init__(self, profile: Profile, *, read_only: bool) -> None:
+        """Open the requested connection and record who owns it."""
+        self._connection = open_gold_connection(profile, read_only=read_only)
+        self._read_only = read_only
+        self._thread = current_thread()
+        self._closed = False
+
+    def ensure_usable(self) -> None:
+        """Refuse use from another thread or after this owner has closed."""
+        if current_thread() is not self._thread:
+            raise GoldStoreThreadError
+        if self._closed:
+            raise GoldStoreClosedError
+
+    def connection(self, *, write: bool = False) -> sqlite3.Connection:
+        """Return the owned connection after checking the requested access."""
+        self.ensure_usable()
+        if write and self._read_only:
+            raise GoldStoreReadOnlyError
+        return self._connection
+
+    def read[T](self, operation: Callable[[sqlite3.Connection], T]) -> T:
+        """Run one consistent read while the owner is usable."""
+        return _reading(self.connection(), operation)
+
+    def close(self) -> None:
+        """Close once on the owner thread, leaving a wrong-thread owner open."""
+        if current_thread() is not self._thread:
+            raise GoldStoreThreadError
+        if self._closed:
+            return
+        self._connection.close()
+        self._closed = True
+
+
 class GoldStore:
-    """Publish to and read from the Gold store that one profile names."""
+    """Publish to and read from the Gold store that one profile names.
+
+    The store owns one SQLite connection. Open, use, and close it on the thread
+    that created it within one synchronous request or task. `read_only=True`
+    opens the supported reporting connection through SQLite `mode=ro`; the
+    default mode remains writable for publishing. Repositories returned by
+    `open()` borrow this owner and cannot outlive the store.
+    """
 
     def __init__(self, profile: Profile, *, read_only: bool = False) -> None:
         """Open the migrated Gold store that one profile names."""
-        self._connection = open_gold_connection(profile, read_only=read_only)
+        self._owner = _ConnectionOwner(profile, read_only=read_only)
 
     def __enter__(self) -> Self:
         """Return the open store for a `with` block."""
@@ -340,7 +394,7 @@ class GoldStore:
 
     def close(self) -> None:
         """Release the store's connection."""
-        self._connection.close()
+        self._owner.close()
 
     def current(self) -> GoldPublication | None:
         """Return the current publication, or None when it has no result.
@@ -348,15 +402,14 @@ class GoldStore:
         That is before the first publish, and after a Gold migration that
         could not convert the current result until the next build.
         """
-        return _reading(self._connection, _current)
+        return self._owner.read(_current)
 
     def available(self) -> Sequence[GoldPublication]:
         """Return the publications whose results are retained, oldest first."""
-        return _reading(
-            self._connection,
+        return self._owner.read(
             lambda connection: tuple(
                 _publication(row) for row in connection.execute(_SELECT_RETAINED)
-            ),
+            )
         )
 
     def open(self, publication_id: int) -> GoldRepository:
@@ -365,27 +418,28 @@ class GoldStore:
         Raises `PublicationUnavailableError` when the publication does not exist or
         its result is no longer retained.
         """
-        publication = _reading(
-            self._connection,
+        publication = self._owner.read(
             lambda connection: _retained(connection, publication_id),
         )
-        return StoredPublication(self._connection, publication)
+        return StoredPublication(self._owner, publication)
 
     def next_publication_id(self) -> int:
         """Return the id the next publication must carry."""
-        return _next_publication_id(self._connection)
+        return self._owner.read(_next_publication_id)
 
     def recipe(self, publication_id: int) -> Recipe:
         """Return the recipe a publication was built from, retained or not."""
-        return _reading(
-            self._connection,
+        return self._owner.read(
             lambda connection: _stored_recipe(connection, publication_id),
         )
 
     def pointer_history(self) -> Sequence[PointerMove]:
         """Return every move of the current pointer, oldest first."""
-        rows = self._connection.execute(_SELECT_MOVES)
-        return tuple(_move(row) for row in rows)
+        return self._owner.read(
+            lambda connection: tuple(
+                _move(row) for row in connection.execute(_SELECT_MOVES)
+            )
+        )
 
     def classification_reviews(
         self,
@@ -413,7 +467,7 @@ class GoldStore:
                 account,
             )
 
-        return _reading(self._connection, read)
+        return self._owner.read(read)
 
     def publish(
         self,
@@ -436,6 +490,7 @@ class GoldStore:
         the cause and the publish still stands; any other error propagates,
         with a note that the publication is current.
         """
+        connection = self._owner.connection(write=True)
         if configuration.fingerprint != recipe.configuration_fingerprint:
             raise ConfigurationMismatchError(
                 recipe.configuration_fingerprint, configuration.fingerprint
@@ -448,7 +503,7 @@ class GoldStore:
             result.records,
             result.lineage,
         )
-        with self._connection as connection:
+        with connection:
             connection.execute("BEGIN IMMEDIATE")
             expected = _next_publication_id(connection)
             if publication.publication_id != expected:
@@ -459,7 +514,7 @@ class GoldStore:
             _write(connection, encoded)
             _move_pointer(connection, publication.publication_id, "build")
         try:
-            _delete_stale_results(self._connection)
+            _delete_stale_results(connection)
         except sqlite3.Error as error:
             # The publish has committed, so a failure here never undoes it.
             code = getattr(error, "sqlite_errorcode", None)
@@ -481,17 +536,16 @@ class StoredPublication:
     another publication's records.
     """
 
-    __slots__ = ("_connection", "_publication")
+    __slots__ = ("_owner", "_publication")
 
-    def __init__(
-        self, connection: sqlite3.Connection, publication: GoldPublication
-    ) -> None:
-        """Bind the store's connection to one publication."""
-        self._connection = connection
+    def __init__(self, owner: _ConnectionOwner, publication: GoldPublication) -> None:
+        """Bind the owner's connection to one publication."""
+        self._owner = owner
         self._publication = publication
 
     def publication(self) -> GoldPublication:
         """Return the publication every other method reads from."""
+        self._owner.ensure_usable()
         return self._publication
 
     def accounts(self) -> Sequence[GoldAccount]:
@@ -581,7 +635,7 @@ class StoredPublication:
                 raise PublicationUnavailableError(publication_id)
             return tuple(decode(row) for row in connection.execute(query, bound))
 
-        return _reading(self._connection, read)
+        return self._owner.read(read)
 
 
 def _reading[T](

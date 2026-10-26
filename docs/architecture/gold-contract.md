@@ -306,6 +306,21 @@ build that follows it. `open()` raises `PublicationUnavailableError`
 when the publication does not exist or its result is not retained, including
 one deleted after a consumer last opened it.
 
+The concrete `GoldStore` owns one connection for one synchronous request or
+task. Open, use, and close it on the thread that created it. Do not cache a
+store or repository across requests or use it from another server thread; a
+page carries `ReportContext`, and each follow-up request opens a fresh reader
+in its own thread. A repository borrowed from `open()` cannot outlive its
+store. `GoldStore(profile, read_only=True)` uses SQLite `mode=ro` for reporting,
+while the default remains writable for publishing.
+
+Use after close raises `GoldStoreClosedError`. Use from another thread raises
+`GoldStoreThreadError`; these are separate `GoldStoreLifecycleError`
+subclasses and never mean that a publication was removed by retention. Closing
+is idempotent on the creating thread. A close attempted from another thread
+fails without closing or releasing the owner's connection. Read-only publishing
+raises `GoldStoreReadOnlyError` before writing.
+
 #### `GoldPublication`
 
 Publication metadata. None of it enters the result fingerprint.
