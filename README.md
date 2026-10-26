@@ -170,9 +170,11 @@ and Gold publishing, `dev refresh` and restore are later slices. A rebuild alway
 data reaches development only through a restored backup set, which is not built
 yet.
 
-When `inputs/decisions.jsonl` holds any decision, the rebuild refuses with exit
-3 and says so: the decision-log reader is a later slice, and a build must not
-silently ignore a household decision. A missing log, or one holding only a
+A rebuild reads `inputs/decisions.jsonl` and applies every Silver decision in
+force (`void-import-run`, `accept-discrepancy`, `withdrawn`,
+`same-transaction`); the Gold decisions are applied when Gold is built. A log
+with an invalid entry refuses the rebuild with exit 3, naming the entry and
+never repeating the decision's text. A missing log, or one holding only a
 byte-order mark and whitespace, means no decisions and is allowed.
 
 `budget review [--kind <kind>] [--account <id>]` lists the open Silver review
@@ -286,7 +288,7 @@ log records counts only.
 | Exit | `import` |
 | --- | --- |
 | 0 | Every file was stored or a repeat; or the inbox is empty; or you did not answer `y` |
-| 3 | A file was refused, misfiled, unreadable or a format failure, and stays in the inbox. Also, with nothing stored: a ranges file or `accounts.toml` that breaks its rules, a decision log holding a decision (its reader is not built yet), or an account Silver cannot build |
+| 3 | A file was refused, misfiled, unreadable or a format failure, and stays in the inbox. Also, with nothing stored: a ranges file or `accounts.toml` that breaks its rules, an invalid decision log, or an account Silver cannot build |
 | 4 | Nothing stored: another command is running, or production's code is uncommitted, or its stores folder holds a store no backup set covers. After the imports: production's backup set could not be written; run `budget backup` once the message's problem is put right |
 | 5 | Nothing stored: `imports.jsonl` disagrees with Bronze |
 
