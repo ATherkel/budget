@@ -1,2 +1,0 @@
-COMMAND: uv run --no-sync ruff check .
-All checks passed!

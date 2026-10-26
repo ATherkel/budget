@@ -1,2 +1,0 @@
-COMMAND: uv run --no-sync complexipy --quiet
-complexipy: passed (no findings; exit 0)
