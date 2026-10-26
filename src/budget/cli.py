@@ -28,6 +28,7 @@ from budget.backups import (
     back_up,
     require_backup_allowed,
 )
+from budget.bronze.parsers.registry import UnsupportedSourceFormatError
 from budget.bronze.storage import BRONZE_STAGE, bronze_stage
 from budget.bronze.store import ConflictingDeclaredFormatsError
 from budget.codeversion import UncommittedCodeError, require_committed_code
@@ -79,7 +80,6 @@ from budget.rebuilding import (
     SilverNotBuiltError,
     SilverRebuild,
     read_household_inputs,
-    rebuild_from_bronze,
     rebuild_from_gold,
     rebuild_through_gold,
     require_buildable_accounts,
@@ -317,10 +317,10 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
         now = datetime.now(UTC)
         summary = ""
         counts: dict[str, int] = {}
-        if from_stage == BRONZE_STAGE:
-            rebuild_from_bronze(lock)
         if from_stage in {BRONZE_STAGE, SILVER_STAGE}:
-            rebuilt = rebuild_through_gold(lock, now=now, inputs=inputs)
+            rebuilt = rebuild_through_gold(
+                lock, now=now, inputs=inputs, from_bronze=from_stage == BRONZE_STAGE
+            )
             summary = summaries.rebuild_summary(rebuilt.silver)
             counts = _rebuild_counts(rebuilt.silver)
             published = rebuilt.gold
@@ -335,7 +335,7 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
         summary += summaries.gold_line(published) + "\n"
         # Every production write is followed by a set covering what it wrote;
         # a Gold rebuild that publishes nothing wrote nothing.
-        wrote = from_stage == SILVER_STAGE or published.published
+        wrote = from_stage != GOLD_STAGE or published.published
         if profile.name != PRODUCTION_PROFILE_NAME or not wrote:
             sys.stdout.write(summary)
             return
@@ -578,6 +578,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         ProfileFileError,
         ConfigurationError,
         ConflictingDeclaredFormatsError,
+        UnsupportedSourceFormatError,
         NoPassphraseFileError,
         NoPassphraseTypedError,
         EmptyPassphraseError,

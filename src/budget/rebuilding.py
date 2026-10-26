@@ -21,6 +21,7 @@ from budget import sqlstore
 from budget.bronze import BronzeStore
 from budget.bronze.models import ImportRun
 from budget.bronze.storage import bronze_stage
+from budget.bronze.store import DerivedRecords
 from budget.codeversion import committed_code_version
 from budget.decision_log import DecisionLogRead, read_decision_log
 from budget.gold import GoldPublication, GoldResult, build
@@ -127,14 +128,18 @@ def require_stores(profile: Profile) -> None:
 
 
 def bronze_inputs(
-    profile: Profile, decisions: Sequence[SilverDecision] | None = None
+    profile: Profile,
+    decisions: Sequence[SilverDecision] | None = None,
+    derived: DerivedRecords | None = None,
 ) -> SilverBuildInputs:
     """Read every Bronze input one Silver build needs, and the currencies.
 
     The profile's import runs, each run's payload's source records or format
     failures, and each declared account's currency are read as they stand now.
     `decisions` are the Silver decisions in force; without them the profile's
-    decision log is read.
+    decision log is read. `derived` are source records and format failures
+    freshly parsed from the retained payloads, which stand in for the stored
+    ones when a rebuild starts from Bronze.
     """
     currencies = {
         account_id: account.currency
@@ -142,12 +147,14 @@ def bronze_inputs(
     }
     with BronzeStore(profile) as store:
         runs = store.import_runs()
-        source_records = {
-            run.payload_id: store.get_source_records(run.payload_id) for run in runs
-        }
-        format_failures = {
-            run.payload_id: store.get_format_failures(run.payload_id) for run in runs
-        }
+        records = (
+            store.get_source_records if derived is None else derived.source_records
+        )
+        failures = (
+            store.get_format_failures if derived is None else derived.format_failures
+        )
+        source_records = {run.payload_id: records(run.payload_id) for run in runs}
+        format_failures = {run.payload_id: failures(run.payload_id) for run in runs}
     _require_declared_accounts(currencies, runs)
     return SilverBuildInputs(
         runs=runs,
@@ -310,12 +317,6 @@ def _plan_gold(
     return _GoldPlan(recipe, household.configuration, result)
 
 
-def rebuild_from_bronze(lock: WriterLock) -> None:
-    """Regenerate the locked profile's Bronze source records from its payloads."""
-    with BronzeStore(lock.profile) as store:
-        store.rebuild_derived_records()
-
-
 def _publish(profile: Profile, plan: _GoldPlan | GoldRebuild) -> GoldRebuild:
     """Publish a planned build, or report the publication already current."""
     if isinstance(plan, GoldRebuild):
@@ -347,21 +348,34 @@ def rebuild_from_gold(
 
 
 def rebuild_through_gold(
-    lock: WriterLock, *, now: datetime, inputs: HouseholdInputs | None = None
+    lock: WriterLock,
+    *,
+    now: datetime,
+    inputs: HouseholdInputs | None = None,
+    from_bronze: bool = False,
 ) -> PipelineRebuild:
     """Rebuild Silver from Bronze, then publish Gold from it.
 
-    Both stages are derived in memory first, so a refusal Gold would make
-    leaves every store as it was; only then is Silver replaced and Gold
-    published.
+    With `from_bronze`, Bronze's source records and format failures are parsed
+    again from the retained payloads first. Every stage is derived in memory
+    before anything is stored, so a refusal Bronze's parsers, Silver's build or
+    Gold's build make leaves every store as it was; only then are the stages
+    replaced in order and Gold published.
     """
     profile = lock.profile
     household = read_household_inputs(profile) if inputs is None else inputs
-    silver_inputs = bronze_inputs(profile, household.log.silver)
+    reparsed = None
+    if from_bronze:
+        with BronzeStore(profile) as bronze:
+            reparsed = bronze.derive_records()
+    silver_inputs = bronze_inputs(profile, household.log.silver, reparsed)
     derived = derive_silver(silver_inputs)
     plan = _plan_gold(profile, derived, household, now)
     with SilverStore(profile) as silver_store:
         changed = silver_store.read() != derived
+    if reparsed is not None:
+        with BronzeStore(profile) as bronze:
+            bronze.replace_derived_records(reparsed)
     store_silver(lock, silver_inputs, derived)
     return PipelineRebuild(
         silver=SilverRebuild(runs=silver_inputs.runs, result=derived),

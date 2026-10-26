@@ -11,6 +11,7 @@ declared `source_format`.
 import json
 import sqlite3
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -432,40 +433,91 @@ class BronzeStore:
             for row in rows
         )
 
-    def rebuild_derived_records(self) -> None:
-        """Regenerate every payload's source records and format failures.
+    def derive_records(self) -> "DerivedRecords":
+        """Parse every retained payload again, storing nothing.
 
-        Each retained payload is parsed again, from its stored bytes, by the
-        parser of the format its import runs declared, exactly as an import
-        parses it. Every payload is parsed before anything is written, and all
-        of them are replaced in one transaction, so a parser that raises
-        leaves the earlier derived state as it was. The bytes and every import
-        run are untouched: a rebuild is not an import.
+        Each payload is parsed from its stored bytes by the parser of the
+        format its import runs declared, exactly as an import parses it. A
+        payload declared as more than one format is refused rather than
+        guessed, and a format no parser is registered for is refused by name.
         """
+        conflicting = self._connection.execute(
+            "SELECT payload_id FROM import_runs GROUP BY payload_id"
+            " HAVING COUNT(DISTINCT source_format) > 1 ORDER BY payload_id LIMIT 1"
+        ).fetchone()
+        if conflicting is not None:
+            raise ConflictingDeclaredFormatsError(conflicting["payload_id"])
         declared = self._connection.execute(
             "SELECT DISTINCT payload_id, source_format FROM import_runs"
-            " ORDER BY payload_id, source_format"
+            " ORDER BY payload_id"
         ).fetchall()
-        payload_ids = [row["payload_id"] for row in declared]
-        for payload_id in payload_ids:
-            if payload_ids.count(payload_id) > 1:
-                raise ConflictingDeclaredFormatsError(payload_id)
-        parsed = [
-            (
-                row["payload_id"],
-                row["source_format"],
-                self._parser_for(row["source_format"]).parse(
-                    self.get_payload(row["payload_id"]).content
-                ),
+        return DerivedRecords(
+            tuple(
+                (
+                    row["payload_id"],
+                    row["source_format"],
+                    self._parser_for(row["source_format"]).parse(
+                        self.get_payload(row["payload_id"]).content
+                    ),
+                )
+                for row in declared
             )
-            for row in declared
-        ]
+        )
+
+    def replace_derived_records(self, derived: "DerivedRecords") -> None:
+        """Replace every derived record with what `derived` parsed, atomically.
+
+        All payloads are replaced in one transaction, so a record the store
+        cannot hold leaves the earlier derived state as it was. The bytes and
+        every import run are untouched: a rebuild is not an import.
+        """
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE")
-            for payload_id, source_format, result in parsed:
+            for payload_id, source_format, result in derived.parsed:
                 _rebuild_derived_cache(
                     self._connection,
                     payload_id=payload_id,
                     source_format=source_format,
                     result=result,
                 )
+
+    def rebuild_derived_records(self) -> None:
+        """Regenerate every payload's source records and format failures."""
+        self.replace_derived_records(self.derive_records())
+
+
+@dataclass(frozen=True)
+class DerivedRecords:
+    """What parsing every retained payload gave, before any of it is stored.
+
+    Each entry is a payload, the format its runs declared, and the parser's
+    verdict. The records and format failures a Silver build reads come straight
+    from here, so a build can be checked before the store is replaced.
+    """
+
+    parsed: tuple[tuple[str, str, ParserResult], ...]
+
+    def source_records(self, payload_id: str) -> tuple[SourceRecord, ...]:
+        """Return the source records the parser derived for a payload, in order."""
+        return tuple(
+            SourceRecord(
+                payload_id=payload_id,
+                record_ordinal=ordinal,
+                fields=MappingProxyType(dict(fields)),
+            )
+            for found, _, result in self.parsed
+            if found == payload_id and result.failure_reason is None
+            for ordinal, fields in enumerate(result.records, start=1)
+        )
+
+    def format_failures(self, payload_id: str) -> tuple[FormatFailure, ...]:
+        """Return the format verdict the parser gave a payload, if it rejected it."""
+        return tuple(
+            FormatFailure(
+                payload_id=payload_id,
+                source_format=source_format,
+                reason=result.failure_reason,
+            )
+            for found, source_format, result in self.parsed
+            if found == payload_id and result.failure_reason is not None
+        )
