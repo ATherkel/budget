@@ -82,6 +82,7 @@ CREATE TABLE account_evidence (
 CREATE TABLE evidence_exports (
     ordinal INTEGER PRIMARY KEY,
     import_run_id TEXT NOT NULL UNIQUE,
+    payload_id TEXT NOT NULL,
     account_id TEXT NOT NULL,
     exported_on TEXT NOT NULL,
     covers_from TEXT NOT NULL,
@@ -91,6 +92,7 @@ CREATE TABLE evidence_exports (
 CREATE TABLE import_run_results (
     ordinal INTEGER PRIMARY KEY,
     import_run_id TEXT NOT NULL UNIQUE,
+    payload_id TEXT NOT NULL,
     account_id TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('accepted', 'quarantined')),
     covered_from TEXT NOT NULL,
