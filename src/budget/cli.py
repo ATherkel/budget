@@ -240,7 +240,7 @@ def _parser() -> argparse.ArgumentParser:
         help="the stage to rebuild from",
     )
     import_ = commands.add_parser(
-        "import", help="import every inbox export, then rebuild Silver"
+        "import", help="import every inbox export, then rebuild Silver and Gold"
     )
     import_.add_argument(
         "--ranges",
