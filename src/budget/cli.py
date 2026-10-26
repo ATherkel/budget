@@ -20,11 +20,13 @@ import uvicorn
 
 from budget import routine_logging, sqlstore, summaries
 from budget.backups import (
+    BACKUP_FAILURES,
     BackupVerificationError,
     BackupWriteError,
     LostStoreError,
     UnsupportedStoresError,
     back_up,
+    require_backup_allowed,
 )
 from budget.bronze.storage import bronze_stage
 from budget.codeversion import UncommittedCodeError, require_committed_code
@@ -63,6 +65,7 @@ from budget.migration import (
     require_migration_allowed,
 )
 from budget.profiles import (
+    PRODUCTION_PROFILE_NAME,
     NoBackupsFolderError,
     Profile,
     ProfileFileError,
@@ -136,6 +139,17 @@ class ImportedWithoutBackupError(Exception):
             "the exports were imported, Silver rebuilt and Gold published, but "
             f"no backup set could be written after them: {reason}. Put that "
             "right, then run `budget backup`"
+        )
+
+
+class RebuiltWithoutBackupError(Exception):
+    """The rebuild is committed, but no backup set followed it."""
+
+    def __init__(self, reason: Exception) -> None:
+        """Say what was done, what was not, and what to run."""
+        super().__init__(
+            "the stores were rebuilt, but no backup set could be written after "
+            f"them: {reason}. Put that right, then run `budget backup`"
         )
 
 
@@ -307,6 +321,8 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
     started = perf_counter()
     with writer_lock(profile) as lock:
         require_committed_code(lock.profile)
+        if profile.name == PRODUCTION_PROFILE_NAME:
+            require_backup_allowed(profile)
         inputs = read_household_inputs(lock.profile)
         now = datetime.now(UTC)
         summary = ""
@@ -324,7 +340,19 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
             counts={**counts, "published": int(published.published)},
             duration_ms=_milliseconds(started),
         )
-        sys.stdout.write(summary + summaries.gold_line(published) + "\n")
+        summary += summaries.gold_line(published) + "\n"
+        # Every production write is followed by a set covering what it wrote;
+        # a Gold rebuild that publishes nothing wrote nothing.
+        wrote = from_stage == SILVER_STAGE or published.published
+        if profile.name != PRODUCTION_PROFILE_NAME or not wrote:
+            sys.stdout.write(summary)
+            return
+        try:
+            written = back_up(lock, now=datetime.now(UTC))
+        except BACKUP_FAILURES as error:
+            sys.stdout.write(summary)
+            raise RebuiltWithoutBackupError(error) from None
+        sys.stdout.write(f"{summary}Backup   backup set {written.name} written\n")
 
 
 def _declared_ranges(
@@ -575,6 +603,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         MigratedWithoutBackupError,
         ImportedWithoutBackupError,
         ImportedWithoutPublicationError,
+        RebuiltWithoutBackupError,
         BackupWriteError,
         UnsupportedStoresError,
         LostStoreError,
