@@ -31,9 +31,10 @@ describes them until they land.
 Analytics produces household reports from Gold
 ([`analytics-layer.md`](analytics-layer.md)); presentation renders them
 ([`presentation-layer.md`](presentation-layer.md)). This document is the only
-normative schema of the reports that pass between them. The production
-analytics implementation and the synthetic report adapter used to develop
-presentation both implement it, and share the examples below.
+normative schema of the reports that pass between them. Analytics implements
+it as `HouseholdReports`; presentation is developed and tested against that
+same implementation over synthetic Gold publications, so there is no second,
+fake implementation to keep in step (issue #103).
 
 Analytics owns every financial figure, every coverage and provisional
 judgement, and every validation rule here. Presentation formats and lays out
@@ -101,7 +102,9 @@ A page resolves its context once: it asks for the current publication and
 takes today's date in Europe/Copenhagen as the reference date. Every follow-up
 request from that page, such as a fragment or a drill-down, carries the same
 `publication_id` and `reference_date`, so one page never mixes two
-publications or two days. A reload resolves a fresh context. On a fresh visit
+publications or two days. Opening the page without a pin resolves a fresh
+context; the pin travels in the page's address, so a browser reload of a
+pinned address keeps it, as back and forward do. On a fresh visit
 the selection is every account in `SelectionOptions.accounts` and the month of
 the reference date.
 
@@ -257,7 +260,9 @@ framework-specific schema.
 account or month change, a fragment, a drill-down, a mode change, an ordinary
 link or a form - keeps that pin and never re-resolves it from the clock or from
 whichever publication is current. Only an explicit refresh, or an explicit
-return to the current publication, resolves a fresh context.
+return to the current publication, resolves a fresh context: in the dashboard
+both mean opening the page without a pin, which is what the "newer figures"
+link does.
 
 **Central validation.** Every candidate selection, restored or freshly entered,
 is validated against the publication its context pins, by the rules under
