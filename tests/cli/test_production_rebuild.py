@@ -105,7 +105,9 @@ class ProductionRebuildCodeTests(unittest.TestCase):
                 development_file, "--from", "silver"
             )
             assert (development_status, development_stderr) == (EXIT_OK, "")
-            assert produced == developed
+            *summary, backup_line = produced.splitlines()
+            assert summary == developed.splitlines()
+            assert backup_line.startswith("Backup   backup set ")
             with SilverStore(production) as store:
                 production_result = store.read()
             with SilverStore(development) as store:
