@@ -60,7 +60,7 @@ class ConfigurationSnapshot:
         return hashlib.sha256(self.canonical_text.encode("utf-8")).hexdigest()
 
 
-def _canonical_amount(amount: Decimal) -> str:
+def canonical_amount(amount: Decimal) -> str:
     """Write an amount exactly, without trailing zeros or a negative zero.
 
     Formatting a `Decimal` without a precision is exact, so no amount is
@@ -76,7 +76,7 @@ def _canonical_amount(amount: Decimal) -> str:
 def _json_value(value: object) -> str:
     """Write a value JSON has no type for: a decimal amount or a date."""
     if isinstance(value, Decimal):
-        return _canonical_amount(value)
+        return canonical_amount(value)
     if isinstance(value, date):
         return value.isoformat()
     message = f"no canonical form for {type(value).__name__}"
