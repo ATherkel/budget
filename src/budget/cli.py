@@ -39,16 +39,19 @@ from budget.importing import (
 )
 from budget.inbox import (
     ExportPreview,
+    ImportedInbox,
     cross_account_duplicates,
     import_inbox,
     inbox_exports,
     incident_files,
     preview,
     require_import_allowed,
+    require_importable,
 )
 from budget.inputs import Account, ConfigurationError, load_accounts
 from budget.locking import (
     StoresFolderUnavailableError,
+    WriterLock,
     WriterLockHeldError,
     writer_lock,
 )
@@ -68,6 +71,7 @@ from budget.profiles import (
 from budget.prompting import ask_continue_after_duplicates, ask_passphrase, ask_ranges
 from budget.ranges import load_ranges
 from budget.rebuilding import (
+    HouseholdInputs,
     SilverNotBuiltError,
     SilverRebuild,
     read_household_inputs,
@@ -124,15 +128,33 @@ class RebuildFromStageNotBuiltError(Exception):
 
 
 class ImportedWithoutBackupError(Exception):
-    """The imports and Silver are committed, but no backup set followed them."""
+    """The imports, Silver and Gold are committed, but no backup set followed."""
 
     def __init__(self, reason: Exception) -> None:
         """Say what was done, what was not, and what to run."""
         super().__init__(
-            "the exports were imported and Silver rebuilt, but no backup set "
-            f"could be written after them: {reason}. Put that right, then run "
-            "`budget backup`"
+            "the exports were imported, Silver rebuilt and Gold published, but "
+            f"no backup set could be written after them: {reason}. Put that "
+            "right, then run `budget backup`"
         )
+
+
+class ImportedWithoutPublicationError(Exception):
+    """The imports are committed, but Silver and Gold were not rebuilt from them."""
+
+    def __init__(
+        self, held_back: ConfigurationError, backup_failure: Exception | None
+    ) -> None:
+        """Say what was done, what stopped, and which command finishes it."""
+        message = (
+            "the exports were imported into Bronze, but Silver and Gold were not "
+            f"rebuilt: {'; '.join(held_back.problems)}. Put that right, then run "
+            "`budget import` again: it finishes the rebuild, the publication and "
+            "the backup, whether or not the inbox holds files"
+        )
+        if backup_failure is not None:
+            message += f". No backup set could be written either: {backup_failure}"
+        super().__init__(message)
 
 
 class PassphraseMismatchError(Exception):
@@ -328,47 +350,73 @@ def _declared_ranges(
     }
 
 
-def _import(profile: Profile, ranges_file: str | None) -> int:
-    """Import every inbox export with its declared range, then rebuild Silver.
+def _import_files(
+    lock: WriterLock,
+    inputs: HouseholdInputs,
+    previews: Sequence[ExportPreview],
+    ranges_file: str | None,
+) -> ImportedInbox | int:
+    """Settle every range, then import the files; or return the exit status.
 
-    Every range is settled before the first file is stored, and a payload the
-    inbox holds under more than one account is shown before that: nothing is
-    imported unless the person goes on. Returns 3 when any file stays in the
+    A payload the inbox holds under more than one account is shown before the
+    ranges are asked: nothing is imported unless the person goes on.
+    """
+    profile = lock.profile
+    accounts = load_accounts(profile)
+    require_buildable_accounts(
+        profile, {each.account_id for each in previews if not each.skipped}
+    )
+    require_importable(inputs, previews)
+    duplicates = cross_account_duplicates(previews)
+    if duplicates and not ask_continue_after_duplicates(duplicates):
+        sys.stdout.write("Nothing was imported.\n")
+        return EXIT_REFUSED_INPUT
+    excluded = incident_files(duplicates)
+    declared = _declared_ranges(previews, accounts, ranges_file, excluded)
+    if declared is None:
+        sys.stdout.write("Nothing was imported.\n")
+        return EXIT_OK
+    return import_inbox(lock, previews, declared, duplicates, inputs)
+
+
+def _import(profile: Profile, ranges_file: str | None) -> int:
+    """Import every inbox export with its declared range, then rebuild.
+
+    Every range is settled before the first file is stored. With an empty
+    inbox, Bronze may still be ahead of Silver and Gold because an earlier
+    import stopped after it stored; then this finishes the rebuild, the
+    publication and production's backup. Returns 3 when any file stays in the
     inbox unimported, else 0.
     """
     started = perf_counter()
     with writer_lock(profile) as lock:
-        require_import_allowed(profile)
+        inputs = require_import_allowed(profile)
         accounts = load_accounts(profile)
         previews = [
             preview(profile, accounts, source) for source in inbox_exports(profile)
         ]
-        if not previews:
+        done = (
+            _import_files(lock, inputs, previews, ranges_file)
+            if previews
+            else import_inbox(lock, (), {}, (), inputs)
+        )
+        if isinstance(done, int):
+            return done
+        if not previews and done.rebuilt is None and done.held_back is None:
             sys.stdout.write("The inbox holds no exports; nothing was imported.\n")
             return EXIT_OK
-        require_buildable_accounts(
-            profile, {each.account_id for each in previews if not each.skipped}
-        )
-        duplicates = cross_account_duplicates(previews)
-        if duplicates and not ask_continue_after_duplicates(duplicates):
-            sys.stdout.write("Nothing was imported.\n")
-            return EXIT_REFUSED_INPUT
-        excluded = incident_files(duplicates)
-        declared = _declared_ranges(previews, accounts, ranges_file, excluded)
-        if declared is None:
-            sys.stdout.write("Nothing was imported.\n")
-            return EXIT_OK
-        imported = import_inbox(lock, previews, declared, duplicates)
-        sys.stdout.write(summaries.import_summary(imported))
+        sys.stdout.write(summaries.import_summary(done))
         routine_logging.finished(
             profile,
             "import",
-            counts=imported.counts(),
+            counts=done.counts(),
             duration_ms=_milliseconds(started),
         )
-    if imported.backup_failure is not None:
-        raise ImportedWithoutBackupError(imported.backup_failure)
-    return EXIT_REFUSED_INPUT if imported.any_left_in_inbox else EXIT_OK
+    if done.held_back is not None:
+        raise ImportedWithoutPublicationError(done.held_back, done.backup_failure)
+    if done.backup_failure is not None:
+        raise ImportedWithoutBackupError(done.backup_failure)
+    return EXIT_REFUSED_INPUT if done.any_left_in_inbox else EXIT_OK
 
 
 def _review(profile: Profile, kind: str | None, account: str | None) -> None:
@@ -526,6 +574,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         RestoreInsteadError,
         MigratedWithoutBackupError,
         ImportedWithoutBackupError,
+        ImportedWithoutPublicationError,
         BackupWriteError,
         UnsupportedStoresError,
         LostStoreError,

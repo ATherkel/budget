@@ -176,6 +176,12 @@ def import_summary(imported: ImportedInbox) -> str:
     A file is named by its number in the listing the prompt showed, never by
     its filename, which can carry a bank account number.
     """
+    if imported.held_back is not None:
+        lines = [_file_line(each, {}) for each in imported.files]
+        lines.append("Silver and Gold were not rebuilt.")
+        if imported.backup is not None:
+            lines.append(f"Backup   backup set {imported.backup.name} written")
+        return "\n".join(lines) + "\n"
     if imported.rebuilt is None:
         lines = [_file_line(each, {}) for each in imported.files]
         lines.append("Nothing was imported.")
