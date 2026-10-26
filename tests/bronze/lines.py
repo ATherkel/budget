@@ -68,3 +68,9 @@ class LineParser:
     def is_account_number(self, value: str) -> bool:
         """Fail loudly if called: Bronze never checks an account number."""
         raise NotImplementedError
+
+
+class SecondLineParser(LineParser):
+    """Another declared format, which happens to read the same bytes."""
+
+    source_format = "synthetic-lines-v2"

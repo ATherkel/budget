@@ -19,7 +19,7 @@ from budget.bronze import BronzeStore, ImportDeclaration, ImportRun
 from budget.bronze.parsers.base import ParserResult
 from budget.bronze.store import ConflictingDeclaredFormatsError
 from budget.profiles import Profile
-from tests.bronze.lines import LineParser, migrated_profile
+from tests.bronze.lines import LineParser, SecondLineParser, migrated_profile
 
 FORMAT = LineParser.source_format
 FIRST_EXPORT = b"12.09.2026\n05.09.2026\n"
@@ -172,12 +172,6 @@ class AtomicityTests(unittest.TestCase):
         self._unchanged_after(_UnstorableParser("only"))
 
 
-class _SecondFormat(LineParser):
-    """Another declared format, which happens to read the same bytes."""
-
-    source_format = "synthetic-lines-v2"
-
-
 class ConflictingFormatsTests(unittest.TestCase):
     def test_a_payload_declared_as_two_formats_is_refused_not_guessed(self) -> None:
         with TemporaryDirectory() as directory:
@@ -185,13 +179,13 @@ class ConflictingFormatsTests(unittest.TestCase):
             profile = migrated_profile(root)
             parsers = {
                 FORMAT: LineParser("datum"),
-                _SecondFormat.source_format: _SecondFormat("other"),
+                SecondLineParser.source_format: SecondLineParser("other"),
             }
             with BronzeStore(profile, parsers=parsers) as store:
                 run = _import(store, root, "synthetic-20260914.csv", FIRST_EXPORT)
                 other = ImportDeclaration(
                     declared_account_id="daily-account",
-                    source_format=_SecondFormat.source_format,
+                    source_format=SecondLineParser.source_format,
                     exported_on=date(2026, 9, 14),
                     covers_from=date(2026, 9, 1),
                     covers_through=date(2026, 9, 13),
