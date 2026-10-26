@@ -235,7 +235,7 @@ Because a restored set never changes, those stores are opened with SQLite's
 | --- | --- | --- | --- |
 | Source parsing (Bronze code) | `rebuild --from bronze` | Raw payloads and import runs | `bronze.db` (source records re-derived), `silver.db`, `gold.db` |
 | Silver mapping, identity, or a Silver decision | `rebuild --from silver` | `bronze.db` | `silver.db`, `gold.db` |
-| Accounts, taxonomy, rules, a classification decision, or Gold code | `rebuild --from gold` | `bronze.db`, `silver.db` | `gold.db` |
+| Accounts, taxonomy, rules, a classification decision, or Gold code | `rebuild --from gold` | `silver.db` | `gold.db` |
 
 Development's inputs are a working copy. `dev refresh --inputs` replaces them
 with production's; plain `dev refresh` leaves them alone. A development store
