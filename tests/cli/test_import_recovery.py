@@ -26,7 +26,7 @@ from tests.cli.commands import import_, migrate
 from tests.cli.imports import clean_checkout, write_ranges
 from tests.cli.pipelines import EXPORT, Prepared, prepared, write_inputs
 from tests.cli.profile_files import development_profile, write_profile
-from tests.importing.households import ACCOUNTS, drop
+from tests.importing.households import ACCOUNTS, drop, payload
 
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
@@ -238,6 +238,31 @@ class FailureAndRetryTests(unittest.TestCase):
             assert "published publication 1" in stdout
             assert "Backup" in stdout
             assert len(complete_backup_sets(base.profile)) == sets_before + 2
+
+    def test_a_retry_with_new_inbox_files_finishes_the_outstanding_work_too(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            with _gold_refuses_after_the_files_are_stored():
+                assert _run_import(base)[0] == EXIT_REFUSED_ENVIRONMENT
+            drop(
+                base.profile,
+                "joint-current",
+                "danske-20260306.csv",
+                payload("02.03.2026"),
+            )
+
+            status, stdout, stderr = _run_import(base)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "[1] joint-current  stored" in stdout
+            assert "published publication 1" in stdout
+            assert len(run_ids(base.profile.bronze_store)) == 2
+            with GoldStore(base.profile) as gold:
+                recipe = gold.recipe(1)
+            assert len(recipe.import_runs) == 2
 
     def test_an_import_with_nothing_outstanding_changes_and_backs_up_nothing(
         self,
