@@ -19,7 +19,7 @@ from budget.bronze import BronzeStore, ImportDeclaration, ImportRun
 from budget.bronze.parsers.base import ParserResult
 from budget.bronze.store import ConflictingDeclaredFormatsError
 from budget.profiles import Profile
-from tests.bronze.test_store import LineParser, migrated_profile
+from tests.bronze.lines import LineParser, migrated_profile
 
 FORMAT = LineParser.source_format
 FIRST_EXPORT = b"12.09.2026\n05.09.2026\n"
