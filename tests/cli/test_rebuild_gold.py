@@ -249,5 +249,21 @@ class RoutineLogTests(unittest.TestCase):
             ]
 
 
+class EarlierRecipeKeepsItsWindowTests(unittest.TestCase):
+    def test_an_earlier_recipe_still_reads_back_the_window_it_was_built_with(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            with built.profile_file.open("a", encoding="utf-8") as profile_file:
+                profile_file.write("\n[gold]\nlate_booking_days = 0\n")
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+
+            with GoldStore(built.profile) as gold:
+                assert gold.recipe(1).late_booking_days == 7
+                assert gold.recipe(2).late_booking_days == 0
+
+
 if __name__ == "__main__":
     unittest.main()
