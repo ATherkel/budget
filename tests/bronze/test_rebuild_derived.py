@@ -107,7 +107,12 @@ class RebuildDerivedRecordsTests(unittest.TestCase):
 
 
 class _RaisingParser(LineParser):
-    """A version of the format whose parser fails on one payload."""
+    """A version of the format whose parser fails on one payload.
+
+    The failure comes while the payloads are being parsed, before anything is
+    replaced, so it proves the rebuild stops without writing; the unstorable
+    record below proves the replacement itself rolls back.
+    """
 
     @override
     def parse(self, content: bytes) -> ParserResult:
@@ -165,7 +170,7 @@ class AtomicityTests(unittest.TestCase):
                 assert (after, store.import_runs()) == (before, runs)
                 assert len(after[0]) == 2
 
-    def test_a_parser_that_raises_leaves_the_committed_state_as_it_was(self) -> None:
+    def test_a_parser_that_raises_stops_the_rebuild_before_it_writes(self) -> None:
         self._unchanged_after(_RaisingParser("only"))
 
     def test_a_record_that_cannot_be_stored_rolls_the_whole_rebuild_back(self) -> None:
