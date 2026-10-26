@@ -5,7 +5,11 @@ Analytics reads Gold only through `GoldRepository`; it never imports Bronze,
 Silver, a parser or `GoldLineageRepository`.
 """
 
-from budget.analytics.household import HouseholdReports
+from budget.analytics.household import (
+    HouseholdReports,
+    NothingPublishedError,
+    PublicationUnavailableError,
+)
 from budget.analytics.overview import monthly_overview, selection_options
 from budget.analytics.reports import (
     AccountMonth,
@@ -15,7 +19,6 @@ from budget.analytics.reports import (
     InvalidSelectionError,
     MoneyInOut,
     MonthlyOverview,
-    NothingPublishedError,
     Provisional,
     ProvisionalReason,
     ReportContext,
@@ -25,7 +28,6 @@ from budget.analytics.reports import (
     SelectionOptions,
     SelectionRule,
 )
-from budget.gold import PublicationUnavailableError
 
 __all__ = [
     "AccountMonth",
