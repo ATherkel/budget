@@ -5,6 +5,7 @@ Every test passes `main` an explicit environment. The Gold publication is read
 back through `GoldStore`, so a test sees what a dashboard would.
 """
 
+import json
 import re
 import unittest
 from datetime import UTC, date, datetime
@@ -230,6 +231,22 @@ class LateBookingWindowTests(unittest.TestCase):
             with GoldStore(built.profile) as gold:
                 assert gold.recipe(1).late_booking_days == 7
                 assert gold.recipe(2).late_booking_days == 14
+
+
+class RoutineLogTests(unittest.TestCase):
+    def test_the_routine_log_counts_whether_the_rebuild_published(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+
+            lines = built.profile.log_file("commands.jsonl").read_text(encoding="utf-8")
+            records = [json.loads(line) for line in lines.splitlines()]
+            assert [(r["command"], r["counts"]) for r in records] == [
+                ("rebuild", {"published": 1}),
+                ("rebuild", {"published": 0}),
+            ]
 
 
 if __name__ == "__main__":
