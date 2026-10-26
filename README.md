@@ -166,10 +166,13 @@ of the `Profile`, so one command keeps one lock instead of acquiring a second.
 lock for its whole run — the guard, the Bronze read, the replacement, the
 summary and the routine log — so a competing command exits 4 at once.
 `--from silver` rebuilds Silver and then publishes Gold, `--from gold` publishes
-Gold from the Silver as it stands (default), and `--from bronze` refuses with
-exit 4 until it is built. Both derive their stages in memory and check every
-household file first, so a refusal changes no store; a production rebuild that
-wrote stores then writes a backup set. Gold publishes only when its recipe
+Gold from the Silver as it stands (default), and `--from bronze` parses every
+retained payload again with the parser of its declared format, then does what
+`--from silver` does. It never creates an import run or an import-log entry,
+and a payload declared as more than one format, or in a format this code has no
+parser for, refuses with exit 3. Each derives its stages in memory and checks
+every household file first, so a refusal changes no store; a production
+rebuild that wrote stores then writes a backup set. Gold publishes only when its recipe
 changed: it names the import runs Silver was built from, the configuration,
 the decision log, the late-booking window and the code. `dev refresh` and
 restore are later slices. A rebuild always reads the profile's own local
