@@ -18,8 +18,14 @@ from budget.gold.store import GoldStore
 from budget.inputs import load_configuration
 from budget.locking import WriterLock, writer_lock
 from budget.rebuilding import GoldRebuild, rebuild_from_gold
+from budget.silver import VoidImportRun
 from tests.cli.commands import rebuild
-from tests.cli.pipelines import EXPORT, household
+from tests.cli.pipelines import (
+    EXPORT,
+    household,
+    present_again,
+    rebuild_silver_with,
+)
 
 EXIT_OK = 0
 EXIT_REFUSED_ENVIRONMENT = 4
@@ -128,6 +134,82 @@ class WriterLockTests(unittest.TestCase):
             assert "another command is running" in second_stderr
             with GoldStore(built.profile) as gold:
                 assert [m.to_publication_id for m in gold.pointer_history()] == [1]
+
+
+class RecipeNamesSilversRunsTests(unittest.TestCase):
+    def test_a_refused_run_silver_never_consumed_publishes_nothing(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            # Bronze refuses a declaration that ends after the export date.
+            present_again(built.profile, "danske-20260312.csv", date(2026, 3, 20))
+
+            rebuild_silver_with(built.profile)
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "nothing was published" in stdout
+            with GoldStore(built.profile) as gold:
+                assert [m.to_publication_id for m in gold.pointer_history()] == [1]
+
+    def test_a_repeat_run_with_a_new_export_date_is_named_with_its_payload(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            repeat = present_again(
+                built.profile, "danske-20260310.csv", date(2026, 3, 9)
+            )
+
+            rebuild_silver_with(built.profile)
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 2" in stdout
+            payload = sha256(EXPORT).hexdigest()
+            with GoldStore(built.profile) as gold:
+                assert gold.recipe(2).import_runs == {
+                    RecipeImportRun(built.import_run_id, payload),
+                    RecipeImportRun(repeat, payload),
+                }
+
+
+class SilverChangeTests(unittest.TestCase):
+    def test_a_voided_run_changes_silver_and_publishes_a_new_publication(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            rebuild_silver_with(
+                built.profile, VoidImportRun("d-0001", built.import_run_id)
+            )
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 2" in stdout
+            with GoldStore(built.profile) as gold:
+                assert gold.recipe(2).import_runs == frozenset()
+                transactions = gold.open(2).transactions(
+                    start_date=date(2026, 3, 1), end_date=date(2026, 3, 31)
+                )
+            assert transactions == ()
+
+
+class NeverBuiltSilverTests(unittest.TestCase):
+    def test_a_gold_rebuild_over_a_silver_never_built_refuses(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory), silver=False)
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert stdout == ""
+            assert "rebuild --from silver" in stderr
+            with GoldStore(built.profile) as gold:
+                assert gold.current() is None
 
 
 if __name__ == "__main__":
