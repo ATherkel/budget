@@ -66,5 +66,30 @@ class ProductionRecipeTests(unittest.TestCase):
                 assert gold.recipe(1).code_version == COMMIT
 
 
+def _unnameable_head(arguments: list[str], **_: object) -> mock.Mock:
+    """A clean checkout whose `HEAD` Git cannot name."""
+    if "rev-parse" not in arguments:
+        return _git("")
+    failed = _git("")
+    failed.returncode = 128
+    return failed
+
+
+class UnnameableCommitTests(unittest.TestCase):
+    def test_a_commit_git_cannot_name_refuses_and_publishes_nothing(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory), name="production")
+
+            with mock.patch("subprocess.run", side_effect=_unnameable_head):
+                status, stdout, stderr = rebuild(built.profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert stdout == ""
+            assert "cannot be checked" in stderr
+            assert "nothing was written" in stderr
+            with GoldStore(built.profile) as gold:
+                assert gold.current() is None
+
+
 if __name__ == "__main__":
     unittest.main()
