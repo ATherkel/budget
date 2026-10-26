@@ -177,8 +177,7 @@ def _delete_taxonomy(profile: Profile) -> None:
 
 
 def _break_taxonomy(profile: Profile) -> None:
-    profile.input_file("taxonomy.toml").write_text("[group.food
-", encoding="utf-8")
+    profile.input_file("taxonomy.toml").write_text("[group.food\n", encoding="utf-8")
 
 
 def _close_early(profile: Profile) -> None:
