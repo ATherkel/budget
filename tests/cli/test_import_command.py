@@ -348,6 +348,7 @@ class ImportCommandTests(unittest.TestCase):
                 "admitted": 1,
                 "quarantined": 0,
                 "dropped": 0,
+                "published": 1,
             }
             # The fixture's amounts, balance, texts, filenames and numbers.
             fixture = (
@@ -1026,6 +1027,7 @@ class DuplicateIncidentLogTests(unittest.TestCase):
                 "admitted": 0,
                 "quarantined": 0,
                 "dropped": 0,
+                "published": 0,
             }
             assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
             # The diagnostic is counts, so the log names no file, no account
@@ -1100,8 +1102,8 @@ class ProductionImportTests(unittest.TestCase):
             assert "Silver   1 admitted, 0 quarantined, 0 dropped\n" in stdout
             assert "Backup" not in stdout
             assert stderr.startswith(
-                "budget: the exports were imported and Silver rebuilt, but no "
-                "backup set could be written after them: "
+                "budget: the exports were imported, Silver rebuilt and Gold "
+                "published, but no backup set could be written after them: "
             )
             assert stderr.endswith("Put that right, then run `budget backup`\n")
             assert not source.exists()

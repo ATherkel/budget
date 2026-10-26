@@ -43,6 +43,25 @@ class Household:
     import_run_id: str
 
 
+@dataclass(frozen=True)
+class Prepared:
+    """A migrated profile with the household's inputs and nothing imported."""
+
+    profile_file: Path
+    profile: Profile
+
+
+def prepared(folder: Path, *, name: str = "development") -> Prepared:
+    """Write and migrate a profile and the household's three input files."""
+    folder.mkdir(parents=True, exist_ok=True)
+    profile_file = write_profile(folder, name=name)
+    options = ("--new-store",) if name == "production" else ()
+    assert migrate(profile_file, *options)[0] == 0
+    profile = load_profile_file(profile_file)
+    write_inputs(profile)
+    return Prepared(profile_file, profile)
+
+
 def household(
     folder: Path, *, name: str = "development", silver: bool = True
 ) -> Household:
@@ -50,15 +69,8 @@ def household(
 
     `silver=False` leaves Silver empty, as before the first rebuild.
     """
-    folder.mkdir(parents=True, exist_ok=True)
-    profile_file = write_profile(folder, name=name)
-    options = ("--new-store",) if name == "production" else ()
-    assert migrate(profile_file, *options)[0] == 0
-    profile = load_profile_file(profile_file)
-    profile.inputs.mkdir(parents=True, exist_ok=True)
-    profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
-    profile.input_file("taxonomy.toml").write_text(TAXONOMY, encoding="utf-8")
-    profile.input_file("rules.toml").write_text(RULES, encoding="utf-8")
+    base = prepared(folder, name=name)
+    profile_file, profile = base.profile_file, base.profile
     source = drop(profile, "joint-current", "danske-20260305.csv", EXPORT)
     with writer_lock(profile) as lock:
         imported = import_inbox_file(
