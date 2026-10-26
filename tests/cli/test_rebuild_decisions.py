@@ -21,6 +21,8 @@ from tests.cli.profile_files import development_profile, write_profile
 from tests.importing.households import ACCOUNTS, drop, payload
 
 EXIT_OK = 0
+EXIT_REFUSED_INPUT = 3
+SENTINEL = "SENSITIVE-SENTINEL-REASON"
 DECISION_LOG = "decisions.jsonl"
 
 
@@ -86,6 +88,33 @@ class RebuildDecisionLogTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_OK, "")
             with SilverStore(profile) as store:
                 assert store.read().transactions == ()
+
+    def test_an_invalid_decision_log_refuses_without_repeating_its_text(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _migrated_profile_with_accounts(profile_file, folder)
+            run_id = _import_one_export(profile)
+            assert rebuild(profile_file, "--from", "silver")[0] == EXIT_OK
+            with SilverStore(profile) as store:
+                before = store.read()
+            invalid = json.loads(_void(run_id))
+            invalid.update(
+                targets=["SENSITIVE-SENTINEL-TARGET"], reason=SENTINEL, extra=SENTINEL
+            )
+            profile.input_file(DECISION_LOG).write_text(
+                json.dumps(invalid) + "\n", encoding="utf-8"
+            )
+
+            status, stdout, stderr = rebuild(profile_file, "--from", "silver")
+
+            assert status == EXIT_REFUSED_INPUT
+            assert DECISION_LOG in stderr
+            assert SENTINEL not in stderr
+            assert SENTINEL not in stdout
+            assert "SENSITIVE-SENTINEL-TARGET" not in stderr
+            with SilverStore(profile) as store:
+                assert store.read() == before
 
 
 if __name__ == "__main__":
