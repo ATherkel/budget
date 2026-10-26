@@ -60,6 +60,7 @@ class FirstPublicationTests(unittest.TestCase):
                     code_version=None,
                     contract_version="0.2",
                     silver_identity_version="1",
+                    late_booking_days=7,
                     python_version="",
                     sqlite_version="",
                 )
@@ -210,6 +211,25 @@ class NeverBuiltSilverTests(unittest.TestCase):
             assert "rebuild --from silver" in stderr
             with GoldStore(built.profile) as gold:
                 assert gold.current() is None
+
+
+class LateBookingWindowTests(unittest.TestCase):
+    def test_a_changed_window_alone_publishes_and_each_recipe_keeps_its_own(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            with built.profile_file.open("a", encoding="utf-8") as profile_file:
+                profile_file.write("\n[gold]\nlate_booking_days = 14\n")
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 2" in stdout
+            with GoldStore(built.profile) as gold:
+                assert gold.recipe(1).late_booking_days == 7
+                assert gold.recipe(2).late_booking_days == 14
 
 
 if __name__ == "__main__":
