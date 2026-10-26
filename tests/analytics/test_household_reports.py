@@ -5,7 +5,7 @@ import sqlite3
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -73,6 +73,69 @@ def test_current_publication_returns_the_current_build(gold_store: GoldStore) ->
         label=None,
         known_at=publication.known_at,
         is_current=True,
+    )
+
+
+SECOND_BUILD_AT = datetime(2026, 5, 16, 7, 30, tzinfo=UTC)
+
+
+def _publish_known_at(
+    store: GoldStore, publication_id: int, known_at: datetime
+) -> None:
+    """Publish the worked example as `publication_id`, known at `known_at`.
+
+    It was built an hour later, so a report that shows `built_at` is caught.
+    """
+    published = replace(
+        PUBLICATION,
+        publication_id=publication_id,
+        known_at=known_at,
+        built_at=known_at + timedelta(hours=1),
+    )
+    store.publish(GoldResult(published, RECORDS), RECIPE, CONFIGURATION)
+
+
+def test_the_current_publication_is_the_one_gold_marks_current(
+    gold_store: GoldStore,
+) -> None:
+    _publish_known_at(gold_store, 1, PUBLICATION.known_at)
+    _publish_known_at(gold_store, 2, SECOND_BUILD_AT)
+
+    assert HouseholdReports(gold_store).current_publication() == ReportPublication(
+        publication_id=2,
+        kind="pipeline",
+        label=None,
+        known_at=SECOND_BUILD_AT,
+        is_current=True,
+    )
+
+
+def test_a_pinned_overview_turns_not_current_once_a_newer_build_is_current(
+    gold_store: GoldStore,
+) -> None:
+    reports = HouseholdReports(gold_store)
+    _publish_known_at(gold_store, 1, PUBLICATION.known_at)
+    pinned = ReportContext(
+        publication_id=1,
+        account_ids=frozenset({"joint-current"}),
+        month=ReportingMonth(2026, 4),
+        reference_date=date(2026, 5, 14),
+    )
+    p1 = ReportPublication(
+        publication_id=1,
+        kind="pipeline",
+        label=None,
+        known_at=PUBLICATION.known_at,
+        is_current=True,
+    )
+
+    before = reports.monthly_overview(pinned)
+    _publish_known_at(gold_store, 2, SECOND_BUILD_AT)
+    after = reports.monthly_overview(pinned)
+
+    assert (before.publication, after.publication) == (
+        p1,
+        replace(p1, is_current=False),
     )
 
 

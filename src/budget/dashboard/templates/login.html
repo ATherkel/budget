@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% set page_title = "Log ind" %}
+{% block title %}{{ page_title }} · Budget{% endblock %}
+{% block header_actions %}
+<span class="header-note">Beskyttet adgang</span>
+{% endblock %}
+{% block content %}
+<section class="login-layout" aria-labelledby="login-heading">
+  <div class="login-intro">
+    <p class="eyebrow">Privat oversigt</p>
+    <h1 id="login-heading">Log ind</h1>
+    <p class="lede">Brug husstandens adgangskode for at åbne budgettet.</p>
+  </div>
+  <div class="login-panel">
+    {% if message %}
+    <p class="notice notice--error" role="alert">{{ message }}</p>
+    {% endif %}
+    <form method="post" action="/login" class="stack">
+      <label for="passphrase">Adgangskode</label>
+      <input id="passphrase" type="password" name="passphrase" autocomplete="current-password" autofocus required>
+      <button class="button" type="submit">Log ind</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

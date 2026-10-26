@@ -391,10 +391,80 @@ Silver quarantines its run: a quarantine is a result, not a failure, and the
 file was stored, archived and removed from the inbox. `budget review` prints
 nothing when no item is open, and exits 0.
 
+## The dashboard: `budget serve`
+
+`budget serve` starts the household's read-only dashboard over Gold, in Danish.
+It logs in, pins one Gold publication and reference date, lets the reader pick
+accounts and a month, and says plainly when there is nothing published, a
+newer build exists, or a selection cannot be shown. The dashboard shell is
+responsive on phones and desktop browsers, supports keyboard use, and exposes
+loading, empty, unavailable and request-failure states. Numerical financial
+reports remain in #104.
+
+Gold migration and publication storage are implemented. A profile's dashboard
+still shows the shell until a publication exists; `budget serve` never creates
+or changes Gold.
+
+Name where the passphrase hash lives, and optionally the address and port, in
+the profile file; `bind` defaults to `127.0.0.1` and `port` to 8750.
+`passphrase_file` must be an absolute path outside OneDrive and the repository:
+
+```toml
+[dashboard]
+passphrase_file = 'C:\Users\<you>\AppData\Roaming\budget\dashboard-passphrase'
+bind = "127.0.0.1"
+port = 8750
+```
+
+```powershell
+budget set-passphrase   # asks twice; never echoes; replaces the hash and logs out every device
+budget serve            # refuses to start until a passphrase is set and Gold exists
+```
+
+Open the address `serve` is bound to and log in with the passphrase. A login
+lasts 30 days from the last visit, five failures in a row lock login for 30
+seconds (doubling to 15 minutes), and "Log ud" ends the login in that
+browser. [operations.md](docs/architecture/operations.md#dashboard-access)
+holds the rules.
+
+To run the complete dashboard without an existing profile or household data,
+create a new isolated synthetic development demo from this checkout:
+
+```powershell
+$demo = Join-Path $env:TEMP ("budget-demo-" + [guid]::NewGuid().ToString("N"))
+uv run budget demo --directory $demo --port 8765
+```
+
+The command creates only the new folder, publishes synthetic demo accounts,
+sets a demo-only login, and starts the real `budget serve` path on
+`http://127.0.0.1:8765`. It never reads or changes a profile outside that
+folder and refuses to reuse an existing target. Open the address, sign in with
+`budget-demo`, and expect two checked demo accounts (`Demo current` and
+`Demo savings`), the current month, and the report shell. The shell deliberately
+shows no financial figures; those belong to #104.
+
+Stop the foreground command with `Ctrl+C`, then remove only the isolated demo
+folder:
+
+```powershell
+Remove-Item -LiteralPath $demo -Recurse
+```
+
+Tests continue to use ephemeral test profiles. This command uses a separate
+development profile and leaves household configuration untouched.
+
+The real-browser dashboard tests require Google Chrome installed. Playwright is
+pinned as a development dependency, but the tests launch the installed Chrome
+channel rather than downloading a browser:
+
+```powershell
+uv run pytest tests/dashboard/test_overview_browser.py
+```
+
 ## Command line
 
 `uv sync` installs a `budget` command; `python -m budget` runs the same thing.
-Every command needs a profile file, named by `--profile` or, failing that, the
+Every command except `demo` needs a profile file, named by `--profile` or, failing that, the
 `BUDGET_PROFILE` environment variable. There is no default profile. Keep
 profile files outside the repository, for example in `%APPDATA%\budget\`. This
 PowerShell writes a development profile there, and refuses to replace one that

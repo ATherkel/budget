@@ -31,6 +31,18 @@ def write_profile(
     return path
 
 
+def write_dashboard_profile(folder: Path) -> Path:
+    """Write a development profile file that names a dashboard passphrase file.
+
+    The passphrase file sits in a `secrets` folder that does not exist yet.
+    """
+    path = write_profile(folder)
+    passphrase_file = folder / "secrets" / "dashboard-passphrase"
+    with path.open("a", encoding="utf-8") as file:
+        file.write(f"\n[dashboard]\npassphrase_file = '{passphrase_file}'\n")
+    return path
+
+
 def development_profile(folder: Path) -> Profile:
     """The development profile `write_profile` describes inside `folder`."""
     return Profile(

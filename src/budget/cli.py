@@ -16,6 +16,8 @@ from pathlib import Path
 from time import perf_counter
 from typing import Final, NoReturn
 
+import uvicorn
+
 from budget import routine_logging, sqlstore, summaries
 from budget.backups import (
     BackupVerificationError,
@@ -26,6 +28,9 @@ from budget.backups import (
 )
 from budget.bronze.storage import bronze_stage
 from budget.codeversion import UncommittedCodeError, require_committed_code
+from budget.dashboard import create_app
+from budget.dashboard.passphrase import PassphraseNotSetError, set_passphrase
+from budget.demo import DEFAULT_DEMO_PORT, DemoDirectoryExistsError, create_demo_profile
 from budget.gold.storage import GOLD_STAGE
 from budget.importing import (
     Coverage,
@@ -60,7 +65,7 @@ from budget.profiles import (
     ProfileFileError,
     load_profile_file,
 )
-from budget.prompting import ask_continue_after_duplicates, ask_ranges
+from budget.prompting import ask_continue_after_duplicates, ask_passphrase, ask_ranges
 from budget.ranges import load_ranges
 from budget.rebuilding import (
     SilverRebuild,
@@ -76,6 +81,8 @@ EXIT_USAGE: Final = 2
 EXIT_REFUSED_INPUT: Final = 3
 EXIT_REFUSED_ENVIRONMENT: Final = 4
 EXIT_VERIFICATION_FAILED: Final = 5
+# The port in operations.md's example profile, for a profile that names none.
+DEFAULT_DASHBOARD_PORT: Final = 8750
 # The store errors operations.md lists as a refused environment, for every
 # stage. Any other store error, such as a broken packaged migration, is a
 # defect: exit 1.
@@ -125,6 +132,48 @@ class ImportedWithoutBackupError(Exception):
         )
 
 
+class PassphraseMismatchError(Exception):
+    """The passphrase and its confirmation differ, so neither is stored."""
+
+    def __init__(self) -> None:
+        """Say why nothing changed, without repeating what was typed."""
+        super().__init__(
+            "the two passphrases do not match; the dashboard passphrase is unchanged"
+        )
+
+
+class NoPassphraseFileError(Exception):
+    """The profile names nowhere to keep the dashboard passphrase."""
+
+    def __init__(self, profile: str) -> None:
+        """Name the setting the profile file needs."""
+        super().__init__(
+            f"the {profile} profile names no [dashboard] passphrase_file; "
+            "add it to the profile file first"
+        )
+
+
+class NoPassphraseTypedError(Exception):
+    """The input ended before the passphrase and its confirmation were read."""
+
+    def __init__(self) -> None:
+        """Say why nothing changed."""
+        super().__init__(
+            "no passphrase was typed, or no confirmation; "
+            "the dashboard passphrase is unchanged"
+        )
+
+
+class EmptyPassphraseError(Exception):
+    """An empty passphrase would guard the dashboard with nothing."""
+
+    def __init__(self) -> None:
+        """Say why nothing changed."""
+        super().__init__(
+            "the passphrase is empty; the dashboard passphrase is unchanged"
+        )
+
+
 def _parser() -> argparse.ArgumentParser:
     """Build the command-line grammar."""
     parser = argparse.ArgumentParser(prog="budget")
@@ -166,6 +215,20 @@ def _parser() -> argparse.ArgumentParser:
         "--kind", choices=REVIEW_KINDS, help="list one kind of item only, no runs"
     )
     review.add_argument("--account", help="list one account's items and runs only")
+    commands.add_parser("serve", help="start the read-only dashboard")
+    commands.add_parser(
+        "set-passphrase",
+        help="set the dashboard passphrase, which logs out every device",
+    )
+    demo = commands.add_parser(
+        "demo",
+        help="create an isolated synthetic development dashboard and start it",
+    )
+    demo.add_argument(
+        "--directory",
+        help="a new folder for this demo; defaults to a fresh temporary folder",
+    )
+    demo.add_argument("--port", type=int, default=DEFAULT_DEMO_PORT)
     return parser
 
 
@@ -315,6 +378,49 @@ def _review(profile: Profile, kind: str | None, account: str | None) -> None:
     sys.stdout.write(summary)
 
 
+def _set_passphrase(profile: Profile) -> None:
+    """Ask for the new dashboard passphrase twice, then store its hash."""
+    # Refused before asking, so no one types a passphrase that cannot be kept.
+    if profile.passphrase_file is None:
+        raise NoPassphraseFileError(profile.name)
+    try:
+        passphrase = ask_passphrase("New dashboard passphrase: ")
+        confirmation = ask_passphrase("Type it again: ")
+    except EOFError:
+        raise NoPassphraseTypedError from None
+    if not passphrase.strip():
+        raise EmptyPassphraseError
+    if confirmation != passphrase:
+        raise PassphraseMismatchError
+    set_passphrase(profile, passphrase)
+
+
+def _serve(profile: Profile) -> None:
+    """Serve the read-only dashboard until stopped, after its refusals."""
+    app = create_app(profile, clock=lambda: datetime.now(UTC))
+    uvicorn.run(
+        app,
+        host=profile.dashboard_bind or "127.0.0.1",
+        port=profile.dashboard_port or DEFAULT_DASHBOARD_PORT,
+    )
+
+
+def _demo(directory: str | None, port: int) -> None:
+    """Create a synthetic development profile, then use the real serve path."""
+    profile = create_demo_profile(
+        None if directory is None else Path(directory), port=port
+    )
+    url = f"http://127.0.0.1:{port}"
+    sys.stdout.write(
+        f"Synthetic dashboard: {url}\n"
+        f"Login passphrase: budget-demo\n"
+        f"Demo folder: {profile.stores.parent}\n"
+        "Press Ctrl+C to stop. Delete the demo folder when finished.\n"
+    )
+    sys.stdout.flush()
+    _serve(profile)
+
+
 def _rebuild_counts(rebuilt: SilverRebuild) -> dict[str, int]:
     """Return the rebuild counts a routine log records, and nothing else."""
     outcomes = Counter(run.outcome for run in rebuilt.runs)
@@ -335,6 +441,9 @@ def _milliseconds(started: float) -> int:
 
 def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
     """Select and load the profile, run the command, and return its status."""
+    if arguments.command == "demo":
+        _demo(arguments.directory, arguments.port)
+        return EXIT_OK
     profile_file = _selected_profile_file(arguments.profile, environ)
     profile = load_profile_file(profile_file)
     if arguments.command == "import":
@@ -345,6 +454,10 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         _rebuild(profile, arguments.from_stage)
     elif arguments.command == "review":
         _review(profile, arguments.kind, arguments.account)
+    elif arguments.command == "set-passphrase":
+        _set_passphrase(profile)
+    elif arguments.command == "serve":
+        _serve(profile)
     else:
         _migrate(profile, arguments.stage, new_store=arguments.new_store)
     return EXIT_OK
@@ -370,7 +483,15 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         return usage.code if isinstance(usage.code, int) else EXIT_USAGE
     try:
         return _run(arguments, environ)
-    except (ProfileFileError, ConfigurationError) as error:
+    except (
+        ProfileFileError,
+        ConfigurationError,
+        NoPassphraseFileError,
+        NoPassphraseTypedError,
+        EmptyPassphraseError,
+        PassphraseMismatchError,
+        DemoDirectoryExistsError,
+    ) as error:
         return _refuse(error, EXIT_REFUSED_INPUT)
     except (
         NoProfileSelectedError,
@@ -385,6 +506,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         UnsupportedStoresError,
         LostStoreError,
         NoBackupsFolderError,
+        PassphraseNotSetError,
         *_STORE_ENVIRONMENT_REFUSALS,
     ) as error:
         return _refuse(error, EXIT_REFUSED_ENVIRONMENT)
