@@ -25,6 +25,7 @@ from tests.backups.sets import gold_publications, manifest, run_ids
 from tests.cli.commands import backup, import_, migrate
 from tests.cli.imports import clean_git, write_ranges
 from tests.cli.profile_files import write_profile
+from tests.gold.invariants import assert_contract_invariants
 from tests.gold.publishing import RECIPE, publication
 from tests.gold.worked_silver import TAXONOMY
 from tests.importing.households import ACCOUNTS, drop, log_entries, payload
@@ -52,6 +53,7 @@ def _build_and_publish(profile: Profile, publication_id: int) -> None:
             publication=publication(publication_id),
             late_booking_window=timedelta(days=7),
         )
+    assert_contract_invariants(result)
     recipe = replace(RECIPE, configuration_fingerprint=configuration.fingerprint)
     with writer_lock(profile), GoldStore(profile) as gold:
         gold.publish(result, recipe, configuration)
