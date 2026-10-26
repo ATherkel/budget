@@ -17,10 +17,12 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 
+from budget import sqlstore
 from budget.bronze import BronzeStore
 from budget.bronze.models import ImportRun
+from budget.bronze.storage import bronze_stage
 from budget.codeversion import committed_code_version
-from budget.decision_log import read_decision_log
+from budget.decision_log import DecisionLogRead, read_decision_log
 from budget.gold import GoldPublication, GoldResult, build
 from budget.gold.fingerprint import (
     CONTRACT_VERSION,
@@ -28,18 +30,28 @@ from budget.gold.fingerprint import (
     result_fingerprint,
 )
 from budget.gold.recipe import Recipe, RecipeImportRun
+from budget.gold.storage import gold_stage
 from budget.gold.store import GoldStore
-from budget.inputs import ConfigurationError, load_accounts, load_configuration
+from budget.inputs import (
+    ConfigurationError,
+    ConfigurationSnapshot,
+    load_accounts,
+    load_configuration,
+)
 from budget.locking import WriterLock
 from budget.profiles import ACCOUNTS_FILE_NAME, Profile
 from budget.silver import (
     SilverBuildInputs,
     SilverResult,
     SilverStore,
+    derive_silver,
     rebuild_silver,
+    store_silver,
 )
 from budget.silver.currencies import UnknownCurrencyError, minor_unit_places
+from budget.silver.decisions import SilverDecision
 from budget.silver.identity import IDENTITY_VERSION
+from budget.silver.storage import silver_stage
 
 
 @dataclass(frozen=True)
@@ -78,12 +90,51 @@ class GoldRebuild:
     published: bool
 
 
-def bronze_inputs(profile: Profile) -> SilverBuildInputs:
+@dataclass(frozen=True)
+class HouseholdInputs:
+    """The household files one pipeline command reads once, before it writes.
+
+    Reading them once means the Silver build, the Gold build and the recipe
+    all see the same configuration and the same decision-log prefix, and a
+    file Gold would refuse is refused before anything is replaced.
+    """
+
+    configuration: ConfigurationSnapshot
+    log: DecisionLogRead
+
+
+def read_household_inputs(profile: Profile) -> HouseholdInputs:
+    """Check everything a Silver or Gold rebuild needs, writing nothing.
+
+    The Gold store must exist, and the configuration and the decision log
+    must load: each refusal names its file and happens before the first store
+    is touched.
+    """
+    require_stores(profile)
+    return HouseholdInputs(load_configuration(profile), read_decision_log(profile))
+
+
+def require_stores(profile: Profile) -> None:
+    """Refuse now, in stage order, a store a rebuild would find missing later.
+
+    Gold's store is checked with the others, so Silver is never replaced just
+    before publishing finds Gold missing.
+    """
+    for stage in (bronze_stage, silver_stage, gold_stage):
+        store = stage(profile)
+        if not store.path.exists():
+            raise sqlstore.StoreNotFoundError(store.label, store.path)
+
+
+def bronze_inputs(
+    profile: Profile, decisions: Sequence[SilverDecision] | None = None
+) -> SilverBuildInputs:
     """Read every Bronze input one Silver build needs, and the currencies.
 
     The profile's import runs, each run's payload's source records or format
     failures, and each declared account's currency are read as they stand now.
-    The decision log's Silver decisions are read with them.
+    `decisions` are the Silver decisions in force; without them the profile's
+    decision log is read.
     """
     currencies = {
         account_id: account.currency
@@ -103,7 +154,7 @@ def bronze_inputs(profile: Profile) -> SilverBuildInputs:
         source_records=source_records,
         format_failures=format_failures,
         currencies=currencies,
-        decisions=read_decision_log(profile).silver,
+        decisions=read_decision_log(profile).silver if decisions is None else decisions,
     )
 
 
@@ -175,27 +226,39 @@ def _unknown_currency(account_id: str) -> str:
     )
 
 
-def rebuild_from_gold(lock: WriterLock, *, now: datetime) -> GoldRebuild:
-    """Publish the locked profile's Gold from its stored Silver and inputs.
+@dataclass(frozen=True)
+class _GoldPlan:
+    """A Gold build derived in memory, ready to publish when its turn comes."""
 
-    The recipe names the import runs Silver was built from, the profile's
-    configuration, its decision log and the code that builds; Gold never
-    reads Bronze, and Silver is taken as it stands. `now` only
-    stamps the publication's `built_at` and `known_at`: no figure reads it.
+    recipe: Recipe
+    configuration: ConfigurationSnapshot
+    built: GoldResult
+
+
+@dataclass(frozen=True)
+class PipelineRebuild:
+    """One rebuild through Silver and Gold: what each stage left behind.
+
+    `silver_changed` is whether the stored Silver differed from the one just
+    derived, which tells `import` whether a retry had work left to finish.
     """
-    profile = lock.profile
-    configuration = load_configuration(profile)
-    log = read_decision_log(profile)
-    with SilverStore(profile) as silver_store:
-        if not silver_store.is_built():
-            raise SilverNotBuiltError
-        silver = silver_store.read()
-    recipe = Recipe(
+
+    silver: SilverRebuild
+    silver_changed: bool
+    gold: GoldRebuild
+
+
+def _recipe(
+    profile: Profile, silver: SilverResult, household: HouseholdInputs
+) -> Recipe:
+    """Name every input a build from `silver` and the household's files reads."""
+    log = household.log
+    return Recipe(
         import_runs=frozenset(
             RecipeImportRun(run.import_run_id, run.payload_id)
             for run in (*silver.import_run_results, *silver.evidence_exports)
         ),
-        configuration_fingerprint=configuration.fingerprint,
+        configuration_fingerprint=household.configuration.fingerprint,
         decision_log_position=log.position,
         decision_log_prefix_sha256=log.prefix_sha256,
         code_version=committed_code_version(profile),
@@ -205,6 +268,21 @@ def rebuild_from_gold(lock: WriterLock, *, now: datetime) -> GoldRebuild:
         python_version=platform.python_version(),
         sqlite_version=sqlite3.sqlite_version,
     )
+
+
+def _plan_gold(
+    profile: Profile,
+    silver: SilverResult,
+    household: HouseholdInputs,
+    now: datetime,
+) -> _GoldPlan | GoldRebuild:
+    """Derive Gold from `silver`, writing nothing, or find it already current.
+
+    A recipe equal to the current publication's builds nothing and comes back
+    as the rebuild that publishes nothing. A configuration error is raised
+    here, before any store is replaced.
+    """
+    recipe = _recipe(profile, silver, household)
     with GoldStore(profile) as gold:
         current = gold.current()
         if current is not None and gold.recipe(current.publication_id) == recipe:
@@ -220,29 +298,86 @@ def rebuild_from_gold(lock: WriterLock, *, now: datetime) -> GoldRebuild:
             fingerprint_scheme=FINGERPRINT_SCHEME,
             result_fingerprint="",
         )
-        built = build(
-            silver=silver,
-            configuration=configuration,
-            decisions=log.gold,
-            publication=draft,
-            late_booking_window=profile.late_booking_window,
-        )
-        publication = replace(draft, result_fingerprint=result_fingerprint(built))
-        gold.publish(
-            GoldResult(publication, built.records, built.lineage), recipe, configuration
-        )
-    return GoldRebuild(publication=publication, published=True)
+    built = build(
+        silver=silver,
+        configuration=household.configuration,
+        decisions=household.log.gold,
+        publication=draft,
+        late_booking_window=profile.late_booking_window,
+    )
+    publication = replace(draft, result_fingerprint=result_fingerprint(built))
+    result = GoldResult(publication, built.records, built.lineage)
+    return _GoldPlan(recipe, household.configuration, result)
 
 
-def rebuild_from_silver(lock: WriterLock) -> SilverRebuild:
+def _publish(profile: Profile, plan: _GoldPlan | GoldRebuild) -> GoldRebuild:
+    """Publish a planned build, or report the publication already current."""
+    if isinstance(plan, GoldRebuild):
+        return plan
+    with GoldStore(profile) as gold:
+        gold.publish(plan.built, plan.recipe, plan.configuration)
+    return GoldRebuild(publication=plan.built.publication(), published=True)
+
+
+def rebuild_from_gold(
+    lock: WriterLock, *, now: datetime, inputs: HouseholdInputs | None = None
+) -> GoldRebuild:
+    """Publish the locked profile's Gold from its stored Silver and inputs.
+
+    The recipe names the import runs Silver was built from, the profile's
+    configuration, its decision log and the code that builds; Gold never
+    reads Bronze, and Silver is taken as it stands. `now` only
+    stamps the publication's `built_at` and `known_at`: no figure reads it.
+    `inputs` are the household files the caller already read; without them
+    they are read here.
+    """
+    profile = lock.profile
+    household = read_household_inputs(profile) if inputs is None else inputs
+    with SilverStore(profile) as silver_store:
+        if not silver_store.is_built():
+            raise SilverNotBuiltError
+        silver = silver_store.read()
+    return _publish(profile, _plan_gold(profile, silver, household, now))
+
+
+def rebuild_through_gold(
+    lock: WriterLock, *, now: datetime, inputs: HouseholdInputs | None = None
+) -> PipelineRebuild:
+    """Rebuild Silver from Bronze, then publish Gold from it.
+
+    Both stages are derived in memory first, so a refusal Gold would make
+    leaves every store as it was; only then is Silver replaced and Gold
+    published.
+    """
+    profile = lock.profile
+    household = read_household_inputs(profile) if inputs is None else inputs
+    silver_inputs = bronze_inputs(profile, household.log.silver)
+    derived = derive_silver(silver_inputs)
+    plan = _plan_gold(profile, derived, household, now)
+    with SilverStore(profile) as silver_store:
+        changed = silver_store.read() != derived
+    store_silver(lock, silver_inputs, derived)
+    return PipelineRebuild(
+        silver=SilverRebuild(runs=silver_inputs.runs, result=derived),
+        silver_changed=changed,
+        gold=_publish(profile, plan),
+    )
+
+
+def rebuild_from_silver(
+    lock: WriterLock, inputs: HouseholdInputs | None = None
+) -> SilverRebuild:
     """Rebuild the locked profile's Silver from its Bronze store.
 
     The caller holds the profile's writer lock for its whole command, so the
     Bronze inputs are read under that one lock and handed to the existing
     `budget.silver.rebuild_silver`, which replaces the stored result. The runs
-    read here come back with the result, so no caller rereads Bronze.
+    read here come back with the result, so no caller rereads Bronze. `inputs`
+    are the household files the caller already read; without them the decision
+    log is read here.
     """
     profile = lock.profile
-    inputs = bronze_inputs(profile)
-    result = rebuild_silver(lock, inputs=inputs)
-    return SilverRebuild(runs=inputs.runs, result=result)
+    decisions = None if inputs is None else inputs.log.silver
+    silver_inputs = bronze_inputs(profile, decisions)
+    result = rebuild_silver(lock, inputs=silver_inputs)
+    return SilverRebuild(runs=silver_inputs.runs, result=result)

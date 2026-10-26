@@ -70,8 +70,9 @@ from budget.ranges import load_ranges
 from budget.rebuilding import (
     SilverNotBuiltError,
     SilverRebuild,
+    read_household_inputs,
     rebuild_from_gold,
-    rebuild_from_silver,
+    rebuild_through_gold,
     require_buildable_accounts,
 )
 from budget.reviewing import REVIEW_KINDS, open_reviews
@@ -284,13 +285,17 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
     started = perf_counter()
     with writer_lock(profile) as lock:
         require_committed_code(lock.profile)
+        inputs = read_household_inputs(lock.profile)
+        now = datetime.now(UTC)
         summary = ""
         counts: dict[str, int] = {}
         if from_stage == SILVER_STAGE:
-            rebuilt = rebuild_from_silver(lock)
-            summary = summaries.rebuild_summary(rebuilt)
-            counts = _rebuild_counts(rebuilt)
-        published = rebuild_from_gold(lock, now=datetime.now(UTC))
+            rebuilt = rebuild_through_gold(lock, now=now, inputs=inputs)
+            summary = summaries.rebuild_summary(rebuilt.silver)
+            counts = _rebuild_counts(rebuilt.silver)
+            published = rebuilt.gold
+        else:
+            published = rebuild_from_gold(lock, now=now, inputs=inputs)
         routine_logging.finished(
             profile,
             "rebuild",
