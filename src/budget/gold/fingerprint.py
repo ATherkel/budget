@@ -14,6 +14,7 @@ from decimal import Decimal
 from typing import Final
 
 from budget.gold.result import GoldResult
+from budget.inputs.snapshot import canonical_amount
 
 CONTRACT_VERSION: Final = "0.2"
 FINGERPRINT_SCHEME: Final = "1"
@@ -57,7 +58,7 @@ def result_fingerprint(result: GoldResult) -> str:
 def _json_value(value: object) -> str:
     """Write a value JSON has no type for: an exact amount, a date or a time."""
     if isinstance(value, Decimal):
-        return "0" if value == 0 else format(value.normalize(), "f")
+        return canonical_amount(value)
     if isinstance(value, date | datetime):
         return value.isoformat()
     message = f"no canonical form for {type(value).__name__}"
