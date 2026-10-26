@@ -364,7 +364,10 @@ class GoldLineageRepository(Protocol):
 | `classification_version` | string | Yes | Fingerprint of the classification inputs: the configuration snapshot (account registry, taxonomy, and rules) and the effective classification decisions ([`publications.md`](publications.md)). The transfer matching policy and the classifier's code are not part of it; they change with the recipe's code version. |
 | `transfer_evidence` | `TransferEvidence`/null | Conditional | Required on every `transfer`, otherwise null. |
 | `review_item_ids` | list of string | Yes | Open classification review items involving this transaction. Often empty. |
+| `bank_category` | string/null | Optional | The bank's category label, retained as privileged provenance for rule explanation and review. It never becomes a Gold Category. Null means the source supplied none or an older publication did not retain it. |
 | `adjustment_reason` | string/null | Conditional | The explanation invariant 3 asks of an adjustment: the reason its rule or decision gives. Required on every `adjustment`, otherwise null. |
+
+🤖 Added by Codex (DeepSeek V4.1 Flash)
 
 The classification fields describe how the transaction's type and its
 allocations were derived. While a classified transaction has exactly one
@@ -397,7 +400,13 @@ Confidence is a named evidence basis, not a score.
 | `reason` | string/null | No | Detail, such as `counterpart-may-not-be-imported`, `no-candidate`, or `target-missing`. |
 
 Gold derives review items afresh on every build, so an item exists exactly
-while its cause does. Silver's import review items (issue #5) are separate.
+while its cause does. A retained publication stores its review items and their
+existing target and rule identifiers atomically with its result. The privileged
+review reader selects the current publication in one SQLite read snapshot and
+does not expose this reader through the analytics interface. A non-applicable
+decision remains discoverable by its decision identifier and any surviving
+targets; a missing target is not reconstructed. Silver's import review items
+(issue #5) are separate.
 
 Each publication's recipe (its import runs, configuration snapshot,
 decision-log position, and code version) is privileged metadata for the CLI

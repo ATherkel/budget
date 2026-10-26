@@ -371,9 +371,20 @@ def _review(profile: Profile, kind: str | None, account: str | None) -> None:
     routine_logging.finished(
         profile,
         "review",
-        counts={"items": len(reviews.items), "runs": len(reviews.runs)},
+        counts={
+            "items": len(reviews.items),
+            "gold_items": len(reviews.gold_items),
+            "runs": len(reviews.runs),
+        },
         duration_ms=_milliseconds(started),
-        kinds=tuple(sorted({entry.item.kind for entry in reviews.items})),
+        kinds=tuple(
+            sorted(
+                {
+                    *(entry.item.kind for entry in reviews.items),
+                    *(entry.item.kind for entry in reviews.gold_items),
+                }
+            )
+        ),
     )
     sys.stdout.write(summary)
 

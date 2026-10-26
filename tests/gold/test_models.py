@@ -4,10 +4,11 @@
 from collections import abc
 from collections.abc import Callable
 from datetime import date
+from inspect import signature
 from typing import TypeAliasType, get_args, get_origin, get_type_hints
 
 import budget.gold
-from budget.gold import ReportingMonth
+from budget.gold import GoldTransactionLineage, ReportingMonth
 
 
 def test_the_month_of_a_date_is_the_month_it_falls_in() -> None:
@@ -59,6 +60,12 @@ def _fields_built_from(is_kind: Callable[[object], bool]) -> list[str]:
 
 def test_the_scan_finds_the_contract_records() -> None:
     assert budget.gold.GoldTransaction in CONTRACT_RECORDS
+
+
+def test_lineage_keeps_its_previous_constructor_compatible() -> None:
+    parameter = signature(GoldTransactionLineage).parameters["bank_category"]
+
+    assert parameter.default is None
 
 
 def test_no_contract_record_declares_a_float() -> None:

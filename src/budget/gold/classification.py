@@ -407,6 +407,7 @@ def _lineage(
             for item in review_items
             if item is not None and silver.transaction_id in item.transaction_ids
         ),
+        bank_category=silver.bank_category,
         adjustment_reason=outcome.adjustment_reason,
     )
 

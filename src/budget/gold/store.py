@@ -22,10 +22,12 @@ from types import TracebackType
 from typing import Final, Literal, Self
 
 from budget.gold.models import (
+    ClassificationReviewItem,
     GoldAccount,
     GoldCategory,
     GoldCategoryAllocation,
     GoldPublication,
+    GoldReviewTarget,
     GoldTransaction,
     MonthlyBalanceSnapshot,
     ReportingMonth,
@@ -38,7 +40,12 @@ from budget.gold.repository import (
     GoldStoreThreadError,
     PublicationUnavailableError,
 )
-from budget.gold.result import GoldRecords, GoldResult, refuse_bare_string
+from budget.gold.result import (
+    GoldLineageRecords,
+    GoldRecords,
+    GoldResult,
+    refuse_bare_string,
+)
 from budget.gold.storage import open_gold_connection
 from budget.inputs.snapshot import ConfigurationSnapshot
 from budget.profiles import Profile
@@ -118,6 +125,15 @@ class PointerMove:
     cause: PointerCause
 
 
+@dataclass(frozen=True)
+class PublishedClassificationReviews:
+    """The classification questions of one current, retained publication."""
+
+    publication_id: int
+    items: tuple[ClassificationReviewItem, ...]
+    targets: tuple[GoldReviewTarget, ...]
+
+
 # Publications, and which of them keep their results.
 _SELECT_RETAINED: Final = (
     "SELECT publications.* FROM publications"
@@ -149,6 +165,9 @@ _SELECT_STALE_IDS: Final = (
 )
 # Rows that reference others go first, and `results` last.
 _DELETE_RESULT: Final = (
+    "DELETE FROM classification_review_targets WHERE publication_id = ?",
+    "DELETE FROM classification_review_rules WHERE publication_id = ?",
+    "DELETE FROM classification_review_items WHERE publication_id = ?",
     "DELETE FROM monthly_balances WHERE publication_id = ?",
     "DELETE FROM category_allocations WHERE publication_id = ?",
     "DELETE FROM transactions WHERE publication_id = ?",
@@ -213,6 +232,21 @@ _INSERT_BALANCES: Final = (
     " opening_balance, closing_balance, coverage, late_bookings_settled)"
     " VALUES (?, ?, ?, ?, ?, ?, ?)"
 )
+_INSERT_REVIEW_ITEMS: Final = (
+    "INSERT INTO classification_review_items"
+    " (publication_id, ordinal, review_item_id, kind, decision_id, reason)"
+    " VALUES (?, ?, ?, ?, ?, ?)"
+)
+_INSERT_REVIEW_TARGETS: Final = (
+    "INSERT INTO classification_review_targets"
+    " (publication_id, review_item_id, ordinal, transaction_id, bank_category)"
+    " VALUES (?, ?, ?, ?, ?)"
+)
+_INSERT_REVIEW_RULES: Final = (
+    "INSERT INTO classification_review_rules"
+    " (publication_id, review_item_id, ordinal, rule_id)"
+    " VALUES (?, ?, ?, ?)"
+)
 
 # Each read names its publication, and `:account_ids` is a JSON array of the
 # named accounts, or null for every account. Each query is written out whole,
@@ -250,6 +284,44 @@ _SELECT_BALANCES: Final = (
     " AND (:account_ids IS NULL OR monthly_balances.account_id IN"
     " (SELECT value FROM json_each(:account_ids)))"
     " ORDER BY monthly_balances.account_id, monthly_balances.month"
+)
+_SELECT_REVIEW_ITEMS: Final = (
+    "SELECT items.* FROM classification_review_items AS items"
+    " WHERE items.publication_id = :publication_id"
+    " AND (:kind IS NULL OR items.kind = :kind)"
+    " AND (:account IS NULL OR EXISTS ("
+    "SELECT 1 FROM classification_review_targets AS targets"
+    " JOIN transactions AS tx"
+    " ON tx.publication_id = targets.publication_id"
+    " AND tx.transaction_id = targets.transaction_id"
+    " WHERE targets.publication_id = items.publication_id"
+    " AND targets.review_item_id = items.review_item_id"
+    " AND tx.account_id = :account))"
+    " ORDER BY items.ordinal"
+)
+_SELECT_REVIEW_TARGETS: Final = (
+    "SELECT targets.review_item_id, targets.transaction_id,"
+    " targets.bank_category, transactions.account_id,"
+    " transactions.transaction_date, transactions.amount,"
+    " transactions.description, accounts.currency"
+    " FROM classification_review_targets AS targets"
+    " JOIN classification_review_items AS items"
+    " USING (publication_id, review_item_id)"
+    " LEFT JOIN transactions"
+    " ON transactions.publication_id = targets.publication_id"
+    " AND transactions.transaction_id = targets.transaction_id"
+    " LEFT JOIN accounts"
+    " ON accounts.publication_id = transactions.publication_id"
+    " AND accounts.account_id = transactions.account_id"
+    " WHERE targets.publication_id = :publication_id"
+    " ORDER BY items.ordinal, targets.ordinal"
+)
+_SELECT_REVIEW_RULES: Final = (
+    "SELECT rules.* FROM classification_review_rules AS rules"
+    " JOIN classification_review_items AS items"
+    " USING (publication_id, review_item_id)"
+    " WHERE rules.publication_id = :publication_id"
+    " ORDER BY items.ordinal, rules.ordinal"
 )
 
 
@@ -369,6 +441,34 @@ class GoldStore:
             )
         )
 
+    def classification_reviews(
+        self,
+        *,
+        kind: str | None = None,
+        account: str | None = None,
+    ) -> PublishedClassificationReviews | None:
+        """Read the current publication's review items in one SQLite snapshot.
+
+        Holding the read transaction while the item and both identifier lists
+        are materialized keeps a concurrent pointer move or retention cleanup
+        from mixing or removing the selected publication.
+        """
+
+        def read(
+            connection: sqlite3.Connection,
+        ) -> PublishedClassificationReviews | None:
+            publication = _current(connection)
+            if publication is None:
+                return None
+            return _classification_reviews(
+                connection,
+                publication.publication_id,
+                kind,
+                account,
+            )
+
+        return self._owner.read(read)
+
     def publish(
         self,
         result: GoldResult,
@@ -398,7 +498,11 @@ class GoldStore:
         publication = result.publication()
         if publication.kind != "pipeline":
             raise PublicationKindError(publication.kind)
-        encoded = _encode(publication.publication_id, result.records)
+        encoded = _encode(
+            publication.publication_id,
+            result.records,
+            result.lineage,
+        )
         with connection:
             connection.execute("BEGIN IMMEDIATE")
             expected = _next_publication_id(connection)
@@ -573,6 +677,57 @@ def _stored_recipe(connection: sqlite3.Connection, publication_id: int) -> Recip
     return _recipe(row, connection.execute(_SELECT_RECIPE_RUNS, (publication_id,)))
 
 
+def _classification_reviews(
+    connection: sqlite3.Connection,
+    publication_id: int,
+    kind: str | None,
+    account: str | None,
+) -> PublishedClassificationReviews:
+    """Materialize one publication's review items and ordered identifiers."""
+    parameters = {
+        "publication_id": publication_id,
+        "kind": kind,
+        "account": account,
+    }
+    rows = connection.execute(_SELECT_REVIEW_ITEMS, parameters).fetchall()
+    target_rows = connection.execute(_SELECT_REVIEW_TARGETS, parameters).fetchall()
+    targets = _identifiers_by_item(
+        target_rows,
+        "transaction_id",
+    )
+    rules = _identifiers_by_item(
+        connection.execute(_SELECT_REVIEW_RULES, parameters),
+        "rule_id",
+    )
+    return PublishedClassificationReviews(
+        publication_id=publication_id,
+        items=tuple(
+            ClassificationReviewItem(
+                review_item_id=row["review_item_id"],
+                kind=row["kind"],
+                transaction_ids=targets.get(row["review_item_id"], ()),
+                rule_ids=rules.get(row["review_item_id"], ()),
+                decision_id=row["decision_id"],
+                reason=row["reason"],
+            )
+            for row in rows
+        ),
+        targets=tuple(
+            _review_target(row) for row in target_rows if row["account_id"] is not None
+        ),
+    )
+
+
+def _identifiers_by_item(
+    rows: Iterable[sqlite3.Row], column: str
+) -> dict[str, tuple[str, ...]]:
+    """Collect an ordered identifier list for each review item."""
+    collected: dict[str, list[str]] = {}
+    for row in rows:
+        collected.setdefault(row["review_item_id"], []).append(row[column])
+    return {item_id: tuple(values) for item_id, values in collected.items()}
+
+
 @dataclass(frozen=True)
 class _Encoded:
     """One result as rows of plain SQLite values, table by table."""
@@ -582,15 +737,25 @@ class _Encoded:
     transactions: Rows
     allocations: Rows
     balances: Rows
+    review_items: Rows
+    review_targets: Rows
+    review_rules: Rows
 
 
-def _encode(publication_id: int, records: GoldRecords) -> _Encoded:
+def _encode(
+    publication_id: int,
+    records: GoldRecords,
+    lineage: GoldLineageRecords,
+) -> _Encoded:
     """Encode every record before anything is written.
 
     Money its currency cannot hold exactly is refused here, so a refusal
     writes nothing.
     """
     currencies = {a.account_id: a.currency for a in records.accounts}
+    bank_categories = {
+        line.transaction_id: line.bank_category for line in lineage.transaction_lineage
+    }
     return _Encoded(
         accounts=tuple(_account_row(publication_id, a) for a in records.accounts),
         categories=tuple(_category_row(publication_id, c) for c in records.categories),
@@ -605,6 +770,26 @@ def _encode(publication_id: int, records: GoldRecords) -> _Encoded:
         balances=tuple(
             _balance_row(publication_id, s, _currency(currencies, s.account_id))
             for s in records.monthly_balances
+        ),
+        review_items=tuple(
+            _review_item_row(publication_id, ordinal, item)
+            for ordinal, item in enumerate(lineage.classification_review_items)
+        ),
+        review_targets=tuple(
+            (
+                publication_id,
+                item.review_item_id,
+                ordinal,
+                transaction_id,
+                bank_categories.get(transaction_id),
+            )
+            for item in lineage.classification_review_items
+            for ordinal, transaction_id in enumerate(item.transaction_ids)
+        ),
+        review_rules=tuple(
+            (publication_id, item.review_item_id, ordinal, rule_id)
+            for item in lineage.classification_review_items
+            for ordinal, rule_id in enumerate(item.rule_ids)
         ),
     )
 
@@ -715,6 +900,9 @@ def _write(connection: sqlite3.Connection, encoded: _Encoded) -> None:
     connection.executemany(_INSERT_TRANSACTIONS, encoded.transactions)
     connection.executemany(_INSERT_ALLOCATIONS, encoded.allocations)
     connection.executemany(_INSERT_BALANCES, encoded.balances)
+    connection.executemany(_INSERT_REVIEW_ITEMS, encoded.review_items)
+    connection.executemany(_INSERT_REVIEW_TARGETS, encoded.review_targets)
+    connection.executemany(_INSERT_REVIEW_RULES, encoded.review_rules)
 
 
 def _currency(currencies: Mapping[str, str], account_id: str) -> str:
@@ -918,6 +1106,36 @@ def _balance_row(
         _optional_minor(snapshot.closing_balance, currency),
         snapshot.coverage,
         int(snapshot.late_bookings_settled),
+    )
+
+
+def _review_item_row(
+    publication_id: int,
+    ordinal: int,
+    item: ClassificationReviewItem,
+) -> tuple[object, ...]:
+    """Spell one classification review item as its parent row."""
+    return (
+        publication_id,
+        ordinal,
+        item.review_item_id,
+        item.kind,
+        item.decision_id,
+        item.reason,
+    )
+
+
+def _review_target(row: sqlite3.Row) -> GoldReviewTarget:
+    """Read one target's published transaction context."""
+    return GoldReviewTarget(
+        review_item_id=row["review_item_id"],
+        transaction_id=row["transaction_id"],
+        account_id=row["account_id"],
+        transaction_date=date.fromisoformat(row["transaction_date"]),
+        amount=from_minor_units(row["amount"], row["currency"]),
+        currency=row["currency"],
+        description=row["description"],
+        bank_category=row["bank_category"],
     )
 
 

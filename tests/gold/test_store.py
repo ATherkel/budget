@@ -51,6 +51,7 @@ from tests.gold.contract import GoldRepositoryContract
 from tests.gold.publishing import CONFIGURATION, RECIPE, publication, publish
 from tests.gold.worked_example import (
     CATEGORY_ALLOCATIONS,
+    CURRENT,
     MONTHLY_BALANCES,
     PUBLICATION,
     RECORDS,
@@ -128,6 +129,7 @@ CLOSED_ACTIONS: dict[str, Callable[[GoldStore, GoldRepository], object]] = {
     "next publication id": lambda store, _repository: store.next_publication_id(),
     "recipe": lambda store, _repository: store.recipe(1),
     "pointer history": lambda store, _repository: store.pointer_history(),
+    "classification reviews": lambda store, _repository: store.classification_reviews(),
     "publish": lambda store, _repository: store.publish(
         GoldResult(publication(2), RECORDS), RECIPE, CONFIGURATION
     ),
@@ -158,6 +160,8 @@ def test_a_wrong_thread_read_or_close_does_not_release_the_owner(
 
         _assert_raises_in_thread(GoldStoreThreadError, store.current)
         assert store.current() == first
+        _assert_raises_in_thread(GoldStoreThreadError, store.classification_reviews)
+        assert store.classification_reviews() is not None
 
         _assert_raises_in_thread(GoldStoreThreadError, store.close)
         assert store.current() == first
@@ -438,6 +442,102 @@ def test_a_busy_cleanup_after_a_publish_still_publishes(
         holder.execute("ROLLBACK")
 
         assert store.current() == first
+
+
+def test_migration_3_keeps_a_historic_bank_label_unavailable(
+    tmp_path: Path,
+) -> None:
+    profile = make_test_profile(tmp_path)
+    profile.gold_store.parent.mkdir(parents=True)
+    schema_1 = (GOLD_MIGRATIONS / "0001_create_gold_store.sql").read_text(
+        encoding="utf-8"
+    )
+    schema_2 = (GOLD_MIGRATIONS / "0002_persist_classification_reviews.sql").read_text(
+        encoding="utf-8"
+    )
+    with closing(sqlite3.connect(profile.gold_store)) as connection:
+        connection.execute("PRAGMA journal_mode = WAL")
+        connection.executescript(schema_1)
+        connection.executescript(schema_2)
+        connection.execute("PRAGMA user_version = 2")
+        connection.execute(
+            "INSERT INTO store_identity VALUES (1, ?, 'gold')",
+            (profile.name,),
+        )
+        connection.execute(
+            "INSERT INTO publications VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                1,
+                "pipeline",
+                None,
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:00+00:00",
+                None,
+                "0.2",
+                "synthetic",
+                "0" * 64,
+            ),
+        )
+        connection.execute("INSERT INTO results VALUES (1)")
+        connection.execute(
+            "INSERT INTO pointer_moves VALUES (?, ?, ?, ?, ?)",
+            (1, "2026-01-01T00:00:00+00:00", None, 1, "build"),
+        )
+        connection.execute(
+            "INSERT INTO accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                1,
+                CURRENT,
+                "Joint current",
+                "current",
+                "household",
+                "DKK",
+                None,
+                "2026-01-01",
+                "2026-01-31",
+            ),
+        )
+        connection.execute(
+            "INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                1,
+                "legacy-target",
+                CURRENT,
+                "2026-01-12",
+                1,
+                -1000,
+                "LEGACY SHOP",
+                "unknown",
+                None,
+                -1000,
+                "opening",
+            ),
+        )
+        connection.execute(
+            "INSERT INTO classification_review_items VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                1,
+                0,
+                "a" * 64,
+                "sign-mismatch",
+                None,
+                None,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO classification_review_targets VALUES (?, ?, ?, ?)",
+            (1, "a" * 64, 0, "legacy-target"),
+        )
+        connection.commit()
+
+    migrate_gold(profile)
+    with GoldStore(profile) as store:
+        published = store.classification_reviews()
+
+    assert published is not None
+    [target] = published.targets
+    assert target.bank_category is None
+    assert target.account_id == CURRENT
 
 
 def test_a_cleanup_defect_after_a_publish_propagates(
