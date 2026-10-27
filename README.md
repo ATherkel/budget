@@ -384,19 +384,26 @@ budget import --ranges ranges-march.toml -> 0
   Silver   1 admitted, 0 quarantined, 0 dropped
   Gold     published publication 1
 budget review -> 0
-# (no output: no open review items)
+  <id>  unclassified  gold  publication 1  targets 641b439a
+    target 641b439a  joint-current  2026-03-01  -45.00 DKK  "NETTO"  bank category Mad
+    settle  choose a rule or classify a target as a category or adjustment
 budget import --ranges ranges-april.toml -> 0
   [1] joint-current  stored; Silver quarantined it: balance-break, balance-chain-break
   Silver   1 admitted, 1 quarantined, 0 dropped
   Gold     published publication 2
 budget review -> 0
   <id>  balance-break  joint-current  2026-04-02..2026-04-02  run <id>  payload <id>
+  <id>  unclassified  gold  publication 2  targets 641b439a
+    target 641b439a  joint-current  2026-03-01  -45.00 DKK  "NETTO"  bank category Mad
+    settle  choose a rule or classify a target as a category or adjustment
 ```
 
 Each import rebuilds Silver from everything Bronze holds and publishes Gold
 from it, so the walkthrough runs no `budget rebuild` of its own. It writes a
 small `taxonomy.toml` and an empty `rules.toml` beside `accounts.toml`,
-because Gold needs both. The profile is a
+because Gold needs both. With no rules the
+transaction stays unclassified, so `budget review` lists Gold's `unclassified`
+item beside Silver's. The profile is a
 development one, so no backup set follows; in production the summary would
 end `Backup   backup set <name> written`. The April import exits 0 even though
 Silver quarantines its run: a quarantine is a result, not a failure, and the
