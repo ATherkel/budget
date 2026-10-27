@@ -311,7 +311,9 @@ def _restore(profile: Profile, backup_set: str | None) -> None:
     """Restore the whole profile from a backup set, and name the set on stdout."""
     with writer_lock(profile) as lock:
         restored = restore(lock, backup_set)
-    sys.stdout.write(f"restored backup set {restored.name}\n")
+    for skipped in restored.skipped:
+        sys.stdout.write(f"skipped backup set {skipped}: this code cannot read it\n")
+    sys.stdout.write(f"restored backup set {restored.backup.name}\n")
 
 
 def _rebuild(profile: Profile, from_stage: str) -> None:
