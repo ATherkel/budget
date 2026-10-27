@@ -214,3 +214,19 @@ def test_a_month_without_data_shows_its_figures_as_unknown_never_as_zero(
         june.text_of("money-left"),
         "0,00" in june.visible(),
     ) == ("Ingen data endnu", "Ingen data endnu", "Ingen data endnu", False)
+
+
+def test_a_confirmed_quiet_month_shows_zero_without_a_trust_note(
+    client: TestClient,
+) -> None:
+    # March, Joint savings only: coverage complete and nothing happened, so
+    # zero is a known zero and no note is owed.
+    quiet = report(client, "2026-03", accounts=(SAVINGS,))
+
+    assert (
+        quiet.text_of("income"),
+        quiet.text_of("expenses"),
+        quiet.text_of("money-left"),
+        quiet.text_of("coverage-note"),
+        quiet.text_of("unclassified-note"),
+    ) == ("0,00 kr.", "0,00 kr.", "0,00 kr.", None, None)
