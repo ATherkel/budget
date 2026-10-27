@@ -447,6 +447,26 @@ class RestoreCommandTests(unittest.TestCase):
             )
             assert _live_run_ids(production) == [run_id, later]
 
+    def test_restore_says_what_is_lost_when_the_import_log_is_missing(
+        self,
+    ) -> None:
+        # The set's copy stands in, so runs logged only in the lost log are
+        # not restored, though their exports may still be in the archive.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            production.import_log_file.unlink()
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "the import log was missing: runs imported after backup set "
+                f"{written.name} are not restored\n"
+            ) in stdout
+
     def test_restore_accepts_an_import_log_missing_runs_the_set_holds(
         self,
     ) -> None:
