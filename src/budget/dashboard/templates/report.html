@@ -17,6 +17,10 @@
   <div class="summary-figure"><dt>Penge tilbage</dt><dd id="money-left">{{ overview.net_cash_flow | amount(overview.currency) }}</dd></div>
 </dl>
 {% endif %}
+{% if overview.unclassified and overview.unclassified.count > 0 %}
+{# Quiet, without amounts or count: those belong to Kontrol. #}
+<p id="unclassified-note" class="trust-note">Nogle betalinger er endnu ikke placeret i en kategori, så penge tilbage kan ændre sig. <a id="unclassified-explanation" href="{{ explanation_url }}">Se hvorfor</a></p>
+{% endif %}
 {% if overview.categories %}
 <h4 id="categories-heading">Udgifter fordelt på kategorier</h4>
 {# Every row, in the report's order, so the list adds up to Expenses. #}
