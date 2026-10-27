@@ -27,6 +27,7 @@ from budget.silver import (
     SilverResult,
     Transaction,
 )
+from tests.gold.invariants import assert_contract_invariants
 from tests.gold.worked_example import (
     CURRENT,
     PUBLICATION,
@@ -154,9 +155,10 @@ def build_from(
 ) -> GoldResult:
     """Run the Gold build over these inputs, bound to the example's publication.
 
-    The configuration has no rules: nothing is classified yet.
+    The configuration has no rules: nothing is classified yet. Every result
+    must keep contract invariants 10 and 12, so each fixture checks them too.
     """
-    return build(
+    result = build(
         silver=silver,
         configuration=ConfigurationSnapshot(
             accounts=accounts, taxonomy=TAXONOMY, rules={}
@@ -165,3 +167,5 @@ def build_from(
         publication=PUBLICATION,
         late_booking_window=late_booking_window,
     )
+    assert_contract_invariants(result)
+    return result
