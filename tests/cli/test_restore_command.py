@@ -443,6 +443,38 @@ class RestoreCommandTests(unittest.TestCase):
                 written.path / "silver.db"
             )
 
+    def test_commands_refuse_a_profile_whose_restore_has_not_finished(self) -> None:
+        # Its stores are a restore's half-done work, not a profile to use.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            shutil.rmtree(production.stores)
+            move = Path.replace
+
+            def cut_off_at_silver(source: Path, target: Path) -> Path:
+                if Path(target).name == "silver.db":
+                    raise OSError(errno.EIO, "Input/output error")
+                return move(source, target)
+
+            with mock.patch.object(
+                Path, "replace", autospec=True, side_effect=cut_off_at_silver
+            ):
+                restore(profile_file, written.name)
+            bronze = production.bronze_store.read_bytes()
+
+            backed_up = backup(profile_file)
+            migrated = migrate(profile_file)
+
+            unfinished = (
+                f"a restore of backup set {written.name} has not finished; "
+                "rerun `budget restore`"
+            )
+            for status, stderr in (backed_up[::2], migrated):
+                assert status == EXIT_REFUSED_ENVIRONMENT
+                assert unfinished in stderr
+            assert production.bronze_store.read_bytes() == bronze
+
     def test_restore_names_each_household_input_it_put_back(self) -> None:
         with TemporaryDirectory() as directory:
             profile_file, production, written, _ = _production_with_a_set(
