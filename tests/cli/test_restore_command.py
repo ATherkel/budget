@@ -29,7 +29,7 @@ from tests.backups.sets import (
     user_version,
 )
 from tests.bronze.migration_resources import SILVER_MIGRATIONS, added_migration
-from tests.cli.commands import migrate, restore
+from tests.cli.commands import backup, migrate, restore
 from tests.cli.profile_files import write_profile
 from tests.importing.households import ACCOUNTS
 
@@ -88,6 +88,38 @@ def _damaged_inside(backup: BackupSet, store: str) -> None:
         damaged.seek(4096 + 8)
         damaged.write(b"\xa5" * 512)
     _rechecksum(backup, store, None)
+
+
+WHOLE_PROFILE_ADVICE = (
+    "with the rest of the profile: move every store out of the stores "
+    "folder, then run `budget restore`"
+)
+
+
+class LostStoreAdviceTests(unittest.TestCase):
+    # A store is never restored beside live ones, so the advice for a lost
+    # store is a whole-profile restore.
+    def test_backup_advises_a_whole_profile_restore_for_a_lost_store(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, _, _ = _production_with_a_set(Path(directory))
+            for lost in production.stores.glob("silver.db*"):
+                lost.unlink()
+
+            status, _, stderr = backup(profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert f"Silver store must be restored {WHOLE_PROFILE_ADVICE}" in stderr
+
+    def test_migrate_advises_a_whole_profile_restore_for_a_lost_store(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, _, _ = _production_with_a_set(Path(directory))
+            for lost in production.stores.glob("gold.db*"):
+                lost.unlink()
+
+            status, stderr = migrate(profile_file, "--stage", "gold", "--new-store")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert f"Gold store must be restored {WHOLE_PROFILE_ADVICE}" in stderr
 
 
 class RestoreCommandTests(unittest.TestCase):
