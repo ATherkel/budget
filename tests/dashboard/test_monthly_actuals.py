@@ -85,4 +85,4 @@ def test_money_left_below_zero_carries_a_minus_sign(client: TestClient) -> None:
     # the minus sign the report contract writes, not a hyphen.
     march = report(client, "2026-03")
 
-    assert march.text_of("money-left") == "−1.000,00 kr."
+    assert march.text_of("money-left") == "\N{MINUS SIGN}1.000,00 kr."
