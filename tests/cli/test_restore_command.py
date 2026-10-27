@@ -260,3 +260,26 @@ class RestoreCommandTests(unittest.TestCase):
             assert list(production.stores.glob("*.db")) == []
             assert restore(profile_file, written.name)[0] == EXIT_OK
             assert run_ids(production.bronze_store) == [run_id]
+
+    def test_restore_puts_back_a_household_input_the_profile_has_lost(
+        self,
+    ) -> None:
+        # The live inputs are newer than any set, so only what is missing is
+        # taken from the set; what survived is left as it is.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            shutil.rmtree(production.stores)
+            production.accounts_file.unlink()
+            survived = production.import_log_file.read_bytes()
+
+            status, _, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert production.accounts_file.is_file(), "accounts.toml not put back"
+            assert (
+                production.accounts_file.read_bytes()
+                == (written.path / "inputs" / "accounts.toml").read_bytes()
+            )
+            assert production.import_log_file.read_bytes() == survived
