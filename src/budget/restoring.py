@@ -18,7 +18,7 @@ from budget.bronze.storage import bronze_stage
 from budget.gold.storage import gold_stage
 from budget.locking import WriterLock
 from budget.migration import migrate_profile
-from budget.profiles import Profile
+from budget.profiles import INPUTS_FOLDER, Profile
 from budget.silver.storage import silver_stage
 from budget.sqlstore import StageStore, StoreError, open_store_snapshot
 
@@ -214,6 +214,27 @@ def _copy_whole(profile: Profile, backup: BackupSet, stores: Iterable[str]) -> N
         shutil.rmtree(staging, ignore_errors=True)
 
 
+def _put_back_lost_inputs(profile: Profile, backup: BackupSet) -> None:
+    """Copy each household input the profile lacks from the set's copy.
+
+    The live inputs, synchronised apart from the stores, are newer than any
+    set, so a file that survived is never replaced. Only missing files are
+    copied, so a restore cut off here leaves nothing a retry must undo.
+    """
+    copies = backup.path / INPUTS_FOLDER
+    if not copies.is_dir():
+        return
+    try:
+        for copy in sorted(copies.rglob("*")):
+            relative = copy.relative_to(copies).as_posix()
+            live = profile.input_file(relative)
+            if copy.is_file() and not live.exists():
+                live.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(copy, live)
+    except OSError as error:
+        raise RestoreWriteError(error.strerror or type(error).__name__) from None
+
+
 def restore(lock: WriterLock, name: str | None = None) -> Restored:
     """Restore every store of one complete set; report what was restored.
 
@@ -228,6 +249,7 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     else:
         selected, skipped = _named(profile, sets, name), ()
     stores = set_store_files(selected)
+    _put_back_lost_inputs(profile, selected)
     _copy_whole(profile, selected, stores.values())
     # A store the set holds at an older version is upgraded as `migrate`
     # upgrades a live one, backed up before and after.
