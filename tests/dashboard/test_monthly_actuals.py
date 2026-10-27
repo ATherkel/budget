@@ -14,7 +14,6 @@ from fastapi.testclient import TestClient
 from budget.dashboard import create_app
 from budget.gold import GoldResult
 from budget.gold.store import GoldStore
-from budget.profiles import Profile
 from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
 from tests.dashboard.pages import Page, read
 from tests.gold.publishing import CONFIGURATION, RECIPE
@@ -26,7 +25,7 @@ REFERENCE_DATE = "2026-05-14"
 
 @pytest.fixture
 def client(tmp_path: Path) -> TestClient:
-    profile: Profile = dashboard_profile(tmp_path)
+    profile = dashboard_profile(tmp_path)
     with GoldStore(profile) as store:
         store.publish(GoldResult(PUBLICATION, RECORDS), RECIPE, CONFIGURATION)
     client = TestClient(
