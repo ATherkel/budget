@@ -26,6 +26,7 @@ from budget.inputs import (
     Taxonomy,
 )
 from budget.silver import SilverResult, Transaction
+from tests.gold.invariants import assert_contract_invariants
 from tests.gold.worked_example import PUBLICATION
 from tests.gold.worked_silver import LATE_BOOKING_WINDOW, silver_transaction
 
@@ -145,8 +146,12 @@ def classified(
     accounts: Mapping[str, Account] = ACCOUNTS,
     decisions: Sequence[GoldDecision] = (),
 ) -> GoldResult:
-    """Run the Gold build over these transactions, decisions and configuration."""
-    return build(
+    """Run the Gold build over these transactions, decisions and configuration.
+
+    Every result must keep contract invariants 10 and 12, so each scenario
+    checks them too.
+    """
+    result = build(
         silver=SilverResult(
             transactions=transactions,
             transaction_evidence=(),
@@ -164,3 +169,5 @@ def classified(
         publication=PUBLICATION,
         late_booking_window=LATE_BOOKING_WINDOW,
     )
+    assert_contract_invariants(result)
+    return result
