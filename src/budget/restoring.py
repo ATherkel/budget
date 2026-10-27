@@ -24,6 +24,10 @@ from budget.sqlstore import StageStore, StoreError, migrate_store, open_store_sn
 
 # Where a restore copies a set's stores before moving them into place.
 RESTORE_STAGING: Final = "restore-staging"
+# A store file and the files SQLite keeps beside it.
+_STORE_FILE_SUFFIXES: Final = ("", "-wal", "-shm", "-journal")
+# Gold's legacy extracts (operations.md, *Where production lives*).
+_LEGACY_GOLD_FOLDER: Final = "gold"
 _STAGES: Final[dict[str, Callable[[Profile], StageStore]]] = {
     "bronze": bronze_stage,
     "silver": silver_stage,
@@ -99,9 +103,20 @@ class OccupiedProfileError(RuntimeError):
 
 
 def _require_no_stores(profile: Profile) -> None:
-    """Refuse a profile that has any stage store, touching nothing."""
+    """Refuse a profile that has any stage store, touching nothing.
+
+    A store's write-ahead log, shared-memory or rollback journal file counts
+    too: SQLite would apply a leftover log to the store restored beside it.
+    So does Gold's `gold` folder of legacy extracts.
+    """
     stores = (profile.bronze_store, profile.silver_store, profile.gold_store)
-    found = [store.name for store in stores if store.exists()]
+    candidates = [
+        store.with_name(store.name + suffix)
+        for store in stores
+        for suffix in _STORE_FILE_SUFFIXES
+    ]
+    candidates.append(profile.stores / _LEGACY_GOLD_FOLDER)
+    found = [path.name for path in candidates if path.exists()]
     if found:
         raise OccupiedProfileError(found)
 
