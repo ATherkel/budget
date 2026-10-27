@@ -75,6 +75,7 @@ from budget.rebuilding import (
 from budget.restoring import (
     CatchUpRefusedError,
     DamagedStoreError,
+    DecisionLogDivergedError,
     IncompleteSetError,
     NoUsableSetError,
     OccupiedProfileError,
@@ -570,6 +571,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         IncompleteSetError,
         DamagedStoreError,
         CatchUpRefusedError,
+        DecisionLogDivergedError,
         ImportLogDamagedError,
         ImportLogAheadOfBronzeError,
     ) as error:
