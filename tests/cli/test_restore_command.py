@@ -162,6 +162,23 @@ class RestoreCommandTests(unittest.TestCase):
             assert production.bronze_store.read_bytes() == bronze
             assert not production.silver_store.exists()
 
+    def test_restore_refuses_a_stores_folder_holding_a_stores_leftover_wal(
+        self,
+    ) -> None:
+        # A restored store beside another store's write-ahead log would have
+        # that log replayed into it when first opened.
+        with TemporaryDirectory() as directory:
+            profile_file, production, _, _ = _production_with_a_set(Path(directory))
+            for moved in production.stores.glob("*.db"):
+                moved.unlink()
+            (production.stores / "bronze.db-wal").write_bytes(b"left by a crash")
+
+            status, stdout, stderr = restore(profile_file)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "the stores folder still holds bronze.db-wal" in stderr
+            assert not production.bronze_store.exists()
+
     def test_restore_refuses_a_named_set_written_by_newer_code(self) -> None:
         with TemporaryDirectory() as directory:
             profile_file, production, written, _ = _production_with_a_set(
