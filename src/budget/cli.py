@@ -84,7 +84,12 @@ from budget.rebuilding import (
     rebuild_through_gold,
     require_buildable_accounts,
 )
-from budget.restoring import IncompleteSetError, OccupiedProfileError, restore
+from budget.restoring import (
+    DamagedStoreError,
+    IncompleteSetError,
+    OccupiedProfileError,
+    restore,
+)
 from budget.reviewing import REVIEW_KINDS, open_reviews
 from budget.silver.storage import SILVER_STAGE
 
@@ -627,6 +632,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
     except (
         BackupVerificationError,
         IncompleteSetError,
+        DamagedStoreError,
         ImportLogDamagedError,
         ImportLogAheadOfBronzeError,
     ) as error:
