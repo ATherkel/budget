@@ -107,3 +107,15 @@ def test_a_partial_report_names_its_incomplete_accounts_and_links_the_explanatio
             f"&account={CURRENT}&account={SAVINGS}&month=2026-02"
         ),
     )
+
+
+def test_only_a_month_that_may_still_change_is_labelled_provisional(
+    client: TestClient,
+) -> None:
+    # May is the reference date's month; February is closed and settled.
+    may, february = report(client, "2026-05"), report(client, "2026-02")
+
+    assert (
+        may.text_of("provisional-label"),
+        february.text_of("provisional-label"),
+    ) == ("Foreløbige tal", None)
