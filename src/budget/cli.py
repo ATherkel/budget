@@ -321,6 +321,8 @@ def _restore(profile: Profile, backup_set: str | None) -> None:
         restored = restore(lock, backup_set)
     for skipped in restored.skipped:
         sys.stdout.write(f"skipped backup set {skipped}: this code cannot read it\n")
+    for put_back in restored.put_back:
+        sys.stdout.write(f"put back {put_back} from the backup set\n")
     sys.stdout.write(f"restored backup set {restored.backup.name}\n")
 
 
