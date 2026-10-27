@@ -9,6 +9,7 @@ no stores; a store is never restored beside live ones (`operations.md`,
 import shutil
 from collections.abc import Callable
 from contextlib import closing
+from dataclasses import dataclass
 from typing import Final
 
 from budget.backups import BackupSet, complete_backup_sets, set_store_files
@@ -17,7 +18,7 @@ from budget.gold.storage import gold_stage
 from budget.locking import WriterLock
 from budget.profiles import Profile
 from budget.silver.storage import silver_stage
-from budget.sqlstore import StageStore, open_store_snapshot
+from budget.sqlstore import StageStore, StoreError, open_store_snapshot
 
 _STAGES: Final[dict[str, Callable[[Profile], StageStore]]] = {
     "bronze": bronze_stage,
@@ -65,14 +66,12 @@ def _require_no_stores(profile: Profile) -> None:
         raise OccupiedProfileError(found)
 
 
-def _selected(sets: tuple[BackupSet, ...], name: str | None) -> BackupSet:
-    """Return the set named `name`, or the newest when no name is given."""
-    if name is None:
-        return sets[0]
-    for found in sets:
-        if found.name == name:
-            return found
-    raise IncompleteSetError(name)
+@dataclass(frozen=True)
+class Restored:
+    """What `restore` did: the set it restored, and newer sets it passed over."""
+
+    backup: BackupSet
+    skipped: tuple[str, ...]
 
 
 def _require_readable(profile: Profile, backup: BackupSet) -> None:
@@ -82,15 +81,45 @@ def _require_readable(profile: Profile, backup: BackupSet) -> None:
             pass
 
 
-def restore(lock: WriterLock, name: str | None = None) -> BackupSet:
-    """Restore every store of one complete set; return the set.
+def _named(profile: Profile, sets: tuple[BackupSet, ...], name: str) -> BackupSet:
+    """Return the complete set named `name`, refusing it if it cannot be read."""
+    for found in sets:
+        if found.name == name:
+            _require_readable(profile, found)
+            return found
+    raise IncompleteSetError(name)
 
-    `name` selects the set; without it, the newest complete set is taken.
+
+def _newest_readable(
+    profile: Profile, sets: tuple[BackupSet, ...]
+) -> tuple[BackupSet, tuple[str, ...]]:
+    """Return the newest set this code can read, and the newer ones passed over."""
+    skipped: list[str] = []
+    for index, found in enumerate(sets):
+        try:
+            _require_readable(profile, found)
+        except StoreError:
+            if index == len(sets) - 1:
+                raise
+            skipped.append(found.name)
+            continue
+        return found, tuple(skipped)
+    raise IndexError(len(sets))
+
+
+def restore(lock: WriterLock, name: str | None = None) -> Restored:
+    """Restore every store of one complete set; report what was restored.
+
+    `name` selects the set; without it, the newest complete set this code
+    can read is taken, and every newer set is passed over.
     """
     profile = lock.profile
     _require_no_stores(profile)
-    selected = _selected(complete_backup_sets(profile), name)
-    _require_readable(profile, selected)
+    sets = complete_backup_sets(profile)
+    if name is None:
+        selected, skipped = _newest_readable(profile, sets)
+    else:
+        selected, skipped = _named(profile, sets, name), ()
     for store in set_store_files(selected).values():
         shutil.copyfile(selected.path / store, profile.stores / store)
-    return selected
+    return Restored(backup=selected, skipped=skipped)
