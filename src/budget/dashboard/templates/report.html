@@ -5,7 +5,7 @@
 <p class="eyebrow">Rapporten er indlæst</p>
 <h3 id="report-ready-title">{{ month_label }}</h3>
 {% if overview.provisional %}
-<p class="status-chip status-chip--provisional"><span id="provisional-label">Foreløbige tal</span></p>
+<p class="trust-note"><span id="provisional-label" class="status-chip status-chip--provisional">Foreløbige tal</span> <a id="provisional-explanation" href="{{ explanation_url }}">Hvorfor tallene er foreløbige</a></p>
 {% endif %}
 {% if overview.coverage.status != "complete" %}
 <p id="coverage-note" class="trust-note">{% if overview.coverage.status == "no_data" %}Der er ingen data endnu fra{% else %}Tallene mangler noget fra{% endif %} {% for month in overview.coverage.account_months if month.status != "outside_history" %}{{ month.display_name }}{% if not loop.last %}, {% endif %}{% endfor %}. <a id="coverage-explanation" href="{{ explanation_url }}">Se hvorfor</a></p>
