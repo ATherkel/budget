@@ -78,3 +78,11 @@ def test_every_category_is_listed_in_the_order_the_report_gives(
     february = report(client, "2026-02")
 
     assert february.text_of("categories") == "Rent 8.500,00 kr. Groceries 520,00 kr."
+
+
+def test_money_left_below_zero_carries_a_minus_sign(client: TestClient) -> None:
+    # March: income 0.00 and expenses 1,000.00 leave -1,000.00, written with
+    # the minus sign the report contract writes, not a hyphen.
+    march = report(client, "2026-03")
+
+    assert march.text_of("money-left") == "−1.000,00 kr."
