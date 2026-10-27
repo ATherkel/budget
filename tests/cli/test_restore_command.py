@@ -33,6 +33,7 @@ from tests.bronze.migration_resources import SILVER_MIGRATIONS, added_migration
 from tests.cli.commands import backup, migrate, restore
 from tests.cli.profile_files import write_profile
 from tests.importing.households import ACCOUNTS
+from tests.test_decision_log import documented_example
 
 EXIT_OK = 0
 EXIT_REFUSED_ENVIRONMENT = 4
@@ -101,6 +102,54 @@ WHOLE_PROFILE_ADVICE = (
     "with the rest of the profile: move every store out of the stores "
     "folder, then run `budget restore`"
 )
+
+
+def _decisions() -> list[bytes]:
+    """The documented decision-log example, one complete line each."""
+    return [f"{line}\n".encode() for line in documented_example().splitlines()]
+
+
+def _production_with_decisions(
+    folder: Path, logged: list[bytes]
+) -> tuple[Path, Profile, BackupSet]:
+    """Start production with `logged` as its decision log, and back it up."""
+    profile_file = write_profile(folder, name="production")
+    assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+    production = load_profile_file(profile_file)
+    production.inputs.mkdir()
+    production.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+    production.input_file("decisions.jsonl").write_bytes(b"".join(logged))
+    with writer_lock(production) as lock:
+        written = back_up(lock, now=datetime.now(UTC))
+    return profile_file, production, written
+
+
+class DecisionLogRecoveryTests(unittest.TestCase):
+    def test_restore_stops_on_a_decision_log_that_does_not_extend_the_sets(
+        self,
+    ) -> None:
+        # Shorter or rewritten, it may have lost decisions or be the newer
+        # truth: both copies are kept for the operator to decide between.
+        first, second, *_ = _decisions()
+        cases = {"shorter": first, "rewritten": second}
+        for case, live in cases.items():
+            with self.subTest(case), TemporaryDirectory() as directory:
+                profile_file, production, written = _production_with_decisions(
+                    Path(directory), [first, second]
+                )
+                shutil.rmtree(production.stores)
+                log = production.input_file("decisions.jsonl")
+                log.write_bytes(live)
+
+                status, stdout, stderr = restore(profile_file, written.name)
+
+                assert (status, stdout) == (EXIT_VERIFICATION_FAILED, "")
+                assert "decision log does not begin with the backup set's" in stderr
+                assert log.read_bytes() == live
+                assert (written.path / "inputs" / "decisions.jsonl").read_bytes() == (
+                    first + second
+                )
+                assert list(production.stores.glob("*.db")) == []
 
 
 class LostStoreAdviceTests(unittest.TestCase):
