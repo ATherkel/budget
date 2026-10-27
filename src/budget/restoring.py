@@ -27,6 +27,7 @@ from budget.locking import WriterLock
 from budget.profiles import (
     BRONZE_STORE_NAME,
     DECISION_LOG_FILE_NAME,
+    IMPORT_LOG_FILE_NAME,
     INPUTS_FOLDER,
     Profile,
 )
@@ -160,14 +161,23 @@ class Restored:
     skipped: tuple[str, ...]
     put_back: tuple[str, ...]
     replayed: int
+    missing_logs: tuple[str, ...]
 
     @property
     def decisions_lost(self) -> bool:
-        """Whether the decision log was missing, so its set copy stands in.
+        """Whether the decision log was missing, so only the set's copy stands in.
 
         Decisions recorded after the set are then lost: a recovery limit.
         """
-        return f"{INPUTS_FOLDER}/{DECISION_LOG_FILE_NAME}" in self.put_back
+        return DECISION_LOG_FILE_NAME in self.missing_logs
+
+    @property
+    def imports_lost(self) -> bool:
+        """Whether the import log was missing, so only the set's copy stands in.
+
+        Runs imported after the set are then not restored: a recovery limit.
+        """
+        return IMPORT_LOG_FILE_NAME in self.missing_logs
 
 
 class DamagedStoreError(RuntimeError):
@@ -489,6 +499,13 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     log_runs_ahead = _require_import_log_continues(profile, selected)
     stores = set_store_files(selected)
     put_back = _copy_whole(profile, selected, stores)
+    # A log the profile lost and the set holds: only the set's copy stands
+    # in. A log neither has was never written, so nothing of it is lost.
+    missing_logs = tuple(
+        log
+        for log in (IMPORT_LOG_FILE_NAME, DECISION_LOG_FILE_NAME)
+        if f"{INPUTS_FOLDER}/{log}" in put_back
+    )
     # Catch up: every run the live import log lists beyond the set comes
     # back from the export archive, as logged (`replay_import_log`).
     replayed: tuple[object, ...] = ()
@@ -502,5 +519,9 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     (profile.stores / RESTORE_MARKER).unlink()
     sync_folder(profile.stores)
     return Restored(
-        backup=selected, skipped=skipped, put_back=put_back, replayed=len(replayed)
+        backup=selected,
+        skipped=skipped,
+        put_back=put_back,
+        replayed=len(replayed),
+        missing_logs=missing_logs,
     )
