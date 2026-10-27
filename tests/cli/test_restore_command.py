@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from budget.backups import BackupSet, back_up
+from budget.backups import BackupSet, back_up, complete_backup_sets
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
 from tests.backups.sets import import_one, run_ids, tables
@@ -54,3 +54,22 @@ class RestoreCommandTests(unittest.TestCase):
             assert run_ids(production.bronze_store) == [run_id]
             for store in ("silver.db", "gold.db"):
                 assert tables(production.stores / store) == tables(written.path / store)
+
+    def test_restore_takes_the_set_it_is_given_by_name(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            older = next(
+                found
+                for found in complete_backup_sets(production)
+                if found.name != written.name
+            )
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file, older.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout == f"restored backup set {older.name}\n"
+            # The set `migrate` wrote holds no import run yet.
+            assert run_ids(production.bronze_store) == []
