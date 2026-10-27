@@ -89,6 +89,7 @@ from budget.restoring import (
     IncompleteSetError,
     NoUsableSetError,
     OccupiedProfileError,
+    RestoreWriteError,
     UnknownStageError,
     restore,
 )
@@ -619,6 +620,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         StoresFolderUnavailableError,
         RestoreInsteadError,
         OccupiedProfileError,
+        RestoreWriteError,
         NoUsableSetError,
         UnknownStageError,
         MigratedWithoutBackupError,
