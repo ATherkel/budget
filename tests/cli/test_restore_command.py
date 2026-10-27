@@ -6,6 +6,7 @@ folder, whose stores are deleted as a machine that died would lose them.
 Every test passes `main` an explicit environment.
 """
 
+import errno
 import json
 import shutil
 import sqlite3
@@ -14,6 +15,7 @@ from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 from budget.backups import BackupSet, back_up, complete_backup_sets
 from budget.locking import writer_lock
@@ -359,4 +361,28 @@ class RestoreCommandTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_OK, "")
             assert user_version(production.silver_store) == older_version + 1
             assert "added_after_the_set" in tables(production.silver_store)
+            assert run_ids(production.bronze_store) == [run_id]
+
+    def test_a_restore_cut_off_partway_leaves_no_store_and_can_be_retried(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, run_id = _production_with_a_set(
+                Path(directory)
+            )
+            shutil.rmtree(production.stores)
+            copy = shutil.copyfile
+
+            def disk_full_at_gold(source: Path, target: Path) -> object:
+                if Path(target).name == "gold.db":
+                    raise OSError(errno.ENOSPC, "No space left on device")
+                return copy(source, target)
+
+            with mock.patch("shutil.copyfile", side_effect=disk_full_at_gold):
+                status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "No space left on device; nothing was restored" in stderr
+            assert list(production.stores.glob("*.db")) == []
+            assert restore(profile_file, written.name)[0] == EXIT_OK
             assert run_ids(production.bronze_store) == [run_id]
