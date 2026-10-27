@@ -269,6 +269,27 @@ class RestoreCommandTests(unittest.TestCase):
             assert "fails SQLite's integrity check" in stderr
             assert list(production.stores.glob("*.db")) == []
 
+    def test_restore_passes_over_a_newest_set_whose_store_is_damaged(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            older = next(
+                found
+                for found in complete_backup_sets(production)
+                if found.name != written.name
+            )
+            _damaged_inside(written, "bronze.db")
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout == (
+                f"skipped backup set {written.name}: this code cannot read it\n"
+                f"restored backup set {older.name}\n"
+            )
+
     def test_a_restore_cut_off_partway_leaves_no_store_and_can_be_retried(
         self,
     ) -> None:
