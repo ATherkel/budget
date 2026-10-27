@@ -223,6 +223,7 @@ def _parser() -> argparse.ArgumentParser:
         help="start a new production store where none exists",
     )
     commands.add_parser("backup", help="write a backup set of production")
+    commands.add_parser("restore", help="restore a whole profile from a backup set")
     rebuild = commands.add_parser("rebuild", help="rebuild a stage and every later one")
     rebuild.add_argument(
         "--from",
@@ -541,6 +542,8 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         return _import(profile, arguments.ranges)
     if arguments.command == "backup":
         _backup(profile)
+    elif arguments.command == "restore":
+        pass
     elif arguments.command == "rebuild":
         _rebuild(profile, arguments.from_stage)
     elif arguments.command == "review":
