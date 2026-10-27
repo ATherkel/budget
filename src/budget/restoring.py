@@ -142,7 +142,7 @@ def _newest_readable(
     for index, found in enumerate(sets):
         try:
             _require_readable(profile, found)
-        except StoreError:
+        except (StoreError, DamagedStoreError):
             if index == len(sets) - 1:
                 raise
             skipped.append(found.name)
