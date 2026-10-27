@@ -7,6 +7,7 @@ no stores; a store is never restored beside live ones (`operations.md`,
 """
 
 import shutil
+import sqlite3
 from collections.abc import Callable
 from contextlib import closing
 from dataclasses import dataclass
@@ -75,11 +76,41 @@ class Restored:
     skipped: tuple[str, ...]
 
 
+class DamagedStoreError(RuntimeError):
+    """A store in the set fails SQLite's integrity check: nothing was restored.
+
+    Its checksum can match while its pages do not, as when the store was
+    already damaged when the set was taken.
+    """
+
+    def __init__(self, store: str, name: str) -> None:
+        """Name the store and the set, and say that nothing was restored."""
+        super().__init__(
+            f"{store} in backup set {name} fails SQLite's integrity check; "
+            "nothing was restored"
+        )
+
+
+def _is_intact(connection: sqlite3.Connection) -> bool:
+    """Report whether SQLite's integrity check finds the database sound."""
+    try:
+        rows = connection.execute("PRAGMA integrity_check").fetchall()
+    except sqlite3.DatabaseError:
+        return False
+    return [tuple(row) for row in rows] == [("ok",)]
+
+
 def _require_readable(profile: Profile, backup: BackupSet) -> None:
-    """Refuse a set holding a store this code cannot open, touching nothing."""
+    """Refuse a set holding a store this code cannot open, touching nothing.
+
+    A store at a schema version this code does not know is a `StoreError`;
+    one SQLite finds damaged is a `DamagedStoreError`.
+    """
     for stage, name in set_store_files(backup).items():
-        with closing(open_store_snapshot(_STAGES[stage](profile), backup.path / name)):
-            pass
+        path = backup.path / name
+        with closing(open_store_snapshot(_STAGES[stage](profile), path)) as store:
+            if not _is_intact(store):
+                raise DamagedStoreError(name, backup.name)
 
 
 def _named(profile: Profile, sets: tuple[BackupSet, ...], name: str) -> BackupSet:
