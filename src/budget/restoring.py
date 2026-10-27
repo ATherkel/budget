@@ -146,6 +146,14 @@ class Restored:
     put_back: tuple[str, ...]
     replayed: int
 
+    @property
+    def decisions_lost(self) -> bool:
+        """Whether the decision log was missing, so its set copy stands in.
+
+        Decisions recorded after the set are then lost: a recovery limit.
+        """
+        return f"{INPUTS_FOLDER}/{DECISION_LOG_FILE_NAME}" in self.put_back
+
 
 class DamagedStoreError(RuntimeError):
     """A store in the set fails SQLite's integrity check: nothing was restored.
