@@ -50,15 +50,9 @@ def _production_with_a_set(folder: Path) -> tuple[Path, Profile, BackupSet, str]
     return profile_file, production, written, run_id
 
 
-def _from_newer_code(backup: BackupSet, store: str) -> None:
-    """Make one store in a set a schema version ahead of this code, consistently.
-
-    The manifest is rewritten to match, so the set stays complete: it is only
-    a set this code cannot read.
-    """
+def _rechecksum(backup: BackupSet, store: str, schema_version: int | None) -> None:
+    """Rewrite a set's manifest to match a store changed in place."""
     path = backup.path / store
-    with closing(sqlite3.connect(path)) as connection:
-        connection.execute("PRAGMA user_version = 99")
     written = manifest(backup.path)
     files = written["files"]
     stores = written["stores"]
@@ -66,9 +60,32 @@ def _from_newer_code(backup: BackupSet, store: str) -> None:
     assert isinstance(stores, dict)
     files[store] = checksum(path)
     for entry in stores.values():
-        if entry["path"] == store:
-            entry["schema_version"] = 99
+        if entry["path"] == store and schema_version is not None:
+            entry["schema_version"] = schema_version
     (backup.path / "manifest.json").write_text(json.dumps(written), encoding="utf-8")
+
+
+def _from_newer_code(backup: BackupSet, store: str) -> None:
+    """Make one store in a set a schema version ahead of this code, consistently.
+
+    The manifest is rewritten to match, so the set stays complete: it is only
+    a set this code cannot read.
+    """
+    with closing(sqlite3.connect(backup.path / store)) as connection:
+        connection.execute("PRAGMA user_version = 99")
+    _rechecksum(backup, store, 99)
+
+
+def _damaged_inside(backup: BackupSet, store: str) -> None:
+    """Damage a store's second page, past its header, and rewrite the manifest.
+
+    The set stays complete by its checksums: only SQLite can tell.
+    """
+    path = backup.path / store
+    with path.open("r+b") as damaged:
+        damaged.seek(4096 + 8)
+        damaged.write(b"\xa5" * 512)
+    _rechecksum(backup, store, None)
 
 
 class RestoreCommandTests(unittest.TestCase):
@@ -200,3 +217,20 @@ class RestoreCommandTests(unittest.TestCase):
             assert user_version(production.silver_store) == older_version + 1
             assert "added_after_the_set" in tables(production.silver_store)
             assert run_ids(production.bronze_store) == [run_id]
+
+    def test_restore_refuses_a_set_whose_store_fails_sqlites_integrity_check(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            _damaged_inside(written, "bronze.db")
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stdout) == (EXIT_VERIFICATION_FAILED, "")
+            assert "bronze.db in backup set" in stderr
+            assert "fails SQLite's integrity check" in stderr
+            assert list(production.stores.glob("*.db")) == []
