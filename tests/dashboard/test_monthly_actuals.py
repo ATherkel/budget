@@ -142,3 +142,47 @@ def test_unclassified_money_is_noted_quietly_without_its_amounts(
         ),
         None,
     )
+
+
+def explanation(client: TestClient, month: str) -> Page:
+    """Return the explanation page a report's link opens, both accounts selected."""
+    response = client.get(
+        "/explanation",
+        params={
+            "publication": str(PUBLICATION.publication_id),
+            "reference_date": REFERENCE_DATE,
+            "account": [CURRENT, SAVINGS],
+            "month": month,
+        },
+    )
+    assert response.status_code == 200
+    return read(response.text)
+
+
+def test_the_explanation_names_the_incomplete_and_unsettled_months_of_the_pinned_report(
+    client: TestClient,
+) -> None:
+    # May is the current month, both accounts' May rows are partial and their
+    # late bookings unsettled. The page keeps the pin and shows no amounts.
+    may = explanation(client, "2026-05")
+    coverage = may.text_of("explanation-coverage") or ""
+    provisional = may.text_of("explanation-provisional") or ""
+
+    assert (
+        "Joint current" in coverage and "Joint savings" in coverage,
+        "maj 2026" in coverage,
+        "indeværende måned" in provisional,
+        "Joint current" in provisional and "Joint savings" in provisional,
+        "kr." in may.visible(),
+        may.attributes("back-to-report").get("href"),
+    ) == (
+        True,
+        True,
+        True,
+        True,
+        False,
+        (
+            "/?publication=1&reference_date=2026-05-14"
+            f"&account={CURRENT}&account={SAVINGS}&month=2026-05"
+        ),
+    )
