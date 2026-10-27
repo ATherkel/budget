@@ -186,3 +186,17 @@ def test_the_explanation_names_the_incomplete_and_unsettled_months_of_the_pinned
             f"&account={CURRENT}&account={SAVINGS}&month=2026-05"
         ),
     )
+
+
+def test_the_explanation_says_whether_the_report_has_unclassified_money(
+    client: TestClient,
+) -> None:
+    # March has Unclassified money and February has none; neither shows its
+    # amounts or count, which belong to Kontrol.
+    march, february = explanation(client, "2026-03"), explanation(client, "2026-02")
+
+    assert (
+        march.text_of("explanation-unclassified") is not None,
+        "450" in march.visible(),
+        february.text_of("explanation-unclassified"),
+    ) == (True, False, None)
