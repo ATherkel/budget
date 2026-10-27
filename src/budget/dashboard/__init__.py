@@ -46,6 +46,7 @@ _TEMPLATES = Environment(
     loader=PackageLoader("budget.dashboard"),
     autoescape=select_autoescape(),
 )
+_TEMPLATES.filters["amount"] = display.amount
 
 
 def _send_to_login(request: Request) -> Response:
@@ -222,6 +223,7 @@ def _render_report(
         accounts=" ".join(sorted(answered.account_ids)),
         month=display.month_value(answered.month),
         month_label=display.month_label(answered.month),
+        overview=overview_report,
     )
 
 

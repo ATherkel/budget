@@ -4,5 +4,11 @@
 {% endif %}
 <p class="eyebrow">Rapporten er indlæst</p>
 <h3 id="report-ready-title">{{ month_label }}</h3>
-<p class="report-note">Alle valg hører til samme offentliggjorte datasæt. Økonomiske tal vises ikke i denne version.</p>
+{% if overview.income is not none %}
+<dl class="summary">
+  <div class="summary-figure"><dt>Indtægter</dt><dd id="income">{{ overview.income | amount(overview.currency) }}</dd></div>
+  <div class="summary-figure"><dt>Udgifter</dt><dd id="expenses">{{ overview.expenses | amount(overview.currency) }}</dd></div>
+  <div class="summary-figure"><dt>Penge tilbage</dt><dd id="money-left">{{ overview.net_cash_flow | amount(overview.currency) }}</dd></div>
+</dl>
+{% endif %}
 </section>
