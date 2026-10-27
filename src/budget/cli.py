@@ -84,6 +84,7 @@ from budget.rebuilding import (
     rebuild_through_gold,
     require_buildable_accounts,
 )
+from budget.restoring import restore
 from budget.reviewing import REVIEW_KINDS, open_reviews
 from budget.silver.storage import SILVER_STAGE
 
@@ -299,6 +300,13 @@ def _backup(profile: Profile) -> None:
     with writer_lock(profile) as lock:
         written = back_up(lock, now=datetime.now(UTC))
     sys.stdout.write(f"backup set {written.name} written\n")
+
+
+def _restore(profile: Profile) -> None:
+    """Restore the whole profile from a backup set, and name the set on stdout."""
+    with writer_lock(profile) as lock:
+        restored = restore(lock)
+    sys.stdout.write(f"restored backup set {restored.name}\n")
 
 
 def _rebuild(profile: Profile, from_stage: str) -> None:
@@ -543,7 +551,7 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
     if arguments.command == "backup":
         _backup(profile)
     elif arguments.command == "restore":
-        pass
+        _restore(profile)
     elif arguments.command == "rebuild":
         _rebuild(profile, arguments.from_stage)
     elif arguments.command == "review":
