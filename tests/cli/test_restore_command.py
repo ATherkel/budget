@@ -18,6 +18,7 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 from budget.backups import BackupSet, back_up, complete_backup_sets
+from budget.bronze import BronzeStore
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
 from tests.backups.sets import (
@@ -50,6 +51,12 @@ def _production_with_a_set(folder: Path) -> tuple[Path, Profile, BackupSet, str]
         # After the set `migrate` wrote, so it is the newest.
         written = back_up(lock, now=datetime.now(UTC))
     return profile_file, production, written, run_id
+
+
+def _live_run_ids(profile: Profile) -> list[str]:
+    """The runs a live Bronze store holds, its write-ahead log included."""
+    with BronzeStore(profile) as store:
+        return [run.import_run_id for run in store.import_runs()]
 
 
 def _rechecksum(backup: BackupSet, store: str, schema_version: int | None) -> None:
@@ -163,6 +170,8 @@ class RestoreCommandTests(unittest.TestCase):
                 if found.name != written.name
             )
             shutil.rmtree(production.stores)
+            # Without a later log, restore has no run to catch up with.
+            production.import_log_file.unlink()
 
             status, stdout, stderr = restore(profile_file, older.name)
 
@@ -275,6 +284,8 @@ class RestoreCommandTests(unittest.TestCase):
             )
             _from_newer_code(written, "silver.db")
             shutil.rmtree(production.stores)
+            # Without a later log, restore has no run to catch up with.
+            production.import_log_file.unlink()
 
             status, stdout, stderr = restore(profile_file)
 
@@ -336,6 +347,8 @@ class RestoreCommandTests(unittest.TestCase):
             )
             _damaged_inside(written, "bronze.db")
             shutil.rmtree(production.stores)
+            # Without a later log, restore has no run to catch up with.
+            production.import_log_file.unlink()
 
             status, stdout, stderr = restore(profile_file)
 
@@ -376,7 +389,7 @@ class RestoreCommandTests(unittest.TestCase):
                 Path(directory)
             )
             with writer_lock(production) as lock:
-                import_one(lock, "export-20260509.csv")
+                later = import_one(lock, "export-20260509.csv")
             shutil.rmtree(production.stores)
 
             with added_migration(
@@ -387,7 +400,25 @@ class RestoreCommandTests(unittest.TestCase):
 
             assert (status, stderr) == (EXIT_OK, "")
             assert "added_after_the_set" in tables(production.silver_store)
-            assert run_ids(production.bronze_store) == [run_id]
+            assert _live_run_ids(production) == [run_id, later]
+
+    def test_restore_replays_runs_the_import_log_lists_beyond_the_set(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, run_id = _production_with_a_set(
+                Path(directory)
+            )
+            with writer_lock(production) as lock:
+                later = import_one(lock, "export-20260509.csv")
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout == (
+                "replayed 1 import run from the export archive\n"
+                f"restored backup set {written.name}\n"
+            )
+            assert _live_run_ids(production) == [run_id, later]
 
     def test_a_restore_whose_store_copy_fails_leaves_no_store_and_can_be_retried(
         self,
