@@ -144,14 +144,16 @@ def test_unclassified_money_is_noted_quietly_without_its_amounts(
     )
 
 
-def explanation(client: TestClient, month: str) -> Page:
-    """Return the explanation page a report's link opens, both accounts selected."""
+def explanation(
+    client: TestClient, month: str, accounts: tuple[str, ...] = (CURRENT, SAVINGS)
+) -> Page:
+    """Return the explanation page a report's link opens."""
     response = client.get(
         "/explanation",
         params={
             "publication": str(PUBLICATION.publication_id),
             "reference_date": REFERENCE_DATE,
-            "account": [CURRENT, SAVINGS],
+            "account": list(accounts),
             "month": month,
         },
     )
@@ -262,3 +264,12 @@ def test_the_provisional_label_links_the_explanation_of_why(
         "/explanation?publication=1&reference_date=2026-05-14"
         f"&account={CURRENT}&account={SAVINGS}&month=2026-05"
     )
+
+
+def test_the_explanation_of_a_fully_covered_report_lists_no_incomplete_months(
+    client: TestClient,
+) -> None:
+    # March, Joint savings only: coverage is complete.
+    quiet = explanation(client, "2026-03", accounts=(SAVINGS,))
+
+    assert quiet.text_of("explanation-coverage") is None
