@@ -273,6 +273,26 @@ def _render_explanation(
     )
 
 
+def _report_response(
+    profile: Profile,
+    pin: tuple[int, date],
+    accounts: list[str],
+    month: str,
+) -> Response:
+    """Return the report fragment for one selection, or the empty-selection prompt.
+
+    The address becomes this selection's own page, so back and forward reopen
+    each selection the reader made.
+    """
+    page = _pinned_url(*pin, accounts, month)
+    if not accounts:
+        # An empty selection is a prompt, never a report of nothing.
+        prompt = _TEMPLATES.get_template("no_accounts.html").render()
+        return HTMLResponse(prompt, headers={"HX-Push-Url": page})
+    fragment = _render_report(profile, pin, accounts, month)
+    return HTMLResponse(fragment, headers={"HX-Push-Url": page})
+
+
 def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     """Build the dashboard for `profile`, telling time with `clock`.
 
@@ -317,6 +337,14 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         )
         return response
 
+    def for_reader(request: Request, respond: Callable[[], Response]) -> Response:
+        """Answer a logged-in reader with `respond()`; send anyone else to log in."""
+        authenticated_as = _logged_in(request, profile, clock)
+        if authenticated_as is None:
+            return _send_to_login(request)
+        # Every visit renews the login for another 30 days from now.
+        return start_session(respond(), authenticated_as)
+
     @app.get("/")
     def overview(
         request: Request,
@@ -325,17 +353,15 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         month: str | None = None,
         account: Annotated[list[str] | None, Query()] = None,
     ) -> Response:
-        authenticated_as = _logged_in(request, profile, clock)
-        if authenticated_as is None:
-            return _send_to_login(request)
         pin = (
             None
             if publication is None or reference_date is None
             else (publication, reference_date)
         )
-        # Every visit renews the login for another 30 days from now.
-        page = _render_overview(profile, clock, pin, account, month)
-        return start_session(HTMLResponse(page), authenticated_as)
+        return for_reader(
+            request,
+            lambda: HTMLResponse(_render_overview(profile, clock, pin, account, month)),
+        )
 
     @app.get("/report")
     def report(
@@ -345,24 +371,12 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         month: str,
         account: Annotated[list[str] | None, Query()] = None,
     ) -> Response:
-        authenticated_as = _logged_in(request, profile, clock)
-        if authenticated_as is None:
-            return _send_to_login(request)
-        page = _pinned_url(publication, reference_date, account or (), month)
-        if not account:
-            # An empty selection is a prompt, never a report of nothing.
-            prompt = _TEMPLATES.get_template("no_accounts.html").render()
-            return start_session(
-                HTMLResponse(prompt, headers={"HX-Push-Url": page}),
-                authenticated_as,
-            )
-        # The address becomes this selection's own page, so back and forward
-        # reopen each selection the reader made.
-        fragment = HTMLResponse(
-            _render_report(profile, (publication, reference_date), account, month),
-            headers={"HX-Push-Url": page},
+        return for_reader(
+            request,
+            lambda: _report_response(
+                profile, (publication, reference_date), account or [], month
+            ),
         )
-        return start_session(fragment, authenticated_as)
 
     @app.get("/explanation")
     def explanation(
@@ -372,13 +386,14 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         month: str,
         account: Annotated[list[str] | None, Query()] = None,
     ) -> Response:
-        authenticated_as = _logged_in(request, profile, clock)
-        if authenticated_as is None:
-            return _send_to_login(request)
-        page = _render_explanation(
-            profile, (publication, reference_date), account or (), month
+        return for_reader(
+            request,
+            lambda: HTMLResponse(
+                _render_explanation(
+                    profile, (publication, reference_date), account or (), month
+                )
+            ),
         )
-        return start_session(HTMLResponse(page), authenticated_as)
 
     @app.get("/login")
     def login_page() -> Response:
