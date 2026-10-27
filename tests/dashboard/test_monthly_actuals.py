@@ -249,3 +249,16 @@ def test_a_report_without_data_names_its_accounts_and_links_the_explanation(
             f"&account={CURRENT}&account={SAVINGS}&month=2026-06"
         ),
     )
+
+
+def test_the_provisional_label_links_the_explanation_of_why(
+    client: TestClient,
+) -> None:
+    # A month can be provisional with complete coverage, so the label needs
+    # its own way to the reasons.
+    may = report(client, "2026-05")
+
+    assert may.attributes("provisional-explanation").get("href") == (
+        "/explanation?publication=1&reference_date=2026-05-14"
+        f"&account={CURRENT}&account={SAVINGS}&month=2026-05"
+    )
