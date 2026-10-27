@@ -355,3 +355,22 @@ def test_the_explanation_sends_a_reader_who_is_not_logged_in_to_log_in(
         303,
         "/login",
     )
+
+
+def test_the_trust_notes_read_as_quiet_danish_sentences_without_counts(
+    client: TestClient,
+) -> None:
+    # The whole text, so neither an amount nor a count can slip in.
+    march = report(client, "2026-03")
+    june = report(client, "2026-06", reference_date="2026-06-03")
+
+    assert (march.text_of("unclassified-note"), june.text_of("coverage-note")) == (
+        (
+            "Nogle betalinger er endnu ikke placeret i en kategori, så penge "
+            "tilbage kan ændre sig. Om betalinger uden kategori"
+        ),
+        (
+            "Der er ingen data endnu fra Joint current og Joint savings. "
+            "Hvorfor tallene er ufuldstændige"
+        ),
+    )
