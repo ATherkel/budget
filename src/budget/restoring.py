@@ -237,6 +237,37 @@ def _mark_unfinished(profile: Profile, backup: BackupSet) -> None:
     sync_folder(profile.stores)
 
 
+class UnfinishedRestoreError(RuntimeError):
+    """A restore has not finished: its stores are not a profile to use yet."""
+
+    def __init__(self, name: str) -> None:
+        """Name the set being restored, and what to do."""
+        super().__init__(
+            f"a restore of backup set {name} has not finished; rerun "
+            "`budget restore`; nothing was changed"
+        )
+
+
+def require_no_unfinished_restore(profile: Profile) -> None:
+    """Refuse, touching nothing, a profile an unfinished restore left.
+
+    A marker that cannot be read still marks one; its set is then unnamed.
+    """
+    marker = profile.stores / RESTORE_MARKER
+    if not marker.exists():
+        return
+    raise UnfinishedRestoreError(_marked_set(marker))
+
+
+def _marked_set(marker: Path) -> str:
+    """Return the set a restore marker names, or say it cannot be read."""
+    try:
+        name = json.loads(marker.read_text(encoding="utf-8")).get("set")
+    except (OSError, ValueError, AttributeError):
+        name = None
+    return str(name) if isinstance(name, str) else "(unreadable marker)"
+
+
 def _clear_unfinished(profile: Profile) -> None:
     """Remove what an unfinished restore moved into place, then its marker.
 
