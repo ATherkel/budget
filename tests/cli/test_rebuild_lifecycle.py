@@ -109,6 +109,14 @@ class RuleChangeTests(unittest.TestCase):
                     if each.description == "NETFLIX.COM"
                 ]
                 assert netflix.transaction_type == "unknown"
+                reviews = gold.classification_reviews()
+            assert reviews is not None
+            (conflict,) = reviews.items
+            assert conflict.kind == "rule-conflict"
+            assert set(conflict.rule_ids) == {"r-net", "r-streaming"}
+            assert [t.transaction_id for t in reviews.targets] == [
+                netflix.transaction_id
+            ]
 
 
 class RetractedDecisionTests(unittest.TestCase):
