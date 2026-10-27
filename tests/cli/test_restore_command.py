@@ -191,6 +191,34 @@ class DecisionLogRecoveryTests(unittest.TestCase):
             assert log.read_bytes() == damaged
             assert list(production.stores.glob("*.db")) == []
 
+    def test_a_retried_restore_still_says_the_decision_log_was_missing(
+        self,
+    ) -> None:
+        # The first attempt puts the set's copy back, then stops in catch-up;
+        # the retry finds a log, but it is still only the set's copy.
+        first, second, *_ = _decisions()
+        with TemporaryDirectory() as directory:
+            profile_file, production, written = _production_with_decisions(
+                Path(directory), [first, second]
+            )
+            with writer_lock(production) as lock:
+                import_one(lock, "export-20260509.csv")
+            archived = production.archive_file("joint-current/export-20260509.csv")
+            export = archived.read_bytes()
+            archived.unlink()
+            production.input_file("decisions.jsonl").unlink()
+            shutil.rmtree(production.stores)
+            assert restore(profile_file, written.name)[0] == EXIT_VERIFICATION_FAILED
+            archived.write_bytes(export)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "the decision log was missing: decisions recorded after backup "
+                f"set {written.name} cannot be recovered\n"
+            ) in stdout
+
 
 class LostStoreAdviceTests(unittest.TestCase):
     # A store is never restored beside live ones, so the advice for a lost
