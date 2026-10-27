@@ -69,3 +69,12 @@ def test_the_report_shows_income_expenses_and_money_left_in_danish_kroner(
         february.text_of("expenses"),
         february.text_of("money-left"),
     ) == ("25.000,00 kr.", "9.020,00 kr.", "15.980,00 kr.")
+
+
+def test_every_category_is_listed_in_the_order_the_report_gives(
+    client: TestClient,
+) -> None:
+    # February: rent 8,500.00, then groceries 520.00 (640.00 less a 120.00 Refund).
+    february = report(client, "2026-02")
+
+    assert february.text_of("categories") == "Rent 8.500,00 kr. Groceries 520,00 kr."
