@@ -276,10 +276,10 @@ def _backup(profile: Profile) -> None:
     sys.stdout.write(f"backup set {written.name} written\n")
 
 
-def _restore(profile: Profile) -> None:
+def _restore(profile: Profile, backup_set: str | None) -> None:
     """Restore the whole profile from a backup set, and name the set on stdout."""
     with writer_lock(profile) as lock:
-        restored = restore(lock)
+        restored = restore(lock, backup_set)
     sys.stdout.write(f"restored backup set {restored.name}\n")
 
 
@@ -476,7 +476,7 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
     if arguments.command == "backup":
         _backup(profile)
     elif arguments.command == "restore":
-        _restore(profile)
+        _restore(profile, arguments.backup_set)
     elif arguments.command == "rebuild":
         _rebuild(profile, arguments.from_stage)
     elif arguments.command == "review":

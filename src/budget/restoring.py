@@ -12,10 +12,20 @@ from budget.backups import BackupSet, complete_backup_sets, set_store_files
 from budget.locking import WriterLock
 
 
-def restore(lock: WriterLock) -> BackupSet:
-    """Restore every store of the newest complete set; return the set."""
+def _selected(sets: tuple[BackupSet, ...], name: str | None) -> BackupSet:
+    """Return the set named `name`, or the newest when no name is given."""
+    if name is None:
+        return sets[0]
+    return next(found for found in sets if found.name == name)
+
+
+def restore(lock: WriterLock, name: str | None = None) -> BackupSet:
+    """Restore every store of one complete set; return the set.
+
+    `name` selects the set; without it, the newest complete set is taken.
+    """
     profile = lock.profile
-    newest = complete_backup_sets(profile)[0]
-    for name in set_store_files(newest):
-        shutil.copyfile(newest.path / name, profile.stores / name)
-    return newest
+    selected = _selected(complete_backup_sets(profile), name)
+    for store in set_store_files(selected):
+        shutil.copyfile(selected.path / store, profile.stores / store)
+    return selected
