@@ -1,0 +1,72 @@
+# Copyright 2026 Therkel
+"""Enkel's monthly actuals: the report's figures, Categories and trust notes.
+
+Expected values are the worked examples in `report-contract.md`, over the
+synthetic worked-example publication; the dashboard is driven in-process.
+"""
+
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from budget.dashboard import create_app
+from budget.gold import GoldResult
+from budget.gold.store import GoldStore
+from budget.profiles import Profile
+from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
+from tests.dashboard.pages import Page, read
+from tests.gold.publishing import CONFIGURATION, RECIPE
+from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
+
+# The worked examples' reference date: May is the current month.
+REFERENCE_DATE = "2026-05-14"
+
+
+@pytest.fixture
+def client(tmp_path: Path) -> TestClient:
+    profile: Profile = dashboard_profile(tmp_path)
+    with GoldStore(profile) as store:
+        store.publish(GoldResult(PUBLICATION, RECORDS), RECIPE, CONFIGURATION)
+    client = TestClient(
+        create_app(profile, clock=lambda: datetime(2026, 5, 14, 10, tzinfo=UTC)),
+        follow_redirects=False,
+    )
+    login = client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
+    assert login.status_code == 303, "the household passphrase did not log in"
+    return client
+
+
+def report(
+    client: TestClient,
+    month: str,
+    accounts: tuple[str, ...] = (CURRENT, SAVINGS),
+    reference_date: str = REFERENCE_DATE,
+) -> Page:
+    """Return the report fragment the page's form asks for."""
+    response = client.get(
+        "/report",
+        params={
+            "publication": str(PUBLICATION.publication_id),
+            "reference_date": reference_date,
+            "account": list(accounts),
+            "month": month,
+        },
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200
+    return read(response.text)
+
+
+def test_the_report_shows_income_expenses_and_money_left_in_danish_kroner(
+    client: TestClient,
+) -> None:
+    # February: income 25,000.00, expenses 9,020.00, net cash flow 15,980.00.
+    february = report(client, "2026-02")
+
+    assert (
+        february.text_of("income"),
+        february.text_of("expenses"),
+        february.text_of("money-left"),
+    ) == ("25.000,00 kr.", "9.020,00 kr.", "15.980,00 kr.")
