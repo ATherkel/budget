@@ -230,3 +230,22 @@ def test_a_confirmed_quiet_month_shows_zero_without_a_trust_note(
         quiet.text_of("coverage-note"),
         quiet.text_of("unclassified-note"),
     ) == ("0,00 kr.", "0,00 kr.", "0,00 kr.", None, None)
+
+
+def test_a_report_without_data_names_its_accounts_and_links_the_explanation(
+    client: TestClient,
+) -> None:
+    # June on 3 June: neither account has evidence yet.
+    june = report(client, "2026-06", reference_date="2026-06-03")
+    note = june.text_of("coverage-note") or ""
+
+    assert (
+        "Joint current" in note and "Joint savings" in note,
+        june.attributes("coverage-explanation").get("href"),
+    ) == (
+        True,
+        (
+            "/explanation?publication=1&reference_date=2026-06-03"
+            f"&account={CURRENT}&account={SAVINGS}&month=2026-06"
+        ),
+    )
