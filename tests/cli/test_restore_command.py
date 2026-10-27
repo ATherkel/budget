@@ -218,6 +218,31 @@ class RestoreCommandTests(unittest.TestCase):
             assert "silver.db is at schema version 99" in stderr
             assert list(production.stores.glob("*.db")) == []
 
+    def test_restore_refuses_a_named_set_listing_a_stage_it_does_not_know(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            shutil.copyfile(written.path / "bronze.db", written.path / "later.db")
+            listed = manifest(written.path)
+            stores, files = listed["stores"], listed["files"]
+            assert isinstance(stores, dict)
+            assert isinstance(files, dict)
+            stores["later"] = {"path": "later.db", "schema_version": 1}
+            files["later.db"] = checksum(written.path / "later.db")
+            (written.path / "manifest.json").write_text(
+                json.dumps(listed), encoding="utf-8"
+            )
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "lists a later store, which this code does not know" in stderr
+            assert list(production.stores.glob("*.db")) == []
+
     def test_restore_passes_over_a_newest_set_written_by_newer_code(self) -> None:
         with TemporaryDirectory() as directory:
             profile_file, production, written, _ = _production_with_a_set(
