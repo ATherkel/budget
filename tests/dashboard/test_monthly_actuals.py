@@ -86,3 +86,24 @@ def test_money_left_below_zero_carries_a_minus_sign(client: TestClient) -> None:
     march = report(client, "2026-03")
 
     assert march.text_of("money-left") == "\N{MINUS SIGN}1.000,00 kr."
+
+
+def test_a_partial_report_names_its_incomplete_accounts_and_links_the_explanation(
+    client: TestClient,
+) -> None:
+    # February is partial: Joint current's month has a balance break. The link
+    # keeps the page's pinned context and selection.
+    february = report(client, "2026-02")
+
+    assert (
+        "Joint current" in (february.text_of("coverage-note") or ""),
+        "Joint savings" in (february.text_of("coverage-note") or ""),
+        february.attributes("coverage-explanation").get("href"),
+    ) == (
+        True,
+        False,
+        (
+            "/explanation?publication=1&reference_date=2026-05-14"
+            f"&account={CURRENT}&account={SAVINGS}&month=2026-02"
+        ),
+    )
