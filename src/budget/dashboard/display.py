@@ -29,8 +29,9 @@ _MONTH_NAMES = (
 
 def amount(value: Decimal, currency: str) -> str:
     """Return an exact amount as a Danish reader reads it, such as `9.020,00 kr.`."""
-    digits = f"{value:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
-    return f"{digits} {'kr.' if currency == 'DKK' else currency}"
+    digits = f"{abs(value):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+    sign = "\N{MINUS SIGN}" if value < 0 else ""
+    return f"{sign}{digits} {'kr.' if currency == 'DKK' else currency}"
 
 
 def copenhagen_date(now: datetime) -> date:
