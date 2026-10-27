@@ -10,6 +10,7 @@ import shutil
 
 from budget.backups import BackupSet, complete_backup_sets, set_store_files
 from budget.locking import WriterLock
+from budget.profiles import Profile
 
 
 class IncompleteSetError(RuntimeError):
@@ -24,6 +25,31 @@ class IncompleteSetError(RuntimeError):
             f"backup set {name} is not complete: it is missing, or a file does "
             "not match the checksum its manifest records; nothing was restored"
         )
+
+
+class OccupiedProfileError(RuntimeError):
+    """The profile still has a store: nothing was restored or deleted.
+
+    A whole profile is restored, never one store beside live ones, and the
+    stores already there are the operator's to keep or set aside.
+    """
+
+    def __init__(self, names: list[str]) -> None:
+        """Name what is in the way, and how to retry."""
+        super().__init__(
+            f"the stores folder still holds {', '.join(names)}: restore puts "
+            "back a whole profile, never a store beside live ones; move every "
+            "store out of it, keeping them if they may be needed, then rerun; "
+            "nothing was restored"
+        )
+
+
+def _require_no_stores(profile: Profile) -> None:
+    """Refuse a profile that has any stage store, touching nothing."""
+    stores = (profile.bronze_store, profile.silver_store, profile.gold_store)
+    found = [store.name for store in stores if store.exists()]
+    if found:
+        raise OccupiedProfileError(found)
 
 
 def _selected(sets: tuple[BackupSet, ...], name: str | None) -> BackupSet:
@@ -42,6 +68,7 @@ def restore(lock: WriterLock, name: str | None = None) -> BackupSet:
     `name` selects the set; without it, the newest complete set is taken.
     """
     profile = lock.profile
+    _require_no_stores(profile)
     selected = _selected(complete_backup_sets(profile), name)
     for store in set_store_files(selected):
         shutil.copyfile(selected.path / store, profile.stores / store)
