@@ -16,6 +16,7 @@ from budget.dashboard import create_app
 from budget.gold import GoldResult
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
+from tests.analytics.test_monthly_overview import LATER_GOLD, PERSON
 from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
 from tests.dashboard.pages import Page, read
 from tests.gold.publishing import CONFIGURATION, RECIPE
@@ -309,3 +310,48 @@ def test_the_explanation_of_a_superseded_publication_offers_the_newer_figures(
         "Der findes nyere tal." in february.visible(),
         february.attributes("newer-figures").get("href"),
     ) == (True, "/")
+
+
+def test_an_account_outside_its_history_is_not_named_as_incomplete(
+    tmp_path: Path,
+) -> None:
+    # The contract's later account, Person current, starts in April. In
+    # February only Joint current is incomplete; Person current has nothing
+    # that could be missing.
+    profile = dashboard_profile(tmp_path)
+    with GoldStore(profile) as store:
+        store.publish(LATER_GOLD, RECIPE, CONFIGURATION)
+    client = TestClient(
+        create_app(profile, clock=lambda: datetime(2026, 5, 14, 10, tzinfo=UTC))
+    )
+    client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
+
+    february = report(client, "2026-02", accounts=(CURRENT, PERSON))
+    note = february.text_of("coverage-note") or ""
+
+    assert ("Joint current" in note, "Person current" in note) == (True, False)
+
+
+def test_the_explanation_sends_a_reader_who_is_not_logged_in_to_log_in(
+    profile: Profile,
+) -> None:
+    # It names accounts and their trust, so it is as private as the report.
+    stranger = TestClient(
+        create_app(profile, clock=lambda: datetime(2026, 5, 14, 10, tzinfo=UTC)),
+        follow_redirects=False,
+    )
+
+    response = stranger.get(
+        "/explanation",
+        params={
+            "publication": "1",
+            "reference_date": REFERENCE_DATE,
+            "account": [CURRENT],
+            "month": "2026-02",
+        },
+    )
+
+    assert (response.status_code, response.headers.get("location")) == (
+        303,
+        "/login",
+    )
