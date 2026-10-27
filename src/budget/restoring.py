@@ -16,6 +16,7 @@ from budget.backups import BackupSet, complete_backup_sets, set_store_files
 from budget.bronze.storage import bronze_stage
 from budget.gold.storage import gold_stage
 from budget.locking import WriterLock
+from budget.migration import migrate_profile
 from budget.profiles import Profile
 from budget.silver.storage import silver_stage
 from budget.sqlstore import StageStore, StoreError, open_store_snapshot
@@ -120,6 +121,10 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
         selected, skipped = _newest_readable(profile, sets)
     else:
         selected, skipped = _named(profile, sets, name), ()
-    for store in set_store_files(selected).values():
+    stores = set_store_files(selected)
+    for store in stores.values():
         shutil.copyfile(selected.path / store, profile.stores / store)
+    # A store the set holds at an older version is upgraded as `migrate`
+    # upgrades a live one, backed up before and after.
+    migrate_profile(lock, stages=tuple(stores))
     return Restored(backup=selected, skipped=skipped)
