@@ -273,3 +273,16 @@ def test_the_explanation_of_a_fully_covered_report_lists_no_incomplete_months(
     quiet = explanation(client, "2026-03", accounts=(SAVINGS,))
 
     assert quiet.text_of("explanation-coverage") is None
+
+
+def test_an_explanation_of_an_invalid_selection_says_why_and_offers_the_overview(
+    client: TestClient,
+) -> None:
+    # July lies after the pinned date's month, so no report answers it.
+    july = explanation(client, "2026-07")
+
+    assert (
+        "Den valgte måned ligger uden for de måneder, der kan vælges."
+        in july.visible(),
+        july.attributes("back-to-overview").get("href"),
+    ) == (True, "/")
