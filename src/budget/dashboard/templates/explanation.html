@@ -9,6 +9,7 @@
 </div>
 {% if failure %}
 <div role="alert">{{ failure | safe }}</div>
+<p><a id="back-to-overview" href="/">Gå til den nyeste oversigt</a></p>
 {% else %}
 {# Analytics judged everything listed here; the page only says it in words. #}
 {% if overview.coverage.status != "complete" %}
