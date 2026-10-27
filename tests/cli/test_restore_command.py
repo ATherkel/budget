@@ -172,6 +172,25 @@ class DecisionLogRecoveryTests(unittest.TestCase):
                 f"set {written.name} cannot be recovered\n"
             ) in stdout
 
+    def test_restore_stops_on_a_damaged_decision_log(self) -> None:
+        # It begins with the set's entries, but a later line is no entry.
+        first, second, *_ = _decisions()
+        with TemporaryDirectory() as directory:
+            profile_file, production, written = _production_with_decisions(
+                Path(directory), [first]
+            )
+            shutil.rmtree(production.stores)
+            log = production.input_file("decisions.jsonl")
+            damaged = first + b"not a decision\n" + second
+            log.write_bytes(damaged)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stdout) == (EXIT_VERIFICATION_FAILED, "")
+            assert "the live decision log is damaged" in stderr
+            assert log.read_bytes() == damaged
+            assert list(production.stores.glob("*.db")) == []
+
 
 class LostStoreAdviceTests(unittest.TestCase):
     # A store is never restored beside live ones, so the advice for a lost
