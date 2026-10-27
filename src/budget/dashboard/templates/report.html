@@ -4,6 +4,9 @@
 {% endif %}
 <p class="eyebrow">Rapporten er indlæst</p>
 <h3 id="report-ready-title">{{ month_label }}</h3>
+{% if overview.coverage.status == "partial" %}
+<p id="coverage-note" class="trust-note">Tallene mangler noget fra {% for month in overview.coverage.account_months if month.status != "outside_history" %}{{ month.display_name }}{% if not loop.last %}, {% endif %}{% endfor %}. <a id="coverage-explanation" href="{{ explanation_url }}">Se hvorfor</a></p>
+{% endif %}
 {% if overview.income is not none %}
 <dl class="summary">
   <div class="summary-figure"><dt>Indtægter</dt><dd id="income">{{ overview.income | amount(overview.currency) }}</dd></div>

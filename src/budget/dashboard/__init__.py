@@ -82,9 +82,10 @@ def _pinned_url(
     reference_date: date,
     accounts: Collection[str],
     month: str,
+    path: str = "/",
 ) -> str:
-    """Return the complete page address for one pinned selection."""
-    return "/?" + urlencode(
+    """Return the complete address of `path` for one pinned selection."""
+    return f"{path}?" + urlencode(
         [
             ("publication", publication_id),
             ("reference_date", reference_date.isoformat()),
@@ -224,6 +225,13 @@ def _render_report(
         month=display.month_value(answered.month),
         month_label=display.month_label(answered.month),
         overview=overview_report,
+        explanation_url=_pinned_url(
+            answered.publication_id,
+            answered.reference_date,
+            answered.account_ids,
+            display.month_value(answered.month),
+            "/explanation",
+        ),
     )
 
 
