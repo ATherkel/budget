@@ -212,12 +212,16 @@ def _migrate_staged(profile: Profile, stage: str, staged: Path) -> None:
     migrate_store(store, before_migrating=lambda: None)
 
 
-def _copy_whole(profile: Profile, backup: BackupSet, stores: Mapping[str, str]) -> None:
+def _copy_whole(
+    profile: Profile, backup: BackupSet, stores: Mapping[str, str]
+) -> tuple[str, ...]:
     """Copy every store of a set into the stores folder, or none of them.
 
     Each store is copied into a staging folder beside the live ones first,
     and upgraded there, and moved into place only once every copy is ready,
-    so a copy that fails leaves no store a retry would find in its way.
+    so a copy that fails leaves no store a retry would find in its way. Lost
+    inputs are put back only then, so such a failure leaves them alone too.
+    Returns each input put back.
     """
     staging = profile.stores / RESTORE_STAGING
     try:
@@ -226,12 +230,14 @@ def _copy_whole(profile: Profile, backup: BackupSet, stores: Mapping[str, str]) 
         for stage, store in stores.items():
             shutil.copyfile(backup.path / store, staging / store)
             _migrate_staged(profile, stage, staging / store)
+        put_back = _put_back_lost_inputs(profile, backup)
         for store in stores.values():
             (staging / store).replace(profile.stores / store)
     except OSError as error:
         raise RestoreWriteError(error.strerror or type(error).__name__) from None
     finally:
         shutil.rmtree(staging, ignore_errors=True)
+    return put_back
 
 
 def _put_back_lost_inputs(profile: Profile, backup: BackupSet) -> tuple[str, ...]:
@@ -273,6 +279,5 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     else:
         selected, skipped = _named(profile, sets, name), ()
     stores = set_store_files(selected)
-    put_back = _put_back_lost_inputs(profile, selected)
-    _copy_whole(profile, selected, stores)
+    put_back = _copy_whole(profile, selected, stores)
     return Restored(backup=selected, skipped=skipped, put_back=put_back)
