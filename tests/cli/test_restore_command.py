@@ -410,6 +410,22 @@ class RestoreCommandTests(unittest.TestCase):
             assert restore(profile_file, written.name)[0] == EXIT_OK
             assert run_ids(production.bronze_store) == [run_id]
 
+    def test_restore_names_each_household_input_it_put_back(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            shutil.rmtree(production.stores)
+            production.accounts_file.unlink()
+
+            status, stdout, _ = restore(profile_file, written.name)
+
+            assert status == EXIT_OK
+            assert stdout == (
+                "put back inputs/accounts.toml from the backup set\n"
+                f"restored backup set {written.name}\n"
+            )
+
     def test_restore_puts_back_a_household_input_the_profile_has_lost(
         self,
     ) -> None:
