@@ -32,7 +32,7 @@ from tests.backups.sets import (
 from tests.bronze.migration_resources import SILVER_MIGRATIONS, added_migration
 from tests.cli.commands import backup, migrate, restore
 from tests.cli.profile_files import write_profile
-from tests.importing.households import ACCOUNTS
+from tests.importing.households import ACCOUNTS, log_entries
 
 EXIT_OK = 0
 EXIT_REFUSED_ENVIRONMENT = 4
@@ -357,6 +357,31 @@ class RestoreCommandTests(unittest.TestCase):
                 f"restored backup set {written.name}\n"
             )
             assert _live_run_ids(production) == [run_id, later]
+
+    def test_restore_stops_on_an_import_log_that_conflicts_with_the_set(
+        self,
+    ) -> None:
+        # The live log is kept as it is, for the operator to decide on, and
+        # the profile stays marked as an unfinished restore.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            (entry,) = log_entries(production)
+            entry["original_filename"] = "another-export.csv"
+            production.import_log_file.write_text(
+                json.dumps(entry) + "\n", encoding="utf-8"
+            )
+            conflicting = production.import_log_file.read_bytes()
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert status == EXIT_VERIFICATION_FAILED
+            assert "restored backup set" not in stdout
+            assert "import log" in stderr
+            assert production.import_log_file.read_bytes() == conflicting
+            assert backup(profile_file)[0] == EXIT_REFUSED_ENVIRONMENT
 
     def test_restore_refuses_a_set_whose_store_fails_sqlites_integrity_check(
         self,
