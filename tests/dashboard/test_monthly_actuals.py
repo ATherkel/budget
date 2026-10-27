@@ -119,3 +119,26 @@ def test_only_a_month_that_may_still_change_is_labelled_provisional(
         may.text_of("provisional-label"),
         february.text_of("provisional-label"),
     ) == ("Foreløbige tal", None)
+
+
+def test_unclassified_money_is_noted_quietly_without_its_amounts(
+    client: TestClient,
+) -> None:
+    # March has one Unclassified transaction of -450.00; February has none.
+    # The amounts and the count belong to Kontrol, never to Enkel.
+    march, february = report(client, "2026-03"), report(client, "2026-02")
+
+    assert (
+        march.text_of("unclassified-note") is not None,
+        "450" in march.visible(),
+        march.attributes("unclassified-explanation").get("href"),
+        february.text_of("unclassified-note"),
+    ) == (
+        True,
+        False,
+        (
+            "/explanation?publication=1&reference_date=2026-05-14"
+            f"&account={CURRENT}&account={SAVINGS}&month=2026-03"
+        ),
+        None,
+    )
