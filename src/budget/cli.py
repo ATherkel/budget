@@ -75,6 +75,7 @@ from budget.rebuilding import (
 from budget.restoring import (
     DamagedStoreError,
     IncompleteSetError,
+    NoUsableSetError,
     OccupiedProfileError,
     RestoreWriteError,
     restore,
@@ -537,6 +538,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         RestoreInsteadError,
         OccupiedProfileError,
         RestoreWriteError,
+        NoUsableSetError,
         MigratedWithoutBackupError,
         ImportedWithoutBackupError,
         BackupWriteError,

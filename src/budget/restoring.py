@@ -41,6 +41,18 @@ class RestoreWriteError(RuntimeError):
         )
 
 
+class NoUsableSetError(RuntimeError):
+    """No complete set of the profile can be restored: nothing was restored."""
+
+    def __init__(self, skipped: list[str]) -> None:
+        """Name every complete set passed over, if any."""
+        passed = f": passed over {', '.join(skipped)}" if skipped else ""
+        super().__init__(
+            f"there is no complete backup set this code can read{passed}; "
+            "nothing was restored"
+        )
+
+
 class IncompleteSetError(RuntimeError):
     """The set asked for by name is not complete: nothing was restored.
 
@@ -139,16 +151,14 @@ def _newest_readable(
 ) -> tuple[BackupSet, tuple[str, ...]]:
     """Return the newest set this code can read, and the newer ones passed over."""
     skipped: list[str] = []
-    for index, found in enumerate(sets):
+    for found in sets:
         try:
             _require_readable(profile, found)
         except (StoreError, DamagedStoreError):
-            if index == len(sets) - 1:
-                raise
             skipped.append(found.name)
             continue
         return found, tuple(skipped)
-    raise IndexError(len(sets))
+    raise NoUsableSetError(skipped)
 
 
 def _migrate_staged(profile: Profile, stage: str, staged: Path) -> None:
