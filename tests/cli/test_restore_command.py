@@ -386,6 +386,28 @@ class RestoreCommandTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_OK, "")
             assert stdout.endswith(f"restored backup set {older.name}\n")
 
+    def test_a_restore_whose_store_copy_fails_puts_back_no_input(self) -> None:
+        # "Nothing was restored" must hold for the inputs too.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            shutil.rmtree(production.stores)
+            production.accounts_file.unlink()
+            copy = shutil.copyfile
+
+            def disk_full_at_gold(source: Path, target: Path) -> object:
+                if Path(target).name == "gold.db":
+                    raise OSError(errno.ENOSPC, "No space left on device")
+                return copy(source, target)
+
+            with mock.patch("shutil.copyfile", side_effect=disk_full_at_gold):
+                status, _, stderr = restore(profile_file, written.name)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "nothing was restored" in stderr
+            assert not production.accounts_file.exists()
+
     def test_restore_names_each_household_input_it_put_back(self) -> None:
         with TemporaryDirectory() as directory:
             profile_file, production, written, _ = _production_with_a_set(
