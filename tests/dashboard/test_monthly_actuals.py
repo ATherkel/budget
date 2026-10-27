@@ -200,3 +200,17 @@ def test_the_explanation_says_whether_the_report_has_unclassified_money(
         "450" in march.visible(),
         february.text_of("explanation-unclassified"),
     ) == (True, False, None)
+
+
+def test_a_month_without_data_shows_its_figures_as_unknown_never_as_zero(
+    client: TestClient,
+) -> None:
+    # June on 3 June: selectable, but no account has evidence for it yet.
+    june = report(client, "2026-06", reference_date="2026-06-03")
+
+    assert (
+        june.text_of("income"),
+        june.text_of("expenses"),
+        june.text_of("money-left"),
+        "0,00" in june.visible(),
+    ) == ("Ingen data endnu", "Ingen data endnu", "Ingen data endnu", False)
