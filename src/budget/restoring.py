@@ -41,6 +41,20 @@ class RestoreWriteError(RuntimeError):
         )
 
 
+class UnknownStageError(StoreError):
+    """The set lists a store for a stage this code does not know.
+
+    Newer code wrote it: restoring the rest without it would drop a store.
+    """
+
+    def __init__(self, name: str, stage: str) -> None:
+        """Name the set and the stage."""
+        super().__init__(
+            f"backup set {name} lists a {stage} store, which this code does "
+            "not know; nothing was restored"
+        )
+
+
 class NoUsableSetError(RuntimeError):
     """No complete set of the profile can be restored: nothing was restored."""
 
@@ -131,6 +145,8 @@ def _require_readable(profile: Profile, backup: BackupSet) -> None:
     one SQLite finds damaged is a `DamagedStoreError`.
     """
     for stage, name in set_store_files(backup).items():
+        if stage not in _STAGES:
+            raise UnknownStageError(backup.name, stage)
         path = backup.path / name
         try:
             snapshot = open_store_snapshot(_STAGES[stage](profile), path)

@@ -78,6 +78,7 @@ from budget.restoring import (
     NoUsableSetError,
     OccupiedProfileError,
     RestoreWriteError,
+    UnknownStageError,
     restore,
 )
 from budget.reviewing import REVIEW_KINDS, open_reviews
@@ -539,6 +540,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         OccupiedProfileError,
         RestoreWriteError,
         NoUsableSetError,
+        UnknownStageError,
         MigratedWithoutBackupError,
         ImportedWithoutBackupError,
         BackupWriteError,
