@@ -5,6 +5,7 @@ Expected values are the worked examples in `report-contract.md`, over the
 synthetic worked-example publication; the dashboard is driven in-process.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from fastapi.testclient import TestClient
 from budget.dashboard import create_app
 from budget.gold import GoldResult
 from budget.gold.store import GoldStore
+from budget.profiles import Profile
 from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
 from tests.dashboard.pages import Page, read
 from tests.gold.publishing import CONFIGURATION, RECIPE
@@ -24,10 +26,15 @@ REFERENCE_DATE = "2026-05-14"
 
 
 @pytest.fixture
-def client(tmp_path: Path) -> TestClient:
+def profile(tmp_path: Path) -> Profile:
     profile = dashboard_profile(tmp_path)
     with GoldStore(profile) as store:
         store.publish(GoldResult(PUBLICATION, RECORDS), RECIPE, CONFIGURATION)
+    return profile
+
+
+@pytest.fixture
+def client(profile: Profile) -> TestClient:
     client = TestClient(
         create_app(profile, clock=lambda: datetime(2026, 5, 14, 10, tzinfo=UTC)),
         follow_redirects=False,
@@ -285,4 +292,20 @@ def test_an_explanation_of_an_invalid_selection_says_why_and_offers_the_overview
         "Den valgte måned ligger uden for de måneder, der kan vælges."
         in july.visible(),
         july.attributes("back-to-overview").get("href"),
+    ) == (True, "/")
+
+
+def test_the_explanation_of_a_superseded_publication_offers_the_newer_figures(
+    profile: Profile, client: TestClient
+) -> None:
+    # A newer build becomes current after the page pinned publication 1.
+    with GoldStore(profile) as store:
+        newer = replace(PUBLICATION, publication_id=2)
+        store.publish(GoldResult(newer, RECORDS), RECIPE, CONFIGURATION)
+
+    february = explanation(client, "2026-02")
+
+    assert (
+        "Der findes nyere tal." in february.visible(),
+        february.attributes("newer-figures").get("href"),
     ) == (True, "/")
