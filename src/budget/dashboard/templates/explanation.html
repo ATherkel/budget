@@ -11,6 +11,9 @@
 <div role="alert">{{ failure | safe }}</div>
 <p><a id="back-to-overview" href="/">Gå til den nyeste oversigt</a></p>
 {% else %}
+{% if not overview.publication.is_current %}
+<p class="notice notice--warning">Der findes nyere tal. <a id="newer-figures" href="/">Hent de nyeste tal</a></p>
+{% endif %}
 {# Analytics judged everything listed here; the page only says it in words. #}
 {% if overview.coverage.status != "complete" %}
 <section class="report-panel" aria-labelledby="coverage-heading">
