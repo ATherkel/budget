@@ -18,7 +18,15 @@ from tempfile import TemporaryDirectory
 from budget.backups import BackupSet, back_up, complete_backup_sets
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
-from tests.backups.sets import checksum, import_one, manifest, run_ids, tables
+from tests.backups.sets import (
+    checksum,
+    import_one,
+    manifest,
+    run_ids,
+    tables,
+    user_version,
+)
+from tests.bronze.migration_resources import SILVER_MIGRATIONS, added_migration
 from tests.cli.commands import backup, migrate, restore
 from tests.cli.profile_files import write_profile
 from tests.importing.households import ACCOUNTS
@@ -331,3 +339,24 @@ class RestoreCommandTests(unittest.TestCase):
                 f"skipped backup set {written.name}: this code cannot read it\n"
                 f"restored backup set {older.name}\n"
             )
+
+    def test_restore_migrates_a_store_the_set_holds_at_an_older_version(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, run_id = _production_with_a_set(
+                Path(directory)
+            )
+            older_version = user_version(written.path / "silver.db")
+            shutil.rmtree(production.stores)
+
+            with added_migration(
+                "CREATE TABLE added_after_the_set (id INTEGER PRIMARY KEY);",
+                folder=SILVER_MIGRATIONS,
+            ):
+                status, _, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert user_version(production.silver_store) == older_version + 1
+            assert "added_after_the_set" in tables(production.silver_store)
+            assert run_ids(production.bronze_store) == [run_id]
