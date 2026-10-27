@@ -137,8 +137,11 @@ class RestoreCommandTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_OK, "")
             assert stdout == f"restored backup set {written.name}\n"
             assert run_ids(production.bronze_store) == [run_id]
+            # The set's own copies, not fresh stores with the same tables.
             for store in ("silver.db", "gold.db"):
-                assert tables(production.stores / store) == tables(written.path / store)
+                assert checksum(production.stores / store) == checksum(
+                    written.path / store
+                )
 
     def test_restore_refuses_a_profile_with_no_complete_set(self) -> None:
         with TemporaryDirectory() as directory:
@@ -386,7 +389,7 @@ class RestoreCommandTests(unittest.TestCase):
             assert "added_after_the_set" in tables(production.silver_store)
             assert run_ids(production.bronze_store) == [run_id]
 
-    def test_a_restore_cut_off_partway_leaves_no_store_and_can_be_retried(
+    def test_a_restore_whose_store_copy_fails_leaves_no_store_and_can_be_retried(
         self,
     ) -> None:
         with TemporaryDirectory() as directory:
