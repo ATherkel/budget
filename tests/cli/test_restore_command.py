@@ -447,6 +447,24 @@ class RestoreCommandTests(unittest.TestCase):
             )
             assert _live_run_ids(production) == [run_id, later]
 
+    def test_restore_accepts_an_import_log_missing_runs_the_set_holds(
+        self,
+    ) -> None:
+        # The entries are reconstructible: the next import logs again every
+        # run Bronze holds that the log lacks (`operations.md`).
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, run_id = _production_with_a_set(
+                Path(directory)
+            )
+            production.import_log_file.write_bytes(b"")
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout == f"restored backup set {written.name}\n"
+            assert _live_run_ids(production) == [run_id]
+
     def test_restore_stops_before_anything_on_an_import_log_that_conflicts(
         self,
     ) -> None:
