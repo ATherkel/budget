@@ -89,6 +89,7 @@ from budget.restoring import (
     IncompleteSetError,
     NoUsableSetError,
     OccupiedProfileError,
+    UnknownStageError,
     restore,
 )
 from budget.reviewing import REVIEW_KINDS, open_reviews
@@ -619,6 +620,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         RestoreInsteadError,
         OccupiedProfileError,
         NoUsableSetError,
+        UnknownStageError,
         MigratedWithoutBackupError,
         ImportedWithoutBackupError,
         ImportedWithoutPublicationError,
