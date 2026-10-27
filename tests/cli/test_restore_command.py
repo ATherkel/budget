@@ -322,6 +322,28 @@ class RestoreCommandTests(unittest.TestCase):
                 f"restored backup set {older.name}\n"
             )
 
+    def test_restore_passes_over_a_newest_set_holding_a_file_that_is_no_database(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            older = next(
+                found
+                for found in complete_backup_sets(production)
+                if found.name != written.name
+            )
+            with (written.path / "silver.db").open("r+b") as damaged:
+                damaged.write(b"\x00" * 16)
+            _rechecksum(written, "silver.db", None)
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout.endswith(f"restored backup set {older.name}\n")
+
     def test_a_restore_cut_off_partway_leaves_no_store_and_can_be_retried(
         self,
     ) -> None:
