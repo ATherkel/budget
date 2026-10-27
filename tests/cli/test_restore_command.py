@@ -21,6 +21,7 @@ from tests.cli.profile_files import write_profile
 from tests.importing.households import ACCOUNTS
 
 EXIT_OK = 0
+EXIT_REFUSED_ENVIRONMENT = 4
 EXIT_VERIFICATION_FAILED = 5
 
 
@@ -94,3 +95,19 @@ class RestoreCommandTests(unittest.TestCase):
             assert (status, stdout) == (EXIT_VERIFICATION_FAILED, "")
             assert f"backup set {written.name} is not complete" in stderr
             assert not production.bronze_store.exists()
+
+    def test_restore_refuses_a_profile_that_still_has_a_store(self) -> None:
+        # Only a whole profile is restored: never one store beside live ones.
+        with TemporaryDirectory() as directory:
+            profile_file, production, _, _ = _production_with_a_set(Path(directory))
+            for lost in production.stores.glob("silver.db*"):
+                lost.unlink()
+            bronze = production.bronze_store.read_bytes()
+
+            status, stdout, stderr = restore(profile_file)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "the stores folder still holds bronze.db" in stderr
+            assert "move every store out of it" in stderr
+            assert production.bronze_store.read_bytes() == bronze
+            assert not production.silver_store.exists()
