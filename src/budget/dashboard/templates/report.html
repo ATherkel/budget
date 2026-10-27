@@ -7,8 +7,8 @@
 {% if overview.provisional %}
 <p class="status-chip status-chip--provisional"><span id="provisional-label">Foreløbige tal</span></p>
 {% endif %}
-{% if overview.coverage.status == "partial" %}
-<p id="coverage-note" class="trust-note">Tallene mangler noget fra {% for month in overview.coverage.account_months if month.status != "outside_history" %}{{ month.display_name }}{% if not loop.last %}, {% endif %}{% endfor %}. <a id="coverage-explanation" href="{{ explanation_url }}">Se hvorfor</a></p>
+{% if overview.coverage.status != "complete" %}
+<p id="coverage-note" class="trust-note">{% if overview.coverage.status == "no_data" %}Der er ingen data endnu fra{% else %}Tallene mangler noget fra{% endif %} {% for month in overview.coverage.account_months if month.status != "outside_history" %}{{ month.display_name }}{% if not loop.last %}, {% endif %}{% endfor %}. <a id="coverage-explanation" href="{{ explanation_url }}">Se hvorfor</a></p>
 {% endif %}
 {# With no evidence a figure is unknown, never zero. #}
 <dl class="summary">
