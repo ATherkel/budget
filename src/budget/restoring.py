@@ -123,10 +123,15 @@ def _require_no_stores(profile: Profile) -> None:
 
 @dataclass(frozen=True)
 class Restored:
-    """What `restore` did: the set it restored, and newer sets it passed over."""
+    """What `restore` did: the set, the newer sets passed over, the inputs put back.
+
+    `put_back` names each household input the profile had lost, by its path
+    in the set, which was copied from the set.
+    """
 
     backup: BackupSet
     skipped: tuple[str, ...]
+    put_back: tuple[str, ...]
 
 
 class DamagedStoreError(RuntimeError):
@@ -229,16 +234,18 @@ def _copy_whole(profile: Profile, backup: BackupSet, stores: Mapping[str, str]) 
         shutil.rmtree(staging, ignore_errors=True)
 
 
-def _put_back_lost_inputs(profile: Profile, backup: BackupSet) -> None:
+def _put_back_lost_inputs(profile: Profile, backup: BackupSet) -> tuple[str, ...]:
     """Copy each household input the profile lacks from the set's copy.
 
     The live inputs, synchronised apart from the stores, are newer than any
     set, so a file that survived is never replaced. Only missing files are
     copied, so a restore cut off here leaves nothing a retry must undo.
+    Returns each file put back, by its path in the set.
     """
     copies = backup.path / INPUTS_FOLDER
     if not copies.is_dir():
-        return
+        return ()
+    put_back = []
     try:
         for copy in sorted(copies.rglob("*")):
             relative = copy.relative_to(copies).as_posix()
@@ -246,8 +253,10 @@ def _put_back_lost_inputs(profile: Profile, backup: BackupSet) -> None:
             if copy.is_file() and not live.exists():
                 live.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(copy, live)
+                put_back.append(f"{INPUTS_FOLDER}/{relative}")
     except OSError as error:
         raise RestoreWriteError(error.strerror or type(error).__name__) from None
+    return tuple(put_back)
 
 
 def restore(lock: WriterLock, name: str | None = None) -> Restored:
@@ -264,6 +273,6 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     else:
         selected, skipped = _named(profile, sets, name), ()
     stores = set_store_files(selected)
-    _put_back_lost_inputs(profile, selected)
+    put_back = _put_back_lost_inputs(profile, selected)
     _copy_whole(profile, selected, stores)
-    return Restored(backup=selected, skipped=skipped)
+    return Restored(backup=selected, skipped=skipped, put_back=put_back)
