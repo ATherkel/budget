@@ -22,6 +22,7 @@ from budget.durability import sync_folder
 from budget.gold.storage import gold_stage
 from budget.locking import WriterLock
 from budget.profiles import INPUTS_FOLDER, Profile
+from budget.replaying import replay_import_log
 from budget.silver.storage import silver_stage
 from budget.sqlstore import StageStore, StoreError, migrate_store, open_store_snapshot
 
@@ -136,12 +137,14 @@ class Restored:
     """What `restore` did: the set, the newer sets passed over, the inputs put back.
 
     `put_back` names each household input the profile had lost, by its path
-    in the set, which was copied from the set.
+    in the set, which was copied from the set. `replayed` counts the import
+    runs restored from the export archive beyond the set.
     """
 
     backup: BackupSet
     skipped: tuple[str, ...]
     put_back: tuple[str, ...]
+    replayed: int
 
 
 class DamagedStoreError(RuntimeError):
@@ -355,5 +358,10 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
         selected, skipped = _named(profile, sets, name), ()
     stores = set_store_files(selected)
     put_back = _copy_whole(profile, selected, stores)
+    # Catch up: every run the live import log lists beyond the set comes
+    # back from the export archive, as logged (`replay_import_log`).
+    replayed = replay_import_log(lock)
     (profile.stores / RESTORE_MARKER).unlink()
-    return Restored(backup=selected, skipped=skipped, put_back=put_back)
+    return Restored(
+        backup=selected, skipped=skipped, put_back=put_back, replayed=len(replayed)
+    )
