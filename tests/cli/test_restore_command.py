@@ -386,6 +386,22 @@ class RestoreCommandTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_OK, "")
             assert stdout.endswith(f"restored backup set {older.name}\n")
 
+    def test_restore_names_each_household_input_it_put_back(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            shutil.rmtree(production.stores)
+            production.accounts_file.unlink()
+
+            status, stdout, _ = restore(profile_file, written.name)
+
+            assert status == EXIT_OK
+            assert stdout == (
+                "put back inputs/accounts.toml from the backup set\n"
+                f"restored backup set {written.name}\n"
+            )
+
     def test_a_restore_cut_off_partway_leaves_no_store_and_can_be_retried(
         self,
     ) -> None:
