@@ -149,3 +149,25 @@ class RestoreCommandTests(unittest.TestCase):
             assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
             assert "silver.db is at schema version 99" in stderr
             assert list(production.stores.glob("*.db")) == []
+
+    def test_restore_passes_over_a_newest_set_written_by_newer_code(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            older = next(
+                found
+                for found in complete_backup_sets(production)
+                if found.name != written.name
+            )
+            _from_newer_code(written, "silver.db")
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout == (
+                f"skipped backup set {written.name}: this code cannot read it\n"
+                f"restored backup set {older.name}\n"
+            )
+            assert run_ids(production.bronze_store) == []
