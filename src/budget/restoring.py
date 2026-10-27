@@ -258,14 +258,23 @@ def _migrate_staged(profile: Profile, stage: str, staged: Path) -> None:
     migrate_store(store, before_migrating=lambda: None)
 
 
-def _mark_unfinished(profile: Profile, backup: BackupSet) -> None:
+def _mark_unfinished(
+    profile: Profile, backup: BackupSet, put_back: tuple[str, ...]
+) -> None:
     """Record, durably, that a restore is about to move stores into place.
 
     Until it is removed, every store in the stores folder is one this
-    restore put there, never one of the operator's.
+    restore put there, never one of the operator's. `put_back` names the
+    inputs it puts back from the set, so a retry still reports them.
     """
     marker = profile.stores / RESTORE_MARKER
-    content = json.dumps({"format": RESTORE_MARKER_FORMAT, "set": backup.name})
+    content = json.dumps(
+        {
+            "format": RESTORE_MARKER_FORMAT,
+            "set": backup.name,
+            "put_back": list(put_back),
+        }
+    )
     with marker.open("w", encoding="utf-8") as file:
         file.write(content + "\n")
         file.flush()
@@ -410,25 +419,42 @@ def _marked_set(marker: Path) -> str:
     return str(name) if isinstance(name, str) else "(unreadable marker)"
 
 
-def _clear_unfinished(profile: Profile) -> None:
+def _marked_put_back(marker: Path) -> tuple[str, ...]:
+    """Return the inputs an unfinished restore's marker says it put back."""
+    try:
+        put_back = json.loads(marker.read_text(encoding="utf-8")).get("put_back")
+    except (OSError, ValueError, AttributeError):
+        return ()
+    if not isinstance(put_back, list):
+        return ()
+    return tuple(str(path) for path in put_back)
+
+
+def _clear_unfinished(profile: Profile) -> tuple[str, ...]:
     """Remove what an unfinished restore moved into place, then its marker.
 
     Only the stores, their SQLite files and the marker are removed: the
-    marker says no store in the folder is the operator's.
+    marker says no store in the folder is the operator's. Returns the inputs
+    that restore put back, which are still only the set's copies.
     """
     marker = profile.stores / RESTORE_MARKER
     if not marker.exists():
-        return
+        return ()
+    put_back = _marked_put_back(marker)
     try:
         for store in _store_files(profile):
             store.unlink(missing_ok=True)
         marker.unlink()
     except OSError as error:
         raise RestoreWriteError(error.strerror or type(error).__name__) from None
+    return put_back
 
 
 def _copy_whole(
-    profile: Profile, backup: BackupSet, stores: Mapping[str, str]
+    profile: Profile,
+    backup: BackupSet,
+    stores: Mapping[str, str],
+    earlier: tuple[str, ...],
 ) -> tuple[str, ...]:
     """Copy every store of a set into the stores folder, or none of them.
 
@@ -436,7 +462,8 @@ def _copy_whole(
     and upgraded there, and moved into place only once every copy is ready,
     so a copy that fails leaves no store a retry would find in its way. Lost
     inputs are put back only then, so such a failure leaves them alone too.
-    Returns each input put back.
+    The marker records them first, with `earlier`, those an unfinished
+    restore put back. Returns every input put back, `earlier` first.
     """
     staging = profile.stores / RESTORE_STAGING
     try:
@@ -445,8 +472,13 @@ def _copy_whole(
         for stage, store in stores.items():
             shutil.copyfile(backup.path / store, staging / store)
             _migrate_staged(profile, stage, staging / store)
-        put_back = _put_back_lost_inputs(profile, backup)
-        _mark_unfinished(profile, backup)
+        lost = _lost_inputs(profile, backup)
+        put_back = (*earlier, *(name for name in lost if name not in earlier))
+        _mark_unfinished(profile, backup, put_back)
+        for name, copy in lost.items():
+            live = profile.input_file(name.removeprefix(f"{INPUTS_FOLDER}/"))
+            live.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(copy, live)
         for store in stores.values():
             (staging / store).replace(profile.stores / store)
     except OSError as error:
@@ -456,29 +488,24 @@ def _copy_whole(
     return put_back
 
 
-def _put_back_lost_inputs(profile: Profile, backup: BackupSet) -> tuple[str, ...]:
-    """Copy each household input the profile lacks from the set's copy.
+def _lost_inputs(profile: Profile, backup: BackupSet) -> dict[str, Path]:
+    """Name each household input the profile lacks and the set holds a copy of.
 
     The live inputs, synchronised apart from the stores, are newer than any
-    set, so a file that survived is never replaced. Only missing files are
-    copied, so a restore cut off here leaves nothing a retry must undo.
-    Returns each file put back, by its path in the set.
+    set, so a file that survived is never replaced. Maps each file's path in
+    the set to the set's copy.
     """
     copies = backup.path / INPUTS_FOLDER
     if not copies.is_dir():
-        return ()
-    put_back = []
-    try:
-        for copy in sorted(copies.rglob("*")):
-            relative = copy.relative_to(copies).as_posix()
-            live = profile.input_file(relative)
-            if copy.is_file() and not live.exists():
-                live.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(copy, live)
-                put_back.append(f"{INPUTS_FOLDER}/{relative}")
-    except OSError as error:
-        raise RestoreWriteError(error.strerror or type(error).__name__) from None
-    return tuple(put_back)
+        return {}
+    return {
+        f"{INPUTS_FOLDER}/{relative}": copy
+        for copy in sorted(copies.rglob("*"))
+        if copy.is_file()
+        and not profile.input_file(
+            relative := copy.relative_to(copies).as_posix()
+        ).exists()
+    }
 
 
 def restore(lock: WriterLock, name: str | None = None) -> Restored:
@@ -488,7 +515,7 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     can read is taken, and every newer set is passed over.
     """
     profile = lock.profile
-    _clear_unfinished(profile)
+    earlier = _clear_unfinished(profile)
     _require_no_stores(profile)
     sets = complete_backup_sets(profile)
     if name is None:
@@ -498,7 +525,7 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     _require_decision_log_extends(profile, selected)
     log_runs_ahead = _require_import_log_continues(profile, selected)
     stores = set_store_files(selected)
-    put_back = _copy_whole(profile, selected, stores)
+    put_back = _copy_whole(profile, selected, stores, earlier)
     # A log the profile lost and the set holds: only the set's copy stands
     # in. A log neither has was never written, so nothing of it is lost.
     missing_logs = tuple(
