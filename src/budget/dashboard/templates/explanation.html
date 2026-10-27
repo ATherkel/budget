@@ -34,6 +34,12 @@
 </ul>
 </section>
 {% endif %}
+{% if overview.unclassified and overview.unclassified.count > 0 %}
+<section class="report-panel" aria-labelledby="unclassified-heading">
+<h2 id="unclassified-heading">Betalinger uden kategori</h2>
+<p id="explanation-unclassified">Nogle betalinger i måneden er endnu ikke placeret i en kategori. Penge tilbage regner dem ikke med, så beløbet kan ændre sig, når de bliver placeret.</p>
+</section>
+{% endif %}
 {% endif %}
 {% if report_url %}
 <p><a id="back-to-report" href="{{ report_url }}">Tilbage til oversigten</a></p>
