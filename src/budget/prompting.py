@@ -13,6 +13,7 @@ which of them the bank really exported is unknown until a person checks. Every
 file in it stays in the inbox, and the rest is imported only if they go on.
 """
 
+import getpass
 import sys
 from collections.abc import Sequence
 from datetime import date
@@ -25,6 +26,17 @@ from budget.inbox import INCIDENT_REASON, NO_ACCOUNT, DuplicateIncident, ExportP
 _INDENT: Final = "    "
 _YES: Final = frozenset({"y", "yes"})
 _CONTINUE_ANYWAY: Final = "Continue anyway? [y/N] "
+
+
+def ask_passphrase(prompt: str) -> str:
+    """Read one passphrase: unechoed at a terminal, else one piped line.
+
+    `getpass` reads the Windows console itself and ignores `sys.stdin`, so
+    piped input is read from `sys.stdin` directly, without a prompt.
+    """
+    if sys.stdin.isatty():
+        return getpass.getpass(prompt)
+    return input()
 
 
 def _say(line: str) -> None:

@@ -17,21 +17,35 @@ from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from threading import current_thread
 from types import TracebackType
 from typing import Final, Literal, Self
 
 from budget.gold.models import (
+    ClassificationReviewItem,
     GoldAccount,
     GoldCategory,
     GoldCategoryAllocation,
     GoldPublication,
+    GoldReviewTarget,
     GoldTransaction,
     MonthlyBalanceSnapshot,
     ReportingMonth,
 )
 from budget.gold.recipe import Recipe, RecipeImportRun
-from budget.gold.repository import GoldRepository, PublicationUnavailableError
-from budget.gold.result import GoldRecords, GoldResult, refuse_bare_string
+from budget.gold.repository import (
+    GoldRepository,
+    GoldStoreClosedError,
+    GoldStoreReadOnlyError,
+    GoldStoreThreadError,
+    PublicationUnavailableError,
+)
+from budget.gold.result import (
+    GoldLineageRecords,
+    GoldRecords,
+    GoldResult,
+    refuse_bare_string,
+)
 from budget.gold.storage import open_gold_connection
 from budget.inputs.snapshot import ConfigurationSnapshot
 from budget.profiles import Profile
@@ -111,6 +125,15 @@ class PointerMove:
     cause: PointerCause
 
 
+@dataclass(frozen=True)
+class PublishedClassificationReviews:
+    """The classification questions of one current, retained publication."""
+
+    publication_id: int
+    items: tuple[ClassificationReviewItem, ...]
+    targets: tuple[GoldReviewTarget, ...]
+
+
 # Publications, and which of them keep their results.
 _SELECT_RETAINED: Final = (
     "SELECT publications.* FROM publications"
@@ -142,6 +165,9 @@ _SELECT_STALE_IDS: Final = (
 )
 # Rows that reference others go first, and `results` last.
 _DELETE_RESULT: Final = (
+    "DELETE FROM classification_review_targets WHERE publication_id = ?",
+    "DELETE FROM classification_review_rules WHERE publication_id = ?",
+    "DELETE FROM classification_review_items WHERE publication_id = ?",
     "DELETE FROM monthly_balances WHERE publication_id = ?",
     "DELETE FROM category_allocations WHERE publication_id = ?",
     "DELETE FROM transactions WHERE publication_id = ?",
@@ -206,6 +232,21 @@ _INSERT_BALANCES: Final = (
     " opening_balance, closing_balance, coverage, late_bookings_settled)"
     " VALUES (?, ?, ?, ?, ?, ?, ?)"
 )
+_INSERT_REVIEW_ITEMS: Final = (
+    "INSERT INTO classification_review_items"
+    " (publication_id, ordinal, review_item_id, kind, decision_id, reason)"
+    " VALUES (?, ?, ?, ?, ?, ?)"
+)
+_INSERT_REVIEW_TARGETS: Final = (
+    "INSERT INTO classification_review_targets"
+    " (publication_id, review_item_id, ordinal, transaction_id, bank_category)"
+    " VALUES (?, ?, ?, ?, ?)"
+)
+_INSERT_REVIEW_RULES: Final = (
+    "INSERT INTO classification_review_rules"
+    " (publication_id, review_item_id, ordinal, rule_id)"
+    " VALUES (?, ?, ?, ?)"
+)
 
 # Each read names its publication, and `:account_ids` is a JSON array of the
 # named accounts, or null for every account. Each query is written out whole,
@@ -244,14 +285,99 @@ _SELECT_BALANCES: Final = (
     " (SELECT value FROM json_each(:account_ids)))"
     " ORDER BY monthly_balances.account_id, monthly_balances.month"
 )
+_SELECT_REVIEW_ITEMS: Final = (
+    "SELECT items.* FROM classification_review_items AS items"
+    " WHERE items.publication_id = :publication_id"
+    " AND (:kind IS NULL OR items.kind = :kind)"
+    " AND (:account IS NULL OR EXISTS ("
+    "SELECT 1 FROM classification_review_targets AS targets"
+    " JOIN transactions AS tx"
+    " ON tx.publication_id = targets.publication_id"
+    " AND tx.transaction_id = targets.transaction_id"
+    " WHERE targets.publication_id = items.publication_id"
+    " AND targets.review_item_id = items.review_item_id"
+    " AND tx.account_id = :account))"
+    " ORDER BY items.ordinal"
+)
+_SELECT_REVIEW_TARGETS: Final = (
+    "SELECT targets.review_item_id, targets.transaction_id,"
+    " targets.bank_category, transactions.account_id,"
+    " transactions.transaction_date, transactions.amount,"
+    " transactions.description, accounts.currency"
+    " FROM classification_review_targets AS targets"
+    " JOIN classification_review_items AS items"
+    " USING (publication_id, review_item_id)"
+    " LEFT JOIN transactions"
+    " ON transactions.publication_id = targets.publication_id"
+    " AND transactions.transaction_id = targets.transaction_id"
+    " LEFT JOIN accounts"
+    " ON accounts.publication_id = transactions.publication_id"
+    " AND accounts.account_id = transactions.account_id"
+    " WHERE targets.publication_id = :publication_id"
+    " ORDER BY items.ordinal, targets.ordinal"
+)
+_SELECT_REVIEW_RULES: Final = (
+    "SELECT rules.* FROM classification_review_rules AS rules"
+    " JOIN classification_review_items AS items"
+    " USING (publication_id, review_item_id)"
+    " WHERE rules.publication_id = :publication_id"
+    " ORDER BY items.ordinal, rules.ordinal"
+)
+
+
+class _ConnectionOwner:
+    """One Gold connection, usable only while open on its creating thread."""
+
+    __slots__ = ("_closed", "_connection", "_read_only", "_thread")
+
+    def __init__(self, profile: Profile, *, read_only: bool) -> None:
+        """Open the requested connection and record who owns it."""
+        self._connection = open_gold_connection(profile, read_only=read_only)
+        self._read_only = read_only
+        self._thread = current_thread()
+        self._closed = False
+
+    def ensure_usable(self) -> None:
+        """Refuse use from another thread or after this owner has closed."""
+        if current_thread() is not self._thread:
+            raise GoldStoreThreadError
+        if self._closed:
+            raise GoldStoreClosedError
+
+    def connection(self, *, write: bool = False) -> sqlite3.Connection:
+        """Return the owned connection after checking the requested access."""
+        self.ensure_usable()
+        if write and self._read_only:
+            raise GoldStoreReadOnlyError
+        return self._connection
+
+    def read[T](self, operation: Callable[[sqlite3.Connection], T]) -> T:
+        """Run one consistent read while the owner is usable."""
+        return _reading(self.connection(), operation)
+
+    def close(self) -> None:
+        """Close once on the owner thread, leaving a wrong-thread owner open."""
+        if current_thread() is not self._thread:
+            raise GoldStoreThreadError
+        if self._closed:
+            return
+        self._connection.close()
+        self._closed = True
 
 
 class GoldStore:
-    """Publish to and read from the Gold store that one profile names."""
+    """Publish to and read from the Gold store that one profile names.
 
-    def __init__(self, profile: Profile) -> None:
+    The store owns one SQLite connection. Open, use, and close it on the thread
+    that created it within one synchronous request or task. `read_only=True`
+    opens the supported reporting connection through SQLite `mode=ro`; the
+    default mode remains writable for publishing. Repositories returned by
+    `open()` borrow this owner and cannot outlive the store.
+    """
+
+    def __init__(self, profile: Profile, *, read_only: bool = False) -> None:
         """Open the migrated Gold store that one profile names."""
-        self._connection = open_gold_connection(profile)
+        self._owner = _ConnectionOwner(profile, read_only=read_only)
 
     def __enter__(self) -> Self:
         """Return the open store for a `with` block."""
@@ -268,7 +394,7 @@ class GoldStore:
 
     def close(self) -> None:
         """Release the store's connection."""
-        self._connection.close()
+        self._owner.close()
 
     def current(self) -> GoldPublication | None:
         """Return the current publication, or None when it has no result.
@@ -276,15 +402,14 @@ class GoldStore:
         That is before the first publish, and after a Gold migration that
         could not convert the current result until the next build.
         """
-        return _reading(self._connection, _current)
+        return self._owner.read(_current)
 
     def available(self) -> Sequence[GoldPublication]:
         """Return the publications whose results are retained, oldest first."""
-        return _reading(
-            self._connection,
+        return self._owner.read(
             lambda connection: tuple(
                 _publication(row) for row in connection.execute(_SELECT_RETAINED)
-            ),
+            )
         )
 
     def open(self, publication_id: int) -> GoldRepository:
@@ -293,27 +418,56 @@ class GoldStore:
         Raises `PublicationUnavailableError` when the publication does not exist or
         its result is no longer retained.
         """
-        publication = _reading(
-            self._connection,
+        publication = self._owner.read(
             lambda connection: _retained(connection, publication_id),
         )
-        return StoredPublication(self._connection, publication)
+        return StoredPublication(self._owner, publication)
 
     def next_publication_id(self) -> int:
         """Return the id the next publication must carry."""
-        return _next_publication_id(self._connection)
+        return self._owner.read(_next_publication_id)
 
     def recipe(self, publication_id: int) -> Recipe:
         """Return the recipe a publication was built from, retained or not."""
-        return _reading(
-            self._connection,
+        return self._owner.read(
             lambda connection: _stored_recipe(connection, publication_id),
         )
 
     def pointer_history(self) -> Sequence[PointerMove]:
         """Return every move of the current pointer, oldest first."""
-        rows = self._connection.execute(_SELECT_MOVES)
-        return tuple(_move(row) for row in rows)
+        return self._owner.read(
+            lambda connection: tuple(
+                _move(row) for row in connection.execute(_SELECT_MOVES)
+            )
+        )
+
+    def classification_reviews(
+        self,
+        *,
+        kind: str | None = None,
+        account: str | None = None,
+    ) -> PublishedClassificationReviews | None:
+        """Read the current publication's review items in one SQLite snapshot.
+
+        Holding the read transaction while the item and both identifier lists
+        are materialized keeps a concurrent pointer move or retention cleanup
+        from mixing or removing the selected publication.
+        """
+
+        def read(
+            connection: sqlite3.Connection,
+        ) -> PublishedClassificationReviews | None:
+            publication = _current(connection)
+            if publication is None:
+                return None
+            return _classification_reviews(
+                connection,
+                publication.publication_id,
+                kind,
+                account,
+            )
+
+        return self._owner.read(read)
 
     def publish(
         self,
@@ -336,6 +490,7 @@ class GoldStore:
         the cause and the publish still stands; any other error propagates,
         with a note that the publication is current.
         """
+        connection = self._owner.connection(write=True)
         if configuration.fingerprint != recipe.configuration_fingerprint:
             raise ConfigurationMismatchError(
                 recipe.configuration_fingerprint, configuration.fingerprint
@@ -343,8 +498,12 @@ class GoldStore:
         publication = result.publication()
         if publication.kind != "pipeline":
             raise PublicationKindError(publication.kind)
-        encoded = _encode(publication.publication_id, result.records)
-        with self._connection as connection:
+        encoded = _encode(
+            publication.publication_id,
+            result.records,
+            result.lineage,
+        )
+        with connection:
             connection.execute("BEGIN IMMEDIATE")
             expected = _next_publication_id(connection)
             if publication.publication_id != expected:
@@ -355,7 +514,7 @@ class GoldStore:
             _write(connection, encoded)
             _move_pointer(connection, publication.publication_id, "build")
         try:
-            _delete_stale_results(self._connection)
+            _delete_stale_results(connection)
         except sqlite3.Error as error:
             # The publish has committed, so a failure here never undoes it.
             code = getattr(error, "sqlite_errorcode", None)
@@ -377,17 +536,16 @@ class StoredPublication:
     another publication's records.
     """
 
-    __slots__ = ("_connection", "_publication")
+    __slots__ = ("_owner", "_publication")
 
-    def __init__(
-        self, connection: sqlite3.Connection, publication: GoldPublication
-    ) -> None:
-        """Bind the store's connection to one publication."""
-        self._connection = connection
+    def __init__(self, owner: _ConnectionOwner, publication: GoldPublication) -> None:
+        """Bind the owner's connection to one publication."""
+        self._owner = owner
         self._publication = publication
 
     def publication(self) -> GoldPublication:
         """Return the publication every other method reads from."""
+        self._owner.ensure_usable()
         return self._publication
 
     def accounts(self) -> Sequence[GoldAccount]:
@@ -477,7 +635,7 @@ class StoredPublication:
                 raise PublicationUnavailableError(publication_id)
             return tuple(decode(row) for row in connection.execute(query, bound))
 
-        return _reading(self._connection, read)
+        return self._owner.read(read)
 
 
 def _reading[T](
@@ -519,6 +677,57 @@ def _stored_recipe(connection: sqlite3.Connection, publication_id: int) -> Recip
     return _recipe(row, connection.execute(_SELECT_RECIPE_RUNS, (publication_id,)))
 
 
+def _classification_reviews(
+    connection: sqlite3.Connection,
+    publication_id: int,
+    kind: str | None,
+    account: str | None,
+) -> PublishedClassificationReviews:
+    """Materialize one publication's review items and ordered identifiers."""
+    parameters = {
+        "publication_id": publication_id,
+        "kind": kind,
+        "account": account,
+    }
+    rows = connection.execute(_SELECT_REVIEW_ITEMS, parameters).fetchall()
+    target_rows = connection.execute(_SELECT_REVIEW_TARGETS, parameters).fetchall()
+    targets = _identifiers_by_item(
+        target_rows,
+        "transaction_id",
+    )
+    rules = _identifiers_by_item(
+        connection.execute(_SELECT_REVIEW_RULES, parameters),
+        "rule_id",
+    )
+    return PublishedClassificationReviews(
+        publication_id=publication_id,
+        items=tuple(
+            ClassificationReviewItem(
+                review_item_id=row["review_item_id"],
+                kind=row["kind"],
+                transaction_ids=targets.get(row["review_item_id"], ()),
+                rule_ids=rules.get(row["review_item_id"], ()),
+                decision_id=row["decision_id"],
+                reason=row["reason"],
+            )
+            for row in rows
+        ),
+        targets=tuple(
+            _review_target(row) for row in target_rows if row["account_id"] is not None
+        ),
+    )
+
+
+def _identifiers_by_item(
+    rows: Iterable[sqlite3.Row], column: str
+) -> dict[str, tuple[str, ...]]:
+    """Collect an ordered identifier list for each review item."""
+    collected: dict[str, list[str]] = {}
+    for row in rows:
+        collected.setdefault(row["review_item_id"], []).append(row[column])
+    return {item_id: tuple(values) for item_id, values in collected.items()}
+
+
 @dataclass(frozen=True)
 class _Encoded:
     """One result as rows of plain SQLite values, table by table."""
@@ -528,15 +737,25 @@ class _Encoded:
     transactions: Rows
     allocations: Rows
     balances: Rows
+    review_items: Rows
+    review_targets: Rows
+    review_rules: Rows
 
 
-def _encode(publication_id: int, records: GoldRecords) -> _Encoded:
+def _encode(
+    publication_id: int,
+    records: GoldRecords,
+    lineage: GoldLineageRecords,
+) -> _Encoded:
     """Encode every record before anything is written.
 
     Money its currency cannot hold exactly is refused here, so a refusal
     writes nothing.
     """
     currencies = {a.account_id: a.currency for a in records.accounts}
+    bank_categories = {
+        line.transaction_id: line.bank_category for line in lineage.transaction_lineage
+    }
     return _Encoded(
         accounts=tuple(_account_row(publication_id, a) for a in records.accounts),
         categories=tuple(_category_row(publication_id, c) for c in records.categories),
@@ -551,6 +770,26 @@ def _encode(publication_id: int, records: GoldRecords) -> _Encoded:
         balances=tuple(
             _balance_row(publication_id, s, _currency(currencies, s.account_id))
             for s in records.monthly_balances
+        ),
+        review_items=tuple(
+            _review_item_row(publication_id, ordinal, item)
+            for ordinal, item in enumerate(lineage.classification_review_items)
+        ),
+        review_targets=tuple(
+            (
+                publication_id,
+                item.review_item_id,
+                ordinal,
+                transaction_id,
+                bank_categories.get(transaction_id),
+            )
+            for item in lineage.classification_review_items
+            for ordinal, transaction_id in enumerate(item.transaction_ids)
+        ),
+        review_rules=tuple(
+            (publication_id, item.review_item_id, ordinal, rule_id)
+            for item in lineage.classification_review_items
+            for ordinal, rule_id in enumerate(item.rule_ids)
         ),
     )
 
@@ -663,6 +902,9 @@ def _write(connection: sqlite3.Connection, encoded: _Encoded) -> None:
     connection.executemany(_INSERT_TRANSACTIONS, encoded.transactions)
     connection.executemany(_INSERT_ALLOCATIONS, encoded.allocations)
     connection.executemany(_INSERT_BALANCES, encoded.balances)
+    connection.executemany(_INSERT_REVIEW_ITEMS, encoded.review_items)
+    connection.executemany(_INSERT_REVIEW_TARGETS, encoded.review_targets)
+    connection.executemany(_INSERT_REVIEW_RULES, encoded.review_rules)
 
 
 def _currency(currencies: Mapping[str, str], account_id: str) -> str:
@@ -866,6 +1108,36 @@ def _balance_row(
         _optional_minor(snapshot.closing_balance, currency),
         snapshot.coverage,
         int(snapshot.late_bookings_settled),
+    )
+
+
+def _review_item_row(
+    publication_id: int,
+    ordinal: int,
+    item: ClassificationReviewItem,
+) -> tuple[object, ...]:
+    """Spell one classification review item as its parent row."""
+    return (
+        publication_id,
+        ordinal,
+        item.review_item_id,
+        item.kind,
+        item.decision_id,
+        item.reason,
+    )
+
+
+def _review_target(row: sqlite3.Row) -> GoldReviewTarget:
+    """Read one target's published transaction context."""
+    return GoldReviewTarget(
+        review_item_id=row["review_item_id"],
+        transaction_id=row["transaction_id"],
+        account_id=row["account_id"],
+        transaction_date=date.fromisoformat(row["transaction_date"]),
+        amount=from_minor_units(row["amount"], row["currency"]),
+        currency=row["currency"],
+        description=row["description"],
+        bank_category=row["bank_category"],
     )
 
 

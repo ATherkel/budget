@@ -283,6 +283,14 @@ on every build, so an item exists exactly while its cause does. A
 `review_item_id` derives from the kind and the transaction or decision
 identifiers involved, so it is stable across rebuilds.
 
+Each build stores its review items atomically with the publication. `budget
+review` reads the current publication through one SQLite snapshot, so a
+concurrent publish or retention cleanup cannot combine two results or make the
+selected one disappear mid-read. The stored target and rule identifier lists
+keep their order. A `decision-not-applicable` item names its decision
+identifier and any targets still present; a wholly missing target is not
+invented into the publication.
+
 | Kind | Raised when | Transaction is | Settled by |
 | --- | --- | --- | --- |
 | `unclassified` | no rule matches | `unknown` | a new rule or a `classify` decision |
@@ -308,6 +316,29 @@ After each Gold build, the CLI review workflow
 - every pair formed on a date gap, and every pair where a leg's own rule
   result is not a transfer claim, so a coincidental match can be spotted and
   undone with a `classify` decision.
+
+Each target's account, transaction date, amount with currency, description,
+and bank category label comes from the same selected publication as its review
+item. The bank label is optional privileged lineage persisted with the target.
+A publication built before that lineage was retained shows the label as
+unavailable; review never fills the blank from current Silver. Account
+filtering retains every target of a matching item. Control characters in free
+text are escaped so a published description or label cannot forge another
+terminal line.
+
+The item's settlement guidance follows its kind. A conflict needs a rule
+priority or narrower-rule change, alternatively a classification. An ambiguous
+transfer can be paired only when its intended legs still cancel; otherwise its
+targets can be classified. An unmatched transfer can wait for an import or be
+paired when an opposite-amount counterpart appears, can be one-sided only when
+its counterpart is outside that account's managed period, or can be classified.
+No zero-amount target can use a category decision, including when it is
+unclassified or in a rule conflict; adjustment is its only classification
+route. Nonzero targets in the same item retain the category-or-adjustment
+choice. A non-applicable decision needs a superseding decision or a
+retraction, including when every target is missing.
+
+🤖 Added by Codex (DeepSeek V4.1 Flash)
 
 This output contains financial values. It goes to the operator's terminal or a
 private report, never to routine logs.

@@ -97,7 +97,7 @@ class GoldResult:
 
     @property
     def lineage(self) -> GoldLineageRecords:
-        """Every lineage record of the build, for a store that persists them."""
+        """Every privileged lineage record, for the store that persists them."""
         return self._lineage
 
     def publication(self) -> GoldPublication:

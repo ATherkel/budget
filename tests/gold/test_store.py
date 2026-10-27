@@ -9,19 +9,27 @@ that the migration refuses it. All data is the synthetic worked example.
 import re
 import sqlite3
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from queue import Queue
+from threading import Thread
 
 import pytest
 
 from budget import sqlstore
 from budget.gold import (
+    GoldPublication,
     GoldPublications,
     GoldRepository,
     GoldResult,
+    GoldStoreClosedError,
+    GoldStoreLifecycleError,
+    GoldStoreReadOnlyError,
+    GoldStoreThreadError,
     PublicationUnavailableError,
 )
 from budget.gold.models import ReportingMonth
@@ -43,12 +51,34 @@ from tests.gold.contract import GoldRepositoryContract
 from tests.gold.publishing import CONFIGURATION, RECIPE, publication, publish
 from tests.gold.worked_example import (
     CATEGORY_ALLOCATIONS,
+    CURRENT,
     MONTHLY_BALANCES,
     PUBLICATION,
     RECORDS,
     SAVINGS,
 )
 from tests.gold.worked_silver import TAXONOMY
+
+
+def _assert_raises_in_thread(
+    error_type: type[Exception], action: Callable[[], object]
+) -> None:
+    outcome: Queue[Exception] = Queue()
+
+    def run() -> None:
+        try:
+            action()
+        except (GoldStoreLifecycleError, sqlite3.Error) as error:
+            outcome.put(error)
+        else:
+            outcome.put(AssertionError("the operation did not fail"))
+
+    thread = Thread(target=run)
+    thread.start()
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+    outcome_value = outcome.get_nowait()
+    assert isinstance(outcome_value, error_type), outcome_value
 
 
 @pytest.fixture
@@ -74,6 +104,101 @@ def test_a_new_store_has_no_current_publication(tmp_path: Path) -> None:
 
     assert current is None
     assert available == []
+
+
+def test_a_read_only_store_refuses_publish_without_writing(profile: Profile) -> None:
+    with GoldStore(profile) as writer:
+        first = publish(writer, 1)
+
+    with GoldStore(profile, read_only=True) as reader:
+        assert reader.current() == first
+        assert reader.open(first.publication_id).accounts()
+        with pytest.raises(GoldStoreReadOnlyError):
+            reader.publish(GoldResult(publication(2), RECORDS), RECIPE, CONFIGURATION)
+
+    with GoldStore(profile) as writer:
+        assert writer.current() == first
+        assert list(writer.available()) == [first]
+        assert writer.next_publication_id() == 2
+
+
+CLOSED_ACTIONS: dict[str, Callable[[GoldStore, GoldRepository], object]] = {
+    "current": lambda store, _repository: store.current(),
+    "available": lambda store, _repository: store.available(),
+    "open": lambda store, _repository: store.open(1),
+    "next publication id": lambda store, _repository: store.next_publication_id(),
+    "recipe": lambda store, _repository: store.recipe(1),
+    "pointer history": lambda store, _repository: store.pointer_history(),
+    "classification reviews": lambda store, _repository: store.classification_reviews(),
+    "publish": lambda store, _repository: store.publish(
+        GoldResult(publication(2), RECORDS), RECIPE, CONFIGURATION
+    ),
+    "cached publication metadata": lambda _store, repository: repository.publication(),
+    "repository accounts": lambda _store, repository: repository.accounts(),
+}
+
+
+@pytest.mark.parametrize("action", CLOSED_ACTIONS.values(), ids=CLOSED_ACTIONS.keys())
+def test_every_public_operation_refuses_a_closed_store(
+    profile: Profile, action: Callable[[GoldStore, GoldRepository], object]
+) -> None:
+    store = GoldStore(profile)
+    publish(store, 1)
+    repository = store.open(1)
+    store.close()
+
+    store.close()
+    with pytest.raises(GoldStoreClosedError):
+        action(store, repository)
+
+
+def test_a_wrong_thread_read_or_close_does_not_release_the_owner(
+    profile: Profile,
+) -> None:
+    with GoldStore(profile) as store:
+        first = publish(store, 1)
+
+        _assert_raises_in_thread(GoldStoreThreadError, store.current)
+        assert store.current() == first
+        _assert_raises_in_thread(GoldStoreThreadError, store.classification_reviews)
+        assert store.classification_reviews() is not None
+
+        _assert_raises_in_thread(GoldStoreThreadError, store.close)
+        assert store.current() == first
+
+
+@pytest.mark.parametrize(
+    "read",
+    [
+        lambda repository: repository.publication(),
+        lambda repository: repository.accounts(),
+    ],
+    ids=["cached-metadata", "data"],
+)
+def test_a_borrowed_repository_refuses_its_owner_from_another_thread(
+    profile: Profile, read: Callable[[GoldRepository], object]
+) -> None:
+    with GoldStore(profile) as store:
+        publish(store, 1)
+        repository = store.open(1)
+
+        _assert_raises_in_thread(GoldStoreThreadError, lambda: read(repository))
+        assert repository.publication().publication_id == 1
+        assert repository.accounts()
+
+
+def test_each_thread_can_open_its_own_read_only_reader(profile: Profile) -> None:
+    with GoldStore(profile) as writer:
+        first = publish(writer, 1)
+
+    def read() -> GoldPublication | None:
+        with GoldStore(profile, read_only=True) as reader:
+            return reader.current()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(read) for _ in range(2)]
+
+    assert [future.result() for future in futures] == [first, first]
 
 
 class TestStoredPublication(GoldRepositoryContract):
@@ -319,6 +444,102 @@ def test_a_busy_cleanup_after_a_publish_still_publishes(
         assert store.current() == first
 
 
+def test_migration_3_keeps_a_historic_bank_label_unavailable(
+    tmp_path: Path,
+) -> None:
+    profile = make_test_profile(tmp_path)
+    profile.gold_store.parent.mkdir(parents=True)
+    schema_1 = (GOLD_MIGRATIONS / "0001_create_gold_store.sql").read_text(
+        encoding="utf-8"
+    )
+    schema_2 = (GOLD_MIGRATIONS / "0002_persist_classification_reviews.sql").read_text(
+        encoding="utf-8"
+    )
+    with closing(sqlite3.connect(profile.gold_store)) as connection:
+        connection.execute("PRAGMA journal_mode = WAL")
+        connection.executescript(schema_1)
+        connection.executescript(schema_2)
+        connection.execute("PRAGMA user_version = 2")
+        connection.execute(
+            "INSERT INTO store_identity VALUES (1, ?, 'gold')",
+            (profile.name,),
+        )
+        connection.execute(
+            "INSERT INTO publications VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                1,
+                "pipeline",
+                None,
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:00+00:00",
+                None,
+                "0.2",
+                "synthetic",
+                "0" * 64,
+            ),
+        )
+        connection.execute("INSERT INTO results VALUES (1)")
+        connection.execute(
+            "INSERT INTO pointer_moves VALUES (?, ?, ?, ?, ?)",
+            (1, "2026-01-01T00:00:00+00:00", None, 1, "build"),
+        )
+        connection.execute(
+            "INSERT INTO accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                1,
+                CURRENT,
+                "Joint current",
+                "current",
+                "household",
+                "DKK",
+                None,
+                "2026-01-01",
+                "2026-01-31",
+            ),
+        )
+        connection.execute(
+            "INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                1,
+                "legacy-target",
+                CURRENT,
+                "2026-01-12",
+                1,
+                -1000,
+                "LEGACY SHOP",
+                "unknown",
+                None,
+                -1000,
+                "opening",
+            ),
+        )
+        connection.execute(
+            "INSERT INTO classification_review_items VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                1,
+                0,
+                "a" * 64,
+                "sign-mismatch",
+                None,
+                None,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO classification_review_targets VALUES (?, ?, ?, ?)",
+            (1, "a" * 64, 0, "legacy-target"),
+        )
+        connection.commit()
+
+    migrate_gold(profile)
+    with GoldStore(profile) as store:
+        published = store.classification_reviews()
+
+    assert published is not None
+    [target] = published.targets
+    assert target.bank_category is None
+    assert target.account_id == CURRENT
+
+
 def test_a_cleanup_defect_after_a_publish_propagates(
     store: GoldStore, profile: Profile
 ) -> None:
@@ -403,3 +624,59 @@ def test_an_amount_its_currency_cannot_hold_writes_nothing(store: GoldStore) -> 
 
     assert store.current() == first
     assert store.next_publication_id() == 2
+
+
+def test_a_store_at_schema_version_3_migrates_and_keeps_its_publications(
+    tmp_path: Path,
+) -> None:
+    profile = make_test_profile(tmp_path)
+    profile.gold_store.parent.mkdir(parents=True)
+    versions = (
+        "0001_create_gold_store.sql",
+        "0002_persist_classification_reviews.sql",
+        "0003_persist_review_target_provenance.sql",
+    )
+    with closing(sqlite3.connect(profile.gold_store)) as connection:
+        connection.execute("PRAGMA journal_mode = WAL")
+        for name in versions:
+            connection.executescript((GOLD_MIGRATIONS / name).read_text("utf-8"))
+        connection.execute("PRAGMA user_version = 3")
+        connection.execute(
+            "INSERT INTO store_identity VALUES (1, ?, 'gold')", (profile.name,)
+        )
+        connection.execute(
+            "INSERT INTO publications VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                1,
+                "pipeline",
+                None,
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:00+00:00",
+                None,
+                "0.2",
+                "synthetic",
+                "0" * 64,
+            ),
+        )
+        connection.execute("INSERT INTO results VALUES (1)")
+        connection.execute(
+            "INSERT INTO pointer_moves VALUES (?, ?, ?, ?, ?)",
+            (1, "2026-01-01T00:00:00+00:00", None, 1, "build"),
+        )
+        connection.execute(
+            "INSERT INTO configuration_snapshots VALUES (?, ?)", ("f" * 64, "{}")
+        )
+        connection.execute(
+            "INSERT INTO recipes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, "f" * 64, 0, "e" * 64, None, "0.2", "1", "3.12.0", "3.45.0"),
+        )
+        connection.commit()
+
+    migrate_gold(profile)
+
+    with GoldStore(profile) as store:
+        current = store.current()
+        assert current is not None
+        assert current.publication_id == 1
+        assert store.recipe(1).late_booking_days == 7
+        assert store.next_publication_id() == 2

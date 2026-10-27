@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#17665a">
+<title>{% block title %}Budget{% endblock %}</title>
+<link rel="stylesheet" href="/static/app.css">
+{% block head %}{% endblock %}
+</head>
+<body>
+<a class="skip-link" href="#main-content">Spring til indhold</a>
+<header class="site-header">
+  <div class="shell header-inner">
+    <a class="brand" href="/" aria-label="Budget, gå til nyeste oversigt">
+      <span class="brand-mark" aria-hidden="true">B</span>
+      <span>Budget</span>
+    </a>
+    <nav class="header-actions" aria-label="Sidehandlinger">
+      {% block header_actions %}{% endblock %}
+    </nav>
+  </div>
+</header>
+<main class="shell page" id="main-content" {% block main_attributes %}{% endblock %}>
+  {% block content %}{% endblock %}
+</main>
+<footer class="site-footer">
+  <div class="shell footer-inner">
+    <span>Lokale husstandsdata</span>
+    <span>Beskyttet adgang</span>
+  </div>
+</footer>
+{% block scripts %}{% endblock %}
+</body>
+</html>

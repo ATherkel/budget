@@ -357,6 +357,38 @@ not retained. Example: a page is pinned to P5, two imports run, and P5's
 result is deleted. The page's next request gets `PublicationUnavailableError`, and
 the dashboard offers the current publication instead.
 
+### Reader Connection Lifetime
+
+The dashboard's production reader is a `GoldStore(profile, read_only=True)`.
+It owns one SQLite connection opened with `mode=ro`. Open, use, and close that
+store on the thread that created it, within one synchronous request or task:
+
+```python
+with GoldStore(profile, read_only=True) as publications:
+    reports = HouseholdReports(publications)
+    overview = reports.monthly_overview(context)
+
+# `overview` and `context` are immutable DTOs; the store's connection is gone.
+```
+
+A page carries its `ReportContext`, not a live store or `GoldRepository`.
+Follow-up requests may run on different server threads, and each creates a
+fresh read-only store in the thread that will use it. A repository returned by
+`open()` borrows its store's connection and cannot outlive that store.
+
+Lifecycle misuse has explicit public errors. A store used after close raises
+`GoldStoreClosedError`; a store or borrowed repository used from another thread
+raises `GoldStoreThreadError`. These errors subclass
+`GoldStoreLifecycleError`. They are not `PublicationUnavailableError`, because
+retention has not removed the result, and analytics propagates them unchanged.
+Closing is idempotent on the creating thread. A wrong-thread close raises
+`GoldStoreThreadError` without closing or releasing the owner's connection.
+SQLite's thread check stays enabled; the supported design opens a new
+connection per thread and request instead of sharing one across threads.
+
+Publishing remains a writable-store operation. Calling `publish()` on a
+read-only store raises `GoldStoreReadOnlyError` before any write.
+
 ## Synthetic Scenarios
 
 All figures are synthetic, for February 2026 on `joint-current`, and use the
