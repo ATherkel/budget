@@ -33,6 +33,8 @@ from budget.profiles import (
 )
 from budget.replaying import (
     REPLAY_REFUSALS,
+    ArchivedExportMismatchError,
+    ArchivedExportMissingError,
     ImportLogInvalidError,
     NotALogPrefixError,
     RunConflictError,
@@ -379,13 +381,25 @@ class CatchUpRefusedError(RuntimeError):
     """
 
     def __init__(self, name: str, reason: Exception) -> None:
-        """Name the set, the replay's reason, and what to do."""
-        super().__init__(
-            f"backup set {name} was put in place, but the live import log does "
-            f"not agree with it: {reason} The import log is kept as it is, and "
-            "the restore has not finished: correct the log or move it aside, "
-            "then rerun `budget restore`"
+        """Name the set, what catch-up found, and what to do."""
+        found = _CATCH_UP_PROBLEMS.get(
+            type(reason), "a run the import log lists could not be replayed"
         )
+        super().__init__(
+            f"backup set {name} is in place, but catch-up stopped: {found}. "
+            "The import log is kept as it is, and the restore has not "
+            "finished: put the export back where the log says, then rerun "
+            "`budget restore`"
+        )
+
+
+# What a replay refusal found, once the log is known to continue the set.
+_CATCH_UP_PROBLEMS: Final[dict[type[Exception], str]] = {
+    ArchivedExportMissingError: "a run the import log lists has no export in "
+    "the archive",
+    ArchivedExportMismatchError: "a run the import log lists has an archived "
+    "export that does not match its hash",
+}
 
 
 class UnfinishedRestoreError(RuntimeError):
