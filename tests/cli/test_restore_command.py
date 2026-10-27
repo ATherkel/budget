@@ -151,6 +151,27 @@ class DecisionLogRecoveryTests(unittest.TestCase):
                 )
                 assert list(production.stores.glob("*.db")) == []
 
+    def test_restore_falls_back_to_the_sets_decision_log_and_says_what_is_lost(
+        self,
+    ) -> None:
+        first, second, *_ = _decisions()
+        with TemporaryDirectory() as directory:
+            profile_file, production, written = _production_with_decisions(
+                Path(directory), [first, second]
+            )
+            shutil.rmtree(production.stores)
+            log = production.input_file("decisions.jsonl")
+            log.unlink()
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert log.read_bytes() == first + second
+            assert (
+                "the decision log was missing: decisions recorded after backup "
+                f"set {written.name} cannot be recovered\n"
+            ) in stdout
+
 
 class LostStoreAdviceTests(unittest.TestCase):
     # A store is never restored beside live ones, so the advice for a lost
