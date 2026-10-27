@@ -357,6 +357,15 @@ def _check_repeat_link(run: ImportRun, recorded: Mapping[str, ImportRun]) -> Non
         raise InvalidRepeatLinkError(run.import_run_id)
 
 
+def check_log_continues(profile: Profile, held: tuple[ImportRun, ...]) -> None:
+    """Refuse, reading only, a log that a replay into `held` would refuse.
+
+    `held` is the runs a Bronze store holds, such as a backup set's. Raises
+    `ImportLogInvalidError`, `RunConflictError` or `NotALogPrefixError`.
+    """
+    _check_prefix(held, _read_log(profile))
+
+
 def replay_import_log(lock: WriterLock) -> tuple[ImportRun, ...]:
     """Restore every logged run Bronze lacks; return the runs restored.
 

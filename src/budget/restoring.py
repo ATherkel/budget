@@ -17,14 +17,27 @@ from pathlib import Path
 from typing import Final
 
 from budget.backups import BackupSet, complete_backup_sets, set_store_files
+from budget.bronze import BronzeStore
 from budget.bronze.storage import bronze_stage
 from budget.decision_log import read_decision_log
 from budget.durability import sync_folder
 from budget.gold.storage import gold_stage
 from budget.inputs import ConfigurationError
 from budget.locking import WriterLock
-from budget.profiles import DECISION_LOG_FILE_NAME, INPUTS_FOLDER, Profile
-from budget.replaying import REPLAY_REFUSALS, replay_import_log
+from budget.profiles import (
+    BRONZE_STORE_NAME,
+    DECISION_LOG_FILE_NAME,
+    INPUTS_FOLDER,
+    Profile,
+)
+from budget.replaying import (
+    REPLAY_REFUSALS,
+    ImportLogInvalidError,
+    NotALogPrefixError,
+    RunConflictError,
+    check_log_continues,
+    replay_import_log,
+)
 from budget.silver.storage import silver_stage
 from budget.sqlstore import StageStore, StoreError, migrate_store, open_store_snapshot
 
@@ -300,6 +313,42 @@ def _require_decision_log_extends(profile: Profile, backup: BackupSet) -> None:
         raise DecisionLogDamagedError(error) from None
 
 
+class ImportLogDisagreesError(RuntimeError):
+    """The live import log does not continue the set's Bronze: nothing is touched.
+
+    The log is kept as it is: it may list runs no set holds, which only the
+    operator can decide to give up.
+    """
+
+    def __init__(self, name: str, reason: str) -> None:
+        """Name the set and the disagreement, and what to do."""
+        super().__init__(
+            f"the live import log does not agree with backup set {name}: "
+            f"{reason}; it is kept as it is. Correct it, or choose another "
+            "set, then rerun `budget restore`; nothing was restored"
+        )
+
+
+# What each refusal of `check_log_continues` means for a restore.
+_DISAGREEMENTS: Final[dict[type[Exception], str]] = {
+    ImportLogInvalidError: "an entry does not read as a logged run",
+    RunConflictError: "it records a run the set holds differently",
+    NotALogPrefixError: "the set holds runs it does not list first",
+}
+
+
+def _require_import_log_continues(profile: Profile, backup: BackupSet) -> None:
+    """Refuse, touching nothing, a live import log the set's Bronze cannot continue."""
+    with BronzeStore(profile, snapshot=backup.path / BRONZE_STORE_NAME) as snapshot:
+        held = snapshot.import_runs()
+    try:
+        check_log_continues(profile, held)
+    except (ImportLogInvalidError, RunConflictError, NotALogPrefixError) as error:
+        raise ImportLogDisagreesError(
+            backup.name, _DISAGREEMENTS[type(error)]
+        ) from None
+
+
 class CatchUpRefusedError(RuntimeError):
     """The live import log does not agree with the restored set.
 
@@ -434,6 +483,7 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     else:
         selected, skipped = _named(profile, sets, name), ()
     _require_decision_log_extends(profile, selected)
+    _require_import_log_continues(profile, selected)
     stores = set_store_files(selected)
     put_back = _copy_whole(profile, selected, stores)
     # Catch up: every run the live import log lists beyond the set comes
