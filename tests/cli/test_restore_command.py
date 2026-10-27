@@ -21,6 +21,7 @@ from tests.cli.profile_files import write_profile
 from tests.importing.households import ACCOUNTS
 
 EXIT_OK = 0
+EXIT_VERIFICATION_FAILED = 5
 
 
 def _production_with_a_set(folder: Path) -> tuple[Path, Profile, BackupSet, str]:
@@ -73,3 +74,23 @@ class RestoreCommandTests(unittest.TestCase):
             assert stdout == f"restored backup set {older.name}\n"
             # The set `migrate` wrote holds no import run yet.
             assert run_ids(production.bronze_store) == []
+
+    def test_restore_refuses_a_named_set_that_does_not_match_its_manifest(
+        self,
+    ) -> None:
+        # The default skips such a set; a set asked for by name is never
+        # swapped for another.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            with (written.path / "gold.db").open("r+b") as damaged:
+                damaged.seek(100)
+                damaged.write(b"\xff")
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stdout) == (EXIT_VERIFICATION_FAILED, "")
+            assert f"backup set {written.name} is not complete" in stderr
+            assert not production.bronze_store.exists()
