@@ -435,6 +435,38 @@ class RestoreCommandTests(unittest.TestCase):
             assert "nothing was restored" in stderr
             assert not production.accounts_file.exists()
 
+    def test_a_restore_cut_off_while_moving_stores_into_place_can_be_retried(
+        self,
+    ) -> None:
+        # Bronze is in place and Silver is not: the stores folder holds what
+        # an unfinished restore left, which a retry finishes.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, run_id = _production_with_a_set(
+                Path(directory)
+            )
+            shutil.rmtree(production.stores)
+            move = Path.replace
+
+            def cut_off_at_silver(source: Path, target: Path) -> Path:
+                if Path(target).name == "silver.db":
+                    raise OSError(errno.EIO, "Input/output error")
+                return move(source, target)
+
+            with mock.patch.object(
+                Path, "replace", autospec=True, side_effect=cut_off_at_silver
+            ):
+                assert restore(profile_file, written.name)[0] != EXIT_OK
+            assert production.bronze_store.exists()
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout == f"restored backup set {written.name}\n"
+            assert run_ids(production.bronze_store) == [run_id]
+            assert checksum(production.silver_store) == checksum(
+                written.path / "silver.db"
+            )
+
     def test_restore_names_each_household_input_it_put_back(self) -> None:
         with TemporaryDirectory() as directory:
             profile_file, production, written, _ = _production_with_a_set(
