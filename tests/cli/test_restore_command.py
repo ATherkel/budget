@@ -6,8 +6,11 @@ folder, whose stores are deleted as a machine that died would lose them.
 Every test passes `main` an explicit environment.
 """
 
+import json
 import shutil
+import sqlite3
 import unittest
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -15,7 +18,7 @@ from tempfile import TemporaryDirectory
 from budget.backups import BackupSet, back_up, complete_backup_sets
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
-from tests.backups.sets import import_one, run_ids, tables
+from tests.backups.sets import checksum, import_one, manifest, run_ids, tables
 from tests.cli.commands import migrate, restore
 from tests.cli.profile_files import write_profile
 from tests.importing.households import ACCOUNTS
@@ -37,6 +40,27 @@ def _production_with_a_set(folder: Path) -> tuple[Path, Profile, BackupSet, str]
         # After the set `migrate` wrote, so it is the newest.
         written = back_up(lock, now=datetime.now(UTC))
     return profile_file, production, written, run_id
+
+
+def _from_newer_code(backup: BackupSet, store: str) -> None:
+    """Make one store in a set a schema version ahead of this code, consistently.
+
+    The manifest is rewritten to match, so the set stays complete: it is only
+    a set this code cannot read.
+    """
+    path = backup.path / store
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute("PRAGMA user_version = 99")
+    written = manifest(backup.path)
+    files = written["files"]
+    stores = written["stores"]
+    assert isinstance(files, dict)
+    assert isinstance(stores, dict)
+    files[store] = checksum(path)
+    for entry in stores.values():
+        if entry["path"] == store:
+            entry["schema_version"] = 99
+    (backup.path / "manifest.json").write_text(json.dumps(written), encoding="utf-8")
 
 
 class RestoreCommandTests(unittest.TestCase):
@@ -111,3 +135,17 @@ class RestoreCommandTests(unittest.TestCase):
             assert "move every store out of it" in stderr
             assert production.bronze_store.read_bytes() == bronze
             assert not production.silver_store.exists()
+
+    def test_restore_refuses_a_named_set_written_by_newer_code(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            _from_newer_code(written, "silver.db")
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "silver.db is at schema version 99" in stderr
+            assert list(production.stores.glob("*.db")) == []
