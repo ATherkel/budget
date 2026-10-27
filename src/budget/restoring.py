@@ -7,10 +7,23 @@ no stores; a store is never restored beside live ones (`operations.md`,
 """
 
 import shutil
+from collections.abc import Callable
+from contextlib import closing
+from typing import Final
 
 from budget.backups import BackupSet, complete_backup_sets, set_store_files
+from budget.bronze.storage import bronze_stage
+from budget.gold.storage import gold_stage
 from budget.locking import WriterLock
 from budget.profiles import Profile
+from budget.silver.storage import silver_stage
+from budget.sqlstore import StageStore, open_store_snapshot
+
+_STAGES: Final[dict[str, Callable[[Profile], StageStore]]] = {
+    "bronze": bronze_stage,
+    "silver": silver_stage,
+    "gold": gold_stage,
+}
 
 
 class IncompleteSetError(RuntimeError):
@@ -62,6 +75,13 @@ def _selected(sets: tuple[BackupSet, ...], name: str | None) -> BackupSet:
     raise IncompleteSetError(name)
 
 
+def _require_readable(profile: Profile, backup: BackupSet) -> None:
+    """Refuse a set holding a store this code cannot open, touching nothing."""
+    for stage, name in set_store_files(backup).items():
+        with closing(open_store_snapshot(_STAGES[stage](profile), backup.path / name)):
+            pass
+
+
 def restore(lock: WriterLock, name: str | None = None) -> BackupSet:
     """Restore every store of one complete set; return the set.
 
@@ -70,6 +90,7 @@ def restore(lock: WriterLock, name: str | None = None) -> BackupSet:
     profile = lock.profile
     _require_no_stores(profile)
     selected = _selected(complete_backup_sets(profile), name)
-    for store in set_store_files(selected):
+    _require_readable(profile, selected)
+    for store in set_store_files(selected).values():
         shutil.copyfile(selected.path / store, profile.stores / store)
     return selected
