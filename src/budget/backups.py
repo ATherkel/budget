@@ -518,15 +518,17 @@ def complete_backup_sets(profile: Profile) -> tuple[BackupSet, ...]:
     )
 
 
-def set_store_files(backup: BackupSet) -> tuple[str, ...]:
-    """Name the store files a complete set's manifest lists, Bronze first."""
+def set_store_files(backup: BackupSet) -> dict[str, str]:
+    """Map each stage a complete set's manifest lists to its store's file."""
     manifest = _read_manifest(backup.path)
     stores = manifest.get("stores") if manifest is not None else None
     if not isinstance(stores, dict):
-        return ()
-    return tuple(
-        str(store["path"]) for store in stores.values() if isinstance(store, dict)
-    )
+        return {}
+    return {
+        str(stage): str(store["path"])
+        for stage, store in stores.items()
+        if isinstance(store, dict)
+    }
 
 
 def _lists_store(manifest: dict[str, object], stage: str) -> bool:
