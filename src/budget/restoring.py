@@ -21,7 +21,7 @@ from budget.bronze.storage import bronze_stage
 from budget.durability import sync_folder
 from budget.gold.storage import gold_stage
 from budget.locking import WriterLock
-from budget.profiles import INPUTS_FOLDER, Profile
+from budget.profiles import DECISION_LOG_FILE_NAME, INPUTS_FOLDER, Profile
 from budget.replaying import REPLAY_REFUSALS, replay_import_log
 from budget.silver.storage import silver_stage
 from budget.sqlstore import StageStore, StoreError, migrate_store, open_store_snapshot
@@ -240,6 +240,40 @@ def _mark_unfinished(profile: Profile, backup: BackupSet) -> None:
     sync_folder(profile.stores)
 
 
+class DecisionLogDivergedError(RuntimeError):
+    """The live decision log does not begin with the set's copy.
+
+    It is shorter, or was rewritten: it may have lost decisions, or be the
+    newer truth. Neither is replaced; the choice is the operator's.
+    """
+
+    def __init__(self, name: str) -> None:
+        """Name the set, and what to do."""
+        super().__init__(
+            "the live decision log does not begin with the backup set's copy "
+            f"in {name}: it may have lost decisions the set holds; both are "
+            "kept as they are. Put back the log to keep, then rerun "
+            "`budget restore`; nothing was restored"
+        )
+
+
+def _require_decision_log_extends(profile: Profile, backup: BackupSet) -> None:
+    """Refuse, touching nothing, a live decision log the set's does not begin.
+
+    Only the set copy's complete lines count: a final line a crash cut off
+    was not an entry yet. A live log that is absent is not refused here.
+    """
+    live = profile.input_file(DECISION_LOG_FILE_NAME)
+    copy = backup.path / INPUTS_FOLDER / DECISION_LOG_FILE_NAME
+    try:
+        current = live.read_bytes()
+    except FileNotFoundError:
+        return
+    recorded = copy.read_bytes() if copy.is_file() else b""
+    if not current.startswith(recorded[: recorded.rfind(b"\n") + 1]):
+        raise DecisionLogDivergedError(backup.name)
+
+
 class CatchUpRefusedError(RuntimeError):
     """The live import log does not agree with the restored set.
 
@@ -373,6 +407,7 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
         selected, skipped = _newest_readable(profile, sets)
     else:
         selected, skipped = _named(profile, sets, name), ()
+    _require_decision_log_extends(profile, selected)
     stores = set_store_files(selected)
     put_back = _copy_whole(profile, selected, stores)
     # Catch up: every run the live import log lists beyond the set comes
