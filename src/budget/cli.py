@@ -193,7 +193,12 @@ def _parser() -> argparse.ArgumentParser:
         help="start a new production store where none exists",
     )
     commands.add_parser("backup", help="write a backup set of production")
-    commands.add_parser("restore", help="restore a whole profile from a backup set")
+    restore_ = commands.add_parser(
+        "restore", help="restore a whole profile from a backup set"
+    )
+    restore_.add_argument(
+        "backup_set", nargs="?", help="the set to restore (default: the newest)"
+    )
     rebuild = commands.add_parser("rebuild", help="rebuild a stage and every later one")
     rebuild.add_argument(
         "--from",
