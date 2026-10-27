@@ -72,7 +72,7 @@ from budget.rebuilding import (
     rebuild_from_silver,
     require_buildable_accounts,
 )
-from budget.restoring import restore
+from budget.restoring import IncompleteSetError, restore
 from budget.reviewing import REVIEW_KINDS, open_reviews
 from budget.silver.storage import SILVER_STAGE
 
@@ -539,6 +539,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         return _refuse(error, EXIT_REFUSED_ENVIRONMENT)
     except (
         BackupVerificationError,
+        IncompleteSetError,
         ImportLogDamagedError,
         ImportLogAheadOfBronzeError,
     ) as error:
