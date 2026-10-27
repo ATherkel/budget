@@ -11,4 +11,13 @@
   <div class="summary-figure"><dt>Penge tilbage</dt><dd id="money-left">{{ overview.net_cash_flow | amount(overview.currency) }}</dd></div>
 </dl>
 {% endif %}
+{% if overview.categories %}
+<h4 id="categories-heading">Udgifter fordelt på kategorier</h4>
+{# Every row, in the report's order, so the list adds up to Expenses. #}
+<ul id="categories" class="category-list" aria-labelledby="categories-heading">
+{% for category in overview.categories %}
+  <li class="category-row"><span>{{ category.name }}</span> <span class="amount">{{ category.spending | amount(overview.currency) }}</span></li>
+{% endfor %}
+</ul>
+{% endif %}
 </section>
