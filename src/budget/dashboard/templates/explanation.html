@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Om tallene · Budget{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">Husstandsøkonomi</p>
+    <h1>Om tallene{% if overview %} for {{ month_label }}{% endif %}</h1>
+  </div>
+</div>
+{% if failure %}
+<div role="alert">{{ failure | safe }}</div>
+{% else %}
+{# Analytics judged everything listed here; the page only says it in words. #}
+<section class="report-panel" aria-labelledby="coverage-heading">
+<h2 id="coverage-heading">Hvor tallene er ufuldstændige</h2>
+<ul id="explanation-coverage" class="explanation-list">
+{% for month in overview.coverage.account_months if month.status != "outside_history" %}
+  <li>{{ month.display_name }}, {{ month_label }}: {% if month.status == "no_data" %}der er ingen data for måneden endnu.{% else %}kun en del af måneden er dækket.{% endif %}</li>
+{% else %}
+  <li>Alle valgte konti er fuldt dækket i måneden.</li>
+{% endfor %}
+</ul>
+</section>
+{% if overview.provisional %}
+<section class="report-panel" aria-labelledby="provisional-heading">
+<h2 id="provisional-heading">Hvorfor tallene er foreløbige</h2>
+<ul id="explanation-provisional" class="explanation-list">
+{% if "current_month" in overview.provisional.reasons %}
+  <li>{{ month_label }} er indeværende måned, så der kommer flere posteringer.</li>
+{% endif %}
+{% if "late_bookings_unsettled" in overview.provisional.reasons %}
+  <li>Banken kan stadig bogføre sene posteringer på {% for unsettled in overview.provisional.unsettled %}{{ unsettled.display_name }}{% if not loop.last %}, {% endif %}{% endfor %}.</li>
+{% endif %}
+</ul>
+</section>
+{% endif %}
+{% endif %}
+{% if report_url %}
+<p><a id="back-to-report" href="{{ report_url }}">Tilbage til oversigten</a></p>
+{% endif %}
+{% endblock %}
