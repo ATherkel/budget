@@ -8,7 +8,8 @@
 <p class="trust-note"><span id="provisional-label" class="status-chip status-chip--provisional">Foreløbige tal</span> <a id="provisional-explanation" href="{{ explanation_url }}">Hvorfor tallene er foreløbige</a></p>
 {% endif %}
 {% if overview.coverage.status != "complete" %}
-<p id="coverage-note" class="trust-note">{% if overview.coverage.status == "no_data" %}Der er ingen data endnu fra{% else %}Tallene mangler noget fra{% endif %} {% for month in overview.coverage.account_months if month.status != "outside_history" %}{{ month.display_name }}{% if not loop.last %}, {% endif %}{% endfor %}. <a id="coverage-explanation" href="{{ explanation_url }}">Se hvorfor</a></p>
+{% from "names.html" import names %}
+<p id="coverage-note" class="trust-note">{% if overview.coverage.status == "no_data" %}Der er ingen data endnu fra{% else %}Tallene mangler noget fra{% endif %} {{ names(overview.coverage.account_months | rejectattr("status", "equalto", "outside_history") | list) }}. <a id="coverage-explanation" href="{{ explanation_url }}">Hvorfor tallene er ufuldstændige</a></p>
 {% endif %}
 {# With no evidence a figure is unknown, never zero. #}
 <dl class="summary">
@@ -18,14 +19,14 @@
 </dl>
 {% if overview.unclassified and overview.unclassified.count > 0 %}
 {# Quiet, without amounts or count: those belong to Kontrol. #}
-<p id="unclassified-note" class="trust-note">Nogle betalinger er endnu ikke placeret i en kategori, så penge tilbage kan ændre sig. <a id="unclassified-explanation" href="{{ explanation_url }}">Se hvorfor</a></p>
+<p id="unclassified-note" class="trust-note">Nogle betalinger er endnu ikke placeret i en kategori, så penge tilbage kan ændre sig. <a id="unclassified-explanation" href="{{ explanation_url }}">Om betalinger uden kategori</a></p>
 {% endif %}
 {% if overview.categories %}
 <h4 id="categories-heading">Udgifter fordelt på kategorier</h4>
 {# Every row, in the report's order, so the list adds up to Expenses. #}
 <ul id="categories" class="category-list" aria-labelledby="categories-heading">
 {% for category in overview.categories %}
-  <li class="category-row"><span>{{ category.name }}</span> <span class="amount">{{ category.spending | amount(overview.currency) }}</span></li>
+  <li class="category-row"><span>{{ category.name }}</span> <span class="category-amount">{{ category.spending | amount(overview.currency) }}</span></li>
 {% endfor %}
 </ul>
 {% endif %}

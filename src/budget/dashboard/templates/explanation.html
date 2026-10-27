@@ -30,10 +30,11 @@
 <h2 id="provisional-heading">Hvorfor tallene er foreløbige</h2>
 <ul id="explanation-provisional" class="explanation-list">
 {% if "current_month" in overview.provisional.reasons %}
-  <li>{{ month_label }} er indeværende måned, så der kommer flere posteringer.</li>
+  <li>{{ month_label | capitalize }} er indeværende måned, så der kommer flere posteringer.</li>
 {% endif %}
 {% if "late_bookings_unsettled" in overview.provisional.reasons %}
-  <li>Banken kan stadig bogføre sene posteringer på {% for unsettled in overview.provisional.unsettled %}{{ unsettled.display_name }}{% if not loop.last %}, {% endif %}{% endfor %}.</li>
+{% from "names.html" import names %}
+  <li>Banken kan stadig bogføre sene posteringer på {{ names(overview.provisional.unsettled) }}.</li>
 {% endif %}
 </ul>
 </section>
@@ -41,7 +42,7 @@
 {% if overview.unclassified and overview.unclassified.count > 0 %}
 <section class="report-panel" aria-labelledby="unclassified-heading">
 <h2 id="unclassified-heading">Betalinger uden kategori</h2>
-<p id="explanation-unclassified">Nogle betalinger i måneden er endnu ikke placeret i en kategori. Penge tilbage regner dem ikke med, så beløbet kan ændre sig, når de bliver placeret.</p>
+<p id="explanation-unclassified">Nogle betalinger i måneden er endnu ikke placeret i en kategori. Penge tilbage medregner dem ikke, så beløbet kan ændre sig, når de bliver placeret.</p>
 </section>
 {% endif %}
 {% endif %}
