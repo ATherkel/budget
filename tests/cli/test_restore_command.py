@@ -140,6 +140,15 @@ class RestoreCommandTests(unittest.TestCase):
             for store in ("silver.db", "gold.db"):
                 assert tables(production.stores / store) == tables(written.path / store)
 
+    def test_restore_refuses_a_profile_with_no_complete_set(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+
+            status, stdout, stderr = restore(profile_file)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "no complete backup set this code can read" in stderr
+
     def test_restore_takes_the_set_it_is_given_by_name(self) -> None:
         with TemporaryDirectory() as directory:
             profile_file, production, written, _ = _production_with_a_set(
