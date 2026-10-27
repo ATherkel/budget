@@ -64,6 +64,9 @@ class NoUsableSetError(RuntimeError):
         super().__init__(
             f"there is no complete backup set this code can read{passed}; "
             "nothing was restored"
+        )
+
+
 class RestoreWriteError(RuntimeError):
     """The set's stores could not be copied into place: none was restored."""
 
@@ -352,5 +355,8 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
         selected, skipped = _named(profile, sets, name), ()
     stores = set_store_files(selected)
     put_back = _copy_whole(profile, selected, stores)
+    # Durably: a marker that came back after a crash would let a later
+    # restore remove a finished profile's stores as its own.
     (profile.stores / RESTORE_MARKER).unlink()
+    sync_folder(profile.stores)
     return Restored(backup=selected, skipped=skipped, put_back=put_back)
