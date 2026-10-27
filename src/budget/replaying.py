@@ -154,6 +154,18 @@ class InvalidRepeatLinkError(RuntimeError):
         )
 
 
+# Every way `replay_import_log` refuses evidence that does not agree, each
+# restoring nothing it has not already committed.
+REPLAY_REFUSALS: Final = (
+    ArchivedExportMissingError,
+    ArchivedExportMismatchError,
+    ImportLogInvalidError,
+    RunConflictError,
+    NotALogPrefixError,
+    InvalidRepeatLinkError,
+)
+
+
 class _NotAnEntryError(ValueError):
     """A complete log line that is not a valid entry; its caller numbers it."""
 
