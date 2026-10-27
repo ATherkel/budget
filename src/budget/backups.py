@@ -146,8 +146,9 @@ class LostStoreError(RuntimeError):
         """Name the lost store, and what to do instead."""
         super().__init__(
             f"the stores folder has no {label} store, but backup sets of this "
-            f"profile hold one: the {label} store must be restored from the "
-            "newest that holds one; nothing was published"
+            f"profile hold one: the {label} store must be restored with the "
+            "rest of the profile: move every store out of the stores folder, "
+            "then run `budget restore`; nothing was published"
         )
 
 
