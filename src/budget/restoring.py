@@ -6,6 +6,8 @@ no stores; a store is never restored beside live ones (`operations.md`,
 *Backup and Restore*).
 """
 
+import json
+import os
 import shutil
 import sqlite3
 from collections.abc import Callable, Mapping
@@ -16,6 +18,7 @@ from typing import Final
 
 from budget.backups import BackupSet, complete_backup_sets, set_store_files
 from budget.bronze.storage import bronze_stage
+from budget.durability import sync_folder
 from budget.gold.storage import gold_stage
 from budget.locking import WriterLock
 from budget.profiles import INPUTS_FOLDER, Profile
@@ -24,6 +27,9 @@ from budget.sqlstore import StageStore, StoreError, migrate_store, open_store_sn
 
 # Where a restore copies a set's stores before moving them into place.
 RESTORE_STAGING: Final = "restore-staging"
+# Present while a restore has moved, or is moving, stores into place.
+RESTORE_MARKER: Final = "restore-in-progress.json"
+RESTORE_MARKER_FORMAT: Final = 1
 # A store file and the files SQLite keeps beside it.
 _STORE_FILE_SUFFIXES: Final = ("", "-wal", "-shm", "-journal")
 # Gold's legacy extracts (operations.md, *Where production lives*).
@@ -102,6 +108,16 @@ class OccupiedProfileError(RuntimeError):
         )
 
 
+def _store_files(profile: Profile) -> list[Path]:
+    """Name every stage store file and the SQLite files kept beside each."""
+    stores = (profile.bronze_store, profile.silver_store, profile.gold_store)
+    return [
+        store.with_name(store.name + suffix)
+        for store in stores
+        for suffix in _STORE_FILE_SUFFIXES
+    ]
+
+
 def _require_no_stores(profile: Profile) -> None:
     """Refuse a profile that has any stage store, touching nothing.
 
@@ -109,13 +125,7 @@ def _require_no_stores(profile: Profile) -> None:
     too: SQLite would apply a leftover log to the store restored beside it.
     So does Gold's `gold` folder of legacy extracts.
     """
-    stores = (profile.bronze_store, profile.silver_store, profile.gold_store)
-    candidates = [
-        store.with_name(store.name + suffix)
-        for store in stores
-        for suffix in _STORE_FILE_SUFFIXES
-    ]
-    candidates.append(profile.stores / _LEGACY_GOLD_FOLDER)
+    candidates = [*_store_files(profile), profile.stores / _LEGACY_GOLD_FOLDER]
     found = [path.name for path in candidates if path.exists()]
     if found:
         raise OccupiedProfileError(found)
@@ -212,6 +222,38 @@ def _migrate_staged(profile: Profile, stage: str, staged: Path) -> None:
     migrate_store(store, before_migrating=lambda: None)
 
 
+def _mark_unfinished(profile: Profile, backup: BackupSet) -> None:
+    """Record, durably, that a restore is about to move stores into place.
+
+    Until it is removed, every store in the stores folder is one this
+    restore put there, never one of the operator's.
+    """
+    marker = profile.stores / RESTORE_MARKER
+    content = json.dumps({"format": RESTORE_MARKER_FORMAT, "set": backup.name})
+    with marker.open("w", encoding="utf-8") as file:
+        file.write(content + "\n")
+        file.flush()
+        os.fsync(file.fileno())
+    sync_folder(profile.stores)
+
+
+def _clear_unfinished(profile: Profile) -> None:
+    """Remove what an unfinished restore moved into place, then its marker.
+
+    Only the stores, their SQLite files and the marker are removed: the
+    marker says no store in the folder is the operator's.
+    """
+    marker = profile.stores / RESTORE_MARKER
+    if not marker.exists():
+        return
+    try:
+        for store in _store_files(profile):
+            store.unlink(missing_ok=True)
+        marker.unlink()
+    except OSError as error:
+        raise RestoreWriteError(error.strerror or type(error).__name__) from None
+
+
 def _copy_whole(
     profile: Profile, backup: BackupSet, stores: Mapping[str, str]
 ) -> tuple[str, ...]:
@@ -231,6 +273,7 @@ def _copy_whole(
             shutil.copyfile(backup.path / store, staging / store)
             _migrate_staged(profile, stage, staging / store)
         put_back = _put_back_lost_inputs(profile, backup)
+        _mark_unfinished(profile, backup)
         for store in stores.values():
             (staging / store).replace(profile.stores / store)
     except OSError as error:
@@ -272,6 +315,7 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     can read is taken, and every newer set is passed over.
     """
     profile = lock.profile
+    _clear_unfinished(profile)
     _require_no_stores(profile)
     sets = complete_backup_sets(profile)
     if name is None:
@@ -280,4 +324,5 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
         selected, skipped = _named(profile, sets, name), ()
     stores = set_store_files(selected)
     put_back = _copy_whole(profile, selected, stores)
+    (profile.stores / RESTORE_MARKER).unlink()
     return Restored(backup=selected, skipped=skipped, put_back=put_back)
