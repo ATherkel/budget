@@ -296,6 +296,11 @@ def _restore(profile: Profile, backup_set: str | None) -> None:
         sys.stdout.write(f"skipped backup set {skipped}: this code cannot read it\n")
     for put_back in restored.put_back:
         sys.stdout.write(f"put back {put_back} from the backup set\n")
+    if restored.decisions_lost:
+        sys.stdout.write(
+            "the decision log was missing: decisions recorded after backup set "
+            f"{restored.backup.name} cannot be recovered\n"
+        )
     if restored.replayed:
         runs = "run" if restored.replayed == 1 else "runs"
         sys.stdout.write(
