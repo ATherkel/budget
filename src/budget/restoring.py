@@ -8,7 +8,7 @@ no stores; a store is never restored beside live ones (`operations.md`,
 
 import shutil
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from contextlib import closing
 from dataclasses import dataclass
 from typing import Final
@@ -22,11 +22,23 @@ from budget.profiles import Profile
 from budget.silver.storage import silver_stage
 from budget.sqlstore import StageStore, StoreError, open_store_snapshot
 
+# Where a restore copies a set's stores before moving them into place.
+RESTORE_STAGING: Final = "restore-staging"
 _STAGES: Final[dict[str, Callable[[Profile], StageStore]]] = {
     "bronze": bronze_stage,
     "silver": silver_stage,
     "gold": gold_stage,
 }
+
+
+class RestoreWriteError(RuntimeError):
+    """The set's stores could not be copied into place: none was restored."""
+
+    def __init__(self, reason: str) -> None:
+        """Say why, and that no store came of it."""
+        super().__init__(
+            f"the backup set could not be restored: {reason}; nothing was restored"
+        )
 
 
 class IncompleteSetError(RuntimeError):
@@ -139,6 +151,27 @@ def _newest_readable(
     raise IndexError(len(sets))
 
 
+def _copy_whole(profile: Profile, backup: BackupSet, stores: Iterable[str]) -> None:
+    """Copy every store of a set into the stores folder, or none of them.
+
+    Each store is copied into a staging folder beside the live ones first,
+    and moved into place only once every copy is made, so a copy that fails
+    leaves no store a retry would find in its way.
+    """
+    staging = profile.stores / RESTORE_STAGING
+    try:
+        shutil.rmtree(staging, ignore_errors=True)
+        staging.mkdir()
+        for store in stores:
+            shutil.copyfile(backup.path / store, staging / store)
+        for staged in staging.iterdir():
+            staged.replace(profile.stores / staged.name)
+    except OSError as error:
+        raise RestoreWriteError(error.strerror or type(error).__name__) from None
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
 def restore(lock: WriterLock, name: str | None = None) -> Restored:
     """Restore every store of one complete set; report what was restored.
 
@@ -153,8 +186,7 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     else:
         selected, skipped = _named(profile, sets, name), ()
     stores = set_store_files(selected)
-    for store in stores.values():
-        shutil.copyfile(selected.path / store, profile.stores / store)
+    _copy_whole(profile, selected, stores.values())
     # A store the set holds at an older version is upgraded as `migrate`
     # upgrades a live one, backed up before and after.
     migrate_profile(lock, stages=tuple(stores))

@@ -76,6 +76,7 @@ from budget.restoring import (
     DamagedStoreError,
     IncompleteSetError,
     OccupiedProfileError,
+    RestoreWriteError,
     restore,
 )
 from budget.reviewing import REVIEW_KINDS, open_reviews
@@ -535,6 +536,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         StoresFolderUnavailableError,
         RestoreInsteadError,
         OccupiedProfileError,
+        RestoreWriteError,
         MigratedWithoutBackupError,
         ImportedWithoutBackupError,
         BackupWriteError,
