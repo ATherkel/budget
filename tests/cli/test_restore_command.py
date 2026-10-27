@@ -537,6 +537,25 @@ class RestoreCommandTests(unittest.TestCase):
             )
             assert _live_run_ids(production) == [run_id, later]
 
+    def test_restore_names_a_logged_export_missing_from_the_archive(self) -> None:
+        # The log is right and the export is not where it says: the advice
+        # is to put the export back, never to give up the log.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            with writer_lock(production) as lock:
+                import_one(lock, "export-20260509.csv")
+            production.archive_file("joint-current/export-20260509.csv").unlink()
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stdout) == (EXIT_VERIFICATION_FAILED, "")
+            assert "a run the import log lists has no export in the archive" in stderr
+            assert "put the export back where the log says" in stderr
+            assert "move it aside" not in stderr
+
     def test_restore_says_what_is_lost_when_the_import_log_is_missing(
         self,
     ) -> None:
