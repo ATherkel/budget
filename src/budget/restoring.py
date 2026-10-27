@@ -18,8 +18,10 @@ from typing import Final
 
 from budget.backups import BackupSet, complete_backup_sets, set_store_files
 from budget.bronze.storage import bronze_stage
+from budget.decision_log import read_decision_log
 from budget.durability import sync_folder
 from budget.gold.storage import gold_stage
+from budget.inputs import ConfigurationError
 from budget.locking import WriterLock
 from budget.profiles import DECISION_LOG_FILE_NAME, INPUTS_FOLDER, Profile
 from budget.replaying import REPLAY_REFUSALS, replay_import_log
@@ -265,6 +267,18 @@ class DecisionLogDivergedError(RuntimeError):
         )
 
 
+class DecisionLogDamagedError(RuntimeError):
+    """The live decision log does not read: no decision of it is dropped."""
+
+    def __init__(self, problems: Exception) -> None:
+        """Say what is wrong with it, and what to do."""
+        super().__init__(
+            f"the live decision log is damaged: {problems}; it is kept as it "
+            "is, beside the backup set's copy. Repair it, then rerun "
+            "`budget restore`; nothing was restored"
+        )
+
+
 def _require_decision_log_extends(profile: Profile, backup: BackupSet) -> None:
     """Refuse, touching nothing, a live decision log the set's does not begin.
 
@@ -280,6 +294,10 @@ def _require_decision_log_extends(profile: Profile, backup: BackupSet) -> None:
     recorded = copy.read_bytes() if copy.is_file() else b""
     if not current.startswith(recorded[: recorded.rfind(b"\n") + 1]):
         raise DecisionLogDivergedError(backup.name)
+    try:
+        read_decision_log(profile)
+    except ConfigurationError as error:
+        raise DecisionLogDamagedError(error) from None
 
 
 class CatchUpRefusedError(RuntimeError):
