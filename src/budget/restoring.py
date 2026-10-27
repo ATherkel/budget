@@ -132,7 +132,11 @@ def _require_readable(profile: Profile, backup: BackupSet) -> None:
     """
     for stage, name in set_store_files(backup).items():
         path = backup.path / name
-        with closing(open_store_snapshot(_STAGES[stage](profile), path)) as store:
+        try:
+            snapshot = open_store_snapshot(_STAGES[stage](profile), path)
+        except sqlite3.DatabaseError:
+            raise DamagedStoreError(name, backup.name) from None
+        with closing(snapshot) as store:
             if not _is_intact(store):
                 raise DamagedStoreError(name, backup.name)
 
