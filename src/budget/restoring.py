@@ -22,7 +22,7 @@ from budget.durability import sync_folder
 from budget.gold.storage import gold_stage
 from budget.locking import WriterLock
 from budget.profiles import INPUTS_FOLDER, Profile
-from budget.replaying import replay_import_log
+from budget.replaying import REPLAY_REFUSALS, replay_import_log
 from budget.silver.storage import silver_stage
 from budget.sqlstore import StageStore, StoreError, migrate_store, open_store_snapshot
 
@@ -240,6 +240,23 @@ def _mark_unfinished(profile: Profile, backup: BackupSet) -> None:
     sync_folder(profile.stores)
 
 
+class CatchUpRefusedError(RuntimeError):
+    """The live import log does not agree with the restored set.
+
+    The stores are in place, but the restore has not finished: the live log
+    is kept as it is, for the operator to correct or set aside.
+    """
+
+    def __init__(self, name: str, reason: Exception) -> None:
+        """Name the set, the replay's reason, and what to do."""
+        super().__init__(
+            f"backup set {name} was put in place, but the live import log does "
+            f"not agree with it: {reason} The import log is kept as it is, and "
+            "the restore has not finished: correct the log or move it aside, "
+            "then rerun `budget restore`"
+        )
+
+
 class UnfinishedRestoreError(RuntimeError):
     """A restore has not finished: its stores are not a profile to use yet."""
 
@@ -360,7 +377,10 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     put_back = _copy_whole(profile, selected, stores)
     # Catch up: every run the live import log lists beyond the set comes
     # back from the export archive, as logged (`replay_import_log`).
-    replayed = replay_import_log(lock)
+    try:
+        replayed = replay_import_log(lock)
+    except REPLAY_REFUSALS as error:
+        raise CatchUpRefusedError(selected.name, error) from error
     (profile.stores / RESTORE_MARKER).unlink()
     return Restored(
         backup=selected, skipped=skipped, put_back=put_back, replayed=len(replayed)

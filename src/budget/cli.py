@@ -73,6 +73,7 @@ from budget.rebuilding import (
     require_buildable_accounts,
 )
 from budget.restoring import (
+    CatchUpRefusedError,
     DamagedStoreError,
     IncompleteSetError,
     NoUsableSetError,
@@ -568,6 +569,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         BackupVerificationError,
         IncompleteSetError,
         DamagedStoreError,
+        CatchUpRefusedError,
         ImportLogDamagedError,
         ImportLogAheadOfBronzeError,
     ) as error:
