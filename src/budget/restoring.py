@@ -337,12 +337,15 @@ _DISAGREEMENTS: Final[dict[type[Exception], str]] = {
 }
 
 
-def _require_import_log_continues(profile: Profile, backup: BackupSet) -> None:
-    """Refuse, touching nothing, a live import log the set's Bronze cannot continue."""
+def _require_import_log_continues(profile: Profile, backup: BackupSet) -> bool:
+    """Refuse, touching nothing, a live import log the set's Bronze cannot continue.
+
+    Returns whether the log lists runs beyond the set, to replay.
+    """
     with BronzeStore(profile, snapshot=backup.path / BRONZE_STORE_NAME) as snapshot:
         held = snapshot.import_runs()
     try:
-        check_log_continues(profile, held)
+        return check_log_continues(profile, held)
     except (ImportLogInvalidError, RunConflictError, NotALogPrefixError) as error:
         raise ImportLogDisagreesError(
             backup.name, _DISAGREEMENTS[type(error)]
@@ -483,15 +486,17 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     else:
         selected, skipped = _named(profile, sets, name), ()
     _require_decision_log_extends(profile, selected)
-    _require_import_log_continues(profile, selected)
+    log_runs_ahead = _require_import_log_continues(profile, selected)
     stores = set_store_files(selected)
     put_back = _copy_whole(profile, selected, stores)
     # Catch up: every run the live import log lists beyond the set comes
     # back from the export archive, as logged (`replay_import_log`).
-    try:
-        replayed = replay_import_log(lock)
-    except REPLAY_REFUSALS as error:
-        raise CatchUpRefusedError(selected.name, error) from error
+    replayed: tuple[object, ...] = ()
+    if log_runs_ahead:
+        try:
+            replayed = replay_import_log(lock)
+        except REPLAY_REFUSALS as error:
+            raise CatchUpRefusedError(selected.name, error) from error
     # Durably: a marker that came back after a crash would let a later
     # restore remove a finished profile's stores as its own.
     (profile.stores / RESTORE_MARKER).unlink()
