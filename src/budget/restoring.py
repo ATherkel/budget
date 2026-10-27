@@ -555,7 +555,10 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
             replayed = replay_import_log(lock)
         except REPLAY_REFUSALS as error:
             raise CatchUpRefusedError(selected.name, error) from error
+    # Durably: a marker that came back after a crash would let a later
+    # restore remove a finished profile's stores as its own.
     (profile.stores / RESTORE_MARKER).unlink()
+    sync_folder(profile.stores)
     return Restored(
         backup=selected,
         skipped=skipped,
