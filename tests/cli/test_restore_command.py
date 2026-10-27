@@ -252,6 +252,29 @@ class RestoreCommandTests(unittest.TestCase):
             assert "added_after_the_set" in tables(production.silver_store)
             assert run_ids(production.bronze_store) == [run_id]
 
+    def test_restore_migrates_an_older_set_though_the_import_log_runs_ahead(
+        self,
+    ) -> None:
+        # The machine died after an import the set does not hold: the
+        # surviving log is ahead of the restored Bronze, as catch-up expects.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, run_id = _production_with_a_set(
+                Path(directory)
+            )
+            with writer_lock(production) as lock:
+                import_one(lock, "export-20260509.csv")
+            shutil.rmtree(production.stores)
+
+            with added_migration(
+                "CREATE TABLE added_after_the_set (id INTEGER PRIMARY KEY);",
+                folder=SILVER_MIGRATIONS,
+            ):
+                status, _, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "added_after_the_set" in tables(production.silver_store)
+            assert run_ids(production.bronze_store) == [run_id]
+
     def test_restore_refuses_a_set_whose_store_fails_sqlites_integrity_check(
         self,
     ) -> None:
