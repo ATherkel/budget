@@ -12,7 +12,7 @@ import shutil
 import sqlite3
 import unittest
 from contextlib import closing
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
@@ -447,30 +447,48 @@ class RestoreCommandTests(unittest.TestCase):
             )
             assert _live_run_ids(production) == [run_id, later]
 
-    def test_restore_stops_on_an_import_log_that_conflicts_with_the_set(
+    def test_restore_stops_before_anything_on_an_import_log_that_conflicts(
         self,
     ) -> None:
-        # The live log is kept as it is, for the operator to decide on, and
-        # the profile stays marked as an unfinished restore.
-        with TemporaryDirectory() as directory:
-            profile_file, production, written, _ = _production_with_a_set(
-                Path(directory)
-            )
-            (entry,) = log_entries(production)
-            entry["original_filename"] = "another-export.csv"
-            production.import_log_file.write_text(
-                json.dumps(entry) + "\n", encoding="utf-8"
-            )
-            conflicting = production.import_log_file.read_bytes()
-            shutil.rmtree(production.stores)
+        # The live log records the set's run as started at another time, or
+        # does not read: it is kept as it is for the operator to decide on,
+        # and nothing is restored beside it.
+        def a_day_earlier(line: str, entry: dict[str, object]) -> str:
+            # Written exactly as an import writes it, so only the run differs.
+            started_at = str(entry["started_at"])
+            earlier = datetime.fromisoformat(started_at) - timedelta(days=1)
+            return line.replace(started_at, earlier.isoformat())
 
-            status, stdout, stderr = restore(profile_file, written.name)
+        def not_an_entry(_: str, entry: dict[str, object]) -> str:
+            return json.dumps({**entry, "original_filename": "another.csv"}) + "\n"
 
-            assert status == EXIT_VERIFICATION_FAILED
-            assert "restored backup set" not in stdout
-            assert "import log" in stderr
-            assert production.import_log_file.read_bytes() == conflicting
-            assert backup(profile_file)[0] == EXIT_REFUSED_ENVIRONMENT
+        cases = {
+            "conflicting run": (a_day_earlier, "records a run the set holds"),
+            "invalid entry": (not_an_entry, "an entry does not read"),
+        }
+        for case, (rewrite, reason) in cases.items():
+            with self.subTest(case), TemporaryDirectory() as directory:
+                profile_file, production, written, _ = _production_with_a_set(
+                    Path(directory)
+                )
+                (entry,) = log_entries(production)
+                line = production.import_log_file.read_bytes().decode("utf-8")
+                # As bytes: on Windows, text mode would write CRLF line ends.
+                production.import_log_file.write_bytes(
+                    rewrite(line, entry).encode("utf-8")
+                )
+                conflicting = production.import_log_file.read_bytes()
+                shutil.rmtree(production.stores)
+
+                status, stdout, stderr = restore(profile_file, written.name)
+
+                assert (status, stdout) == (EXIT_VERIFICATION_FAILED, "")
+                assert (
+                    f"the live import log does not agree with backup set {written.name}"
+                ) in stderr
+                assert reason in stderr
+                assert production.import_log_file.read_bytes() == conflicting
+                assert list(production.stores.glob("*.db")) == []
 
     def test_restore_refuses_a_set_whose_store_fails_sqlites_integrity_check(
         self,
