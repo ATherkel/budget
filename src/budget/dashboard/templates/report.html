@@ -10,13 +10,12 @@
 {% if overview.coverage.status == "partial" %}
 <p id="coverage-note" class="trust-note">Tallene mangler noget fra {% for month in overview.coverage.account_months if month.status != "outside_history" %}{{ month.display_name }}{% if not loop.last %}, {% endif %}{% endfor %}. <a id="coverage-explanation" href="{{ explanation_url }}">Se hvorfor</a></p>
 {% endif %}
-{% if overview.income is not none %}
+{# With no evidence a figure is unknown, never zero. #}
 <dl class="summary">
   <div class="summary-figure"><dt>Indtægter</dt><dd id="income">{{ overview.income | amount(overview.currency) }}</dd></div>
   <div class="summary-figure"><dt>Udgifter</dt><dd id="expenses">{{ overview.expenses | amount(overview.currency) }}</dd></div>
   <div class="summary-figure"><dt>Penge tilbage</dt><dd id="money-left">{{ overview.net_cash_flow | amount(overview.currency) }}</dd></div>
 </dl>
-{% endif %}
 {% if overview.unclassified and overview.unclassified.count > 0 %}
 {# Quiet, without amounts or count: those belong to Kontrol. #}
 <p id="unclassified-note" class="trust-note">Nogle betalinger er endnu ikke placeret i en kategori, så penge tilbage kan ændre sig. <a id="unclassified-explanation" href="{{ explanation_url }}">Se hvorfor</a></p>

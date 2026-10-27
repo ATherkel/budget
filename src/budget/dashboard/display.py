@@ -27,8 +27,13 @@ _MONTH_NAMES = (
 )
 
 
-def amount(value: Decimal, currency: str) -> str:
-    """Return an exact amount as a Danish reader reads it, such as `9.020,00 kr.`."""
+def amount(value: Decimal | None, currency: str) -> str:
+    """Return an exact amount as a Danish reader reads it, such as `9.020,00 kr.`.
+
+    An unknown amount says so, rather than reading as zero.
+    """
+    if value is None:
+        return "Ingen data endnu"
     digits = f"{abs(value):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
     sign = "\N{MINUS SIGN}" if value < 0 else ""
     return f"{sign}{digits} {'kr.' if currency == 'DKK' else currency}"
