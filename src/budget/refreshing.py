@@ -16,7 +16,7 @@ from typing import Final
 
 from budget.backups import BackupSet, complete_sets_in, set_store_files
 from budget.locking import WriterLock
-from budget.profiles import INPUTS_FOLDER, Profile
+from budget.profiles import DEVELOPMENT_PROFILE_NAME, INPUTS_FOLDER, Profile
 
 # Development's folder of production's restored stores.
 UPSTREAM_FOLDER: Final = "upstream"
@@ -28,6 +28,24 @@ INPUTS_REPLACING_SUFFIX: Final = ".replacing"
 WRITABLE_STAGING: Final = "writable-staging"
 # A store file and the files SQLite keeps beside it.
 _STORE_FILE_SUFFIXES: Final = ("", "-wal", "-shm", "-journal")
+
+
+class NotRefreshableError(RuntimeError):
+    """The profile reads no production backup sets: nothing was refreshed."""
+
+    def __init__(self, name: str) -> None:
+        """Name the profile, and what dev refresh needs."""
+        super().__init__(
+            "dev refresh needs a development profile whose `upstream_backups` "
+            f"names production's backups folder; the {name} profile is not "
+            "one; nothing was refreshed"
+        )
+
+
+def require_refreshable(profile: Profile) -> None:
+    """Refuse, touching nothing, a profile that has no upstream sets to read."""
+    if profile.name != DEVELOPMENT_PROFILE_NAME or profile.upstream_backups is None:
+        raise NotRefreshableError(profile.name)
 
 
 def _remove_read_only(folder: Path) -> None:
@@ -95,6 +113,7 @@ def refresh(
     set is restored into development's own stores instead of `upstream`.
     """
     profile = lock.profile
+    require_refreshable(profile)
     newest = complete_sets_in(Path(str(profile.upstream_backups)))[0]
     if writable:
         _restore_writable(profile, newest)
