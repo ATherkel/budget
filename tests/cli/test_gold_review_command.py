@@ -43,6 +43,7 @@ type SqlParameter = str | bytes | int | float | None
 type SqlParameters = tuple[SqlParameter, ...] | dict[str, SqlParameter]
 
 EXIT_OK = 0
+EXIT_REFUSED_ENVIRONMENT = 4
 CURRENT = "joint-current"
 SILVER_ITEM = "a1b2c3d4" + "0" * 56
 SILVER_TRANSACTION = "12345678" + "0" * 56
@@ -671,6 +672,40 @@ class GoldReviewCommandTests(unittest.TestCase):
 
             assert absent == (EXIT_OK, f"{SILVER_LINE}\n", "")
             assert unpublished == absent
+
+    def test_unbuilt_silver_does_not_hide_retained_gold_reviews(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            migrate_silver(profile)
+            _publish(
+                profile,
+                (
+                    ClassificationReviewItem(
+                        review_item_id=GOLD_ITEM,
+                        kind="rule-conflict",
+                        transaction_ids=(GOLD_TRANSACTION,),
+                        rule_ids=(RULE_A, RULE_B),
+                        decision_id=None,
+                        reason=None,
+                    ),
+                ),
+                GoldRecords(
+                    accounts=RECORDS.accounts,
+                    transactions=(_target(GOLD_TRANSACTION, "current-03"),),
+                ),
+            )
+
+            status, stdout, stderr = review(profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert stdout.splitlines() == list(GOLD_LINES)
+            assert stderr == (
+                "budget: Silver review is unavailable because Silver has not "
+                "been built or was cleared by a migration; run "
+                "`budget rebuild --from silver`; the review queue is incomplete\n"
+            )
 
     def test_review_pins_the_publication_while_release_retention_removes_it(
         self,
