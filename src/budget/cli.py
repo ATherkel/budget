@@ -330,13 +330,17 @@ def _restore(profile: Profile, backup_set: str | None) -> None:
     sys.stdout.write(f"restored backup set {restored.backup.name}\n")
 
 
-def _dev_refresh(profile: Profile) -> None:
+def _dev_refresh(profile: Profile, *, inputs: bool) -> None:
     """Restore production's newest backup set for development; name it."""
     with writer_lock(profile) as lock:
-        refreshed = refresh(lock)
+        refreshed = refresh(lock, inputs=inputs)
     sys.stdout.write(
         f"restored backup set {refreshed.name} into upstream (read-only)\n"
     )
+    if inputs:
+        sys.stdout.write(
+            f"replaced development's inputs with backup set {refreshed.name}'s\n"
+        )
 
 
 def _rebuild(profile: Profile, from_stage: str) -> None:
@@ -535,7 +539,7 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
     if arguments.command == "backup":
         _backup(profile)
     elif arguments.command == "dev":
-        _dev_refresh(profile)
+        _dev_refresh(profile, inputs=arguments.inputs)
     elif arguments.command == "restore":
         _restore(profile, arguments.backup_set)
     elif arguments.command == "rebuild":
