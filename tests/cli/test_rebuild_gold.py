@@ -125,6 +125,47 @@ class FirstPublicationTests(unittest.TestCase):
 
 
 class UnchangedRecipeTests(unittest.TestCase):
+    def test_gold_only_audit_advance_in_silver_does_not_force_publication(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            with SilverStore(built.profile) as silver_store:
+                context = silver_store.read_build()
+            transaction_id = context.result.transactions[0].transaction_id
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "classify",
+                "targets": [transaction_id],
+                "category": "groceries",
+                "reason": "synthetic classification",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n",
+                encoding="utf-8",
+            )
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            with GoldStore(built.profile) as gold:
+                before = gold.pointer_history()
+                current = gold.current()
+            assert current is not None
+            assert current.publication_id == 1
+
+            assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "nothing was published" in stdout
+            with GoldStore(built.profile) as gold:
+                assert gold.pointer_history() == before
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
+
     def test_a_second_rebuild_with_nothing_changed_publishes_nothing(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
