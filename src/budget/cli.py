@@ -84,7 +84,11 @@ from budget.rebuilding import (
     rebuild_through_gold,
     require_buildable_accounts,
 )
-from budget.reviewing import REVIEW_KINDS, open_reviews
+from budget.reviewing import (
+    REVIEW_KINDS,
+    SilverReviewUnavailableError,
+    open_reviews,
+)
 from budget.silver.storage import SILVER_STAGE
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
@@ -448,6 +452,9 @@ def _review(profile: Profile, kind: str | None, account: str | None) -> None:
     started = perf_counter()
     reviews = open_reviews(profile, kind=kind, account=account)
     summary = summaries.review_summary(reviews)
+    sys.stdout.write(summary)
+    if not reviews.silver_is_built:
+        raise SilverReviewUnavailableError
     routine_logging.finished(
         profile,
         "review",
@@ -466,7 +473,6 @@ def _review(profile: Profile, kind: str | None, account: str | None) -> None:
             )
         ),
     )
-    sys.stdout.write(summary)
 
 
 def _set_passphrase(profile: Profile) -> None:
@@ -590,6 +596,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         NoProfileSelectedError,
         UncommittedCodeError,
         SilverNotBuiltError,
+        SilverReviewUnavailableError,
         WriterLockHeldError,
         StoresFolderUnavailableError,
         RestoreInsteadError,
