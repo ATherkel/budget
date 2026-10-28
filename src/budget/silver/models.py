@@ -161,7 +161,7 @@ class SilverProvenance:
     result_fingerprint: str
     import_runs: frozenset[SilverImportRun]
     currencies: Mapping[str, str]
-    decisions: Sequence[SilverDecision]
+    decisions: tuple[SilverDecision, ...]
     decision_log_position: int
     decision_log_prefix_sha256: str
     code_version: str | None

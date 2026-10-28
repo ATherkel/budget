@@ -33,6 +33,7 @@ from budget.silver.rebuild import (
     SilverBuildInputs,
     derive_silver,
     rebuild_silver,
+    silver_provenance,
     store_silver,
 )
 from budget.silver.storage import (
@@ -79,5 +80,6 @@ __all__ = [
     "migrate_silver",
     "rebuild_silver",
     "result_fingerprint",
+    "silver_provenance",
     "store_silver",
 ]

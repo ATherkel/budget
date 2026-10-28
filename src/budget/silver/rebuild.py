@@ -68,7 +68,7 @@ def derive_silver(inputs: SilverBuildInputs) -> SilverResult:
         source_records=inputs.source_records,
         format_failures=inputs.format_failures,
         currencies=inputs.currencies,
-        decisions=inputs.decisions,
+        decisions=tuple(inputs.decisions),
     )
 
 
@@ -77,19 +77,26 @@ def store_silver(
 ) -> None:
     """Replace the stored Silver with `result`, which `inputs` derived."""
     held = profile.profile if isinstance(profile, WriterLock) else profile
-    provenance = SilverProvenance(
+    provenance = silver_provenance(inputs, result)
+    with SilverStore(held) as store:
+        store.replace(result, currencies=inputs.currencies, provenance=provenance)
+
+
+def silver_provenance(
+    inputs: SilverBuildInputs, result: SilverResult
+) -> SilverProvenance:
+    """Name what `inputs` gave the build of `result`, as Silver stores it."""
+    return SilverProvenance(
         fingerprint_scheme=SILVER_FINGERPRINT_SCHEME,
         result_fingerprint=result_fingerprint(result, currencies=inputs.currencies),
         import_runs=_consumed_runs(inputs.runs),
         currencies=inputs.currencies,
-        decisions=inputs.decisions,
+        decisions=tuple(inputs.decisions),
         decision_log_position=inputs.decision_log_position,
         decision_log_prefix_sha256=inputs.decision_log_prefix_sha256,
         code_version=inputs.code_version,
         identity_version=inputs.identity_version,
     )
-    with SilverStore(held) as store:
-        store.replace(result, currencies=inputs.currencies, provenance=provenance)
 
 
 def _replace(profile: Profile, inputs: SilverBuildInputs) -> SilverResult:

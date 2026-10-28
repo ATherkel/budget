@@ -78,6 +78,7 @@ from budget.ranges import load_ranges
 from budget.rebuilding import (
     HouseholdInputs,
     SilverNotBuiltError,
+    SilverProvenanceUnavailableError,
     SilverRebuild,
     read_household_inputs,
     rebuild_from_gold,
@@ -596,6 +597,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         NoProfileSelectedError,
         UncommittedCodeError,
         SilverNotBuiltError,
+        SilverProvenanceUnavailableError,
         SilverReviewUnavailableError,
         WriterLockHeldError,
         StoresFolderUnavailableError,
