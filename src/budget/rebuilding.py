@@ -33,9 +33,14 @@ from budget.inputs import ConfigurationError, load_accounts, load_configuration
 from budget.locking import WriterLock
 from budget.profiles import ACCOUNTS_FILE_NAME, Profile
 from budget.silver import (
+    AcceptDiscrepancy,
+    SameTransaction,
     SilverBuildInputs,
+    SilverDecision,
     SilverResult,
     SilverStore,
+    VoidImportRun,
+    Withdrawn,
     rebuild_silver,
 )
 from budget.silver.currencies import UnknownCurrencyError, minor_unit_places
@@ -74,6 +79,18 @@ class SilverProvenanceUnavailableError(RuntimeError):
             "the stored Silver result has no trustworthy build provenance; "
             "run `budget rebuild --from silver` before publishing Gold; "
             "nothing was published"
+        )
+
+
+class SilverDecisionFreshnessError(RuntimeError):
+    """Gold was asked to consume Silver before its effective decisions."""
+
+    def __init__(self) -> None:
+        """Name the earliest rebuild that applies the changed decisions."""
+        super().__init__(
+            "the current effective Silver decisions have not been applied to "
+            "the stored Silver result; run `budget rebuild --from silver` "
+            "before publishing Gold; nothing was published"
         )
 
 
@@ -205,6 +222,7 @@ def rebuild_from_gold(lock: WriterLock, *, now: datetime) -> GoldRebuild:
     provenance = stored_silver.provenance
     if provenance is None:
         raise SilverProvenanceUnavailableError
+    _require_current_silver_decisions(provenance.decisions, log.silver)
     recipe = Recipe(
         import_runs=frozenset(
             RecipeImportRun(run.import_run_id, run.payload_id)
@@ -255,6 +273,36 @@ def rebuild_from_gold(lock: WriterLock, *, now: datetime) -> GoldRebuild:
             GoldResult(publication, built.records, built.lineage), recipe, configuration
         )
     return GoldRebuild(publication=publication, published=True)
+
+
+def _require_current_silver_decisions(
+    consumed: Sequence[SilverDecision],
+    current: Sequence[SilverDecision],
+) -> None:
+    """Refuse if any effective Silver decision differs from the build."""
+    if sorted(consumed, key=_silver_decision_key) != sorted(
+        current, key=_silver_decision_key
+    ):
+        raise SilverDecisionFreshnessError
+
+
+def _silver_decision_key(decision: SilverDecision) -> tuple[object, ...]:
+    """Return every typed field in one deterministic decision key."""
+    match decision:
+        case AcceptDiscrepancy():
+            return ("accept-discrepancy", decision.decision_id, decision.import_run_id)
+        case VoidImportRun():
+            return ("void-import-run", decision.decision_id, decision.import_run_id)
+        case Withdrawn():
+            return ("withdrawn", decision.decision_id, decision.transaction_id)
+        case SameTransaction():
+            return (
+                "same-transaction",
+                decision.decision_id,
+                decision.transaction_id,
+                decision.payload_id,
+                decision.record_ordinal,
+            )
 
 
 def rebuild_from_silver(lock: WriterLock) -> SilverRebuild:
