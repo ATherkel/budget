@@ -498,6 +498,11 @@ def read_decision_log(profile: Profile) -> DecisionLogRead:
         content = profile.input_file(DECISION_LOG_FILE_NAME).read_bytes()
     except FileNotFoundError:
         content = b""
+    except OSError as error:
+        reason = error.strerror or type(error).__name__
+        raise ConfigurationError(
+            (f"{DECISION_LOG_FILE_NAME}: cannot be read: {reason}",)
+        ) from None
     prefix = content[: content.rfind(b"\n") + 1]
     try:
         lines = prefix.decode("utf-8-sig").split("\n")[:-1]
