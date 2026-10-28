@@ -15,7 +15,7 @@ from tempfile import TemporaryDirectory
 from budget.importing import Coverage, import_inbox_file
 from budget.locking import writer_lock
 from budget.profiles import Profile
-from budget.silver import SilverStore
+from budget.silver import SilverStore, VoidImportRun
 from tests.cli.commands import migrate, rebuild
 from tests.cli.pipelines import write_inputs
 from tests.cli.profile_files import development_profile, write_profile
@@ -88,7 +88,11 @@ class RebuildDecisionLogTests(unittest.TestCase):
 
             assert (status, stderr) == (EXIT_OK, "")
             with SilverStore(profile) as store:
-                assert store.read().transactions == ()
+                stored = store.read_build()
+            assert stored.result.transactions == ()
+            assert stored.provenance is not None
+            assert stored.provenance.decisions == (VoidImportRun("d-0001", run_id),)
+            assert stored.provenance.decision_log_position == 1
 
     def test_an_invalid_decision_log_refuses_without_repeating_its_text(self) -> None:
         with TemporaryDirectory() as directory:
