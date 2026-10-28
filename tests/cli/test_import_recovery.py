@@ -10,6 +10,7 @@ explicit environment, and every account, date and amount is synthetic.
 """
 
 import json
+import os
 import unittest
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -264,19 +265,24 @@ class FailureAndRetryTests(unittest.TestCase):
                 recipe = gold.recipe(1)
             assert len(recipe.import_runs) == 2
 
-    def test_an_import_with_nothing_outstanding_changes_and_backs_up_nothing(
+    def test_an_empty_inbox_retry_leaves_silver_publication_and_backup_unchanged(
         self,
     ) -> None:
         with TemporaryDirectory() as directory:
             base = prepared(Path(directory), name="production")
             drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
             assert _run_import(base)[0] == EXIT_OK
+            silver_before = base.profile.silver_store.read_bytes()
+            os.utime(base.profile.silver_store, (946684800, 946684800))
+            silver_mtime_before = base.profile.silver_store.stat().st_mtime_ns
             sets_before = len(complete_backup_sets(base.profile))
 
             status, stdout, stderr = _run_import(base)
 
             assert (status, stderr) == (EXIT_OK, "")
             assert "nothing was imported" in stdout
+            assert base.profile.silver_store.read_bytes() == silver_before
+            assert base.profile.silver_store.stat().st_mtime_ns == silver_mtime_before
             assert len(complete_backup_sets(base.profile)) == sets_before
             with GoldStore(base.profile) as gold:
                 assert [m.to_publication_id for m in gold.pointer_history()] == [1]
