@@ -146,6 +146,32 @@ class ForeseeableRefusalTests(unittest.TestCase):
     ) -> None:
         self._refused_before_storing(_close_early, EXIT_REFUSED_INPUT, "closed_on")
 
+    def test_an_account_closed_before_a_stored_transaction_stores_nothing(
+        self,
+    ) -> None:
+        # The incoming file ends before closed_on; the stored one does not.
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            drop(base.profile, "joint-current", EXPORT_NAME, payload("04.03.2026"))
+            assert _run_import(base)[0] == EXIT_OK
+            write_inputs(
+                base.profile,
+                ACCOUNTS.replace(
+                    'bank_account_number = "0012345678"\n',
+                    'bank_account_number = "0012345678"\nclosed_on = 2026-03-02\n',
+                ),
+            )
+            source = drop(base.profile, "joint-current", "danske-20260306.csv", EXPORT)
+            silver_before = base.profile.silver_store.read_bytes()
+
+            status, stdout, stderr = _run_import(base)
+
+            assert (status, stdout) == (EXIT_REFUSED_INPUT, "")
+            assert "closed_on 2026-03-02" in stderr
+            assert source.read_bytes() == EXPORT
+            assert len(run_ids(base.profile.bronze_store)) == 1
+            assert base.profile.silver_store.read_bytes() == silver_before
+
     def test_a_commit_git_cannot_name_stores_nothing(self) -> None:
         with TemporaryDirectory() as directory:
             base = prepared(Path(directory), name="production")
