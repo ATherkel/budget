@@ -7,6 +7,7 @@ import sys
 import tempfile
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from hashlib import sha256
 from pathlib import Path
 
 from budget.dashboard.passphrase import set_passphrase
@@ -121,6 +122,16 @@ def _publish(profile: Profile, accounts: tuple[Account, ...]) -> None:
         late_booking_days=7,
         python_version=sys.version.split()[0],
         sqlite_version=sqlite3.sqlite_version,
+        silver_fingerprint_scheme="1",
+        silver_result_fingerprint="c" * 64,
+        silver_code_version=None,
+        silver_decision_log_position=0,
+        silver_decision_log_prefix_sha256=sha256(b"").hexdigest(),
+        silver_bronze_parser_provenance="unknown",
+        silver_currencies=frozenset(
+            (account.account_id, account.currency) for account in accounts
+        ),
+        silver_decisions=(),
     )
     publication = GoldPublication(
         publication_id=1,
