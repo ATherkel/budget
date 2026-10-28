@@ -279,10 +279,20 @@ consumer reads exactly one at a time. The rules are in
 _Avoid_: Version, snapshot (a Monthly balance snapshot is a fact), release
 
 **Recipe**:
-The record of every input a Publication was built from: its import runs,
-configuration snapshot, Decision log position, and code version. Rebuilding a
-Recipe with the code version it names yields the same result.
+The record of every input a Publication was built from: the stored Silver
+build it consumed, its configuration snapshot, its Gold Decision-log position,
+and its Gold producer code version. It retains an immutable copy of Silver's
+fingerprint and provenance rather than relabeling them with today's context.
 _Avoid_: Manifest, lineage (lineage explains one fact, not a build)
+
+**Silver build provenance**:
+The completed Silver result's versioned fingerprint, consumed import runs,
+currencies, effective Silver Decisions, Decision-log prefix, and actual Silver
+producer identity. An unknown value is explicit and cannot authorize a new
+Publication. The rules are in
+[`publications.md`](architecture/publications.md#silver-provenance).
+_Avoid_: Silver metadata (hides the ownership and atomicity contract), current
+context
 
 **Current publication**:
 The Publication reports show by default. A successful build becomes current at
