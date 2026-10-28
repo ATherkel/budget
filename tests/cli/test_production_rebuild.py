@@ -22,6 +22,7 @@ from tests.importing.households import ACCOUNTS
 EXIT_OK = 0
 EXIT_REFUSED_ENVIRONMENT = 4
 DIRTY_STATUS = " M src/budget/cli.py\n"
+SYNTHETIC_COMMIT = "a" * 40
 EMPTY_RESULT = SilverResult((), (), (), (), (), (), (), ())
 
 
@@ -32,6 +33,16 @@ def _git(returncode: int, stdout: str) -> mock.Mock:
     completed.stdout = stdout
     completed.stderr = ""
     return completed
+
+
+def _clean_git_run() -> mock.Mock:
+    """Git answers a clean checkout and names one synthetic commit."""
+
+    def run(arguments: list[str], **_: object) -> mock.Mock:
+        stdout = SYNTHETIC_COMMIT if "rev-parse" in arguments else ""
+        return _git(0, stdout)
+
+    return mock.Mock(side_effect=run)
 
 
 def _profile_file(root: Path, name: str) -> Path:
@@ -74,28 +85,32 @@ class ProductionRebuildCodeTests(unittest.TestCase):
                 assert store.read() == EMPTY_RESULT
 
             # Clean code: the same command runs, like it does in development.
-            run = mock.Mock(return_value=_git(0, ""))
+            run = _clean_git_run()
             with mock.patch("subprocess.run", run):
                 status, produced, stderr = rebuild(production_file, "--from", "silver")
 
             assert (status, stderr) == (EXIT_OK, "")
-            called = run.call_args
-            assert called is not None
-            arguments, kwargs = called
+            calls = [(call.args, call.kwargs) for call in run.call_args_list]
+            arguments, kwargs = next(
+                (args, found)
+                for args, found in calls
+                if args[0][1:]
+                == [
+                    "status",
+                    "--porcelain",
+                    "--untracked-files=normal",
+                ]
+            )
             # A PATH-resolved absolute executable, `git` or `git.exe`, running
             # the fixed `git status` command.
             assert Path(arguments[0][0]).name.startswith("git")
-            assert arguments[0][1:] == [
-                "status",
-                "--porcelain",
-                "--untracked-files=normal",
-            ]
             # The check reads the package's own checkout, not this profile.
             assert (
                 Path(budget.__file__)
                 .resolve()
                 .parent.is_relative_to(Path(kwargs["cwd"]).resolve())
             )
+            assert any(args[0][1:] == ["rev-parse", "HEAD"] for args, _ in calls)
             development_status, developed, development_stderr = rebuild(
                 development_file, "--from", "silver"
             )

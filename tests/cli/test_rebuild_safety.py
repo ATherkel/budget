@@ -36,6 +36,7 @@ LATER_EXPORT = "danske-20260403.csv"
 START = date(2026, 3, 1)
 DIRTY_STATUS = " M src/budget/cli.py\n"
 SYNTHETIC_GIT = "/synthetic/git"
+SYNTHETIC_COMMIT = "a" * 40
 # A payload whose header is not a `danske-csv-v1` header: a format failure.
 GARBAGE = b'"Nope","Nope"\r\n1,2\r\n'
 
@@ -95,7 +96,12 @@ def _git(status: str = "", *, error: OSError | None = None) -> Iterator[None]:
     `shutil.which` is replaced as well, so the check never depends on a Git
     installation, and the test names both halves of the boundary itself.
     """
-    run = mock.Mock(return_value=_finished(status))
+
+    def answer(arguments: list[str], **_: object) -> mock.Mock:
+        stdout = SYNTHETIC_COMMIT if "rev-parse" in arguments else status
+        return _finished(stdout)
+
+    run = mock.Mock(side_effect=answer)
     if error is not None:
         run.side_effect = error
     with (

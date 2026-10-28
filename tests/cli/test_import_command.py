@@ -20,7 +20,7 @@ from budget.routine_logging import LOG_FILE, LOG_FOLDER
 from budget.silver import SilverImportRun, SilverStore
 from tests.backups.sets import manifest, run_ids
 from tests.cli.commands import import_, migrate
-from tests.cli.imports import clean_git, write_ranges
+from tests.cli.imports import clean_git_run, write_ranges
 from tests.cli.profile_files import development_profile, write_profile
 from tests.importing.households import (
     ACCOUNTS,
@@ -1066,7 +1066,7 @@ class ProductionImportTests(unittest.TestCase):
             ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
             # Production builds only from committed code; Git is the boundary.
-            with mock.patch("subprocess.run", return_value=clean_git()):
+            with mock.patch("subprocess.run", new=clean_git_run()):
                 status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
             assert (status, stderr) == (EXIT_OK, "")
@@ -1100,7 +1100,7 @@ class ProductionImportTests(unittest.TestCase):
             clock.now.return_value = NOW
 
             with (
-                mock.patch("subprocess.run", return_value=clean_git()),
+                mock.patch("subprocess.run", new=clean_git_run()),
                 mock.patch("budget.inbox.datetime", clock),
             ):
                 status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
@@ -1135,7 +1135,7 @@ class ProductionImportTests(unittest.TestCase):
                     for option in mode
                 ]
 
-                with mock.patch("subprocess.run", return_value=clean_git()):
+                with mock.patch("subprocess.run", new=clean_git_run()):
                     status, stdout, stderr = import_(profile_file, *options)
 
                 assert (status, stderr) == (EXIT_OK, "")
@@ -1157,7 +1157,7 @@ class ProductionImportTests(unittest.TestCase):
             drop(profile, "lost-folder", "danske-20260305.csv", content)
             ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
-            with mock.patch("subprocess.run", return_value=clean_git()):
+            with mock.patch("subprocess.run", new=clean_git_run()):
                 status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
             assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
@@ -1183,7 +1183,7 @@ class ProductionImportTests(unittest.TestCase):
             source = drop(profile, "joint-current", "danske-20260305.csv", content)
             ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
-            with mock.patch("subprocess.run", return_value=clean_git()):
+            with mock.patch("subprocess.run", new=clean_git_run()):
                 status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
             assert status == EXIT_REFUSED_INPUT
@@ -1218,9 +1218,9 @@ class ProductionImportTests(unittest.TestCase):
                 content = payload("01.03.2026")
                 source = drop(profile, "joint-current", "danske-20260305.csv", content)
                 ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
-                git = clean_git()
+                status_text = ""
                 if case == "uncommitted code":
-                    git.stdout = " M src/budget/cli.py\n"
+                    status_text = " M src/budget/cli.py\n"
                 if case == "a decision":
                     profile.input_file("decisions.jsonl").write_text(
                         '{"decision_id": "d-0001"}\n', encoding="utf-8"
@@ -1233,7 +1233,7 @@ class ProductionImportTests(unittest.TestCase):
                     for lost in profile.stores.glob("gold.db*"):
                         lost.unlink()
 
-                with mock.patch("subprocess.run", return_value=git):
+                with mock.patch("subprocess.run", new=clean_git_run(status_text)):
                     status, stdout, stderr = import_(
                         profile_file, "--ranges", str(ranges)
                     )

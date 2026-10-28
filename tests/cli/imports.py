@@ -4,12 +4,33 @@
 from pathlib import Path
 from unittest import mock
 
+SYNTHETIC_COMMIT = "a" * 40
+
 
 def clean_git() -> mock.Mock:
     """A finished Git call reporting a clean, tracked checkout."""
     completed = mock.Mock()
     completed.returncode = 0
     completed.stdout = ""
+    completed.stderr = ""
+    return completed
+
+
+def clean_git_run(status: str = "") -> mock.Mock:
+    """A `subprocess.run` side effect for tracked, clean production code."""
+
+    def run(arguments: list[str], **_: object) -> mock.Mock:
+        stdout = SYNTHETIC_COMMIT if "rev-parse" in arguments else status
+        return _completed(stdout)
+
+    return mock.Mock(side_effect=run)
+
+
+def _completed(stdout: str) -> mock.Mock:
+    """Return one successful Git process."""
+    completed = mock.Mock()
+    completed.returncode = 0
+    completed.stdout = stdout
     completed.stderr = ""
     return completed
 

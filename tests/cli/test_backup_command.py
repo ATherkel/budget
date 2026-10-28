@@ -103,7 +103,7 @@ class BackupCommandTests(unittest.TestCase):
             newest, *_ = complete_backup_sets(production)
             assert manifest(newest.path)["stores"] == {
                 "bronze": {"path": "bronze.db", "schema_version": 1},
-                "silver": {"path": "silver.db", "schema_version": 2},
+                "silver": {"path": "silver.db", "schema_version": 3},
             }
 
     def test_backup_is_refused_where_a_gold_store_its_sets_hold_is_left_empty(

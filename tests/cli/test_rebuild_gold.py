@@ -24,7 +24,7 @@ from budget.gold.store import GoldStore
 from budget.inputs import load_configuration
 from budget.locking import WriterLock, writer_lock
 from budget.rebuilding import GoldRebuild, rebuild_from_gold
-from budget.silver import SilverResult, SilverStore, VoidImportRun, result_fingerprint
+from budget.silver import SilverResult, SilverStore, result_fingerprint
 from budget.silver.currencies import UnknownCurrencyError
 from tests.cli.commands import rebuild
 from tests.cli.pipelines import (
@@ -420,9 +420,21 @@ class SilverChangeTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
             assert rebuild(built.profile_file)[0] == EXIT_OK
-            rebuild_silver_with(
-                built.profile, VoidImportRun("d-0001", built.import_run_id)
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "void-import-run",
+                "targets": [built.import_run_id],
+                "reason": "synthetic mistaken run",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n",
+                encoding="utf-8",
             )
+            assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
 
             status, stdout, stderr = rebuild(built.profile_file)
 

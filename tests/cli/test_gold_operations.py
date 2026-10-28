@@ -23,7 +23,7 @@ from budget.profiles import Profile, load_profile_file
 from budget.silver import SilverStore
 from tests.backups.sets import gold_publications, manifest, run_ids
 from tests.cli.commands import backup, import_, migrate
-from tests.cli.imports import clean_git, write_ranges
+from tests.cli.imports import clean_git_run, write_ranges
 from tests.cli.profile_files import write_profile
 from tests.gold.invariants import assert_contract_invariants
 from tests.gold.publishing import RECIPE, publication
@@ -36,7 +36,7 @@ EXIT_OK = 0
 def _import(profile_file: Path, start: str, end: str) -> tuple[int, str, str]:
     """Run `budget import` over one declared range, from committed code."""
     ranges = write_ranges(profile_file.parent, default=(start, end))
-    with mock.patch("subprocess.run", return_value=clean_git()):
+    with mock.patch("subprocess.run", new=clean_git_run()):
         return import_(profile_file, "--ranges", str(ranges))
 
 
