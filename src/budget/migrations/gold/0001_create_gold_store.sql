@@ -43,7 +43,6 @@ CREATE TABLE recipes (
     code_version TEXT,
     contract_version TEXT NOT NULL,
     silver_identity_version TEXT NOT NULL,
-    late_booking_days INTEGER NOT NULL CHECK (late_booking_days >= 0),
     python_version TEXT NOT NULL,
     sqlite_version TEXT NOT NULL
 ) STRICT;

@@ -624,3 +624,59 @@ def test_an_amount_its_currency_cannot_hold_writes_nothing(store: GoldStore) -> 
 
     assert store.current() == first
     assert store.next_publication_id() == 2
+
+
+def test_a_store_at_schema_version_3_migrates_and_keeps_its_publications(
+    tmp_path: Path,
+) -> None:
+    profile = make_test_profile(tmp_path)
+    profile.gold_store.parent.mkdir(parents=True)
+    versions = (
+        "0001_create_gold_store.sql",
+        "0002_persist_classification_reviews.sql",
+        "0003_persist_review_target_provenance.sql",
+    )
+    with closing(sqlite3.connect(profile.gold_store)) as connection:
+        connection.execute("PRAGMA journal_mode = WAL")
+        for name in versions:
+            connection.executescript((GOLD_MIGRATIONS / name).read_text("utf-8"))
+        connection.execute("PRAGMA user_version = 3")
+        connection.execute(
+            "INSERT INTO store_identity VALUES (1, ?, 'gold')", (profile.name,)
+        )
+        connection.execute(
+            "INSERT INTO publications VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                1,
+                "pipeline",
+                None,
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:00+00:00",
+                None,
+                "0.2",
+                "synthetic",
+                "0" * 64,
+            ),
+        )
+        connection.execute("INSERT INTO results VALUES (1)")
+        connection.execute(
+            "INSERT INTO pointer_moves VALUES (?, ?, ?, ?, ?)",
+            (1, "2026-01-01T00:00:00+00:00", None, 1, "build"),
+        )
+        connection.execute(
+            "INSERT INTO configuration_snapshots VALUES (?, ?)", ("f" * 64, "{}")
+        )
+        connection.execute(
+            "INSERT INTO recipes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, "f" * 64, 0, "e" * 64, None, "0.2", "1", "3.12.0", "3.45.0"),
+        )
+        connection.commit()
+
+    migrate_gold(profile)
+
+    with GoldStore(profile) as store:
+        current = store.current()
+        assert current is not None
+        assert current.publication_id == 1
+        assert store.recipe(1).late_booking_days == 7
+        assert store.next_publication_id() == 2
