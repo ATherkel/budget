@@ -17,7 +17,7 @@ from budget.bronze import BronzeStore
 from budget.bronze.parsers.registry import source_parser
 from budget.profiles import Profile, load_profile_file
 from budget.routine_logging import LOG_FILE, LOG_FOLDER
-from budget.silver import SilverStore
+from budget.silver import SilverImportRun, SilverStore
 from tests.backups.sets import manifest, run_ids
 from tests.cli.commands import import_, migrate
 from tests.cli.imports import clean_checkout, clean_git, write_ranges
@@ -97,9 +97,20 @@ class ImportCommandTests(unittest.TestCase):
                 "2026-03-04",
             )
             with SilverStore(profile) as store:
-                [result] = store.read().import_run_results
+                stored = store.read_build()
+                [result] = stored.result.import_run_results
             assert result.import_run_id == entry["import_run_id"]
             assert result.status == "accepted"
+            provenance = stored.provenance
+            assert provenance is not None
+            assert provenance.import_runs == frozenset(
+                {SilverImportRun(result.import_run_id, result.payload_id)}
+            )
+            assert provenance.currencies["joint-current"] == "DKK"
+            assert provenance.decisions == ()
+            assert provenance.decision_log_position == 0
+            assert provenance.code_version is None
+            assert provenance.bronze_parser_provenance == "unknown"
             assert "[1] joint-current  stored\n" in stdout
             assert "Silver   1 admitted, 0 quarantined, 0 dropped\n" in stdout
 
