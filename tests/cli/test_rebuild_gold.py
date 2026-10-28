@@ -24,7 +24,7 @@ from budget.gold.store import GoldStore
 from budget.inputs import load_configuration
 from budget.locking import WriterLock, writer_lock
 from budget.rebuilding import GoldRebuild, HouseholdInputs, rebuild_from_gold
-from budget.silver import SilverStore, VoidImportRun, result_fingerprint
+from budget.silver import SilverResult, SilverStore, VoidImportRun, result_fingerprint
 from budget.silver.currencies import UnknownCurrencyError
 from tests.cli.commands import rebuild
 from tests.cli.pipelines import (
@@ -459,6 +459,25 @@ class SilverChangeTests(unittest.TestCase):
 
 
 class NeverBuiltSilverTests(unittest.TestCase):
+    def test_unknown_silver_provenance_refuses_gold(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            with SilverStore(built.profile) as store:
+                store.replace(
+                    SilverResult((), (), (), (), (), (), (), ()),
+                    currencies={"joint-current": "DKK"},
+                )
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert stdout == ""
+            assert "no trustworthy build provenance" in stderr
+            assert "rebuild --from silver" in stderr
+            with GoldStore(built.profile) as gold:
+                assert gold.current() is None
+                assert gold.next_publication_id() == 1
+
     def test_a_gold_rebuild_over_a_silver_never_built_refuses(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory), silver=False)
