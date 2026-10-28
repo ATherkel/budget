@@ -9,14 +9,20 @@ than a long list of positional arguments.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from hashlib import sha256
+from typing import Final
 
 from budget.bronze.models import FormatFailure, ImportRun, SourceRecord
 from budget.locking import WriterLock, writer_lock
 from budget.profiles import Profile
 from budget.silver.build import build
 from budget.silver.decisions import SilverDecision
-from budget.silver.models import SilverResult
+from budget.silver.fingerprint import SILVER_FINGERPRINT_SCHEME, result_fingerprint
+from budget.silver.identity import IDENTITY_VERSION
+from budget.silver.models import SilverImportRun, SilverProvenance, SilverResult
 from budget.silver.store import SilverStore
+
+EMPTY_DECISION_LOG_PREFIX: Final = sha256(b"").hexdigest()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -29,9 +35,9 @@ class SilverBuildInputs:
     currencies: Mapping[str, str]
     decisions: Sequence[SilverDecision] = ()
     decision_log_position: int = 0
-    decision_log_prefix_sha256: str = "0" * 64
+    decision_log_prefix_sha256: str = EMPTY_DECISION_LOG_PREFIX
     code_version: str | None = None
-    identity_version: str = "1"
+    identity_version: str = IDENTITY_VERSION
 
 
 def rebuild_silver(
@@ -64,6 +70,26 @@ def _replace(profile: Profile, inputs: SilverBuildInputs) -> SilverResult:
         currencies=inputs.currencies,
         decisions=inputs.decisions,
     )
+    provenance = SilverProvenance(
+        fingerprint_scheme=SILVER_FINGERPRINT_SCHEME,
+        result_fingerprint=result_fingerprint(result, currencies=inputs.currencies),
+        import_runs=_consumed_runs(inputs.runs),
+        currencies=inputs.currencies,
+        decisions=inputs.decisions,
+        decision_log_position=inputs.decision_log_position,
+        decision_log_prefix_sha256=inputs.decision_log_prefix_sha256,
+        code_version=inputs.code_version,
+        identity_version=inputs.identity_version,
+    )
     with SilverStore(profile) as store:
-        store.replace(result, currencies=inputs.currencies)
+        store.replace(result, currencies=inputs.currencies, provenance=provenance)
     return result
+
+
+def _consumed_runs(runs: Sequence[ImportRun]) -> frozenset[SilverImportRun]:
+    """Return every stored or repeated run Silver actually interpreted."""
+    return frozenset(
+        SilverImportRun(run.import_run_id, run.payload_id)
+        for run in runs
+        if run.outcome in {"stored", "repeat"}
+    )
