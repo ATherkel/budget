@@ -28,6 +28,10 @@ class SilverBuildInputs:
     format_failures: Mapping[str, Sequence[FormatFailure]]
     currencies: Mapping[str, str]
     decisions: Sequence[SilverDecision] = ()
+    decision_log_position: int = 0
+    decision_log_prefix_sha256: str = "0" * 64
+    code_version: str | None = None
+    identity_version: str = "1"
 
 
 def rebuild_silver(
