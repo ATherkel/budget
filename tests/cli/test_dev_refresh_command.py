@@ -6,6 +6,7 @@ whose `upstream_backups` names production's backups folder, both in one
 temporary folder. Every test passes `main` an explicit environment.
 """
 
+import errno
 import json
 import shutil
 import sqlite3
@@ -15,6 +16,7 @@ from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 from budget.backups import BackupSet, back_up, complete_backup_sets
 from budget.bronze import BronzeStore
@@ -280,6 +282,44 @@ class DevRefreshTests(unittest.TestCase):
             assert checksum(development.bronze_store) != checksum(
                 written.path / "bronze.db"
             )
+
+    def test_a_writable_refresh_cut_off_while_moving_keeps_the_old_stores(
+        self,
+    ) -> None:
+        # Never new Bronze beside old Silver: the stores change as a group.
+        with TemporaryDirectory() as directory:
+            production, _ = _production_with_a_set(Path(directory) / "prod")
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+            development.stores.mkdir()
+            old = {
+                store: f"development's own {store}".encode()
+                for store in ("bronze.db", "silver.db", "gold.db")
+            }
+            for store, content in old.items():
+                (development.stores / store).write_bytes(content)
+            move = Path.replace
+            failed: list[Path] = []
+
+            def cut_off_once_at_silver(source: Path, target: Path) -> Path:
+                # Once: the move putting the old store back then succeeds.
+                if Path(target) == development.silver_store and not failed:
+                    failed.append(Path(target))
+                    raise OSError(errno.EIO, "Input/output error")
+                return move(source, target)
+
+            with mock.patch.object(
+                Path, "replace", autospec=True, side_effect=cut_off_once_at_silver
+            ):
+                status, stdout, stderr = dev_refresh(profile_file, "--writable")
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "Input/output error; development's stores are as they were" in (
+                stderr
+            )
+            for store, content in old.items():
+                assert (development.stores / store).read_bytes() == content
 
     def test_dev_refresh_replaces_upstream_with_a_newer_set(self) -> None:
         with TemporaryDirectory() as directory:
