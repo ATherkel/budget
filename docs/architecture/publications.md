@@ -74,16 +74,57 @@ A recipe names each input exactly and never by "latest":
 
 | Part | Content |
 | --- | --- |
-| Data | The set of import runs Silver was built from, each with its `import_run_id` and payload hash: the stored runs, admitted or quarantined, and the `repeat` runs of an admitted payload. Silver derives admission and quarantine from these; admission is not an input. A refused run is no input to Silver, so it is not named, and presenting a refused file again publishes nothing. The recipe is read from Silver, never from Bronze, so Gold does not read Bronze. |
+| Silver build | The immutable Silver provenance value consumed by Gold, including its versioned result/currency fingerprint and exact run identifiers. The recipe is read from Silver, never from Bronze, so Gold does not read Bronze. |
 | Configuration snapshot | The parsed, canonical content of the account registry, category taxonomy, and classification rules. It is stored once per distinct content and referenced by its fingerprint. |
 | Late-booking window | The profile's `[gold] late_booking_days` at the build, in whole days ([`operations.md`](operations.md#selecting-a-profile)). `late_bookings_settled` depends on it, so changing it requires a new publication, and an earlier publication keeps the window its recipe records. |
-| Decision log position | The last decision-log entry included. The effective decisions are derived from the log up to that entry. |
-| Code version | The commit of the application code, with its locked dependencies, and the Gold contract version and Silver identity version it implements. It also determines the transfer matching policy, which is a constant of the code ([`classification.md`](classification.md#inputs)). |
+| Gold decision context | The last Gold decision-log entry included and its audit prefix. Effective Gold decisions are derived from that prefix. |
+| Gold code version | The commit of the application code that built Gold, with its locked dependencies and Gold contract version. It also determines the transfer matching policy, which is a constant of the code ([`classification.md`](classification.md#inputs)). |
 
 A recipe holds inputs only, so two recipes can be compared before anything is
 built. The recipe also records the Python and SQLite versions that ran the
 build.
 They are diagnostic only and not part of the recipe's identity.
+
+### Silver provenance
+
+Silver commits one completion value atomically with its result. It records:
+
+- fingerprint scheme and a SHA-256 over every public Silver result record plus
+  the consumed currency snapshot;
+- every stored or repeated import run Silver interpreted, each with its payload
+  identifier;
+- the exact account-currency projection with which amounts were interpreted;
+- every effective typed Silver decision and the full decision-log position and
+  prefix hash consumed;
+- the actual Silver producer commit when known and the Silver identity-contract
+  version; and
+- an explicit `unknown` Bronze parser-provenance marker.
+
+The fingerprint ignores incidental storage order and decimal scale, while
+retaining duplicates and sequence values that affect meaning. It contains no
+build time, environment value or mutable current log content.
+
+A Silver build with no review items is complete when the completion value
+exists, even if its currency projection is empty. A direct store replacement
+without provenance is complete but explicitly unknown. A migrated
+pre-provenance result is cleared because neither the result's old inputs nor its
+producer may be inferred.
+
+Gold copies the consumed Silver provenance into its retained recipe. It never
+reads today's Silver metadata to explain an older publication. Historical
+recipes migrated from earlier schemas retain missing provenance as explicit
+unknown values.
+
+Before publishing Gold, the command validates that:
+
+- the recorded Silver decision-log prefix is still a prefix of the current log;
+- the effective Silver decisions equal those Silver consumed; and
+- currencies for accounts represented by the stored Silver result still equal
+  the consumed projection.
+
+A changed required decision or currency, or a changed/truncated prefix, refuses
+publication and names `budget rebuild --from silver`. Gold-only log changes and
+an added empty account remain valid.
 
 The result belongs to the publication. Its **result fingerprint** is a
 SHA-256 hash over a canonical serialization of every record the publication
@@ -102,25 +143,33 @@ of it; they change with the recipe's code version.
 
 ## What Reproducible Promises
 
-1. **The same recipe yields the same result.** Rebuilding a recipe with the
-   code version it names gives a result with the same fingerprint: the same
-   records, identifiers, and amounts.
+1. **The same stage-aware recipe yields the same result.** Rebuilding Silver
+   with the recorded Silver inputs and producer identity gives the same Silver
+   fingerprint; rebuilding Gold with that stored Silver and the recorded Gold
+   inputs and producer identity gives the same Gold fingerprint.
 2. **Timestamps never enter the result.** `built_at` is publication metadata
    outside the fingerprint. The build never reads the clock, file modification
    times, environment variables, or import order beyond the order Silver
    derives from recorded fields (ADR-009). Anything that depends on today's
    date, such as the provisional label, is computed when the report is read.
-3. **A code change is attributable.** Different code may give a different
-   result. The recipe names the code, so the difference is explained, and the
-   diff printed on every build shows it. A behavior-neutral code change that
-   keeps the fingerprint scheme yields a new publication with an unchanged
-   result fingerprint.
+3. **Each code change is attributable to its stage.** Silver and Gold record
+   their own producer code. Different code may give a different result, and the
+   diff printed on every build shows it. A behavior-neutral Gold code change
+   that keeps the fingerprint scheme yields a new publication with an unchanged
+   Gold result fingerprint without pretending the Silver producer changed.
 4. **Production only builds from named code.** A production build refuses to
    run when it cannot name its code version exactly, for example from
    uncommitted changes. A development store makes no reproducibility promise:
    a development build may run from uncommitted code, and nothing records
    which code that was. Each profile keeps its own stores
-   ([`operations.md`](operations.md#profiles)).
+   ([`operations.md`](operations.md#profiles)). When a production Silver or
+   Gold producer commit is required, it must remain an actual recorded
+   producer identity; it is never backfilled from the checkout that happens to
+   read the store later.
+
+This round does not record Bronze parser identity. Silver provenance says so
+explicitly. Parser capture and cross-stage replay remain later work; no missing
+parser identity is represented as today's code.
 
 Not promised:
 
@@ -159,15 +208,18 @@ An import, a configuration change, a new manual decision, or a new code version
 starts a pipeline build:
 
 1. Bronze has already committed the import run's payload on import.
-2. The build assembles the recipe from the current inputs. If the recipe
-   equals the current publication's recipe, nothing is built or published.
-3. Silver and Gold are derived and checked. A configuration error fails the
-   build (ADR-011).
-4. On success, in one write transaction, the new publication's result is
+2. The build reads one complete stored Silver value and the validated Gold
+   inputs, then verifies the Silver decision prefix, effective decisions and
+   represented currencies.
+3. The stage-aware recipe is assembled from those values. If it equals the
+   current publication's recipe, nothing is built or published.
+4. Gold is derived and checked. A configuration or freshness error fails the
+   build before publication (ADR-011, ADR-020).
+5. On success, in one write transaction, the new publication's result is
    stored, the pointer moves to it, and the pointer history records the move.
    A failed build leaves everything as it was, and readers never see a partial
    publication.
-5. The CLI prints a **diff against the previous current publication**: per
+6. The CLI prints a **diff against the previous current publication**: per
    month and account, the measures that changed (income, expenses, each
    category and group, unclassified money, and coverage), and the review items
    opened and closed. The diff contains financial values, so it goes to the

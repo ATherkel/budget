@@ -207,6 +207,37 @@ whether a header-only export of a quiet account or one with a `FormatFailure`,
 still has its declared range. Silver never derives a range from the
 transaction dates.
 
+`SilverStore` commits a completed `SilverBuild` containing:
+
+```python
+SilverBuild(
+    result: SilverResult,
+    currencies: Mapping[str, str],
+    provenance: SilverProvenance | None,
+)
+
+SilverProvenance(
+    fingerprint_scheme: str,
+    result_fingerprint: str,
+    import_runs: frozenset[SilverImportRun],
+    currencies: Mapping[str, str],
+    decisions: Sequence[SilverDecision],
+    decision_log_position: int,
+    decision_log_prefix_sha256: str,
+    code_version: str | None,
+    identity_version: str,
+    bronze_parser_provenance: Literal["unknown"],
+)
+```
+
+The versioned fingerprint covers every public result family and the currency
+snapshot. It normalizes incidental record/list order and decimal scale while
+retaining duplicates and meaningful sequence fields. Result, currencies and
+provenance are read in one SQLite snapshot and replaced in one transaction.
+A completion row distinguishes never built from a valid empty build; `None`
+provenance is an explicitly unknown direct replacement. ADR-020 defines why
+Gold refuses to publish from unknown or stale provenance.
+
 ## Rules
 
 **Amounts**

@@ -7,6 +7,9 @@ type: decisions
 [ADR-015](ADR-015-profiles-stages-and-household-inputs.md): a labeled result
 that a Gold migration cannot convert is also extracted and recorded as a legacy
 publication, and retention keeps its pre-migration backup.
+The single-code interpretation of a recipe is refined by
+[ADR-020](ADR-020-stage-specific-build-provenance.md): Silver and Gold record
+their actual producer identities separately.
 
 Gold history made after the backup set that `restore` uses is lost; see
 [Publication recovery](../architecture/publications.md#publication-recovery).

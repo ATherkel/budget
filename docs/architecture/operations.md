@@ -51,8 +51,8 @@ untransformed extract, is Bronze
 | Store | Step | Holds | Rebuildable from | In a backup set |
 | --- | --- | --- | --- | --- |
 | `bronze.db` | Extract | Raw payloads, import runs, source records, format failures | The export archive and the import log | Yes |
-| `silver.db` | Clean and conform | Canonical transactions, unbooked records, validation errors, import review items, evidence | Bronze and the inputs | Yes, so development can start from it |
-| `gold.db` | Deliver | The retained publications' Gold tables and lineage, recipes, configuration snapshots, the current pointer and its history, labels, legacy entries | Results: each from its recipe, replayed with its code (ADR-014). Recipes and the pointer history: no, they are history | Yes |
+| `silver.db` | Clean and conform | Canonical transactions, unbooked records, validation errors, import review items, evidence, and the complete result fingerprint and build provenance | Bronze and the inputs | Yes, so development can start from it |
+| `gold.db` | Deliver | The retained publications' Gold tables and lineage, recipes with retained Silver provenance, configuration snapshots, the current pointer and its history, labels, legacy entries | Results: each from its recipe, replayed with its stage-aware code (ADR-014 and ADR-020). Recipes and the pointer history: no, they are history | Yes |
 | `gold/legacy/publication-<id>.db` | Deliver: legacy | One labeled publication that a Gold migration could not convert, in its old schema | Its recipe, replayed with its code | Yes |
 
 Silver's conforming makes the sources agree: it produces source-neutral
@@ -74,8 +74,9 @@ Rules for every store:
   exception is development's `upstream/` folder: development opens the
   production stores there read-only, and nowhere else.
 - **A write to one store is one transaction.** Silver and Gold commit
-  separately. Readers only reach Gold through the pointer, so a crash between
-  the two leaves the previous publication current.
+  separately. A stage's result and its provenance commit together. Readers only
+  reach Gold through the pointer, so a crash between stages leaves the previous
+  publication current.
 - **One writing command at a time.** Every command that writes holds a lock on
   `budget.lock` in the profile's stores folder for its whole run, including
   the backup set it writes. A second writing command exits 4 at once with
@@ -104,6 +105,37 @@ against `gold.db` must filter on `publication_id`, or it adds retained
 publications together. Views restricted to the current publication
 (`current_*`) are deferred: a later migration can add them if hand queries
 become routine.
+
+### Stage-specific provenance
+
+ADR-020 applies to every Silver replacement. `budget rebuild --from silver` and
+`budget import` validate the decision log once, apply its effective Silver
+decisions, and commit the result with:
+
+- a versioned fingerprint covering every public Silver result field and the
+  consumed currency projection;
+- all stored and repeated import runs with payload identifiers;
+- the exact currencies and typed effective Silver decisions;
+- the decision-log position and byte-prefix hash;
+- the actual Silver producer commit when known and the identity version; and
+- an explicit `unknown` Bronze parser-provenance marker.
+
+Direct store writers must supply provenance. A replacement without it is
+readable but explicitly unknown and refuses Gold publication. Migration from a
+pre-provenance Silver schema clears its derived result so the operator can
+rebuild it from Bronze rather than inherit an inferred context.
+
+Gold stores an immutable copy of the consumed Silver provenance in each new
+recipe. Before publication it verifies that the retained Silver decision prefix
+is intact, current effective Silver decisions match, and currencies for
+accounts represented in Silver have not changed. Each refusal happens before
+Gold writes and directs the operator to `budget rebuild --from silver`.
+Gold-only decisions and an added empty account do not require that rebuild.
+
+Historical Gold recipes remain readable with absent Silver provenance. They are
+not backfilled. Bronze parser capture, historical Silver replay and their
+recovery behavior remain later work; this intermediate contract does not claim
+that today's parser produced older source records.
 
 ### Legacy publications
 
@@ -591,7 +623,7 @@ matches more than one transaction is refused.
 | 1 | Unexpected error: a defect. Python's own exit status for an unhandled exception. |
 | 2 | Usage error. `argparse`'s own exit status. |
 | 3 | Refused input: a configuration error, a rejected decision, a misfiled export, an import run Bronze refused, or an inbox file a cross-account duplicate refused. Every file such a group holds is refused, whether or not the person allowed the import of the rest, and `import` still publishes the files it stored. |
-| 4 | Refused environment: no profile, a store from another profile or stage, a missing or newer migration, SQLite below the version floor, uncommitted code in production, running code other than the code version a replayed recipe names (ADR-014), another writing command running, a store locked past its busy timeout, or `restore` into a profile that has stores. |
+| 4 | Refused environment: no profile, a store from another profile or stage, a missing or newer migration, SQLite below the version floor, uncommitted code in production, running code other than the code version a replayed recipe names (ADR-014), unknown or stale Silver provenance that requires `rebuild --from silver`, another writing command running, a store locked past its busy timeout, or `restore` into a profile that has stores. |
 | 5 | Verification failed: a fingerprint mismatch, a failed integrity check, a backup set whose checksums do not match its manifest, or an import log that disagrees with Bronze. |
 
 The codes 1 and 2 are the ones Python and `argparse` already use, so every
@@ -761,6 +793,8 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | Crash while writing a backup set | The set stays in `backup-staging\` or as a `.partial` folder, is never used, and is deleted by the next backup | Nothing to do |
 | The backup before a migration cannot be written or verified | The migration does not begin; the schema and its version are unchanged; exit 4, or 5 when a copy or the import log does not verify | Fix what the message names, then rerun `migrate` |
 | A migration fails | No step of it is committed and the store keeps its version, though a stage migrated before it (Bronze before Silver, and both before Gold) keeps its new one; the set taken first stays held for recovery until a migration succeeds, or a later backup records a store past it | Fix the defect; the held set restores the stores if needed |
+| Silver migrates from a pre-provenance schema | The old derived result is cleared and the store reads as not built | Run `budget rebuild --from silver`; Gold then publishes from complete provenance |
+| Gold reads unknown, stale or structurally invalid Silver provenance | Gold refuses before writing and names `budget rebuild --from silver` | Rebuild Silver, then rerun the intended Gold build |
 | The backup after a migration fails | The store is migrated; the set taken first stays held; exit 4, saying so | Fix what the message names, then run `budget backup` |
 | `migrate` finds no production store for a stage, or only a file an interrupted start left empty | Nothing is created or changed, in any stage; exit 4. So is `--new-store` where one of the stores it would start is started already, naming the `--stage` that starts the rest, and Silver or Gold where Bronze has no store a backup set can hold, since every set holds Bronze | Restore the newest backup set that holds it, or, for a first store, rerun with `--new-store`, adding `--stage` for that stage alone when another stage's store exists |
 | A store a complete backup set holds is missing, or only a file an interrupted start left empty | `backup`, and a `migrate` that would back up, publish nothing and change nothing; exit 4 | Restore the store from the newest backup set that holds it |
