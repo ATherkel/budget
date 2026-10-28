@@ -321,6 +321,34 @@ class DevRefreshTests(unittest.TestCase):
             for store, content in old.items():
                 assert (development.stores / store).read_bytes() == content
 
+    def test_a_writable_refresh_leaves_no_store_the_set_does_not_hold(
+        self,
+    ) -> None:
+        # A set from before Gold was backed up restores no Gold: development
+        # must not keep its old Gold store beside production's Bronze.
+        with TemporaryDirectory() as directory:
+            production, written = _production_with_a_set(Path(directory) / "prod")
+            listed = manifest(written.path)
+            stores, files = listed["stores"], listed["files"]
+            assert isinstance(stores, dict)
+            assert isinstance(files, dict)
+            del stores["gold"], files["gold.db"]
+            (written.path / "gold.db").unlink()
+            (written.path / "manifest.json").write_text(
+                json.dumps(listed), encoding="utf-8"
+            )
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+            development.stores.mkdir()
+            development.gold_store.write_bytes(b"development's old Gold")
+
+            status, _, stderr = dev_refresh(profile_file, "--writable")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert development.bronze_store.exists()
+            assert not development.gold_store.exists()
+
     def test_dev_refresh_replaces_upstream_with_a_newer_set(self) -> None:
         with TemporaryDirectory() as directory:
             production, _ = _production_with_a_set(Path(directory) / "prod")
