@@ -114,8 +114,10 @@ decisions, and commit the result with:
 
 - a versioned fingerprint covering every public Silver result field and the
   consumed currency projection;
-- all stored and repeated import runs with payload identifiers;
-- the exact currencies and typed effective Silver decisions;
+- all stored and repeated import runs as immutable Bronze references: import-run
+  identifiers and payload hashes, not copied run metadata;
+- the exact currencies for those runs, including any run later voided by a
+  decision, and the typed effective Silver decisions;
 - the decision-log position and byte-prefix hash;
 - the actual Silver producer commit when known and the identity version; and
 - an explicit `unknown` Bronze parser-provenance marker.
@@ -127,10 +129,11 @@ rebuild it from Bronze rather than inherit an inferred context.
 
 Gold stores an immutable copy of the consumed Silver provenance in each new
 recipe. Before publication it verifies that the retained Silver decision prefix
-is intact, current effective Silver decisions match, and currencies for
-accounts represented in Silver have not changed. Each refusal happens before
-Gold writes and directs the operator to `budget rebuild --from silver`.
-Gold-only decisions and an added empty account do not require that rebuild.
+is intact, current effective Silver decisions match, the fingerprint scheme and
+Silver identity contract are supported, and currencies for exactly the consumed
+run accounts have not changed. Each refusal happens before Gold writes and
+directs the operator to `budget rebuild --from silver`. Gold-only decisions and
+an added empty account do not require that rebuild.
 
 Historical Gold recipes remain readable with absent Silver provenance. They are
 not backfilled. Bronze parser capture, historical Silver replay and their

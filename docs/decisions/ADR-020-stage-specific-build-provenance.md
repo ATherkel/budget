@@ -23,10 +23,12 @@ A completed Silver build commits its result and one immutable provenance value
 in one Silver transaction. That value records:
 
 - the versioned fingerprint scheme and fingerprint of the complete Silver
-  result plus its consumed currency snapshot;
+  result plus its consumed currency projection;
 - every stored and repeated import run Silver interpreted, with its payload
-  identifier;
-- the exact consumed account-currency projection;
+  identifier, retained as an immutable Bronze reference rather than a copy of
+  the run's metadata;
+- the exact account-currency projection for accounts named by those runs,
+  including a run later voided by a decision;
 - the typed effective Silver decisions;
 - the complete decision-log position and prefix hash consumed;
 - Silver's application commit when known and its identity-contract version; and
@@ -38,16 +40,19 @@ of the completion row still means Silver was never built. Migration from a
 pre-provenance Silver schema clears derived rows, because today's inputs and
 code cannot reconstruct what the old build consumed.
 
-Gold retains in its recipe an immutable copy of the Silver fingerprint, runs,
-currencies, effective Silver decisions, log-prefix evidence and Silver producer
-identity. Gold's own code version remains the recipe's Gold producer version.
+Gold retains in its recipe an immutable copy of the Silver fingerprint, run
+references, consumed currencies, effective Silver decisions, log-prefix
+evidence and Silver producer identity. Each run reference is its Bronze
+identifier and payload hash, not a second copy of mutable or descriptive run
+metadata. Gold's own code version remains the recipe's Gold producer version.
 Historical recipes keep their missing Silver provenance explicit and are never
 backfilled.
 
 Before a new Gold publication, Gold validates that the recorded decision-log
 prefix is still a prefix, the current effective Silver decisions equal those
-consumed, and currencies for represented accounts still equal the consumed
-projection. A failure refuses before publication and directs the operator to
+consumed, the stored fingerprint scheme and Silver identity contract are
+supported, and currencies for exactly the consumed projection still match. A
+failure refuses before publication and directs the operator to
 `budget rebuild --from silver`. Appending Gold-only decisions or adding an empty
 account does not require a Silver rebuild.
 
