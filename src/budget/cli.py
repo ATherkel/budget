@@ -88,6 +88,7 @@ from budget.refreshing import (
     InputsNotReplacedError,
     NotProductionsSetError,
     NotRefreshableError,
+    RefreshWriteError,
     refresh,
     require_refreshable,
 )
@@ -692,6 +693,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         NotRefreshableError,
         NotProductionsSetError,
         InputsNotReplacedError,
+        RefreshWriteError,
         NoUsableSetError,
         UnknownStageError,
         UnfinishedRestoreError,
