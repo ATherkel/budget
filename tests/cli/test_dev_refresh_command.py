@@ -6,6 +6,7 @@ whose `upstream_backups` names production's backups folder, both in one
 temporary folder. Every test passes `main` an explicit environment.
 """
 
+import shutil
 import stat
 import unittest
 from datetime import UTC, datetime
@@ -16,7 +17,7 @@ from budget.backups import BackupSet, back_up
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
 from tests.backups.sets import checksum, import_one
-from tests.cli.commands import dev_refresh, migrate
+from tests.cli.commands import dev_refresh, migrate, restore
 from tests.cli.profile_files import write_profile
 from tests.importing.households import ACCOUNTS
 
@@ -36,6 +37,11 @@ def _production_with_a_set(folder: Path) -> tuple[Profile, BackupSet]:
         import_one(lock)
         written = back_up(lock, now=datetime.now(UTC))
     return production, written
+
+
+def production_file(production: Profile) -> Path:
+    """The profile file `_production_with_a_set` wrote for `production`."""
+    return Path(production.stores).parent / "production.toml"
 
 
 def _development(folder: Path, production: Profile) -> tuple[Path, Profile]:
@@ -121,6 +127,29 @@ class DevRefreshTests(unittest.TestCase):
                     assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
                     assert "dev refresh needs a development profile" in stderr
             assert not (production.stores / "upstream").exists()
+
+    def test_dev_refresh_and_restore_take_folders_with_spaces_and_signs(
+        self,
+    ) -> None:
+        # SQLite opens a set's stores by URI, where these characters must be
+        # escaped.
+        with TemporaryDirectory() as directory:
+            folder = Path(directory) / "Budget data ø & #1 (100%)"
+            folder.mkdir()
+            production, written = _production_with_a_set(folder / "prod uction")
+            profile_file, development = _development(
+                folder / "dev elopment", production
+            )
+
+            refreshed = dev_refresh(profile_file)
+            shutil.rmtree(production.stores)
+            restored = restore(production_file(production), written.name)
+
+            assert refreshed[::2] == (EXIT_OK, "")
+            assert restored[::2] == (EXIT_OK, "")
+            assert checksum(development.stores / "upstream" / "bronze.db") == (
+                checksum(written.path / "bronze.db")
+            )
 
     def test_dev_refresh_replaces_upstream_with_a_newer_set(self) -> None:
         with TemporaryDirectory() as directory:
