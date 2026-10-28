@@ -13,9 +13,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from budget.backups import BackupSet, back_up
+from budget.bronze import BronzeStore
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
-from tests.backups.sets import checksum, import_one
+from tests.backups.sets import checksum, import_one, run_ids
 from tests.cli.commands import dev_refresh, migrate
 from tests.cli.profile_files import write_profile
 from tests.importing.households import ACCOUNTS
@@ -98,6 +99,30 @@ class DevRefreshTests(unittest.TestCase):
                 development.accounts_file.read_bytes()
                 == (sets_inputs / "accounts.toml").read_bytes()
             )
+
+    def test_dev_refresh_writable_restores_developments_own_stores(self) -> None:
+        # Relabelled as development's, so development's commands open them;
+        # Bronze's evidence, its runs, comes over unchanged.
+        with TemporaryDirectory() as directory:
+            production, written = _production_with_a_set(Path(directory) / "prod")
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+            sets_bronze = checksum(written.path / "bronze.db")
+
+            status, stdout, stderr = dev_refresh(profile_file, "--writable")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout == (
+                f"restored backup set {written.name} into development's own "
+                "stores (writable)\n"
+            )
+            with BronzeStore(development) as store:
+                restored = [run.import_run_id for run in store.import_runs()]
+            assert restored == run_ids(written.path / "bronze.db")
+            for stage_store in (development.silver_store, development.gold_store):
+                assert stage_store.exists()
+            assert checksum(written.path / "bronze.db") == sets_bronze
 
     def test_dev_refresh_replaces_upstream_with_a_newer_set(self) -> None:
         with TemporaryDirectory() as directory:
