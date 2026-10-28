@@ -35,6 +35,7 @@ from tests.cli.pipelines import (
 )
 
 EXIT_OK = 0
+EXIT_REFUSED_INPUT = 3
 EXIT_REFUSED_ENVIRONMENT = 4
 
 
@@ -485,10 +486,17 @@ class SilverChangeTests(unittest.TestCase):
 
                 status, stdout, stderr = rebuild(built.profile_file)
 
-                assert status == EXIT_REFUSED_ENVIRONMENT
+                # A changed currency needs Silver rebuilt; a removed account
+                # needs declaring again, which a Silver rebuild cannot do.
+                if case == "changed":
+                    assert status == EXIT_REFUSED_ENVIRONMENT
+                    assert "consumed currency" in stderr
+                    assert "rebuild --from silver" in stderr
+                else:
+                    assert status == EXIT_REFUSED_INPUT
+                    assert 'account "joint-current" is not declared' in stderr
+                    assert "nothing was published" in stderr
                 assert stdout == ""
-                assert "consumed currency" in stderr
-                assert "rebuild --from silver" in stderr
                 # `rebuild --from silver` published 1; the refusal adds nothing.
                 with GoldStore(built.profile) as gold:
                     history = gold.pointer_history()
