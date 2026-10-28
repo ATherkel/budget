@@ -7,13 +7,17 @@ back through `GoldStore`, so a test sees what a dashboard would.
 
 import json
 import re
+import sqlite3
 import unittest
+from contextlib import closing
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
+
+import pytest
 
 from budget.gold.recipe import Recipe, RecipeImportRun
 from budget.gold.store import GoldStore
@@ -252,6 +256,50 @@ class RecipeNamesSilversRunsTests(unittest.TestCase):
 
 
 class SilverChangeTests(unittest.TestCase):
+    def test_retry_after_silver_commits_and_gold_fails(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            with SilverStore(built.profile) as silver_store:
+                context = silver_store.read_build()
+            transaction_id = context.result.transactions[0].transaction_id
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "withdrawn",
+                "targets": [transaction_id],
+                "reason": "synthetic withdrawal",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n",
+                encoding="utf-8",
+            )
+            assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+
+            with closing(sqlite3.connect(built.profile.gold_store)) as connection:
+                connection.execute(
+                    "CREATE TRIGGER refuse_result BEFORE INSERT ON results"
+                    " BEGIN SELECT RAISE(ABORT, 'synthetic Gold failure'); END"
+                )
+                connection.commit()
+            with pytest.raises(sqlite3.IntegrityError):
+                rebuild(built.profile_file)
+            with closing(sqlite3.connect(built.profile.gold_store)) as connection:
+                connection.execute("DROP TRIGGER refuse_result")
+                connection.commit()
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 2" in stdout
+            with GoldStore(built.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 2
+
     def test_changed_silver_under_the_same_runs_publishes_a_new_gold_result(
         self,
     ) -> None:
