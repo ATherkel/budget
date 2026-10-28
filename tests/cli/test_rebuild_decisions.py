@@ -11,6 +11,7 @@ import unittest
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 from budget.importing import Coverage, import_inbox_file
 from budget.locking import writer_lock
@@ -70,6 +71,41 @@ def _void(import_run_id: str) -> str:
 
 
 class RebuildDecisionLogTests(unittest.TestCase):
+    def test_an_unreadable_decision_log_refuses_without_leaking_or_writing(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _migrated_profile_with_accounts(profile_file, folder)
+            _import_one_export(profile)
+            decision_log = profile.input_file(DECISION_LOG)
+            private = "PRIVATE-DECISION-CONTENT"
+            original_read_bytes = Path.read_bytes
+
+            def read_bytes(path: Path) -> bytes:
+                if path == decision_log:
+                    raise PermissionError(private)
+                return original_read_bytes(path)
+
+            with mock.patch.object(
+                Path, "read_bytes", autospec=True, side_effect=read_bytes
+            ):
+                try:
+                    result = rebuild(profile_file, "--from", "silver")
+                except PermissionError:
+                    result = None
+
+            assert result is not None
+            assert result == (
+                EXIT_REFUSED_INPUT,
+                "",
+                "budget: decisions.jsonl: cannot be read: PermissionError\n",
+            )
+            assert private not in result[1] + result[2]
+            with SilverStore(profile) as store:
+                assert not store.is_built()
+
     def test_a_voided_import_run_leaves_the_rebuilt_silver(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)

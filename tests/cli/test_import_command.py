@@ -75,6 +75,43 @@ def _silver_build_state(profile: Profile) -> tuple[bytes, int]:
 
 
 class ImportCommandTests(unittest.TestCase):
+    def test_an_unreadable_decision_log_refuses_before_importing(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            source = drop(profile, "joint-current", "danske-20260305.csv", content)
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
+            decision_log = profile.input_file("decisions.jsonl")
+            private = "PRIVATE-DECISION-CONTENT"
+            original_read_bytes = Path.read_bytes
+
+            def read_bytes(path: Path) -> bytes:
+                if path == decision_log:
+                    raise PermissionError(private)
+                return original_read_bytes(path)
+
+            with mock.patch.object(
+                Path, "read_bytes", autospec=True, side_effect=read_bytes
+            ):
+                try:
+                    result = import_(profile_file, "--ranges", str(ranges))
+                except PermissionError:
+                    result = None
+
+            assert result is not None
+            assert result == (
+                EXIT_REFUSED_INPUT,
+                "",
+                "budget: decisions.jsonl: cannot be read: PermissionError\n",
+            )
+            assert private not in result[1] + result[2]
+            assert source.read_bytes() == content
+            assert run_ids(profile.bronze_store) == []
+
     def test_an_inbox_export_is_imported_then_silver_is_rebuilt(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
