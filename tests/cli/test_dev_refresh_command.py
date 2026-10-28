@@ -28,6 +28,7 @@ from tests.cli.profile_files import write_profile
 from tests.importing.households import ACCOUNTS
 
 EXIT_OK = 0
+EXIT_REFUSED_INPUT = 3
 EXIT_REFUSED_ENVIRONMENT = 4
 
 
@@ -348,6 +349,25 @@ class DevRefreshTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_OK, "")
             assert development.bronze_store.exists()
             assert not development.gold_store.exists()
+
+    def test_a_profile_whose_upstream_backups_overlap_its_folders_is_refused(
+        self,
+    ) -> None:
+        # `--inputs` replaces the inputs folder: production's sets inside it
+        # would go with it.
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            for inside in ("inputs", "stores"):
+                with self.subTest(inside):
+                    upstream = folder / inside / "backups"
+                    upstream.mkdir(parents=True, exist_ok=True)
+                    profile_file = write_profile(folder, upstream_backups=upstream)
+
+                    status, stdout, stderr = dev_refresh(profile_file, "--inputs")
+
+                    assert (status, stdout) == (EXIT_REFUSED_INPUT, "")
+                    assert "upstream backups folder" in stderr
+                    assert upstream.is_dir()
 
     def test_dev_refresh_replaces_upstream_with_a_newer_set(self) -> None:
         with TemporaryDirectory() as directory:
