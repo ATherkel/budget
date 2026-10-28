@@ -463,11 +463,27 @@ def _require_current_currencies(
     consumed: Mapping[str, str],
     accounts: Mapping[str, Account],
 ) -> None:
-    """Refuse changes for exactly the accounts named by consumed runs."""
+    """Refuse changes for exactly the accounts named by consumed runs.
+
+    An account the registry no longer declares is refused input naming it,
+    since only declaring it again helps; a changed currency needs Silver
+    rebuilt under the new one.
+    """
+    undeclared = [account_id for account_id in consumed if account_id not in accounts]
+    if undeclared:
+        raise ConfigurationError(tuple(map(_undeclared_consumed_account, undeclared)))
     for account_id, consumed_currency in consumed.items():
-        account = accounts.get(account_id)
-        if account is None or account.currency != consumed_currency:
+        if accounts[account_id].currency != consumed_currency:
             raise SilverCurrencyFreshnessError
+
+
+def _undeclared_consumed_account(account_id: str) -> str:
+    """Name an account Silver was built from that the registry no longer declares."""
+    return (
+        f'{ACCOUNTS_FILE_NAME}: account "{account_id}" is not declared, but '
+        "Silver was built from an import run for it; restore it, with closed_on "
+        "set if the account has closed, before rebuilding; nothing was published"
+    )
 
 
 def _publish(profile: Profile, plan: _GoldPlan | GoldRebuild) -> GoldRebuild:
