@@ -6,6 +6,7 @@ whose `upstream_backups` names production's backups folder, both in one
 temporary folder. Every test passes `main` an explicit environment.
 """
 
+import json
 import shutil
 import stat
 import unittest
@@ -17,7 +18,7 @@ from budget.backups import BackupSet, back_up
 from budget.bronze import BronzeStore
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
-from tests.backups.sets import checksum, import_one, run_ids
+from tests.backups.sets import checksum, import_one, manifest, run_ids
 from tests.cli.commands import dev_refresh, migrate, restore
 from tests.cli.profile_files import write_profile
 from tests.importing.households import ACCOUNTS
@@ -175,6 +176,27 @@ class DevRefreshTests(unittest.TestCase):
             assert checksum(development.stores / "upstream" / "bronze.db") == (
                 checksum(written.path / "bronze.db")
             )
+
+    def test_dev_refresh_refuses_a_set_that_is_not_productions(self) -> None:
+        with TemporaryDirectory() as directory:
+            production, written = _production_with_a_set(Path(directory) / "prod")
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+            listed = manifest(written.path)
+            listed["profile"] = "development"
+            (written.path / "manifest.json").write_text(
+                json.dumps(listed), encoding="utf-8"
+            )
+
+            status, stdout, stderr = dev_refresh(profile_file)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert (
+                f"backup set {written.name} is the development profile's, "
+                "not production's"
+            ) in stderr
+            assert not (development.stores / "upstream").exists()
 
     def test_dev_refresh_replaces_upstream_with_a_newer_set(self) -> None:
         with TemporaryDirectory() as directory:
