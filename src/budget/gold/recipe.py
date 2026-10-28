@@ -9,6 +9,8 @@ diagnosis, and take no part in that comparison.
 
 from dataclasses import dataclass, field
 
+from budget.silver.decisions import SilverDecision
+
 
 @dataclass(frozen=True)
 class RecipeImportRun:
@@ -36,7 +38,15 @@ class Recipe:
     decision_log_prefix_sha256: str
     code_version: str | None
     contract_version: str
-    silver_identity_version: str
+    silver_identity_version: str | None
     late_booking_days: int
     python_version: str = field(compare=False)
     sqlite_version: str = field(compare=False)
+    silver_fingerprint_scheme: str | None = None
+    silver_result_fingerprint: str | None = None
+    silver_code_version: str | None = None
+    silver_decision_log_position: int | None = None
+    silver_decision_log_prefix_sha256: str | None = None
+    silver_bronze_parser_provenance: str | None = None
+    silver_currencies: frozenset[tuple[str, str]] = frozenset()
+    silver_decisions: tuple[SilverDecision, ...] = ()
