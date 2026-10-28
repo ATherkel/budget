@@ -678,5 +678,15 @@ def test_a_store_at_schema_version_3_migrates_and_keeps_its_publications(
         current = store.current()
         assert current is not None
         assert current.publication_id == 1
-        assert store.recipe(1).late_booking_days == 7
+        recipe = store.recipe(1)
+        assert recipe.late_booking_days == 7
+        assert recipe.silver_fingerprint_scheme is None
+        assert recipe.silver_result_fingerprint is None
+        assert recipe.silver_code_version is None
+        assert recipe.silver_decision_log_position is None
+        assert recipe.silver_decision_log_prefix_sha256 is None
+        assert recipe.silver_bronze_parser_provenance is None
+        assert recipe.silver_identity_version is None
+        assert recipe.silver_currencies == frozenset()
+        assert recipe.silver_decisions == ()
         assert store.next_publication_id() == 2
