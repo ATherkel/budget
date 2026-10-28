@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from budget.backups import BackupSet, back_up
+from budget.backups import BackupSet, back_up, complete_backup_sets
 from budget.bronze import BronzeStore
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
@@ -249,6 +249,56 @@ class DevRefreshTests(unittest.TestCase):
             for stage_store in (development.silver_store, development.gold_store):
                 assert stage_store.exists()
             assert checksum(written.path / "bronze.db") == sets_bronze
+
+    def test_dev_refresh_refuses_when_production_has_no_complete_set(
+        self,
+    ) -> None:
+        # As when the synchronised backups folder is offline or empty.
+        with TemporaryDirectory() as directory:
+            (Path(directory) / "dev").mkdir()
+            profile_file = write_profile(
+                Path(directory) / "dev",
+                upstream_backups=Path(directory) / "no backups yet",
+            )
+
+            status, stdout, stderr = dev_refresh(profile_file)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "no complete backup set this code can read" in stderr
+
+    def test_dev_refresh_never_relabels_a_store_of_another_profile(self) -> None:
+        # The manifest says production, but the store itself does not.
+        with TemporaryDirectory() as directory:
+            production, written = _production_with_a_set(Path(directory) / "prod")
+            silver = written.path / "silver.db"
+            with closing(sqlite3.connect(silver)) as connection, connection:
+                connection.execute("UPDATE store_identity SET profile = 'test'")
+            listed = manifest(written.path)
+            files = listed["files"]
+            assert isinstance(files, dict)
+            files["silver.db"] = checksum(silver)
+            (written.path / "manifest.json").write_text(
+                json.dumps(listed), encoding="utf-8"
+            )
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+            older = next(
+                found
+                for found in complete_backup_sets(production)
+                if found.name != written.name
+            )
+
+            status, stdout, stderr = dev_refresh(profile_file, "--writable")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout.endswith(
+                f"restored backup set {older.name} into development's own "
+                "stores (writable)\n"
+            )
+            assert checksum(development.bronze_store) != checksum(
+                written.path / "bronze.db"
+            )
 
     def test_dev_refresh_replaces_upstream_with_a_newer_set(self) -> None:
         with TemporaryDirectory() as directory:
