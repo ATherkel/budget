@@ -74,7 +74,7 @@ A recipe names each input exactly and never by "latest":
 
 | Part | Content |
 | --- | --- |
-| Silver build | The immutable Silver provenance value consumed by Gold, including its versioned result/currency fingerprint and exact run identifiers. The recipe is read from Silver, never from Bronze, so Gold does not read Bronze. |
+| Silver build | The immutable Silver provenance value consumed by Gold, including its versioned result/currency fingerprint and exact run identifiers. Run entries are immutable Bronze references: the import-run ID and payload hash, not copies of the run's metadata. The recipe is read from Silver, never from Bronze, so Gold does not read Bronze. |
 | Configuration snapshot | The parsed, canonical content of the account registry, category taxonomy, and classification rules. It is stored once per distinct content and referenced by its fingerprint. |
 | Late-booking window | The profile's `[gold] late_booking_days` at the build, in whole days ([`operations.md`](operations.md#selecting-a-profile)). `late_bookings_settled` depends on it, so changing it requires a new publication, and an earlier publication keeps the window its recipe records. |
 | Gold decision context | The last Gold decision-log entry included and its audit prefix. Effective Gold decisions are derived from that prefix. |
@@ -91,9 +91,11 @@ Silver commits one completion value atomically with its result. It records:
 
 - fingerprint scheme and a SHA-256 over every public Silver result record plus
   the consumed currency snapshot;
-- every stored or repeated import run Silver interpreted, each with its payload
-  identifier;
-- the exact account-currency projection with which amounts were interpreted;
+- every stored or repeated import run Silver interpreted, retained as an
+  immutable Bronze reference to the run ID and payload hash rather than copied
+  run metadata;
+- the exact account-currency projection for accounts named by those runs,
+  including a run later voided by a decision;
 - every effective typed Silver decision and the full decision-log position and
   prefix hash consumed;
 - the actual Silver producer commit when known and the Silver identity-contract
@@ -119,8 +121,12 @@ Before publishing Gold, the command validates that:
 
 - the recorded Silver decision-log prefix is still a prefix of the current log;
 - the effective Silver decisions equal those Silver consumed; and
-- currencies for accounts represented by the stored Silver result still equal
-  the consumed projection.
+- currencies for exactly the consumed run accounts still equal the recorded
+  projection.
+
+The stored fingerprint scheme and Silver identity-contract version must also be
+supported by this consumer. An unknown or incompatible value refuses before
+publication and names the Silver rebuild.
 
 A changed required decision or currency, or a changed/truncated prefix, refuses
 publication and names `budget rebuild --from silver`. Gold-only log changes and

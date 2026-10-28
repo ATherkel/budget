@@ -216,6 +216,12 @@ SilverBuild(
     provenance: SilverProvenance | None,
 )
 
+SilverImportRun(
+    import_run_id: str,
+    payload_id: str,
+    account_id: str,
+)
+
 SilverProvenance(
     fingerprint_scheme: str,
     result_fingerprint: str,
@@ -230,13 +236,18 @@ SilverProvenance(
 )
 ```
 
-The versioned fingerprint covers every public result family and the currency
-snapshot. It normalizes incidental record/list order and decimal scale while
-retaining duplicates and meaningful sequence fields. Result, currencies and
-provenance are read in one SQLite snapshot and replaced in one transaction.
-A completion row distinguishes never built from a valid empty build; `None`
-provenance is an explicitly unknown direct replacement. ADR-020 defines why
-Gold refuses to publish from unknown or stale provenance.
+`SilverBuild.currencies` is the full currency snapshot needed to decode the
+stored result. `SilverProvenance.currencies` is the narrower consumed projection
+for accounts named by the stored and repeated runs, including a run later
+voided. Its run entries retain only the import-run ID, payload hash and account
+ID as immutable Bronze references; they do not copy the run's descriptive
+metadata. The versioned fingerprint covers every public result family and that
+consumed projection. It normalizes incidental record/list order and decimal
+scale while retaining duplicates and meaningful sequence fields. Result, full
+currency snapshot and provenance are read in one SQLite snapshot and replaced in
+one transaction. A completion row distinguishes never built from a valid empty
+build; `None` provenance is an explicitly unknown direct replacement. ADR-020
+defines why Gold refuses to publish from unknown or stale provenance.
 
 ## Rules
 

@@ -287,9 +287,10 @@ _Avoid_: Manifest, lineage (lineage explains one fact, not a build)
 
 **Silver build provenance**:
 The completed Silver result's versioned fingerprint, consumed import runs,
-currencies, effective Silver Decisions, Decision-log prefix, and actual Silver
-producer identity. An unknown value is explicit and cannot authorize a new
-Publication. The rules are in
+currencies for those runs, effective Silver Decisions, Decision-log prefix, and
+actual Silver producer identity. Import runs are immutable Bronze references,
+not copies of their metadata. An unknown or incompatible value is explicit and
+cannot authorize a new Publication. The rules are in
 [`publications.md`](architecture/publications.md#silver-provenance).
 _Avoid_: Silver metadata (hides the ownership and atomicity contract), current
 context
