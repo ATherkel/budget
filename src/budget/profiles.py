@@ -178,6 +178,9 @@ class Profile:
     writes them, so a development profile has none; a test profile keeps one
     inside its root, so a test can write sets as production would.
 
+    `upstream_backups` is production's backups folder, which a development
+    profile reads and never writes; other profiles have none.
+
     `root` is the temporary directory a test profile must stay inside. It is
     `None` for the development and production profiles, whose paths the
     operator's own profile file names.
@@ -194,6 +197,7 @@ class Profile:
     passphrase_file: Path | None = None
     dashboard_bind: str | None = None
     dashboard_port: int | None = None
+    upstream_backups: Path | None = None
     root: Path | None = None
 
     def __post_init__(self) -> None:
@@ -553,6 +557,11 @@ def load_profile_file(path: Path) -> Profile:
             passphrase_file=_passphrase_file(path, dashboard),
             dashboard_bind=_dashboard_bind(path, dashboard),
             dashboard_port=_dashboard_port(path, dashboard),
+            upstream_backups=(
+                _folder_path(path, paths, "upstream_backups")
+                if "upstream_backups" in paths
+                else None
+            ),
         )
     except ProfileFoldersOverlapError as error:
         raise ProfileFileError(path, str(error)) from None

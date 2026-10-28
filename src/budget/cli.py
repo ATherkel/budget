@@ -84,6 +84,7 @@ from budget.rebuilding import (
     rebuild_through_gold,
     require_buildable_accounts,
 )
+from budget.refreshing import refresh
 from budget.restoring import (
     CatchUpRefusedError,
     DamagedStoreError,
@@ -365,6 +366,15 @@ def _restore(profile: Profile, backup_set: str | None) -> None:
     sys.stdout.write(f"restored backup set {restored.backup.name}\n")
 
 
+def _dev_refresh(profile: Profile) -> None:
+    """Restore production's newest backup set for development; name it."""
+    with writer_lock(profile) as lock:
+        refreshed = refresh(lock)
+    sys.stdout.write(
+        f"restored backup set {refreshed.name} into upstream (read-only)\n"
+    )
+
+
 def _rebuild(profile: Profile, from_stage: str) -> None:
     """Rebuild `from_stage` and every later stage, under one writer lock.
 
@@ -610,7 +620,7 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
     if arguments.command == "backup":
         _backup(profile)
     elif arguments.command == "dev":
-        pass
+        _dev_refresh(profile)
     elif arguments.command == "restore":
         _restore(profile, arguments.backup_set)
     elif arguments.command == "rebuild":
