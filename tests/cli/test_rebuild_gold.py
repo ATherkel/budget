@@ -274,6 +274,35 @@ class RecipeNamesSilversRunsTests(unittest.TestCase):
 
 
 class SilverChangeTests(unittest.TestCase):
+    def test_a_carriage_return_prefix_hashes_the_exact_lf_delimited_entry(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            with SilverStore(built.profile) as silver_store:
+                context = silver_store.read_build()
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "classify",
+                "targets": [context.result.transactions[0].transaction_id],
+                "category": "groceries",
+                "reason": "synthetic classification",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                "\r" + json.dumps(decision) + "\n",
+                encoding="utf-8",
+            )
+            assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 1" in stdout
+
     def test_retry_after_silver_commits_and_gold_fails(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
