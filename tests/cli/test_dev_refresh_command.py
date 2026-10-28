@@ -71,6 +71,34 @@ class DevRefreshTests(unittest.TestCase):
             assert development.accounts_file.read_bytes() == own_accounts
             assert not development.bronze_store.exists()
 
+    def test_dev_refresh_with_inputs_replaces_developments_inputs(self) -> None:
+        # Development's inputs become production's, as the set holds them:
+        # a file only development had is not kept.
+        with TemporaryDirectory() as directory:
+            production, written = _production_with_a_set(Path(directory) / "prod")
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+            development.inputs.mkdir()
+            development.accounts_file.write_bytes(b"# a development edit\n")
+            development.input_file("rules.toml").write_bytes(b"# draft rules\n")
+
+            status, stdout, stderr = dev_refresh(profile_file, "--inputs")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout == (
+                f"restored backup set {written.name} into upstream (read-only)\n"
+                f"replaced development's inputs with backup set {written.name}'s\n"
+            )
+            sets_inputs = written.path / "inputs"
+            assert sorted(path.name for path in development.inputs.iterdir()) == (
+                sorted(path.name for path in sets_inputs.iterdir())
+            )
+            assert (
+                development.accounts_file.read_bytes()
+                == (sets_inputs / "accounts.toml").read_bytes()
+            )
+
     def test_dev_refresh_replaces_upstream_with_a_newer_set(self) -> None:
         with TemporaryDirectory() as directory:
             production, _ = _production_with_a_set(Path(directory) / "prod")
