@@ -7,9 +7,8 @@ Bronze inputs and account registry, then hands them to the existing
 `budget.silver.rebuild_silver`, which replaces the stored result. No build,
 admission, or duplicate-resolution rule lives here.
 
-The decision-log reader is not built yet, so a decision log that holds any
-decision refuses the rebuild rather than silently build as if the household had
-made none. That guard runs before anything is read or replaced.
+Silver reads the validated effective decision log in the same command context
+and records its exact prefix in the committed provenance.
 """
 
 import platform
@@ -17,7 +16,6 @@ import sqlite3
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Final
 
 from budget.bronze import BronzeStore
 from budget.bronze.models import ImportRun
@@ -41,14 +39,6 @@ from budget.silver import (
     rebuild_silver,
 )
 from budget.silver.currencies import UnknownCurrencyError, minor_unit_places
-from budget.silver.identity import IDENTITY_VERSION
-
-DECISION_LOG_NAME: Final = "decisions.jsonl"
-_UNREADABLE_DECISIONS: Final = (
-    f"{DECISION_LOG_NAME}: the decision-log reader is not built yet, so a log "
-    "that holds a decision cannot be ignored; nothing was written. Keep the "
-    "log as it is, and rebuild once decision-log support exists."
-)
 
 
 @dataclass(frozen=True)
@@ -250,42 +240,17 @@ def rebuild_from_silver(lock: WriterLock) -> SilverRebuild:
     Bronze inputs are read under that one lock and handed to the existing
     `budget.silver.rebuild_silver`, which replaces the stored result. The runs
     read here come back with the result, so no caller rereads Bronze. A
-    decision log that holds a decision refuses the rebuild before either.
+    decision log is validated and its effective Silver decisions are included
+    in the stored build provenance.
     """
     profile = lock.profile
-    require_no_decisions(profile)
-    inputs = bronze_inputs(profile)
+    log = read_decision_log(profile)
+    inputs = replace(
+        bronze_inputs(profile),
+        decisions=log.silver,
+        decision_log_position=log.position,
+        decision_log_prefix_sha256=log.prefix_sha256,
+        code_version=committed_code_version(profile),
+    )
     result = rebuild_silver(lock, inputs=inputs)
     return SilverRebuild(runs=inputs.runs, result=result)
-
-
-def require_no_decisions(profile: Profile) -> None:
-    """Refuse a build this code cannot honour the household's decisions in.
-
-    The decision-log reader is not built yet, so a log that holds any decision
-    is a configuration error rather than something to ignore. A missing file,
-    and a file holding nothing but a byte-order mark or whitespace, mean no
-    decisions. A file that cannot be read, or is not UTF-8 text, refuses too:
-    nothing was written, the refusal states only the operating system's own
-    reason string, and it never repeats the file's contents.
-    """
-    path = profile.input_file(DECISION_LOG_NAME)
-    try:
-        content = path.read_bytes()
-    except FileNotFoundError:
-        return
-    except OSError as error:
-        reason = error.strerror or type(error).__name__
-        raise ConfigurationError(
-            (f"{DECISION_LOG_NAME}: cannot be read: {reason}",)
-        ) from None
-    if not content:
-        return
-    try:
-        text = content.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        raise ConfigurationError(
-            (f"{DECISION_LOG_NAME}: the file is not UTF-8 text",)
-        ) from None
-    if text.strip():
-        raise ConfigurationError((_UNREADABLE_DECISIONS,))

@@ -29,6 +29,7 @@ from budget.backups import (
 from budget.bronze.models import ImportRun
 from budget.bronze.parsers.registry import source_parser
 from budget.codeversion import require_committed_code
+from budget.decision_log import read_decision_log
 from budget.importing import (
     Coverage,
     NotAnInboxFileError,
@@ -42,7 +43,6 @@ from budget.profiles import PRODUCTION_PROFILE_NAME, Profile
 from budget.rebuilding import (
     SilverRebuild,
     rebuild_from_silver,
-    require_no_decisions,
 )
 
 # The outcomes that leave a file in the inbox and make `import` exit 3.
@@ -173,13 +173,13 @@ class ImportedInbox:
 def require_import_allowed(profile: Profile) -> None:
     """Refuse, before anything is asked or stored, what would refuse later.
 
-    The Silver rebuild refuses uncommitted code in production and a decision
-    log holding a decision; production's backup refuses a stores folder no
-    set can cover. Found only after the Bronze writes, any of them would
-    leave production written without the build and backup that must follow.
+    The Silver rebuild uses validated household decisions and production
+    refuses uncommitted code; production's backup refuses a stores folder no
+    set can cover. Found only after the Bronze writes, any of them would leave
+    production written without the build and backup that must follow.
     """
     require_committed_code(profile)
-    require_no_decisions(profile)
+    read_decision_log(profile)
     if profile.name == PRODUCTION_PROFILE_NAME:
         require_backup_allowed(profile)
 
