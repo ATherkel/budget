@@ -11,13 +11,15 @@ explicit environment, and every account, date and amount is synthetic.
 
 import json
 import os
+import sqlite3
 import unittest
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+from budget import sqlstore
 from budget.backups import complete_backup_sets
 from budget.gold.store import GoldStore
 from budget.inputs import ConfigurationError
@@ -286,6 +288,33 @@ class FailureAndRetryTests(unittest.TestCase):
             assert len(complete_backup_sets(base.profile)) == sets_before
             with GoldStore(base.profile) as gold:
                 assert [m.to_publication_id for m in gold.pointer_history()] == [1]
+
+    def test_a_gold_store_held_after_the_commit_still_reports_and_backs_up(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory), name="production")
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            sets_before = len(complete_backup_sets(base.profile))
+
+            # Such as DB Browser for SQLite, left open in a write transaction.
+            with (
+                mock.patch.object(sqlstore, "BUSY_TIMEOUT_MS", 100),
+                closing(
+                    sqlite3.connect(base.profile.gold_store, isolation_level=None)
+                ) as holder,
+            ):
+                holder.execute("BEGIN IMMEDIATE")
+                status, stdout, stderr = _run_import(base)
+                holder.execute("ROLLBACK")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "[1] joint-current  stored" in stdout
+            assert "imported into Bronze" in stderr
+            assert "budget import" in stderr
+            assert len(run_ids(base.profile.bronze_store)) == 1
+            assert len(complete_backup_sets(base.profile)) == sets_before + 1
+            assert _log_records(base.profile)[-1]["command"] == "import"
 
 
 class RefusedFileTests(unittest.TestCase):
