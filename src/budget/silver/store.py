@@ -375,9 +375,6 @@ def _encode_provenance(
         raise SilverProvenanceMismatchError.result_hash()
     if dict(provenance.currencies) != dict(currencies):
         raise SilverProvenanceMismatchError.currencies()
-    expected_runs = _consumed_runs(result)
-    if provenance.import_runs != expected_runs:
-        raise SilverProvenanceMismatchError.import_runs()
     if any(
         transaction.identity_version != provenance.identity_version
         for transaction in result.transactions
@@ -401,18 +398,6 @@ def _encode_provenance(
         runs,
         tuple(sorted(currencies.items())),
         _encode_decisions(provenance.decisions),
-    )
-
-
-def _consumed_runs(result: SilverResult) -> frozenset[SilverImportRun]:
-    """Return every run represented in the result's two run families."""
-    found: dict[str, str] = {}
-    for run in (*result.import_run_results, *result.evidence_exports):
-        earlier = found.setdefault(run.import_run_id, run.payload_id)
-        if earlier != run.payload_id:
-            raise SilverProvenanceMismatchError.import_runs()
-    return frozenset(
-        SilverImportRun(run_id, payload) for run_id, payload in found.items()
     )
 
 
