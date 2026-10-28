@@ -316,6 +316,33 @@ class FailureAndRetryTests(unittest.TestCase):
             assert len(complete_backup_sets(base.profile)) == sets_before + 1
             assert _log_records(base.profile)[-1]["command"] == "import"
 
+    def test_a_gold_store_held_after_silver_is_stored_is_reported_as_such(
+        self,
+    ) -> None:
+        # Silver is stored before Gold publishes, so a held Gold store stops
+        # the import after Silver changed: neither stream may say otherwise.
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            silver_before = base.profile.silver_store.read_bytes()
+
+            with (
+                mock.patch.object(sqlstore, "BUSY_TIMEOUT_MS", 100),
+                closing(
+                    sqlite3.connect(base.profile.gold_store, isolation_level=None)
+                ) as holder,
+            ):
+                holder.execute("BEGIN IMMEDIATE")
+                status, stdout, stderr = _run_import(base)
+                holder.execute("ROLLBACK")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert base.profile.silver_store.read_bytes() != silver_before
+            assert "Silver and Gold were not rebuilt" not in stdout
+            assert "Silver and Gold were not rebuilt" not in stderr
+            assert "before Gold was published" in stdout
+            assert "before Gold was published" in stderr
+
 
 class RefusedFileTests(unittest.TestCase):
     def test_a_refused_file_retried_publishes_nothing(self) -> None:
