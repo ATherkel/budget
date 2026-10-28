@@ -25,7 +25,7 @@ from budget.routine_logging import (
     LOG_MAX_BYTES,
     ROTATED_LOG_FILE,
 )
-from budget.silver import SilverStore
+from budget.silver import SilverResult, SilverStore
 from tests.cli.commands import migrate, rebuild, review
 from tests.cli.profile_files import development_profile, write_profile
 from tests.importing.households import ACCOUNTS, drop, payload
@@ -140,6 +140,20 @@ class SilverLoggingTests(unittest.TestCase):
             profile_file = write_profile(folder)
             assert migrate(profile_file)[0] == EXIT_OK
             profile = development_profile(folder)
+            with SilverStore(profile) as store:
+                store.replace(
+                    SilverResult(
+                        transactions=(),
+                        transaction_evidence=(),
+                        unbooked_records=(),
+                        balance_observations=(),
+                        account_evidence=(),
+                        evidence_exports=(),
+                        import_run_results=(),
+                        review_items=(),
+                    ),
+                    currencies={"joint-current": "DKK"},
+                )
             logs = profile.stores / LOG_FOLDER
             logs.mkdir(parents=True, exist_ok=True)
             (logs / LOG_FILE).write_text(
