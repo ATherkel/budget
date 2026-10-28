@@ -381,6 +381,37 @@ class LateBookingWindowTests(unittest.TestCase):
                 assert gold.recipe(2).late_booking_days == 14
 
 
+class EmptyAccountTests(unittest.TestCase):
+    def test_adding_an_empty_account_publishes_without_a_silver_rebuild(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            accounts = built.profile.accounts_file.read_text(encoding="utf-8")
+            built.profile.accounts_file.write_text(
+                accounts
+                + """
+
+[account.joint-empty]
+display_name = "Joint empty"
+account_type = "savings"
+ownership_scope = "household"
+currency = "DKK"
+source_format = "danske-csv-v1"
+""",
+                encoding="utf-8",
+            )
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 2" in stdout
+            with GoldStore(built.profile) as gold:
+                assert {account.account_id for account in gold.open(2).accounts()} >= {
+                    "joint-current",
+                    "joint-empty",
+                }
+
+
 class RoutineLogTests(unittest.TestCase):
     def test_the_routine_log_counts_whether_the_rebuild_published(self) -> None:
         with TemporaryDirectory() as directory:
