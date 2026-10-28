@@ -68,6 +68,7 @@ from budget.profiles import (
 from budget.prompting import ask_continue_after_duplicates, ask_passphrase, ask_ranges
 from budget.ranges import load_ranges
 from budget.rebuilding import (
+    SilverCurrencyFreshnessError,
     SilverDecisionFreshnessError,
     SilverDecisionLogPrefixError,
     SilverNotBuiltError,
@@ -538,6 +539,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         SilverNotBuiltError,
         SilverDecisionFreshnessError,
         SilverDecisionLogPrefixError,
+        SilverCurrencyFreshnessError,
         SilverProvenanceUnavailableError,
         SilverReviewUnavailableError,
         WriterLockHeldError,
