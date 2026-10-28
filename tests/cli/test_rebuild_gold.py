@@ -42,6 +42,33 @@ class FirstPublicationTests(unittest.TestCase):
     def test_the_gold_recipe_copies_the_exact_silver_provenance(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
+            with SilverStore(built.profile) as silver_store:
+                context = silver_store.read_build()
+            transaction_id = context.result.transactions[0].transaction_id
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "withdrawn",
+                "targets": [transaction_id],
+                "reason": "synthetic withdrawal",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n",
+                encoding="utf-8",
+            )
+            assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+            with SilverStore(built.profile) as silver_store:
+                context = silver_store.read_build()
+                provenance = context.provenance
+                assert provenance is not None
+                silver_store.replace(
+                    context.result,
+                    currencies=context.currencies,
+                    provenance=replace(provenance, code_version="silver-producer"),
+                )
             assert rebuild(built.profile_file)[0] == EXIT_OK
             with SilverStore(built.profile) as silver_store:
                 context = silver_store.read_build()
@@ -69,6 +96,10 @@ class FirstPublicationTests(unittest.TestCase):
             assert recipe.silver_currencies == frozenset(provenance.currencies.items())
             assert recipe.silver_decisions == provenance.decisions
             assert recipe.code_version is None
+            assert recipe.silver_code_version == "silver-producer"
+            assert recipe.silver_code_version != recipe.code_version
+            assert recipe.silver_decision_log_position == 1
+            assert recipe.silver_decision_log_prefix_sha256 != sha256(b"").hexdigest()
 
     def test_rebuild_publishes_the_first_publication_from_silver(self) -> None:
         with TemporaryDirectory() as directory:
