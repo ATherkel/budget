@@ -45,8 +45,8 @@ class Recipe:
     silver_fingerprint_scheme: str | None = None
     silver_result_fingerprint: str | None = None
     silver_code_version: str | None = None
-    silver_decision_log_position: int | None = None
-    silver_decision_log_prefix_sha256: str | None = None
+    silver_decision_log_position: int | None = field(default=None, compare=False)
+    silver_decision_log_prefix_sha256: str | None = field(default=None, compare=False)
     silver_bronze_parser_provenance: str | None = None
     silver_currencies: frozenset[tuple[str, str]] = frozenset()
     silver_decisions: tuple[SilverDecision, ...] = ()
