@@ -110,6 +110,18 @@ class SilverDecisionFreshnessError(RuntimeError):
         )
 
 
+class SilverDecisionLogPrefixError(RuntimeError):
+    """The retained decision-log prefix is no longer the current prefix."""
+
+    def __init__(self) -> None:
+        """Refuse changed history rather than accepting rewritten entries."""
+        super().__init__(
+            "the Silver decision-log prefix has been replaced or truncated; "
+            "run `budget rebuild --from silver` before publishing Gold; "
+            "nothing was published"
+        )
+
+
 @dataclass(frozen=True)
 class GoldRebuild:
     """What one Gold rebuild left current, and whether it published it.
@@ -338,6 +350,11 @@ def _plan_gold(
     """
     if silver.provenance is None:
         raise SilverProvenanceUnavailableError
+    current_prefix = household.log.prefix_sha256_at(
+        silver.provenance.decision_log_position
+    )
+    if current_prefix != silver.provenance.decision_log_prefix_sha256:
+        raise SilverDecisionLogPrefixError
     _require_current_silver_decisions(silver.provenance.decisions, household.log.silver)
     recipe = _recipe(profile, silver.provenance, household)
     with GoldStore(profile) as gold:

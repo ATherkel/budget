@@ -78,6 +78,7 @@ from budget.ranges import load_ranges
 from budget.rebuilding import (
     HouseholdInputs,
     SilverDecisionFreshnessError,
+    SilverDecisionLogPrefixError,
     SilverNotBuiltError,
     SilverProvenanceUnavailableError,
     SilverRebuild,
@@ -599,6 +600,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         UncommittedCodeError,
         SilverNotBuiltError,
         SilverDecisionFreshnessError,
+        SilverDecisionLogPrefixError,
         SilverProvenanceUnavailableError,
         SilverReviewUnavailableError,
         WriterLockHeldError,
