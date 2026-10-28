@@ -68,14 +68,14 @@ def _replace(profile: Profile, inputs: SilverBuildInputs) -> SilverResult:
         source_records=inputs.source_records,
         format_failures=inputs.format_failures,
         currencies=inputs.currencies,
-        decisions=inputs.decisions,
+        decisions=tuple(inputs.decisions),
     )
     provenance = SilverProvenance(
         fingerprint_scheme=SILVER_FINGERPRINT_SCHEME,
         result_fingerprint=result_fingerprint(result, currencies=inputs.currencies),
         import_runs=_consumed_runs(inputs.runs),
         currencies=inputs.currencies,
-        decisions=inputs.decisions,
+        decisions=tuple(inputs.decisions),
         decision_log_position=inputs.decision_log_position,
         decision_log_prefix_sha256=inputs.decision_log_prefix_sha256,
         code_version=inputs.code_version,

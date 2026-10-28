@@ -69,6 +69,7 @@ from budget.prompting import ask_continue_after_duplicates, ask_passphrase, ask_
 from budget.ranges import load_ranges
 from budget.rebuilding import (
     SilverNotBuiltError,
+    SilverProvenanceUnavailableError,
     SilverRebuild,
     rebuild_from_gold,
     rebuild_from_silver,
@@ -533,6 +534,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         RebuildFromStageNotBuiltError,
         UncommittedCodeError,
         SilverNotBuiltError,
+        SilverProvenanceUnavailableError,
         SilverReviewUnavailableError,
         WriterLockHeldError,
         StoresFolderUnavailableError,

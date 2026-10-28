@@ -65,6 +65,18 @@ class SilverNotBuiltError(RuntimeError):
         )
 
 
+class SilverProvenanceUnavailableError(RuntimeError):
+    """Gold cannot consume a Silver replacement with unknown build context."""
+
+    def __init__(self) -> None:
+        """Name the one recovery command."""
+        super().__init__(
+            "the stored Silver result has no trustworthy build provenance; "
+            "run `budget rebuild --from silver` before publishing Gold; "
+            "nothing was published"
+        )
+
+
 @dataclass(frozen=True)
 class GoldRebuild:
     """What one Gold rebuild left current, and whether it published it.
@@ -188,21 +200,33 @@ def rebuild_from_gold(lock: WriterLock, *, now: datetime) -> GoldRebuild:
     with SilverStore(profile) as silver_store:
         if not silver_store.is_built():
             raise SilverNotBuiltError
-        silver = silver_store.read()
+        stored_silver = silver_store.read_build()
+    silver = stored_silver.result
+    provenance = stored_silver.provenance
+    if provenance is None:
+        raise SilverProvenanceUnavailableError
     recipe = Recipe(
         import_runs=frozenset(
             RecipeImportRun(run.import_run_id, run.payload_id)
-            for run in (*silver.import_run_results, *silver.evidence_exports)
+            for run in provenance.import_runs
         ),
         configuration_fingerprint=configuration.fingerprint,
         decision_log_position=log.position,
         decision_log_prefix_sha256=log.prefix_sha256,
         code_version=committed_code_version(profile),
         contract_version=CONTRACT_VERSION,
-        silver_identity_version=IDENTITY_VERSION,
+        silver_identity_version=provenance.identity_version,
         late_booking_days=profile.late_booking_window.days,
         python_version=platform.python_version(),
         sqlite_version=sqlite3.sqlite_version,
+        silver_fingerprint_scheme=provenance.fingerprint_scheme,
+        silver_result_fingerprint=provenance.result_fingerprint,
+        silver_code_version=provenance.code_version,
+        silver_decision_log_position=provenance.decision_log_position,
+        silver_decision_log_prefix_sha256=provenance.decision_log_prefix_sha256,
+        silver_bronze_parser_provenance=provenance.bronze_parser_provenance,
+        silver_currencies=frozenset(provenance.currencies.items()),
+        silver_decisions=tuple(provenance.decisions),
     )
     with GoldStore(profile) as gold:
         current = gold.current()
