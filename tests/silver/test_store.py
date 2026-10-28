@@ -183,6 +183,32 @@ def _one_unbooked(account_id: str) -> SilverResult:
     )
 
 
+def _known_provenance(result: SilverResult) -> SilverProvenance:
+    """A complete synthetic context for a directly stored test result."""
+    return SilverProvenance(
+        fingerprint_scheme=SILVER_FINGERPRINT_SCHEME,
+        result_fingerprint=result_fingerprint(result, currencies=CURRENCIES),
+        import_runs=frozenset(
+            {
+                *(
+                    SilverImportRun(run.import_run_id, run.payload_id)
+                    for run in result.import_run_results
+                ),
+                *(
+                    SilverImportRun(run.import_run_id, run.payload_id)
+                    for run in result.evidence_exports
+                ),
+            }
+        ),
+        currencies=CURRENCIES,
+        decisions=DECISIONS,
+        decision_log_position=7,
+        decision_log_prefix_sha256="a" * 64,
+        code_version="0123456789abcdef",
+        identity_version="1",
+    )
+
+
 def _stored_minor_units(profile: Profile) -> int:
     """The integer the store wrote, read straight from the file.
 
@@ -230,6 +256,20 @@ class SilverStoreTests(unittest.TestCase):
                 )
 
                 assert store.read_build() == expected
+
+    def test_a_direct_replacement_without_provenance_is_explicitly_unknown(
+        self,
+    ) -> None:
+        empty = SilverResult((), (), (), (), (), (), (), ())
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+
+            with SilverStore(profile) as store:
+                store.replace(empty, currencies={})
+
+                assert store.is_built()
+                assert store.read_build() == SilverBuild(empty, {}, None)
 
     def test_a_complete_result_survives_a_roundtrip_through_the_store(self) -> None:
         result = _complete_result()
@@ -549,6 +589,47 @@ class SilverMoneyTests(unittest.TestCase):
 
 
 class SilverDurabilityTests(unittest.TestCase):
+    def test_a_metadata_write_failure_rolls_back_result_and_provenance(
+        self,
+    ) -> None:
+        result = _complete_result()
+        provenance = _known_provenance(result)
+        changed = replace(
+            result,
+            transactions=tuple(
+                replace(transaction, description="CHANGED")
+                for transaction in result.transactions
+            ),
+        )
+        changed_provenance = _known_provenance(changed)
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+
+            with SilverStore(profile) as store:
+                store.replace(
+                    result,
+                    currencies=CURRENCIES,
+                    provenance=provenance,
+                )
+                with closing(sqlite3.connect(profile.silver_store)) as connection:
+                    connection.executescript(
+                        "CREATE TRIGGER refuse_build_run BEFORE INSERT"
+                        " ON silver_build_runs BEGIN"
+                        " SELECT RAISE(ABORT, 'synthetic metadata failure');"
+                        " END;"
+                    )
+                    connection.commit()
+
+                with pytest.raises(sqlite3.IntegrityError):
+                    store.replace(
+                        changed,
+                        currencies=CURRENCIES,
+                        provenance=changed_provenance,
+                    )
+
+                assert store.read_build() == SilverBuild(result, CURRENCIES, provenance)
+
     def test_a_failed_replacement_leaves_the_previous_result_readable(self) -> None:
         result = _complete_result()
         first, second, *rest = result.transactions
@@ -609,6 +690,47 @@ class SilverDurabilityTests(unittest.TestCase):
 
             with SilverStore(profile) as reopened:
                 assert reopened.read() in (complete, smaller)
+
+    def test_build_reads_never_mix_result_and_provenance(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+            complete = _complete_result()
+            smaller = _one_transaction(Decimal("-45.00"))
+            complete_provenance = _known_provenance(complete)
+            smaller_provenance = _known_provenance(smaller)
+
+            def replace_repeatedly() -> None:
+                with SilverStore(profile) as writer:
+                    for _ in range(25):
+                        writer.replace(
+                            smaller,
+                            currencies=CURRENCIES,
+                            provenance=smaller_provenance,
+                        )
+                        writer.replace(
+                            complete,
+                            currencies=CURRENCIES,
+                            provenance=complete_provenance,
+                        )
+
+            with SilverStore(profile) as store:
+                store.replace(
+                    complete,
+                    currencies=CURRENCIES,
+                    provenance=complete_provenance,
+                )
+                writer = Thread(target=replace_repeatedly)
+                writer.start()
+                try:
+                    for _ in range(100):
+                        stored = store.read_build()
+                        assert stored in (
+                            SilverBuild(complete, CURRENCIES, complete_provenance),
+                            SilverBuild(smaller, CURRENCIES, smaller_provenance),
+                        )
+                finally:
+                    writer.join()
 
     def test_an_empty_result_clears_every_derived_row_and_keeps_the_identity(
         self,
