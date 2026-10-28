@@ -21,17 +21,22 @@ import pytest
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 from budget.silver import (
+    SILVER_FINGERPRINT_SCHEME,
     AcceptDiscrepancy,
     CurrencySnapshotMismatchError,
     MoneyPrecisionError,
     MoneyRangeError,
     NonFiniteMoneyError,
+    SilverBuild,
+    SilverImportRun,
+    SilverProvenance,
     SilverResult,
     SilverStore,
     Transaction,
     UnbookedRecord,
     UnknownAccountCurrencyError,
     Withdrawn,
+    result_fingerprint,
 )
 from budget.silver.currencies import UnknownCurrencyError
 from budget.silver.storage import migrate_silver
@@ -191,6 +196,41 @@ def _stored_minor_units(profile: Profile) -> int:
 
 
 class SilverStoreTests(unittest.TestCase):
+    def test_a_completed_build_reads_its_result_and_provenance_together(self) -> None:
+        result = _complete_result()
+        provenance = SilverProvenance(
+            fingerprint_scheme=SILVER_FINGERPRINT_SCHEME,
+            result_fingerprint=result_fingerprint(result, currencies=CURRENCIES),
+            import_runs=frozenset(
+                {
+                    SilverImportRun("run-a", "payload-run-a"),
+                    SilverImportRun("run-b", "payload-run-b"),
+                    SilverImportRun("run-c", "payload-run-c"),
+                    SilverImportRun("run-d", "payload-run-d"),
+                }
+            ),
+            currencies=CURRENCIES,
+            decisions=DECISIONS,
+            decision_log_position=7,
+            decision_log_prefix_sha256="a" * 64,
+            code_version="0123456789abcdef",
+            identity_version="1",
+        )
+        expected = SilverBuild(result, CURRENCIES, provenance)
+
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+
+            with SilverStore(profile) as store:
+                store.replace(
+                    result,
+                    currencies=CURRENCIES,
+                    provenance=provenance,
+                )
+
+                assert store.read_build() == expected
+
     def test_a_complete_result_survives_a_roundtrip_through_the_store(self) -> None:
         result = _complete_result()
         # The fixture has to carry every shape a persisted result can have, or
@@ -594,7 +634,7 @@ class SilverDurabilityTests(unittest.TestCase):
                 assert connection.execute(
                     "SELECT profile, stage FROM store_identity"
                 ).fetchall() == [("test", "silver")]
-                assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
 
 
 if __name__ == "__main__":
