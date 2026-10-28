@@ -8,6 +8,7 @@ the `SilverResult` the caller gets back.
 
 import unittest
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from tempfile import TemporaryDirectory
@@ -18,12 +19,16 @@ from budget.locking import WriterLockHeldError, writer_lock
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 from budget.silver import (
+    SILVER_FINGERPRINT_SCHEME,
     SilverBuildInputs,
+    SilverImportRun,
+    SilverProvenance,
     SilverResult,
     SilverStore,
     VoidImportRun,
     build,
     rebuild_silver,
+    result_fingerprint,
 )
 from budget.silver.decisions import SilverDecision
 from budget.silver.storage import migrate_silver
@@ -78,6 +83,47 @@ def _stored_dates(profile: Profile) -> list[date]:
 
 
 class SilverRebuildTests(unittest.TestCase):
+    def test_a_rebuild_persists_the_exact_context_that_produced_its_result(
+        self,
+    ) -> None:
+        decision = VoidImportRun(decision_id="d-0001", import_run_id="run-b")
+        inputs = replace(
+            _inputs(FIRST, LATER),
+            decisions=(decision,),
+            decision_log_position=12,
+            decision_log_prefix_sha256="a" * 64,
+            code_version="0123456789abcdef",
+            identity_version="1",
+        )
+
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+
+            rebuild_silver(profile, inputs=inputs)
+
+            with SilverStore(profile) as store:
+                stored = store.read_build()
+
+        assert stored.provenance == SilverProvenance(
+            fingerprint_scheme=SILVER_FINGERPRINT_SCHEME,
+            result_fingerprint=result_fingerprint(
+                stored.result, currencies=inputs.currencies
+            ),
+            import_runs=frozenset(
+                {
+                    SilverImportRun("run-a", "payload-run-a"),
+                    SilverImportRun("run-b", "payload-run-b"),
+                }
+            ),
+            currencies=inputs.currencies,
+            decisions=(decision,),
+            decision_log_position=12,
+            decision_log_prefix_sha256="a" * 64,
+            code_version="0123456789abcdef",
+            identity_version="1",
+        )
+
     def test_rebuild_silver_stores_what_the_pure_build_produces(self) -> None:
         inputs = _inputs(FIRST, LATER)
         with TemporaryDirectory() as directory:
