@@ -445,10 +445,7 @@ class SilverProvenanceRecoveryTests(unittest.TestCase):
                 assert store.read().transactions == ()
                 assert store.read().import_run_results == ()
 
-            status, _, stderr = rebuild(built.profile_file, "--from", "silver")
-
-            assert (status, stderr) == (EXIT_OK, "")
-            status, stdout, stderr = rebuild(built.profile_file)
+            status, stdout, stderr = rebuild(built.profile_file, "--from", "silver")
 
             assert (status, stderr) == (EXIT_OK, "")
             assert "published publication 1" in stdout
