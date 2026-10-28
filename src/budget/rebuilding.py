@@ -16,6 +16,7 @@ import sqlite3
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
+from typing import Self
 
 from budget.bronze import BronzeStore
 from budget.bronze.models import ImportRun
@@ -33,6 +34,7 @@ from budget.inputs import Account, ConfigurationError, load_accounts, load_confi
 from budget.locking import WriterLock
 from budget.profiles import ACCOUNTS_FILE_NAME, Profile
 from budget.silver import (
+    SILVER_FINGERPRINT_SCHEME,
     AcceptDiscrepancy,
     SameTransaction,
     SilverBuildInputs,
@@ -44,6 +46,7 @@ from budget.silver import (
     rebuild_silver,
 )
 from budget.silver.currencies import UnknownCurrencyError, minor_unit_places
+from budget.silver.identity import IDENTITY_VERSION
 
 
 @dataclass(frozen=True)
@@ -80,6 +83,28 @@ class SilverProvenanceUnavailableError(RuntimeError):
             "run `budget rebuild --from silver` before publishing Gold; "
             "nothing was published"
         )
+
+
+class IncompatibleSilverProvenanceError(RuntimeError):
+    """Stored Silver provenance is newer than this Gold consumer supports."""
+
+    def __init__(self, field: str) -> None:
+        """Name the incompatible contract and the required rebuild."""
+        super().__init__(
+            f"the stored Silver provenance has an unsupported {field}; "
+            "run `budget rebuild --from silver` before publishing Gold; "
+            "nothing was published"
+        )
+
+    @classmethod
+    def fingerprint_scheme(cls) -> Self:
+        """Refuse a fingerprint scheme this consumer cannot compare."""
+        return cls("fingerprint scheme")
+
+    @classmethod
+    def identity_version(cls) -> Self:
+        """Refuse an identity contract this consumer cannot interpret."""
+        return cls("identity contract")
 
 
 class SilverDecisionFreshnessError(RuntimeError):
@@ -246,6 +271,10 @@ def rebuild_from_gold(lock: WriterLock, *, now: datetime) -> GoldRebuild:
     provenance = stored_silver.provenance
     if provenance is None:
         raise SilverProvenanceUnavailableError
+    if provenance.fingerprint_scheme != SILVER_FINGERPRINT_SCHEME:
+        raise IncompatibleSilverProvenanceError.fingerprint_scheme()
+    if provenance.identity_version != IDENTITY_VERSION:
+        raise IncompatibleSilverProvenanceError.identity_version()
     current_prefix = log.prefix_sha256_at(provenance.decision_log_position)
     if current_prefix != provenance.decision_log_prefix_sha256:
         raise SilverDecisionLogPrefixError
