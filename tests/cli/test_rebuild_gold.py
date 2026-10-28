@@ -33,6 +33,37 @@ EXIT_REFUSED_ENVIRONMENT = 4
 
 
 class FirstPublicationTests(unittest.TestCase):
+    def test_the_gold_recipe_copies_the_exact_silver_provenance(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            with SilverStore(built.profile) as silver_store:
+                context = silver_store.read_build()
+            provenance = context.provenance
+            assert provenance is not None
+
+            with GoldStore(built.profile) as gold:
+                recipe = gold.recipe(1)
+
+            assert recipe.silver_fingerprint_scheme == provenance.fingerprint_scheme
+            assert recipe.silver_result_fingerprint == provenance.result_fingerprint
+            assert recipe.silver_code_version == provenance.code_version
+            assert (
+                recipe.silver_decision_log_position == provenance.decision_log_position
+            )
+            assert (
+                recipe.silver_decision_log_prefix_sha256
+                == provenance.decision_log_prefix_sha256
+            )
+            assert (
+                recipe.silver_bronze_parser_provenance
+                == provenance.bronze_parser_provenance
+            )
+            assert recipe.silver_identity_version == provenance.identity_version
+            assert recipe.silver_currencies == frozenset(provenance.currencies.items())
+            assert recipe.silver_decisions == provenance.decisions
+            assert recipe.code_version is None
+
     def test_rebuild_publishes_the_first_publication_from_silver(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
@@ -41,6 +72,10 @@ class FirstPublicationTests(unittest.TestCase):
 
             assert (status, stderr) == (EXIT_OK, "")
             assert "publication 1" in stdout
+            with SilverStore(built.profile) as silver_store:
+                context = silver_store.read_build()
+            provenance = context.provenance
+            assert provenance is not None
             with GoldStore(built.profile) as gold:
                 current = gold.current()
                 assert current is not None
@@ -64,6 +99,18 @@ class FirstPublicationTests(unittest.TestCase):
                     late_booking_days=7,
                     python_version="",
                     sqlite_version="",
+                    silver_fingerprint_scheme=provenance.fingerprint_scheme,
+                    silver_result_fingerprint=provenance.result_fingerprint,
+                    silver_code_version=provenance.code_version,
+                    silver_decision_log_position=provenance.decision_log_position,
+                    silver_decision_log_prefix_sha256=(
+                        provenance.decision_log_prefix_sha256
+                    ),
+                    silver_bronze_parser_provenance=(
+                        provenance.bronze_parser_provenance
+                    ),
+                    silver_currencies=frozenset(provenance.currencies.items()),
+                    silver_decisions=provenance.decisions,
                 )
                 transactions = gold.open(1).transactions(
                     start_date=date(2026, 3, 1), end_date=date(2026, 3, 31)
@@ -216,7 +263,9 @@ class SilverChangeTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_OK, "")
             assert "published publication 2" in stdout
             with GoldStore(built.profile) as gold:
-                assert gold.recipe(2).import_runs == frozenset()
+                assert gold.recipe(2).import_runs == frozenset(
+                    {RecipeImportRun(built.import_run_id, sha256(EXPORT).hexdigest())}
+                )
                 transactions = gold.open(2).transactions(
                     start_date=date(2026, 3, 1), end_date=date(2026, 3, 31)
                 )
