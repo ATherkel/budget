@@ -58,6 +58,19 @@ class OpenReviews:
     items: tuple[OpenReview, ...]
     gold_items: tuple[OpenGoldReview, ...]
     runs: tuple[ImportRunResult, ...]
+    silver_is_built: bool
+
+
+class SilverReviewUnavailableError(RuntimeError):
+    """Silver was never built or a migration cleared its derived review data."""
+
+    def __init__(self) -> None:
+        """Say that the queue is incomplete and how to restore Silver reviews."""
+        super().__init__(
+            "Silver review is unavailable because Silver has not been built or "
+            "was cleared by a migration; run `budget rebuild --from silver`; "
+            "the review queue is incomplete"
+        )
 
 
 def open_reviews(
@@ -72,6 +85,14 @@ def open_reviews(
     hides it. A run has no kind, so `kind` leaves the remaining runs out.
     """
     with SilverStore(profile, read_only=True) as store:
+        silver_is_built = store.is_built()
+        if not silver_is_built:
+            return OpenReviews(
+                items=(),
+                gold_items=(),
+                runs=(),
+                silver_is_built=False,
+            )
         result = store.read()
     raised_by = {
         item_id: run.import_run_id
@@ -98,6 +119,7 @@ def open_reviews(
         items=items,
         gold_items=_gold_reviews(profile, kind=kind, account=account),
         runs=runs,
+        silver_is_built=silver_is_built,
     )
 
 
