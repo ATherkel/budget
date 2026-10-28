@@ -17,16 +17,35 @@ from budget.locking import WriterLock
 
 # Development's folder of production's restored stores.
 UPSTREAM_FOLDER: Final = "upstream"
+# Where a refresh copies a set before it replaces `upstream`.
+UPSTREAM_STAGING: Final = "upstream-staging"
+
+
+def _remove_read_only(folder: Path) -> None:
+    """Delete a folder of read-only copies, making each writable first."""
+    if not folder.is_dir():
+        return
+    for copy in folder.iterdir():
+        copy.chmod(stat.S_IREAD | stat.S_IWRITE)
+    shutil.rmtree(folder)
 
 
 def refresh(lock: WriterLock) -> BackupSet:
-    """Restore production's newest complete set into `upstream`, read-only."""
+    """Restore production's newest complete set into `upstream`, read-only.
+
+    The copies are made in a staging folder beside it and replace the old
+    `upstream` folder only once they are all made.
+    """
     profile = lock.profile
     newest = complete_sets_in(Path(str(profile.upstream_backups)))[0]
     upstream = profile.stores / UPSTREAM_FOLDER
-    upstream.mkdir(exist_ok=True)
+    staging = profile.stores / UPSTREAM_STAGING
+    _remove_read_only(staging)
+    staging.mkdir(parents=True)
     for store in set_store_files(newest).values():
-        copy = upstream / store
+        copy = staging / store
         shutil.copyfile(newest.path / store, copy)
         copy.chmod(stat.S_IREAD)
+    _remove_read_only(upstream)
+    staging.rename(upstream)
     return newest
