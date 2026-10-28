@@ -1,9 +1,6 @@
 # Copyright 2026 Therkel
-"""`budget rebuild` refuses a nonempty decision log it cannot read yet.
+"""`budget rebuild` applies and records the effective decision log.
 
-The decision-log reader is a later slice. Until it exists, a log that holds any
-manual decision must refuse the rebuild rather than silently build as if the
-household had made no decision, and the stored result must stay as it was.
 Every test passes `main` an explicit environment.
 """
 
@@ -16,13 +13,12 @@ from tempfile import TemporaryDirectory
 from budget.importing import Coverage, import_inbox_file
 from budget.locking import writer_lock
 from budget.profiles import Profile
-from budget.silver import SilverStore
+from budget.silver import SilverStore, Withdrawn
 from tests.cli.commands import migrate, rebuild
 from tests.cli.profile_files import development_profile, write_profile
 from tests.importing.households import ACCOUNTS, drop, payload
 
 EXIT_OK = 0
-EXIT_REFUSED_INPUT = 3
 DECISION_LOG = "decisions.jsonl"
 SENTINEL = "SENSITIVE-SENTINEL-REASON"
 # One synthetic *withdrawn* entry, in the documented `decisions.jsonl` shape.
@@ -66,7 +62,7 @@ def _import_one_export(profile: Profile) -> None:
 
 
 class RebuildDecisionLogTests(unittest.TestCase):
-    def test_a_nonempty_decision_log_refuses_the_rebuild(self) -> None:
+    def test_a_nonempty_decision_log_is_applied_and_recorded(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
             profile_file = write_profile(folder)
@@ -84,14 +80,18 @@ class RebuildDecisionLogTests(unittest.TestCase):
 
             status, stdout, stderr = rebuild(profile_file, "--from", "silver")
 
-            assert status == EXIT_REFUSED_INPUT
-            assert DECISION_LOG in stderr
-            assert "nothing was written" in stderr
+            assert (status, stderr) == (EXIT_OK, "")
             # The refusal never repeats the household's own decision text.
             assert SENTINEL not in stderr
             assert SENTINEL not in stdout
             with SilverStore(profile) as store:
-                assert store.read() == before
+                stored = store.read_build()
+            assert stored.result == before
+            assert stored.provenance is not None
+            assert stored.provenance.decisions == (
+                Withdrawn("d-0001", "SENSITIVE-SENTINEL-TARGET"),
+            )
+            assert stored.provenance.decision_log_position == 1
 
             # An empty log means no decisions, so the rebuild is allowed.
             log.write_text("", encoding="utf-8")
