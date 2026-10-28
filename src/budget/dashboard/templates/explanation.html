@@ -15,11 +15,17 @@
 <p class="notice notice--warning">Der findes nyere tal. <a id="newer-figures" href="/">Hent de nyeste tal</a></p>
 {% endif %}
 {# Analytics judged everything listed here; the page only says it in words. #}
-{% if overview.coverage.status != "complete" %}
+{% set incomplete = overview.coverage.account_months | rejectattr("status", "equalto", "outside_history") | list %}
+{% if overview.coverage.status != "complete" and not incomplete %}
+<section class="report-panel" aria-labelledby="coverage-heading">
+<h2 id="coverage-heading">Hvorfor der ingen tal er</h2>
+<p id="explanation-coverage">Ingen af de valgte konti har historik i {{ month_label }}, så der er ingen tal for måneden. Vælg en anden måned eller andre konti.</p>
+</section>
+{% elif overview.coverage.status != "complete" %}
 <section class="report-panel" aria-labelledby="coverage-heading">
 <h2 id="coverage-heading">Hvor tallene er ufuldstændige</h2>
 <ul id="explanation-coverage" class="explanation-list">
-{% for month in overview.coverage.account_months if month.status != "outside_history" %}
+{% for month in incomplete %}
   <li>{{ month.display_name }}, {{ month_label }}: {% if month.status == "no_data" %}der er ingen data for måneden endnu.{% else %}kun en del af måneden er dækket.{% endif %}</li>
 {% endfor %}
 </ul>

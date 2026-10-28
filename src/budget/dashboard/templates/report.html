@@ -9,7 +9,13 @@
 {% endif %}
 {% if overview.coverage.status != "complete" %}
 {% from "names.html" import names %}
-<p id="coverage-note" class="trust-note">{% if overview.coverage.status == "no_data" %}Der er ingen data endnu fra{% else %}Tallene mangler noget fra{% endif %} {{ names(overview.coverage.account_months | rejectattr("status", "equalto", "outside_history") | list) }}. <a id="coverage-explanation" href="{{ explanation_url }}">Hvorfor tallene er ufuldstændige</a></p>
+{% set incomplete = overview.coverage.account_months | rejectattr("status", "equalto", "outside_history") | list %}
+{% if not incomplete %}
+{# No selected account contributes: the month lies outside every one's history. #}
+<p id="coverage-note" class="trust-note">Ingen af de valgte konti har historik i {{ month_label }}. <a id="coverage-explanation" href="{{ explanation_url }}">Hvorfor der ingen tal er</a></p>
+{% else %}
+<p id="coverage-note" class="trust-note">{% if overview.coverage.status == "no_data" %}Der er ingen data endnu fra{% else %}Tallene mangler noget fra{% endif %} {{ names(incomplete) }}. <a id="coverage-explanation" href="{{ explanation_url }}">Hvorfor tallene er ufuldstændige</a></p>
+{% endif %}
 {% endif %}
 {# With no evidence a figure is unknown, never zero. #}
 <dl class="summary">
