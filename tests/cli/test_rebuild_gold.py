@@ -297,6 +297,46 @@ class RecipeNamesSilversRunsTests(unittest.TestCase):
 
 
 class SilverChangeTests(unittest.TestCase):
+    def test_voided_only_input_still_requires_its_consumed_currency(self) -> None:
+        cases = ("changed", "removed")
+        for case in cases:
+            with self.subTest(case), TemporaryDirectory() as directory:
+                built = household(Path(directory))
+                decision = {
+                    "format": 1,
+                    "entry": 1,
+                    "decision_id": "d-0001",
+                    "recorded_at": "2026-04-10T17:02:11Z",
+                    "kind": "void-import-run",
+                    "targets": [built.import_run_id],
+                    "reason": "synthetic mistaken run",
+                    "supersedes": [],
+                }
+                built.profile.input_file("decisions.jsonl").write_text(
+                    json.dumps(decision) + "\n",
+                    encoding="utf-8",
+                )
+                assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+                accounts = built.profile.accounts_file.read_text(encoding="utf-8")
+                if case == "changed":
+                    changed = accounts.replace(
+                        'currency = "DKK"', 'currency = "EUR"', 1
+                    )
+                else:
+                    savings = accounts.index("[account.joint-savings]")
+                    changed = "format = 1\n\n" + accounts[savings:]
+                built.profile.accounts_file.write_text(changed, encoding="utf-8")
+
+                status, stdout, stderr = rebuild(built.profile_file)
+
+                assert status == EXIT_REFUSED_ENVIRONMENT
+                assert stdout == ""
+                assert "consumed currency" in stderr
+                assert "rebuild --from silver" in stderr
+                with GoldStore(built.profile) as gold:
+                    assert gold.current() is None
+                    assert gold.pointer_history() == ()
+
     def test_a_carriage_return_prefix_hashes_the_exact_lf_delimited_entry(
         self,
     ) -> None:
