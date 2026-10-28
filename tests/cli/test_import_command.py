@@ -141,7 +141,13 @@ class ImportCommandTests(unittest.TestCase):
             provenance = stored.provenance
             assert provenance is not None
             assert provenance.import_runs == frozenset(
-                {SilverImportRun(result.import_run_id, result.payload_id)}
+                {
+                    SilverImportRun(
+                        result.import_run_id,
+                        result.payload_id,
+                        result.account_id,
+                    )
+                }
             )
             assert provenance.currencies["joint-current"] == "DKK"
             assert provenance.decisions == ()

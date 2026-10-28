@@ -86,11 +86,13 @@ def silver_provenance(
     inputs: SilverBuildInputs, result: SilverResult
 ) -> SilverProvenance:
     """Name what `inputs` gave the build of `result`, as Silver stores it."""
+    import_runs = _consumed_runs(inputs.runs)
+    consumed_currencies = _consumed_currencies(import_runs, inputs.currencies)
     return SilverProvenance(
         fingerprint_scheme=SILVER_FINGERPRINT_SCHEME,
-        result_fingerprint=result_fingerprint(result, currencies=inputs.currencies),
-        import_runs=_consumed_runs(inputs.runs),
-        currencies=inputs.currencies,
+        result_fingerprint=result_fingerprint(result, currencies=consumed_currencies),
+        import_runs=import_runs,
+        currencies=consumed_currencies,
         decisions=tuple(inputs.decisions),
         decision_log_position=inputs.decision_log_position,
         decision_log_prefix_sha256=inputs.decision_log_prefix_sha256,
@@ -109,7 +111,17 @@ def _replace(profile: Profile, inputs: SilverBuildInputs) -> SilverResult:
 def _consumed_runs(runs: Sequence[ImportRun]) -> frozenset[SilverImportRun]:
     """Return every stored or repeated run Silver actually interpreted."""
     return frozenset(
-        SilverImportRun(run.import_run_id, run.payload_id)
+        SilverImportRun(run.import_run_id, run.payload_id, run.declared_account_id)
         for run in runs
         if run.outcome in {"stored", "repeat"}
     )
+
+
+def _consumed_currencies(
+    runs: frozenset[SilverImportRun], currencies: Mapping[str, str]
+) -> dict[str, str]:
+    """Return the currency projection for exactly the consumed run accounts."""
+    return {
+        account_id: currencies[account_id]
+        for account_id in sorted({run.account_id for run in runs})
+    }

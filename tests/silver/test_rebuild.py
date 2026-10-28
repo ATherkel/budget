@@ -112,8 +112,8 @@ class SilverRebuildTests(unittest.TestCase):
             ),
             import_runs=frozenset(
                 {
-                    SilverImportRun("run-a", "payload-run-a"),
-                    SilverImportRun("run-b", "payload-run-b"),
+                    SilverImportRun("run-a", "payload-run-a", "joint-current"),
+                    SilverImportRun("run-b", "payload-run-b", "joint-current"),
                 }
             ),
             currencies=inputs.currencies,

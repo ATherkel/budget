@@ -125,7 +125,8 @@ _INSERT_BUILD: Final = (
     " VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 _INSERT_BUILD_RUN: Final = (
-    "INSERT INTO silver_build_runs (import_run_id, payload_id) VALUES (?, ?)"
+    "INSERT INTO silver_build_runs (import_run_id, payload_id, account_id)"
+    " VALUES (?, ?, ?)"
 )
 _INSERT_BUILD_CURRENCY: Final = (
     "INSERT INTO silver_build_currencies (account_id, currency) VALUES (?, ?)"
@@ -194,7 +195,8 @@ _SELECT_CURRENCIES: Final = (
 )
 _SELECT_BUILD: Final = "SELECT * FROM silver_builds WHERE singleton = 1"
 _SELECT_BUILD_RUNS: Final = (
-    "SELECT import_run_id, payload_id FROM silver_build_runs ORDER BY import_run_id"
+    "SELECT import_run_id, payload_id, account_id FROM silver_build_runs"
+    " ORDER BY import_run_id"
 )
 _SELECT_BUILD_CURRENCIES: Final = (
     "SELECT account_id, currency FROM silver_build_currencies ORDER BY account_id"
@@ -370,10 +372,14 @@ def _encode_provenance(
         return (("unknown", None, None, None, None, None, None, None), (), (), ())
     if provenance.fingerprint_scheme != SILVER_FINGERPRINT_SCHEME:
         raise SilverProvenanceMismatchError.fingerprint_scheme()
-    expected_fingerprint = result_fingerprint(result, currencies=currencies)
+    expected_fingerprint = result_fingerprint(result, currencies=provenance.currencies)
     if provenance.result_fingerprint != expected_fingerprint:
         raise SilverProvenanceMismatchError.result_hash()
-    if dict(provenance.currencies) != dict(currencies):
+    run_accounts = {run.account_id for run in provenance.import_runs}
+    expected_currencies = {
+        account_id: _currency_for(currencies, account_id) for account_id in run_accounts
+    }
+    if dict(provenance.currencies) != expected_currencies:
         raise SilverProvenanceMismatchError.currencies()
     if any(
         transaction.identity_version != provenance.identity_version
@@ -391,12 +397,15 @@ def _encode_provenance(
         provenance.bronze_parser_provenance,
     )
     runs = tuple(
-        sorted((run.import_run_id, run.payload_id) for run in provenance.import_runs)
+        sorted(
+            (run.import_run_id, run.payload_id, run.account_id)
+            for run in provenance.import_runs
+        )
     )
     return (
         row,
         runs,
-        tuple(sorted(currencies.items())),
+        tuple(sorted(provenance.currencies.items())),
         _encode_decisions(provenance.decisions),
     )
 
@@ -484,7 +493,11 @@ def _stored_build(connection: sqlite3.Connection) -> SilverProvenance | None:
         fingerprint_scheme=row["fingerprint_scheme"],
         result_fingerprint=row["result_fingerprint"],
         import_runs=frozenset(
-            SilverImportRun(found["import_run_id"], found["payload_id"])
+            SilverImportRun(
+                found["import_run_id"],
+                found["payload_id"],
+                found["account_id"],
+            )
             for found in connection.execute(_SELECT_BUILD_RUNS)
         ),
         currencies={

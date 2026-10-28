@@ -333,9 +333,10 @@ class SilverChangeTests(unittest.TestCase):
                 assert stdout == ""
                 assert "consumed currency" in stderr
                 assert "rebuild --from silver" in stderr
+                # `rebuild --from silver` published 1; the refusal adds nothing.
                 with GoldStore(built.profile) as gold:
-                    assert gold.current() is None
-                    assert gold.pointer_history() == ()
+                    history = gold.pointer_history()
+                    assert [m.to_publication_id for m in history] == [1]
 
     def test_a_carriage_return_prefix_hashes_the_exact_lf_delimited_entry(
         self,
@@ -437,7 +438,8 @@ class SilverChangeTests(unittest.TestCase):
                 changed = replace(
                     original.provenance,
                     result_fingerprint=result_fingerprint(
-                        changed_result, currencies=original.currencies
+                        changed_result,
+                        currencies=original.provenance.currencies,
                     ),
                 )
                 silver_store.replace(

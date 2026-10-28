@@ -57,7 +57,8 @@ CREATE TABLE silver_builds (
 
 CREATE TABLE silver_build_runs (
     import_run_id TEXT PRIMARY KEY,
-    payload_id TEXT NOT NULL
+    payload_id TEXT NOT NULL,
+    account_id TEXT NOT NULL
 ) STRICT;
 
 CREATE TABLE silver_build_currencies (
