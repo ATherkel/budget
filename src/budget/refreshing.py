@@ -10,6 +10,7 @@ inputs alone (`operations.md`, *Development diverges from a stage*).
 import shutil
 import sqlite3
 import stat
+from collections.abc import Iterable
 from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
@@ -38,6 +39,8 @@ UPSTREAM_STAGING: Final = "upstream-staging"
 INPUTS_REPLACING_SUFFIX: Final = ".replacing"
 # Where `--writable` relabels a set's stores before moving them in.
 WRITABLE_STAGING: Final = "writable-staging"
+# Where `--writable` keeps development's old stores until the new are in.
+WRITABLE_REPLACED: Final = "writable-replaced"
 # A store file and the files SQLite keeps beside it.
 _STORE_FILE_SUFFIXES: Final = ("", "-wal", "-shm", "-journal")
 
@@ -51,6 +54,17 @@ class NotRefreshableError(RuntimeError):
             "dev refresh needs a development profile whose `upstream_backups` "
             f"names production's backups folder; the {name} profile is not "
             "one; nothing was refreshed"
+        )
+
+
+class RefreshWriteError(RuntimeError):
+    """A writable refresh could not move its stores in: none was changed."""
+
+    def __init__(self, reason: str) -> None:
+        """Say why, and that development's stores were kept."""
+        super().__init__(
+            f"the backup set could not be refreshed into development's stores: "
+            f"{reason}; development's stores are as they were"
         )
 
 
@@ -103,6 +117,41 @@ def _relabel(copy: Path, profile: Profile) -> None:
         connection.execute("UPDATE store_identity SET profile = ?", (profile.name,))
 
 
+def _own_store_files(profile: Profile) -> list[Path]:
+    """Name development's stage store files that exist, with SQLite's own."""
+    stores = (profile.bronze_store, profile.silver_store, profile.gold_store)
+    return [
+        found
+        for store in stores
+        for suffix in _STORE_FILE_SUFFIXES
+        if (found := store.with_name(store.name + suffix)).exists()
+    ]
+
+
+def _swap_in(profile: Profile, staging: Path, stores: Iterable[str]) -> None:
+    """Replace development's stores with the staged ones, as one group.
+
+    Every store there, a set's or not, is moved aside first, so no old store
+    stays beside new ones. If a move in fails, the new stores are taken out
+    and the old ones put back.
+    """
+    aside = profile.stores / WRITABLE_REPLACED
+    shutil.rmtree(aside, ignore_errors=True)
+    aside.mkdir()
+    for found in _own_store_files(profile):
+        found.replace(aside / found.name)
+    try:
+        for store in stores:
+            (staging / store).replace(profile.stores / store)
+    except OSError:
+        for found in _own_store_files(profile):
+            found.unlink()
+        for kept in aside.iterdir():
+            kept.replace(profile.stores / kept.name)
+        raise
+    shutil.rmtree(aside, ignore_errors=True)
+
+
 def _restore_writable(profile: Profile, backup: BackupSet) -> None:
     """Restore the set into development's own stores, relabelled as its own.
 
@@ -110,17 +159,16 @@ def _restore_writable(profile: Profile, backup: BackupSet) -> None:
     ones there are replaced; each copy is relabelled before it is moved in.
     """
     staging = profile.stores / WRITABLE_STAGING
-    shutil.rmtree(staging, ignore_errors=True)
-    staging.mkdir(parents=True)
     try:
+        shutil.rmtree(staging, ignore_errors=True)
+        staging.mkdir(parents=True)
         stores = set_store_files(backup).values()
         for store in stores:
             shutil.copyfile(backup.path / store, staging / store)
             _relabel(staging / store, profile)
-        for store in stores:
-            for suffix in _STORE_FILE_SUFFIXES:
-                (profile.stores / f"{store}{suffix}").unlink(missing_ok=True)
-            (staging / store).replace(profile.stores / store)
+        _swap_in(profile, staging, stores)
+    except OSError as error:
+        raise RefreshWriteError(error.strerror or type(error).__name__) from None
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 

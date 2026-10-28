@@ -75,6 +75,7 @@ from budget.rebuilding import (
 from budget.refreshing import (
     NotProductionsSetError,
     NotRefreshableError,
+    RefreshWriteError,
     refresh,
     require_refreshable,
 )
@@ -602,6 +603,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         RestoreWriteError,
         NotRefreshableError,
         NotProductionsSetError,
+        RefreshWriteError,
         NoUsableSetError,
         UnknownStageError,
         UnfinishedRestoreError,
