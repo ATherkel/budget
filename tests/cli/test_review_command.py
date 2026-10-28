@@ -27,6 +27,7 @@ from tests.cli.commands import review
 from tests.cli.profile_files import development_profile, write_profile
 
 EXIT_OK = 0
+EXIT_REFUSED_ENVIRONMENT = 4
 CURRENT = "joint-current"
 SAVINGS = "joint-savings"
 # Distinct identifiers that share an 8-character prefix, so a line that
@@ -194,6 +195,43 @@ def _seeded_profile(folder: Path) -> Profile:
 
 
 class ReviewCommandTests(unittest.TestCase):
+    def test_review_distinguishes_unbuilt_silver_from_a_built_empty_result(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            migrate_silver(profile)
+
+            unavailable = review(profile_file)
+            with SilverStore(profile) as store:
+                store.replace(
+                    SilverResult(
+                        transactions=(),
+                        transaction_evidence=(),
+                        unbooked_records=(),
+                        balance_observations=(),
+                        account_evidence=(),
+                        evidence_exports=(),
+                        import_run_results=(),
+                        review_items=(),
+                    ),
+                    currencies={CURRENT: "DKK"},
+                )
+            built_empty = review(profile_file)
+
+            assert unavailable == (
+                EXIT_REFUSED_ENVIRONMENT,
+                "",
+                (
+                    "budget: Silver review is unavailable because Silver has not "
+                    "been built or was cleared by a migration; run "
+                    "`budget rebuild --from silver`; the review queue is incomplete\n"
+                ),
+            )
+            assert built_empty == (EXIT_OK, "", "")
+
     def test_review_lists_open_items_with_filters_and_no_lock(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
