@@ -526,6 +526,13 @@ def complete_sets_in(folder: Path) -> tuple[BackupSet, ...]:
     )
 
 
+def set_profile(backup: BackupSet) -> str | None:
+    """Return the profile a set's manifest says it was taken of, if it reads."""
+    manifest = _read_manifest(backup.path)
+    profile = manifest.get("profile") if manifest is not None else None
+    return profile if isinstance(profile, str) else None
+
+
 def set_store_files(backup: BackupSet) -> dict[str, str]:
     """Map each stage a complete set's manifest lists to its store's file."""
     manifest = _read_manifest(backup.path)

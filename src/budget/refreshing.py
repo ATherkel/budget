@@ -12,9 +12,19 @@ import stat
 from pathlib import Path
 from typing import Final
 
-from budget.backups import BackupSet, complete_sets_in, set_store_files
+from budget.backups import (
+    BackupSet,
+    complete_sets_in,
+    set_profile,
+    set_store_files,
+)
 from budget.locking import WriterLock
-from budget.profiles import DEVELOPMENT_PROFILE_NAME, INPUTS_FOLDER, Profile
+from budget.profiles import (
+    DEVELOPMENT_PROFILE_NAME,
+    INPUTS_FOLDER,
+    PRODUCTION_PROFILE_NAME,
+    Profile,
+)
 
 # Development's folder of production's restored stores.
 UPSTREAM_FOLDER: Final = "upstream"
@@ -33,6 +43,17 @@ class NotRefreshableError(RuntimeError):
             "dev refresh needs a development profile whose `upstream_backups` "
             f"names production's backups folder; the {name} profile is not "
             "one; nothing was refreshed"
+        )
+
+
+class NotProductionsSetError(RuntimeError):
+    """The newest set in `upstream_backups` is another profile's."""
+
+    def __init__(self, name: str, profile: str | None) -> None:
+        """Name the set and whose it is."""
+        super().__init__(
+            f"backup set {name} is the {profile or 'unnamed'} profile's, not "
+            "production's: check `upstream_backups`; nothing was refreshed"
         )
 
 
@@ -74,6 +95,9 @@ def refresh(lock: WriterLock, *, inputs: bool = False) -> BackupSet:
     profile = lock.profile
     require_refreshable(profile)
     newest = complete_sets_in(Path(str(profile.upstream_backups)))[0]
+    taken_of = set_profile(newest)
+    if taken_of != PRODUCTION_PROFILE_NAME:
+        raise NotProductionsSetError(newest.name, taken_of)
     upstream = profile.stores / UPSTREAM_FOLDER
     staging = profile.stores / UPSTREAM_STAGING
     _remove_read_only(staging)

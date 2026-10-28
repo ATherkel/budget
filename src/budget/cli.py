@@ -84,7 +84,12 @@ from budget.rebuilding import (
     rebuild_through_gold,
     require_buildable_accounts,
 )
-from budget.refreshing import NotRefreshableError, refresh, require_refreshable
+from budget.refreshing import (
+    NotProductionsSetError,
+    NotRefreshableError,
+    refresh,
+    require_refreshable,
+)
 from budget.restoring import (
     CatchUpRefusedError,
     DamagedStoreError,
@@ -684,6 +689,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         OccupiedProfileError,
         RestoreWriteError,
         NotRefreshableError,
+        NotProductionsSetError,
         NoUsableSetError,
         UnknownStageError,
         UnfinishedRestoreError,
