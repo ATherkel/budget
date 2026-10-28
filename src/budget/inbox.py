@@ -240,8 +240,12 @@ def _latest_stored_transactions(
     """Each account's latest booked transaction in Silver as Bronze builds it now.
 
     Silver is derived from Bronze, not read from its store, because the
-    rebuild after the import reads Bronze: a stored Silver may be stale.
+    rebuild after the import reads Bronze: a stored Silver may be stale. With
+    no account closed there is nothing to check, so nothing is derived.
     """
+    accounts = inputs.configuration.accounts.values()
+    if all(account.closed_on is None for account in accounts):
+        return {}
     silver = derive_silver(bronze_inputs(profile, inputs.log.silver))
     latest: dict[str, date] = {}
     for each in gold_transactions(silver.transactions):
