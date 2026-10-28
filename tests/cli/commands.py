@@ -36,6 +36,16 @@ def restore(profile_file: Path, *options: str) -> tuple[int, str, str]:
     return status, stdout.getvalue(), stderr.getvalue()
 
 
+def dev_refresh(profile_file: Path, *options: str) -> tuple[int, str, str]:
+    """Run `budget dev refresh` with one profile file; return status and output."""
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    argv = ["--profile", str(profile_file), "dev", "refresh", *options]
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        status = main(argv, environ={})
+    return status, stdout.getvalue(), stderr.getvalue()
+
+
 def rebuild(profile_file: Path, *options: str) -> tuple[int, str, str]:
     """Run `budget rebuild` with one profile file; return status and output."""
     stdout = io.StringIO()
