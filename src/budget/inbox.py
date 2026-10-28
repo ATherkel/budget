@@ -531,15 +531,14 @@ def import_inbox(
 def _held_back(error: Exception, *, nothing_new: bool) -> bool:
     """Whether a rebuild failure after Bronze writes is reported, not raised.
 
-    Only a failure the next `import` can finish past is held back, and only
-    when this import stored something; with nothing new there is nothing to
-    report beside it.
+    Only a failure the next `import` can finish past is held back. A busy,
+    full or failing store is held back even on a retry with nothing new, so
+    the retry refuses instead of crashing; any other failure with nothing new
+    is raised as the command's own refusal.
     """
-    if nothing_new:
-        return False
     if isinstance(error, sqlite3.OperationalError):
         return error.sqlite_errorcode & 0xFF in _PASSING_STORE_FAILURES
-    return True
+    return not nothing_new
 
 
 def _bronze_holds_runs(profile: Profile) -> bool:
