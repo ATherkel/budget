@@ -279,7 +279,7 @@ def rebuild_from_gold(lock: WriterLock, *, now: datetime) -> GoldRebuild:
     if current_prefix != provenance.decision_log_prefix_sha256:
         raise SilverDecisionLogPrefixError
     _require_current_silver_decisions(provenance.decisions, log.silver)
-    _require_current_currencies(provenance.currencies, silver, configuration.accounts)
+    _require_current_currencies(provenance.currencies, configuration.accounts)
     recipe = Recipe(
         import_runs=frozenset(
             RecipeImportRun(run.import_run_id, run.payload_id)
@@ -364,21 +364,12 @@ def _silver_decision_key(decision: SilverDecision) -> tuple[object, ...]:
 
 def _require_current_currencies(
     consumed: Mapping[str, str],
-    silver: SilverResult,
     accounts: Mapping[str, Account],
 ) -> None:
-    """Refuse changes for accounts represented in the consumed result."""
-    represented = (
-        {transaction.account_id for transaction in silver.transactions}
-        | {record.account_id for record in silver.unbooked_records}
-        | {observation.account_id for observation in silver.balance_observations}
-        | {evidence.account_id for evidence in silver.account_evidence}
-        | {run.account_id for run in silver.import_run_results}
-        | {export.account_id for export in silver.evidence_exports}
-    )
-    for account_id in represented:
+    """Refuse changes for exactly the accounts named by consumed runs."""
+    for account_id, consumed_currency in consumed.items():
         account = accounts.get(account_id)
-        if account is None or account.currency != consumed.get(account_id):
+        if account is None or account.currency != consumed_currency:
             raise SilverCurrencyFreshnessError
 
 

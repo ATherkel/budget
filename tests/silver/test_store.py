@@ -185,22 +185,31 @@ def _one_unbooked(account_id: str) -> SilverResult:
 
 def _known_provenance(result: SilverResult) -> SilverProvenance:
     """A complete synthetic context for a directly stored test result."""
+    consumed_currencies = {
+        account_id: CURRENCIES[account_id]
+        for account_id in {run.account_id for run in result.import_run_results}
+        | {run.account_id for run in result.evidence_exports}
+    }
     return SilverProvenance(
         fingerprint_scheme=SILVER_FINGERPRINT_SCHEME,
-        result_fingerprint=result_fingerprint(result, currencies=CURRENCIES),
+        result_fingerprint=result_fingerprint(result, currencies=consumed_currencies),
         import_runs=frozenset(
             {
                 *(
-                    SilverImportRun(run.import_run_id, run.payload_id)
+                    SilverImportRun(
+                        run.import_run_id,
+                        run.payload_id,
+                        run.account_id,
+                    )
                     for run in result.import_run_results
                 ),
                 *(
-                    SilverImportRun(run.import_run_id, run.payload_id)
+                    SilverImportRun(run.import_run_id, run.payload_id, run.account_id)
                     for run in result.evidence_exports
                 ),
             }
         ),
-        currencies=CURRENCIES,
+        currencies=consumed_currencies,
         decisions=DECISIONS,
         decision_log_position=7,
         decision_log_prefix_sha256="a" * 64,
@@ -229,10 +238,10 @@ class SilverStoreTests(unittest.TestCase):
             result_fingerprint=result_fingerprint(result, currencies=CURRENCIES),
             import_runs=frozenset(
                 {
-                    SilverImportRun("run-a", "payload-run-a"),
-                    SilverImportRun("run-b", "payload-run-b"),
-                    SilverImportRun("run-c", "payload-run-c"),
-                    SilverImportRun("run-d", "payload-run-d"),
+                    SilverImportRun("run-a", "payload-run-a", "joint-current"),
+                    SilverImportRun("run-b", "payload-run-b", "joint-current"),
+                    SilverImportRun("run-c", "payload-run-c", "joint-current"),
+                    SilverImportRun("run-d", "payload-run-d", "joint-savings"),
                 }
             ),
             currencies=CURRENCIES,

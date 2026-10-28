@@ -408,7 +408,8 @@ class SilverChangeTests(unittest.TestCase):
                 changed = replace(
                     original.provenance,
                     result_fingerprint=result_fingerprint(
-                        changed_result, currencies=original.currencies
+                        changed_result,
+                        currencies=original.provenance.currencies,
                     ),
                 )
                 silver_store.replace(

@@ -151,11 +151,17 @@ class SilverImportRun:
 
     import_run_id: str
     payload_id: str
+    account_id: str
 
 
 @dataclass(frozen=True)
 class SilverProvenance:
-    """The exact inputs and producer identity recorded with one Silver result."""
+    """The exact inputs and producer identity recorded with one Silver result.
+
+    `currencies` is the parsed account-currency projection for accounts named by
+    the consumed stored or repeated runs, including a run later voided by a
+    decision. The full result currency map used for storage remains separate.
+    """
 
     fingerprint_scheme: str
     result_fingerprint: str
