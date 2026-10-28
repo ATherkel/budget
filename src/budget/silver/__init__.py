@@ -13,6 +13,7 @@ from budget.silver.decisions import (
     VoidImportRun,
     Withdrawn,
 )
+from budget.silver.fingerprint import SILVER_FINGERPRINT_SCHEME, result_fingerprint
 from budget.silver.models import (
     AccountEvidence,
     BalanceObservation,
@@ -43,6 +44,7 @@ from budget.silver.storage import (
 from budget.silver.store import SilverStore
 
 __all__ = [
+    "SILVER_FINGERPRINT_SCHEME",
     "AcceptDiscrepancy",
     "AccountEvidence",
     "BalanceObservation",
@@ -70,5 +72,6 @@ __all__ = [
     "derive_silver",
     "migrate_silver",
     "rebuild_silver",
+    "result_fingerprint",
     "store_silver",
 ]
