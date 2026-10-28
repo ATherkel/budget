@@ -11,6 +11,7 @@ import shutil
 import sqlite3
 import stat
 from contextlib import closing
+from dataclasses import replace
 from pathlib import Path
 from typing import Final
 
@@ -27,6 +28,7 @@ from budget.profiles import (
     PRODUCTION_PROFILE_NAME,
     Profile,
 )
+from budget.restoring import newest_readable
 
 # Development's folder of production's restored stores.
 UPSTREAM_FOLDER: Final = "upstream"
@@ -135,7 +137,11 @@ def refresh(
     """
     profile = lock.profile
     require_refreshable(profile)
-    newest = complete_sets_in(Path(str(profile.upstream_backups)))[0]
+    # Production's stores, checked as production's: each must open under
+    # its own identity, at a schema version this code knows, and intact.
+    as_production = replace(profile, name=PRODUCTION_PROFILE_NAME)
+    sets = complete_sets_in(Path(str(profile.upstream_backups)))
+    newest, _ = newest_readable(as_production, sets)
     taken_of = set_profile(newest)
     if taken_of != PRODUCTION_PROFILE_NAME:
         raise NotProductionsSetError(newest.name, taken_of)
