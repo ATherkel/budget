@@ -1,6 +1,7 @@
 # Copyright 2026 Therkel
 """The versioned fingerprint of every public Silver result record."""
 
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
@@ -127,4 +128,53 @@ def test_the_silver_fingerprint_is_a_versioned_hash_of_every_public_record() -> 
 
     assert fingerprint == (
         "6bd2f02b87c4cc09447b8479ca5b535e17fcd8a025ece2cc24e9db6f0a9b57ab"
+    )
+
+
+def test_incidental_order_and_decimal_scale_do_not_change_the_fingerprint() -> None:
+    base = _every_record()
+    first = base.transactions[0]
+    second = replace(
+        first,
+        transaction_id="t2",
+        description="OTHER",
+        amount=Decimal("1.20"),
+    )
+    ordered = replace(base, transactions=(first, second))
+    reordered = replace(
+        base,
+        transactions=(
+            replace(second, amount=Decimal("1.200")),
+            replace(first, amount=Decimal("12.300")),
+        ),
+        import_run_results=tuple(
+            replace(
+                run,
+                review_item_ids=tuple(reversed(run.review_item_ids)),
+            )
+            for run in base.import_run_results
+        ),
+        review_items=tuple(
+            replace(item, payload_ids=tuple(reversed(item.payload_ids)))
+            for item in base.review_items
+        ),
+    )
+    currencies = {"joint-savings": "EUR", "joint-current": "DKK"}
+    reversed_currencies = dict(reversed(tuple(currencies.items())))
+
+    assert result_fingerprint(ordered, currencies=currencies) == result_fingerprint(
+        reordered, currencies=reversed_currencies
+    )
+
+
+def test_duplicate_records_are_preserved_by_the_fingerprint() -> None:
+    base = _every_record()
+    duplicated = replace(
+        base,
+        transactions=(*base.transactions, *base.transactions),
+    )
+    currencies = {"joint-current": "DKK"}
+
+    assert result_fingerprint(base, currencies=currencies) != result_fingerprint(
+        duplicated, currencies=currencies
     )
