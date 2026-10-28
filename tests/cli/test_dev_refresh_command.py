@@ -8,8 +8,10 @@ temporary folder. Every test passes `main` an explicit environment.
 
 import json
 import shutil
+import sqlite3
 import stat
 import unittest
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -172,6 +174,36 @@ class DevRefreshTests(unittest.TestCase):
                 "not production's"
             ) in stderr
             assert not (development.stores / "upstream").exists()
+
+    def test_dev_refresh_passes_over_a_newest_set_this_code_cannot_read(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            production, older = _production_with_a_set(Path(directory) / "prod")
+            with writer_lock(production) as lock:
+                newer = back_up(lock, now=datetime.now(UTC))
+            with closing(sqlite3.connect(newer.path / "bronze.db")) as connection:
+                connection.execute("PRAGMA user_version = 99")
+            listed = manifest(newer.path)
+            files = listed["files"]
+            assert isinstance(files, dict)
+            files["bronze.db"] = checksum(newer.path / "bronze.db")
+            (newer.path / "manifest.json").write_text(
+                json.dumps(listed), encoding="utf-8"
+            )
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+
+            status, stdout, stderr = dev_refresh(profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout.endswith(
+                f"restored backup set {older.name} into upstream (read-only)\n"
+            )
+            assert checksum(development.stores / "upstream" / "bronze.db") == (
+                checksum(older.path / "bronze.db")
+            )
 
     def test_dev_refresh_replaces_upstream_with_a_newer_set(self) -> None:
         with TemporaryDirectory() as directory:
