@@ -84,7 +84,7 @@ from budget.rebuilding import (
     rebuild_through_gold,
     require_buildable_accounts,
 )
-from budget.refreshing import refresh
+from budget.refreshing import NotRefreshableError, refresh, require_refreshable
 from budget.restoring import (
     CatchUpRefusedError,
     DamagedStoreError,
@@ -368,6 +368,8 @@ def _restore(profile: Profile, backup_set: str | None) -> None:
 
 def _dev_refresh(profile: Profile, *, inputs: bool) -> None:
     """Restore production's newest backup set for development; name it."""
+    # Refused before the lock, which would create the stores folder.
+    require_refreshable(profile)
     with writer_lock(profile) as lock:
         refreshed = refresh(lock, inputs=inputs)
     sys.stdout.write(
@@ -681,6 +683,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         RestoreInsteadError,
         OccupiedProfileError,
         RestoreWriteError,
+        NotRefreshableError,
         NoUsableSetError,
         UnknownStageError,
         UnfinishedRestoreError,
