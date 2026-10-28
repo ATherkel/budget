@@ -355,8 +355,10 @@ def rebuild_through_gold(
     derived = derive_silver(silver_inputs)
     plan = _plan_gold(profile, derived, household, now)
     with SilverStore(profile) as silver_store:
+        built = silver_store.is_built()
         changed = silver_store.read() != derived
-    store_silver(lock, silver_inputs, derived)
+    if changed or not built:
+        store_silver(lock, silver_inputs, derived)
     return PipelineRebuild(
         silver=SilverRebuild(runs=silver_inputs.runs, result=derived),
         silver_changed=changed,
