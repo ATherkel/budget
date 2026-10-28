@@ -137,6 +137,10 @@ _SEPARATE_FOLDERS: Final = (
     ("backups", "inbox"),
     ("backups", "exports"),
     ("backups", "stores"),
+    ("upstream_backups", "inputs"),
+    ("upstream_backups", "inbox"),
+    ("upstream_backups", "exports"),
+    ("upstream_backups", "stores"),
 )
 _FOLDER_NAMES: Final = {
     "stores": "stores folder",
@@ -144,6 +148,7 @@ _FOLDER_NAMES: Final = {
     "exports": "export archive",
     "inputs": "inputs folder",
     "backups": "backups folder",
+    "upstream_backups": "upstream backups folder",
 }
 
 
@@ -214,6 +219,8 @@ class Profile:
         }
         if self.backups is not None:
             folders["backups"] = Path(self.backups).resolve()
+        if self.upstream_backups is not None:
+            folders["upstream_backups"] = Path(self.upstream_backups).resolve()
         for first, second in _SEPARATE_FOLDERS:
             if first in folders and _overlap(folders[first], folders[second]):
                 raise ProfileFoldersOverlapError(
