@@ -8,7 +8,8 @@ Bronze inputs and account registry, then hands them to the existing
 admission, or duplicate-resolution rule lives here.
 
 The household's decision log is read here too, so a rebuild applies every
-decision in force instead of building as if the household had made none.
+decision in force instead of building as if the household had made none, and
+Silver records the log's exact prefix in its committed provenance.
 """
 
 import platform
@@ -50,7 +51,6 @@ from budget.silver import (
     store_silver,
 )
 from budget.silver.currencies import UnknownCurrencyError, minor_unit_places
-from budget.silver.decisions import SilverDecision
 from budget.silver.identity import IDENTITY_VERSION
 from budget.silver.storage import silver_stage
 
@@ -129,17 +129,18 @@ def require_stores(profile: Profile) -> None:
 
 def bronze_inputs(
     profile: Profile,
-    decisions: Sequence[SilverDecision] | None = None,
+    log: DecisionLogRead | None = None,
     derived: DerivedRecords | None = None,
 ) -> SilverBuildInputs:
     """Read every Bronze input one Silver build needs, and the currencies.
 
     The profile's import runs, each run's payload's source records or format
     failures, and each declared account's currency are read as they stand now.
-    `decisions` are the Silver decisions in force; without them the profile's
-    decision log is read. `derived` are source records and format failures
-    freshly parsed from the retained payloads, which stand in for the stored
-    ones when a rebuild starts from Bronze.
+    `log` is the decision log already read; without it the profile's log is
+    read. Its Silver decisions, position and prefix go into the inputs with the
+    producing code version, for Silver's provenance. `derived` are source
+    records and format failures freshly parsed from the retained payloads,
+    which stand in for the stored ones when a rebuild starts from Bronze.
     """
     currencies = {
         account_id: account.currency
@@ -156,12 +157,16 @@ def bronze_inputs(
         source_records = {run.payload_id: records(run.payload_id) for run in runs}
         format_failures = {run.payload_id: failures(run.payload_id) for run in runs}
     _require_declared_accounts(currencies, runs)
+    read = read_decision_log(profile) if log is None else log
     return SilverBuildInputs(
         runs=runs,
         source_records=source_records,
         format_failures=format_failures,
         currencies=currencies,
-        decisions=read_decision_log(profile).silver if decisions is None else decisions,
+        decisions=read.silver,
+        decision_log_position=read.position,
+        decision_log_prefix_sha256=read.prefix_sha256,
+        code_version=committed_code_version(profile),
     )
 
 
@@ -368,7 +373,7 @@ def rebuild_through_gold(
     if from_bronze:
         with BronzeStore(profile) as bronze:
             reparsed = bronze.derive_records()
-    silver_inputs = bronze_inputs(profile, household.log.silver, reparsed)
+    silver_inputs = bronze_inputs(profile, household.log, reparsed)
     derived = derive_silver(silver_inputs)
     plan = _plan_gold(profile, derived, household, now)
     with SilverStore(profile) as silver_store:
@@ -397,7 +402,7 @@ def rebuild_from_silver(
     log is read here.
     """
     profile = lock.profile
-    decisions = None if inputs is None else inputs.log.silver
-    silver_inputs = bronze_inputs(profile, decisions)
+    log = None if inputs is None else inputs.log
+    silver_inputs = bronze_inputs(profile, log)
     result = rebuild_silver(lock, inputs=silver_inputs)
     return SilverRebuild(runs=silver_inputs.runs, result=result)
