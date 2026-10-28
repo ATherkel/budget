@@ -24,7 +24,7 @@ from budget.gold.store import GoldStore
 from budget.inputs import load_configuration
 from budget.locking import WriterLock, writer_lock
 from budget.rebuilding import GoldRebuild, rebuild_from_gold
-from budget.silver import SilverResult, SilverStore, result_fingerprint
+from budget.silver import SameTransaction, SilverResult, SilverStore, result_fingerprint
 from budget.silver.currencies import UnknownCurrencyError
 from tests.cli.commands import rebuild
 from tests.cli.pipelines import (
@@ -330,6 +330,74 @@ class SilverChangeTests(unittest.TestCase):
             assert "published publication 2" in stdout
             with GoldStore(built.profile) as gold:
                 assert gold.recipe(2).silver_decisions == ()
+
+    def test_a_superseding_silver_decision_requires_rebuild_then_publishes(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            with SilverStore(built.profile) as silver_store:
+                context = silver_store.read_build()
+            transaction_id = context.result.transactions[0].transaction_id
+            evidence = next(
+                item
+                for item in context.result.transaction_evidence
+                if item.transaction_id == transaction_id
+            )
+            withdrawal = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "withdrawn",
+                "targets": [transaction_id],
+                "reason": "synthetic withdrawal",
+                "supersedes": [],
+            }
+            log = built.profile.input_file("decisions.jsonl")
+            log.write_text(json.dumps(withdrawal) + "\n", encoding="utf-8")
+            assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+
+            same_transaction = {
+                "format": 1,
+                "entry": 2,
+                "decision_id": "d-0002",
+                "recorded_at": "2026-04-10T17:02:12Z",
+                "kind": "same-transaction",
+                "targets": [transaction_id],
+                "reason": "synthetic re-presentation",
+                "supersedes": ["d-0001"],
+                "record": {
+                    "payload_id": evidence.payload_id,
+                    "record_ordinal": evidence.record_ordinal,
+                },
+            }
+            with log.open("a", encoding="utf-8") as decision_log:
+                decision_log.write(json.dumps(same_transaction) + "\n")
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert stdout == ""
+            assert "rebuild --from silver" in stderr
+            with GoldStore(built.profile) as gold:
+                assert gold.current() is None
+                assert gold.pointer_history() == ()
+
+            assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 1" in stdout
+            with GoldStore(built.profile) as gold:
+                assert gold.recipe(1).silver_decisions == (
+                    SameTransaction(
+                        "d-0002",
+                        transaction_id,
+                        evidence.payload_id,
+                        evidence.record_ordinal,
+                    ),
+                )
 
     def test_voided_only_input_still_requires_its_consumed_currency(self) -> None:
         cases = ("changed", "removed")
