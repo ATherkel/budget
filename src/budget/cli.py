@@ -397,7 +397,7 @@ def _import_files(
     require_buildable_accounts(
         profile, {each.account_id for each in previews if not each.skipped}
     )
-    require_importable(inputs, previews)
+    require_importable(profile, inputs, previews)
     duplicates = cross_account_duplicates(previews)
     if duplicates and not ask_continue_after_duplicates(duplicates):
         sys.stdout.write("Nothing was imported.\n")

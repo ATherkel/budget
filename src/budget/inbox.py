@@ -32,6 +32,7 @@ from budget.bronze.models import ImportRun
 from budget.bronze.parsers.registry import source_parser
 from budget.codeversion import committed_code_version, require_committed_code
 from budget.gold.build import closed_too_early, decision_problems
+from budget.gold.transactions import gold_transactions
 from budget.importing import (
     Coverage,
     NotAnInboxFileError,
@@ -46,9 +47,11 @@ from budget.rebuilding import (
     GoldRebuild,
     HouseholdInputs,
     SilverRebuild,
+    bronze_inputs,
     read_household_inputs,
     rebuild_through_gold,
 )
+from budget.silver import derive_silver
 from budget.sqlstore import StoreError
 
 # The outcomes that leave a file in the inbox and make `import` exit 3.
@@ -207,28 +210,44 @@ def require_import_allowed(profile: Profile) -> HouseholdInputs:
 
 
 def require_importable(
-    inputs: HouseholdInputs, previews: Sequence[ExportPreview]
+    profile: Profile, inputs: HouseholdInputs, previews: Sequence[ExportPreview]
 ) -> None:
     """Refuse now the Gold refusals the files about to be stored would cause.
 
     A decision naming a category the taxonomy dropped refuses every Gold build,
-    and an account closed before a transaction the previews show refuses the
-    build that follows the import. Both are known before any file is consumed.
+    and an account closed before a transaction refuses the build that follows
+    the import, whether the transaction is in a preview or in the Silver that
+    Bronze builds now. Both are known before any file is consumed.
     """
     problems = list(decision_problems(inputs.log.gold, inputs.configuration))
+    latest = _latest_stored_transactions(profile, inputs)
     for each in previews:
-        account = inputs.configuration.accounts.get(each.account_id)
         last = each.last_transaction
-        if (
-            not each.skipped
-            and account is not None
-            and account.closed_on is not None
-            and last is not None
-            and account.closed_on < last
-        ):
-            problems.append(closed_too_early(each.account_id, account.closed_on, last))
+        if not each.skipped and last is not None:
+            latest[each.account_id] = max(latest.get(each.account_id, last), last)
+    for account_id, last in sorted(latest.items()):
+        account = inputs.configuration.accounts.get(account_id)
+        closed_on = None if account is None else account.closed_on
+        if closed_on is not None and closed_on < last:
+            problems.append(closed_too_early(account_id, closed_on, last))
     if problems:
         raise ConfigurationError(tuple(problems))
+
+
+def _latest_stored_transactions(
+    profile: Profile, inputs: HouseholdInputs
+) -> dict[str, date]:
+    """Each account's latest booked transaction in Silver as Bronze builds it now.
+
+    Silver is derived from Bronze, not read from its store, because the
+    rebuild after the import reads Bronze: a stored Silver may be stale.
+    """
+    silver = derive_silver(bronze_inputs(profile, inputs.log.silver))
+    latest: dict[str, date] = {}
+    for each in gold_transactions(silver.transactions):
+        day = each.transaction_date
+        latest[each.account_id] = max(latest.get(each.account_id, day), day)
+    return latest
 
 
 def inbox_exports(profile: Profile) -> tuple[Path, ...]:
