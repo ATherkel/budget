@@ -43,11 +43,16 @@ from budget.inputs import (
 from budget.locking import WriterLock
 from budget.profiles import ACCOUNTS_FILE_NAME, Profile
 from budget.silver import (
+    AcceptDiscrepancy,
+    SameTransaction,
     SilverBuild,
     SilverBuildInputs,
+    SilverDecision,
     SilverProvenance,
     SilverResult,
     SilverStore,
+    VoidImportRun,
+    Withdrawn,
     derive_silver,
     rebuild_silver,
     silver_provenance,
@@ -90,6 +95,18 @@ class SilverProvenanceUnavailableError(RuntimeError):
             "the stored Silver result has no trustworthy build provenance; "
             "run `budget rebuild --from silver` before publishing Gold; "
             "nothing was published"
+        )
+
+
+class SilverDecisionFreshnessError(RuntimeError):
+    """Gold was asked to consume Silver before its effective decisions."""
+
+    def __init__(self) -> None:
+        """Name the earliest rebuild that applies the changed decisions."""
+        super().__init__(
+            "the current effective Silver decisions have not been applied to "
+            "the stored Silver result; run `budget rebuild --from silver` "
+            "before publishing Gold; nothing was published"
         )
 
 
@@ -321,6 +338,7 @@ def _plan_gold(
     """
     if silver.provenance is None:
         raise SilverProvenanceUnavailableError
+    _require_current_silver_decisions(silver.provenance.decisions, household.log.silver)
     recipe = _recipe(profile, silver.provenance, household)
     with GoldStore(profile) as gold:
         current = gold.current()
@@ -347,6 +365,36 @@ def _plan_gold(
     publication = replace(draft, result_fingerprint=result_fingerprint(built))
     result = GoldResult(publication, built.records, built.lineage)
     return _GoldPlan(recipe, household.configuration, result)
+
+
+def _require_current_silver_decisions(
+    consumed: Sequence[SilverDecision],
+    current: Sequence[SilverDecision],
+) -> None:
+    """Refuse if any effective Silver decision differs from the build."""
+    if sorted(consumed, key=_silver_decision_key) != sorted(
+        current, key=_silver_decision_key
+    ):
+        raise SilverDecisionFreshnessError
+
+
+def _silver_decision_key(decision: SilverDecision) -> tuple[object, ...]:
+    """Return every typed field in one deterministic decision key."""
+    match decision:
+        case AcceptDiscrepancy():
+            return ("accept-discrepancy", decision.decision_id, decision.import_run_id)
+        case VoidImportRun():
+            return ("void-import-run", decision.decision_id, decision.import_run_id)
+        case Withdrawn():
+            return ("withdrawn", decision.decision_id, decision.transaction_id)
+        case SameTransaction():
+            return (
+                "same-transaction",
+                decision.decision_id,
+                decision.transaction_id,
+                decision.payload_id,
+                decision.record_ordinal,
+            )
 
 
 def _publish(profile: Profile, plan: _GoldPlan | GoldRebuild) -> GoldRebuild:
