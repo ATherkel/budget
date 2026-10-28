@@ -547,6 +547,32 @@ class SilverChangeTests(unittest.TestCase):
 
 
 class NeverBuiltSilverTests(unittest.TestCase):
+    def test_future_silver_provenance_is_refused_by_an_older_gold_consumer(
+        self,
+    ) -> None:
+        cases = {
+            "fingerprint scheme": (
+                "UPDATE silver_builds SET fingerprint_scheme = '999'",
+            ),
+            "identity contract": ("UPDATE silver_builds SET identity_version = '999'",),
+        }
+        for name, (statement,) in cases.items():
+            with self.subTest(name), TemporaryDirectory() as directory:
+                built = household(Path(directory))
+                with closing(sqlite3.connect(built.profile.silver_store)) as store:
+                    store.execute(statement)
+                    store.commit()
+
+                status, stdout, stderr = rebuild(built.profile_file)
+
+                assert status == EXIT_REFUSED_ENVIRONMENT
+                assert stdout == ""
+                assert "Silver provenance" in stderr
+                assert "rebuild --from silver" in stderr
+                with GoldStore(built.profile) as gold:
+                    assert gold.current() is None
+                    assert gold.pointer_history() == ()
+
     def test_unknown_silver_provenance_refuses_gold(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
