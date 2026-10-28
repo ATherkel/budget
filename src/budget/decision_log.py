@@ -525,10 +525,12 @@ def read_decision_log(profile: Profile) -> DecisionLogRead:
 
 
 def _prefix_hashes(prefix: bytes) -> tuple[str, ...]:
-    """Hash the empty prefix and each complete line in log order."""
-    hashes = [hashlib.sha256(b"").hexdigest()]
-    consumed = 0
-    for line in prefix.splitlines(keepends=True):
-        consumed += len(line)
-        hashes.append(hashlib.sha256(prefix[:consumed]).hexdigest())
+    """Hash the empty prefix and each LF-delimited entry incrementally."""
+    digest = hashlib.sha256()
+    hashes = [digest.hexdigest()]
+    start = 0
+    while (end := prefix.find(b"\n", start)) >= 0:
+        digest.update(prefix[start : end + 1])
+        hashes.append(digest.hexdigest())
+        start = end + 1
     return tuple(hashes)
