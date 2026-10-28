@@ -14,11 +14,14 @@ from typing import Final
 
 from budget.backups import BackupSet, complete_sets_in, set_store_files
 from budget.locking import WriterLock
+from budget.profiles import INPUTS_FOLDER, Profile
 
 # Development's folder of production's restored stores.
 UPSTREAM_FOLDER: Final = "upstream"
 # Where a refresh copies a set before it replaces `upstream`.
 UPSTREAM_STAGING: Final = "upstream-staging"
+# The suffix of development's inputs folder while `--inputs` replaces it.
+INPUTS_REPLACING_SUFFIX: Final = ".replacing"
 
 
 def _remove_read_only(folder: Path) -> None:
@@ -30,11 +33,25 @@ def _remove_read_only(folder: Path) -> None:
     shutil.rmtree(folder)
 
 
-def refresh(lock: WriterLock) -> BackupSet:
+def _replace_inputs(profile: Profile, backup: BackupSet) -> None:
+    """Make development's inputs folder the set's copy of production's.
+
+    The copy is made beside the folder and replaces it only once whole.
+    """
+    inputs = Path(profile.inputs)
+    replacing = inputs.with_name(inputs.name + INPUTS_REPLACING_SUFFIX)
+    shutil.rmtree(replacing, ignore_errors=True)
+    shutil.copytree(backup.path / INPUTS_FOLDER, replacing)
+    shutil.rmtree(inputs, ignore_errors=True)
+    replacing.rename(inputs)
+
+
+def refresh(lock: WriterLock, *, inputs: bool = False) -> BackupSet:
     """Restore production's newest complete set into `upstream`, read-only.
 
     The copies are made in a staging folder beside it and replace the old
-    `upstream` folder only once they are all made.
+    `upstream` folder only once they are all made. With `inputs`,
+    development's inputs are replaced by the set's too.
     """
     profile = lock.profile
     newest = complete_sets_in(Path(str(profile.upstream_backups)))[0]
@@ -48,4 +65,6 @@ def refresh(lock: WriterLock) -> BackupSet:
         copy.chmod(stat.S_IREAD)
     _remove_read_only(upstream)
     staging.rename(upstream)
+    if inputs:
+        _replace_inputs(profile, newest)
     return newest
