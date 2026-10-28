@@ -374,3 +374,37 @@ def test_the_trust_notes_read_as_quiet_danish_sentences_without_counts(
             "Hvorfor tallene er ufuldstændige"
         ),
     )
+
+
+def test_a_month_outside_every_selected_accounts_history_says_so_on_both_pages(
+    tmp_path: Path,
+) -> None:
+    # Person current starts in April, so February lies outside its history:
+    # nothing is missing, there is simply nothing to show.
+    profile = dashboard_profile(tmp_path)
+    with GoldStore(profile) as store:
+        store.publish(LATER_GOLD, RECIPE, CONFIGURATION)
+    client = TestClient(
+        create_app(profile, clock=lambda: datetime(2026, 5, 14, 10, tzinfo=UTC))
+    )
+    client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
+
+    february = report(client, "2026-02", accounts=(PERSON,))
+    link = february.attributes("coverage-explanation").get("href") or ""
+    explained = read(client.get(link).text)
+
+    assert (
+        february.text_of("coverage-note"),
+        february.text_of("money-left"),
+        explained.text_of("explanation-coverage"),
+    ) == (
+        (
+            "Ingen af de valgte konti har historik i februar 2026. "
+            "Hvorfor der ingen tal er"
+        ),
+        "Ingen data endnu",
+        (
+            "Ingen af de valgte konti har historik i februar 2026, så der er "
+            "ingen tal for måneden. Vælg en anden måned eller andre konti."
+        ),
+    )
