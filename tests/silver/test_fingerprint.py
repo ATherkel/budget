@@ -1,7 +1,7 @@
 # Copyright 2026 Therkel
 """The versioned fingerprint of every public Silver result record."""
 
-from dataclasses import replace
+from dataclasses import fields, replace
 from datetime import date
 from decimal import Decimal
 
@@ -178,3 +178,71 @@ def test_duplicate_records_are_preserved_by_the_fingerprint() -> None:
     assert result_fingerprint(base, currencies=currencies) != result_fingerprint(
         duplicated, currencies=currencies
     )
+
+
+def test_every_public_silver_field_changes_the_fingerprint() -> None:
+    base = _every_record()
+    currencies = {"joint-current": "DKK"}
+    fingerprint = result_fingerprint(base, currencies=currencies)
+    record_families = tuple(public_field.name for public_field in fields(SilverResult))
+
+    for family in record_families:
+        records = getattr(base, family)
+        assert records
+        for public_field in fields(type(records[0])):
+            changed_value = _different_value(
+                public_field.name, getattr(records[0], public_field.name)
+            )
+            changed = replace(
+                base,
+                **{
+                    family: (
+                        replace(records[0], **{public_field.name: changed_value}),
+                        *records[1:],
+                    )
+                },
+            )
+            assert result_fingerprint(changed, currencies=currencies) != fingerprint, (
+                f"{type(records[0]).__name__}.{public_field.name} is not fingerprinted"
+            )
+
+        duplicated = replace(base, **{family: (*records, *records)})
+        assert result_fingerprint(duplicated, currencies=currencies) != fingerprint
+
+    assert result_fingerprint(base, currencies={"joint-current": "EUR"}) != fingerprint
+
+
+def _different_value(name: str, value: object) -> object:
+    """Return a valid public value distinct from the one in the fixture."""
+    if name in {"balance", "end_of_day_balance"}:
+        return Decimal(0)
+    return _different_scalar(value)
+
+
+def _different_scalar(value: object) -> object:
+    """Return a changed value for one public scalar or identifier list."""
+    if value is None:
+        return "changed"
+    if isinstance(value, str):
+        return f"{value}-changed"
+    if isinstance(value, tuple | list):
+        first = value[0]
+        if isinstance(first, ValidationError):
+            return (*value, replace(first, code="changed"))
+        return (*value, f"{first}-changed")
+    if isinstance(value, date | Decimal | int):
+        return _different_dated_or_number(value)
+    message = f"no fingerprint variation for {type(value).__name__}"
+    raise TypeError(message)
+
+
+def _different_dated_or_number(value: date | Decimal | int) -> date | Decimal | int:
+    """Return a changed value of one public scalar type."""
+    if isinstance(value, date):
+        return value.replace(day=2 if value.day == 1 else 1)
+    if isinstance(value, Decimal):
+        return value + Decimal(1)
+    if isinstance(value, int):
+        return value + 1
+    message = f"no changed value for {type(value).__name__}"
+    raise TypeError(message)
