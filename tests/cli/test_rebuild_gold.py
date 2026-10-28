@@ -646,6 +646,44 @@ class SilverChangeTests(unittest.TestCase):
                 assert current.publication_id == 1
                 assert gold.next_publication_id() == 2
 
+    def test_a_truncated_consumed_decision_log_prefix_refuses_gold(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            with SilverStore(built.profile) as silver_store:
+                context = silver_store.read_build()
+            transaction_id = context.result.transactions[0].transaction_id
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "classify",
+                "targets": [transaction_id],
+                "category": "groceries",
+                "reason": "synthetic classification",
+                "supersedes": [],
+            }
+            log = built.profile.input_file("decisions.jsonl")
+            log.write_text(json.dumps(decision) + "\n", encoding="utf-8")
+            assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            with GoldStore(built.profile) as gold:
+                before = gold.pointer_history()
+
+            log.write_bytes(log.read_bytes()[:20])
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert stdout == ""
+            assert "decision-log prefix" in stderr
+            assert "rebuild --from silver" in stderr
+            with GoldStore(built.profile) as gold:
+                assert gold.pointer_history() == before
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
+                assert gold.next_publication_id() == 2
+
     def test_an_unapplied_silver_decision_refuses_gold_before_publishing(
         self,
     ) -> None:
