@@ -69,6 +69,7 @@ from budget.prompting import ask_continue_after_duplicates, ask_passphrase, ask_
 from budget.ranges import load_ranges
 from budget.rebuilding import (
     SilverDecisionFreshnessError,
+    SilverDecisionLogPrefixError,
     SilverNotBuiltError,
     SilverProvenanceUnavailableError,
     SilverRebuild,
@@ -536,6 +537,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         UncommittedCodeError,
         SilverNotBuiltError,
         SilverDecisionFreshnessError,
+        SilverDecisionLogPrefixError,
         SilverProvenanceUnavailableError,
         SilverReviewUnavailableError,
         WriterLockHeldError,
