@@ -162,8 +162,8 @@ class DevRefreshTests(unittest.TestCase):
     def test_dev_refresh_and_restore_take_folders_with_spaces_and_signs(
         self,
     ) -> None:
-        # SQLite opens a set's stores by URI, where these characters must be
-        # escaped.
+        # Both vet a set's stores by opening them through a SQLite URI,
+        # where these characters must be escaped.
         with TemporaryDirectory() as directory:
             folder = Path(directory) / "Budget data ø & #1 (100%)"
             folder.mkdir()
