@@ -156,13 +156,16 @@ class RebuiltWithoutBackupError(Exception):
 class ImportedWithoutPublicationError(Exception):
     """The imports are committed, but Silver and Gold were not rebuilt from them."""
 
-    def __init__(
-        self, held_back: ConfigurationError, backup_failure: Exception | None
-    ) -> None:
+    def __init__(self, held_back: Exception, backup_failure: Exception | None) -> None:
         """Say what was done, what stopped, and which command finishes it."""
+        reason = (
+            "; ".join(held_back.problems)
+            if isinstance(held_back, ConfigurationError)
+            else str(held_back)
+        )
         message = (
             "the exports were imported into Bronze, but Silver and Gold were not "
-            f"rebuilt: {'; '.join(held_back.problems)}. Put that right, then run "
+            f"rebuilt: {reason}. Put that right, then run "
             "`budget import` again: it finishes the rebuild, the publication and "
             "the backup, whether or not the inbox holds files"
         )

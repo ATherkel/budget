@@ -12,6 +12,7 @@ before anyone is asked for its range, and never reaches Bronze: it waits
 in the inbox for a fresh download or a reader fix.
 """
 
+import sqlite3
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -48,6 +49,7 @@ from budget.rebuilding import (
     read_household_inputs,
     rebuild_through_gold,
 )
+from budget.sqlstore import StoreError
 
 # The outcomes that leave a file in the inbox and make `import` exit 3.
 LEFT_IN_INBOX: Final = frozenset(
@@ -60,6 +62,12 @@ INCIDENT_REASON: Final = "the same bytes are in the inbox under another account"
 # How a file in a folder that names no account is shown: the folder's name is
 # typed by hand, so it may carry a bank account number.
 NO_ACCOUNT: Final = "(no account)"
+# The primary result codes of a rebuild failure the next `import` can outlast:
+# another program holding a store, a full disk, or a failed read or write.
+# Any other database error is a defect and propagates.
+_PASSING_STORE_FAILURES: Final = frozenset(
+    {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_FULL, sqlite3.SQLITE_IOERR}
+)
 _NO_EXPORT_DATE: Final = (
     "the filename carries no export date; keep the name the bank gave it"
 )
@@ -130,9 +138,9 @@ class ImportedInbox:
     `rebuilt` is `None` when nothing was outstanding: no file reached Bronze
     and Silver and Gold were already current, so no backup follows either.
     `published` is what the Gold rebuild after the Silver one left current.
-    `held_back` is the configuration error that stopped Silver and Gold after
-    Bronze was written; the next `import` finishes them. `backup` is the set
-    written after the rebuilds; only production writes one.
+    `held_back` is the configuration error or store failure that stopped
+    Silver and Gold after Bronze was written; the next `import` finishes them.
+    `backup` is the set written after the rebuilds; only production writes one.
     `backup_failure` is why production's set could not be written, if so.
     `incidents` are the cross-account duplicates the preflight found, so the
     counts can report them even when a member is refused for another reason.
@@ -142,7 +150,7 @@ class ImportedInbox:
     rebuilt: SilverRebuild | None
     incidents: tuple[DuplicateIncident, ...] = ()
     published: GoldRebuild | None = None
-    held_back: ConfigurationError | None = None
+    held_back: Exception | None = None
     backup: BackupSet | None = None
     backup_failure: Exception | None = None
 
@@ -476,8 +484,13 @@ def import_inbox(
         return ImportedInbox(files=files, incidents=found, rebuilt=None)
     try:
         rebuilt = rebuild_through_gold(lock, now=datetime.now(UTC), inputs=inputs)
-    except ConfigurationError as error:
-        if nothing_new:
+    except (
+        ConfigurationError,
+        StoreError,
+        OSError,
+        sqlite3.OperationalError,
+    ) as error:
+        if not _held_back(error, nothing_new=nothing_new):
             raise
         return _backed_up(
             lock,
@@ -494,6 +507,20 @@ def import_inbox(
             published=rebuilt.gold,
         ),
     )
+
+
+def _held_back(error: Exception, *, nothing_new: bool) -> bool:
+    """Whether a rebuild failure after Bronze writes is reported, not raised.
+
+    Only a failure the next `import` can finish past is held back, and only
+    when this import stored something; with nothing new there is nothing to
+    report beside it.
+    """
+    if nothing_new:
+        return False
+    if isinstance(error, sqlite3.OperationalError):
+        return error.sqlite_errorcode & 0xFF in _PASSING_STORE_FAILURES
+    return True
 
 
 def _bronze_holds_runs(profile: Profile) -> bool:
