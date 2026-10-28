@@ -1,0 +1,6 @@
+{# Account names as Danish lists them: "A", "A og B", "A, B og C". #}
+{% macro names(items) -%}
+{%- for item in items -%}
+{{ item.display_name }}{% if loop.revindex == 2 %} og {% elif not loop.last %}, {% endif %}
+{%- endfor -%}
+{%- endmacro %}
