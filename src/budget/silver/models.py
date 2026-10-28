@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from types import MappingProxyType
 from typing import Literal
 
 from budget.silver.decisions import SilverDecision
@@ -167,6 +168,11 @@ class SilverProvenance:
     identity_version: str
     bronze_parser_provenance: Literal["unknown"] = "unknown"
 
+    def __post_init__(self) -> None:
+        """Freeze the nested collections this value owns."""
+        object.__setattr__(self, "currencies", MappingProxyType(dict(self.currencies)))
+        object.__setattr__(self, "decisions", tuple(self.decisions))
+
 
 @dataclass(frozen=True)
 class SilverBuild:
@@ -175,3 +181,7 @@ class SilverBuild:
     result: SilverResult
     currencies: Mapping[str, str]
     provenance: SilverProvenance | None
+
+    def __post_init__(self) -> None:
+        """Freeze the currency mapping this value owns."""
+        object.__setattr__(self, "currencies", MappingProxyType(dict(self.currencies)))
