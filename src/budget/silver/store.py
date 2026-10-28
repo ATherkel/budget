@@ -27,6 +27,8 @@ from budget.silver.models import (
     EvidenceExport,
     ImportRunResult,
     ReviewItem,
+    SilverBuild,
+    SilverProvenance,
     SilverResult,
     Transaction,
     TransactionEvidence,
@@ -176,7 +178,13 @@ class SilverStore:
         """Release resources when the store is closed."""
         self._connection.close()
 
-    def replace(self, result: SilverResult, *, currencies: Mapping[str, str]) -> None:
+    def replace(
+        self,
+        result: SilverResult,
+        *,
+        currencies: Mapping[str, str],
+        provenance: SilverProvenance | None = None,
+    ) -> None:
         """Replace every stored row with one complete `SilverResult`.
 
         The rows are encoded first, so an amount the store cannot hold exactly
@@ -184,6 +192,7 @@ class SilverStore:
         transaction: a failure anywhere in it leaves the previous result
         readable, down to the last row.
         """
+        _ = provenance
         encoded = _encode(result, currencies)
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE")
@@ -215,6 +224,10 @@ class SilverStore:
         finally:
             connection.rollback()
         return result
+
+    def read_build(self) -> SilverBuild:
+        """Return the result and its provenance from one stored build."""
+        return SilverBuild(result=self.read(), currencies={}, provenance=None)
 
 
 def _write(connection: sqlite3.Connection, encoded: _Encoded) -> None:

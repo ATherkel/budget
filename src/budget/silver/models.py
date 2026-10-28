@@ -1,11 +1,13 @@
 # Copyright 2026 Therkel
 """Public Silver contracts, as `docs/architecture/silver-layer.md` defines them."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from typing import Literal
+
+from budget.silver.decisions import SilverDecision
 
 type BookingStatus = Literal["booked", "pending", "cancelled"]
 
@@ -140,3 +142,36 @@ class SilverResult:
     evidence_exports: Sequence[EvidenceExport]
     import_run_results: Sequence[ImportRunResult]
     review_items: Sequence[ReviewItem]
+
+
+@dataclass(frozen=True)
+class SilverImportRun:
+    """One import run and payload consumed by a Silver build."""
+
+    import_run_id: str
+    payload_id: str
+
+
+@dataclass(frozen=True)
+class SilverProvenance:
+    """The exact inputs and producer identity recorded with one Silver result."""
+
+    fingerprint_scheme: str
+    result_fingerprint: str
+    import_runs: frozenset[SilverImportRun]
+    currencies: Mapping[str, str]
+    decisions: Sequence[SilverDecision]
+    decision_log_position: int
+    decision_log_prefix_sha256: str
+    code_version: str | None
+    identity_version: str
+    bronze_parser_provenance: Literal["unknown"] = "unknown"
+
+
+@dataclass(frozen=True)
+class SilverBuild:
+    """One completed Silver result and the provenance committed beside it."""
+
+    result: SilverResult
+    currencies: Mapping[str, str]
+    provenance: SilverProvenance | None
