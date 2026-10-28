@@ -75,8 +75,9 @@ class FirstPublicationTests(unittest.TestCase):
             provenance = context.provenance
             assert provenance is not None
 
+            # `rebuild --from silver` published 1; the Gold rebuild publishes 2.
             with GoldStore(built.profile) as gold:
-                recipe = gold.recipe(1)
+                recipe = gold.recipe(2)
 
             assert recipe.silver_fingerprint_scheme == provenance.fingerprint_scheme
             assert recipe.silver_result_fingerprint == provenance.result_fingerprint
