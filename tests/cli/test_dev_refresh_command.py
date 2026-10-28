@@ -21,6 +21,7 @@ from tests.cli.profile_files import write_profile
 from tests.importing.households import ACCOUNTS
 
 EXIT_OK = 0
+EXIT_REFUSED_ENVIRONMENT = 4
 
 
 def _production_with_a_set(folder: Path) -> tuple[Profile, BackupSet]:
@@ -98,6 +99,28 @@ class DevRefreshTests(unittest.TestCase):
                 development.accounts_file.read_bytes()
                 == (sets_inputs / "accounts.toml").read_bytes()
             )
+
+    def test_dev_refresh_refuses_a_profile_that_reads_no_upstream_sets(
+        self,
+    ) -> None:
+        # Production never refreshes from itself, and development without
+        # `upstream_backups` has no sets to read.
+        with TemporaryDirectory() as directory:
+            production, _ = _production_with_a_set(Path(directory) / "prod")
+            (Path(directory) / "dev").mkdir()
+            cases = {
+                "production": Path(directory) / "prod" / "production.toml",
+                "development without upstream_backups": write_profile(
+                    Path(directory) / "dev"
+                ),
+            }
+            for case, profile_file in cases.items():
+                with self.subTest(case):
+                    status, stdout, stderr = dev_refresh(profile_file)
+
+                    assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+                    assert "dev refresh needs a development profile" in stderr
+            assert not (production.stores / "upstream").exists()
 
     def test_dev_refresh_replaces_upstream_with_a_newer_set(self) -> None:
         with TemporaryDirectory() as directory:
