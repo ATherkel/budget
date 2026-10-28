@@ -306,6 +306,8 @@ class SilverChangeTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
             assert rebuild(built.profile_file)[0] == EXIT_OK
+            with GoldStore(built.profile) as gold:
+                original_recipe = gold.recipe(1)
             with SilverStore(built.profile) as silver_store:
                 original = silver_store.read_build()
                 assert original.provenance is not None
@@ -335,6 +337,7 @@ class SilverChangeTests(unittest.TestCase):
             with GoldStore(built.profile) as gold:
                 first = gold.recipe(1)
                 second = gold.recipe(2)
+            assert first == original_recipe
             assert first.import_runs == second.import_runs
             assert first.silver_result_fingerprint != second.silver_result_fingerprint
 
