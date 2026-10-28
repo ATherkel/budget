@@ -70,3 +70,23 @@ class DevRefreshTests(unittest.TestCase):
                 assert not copy.stat().st_mode & stat.S_IWRITE
             assert development.accounts_file.read_bytes() == own_accounts
             assert not development.bronze_store.exists()
+
+    def test_dev_refresh_replaces_upstream_with_a_newer_set(self) -> None:
+        with TemporaryDirectory() as directory:
+            production, _ = _production_with_a_set(Path(directory) / "prod")
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+            assert dev_refresh(profile_file)[0] == EXIT_OK
+            with writer_lock(production) as lock:
+                import_one(lock, "export-20260509.csv")
+                newer = back_up(lock, now=datetime.now(UTC))
+
+            status, stdout, stderr = dev_refresh(profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout == (
+                f"restored backup set {newer.name} into upstream (read-only)\n"
+            )
+            upstream = development.stores / "upstream" / "bronze.db"
+            assert checksum(upstream) == checksum(newer.path / "bronze.db")
