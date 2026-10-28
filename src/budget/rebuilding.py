@@ -35,6 +35,7 @@ from budget.gold.recipe import Recipe, RecipeImportRun
 from budget.gold.storage import gold_stage
 from budget.gold.store import GoldStore
 from budget.inputs import (
+    Account,
     ConfigurationError,
     ConfigurationSnapshot,
     load_accounts,
@@ -119,6 +120,18 @@ class SilverDecisionLogPrefixError(RuntimeError):
             "the Silver decision-log prefix has been replaced or truncated; "
             "run `budget rebuild --from silver` before publishing Gold; "
             "nothing was published"
+        )
+
+
+class SilverCurrencyFreshnessError(RuntimeError):
+    """A consumed account's currency changed after the Silver build."""
+
+    def __init__(self) -> None:
+        """Refuse to reinterpret stored money under another currency."""
+        super().__init__(
+            "a consumed currency differs from the currency used by the stored "
+            "Silver result; run `budget rebuild --from silver` before "
+            "publishing Gold; nothing was published"
         )
 
 
@@ -356,6 +369,11 @@ def _plan_gold(
     if current_prefix != silver.provenance.decision_log_prefix_sha256:
         raise SilverDecisionLogPrefixError
     _require_current_silver_decisions(silver.provenance.decisions, household.log.silver)
+    _require_current_currencies(
+        silver.provenance.currencies,
+        silver.result,
+        household.configuration.accounts,
+    )
     recipe = _recipe(profile, silver.provenance, household)
     with GoldStore(profile) as gold:
         current = gold.current()
@@ -412,6 +430,26 @@ def _silver_decision_key(decision: SilverDecision) -> tuple[object, ...]:
                 decision.payload_id,
                 decision.record_ordinal,
             )
+
+
+def _require_current_currencies(
+    consumed: Mapping[str, str],
+    silver: SilverResult,
+    accounts: Mapping[str, Account],
+) -> None:
+    """Refuse changes for accounts represented in the consumed result."""
+    represented = (
+        {transaction.account_id for transaction in silver.transactions}
+        | {record.account_id for record in silver.unbooked_records}
+        | {observation.account_id for observation in silver.balance_observations}
+        | {evidence.account_id for evidence in silver.account_evidence}
+        | {run.account_id for run in silver.import_run_results}
+        | {export.account_id for export in silver.evidence_exports}
+    )
+    for account_id in represented:
+        account = accounts.get(account_id)
+        if account is None or account.currency != consumed.get(account_id):
+            raise SilverCurrencyFreshnessError
 
 
 def _publish(profile: Profile, plan: _GoldPlan | GoldRebuild) -> GoldRebuild:
