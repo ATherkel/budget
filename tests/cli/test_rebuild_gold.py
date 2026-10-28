@@ -24,7 +24,7 @@ from budget.gold.store import GoldStore
 from budget.inputs import load_configuration
 from budget.locking import WriterLock, writer_lock
 from budget.rebuilding import GoldRebuild, HouseholdInputs, rebuild_from_gold
-from budget.silver import SilverResult, SilverStore, VoidImportRun, result_fingerprint
+from budget.silver import SilverResult, SilverStore, result_fingerprint
 from budget.silver.currencies import UnknownCurrencyError
 from tests.cli.commands import rebuild
 from tests.cli.pipelines import (
@@ -277,7 +277,6 @@ class SilverChangeTests(unittest.TestCase):
                 json.dumps(decision) + "\n",
                 encoding="utf-8",
             )
-            assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
 
             with closing(sqlite3.connect(built.profile.gold_store)) as connection:
                 connection.execute(
@@ -285,8 +284,13 @@ class SilverChangeTests(unittest.TestCase):
                     " BEGIN SELECT RAISE(ABORT, 'synthetic Gold failure'); END"
                 )
                 connection.commit()
+            # Silver commits the withdrawal before Gold's publication fails.
             with pytest.raises(sqlite3.IntegrityError):
-                rebuild(built.profile_file)
+                rebuild(built.profile_file, "--from", "silver")
+            with SilverStore(built.profile) as silver_store:
+                committed = silver_store.read_build().provenance
+            assert committed is not None
+            assert [d.decision_id for d in committed.decisions] == ["d-0001"]
             with closing(sqlite3.connect(built.profile.gold_store)) as connection:
                 connection.execute("DROP TRIGGER refuse_result")
                 connection.commit()
@@ -443,11 +447,22 @@ class SilverChangeTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
             assert rebuild(built.profile_file)[0] == EXIT_OK
-            rebuild_silver_with(
-                built.profile, VoidImportRun("d-0001", built.import_run_id)
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "void-import-run",
+                "targets": [built.import_run_id],
+                "reason": "synthetic mistaken run",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n",
+                encoding="utf-8",
             )
 
-            status, stdout, stderr = rebuild(built.profile_file)
+            status, stdout, stderr = rebuild(built.profile_file, "--from", "silver")
 
             assert (status, stderr) == (EXIT_OK, "")
             assert "published publication 2" in stdout
