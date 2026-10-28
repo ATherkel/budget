@@ -319,12 +319,14 @@ class SilverChangeTests(unittest.TestCase):
                 "\r" + json.dumps(decision) + "\n",
                 encoding="utf-8",
             )
+
             assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
 
+            # A later Gold rebuild compares the stored prefix with the log's.
             status, stdout, stderr = rebuild(built.profile_file)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert "published publication 1" in stdout
+            assert "publication 1 stays current" in stdout
 
     def test_retry_after_silver_commits_and_gold_fails(self) -> None:
         with TemporaryDirectory() as directory:
