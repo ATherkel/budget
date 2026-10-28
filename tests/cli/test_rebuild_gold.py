@@ -20,6 +20,7 @@ from budget.inputs import load_configuration
 from budget.locking import WriterLock, writer_lock
 from budget.rebuilding import GoldRebuild, HouseholdInputs, rebuild_from_gold
 from budget.silver import SilverStore, VoidImportRun
+from budget.silver.currencies import UnknownCurrencyError
 from tests.cli.commands import rebuild
 from tests.cli.pipelines import (
     EXPORT,
@@ -250,6 +251,33 @@ class RecipeNamesSilversRunsTests(unittest.TestCase):
 
 
 class SilverChangeTests(unittest.TestCase):
+    def test_changing_a_consumed_account_currency_refuses_gold(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            accounts = built.profile.accounts_file.read_text(encoding="utf-8")
+            built.profile.accounts_file.write_text(
+                accounts.replace('currency = "DKK"', 'currency = "EUR"', 1),
+                encoding="utf-8",
+            )
+
+            try:
+                result = rebuild(built.profile_file)
+            except UnknownCurrencyError:
+                result = None
+
+            assert result is not None
+            status, stdout, stderr = result
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert stdout == ""
+            assert "consumed currency" in stderr
+            assert "rebuild --from silver" in stderr
+            with GoldStore(built.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
+                assert gold.next_publication_id() == 2
+
     def test_a_replaced_consumed_decision_log_prefix_refuses_gold(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
