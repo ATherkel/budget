@@ -210,6 +210,19 @@ def _parser() -> argparse.ArgumentParser:
     restore_ = commands.add_parser(
         "restore", help="restore a whole profile from a backup set"
     )
+    dev = commands.add_parser("dev", help="development-only commands")
+    dev_commands = dev.add_subparsers(dest="dev_command", required=True)
+    refresh = dev_commands.add_parser(
+        "refresh", help="restore production's newest backup set for development"
+    )
+    refresh.add_argument(
+        "--inputs", action="store_true", help="also replace development's inputs"
+    )
+    refresh.add_argument(
+        "--writable",
+        action="store_true",
+        help="restore into development's own stores, to rehearse a migration",
+    )
     restore_.add_argument(
         "backup_set", nargs="?", help="the set to restore (default: the newest)"
     )
@@ -511,6 +524,8 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         return _import(profile, arguments.ranges)
     if arguments.command == "backup":
         _backup(profile)
+    elif arguments.command == "dev":
+        pass
     elif arguments.command == "restore":
         _restore(profile, arguments.backup_set)
     elif arguments.command == "rebuild":
