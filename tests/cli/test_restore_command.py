@@ -328,6 +328,12 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
                 current = gold.current()
                 assert current is not None
                 assert current.publication_id == 2
+                # The set's history comes back as it was, one move on.
+                moves = gold.pointer_history()
+                assert [(move.to_publication_id, move.cause) for move in moves] == [
+                    (1, "build"),
+                    (2, "build"),
+                ]
 
     def test_restore_records_where_the_recovered_publication_history_ends(
         self,
