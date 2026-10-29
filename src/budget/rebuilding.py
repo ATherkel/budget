@@ -390,7 +390,7 @@ def rebuild_through_gold(
         store_silver(lock, silver_inputs, derived)
     return PipelineRebuild(
         silver=SilverRebuild(runs=silver_inputs.runs, result=derived),
-        silver_changed=changed,
+        silver_changed=changed or currencies_changed,
         gold=_publish(profile, plan),
     )
 
