@@ -171,6 +171,24 @@ class StaleRecordsTests(unittest.TestCase):
             with SilverStore(base.profile) as silver:
                 assert [t.description for t in silver.read().transactions] == ["Café"]
 
+    def test_regenerated_records_that_change_silver_publish_gold_again(
+        self,
+    ) -> None:
+        # The import runs, configuration, log and code are those of the
+        # publication already current: only the records Silver reads changed.
+        with TemporaryDirectory() as directory:
+            base, _ = _stale_household(Path(directory))
+            assert rebuild(base.profile_file, "--from", "silver")[0] == EXIT_OK
+
+            status, stdout, stderr = rebuild(base.profile_file, "--from", "bronze")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 2" in stdout
+            with GoldStore(base.profile) as gold:
+                current = gold.current()
+            assert current is not None
+            assert current.publication_id == 2
+
 
 def _delete_taxonomy(profile: Profile) -> None:
     profile.input_file("taxonomy.toml").unlink()
