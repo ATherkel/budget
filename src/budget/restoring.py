@@ -17,7 +17,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Final
 
-from budget.backups import BackupSet, complete_backup_sets, set_store_files
+from budget.backups import (
+    BACKUP_FAILURES,
+    BackupSet,
+    back_up,
+    complete_backup_sets,
+    set_store_files,
+)
 from budget.bronze import BronzeStore
 from budget.bronze.storage import bronze_stage
 from budget.codeversion import UncommittedCodeError
@@ -219,6 +225,8 @@ class Restored:
     gold: GoldRebuild | None
     undo: UndoAfterCatchUp | None
     started: tuple[str, ...] = ()
+    backed_up: BackupSet | None = None
+    backup_failure: str | None = None
 
     @property
     def gold_started(self) -> bool:
@@ -684,6 +692,7 @@ def restore(lock: WriterLock, name: str | None = None, *, now: datetime) -> Rest
     # restore remove a finished profile's stores as its own.
     (profile.stores / RESTORE_MARKER).unlink()
     sync_folder(profile.stores)
+    backed_up, backup_failure = _back_up_restored(lock, now)
     return Restored(
         backup=selected,
         skipped=skipped,
@@ -694,4 +703,24 @@ def restore(lock: WriterLock, name: str | None = None, *, now: datetime) -> Rest
         gold=gold,
         undo=undo,
         started=started,
+        backed_up=backed_up,
+        backup_failure=backup_failure,
     )
+
+
+def _back_up_restored(
+    lock: WriterLock, now: datetime
+) -> tuple[BackupSet | None, str | None]:
+    """Back the finished restore up, as `migrate` does after it changes stores.
+
+    The boundary and any catch-up publication are then in a set at once.
+    The restore is finished either way: a set that cannot be written is
+    reported, for `budget backup` to write once its problem is put right.
+    Only a profile that writes sets is backed up.
+    """
+    if lock.profile.backups is None:
+        return None, None
+    try:
+        return back_up(lock, now=now), None
+    except BACKUP_FAILURES as error:
+        return None, str(error)
