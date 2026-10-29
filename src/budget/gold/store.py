@@ -194,8 +194,8 @@ _INSERT_SNAPSHOT: Final = (
 _INSERT_RECIPE: Final = (
     "INSERT INTO recipes (publication_id, configuration_fingerprint,"
     " decision_log_position, decision_log_prefix_sha256, code_version,"
-    " contract_version, silver_identity_version, python_version,"
-    " sqlite_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    " contract_version, silver_identity_version, late_booking_days,"
+    " python_version, sqlite_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 _INSERT_RECIPE_RUNS: Final = (
     "INSERT INTO recipe_import_runs (publication_id, import_run_id, payload_id)"
@@ -863,6 +863,7 @@ def _write_recipe(
             recipe.code_version,
             recipe.contract_version,
             recipe.silver_identity_version,
+            recipe.late_booking_days,
             recipe.python_version,
             recipe.sqlite_version,
         ),
@@ -888,6 +889,7 @@ def _recipe(row: sqlite3.Row, runs: Iterable[sqlite3.Row]) -> Recipe:
         code_version=row["code_version"],
         contract_version=row["contract_version"],
         silver_identity_version=row["silver_identity_version"],
+        late_booking_days=row["late_booking_days"],
         python_version=row["python_version"],
         sqlite_version=row["sqlite_version"],
     )

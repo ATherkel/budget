@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Om tallene · Budget{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">Husstandsøkonomi</p>
+    <h1>Om tallene{% if overview %} for {{ month_label }}{% endif %}</h1>
+  </div>
+</div>
+{% if failure %}
+<div role="alert">{{ failure | safe }}</div>
+<p><a id="back-to-overview" href="/">Gå til den nyeste oversigt</a></p>
+{% else %}
+{% if not overview.publication.is_current %}
+<p class="notice notice--warning">Der findes nyere tal. <a id="newer-figures" href="/">Hent de nyeste tal</a></p>
+{% endif %}
+{# Analytics judged everything listed here; the page only says it in words. #}
+{% set incomplete = overview.coverage.account_months | rejectattr("status", "equalto", "outside_history") | list %}
+{% if overview.coverage.status != "complete" and not incomplete %}
+<section class="report-panel" aria-labelledby="coverage-heading">
+<h2 id="coverage-heading">Hvorfor der ingen tal er</h2>
+<p id="explanation-coverage">Ingen af de valgte konti har historik i {{ month_label }}, så der er ingen tal for måneden. Vælg en anden måned eller andre konti.</p>
+</section>
+{% elif overview.coverage.status != "complete" %}
+<section class="report-panel" aria-labelledby="coverage-heading">
+<h2 id="coverage-heading">Hvor tallene er ufuldstændige</h2>
+<ul id="explanation-coverage" class="explanation-list">
+{% for month in incomplete %}
+  <li>{{ month.display_name }}, {{ month_label }}: {% if month.status == "no_data" %}der er ingen data for måneden endnu.{% else %}kun en del af måneden er dækket.{% endif %}</li>
+{% endfor %}
+</ul>
+</section>
+{% endif %}
+{% if overview.provisional %}
+<section class="report-panel" aria-labelledby="provisional-heading">
+<h2 id="provisional-heading">Hvorfor tallene er foreløbige</h2>
+<ul id="explanation-provisional" class="explanation-list">
+{% if "current_month" in overview.provisional.reasons %}
+  <li>{{ month_label | capitalize }} er indeværende måned, så der kommer flere posteringer.</li>
+{% endif %}
+{% if "late_bookings_unsettled" in overview.provisional.reasons %}
+{% from "names.html" import names %}
+  <li>Banken kan stadig bogføre sene posteringer på {{ names(overview.provisional.unsettled) }}.</li>
+{% endif %}
+</ul>
+</section>
+{% endif %}
+{% if overview.unclassified and overview.unclassified.count > 0 %}
+<section class="report-panel" aria-labelledby="unclassified-heading">
+<h2 id="unclassified-heading">Betalinger uden kategori</h2>
+<p id="explanation-unclassified">Nogle betalinger i måneden er endnu ikke placeret i en kategori. Penge tilbage medregner dem ikke, så beløbet kan ændre sig, når de bliver placeret.</p>
+</section>
+{% endif %}
+{% endif %}
+{% if report_url %}
+<p><a id="back-to-report" href="{{ report_url }}">Tilbage til oversigten</a></p>
+{% endif %}
+{% endblock %}

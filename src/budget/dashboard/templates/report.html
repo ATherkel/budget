@@ -4,5 +4,36 @@
 {% endif %}
 <p class="eyebrow">Rapporten er indlæst</p>
 <h3 id="report-ready-title">{{ month_label }}</h3>
-<p class="report-note">Alle valg hører til samme offentliggjorte datasæt. Økonomiske tal vises ikke i denne version.</p>
+{% if overview.provisional %}
+<p class="trust-note"><span id="provisional-label" class="status-chip status-chip--provisional">Foreløbige tal</span> <a id="provisional-explanation" href="{{ explanation_url }}">Hvorfor tallene er foreløbige</a></p>
+{% endif %}
+{% if overview.coverage.status != "complete" %}
+{% from "names.html" import names %}
+{% set incomplete = overview.coverage.account_months | rejectattr("status", "equalto", "outside_history") | list %}
+{% if not incomplete %}
+{# No selected account contributes: the month lies outside every one's history. #}
+<p id="coverage-note" class="trust-note">Ingen af de valgte konti har historik i {{ month_label }}. <a id="coverage-explanation" href="{{ explanation_url }}">Hvorfor der ingen tal er</a></p>
+{% else %}
+<p id="coverage-note" class="trust-note">{% if overview.coverage.status == "no_data" %}Der er ingen data endnu fra{% else %}Tallene mangler noget fra{% endif %} {{ names(incomplete) }}. <a id="coverage-explanation" href="{{ explanation_url }}">Hvorfor tallene er ufuldstændige</a></p>
+{% endif %}
+{% endif %}
+{# With no evidence a figure is unknown, never zero. #}
+<dl class="summary">
+  <div class="summary-figure"><dt>Indtægter</dt><dd id="income">{{ overview.income | amount(overview.currency) }}</dd></div>
+  <div class="summary-figure"><dt>Udgifter</dt><dd id="expenses">{{ overview.expenses | amount(overview.currency) }}</dd></div>
+  <div class="summary-figure"><dt>Penge tilbage</dt><dd id="money-left">{{ overview.net_cash_flow | amount(overview.currency) }}</dd></div>
+</dl>
+{% if overview.unclassified and overview.unclassified.count > 0 %}
+{# Quiet, without amounts or count: those belong to Kontrol. #}
+<p id="unclassified-note" class="trust-note">Nogle betalinger er endnu ikke placeret i en kategori, så penge tilbage kan ændre sig. <a id="unclassified-explanation" href="{{ explanation_url }}">Om betalinger uden kategori</a></p>
+{% endif %}
+{% if overview.categories %}
+<h4 id="categories-heading">Udgifter fordelt på kategorier</h4>
+{# Every row, in the report's order, so the list adds up to Expenses. #}
+<ul id="categories" class="category-list" aria-labelledby="categories-heading">
+{% for category in overview.categories %}
+  <li class="category-row"><span>{{ category.name }}</span> <span class="category-amount">{{ category.spending | amount(overview.currency) }}</span></li>
+{% endfor %}
+</ul>
+{% endif %}
 </section>

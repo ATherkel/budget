@@ -20,13 +20,17 @@ import uvicorn
 
 from budget import routine_logging, sqlstore, summaries
 from budget.backups import (
+    BACKUP_FAILURES,
     BackupVerificationError,
     BackupWriteError,
     LostStoreError,
     UnsupportedStoresError,
     back_up,
+    require_backup_allowed,
 )
-from budget.bronze.storage import bronze_stage
+from budget.bronze.parsers.registry import UnsupportedSourceFormatError
+from budget.bronze.storage import BRONZE_STAGE, bronze_stage
+from budget.bronze.store import ConflictingDeclaredFormatsError
 from budget.codeversion import UncommittedCodeError, require_committed_code
 from budget.dashboard import create_app
 from budget.dashboard.passphrase import PassphraseNotSetError, set_passphrase
@@ -39,16 +43,19 @@ from budget.importing import (
 )
 from budget.inbox import (
     ExportPreview,
+    ImportedInbox,
     cross_account_duplicates,
     import_inbox,
     inbox_exports,
     incident_files,
     preview,
     require_import_allowed,
+    require_importable,
 )
 from budget.inputs import Account, ConfigurationError, load_accounts
 from budget.locking import (
     StoresFolderUnavailableError,
+    WriterLock,
     WriterLockHeldError,
     writer_lock,
 )
@@ -60,6 +67,7 @@ from budget.migration import (
     require_migration_allowed,
 )
 from budget.profiles import (
+    PRODUCTION_PROFILE_NAME,
     NoBackupsFolderError,
     Profile,
     ProfileFileError,
@@ -68,8 +76,12 @@ from budget.profiles import (
 from budget.prompting import ask_continue_after_duplicates, ask_passphrase, ask_ranges
 from budget.ranges import load_ranges
 from budget.rebuilding import (
+    HouseholdInputs,
+    SilverNotBuiltError,
     SilverRebuild,
-    rebuild_from_silver,
+    read_household_inputs,
+    rebuild_from_gold,
+    rebuild_through_gold,
     require_buildable_accounts,
 )
 from budget.refreshing import (
@@ -132,26 +144,45 @@ class NoProfileSelectedError(Exception):
         )
 
 
-class RebuildFromStageNotBuiltError(Exception):
-    """The stage a rebuild would read from has no reader in this code yet."""
-
-    def __init__(self, stage: str) -> None:
-        """Name the one stage reading that exists, rather than pretend."""
-        super().__init__(
-            f"rebuilding from {stage} is not built yet: only --from {SILVER_STAGE} is"
-        )
-
-
 class ImportedWithoutBackupError(Exception):
-    """The imports and Silver are committed, but no backup set followed them."""
+    """The imports, Silver and Gold are committed, but no backup set followed."""
 
     def __init__(self, reason: Exception) -> None:
         """Say what was done, what was not, and what to run."""
         super().__init__(
-            "the exports were imported and Silver rebuilt, but no backup set "
-            f"could be written after them: {reason}. Put that right, then run "
-            "`budget backup`"
+            "the exports were imported, Silver rebuilt and Gold published, but "
+            f"no backup set could be written after them: {reason}. Put that "
+            "right, then run `budget backup`"
         )
+
+
+class RebuiltWithoutBackupError(Exception):
+    """The rebuild is committed, but no backup set followed it."""
+
+    def __init__(self, reason: Exception) -> None:
+        """Say what was done, what was not, and what to run."""
+        super().__init__(
+            "the stores were rebuilt, but no backup set could be written after "
+            f"them: {reason}. Put that right, then run `budget backup`"
+        )
+
+
+class ImportedWithoutPublicationError(Exception):
+    """The imports are committed, but Silver and Gold were not rebuilt from them."""
+
+    def __init__(
+        self, held_back: ConfigurationError, backup_failure: Exception | None
+    ) -> None:
+        """Say what was done, what stopped, and which command finishes it."""
+        message = (
+            "the exports were imported into Bronze, but Silver and Gold were not "
+            f"rebuilt: {'; '.join(held_back.problems)}. Put that right, then run "
+            "`budget import` again: it finishes the rebuild, the publication and "
+            "the backup, whether or not the inbox holds files"
+        )
+        if backup_failure is not None:
+            message += f". No backup set could be written either: {backup_failure}"
+        super().__init__(message)
 
 
 class PassphraseMismatchError(Exception):
@@ -242,7 +273,7 @@ def _parser() -> argparse.ArgumentParser:
         help="the stage to rebuild from",
     )
     import_ = commands.add_parser(
-        "import", help="import every inbox export, then rebuild Silver"
+        "import", help="import every inbox export, then rebuild Silver and Gold"
     )
     import_.add_argument(
         "--ranges",
@@ -358,20 +389,43 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
     replacement it writes, and the summary and completion log belong to that
     same lock.
     """
-    if from_stage != SILVER_STAGE:
-        raise RebuildFromStageNotBuiltError(from_stage)
     started = perf_counter()
     with writer_lock(profile) as lock:
         require_committed_code(lock.profile)
-        rebuilt = rebuild_from_silver(lock)
-        summary = summaries.rebuild_summary(rebuilt)
+        if profile.name == PRODUCTION_PROFILE_NAME:
+            require_backup_allowed(profile)
+        inputs = read_household_inputs(lock.profile)
+        now = datetime.now(UTC)
+        summary = ""
+        counts: dict[str, int] = {}
+        if from_stage in {BRONZE_STAGE, SILVER_STAGE}:
+            rebuilt = rebuild_through_gold(
+                lock, now=now, inputs=inputs, from_bronze=from_stage == BRONZE_STAGE
+            )
+            summary = summaries.rebuild_summary(rebuilt.silver)
+            counts = _rebuild_counts(rebuilt.silver)
+            published = rebuilt.gold
+        else:
+            published = rebuild_from_gold(lock, now=now, inputs=inputs)
         routine_logging.finished(
             profile,
             "rebuild",
-            counts=_rebuild_counts(rebuilt),
+            counts={**counts, "published": int(published.published)},
             duration_ms=_milliseconds(started),
         )
-        sys.stdout.write(summary)
+        summary += summaries.gold_line(published) + "\n"
+        # Every production write is followed by a set covering what it wrote;
+        # a Gold rebuild that publishes nothing wrote nothing.
+        wrote = from_stage != GOLD_STAGE or published.published
+        if profile.name != PRODUCTION_PROFILE_NAME or not wrote:
+            sys.stdout.write(summary)
+            return
+        try:
+            written = back_up(lock, now=datetime.now(UTC))
+        except BACKUP_FAILURES as error:
+            sys.stdout.write(summary)
+            raise RebuiltWithoutBackupError(error) from None
+        sys.stdout.write(f"{summary}Backup   backup set {written.name} written\n")
 
 
 def _declared_ranges(
@@ -397,47 +451,73 @@ def _declared_ranges(
     }
 
 
-def _import(profile: Profile, ranges_file: str | None) -> int:
-    """Import every inbox export with its declared range, then rebuild Silver.
+def _import_files(
+    lock: WriterLock,
+    inputs: HouseholdInputs,
+    previews: Sequence[ExportPreview],
+    ranges_file: str | None,
+) -> ImportedInbox | int:
+    """Settle every range, then import the files; or return the exit status.
 
-    Every range is settled before the first file is stored, and a payload the
-    inbox holds under more than one account is shown before that: nothing is
-    imported unless the person goes on. Returns 3 when any file stays in the
+    A payload the inbox holds under more than one account is shown before the
+    ranges are asked: nothing is imported unless the person goes on.
+    """
+    profile = lock.profile
+    accounts = load_accounts(profile)
+    require_buildable_accounts(
+        profile, {each.account_id for each in previews if not each.skipped}
+    )
+    require_importable(inputs, previews)
+    duplicates = cross_account_duplicates(previews)
+    if duplicates and not ask_continue_after_duplicates(duplicates):
+        sys.stdout.write("Nothing was imported.\n")
+        return EXIT_REFUSED_INPUT
+    excluded = incident_files(duplicates)
+    declared = _declared_ranges(previews, accounts, ranges_file, excluded)
+    if declared is None:
+        sys.stdout.write("Nothing was imported.\n")
+        return EXIT_OK
+    return import_inbox(lock, previews, declared, duplicates, inputs)
+
+
+def _import(profile: Profile, ranges_file: str | None) -> int:
+    """Import every inbox export with its declared range, then rebuild.
+
+    Every range is settled before the first file is stored. With an empty
+    inbox, Bronze may still be ahead of Silver and Gold because an earlier
+    import stopped after it stored; then this finishes the rebuild, the
+    publication and production's backup. Returns 3 when any file stays in the
     inbox unimported, else 0.
     """
     started = perf_counter()
     with writer_lock(profile) as lock:
-        require_import_allowed(profile)
+        inputs = require_import_allowed(profile)
         accounts = load_accounts(profile)
         previews = [
             preview(profile, accounts, source) for source in inbox_exports(profile)
         ]
-        if not previews:
+        done = (
+            _import_files(lock, inputs, previews, ranges_file)
+            if previews
+            else import_inbox(lock, (), {}, (), inputs)
+        )
+        if isinstance(done, int):
+            return done
+        if not previews and done.rebuilt is None and done.held_back is None:
             sys.stdout.write("The inbox holds no exports; nothing was imported.\n")
             return EXIT_OK
-        require_buildable_accounts(
-            profile, {each.account_id for each in previews if not each.skipped}
-        )
-        duplicates = cross_account_duplicates(previews)
-        if duplicates and not ask_continue_after_duplicates(duplicates):
-            sys.stdout.write("Nothing was imported.\n")
-            return EXIT_REFUSED_INPUT
-        excluded = incident_files(duplicates)
-        declared = _declared_ranges(previews, accounts, ranges_file, excluded)
-        if declared is None:
-            sys.stdout.write("Nothing was imported.\n")
-            return EXIT_OK
-        imported = import_inbox(lock, previews, declared, duplicates)
-        sys.stdout.write(summaries.import_summary(imported))
+        sys.stdout.write(summaries.import_summary(done))
         routine_logging.finished(
             profile,
             "import",
-            counts=imported.counts(),
+            counts=done.counts(),
             duration_ms=_milliseconds(started),
         )
-    if imported.backup_failure is not None:
-        raise ImportedWithoutBackupError(imported.backup_failure)
-    return EXIT_REFUSED_INPUT if imported.any_left_in_inbox else EXIT_OK
+    if done.held_back is not None:
+        raise ImportedWithoutPublicationError(done.held_back, done.backup_failure)
+    if done.backup_failure is not None:
+        raise ImportedWithoutBackupError(done.backup_failure)
+    return EXIT_REFUSED_INPUT if done.any_left_in_inbox else EXIT_OK
 
 
 def _review(profile: Profile, kind: str | None, account: str | None) -> None:
@@ -585,6 +665,8 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
     except (
         ProfileFileError,
         ConfigurationError,
+        ConflictingDeclaredFormatsError,
+        UnsupportedSourceFormatError,
         NoPassphraseFileError,
         NoPassphraseTypedError,
         EmptyPassphraseError,
@@ -594,8 +676,8 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         return _refuse(error, EXIT_REFUSED_INPUT)
     except (
         NoProfileSelectedError,
-        RebuildFromStageNotBuiltError,
         UncommittedCodeError,
+        SilverNotBuiltError,
         WriterLockHeldError,
         StoresFolderUnavailableError,
         RestoreInsteadError,
@@ -609,6 +691,8 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         UnfinishedRestoreError,
         MigratedWithoutBackupError,
         ImportedWithoutBackupError,
+        ImportedWithoutPublicationError,
+        RebuiltWithoutBackupError,
         BackupWriteError,
         UnsupportedStoresError,
         LostStoreError,
