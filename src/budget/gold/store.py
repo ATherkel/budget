@@ -126,6 +126,25 @@ class PointerMove:
 
 
 @dataclass(frozen=True)
+class RecoveryBoundary:
+    """Where a restore's recovered publication history ends (#121).
+
+    `restore` brings back publications as they stood in `backup_set`, taken
+    at `backup_created_at`; any made after it, before the failure, are lost.
+    `restored_current_id` is the publication current in the set, or None.
+    Every publication from `first_publication_id` on was built after the
+    restore at `restored_at`. A bare id from before the restore can still
+    name a lost publication that a new one now shares (#376).
+    """
+
+    backup_set: str
+    backup_created_at: datetime
+    restored_at: datetime
+    restored_current_id: int | None
+    first_publication_id: int
+
+
+@dataclass(frozen=True)
 class PublishedClassificationReviews:
     """The classification questions of one current, retained publication."""
 
@@ -440,6 +459,10 @@ class GoldStore:
                 _move(row) for row in connection.execute(_SELECT_MOVES)
             )
         )
+
+    def recovery_boundaries(self) -> Sequence[RecoveryBoundary]:
+        """Return every recorded recovery boundary, oldest first."""
+        return ()
 
     def classification_reviews(
         self,
