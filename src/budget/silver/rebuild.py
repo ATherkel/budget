@@ -51,15 +51,28 @@ def rebuild_silver(
         return _replace(held.profile, inputs)
 
 
-def _replace(profile: Profile, inputs: SilverBuildInputs) -> SilverResult:
-    """Run the pure build and store exactly what it produced."""
-    result = build(
+def derive_silver(inputs: SilverBuildInputs) -> SilverResult:
+    """Run the pure build over `inputs`, storing nothing."""
+    return build(
         runs=inputs.runs,
         source_records=inputs.source_records,
         format_failures=inputs.format_failures,
         currencies=inputs.currencies,
         decisions=inputs.decisions,
     )
-    with SilverStore(profile) as store:
+
+
+def store_silver(
+    profile: Profile | WriterLock, inputs: SilverBuildInputs, result: SilverResult
+) -> None:
+    """Replace the stored Silver with `result`, which `inputs` derived."""
+    held = profile.profile if isinstance(profile, WriterLock) else profile
+    with SilverStore(held) as store:
         store.replace(result, currencies=inputs.currencies)
+
+
+def _replace(profile: Profile, inputs: SilverBuildInputs) -> SilverResult:
+    """Run the pure build and store exactly what it produced."""
+    result = derive_silver(inputs)
+    store_silver(profile, inputs, result)
     return result

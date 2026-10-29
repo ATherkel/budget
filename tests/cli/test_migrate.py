@@ -178,6 +178,11 @@ class MigrateRefusalTests(unittest.TestCase):
                 }
                 assert migrate(profile_file, "--stage", other)[0] == EXIT_OK
                 paths[other].rename(paths[stage])
+                if stage == "bronze":
+                    # Silver is at a newer schema version than Bronze knows;
+                    # pretend otherwise so the stage mismatch is what refuses.
+                    with closing(sqlite3.connect(paths[stage])) as connection:
+                        connection.execute("PRAGMA user_version = 1")
 
                 status, stderr = migrate(profile_file, "--stage", stage)
 
