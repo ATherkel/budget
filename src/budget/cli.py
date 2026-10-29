@@ -94,6 +94,8 @@ from budget.refreshing import (
     require_refreshable,
 )
 from budget.restoring import (
+    CatchUpCodeRefusedError,
+    CatchUpInputsRefusedError,
     CatchUpRefusedError,
     DamagedStoreError,
     DecisionLogDamagedError,
@@ -704,11 +706,13 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         EmptyPassphraseError,
         PassphraseMismatchError,
         DemoDirectoryExistsError,
+        CatchUpInputsRefusedError,
     ) as error:
         return _refuse(error, EXIT_REFUSED_INPUT)
     except (
         NoProfileSelectedError,
         UncommittedCodeError,
+        CatchUpCodeRefusedError,
         SilverNotBuiltError,
         WriterLockHeldError,
         StoresFolderUnavailableError,
