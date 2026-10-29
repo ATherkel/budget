@@ -456,10 +456,16 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
             # account, so the catch-up build refuses.
             built.profile.accounts_file.write_text("format = 1\n", encoding="utf-8")
 
-            status, stdout, _ = restore(built.profile_file, written.name)
+            status, stdout, stderr = restore(built.profile_file, written.name)
 
             assert status == EXIT_REFUSED_INPUT
             assert "restored backup set" not in stdout
+            assert (
+                f"backup set {written.name} is in place, but its catch-up build "
+                "was refused: accounts.toml"
+            ) in stderr
+            assert "the restore has not finished" in stderr
+            assert "nothing was written" not in stderr
             assert backup(built.profile_file)[0] == EXIT_REFUSED_ENVIRONMENT
 
 
