@@ -58,6 +58,10 @@ Use the repository's test-driven development workflow for all application
 features and bug fixes. Read `docs/agents/tdd.md` before beginning; it defines
 the red/green handoffs, test seam agreement, and permitted exceptions.
 
+### Pull request reviews
+
+Review, freeze and merge PRs as `docs/agents/pr-review.md` describes.
+
 ## Agent skills
 
 Edit `docs/agents/issue-tracker.md`, `domain.md` and `triage-labels.md`
