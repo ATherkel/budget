@@ -164,6 +164,7 @@ class Restored:
     put_back: tuple[str, ...]
     replayed: int
     missing_logs: tuple[str, ...]
+    decision_line_cut_off: bool
 
     @property
     def decisions_lost(self) -> bool:
@@ -311,6 +312,19 @@ class DecisionLogDamagedError(RuntimeError):
             "is, beside the backup set's copy. Repair it, then rerun "
             "`budget restore`; nothing was restored"
         )
+
+
+def _ends_cut_off(log: Path) -> bool:
+    """Report whether a log's final line lacks its line feed, as a crash leaves it.
+
+    Such a line counts as never written (`operations.md`, *Failure and
+    Retry*); restore reports it and leaves it for the operator to delete.
+    """
+    try:
+        content = log.read_bytes()
+    except FileNotFoundError:
+        return False
+    return bool(content) and not content.endswith(b"\n")
 
 
 def _require_decision_log_extends(profile: Profile, backup: BackupSet) -> None:
@@ -529,15 +543,18 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     can read is taken, and every newer set is passed over.
     """
     profile = lock.profile
-    earlier = _clear_unfinished(profile)
-    _require_no_stores(profile)
     sets = complete_backup_sets(profile)
     if name is None:
         selected, skipped = newest_readable(profile, sets)
     else:
         selected, skipped = _named(profile, sets, name), ()
     _require_decision_log_extends(profile, selected)
+    decision_line_cut_off = _ends_cut_off(profile.input_file(DECISION_LOG_FILE_NAME))
     log_runs_ahead = _require_import_log_continues(profile, selected)
+    # Only now is an unfinished restore's work cleared: a refusal above keeps
+    # its marker, and with it the record of the inputs it put back.
+    earlier = _clear_unfinished(profile)
+    _require_no_stores(profile)
     stores = set_store_files(selected)
     put_back = _copy_whole(profile, selected, stores, earlier)
     # A log the profile lost and the set holds: only the set's copy stands
@@ -565,4 +582,5 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
         put_back=put_back,
         replayed=len(replayed),
         missing_logs=missing_logs,
+        decision_line_cut_off=decision_line_cut_off,
     )
