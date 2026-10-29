@@ -379,6 +379,11 @@ def _restore(profile: Profile, backup_set: str | None) -> None:
         sys.stdout.write(
             f"replayed {restored.replayed} import {runs} from the export archive\n"
         )
+    if restored.gold_started:
+        sys.stdout.write(
+            f"backup set {restored.backup.name} holds no Gold store: Gold was "
+            "started anew, and no earlier publication is recovered\n"
+        )
     if restored.gold is not None:
         sys.stdout.write(summaries.gold_line(restored.gold) + "\n")
     if restored.undo is not None:
