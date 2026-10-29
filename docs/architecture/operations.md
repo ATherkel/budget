@@ -738,36 +738,234 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 
 ## Failure and Retry
 
-| Failure | Effect | Retry |
-| --- | --- | --- |
-| Configuration error, including an unknown file in the inputs folder | Nothing is built and no store is replaced, `import` stores no file; exit 3. So are the refusals that follow from the files about to be imported: a decision naming a category the taxonomy dropped, an account closed before an incoming transaction | Fix or remove the file and rerun |
-| A declared range whose `from` falls after its `through` | At the prompt, the range is asked again and nothing reaches Bronze. In a ranges file, the whole file is refused, listing every problem, before anything is imported; exit 3 | Type the range again, or correct the ranges file and rerun |
-| `import` stored files, then Silver or Gold refused in a way no check before the first write could foresee | Bronze, the archive and the import log are committed and the inbox files are gone; Silver and Gold are not rebuilt and the previous publication stays current. Production still writes its backup set; exit 4, saying so and naming `budget import` | Put the cause right and run `import` again: with or without inbox files it finishes the Silver rebuild, the publication and production's backup. An `import` with nothing outstanding changes nothing |
-| A `rebuild` writes stores in production, then its backup set cannot be written | The stores are rebuilt; exit 4, saying so | Put right what the message names, then run `budget backup` |
-| Refused import run (account conflict, or a declared range that ends after the export date or leaves out one of the payload's transactions) | Recorded as refused and logged, with a copy of its bytes under `exports\<account_id>\refused\`; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file or correct the declaration, then rerun |
-| Misfiled export (the filename's account number is not the account's declared `bank_account_number`) | Rejected before Bronze: no import run is recorded and nothing reaches the import log; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file to the right account's folder, or fix the declaration, then rerun |
-| Format failure (the file's format cannot read it) | Found by the preview and not imported: nothing reaches Bronze, the file stays in the inbox, the other files are stored; exit 3. Bronze can still record a `FormatFailure`, but `import` holds the file instead, so a parser fix needs no new presentation: `rebuild --from bronze` parses the retained payload again | Download the export again, or fix the parser, then rerun `import`. Never edit the export by hand |
-| A payload the inbox holds under two or more declared accounts (a cross-account duplicate) | Reported before anything is written, with each file's account, filename, export date, record count and transaction dates; every file the group holds is refused and stays in the inbox, and no import run is recorded for it; the files the group does not hold are imported only if the person answers `y` or `yes`; with no terminal to ask, or any other answer, nothing is imported; exit 3 | Check which account the bank exported it from, download the affected accounts again, remove the duplicate, then rerun |
-| Crash during an import | Each file is idempotent: a file whose account, original filename and payload hash already have a `stored` or `repeat` run is finished (archived, logged once, and removed from the inbox) without a new run. Any other run Bronze holds but the log lacks is archived and logged by the next import | Rerun `import` |
-| The archive holds other bytes, a file where a folder must go, or a place reserved for other bytes, everywhere a run's export may go | Nothing is overwritten; the run stays in Bronze but is not logged; every import stops before writing, naming the account and the run | Move the conflicting archive file aside, then rerun |
-| An inbox file is saved over while it is imported | The run for the bytes that were read is stored, archived and logged; the new file stays in the inbox | Rerun `import` |
-| An inbox file is removed while it is imported | The import finishes from the bytes it read; there is nothing left to remove | Nothing to do |
-| An import-log entry cut off by a crash | The next import completes it from the run Bronze holds | Nothing to do |
-| The import log holds a blank, unreadable or second line for a run, or an entry that does not restate its run exactly | The import stops before writing anything | Restore `imports.jsonl` from the newest backup set; the next import logs again every run Bronze holds |
-| The import log mirrors a run Bronze never recorded | Bronze is older than the log; the import stops before writing anything | Restore Bronze up to the log; never roll the log back |
-| A logged run's archived copy is saved over, and the run's file is presented again | Nothing is overwritten; the run stays logged and the file stays in the inbox; other imports go on | Put the run's own export back where its log entry says, then rerun |
-| An inbox file is held open by another program | The import is finished; the file stays in the inbox | Close the program, then rerun `import`: the file is removed as a retry |
-| An inbox file is held by another program that does not share it, so it cannot be read | Not imported, before anything is asked for it; the file stays in the inbox; the other files are stored; exit 3 | Close the program, then rerun `import` |
-| Crash during a build | SQLite rolls back the uncommitted publication; the previous publication stays current | Rerun the command |
-| Another writing command is running | Exit 4 at once; nothing is written | Rerun when the other command ends |
-| A decision-log line cut off by a crash | `check` reports it; `decide` refuses | Delete the partial last line |
-| Crash while writing a backup set | The set stays in `backup-staging\` or as a `.partial` folder, is never used, and is deleted by the next backup | Nothing to do |
-| The backup before a migration cannot be written or verified | The migration does not begin; the schema and its version are unchanged; exit 4, or 5 when a copy or the import log does not verify | Fix what the message names, then rerun `migrate` |
-| A migration fails | No step of it is committed and the store keeps its version, though a stage migrated before it (Bronze before Silver, and both before Gold) keeps its new one; the set taken first stays held for recovery until a migration succeeds, or a later backup records a store past it | Fix the defect; the held set restores the stores if needed |
-| The backup after a migration fails | The store is migrated; the set taken first stays held; exit 4, saying so | Fix what the message names, then run `budget backup` |
-| `migrate` finds no production store for a stage, or only a file an interrupted start left empty | Nothing is created or changed, in any stage; exit 4. So is `--new-store` where one of the stores it would start is started already, naming the `--stage` that starts the rest, and Silver or Gold where Bronze has no store a backup set can hold, since every set holds Bronze | Restore the newest backup set that holds it, or, for a first store, rerun with `--new-store`, adding `--stage` for that stage alone when another stage's store exists |
-| A store a complete backup set holds is missing, or only a file an interrupted start left empty | `backup`, and a `migrate` that would back up, publish nothing and change nothing; exit 4 | Restore the store from the newest backup set that holds it |
-| OneDrive offline | Complete backup sets wait in the local OneDrive folder | Nothing to do |
+- **Configuration error, including an unknown file in the inputs folder**
+
+  *Effect:* Nothing is built and no store is replaced, `import` stores no file;
+  exit 3. So are the refusals that follow from the files about to be imported: a
+  decision naming a category the taxonomy dropped, an account closed before an
+  incoming transaction.
+
+  *Retry:* Fix or remove the file and rerun.
+
+- **A declared range whose `from` falls after its `through`**
+
+  *Effect:* At the prompt, the range is asked again and nothing reaches Bronze.
+  In a ranges file, the whole file is refused, listing every problem, before
+  anything is imported; exit 3.
+
+  *Retry:* Type the range again, or correct the ranges file and rerun.
+
+- **`import` stored files, then Silver or Gold refused in a way no check before
+  the first write could foresee**
+
+  *Effect:* Bronze, the archive and the import log are committed and the inbox
+  files are gone; Silver and Gold are not rebuilt and the previous publication
+  stays current. Production still writes its backup set; exit 4, saying so and
+  naming `budget import`.
+
+  *Retry:* Put the cause right and run `import` again: with or without inbox
+  files it finishes the Silver rebuild, the publication and production's backup.
+  An `import` with nothing outstanding changes nothing.
+
+- **A `rebuild` writes stores in production, then its backup set cannot be
+  written**
+
+  *Effect:* The stores are rebuilt; exit 4, saying so.
+
+  *Retry:* Put right what the message names, then run `budget backup`.
+
+- **Refused import run (account conflict, or a declared range that ends after
+  the export date or leaves out one of the payload's transactions)**
+
+  *Effect:* Recorded as refused and logged, with a copy of its bytes under
+  `exports\<account_id>\refused\`; the file stays in the inbox; the other files
+  are stored and published; exit 3.
+
+  *Retry:* Move the file or correct the declaration, then rerun.
+
+- **Misfiled export (the filename's account number is not the account's declared
+  `bank_account_number`)**
+
+  *Effect:* Rejected before Bronze: no import run is recorded and nothing
+  reaches the import log; the file stays in the inbox; the other files are
+  stored and published; exit 3.
+
+  *Retry:* Move the file to the right account's folder, or fix the declaration,
+  then rerun.
+
+- **Format failure (the file's format cannot read it)**
+
+  *Effect:* Found by the preview and not imported: nothing reaches Bronze, the
+  file stays in the inbox, the other files are stored; exit 3. Bronze can still
+  record a `FormatFailure`, but `import` holds the file instead, so a parser fix
+  needs no new presentation: `rebuild --from bronze` parses the retained payload
+  again.
+
+  *Retry:* Download the export again, or fix the parser, then rerun `import`.
+  Never edit the export by hand.
+
+- **A payload the inbox holds under two or more declared accounts (a
+  cross-account duplicate)**
+
+  *Effect:* Reported before anything is written, with each file's account,
+  filename, export date, record count and transaction dates; every file the
+  group holds is refused and stays in the inbox, and no import run is recorded
+  for it; the files the group does not hold are imported only if the person
+  answers `y` or `yes`; with no terminal to ask, or any other answer, nothing is
+  imported; exit 3.
+
+  *Retry:* Check which account the bank exported it from, download the affected
+  accounts again, remove the duplicate, then rerun.
+
+- **Crash during an import**
+
+  *Effect:* Each file is idempotent: a file whose account, original filename and
+  payload hash already have a `stored` or `repeat` run is finished (archived,
+  logged once, and removed from the inbox) without a new run. Any other run
+  Bronze holds but the log lacks is archived and logged by the next import.
+
+  *Retry:* Rerun `import`.
+
+- **The archive holds other bytes, a file where a folder must go, or a place
+  reserved for other bytes, everywhere a run's export may go**
+
+  *Effect:* Nothing is overwritten; the run stays in Bronze but is not logged;
+  every import stops before writing, naming the account and the run.
+
+  *Retry:* Move the conflicting archive file aside, then rerun.
+
+- **An inbox file is saved over while it is imported**
+
+  *Effect:* The run for the bytes that were read is stored, archived and logged;
+  the new file stays in the inbox.
+
+  *Retry:* Rerun `import`.
+
+- **An inbox file is removed while it is imported**
+
+  *Effect:* The import finishes from the bytes it read; there is nothing left to
+  remove.
+
+  *Retry:* Nothing to do.
+
+- **An import-log entry cut off by a crash**
+
+  *Effect:* The next import completes it from the run Bronze holds.
+
+  *Retry:* Nothing to do.
+
+- **The import log holds a blank, unreadable or second line for a run, or an
+  entry that does not restate its run exactly**
+
+  *Effect:* The import stops before writing anything.
+
+  *Retry:* Restore `imports.jsonl` from the newest backup set; the next import
+  logs again every run Bronze holds.
+
+- **The import log mirrors a run Bronze never recorded**
+
+  *Effect:* Bronze is older than the log; the import stops before writing
+  anything.
+
+  *Retry:* Restore Bronze up to the log; never roll the log back.
+
+- **A logged run's archived copy is saved over, and the run's file is presented
+  again**
+
+  *Effect:* Nothing is overwritten; the run stays logged and the file stays in
+  the inbox; other imports go on.
+
+  *Retry:* Put the run's own export back where its log entry says, then rerun.
+
+- **An inbox file is held open by another program**
+
+  *Effect:* The import is finished; the file stays in the inbox.
+
+  *Retry:* Close the program, then rerun `import`: the file is removed as a
+  retry.
+
+- **An inbox file is held by another program that does not share it, so it
+  cannot be read**
+
+  *Effect:* Not imported, before anything is asked for it; the file stays in the
+  inbox; the other files are stored; exit 3.
+
+  *Retry:* Close the program, then rerun `import`.
+
+- **Crash during a build**
+
+  *Effect:* SQLite rolls back the uncommitted publication; the previous
+  publication stays current.
+
+  *Retry:* Rerun the command.
+
+- **Another writing command is running**
+
+  *Effect:* Exit 4 at once; nothing is written.
+
+  *Retry:* Rerun when the other command ends.
+
+- **A decision-log line cut off by a crash**
+
+  *Effect:* `check` reports it; `decide` refuses.
+
+  *Retry:* Delete the partial last line.
+
+- **Crash while writing a backup set**
+
+  *Effect:* The set stays in `backup-staging\` or as a `.partial` folder, is
+  never used, and is deleted by the next backup.
+
+  *Retry:* Nothing to do.
+
+- **The backup before a migration cannot be written or verified**
+
+  *Effect:* The migration does not begin; the schema and its version are
+  unchanged; exit 4, or 5 when a copy or the import log does not verify.
+
+  *Retry:* Fix what the message names, then rerun `migrate`.
+
+- **A migration fails**
+
+  *Effect:* No step of it is committed and the store keeps its version, though a
+  stage migrated before it (Bronze before Silver, and both before Gold) keeps
+  its new one; the set taken first stays held for recovery until a migration
+  succeeds, or a later backup records a store past it.
+
+  *Retry:* Fix the defect; the held set restores the stores if needed.
+
+- **The backup after a migration fails**
+
+  *Effect:* The store is migrated; the set taken first stays held; exit 4,
+  saying so.
+
+  *Retry:* Fix what the message names, then run `budget backup`.
+
+- **`migrate` finds no production store for a stage, or only a file an
+  interrupted start left empty**
+
+  *Effect:* Nothing is created or changed, in any stage; exit 4. So is
+  `--new-store` where one of the stores it would start is started already,
+  naming the `--stage` that starts the rest, and Silver or Gold where Bronze has
+  no store a backup set can hold, since every set holds Bronze.
+
+  *Retry:* Restore the newest backup set that holds it, or, for a first store,
+  rerun with `--new-store`, adding `--stage` for that stage alone when another
+  stage's store exists.
+
+- **A store a complete backup set holds is missing, or only a file an
+  interrupted start left empty**
+
+  *Effect:* `backup`, and a `migrate` that would back up, publish nothing and
+  change nothing; exit 4.
+
+  *Retry:* Restore the store from the newest backup set that holds it.
+
+- **OneDrive offline**
+
+  *Effect:* Complete backup sets wait in the local OneDrive folder.
+
+  *Retry:* Nothing to do.
 
 A genuine repeat export has a new export date in its filename, so it is
 presented to Bronze as a new `repeat` run, as the Bronze rules require.
