@@ -101,6 +101,7 @@ from budget.restoring import (
     NoUsableSetError,
     OccupiedProfileError,
     RestoreWriteError,
+    UndoAfterCatchUp,
     UnfinishedRestoreError,
     UnknownStageError,
     require_no_unfinished_restore,
@@ -341,6 +342,20 @@ def _backup(profile: Profile) -> None:
     sys.stdout.write(f"backup set {written.name} written\n")
 
 
+def _undo_line(undo: UndoAfterCatchUp, backup_set: str) -> str:
+    """Say where undo returns after catch-up, or that it cannot."""
+    number = undo.publication_id
+    if not undo.usable:
+        return (
+            f"undo cannot return to publication {number}, the current one in "
+            f"backup set {backup_set}: its result is no longer retained\n"
+        )
+    return (
+        f"undo returns to publication {number}, the current one in backup set "
+        f"{backup_set}; publications made after that set are lost\n"
+    )
+
+
 def _restore(profile: Profile, backup_set: str | None) -> None:
     """Restore the whole profile from a backup set, and name the set on stdout."""
     with writer_lock(profile) as lock:
@@ -371,6 +386,8 @@ def _restore(profile: Profile, backup_set: str | None) -> None:
         )
     if restored.gold is not None:
         sys.stdout.write(summaries.gold_line(restored.gold) + "\n")
+    if restored.undo is not None:
+        sys.stdout.write(_undo_line(restored.undo, restored.backup.name))
     sys.stdout.write(f"restored backup set {restored.backup.name}\n")
 
 
