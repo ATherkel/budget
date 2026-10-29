@@ -10,17 +10,21 @@ explicit environment, and every account, date and amount is synthetic.
 """
 
 import json
+import os
+import sqlite3
 import unittest
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+from budget import sqlstore
 from budget.backups import complete_backup_sets
 from budget.gold.store import GoldStore
 from budget.inputs import ConfigurationError
 from budget.profiles import Profile
+from budget.silver import SilverStore
 from tests.backups.sets import run_ids
 from tests.cli.commands import import_, migrate
 from tests.cli.imports import clean_checkout, write_ranges
@@ -143,6 +147,32 @@ class ForeseeableRefusalTests(unittest.TestCase):
     ) -> None:
         self._refused_before_storing(_close_early, EXIT_REFUSED_INPUT, "closed_on")
 
+    def test_an_account_closed_before_a_stored_transaction_stores_nothing(
+        self,
+    ) -> None:
+        # The incoming file ends before closed_on; the stored one does not.
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            drop(base.profile, "joint-current", EXPORT_NAME, payload("04.03.2026"))
+            assert _run_import(base)[0] == EXIT_OK
+            write_inputs(
+                base.profile,
+                ACCOUNTS.replace(
+                    'bank_account_number = "0012345678"\n',
+                    'bank_account_number = "0012345678"\nclosed_on = 2026-03-02\n',
+                ),
+            )
+            source = drop(base.profile, "joint-current", "danske-20260306.csv", EXPORT)
+            silver_before = base.profile.silver_store.read_bytes()
+
+            status, stdout, stderr = _run_import(base)
+
+            assert (status, stdout) == (EXIT_REFUSED_INPUT, "")
+            assert "closed_on 2026-03-02" in stderr
+            assert source.read_bytes() == EXPORT
+            assert len(run_ids(base.profile.bronze_store)) == 1
+            assert base.profile.silver_store.read_bytes() == silver_before
+
     def test_a_commit_git_cannot_name_stores_nothing(self) -> None:
         with TemporaryDirectory() as directory:
             base = prepared(Path(directory), name="production")
@@ -264,22 +294,124 @@ class FailureAndRetryTests(unittest.TestCase):
                 recipe = gold.recipe(1)
             assert len(recipe.import_runs) == 2
 
-    def test_an_import_with_nothing_outstanding_changes_and_backs_up_nothing(
+    def test_an_empty_inbox_retry_leaves_silver_publication_and_backup_unchanged(
         self,
     ) -> None:
         with TemporaryDirectory() as directory:
             base = prepared(Path(directory), name="production")
             drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
             assert _run_import(base)[0] == EXIT_OK
+            silver_before = base.profile.silver_store.read_bytes()
+            os.utime(base.profile.silver_store, (946684800, 946684800))
+            silver_mtime_before = base.profile.silver_store.stat().st_mtime_ns
             sets_before = len(complete_backup_sets(base.profile))
 
             status, stdout, stderr = _run_import(base)
 
             assert (status, stderr) == (EXIT_OK, "")
             assert "nothing was imported" in stdout
+            assert base.profile.silver_store.read_bytes() == silver_before
+            assert base.profile.silver_store.stat().st_mtime_ns == silver_mtime_before
             assert len(complete_backup_sets(base.profile)) == sets_before
             with GoldStore(base.profile) as gold:
                 assert [m.to_publication_id for m in gold.pointer_history()] == [1]
+
+    def test_a_gold_store_held_after_the_commit_still_reports_and_backs_up(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory), name="production")
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            sets_before = len(complete_backup_sets(base.profile))
+
+            # Such as DB Browser for SQLite, left open in a write transaction.
+            with (
+                mock.patch.object(sqlstore, "BUSY_TIMEOUT_MS", 100),
+                closing(
+                    sqlite3.connect(base.profile.gold_store, isolation_level=None)
+                ) as holder,
+            ):
+                holder.execute("BEGIN IMMEDIATE")
+                status, stdout, stderr = _run_import(base)
+                holder.execute("ROLLBACK")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "[1] joint-current  stored" in stdout
+            assert "imported into Bronze" in stderr
+            assert "budget import" in stderr
+            assert len(run_ids(base.profile.bronze_store)) == 1
+            assert len(complete_backup_sets(base.profile)) == sets_before + 1
+            assert _log_records(base.profile)[-1]["command"] == "import"
+
+    def test_an_empty_inbox_retry_against_a_held_gold_store_refuses_cleanly(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            with _gold_refuses_after_the_files_are_stored():
+                assert _run_import(base)[0] == EXIT_REFUSED_ENVIRONMENT
+
+            with (
+                mock.patch.object(sqlstore, "BUSY_TIMEOUT_MS", 100),
+                closing(
+                    sqlite3.connect(base.profile.gold_store, isolation_level=None)
+                ) as holder,
+            ):
+                holder.execute("BEGIN IMMEDIATE")
+                status, _, stderr = _run_import(base)
+                holder.execute("ROLLBACK")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "budget import" in stderr
+
+    def test_a_gold_store_held_after_silver_is_stored_is_reported_as_such(
+        self,
+    ) -> None:
+        # Silver is stored before Gold publishes, so a held Gold store stops
+        # the import after Silver changed: neither stream may say otherwise.
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            silver_before = base.profile.silver_store.read_bytes()
+
+            with (
+                mock.patch.object(sqlstore, "BUSY_TIMEOUT_MS", 100),
+                closing(
+                    sqlite3.connect(base.profile.gold_store, isolation_level=None)
+                ) as holder,
+            ):
+                holder.execute("BEGIN IMMEDIATE")
+                status, stdout, stderr = _run_import(base)
+                holder.execute("ROLLBACK")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert base.profile.silver_store.read_bytes() != silver_before
+            assert "Silver and Gold were not rebuilt" not in stdout
+            assert "Silver and Gold were not rebuilt" not in stderr
+            assert "before Gold was published" in stdout
+            assert "before Gold was published" in stderr
+
+
+class SilverCurrencyTests(unittest.TestCase):
+    def test_a_currency_change_alone_is_stored_with_silver(self) -> None:
+        # joint-savings holds no run, so its new currency leaves Silver's
+        # result as it was: only the stored currency map can show it.
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            assert _run_import(base)[0] == EXIT_OK
+            savings = ACCOUNTS.split("[account.joint-savings]")[1]
+            write_inputs(
+                base.profile,
+                ACCOUNTS.replace(savings, savings.replace('"DKK"', '"EUR"')),
+            )
+
+            status, _, stderr = _run_import(base)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            with SilverStore(base.profile) as silver:
+                assert silver.currencies()["joint-savings"] == "EUR"
 
 
 class RefusedFileTests(unittest.TestCase):

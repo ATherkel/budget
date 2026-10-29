@@ -178,7 +178,7 @@ def import_summary(imported: ImportedInbox) -> str:
     """
     if imported.held_back is not None:
         lines = [_file_line(each, {}) for each in imported.files]
-        lines.append("Silver and Gold were not rebuilt.")
+        lines.append("The rebuild stopped before Gold was published.")
         if imported.backup is not None:
             lines.append(f"Backup   backup set {imported.backup.name} written")
         return "\n".join(lines) + "\n"

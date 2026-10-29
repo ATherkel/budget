@@ -146,15 +146,18 @@ class RebuiltWithoutBackupError(Exception):
 
 
 class ImportedWithoutPublicationError(Exception):
-    """The imports are committed, but Silver and Gold were not rebuilt from them."""
+    """The imports are committed, but the rebuild stopped before Gold published."""
 
-    def __init__(
-        self, held_back: ConfigurationError, backup_failure: Exception | None
-    ) -> None:
+    def __init__(self, held_back: Exception, backup_failure: Exception | None) -> None:
         """Say what was done, what stopped, and which command finishes it."""
+        reason = (
+            "; ".join(held_back.problems)
+            if isinstance(held_back, ConfigurationError)
+            else str(held_back)
+        )
         message = (
-            "the exports were imported into Bronze, but Silver and Gold were not "
-            f"rebuilt: {'; '.join(held_back.problems)}. Put that right, then run "
+            "the exports were imported into Bronze, but the rebuild stopped "
+            f"before Gold was published: {reason}. Put that right, then run "
             "`budget import` again: it finishes the rebuild, the publication and "
             "the backup, whether or not the inbox holds files"
         )
@@ -386,7 +389,7 @@ def _import_files(
     require_buildable_accounts(
         profile, {each.account_id for each in previews if not each.skipped}
     )
-    require_importable(inputs, previews)
+    require_importable(profile, inputs, previews)
     duplicates = cross_account_duplicates(previews)
     if duplicates and not ask_continue_after_duplicates(duplicates):
         sys.stdout.write("Nothing was imported.\n")
