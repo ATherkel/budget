@@ -205,6 +205,11 @@ _INSERT_MOVE: Final = (
     " VALUES (?, ?, ?, ?)"
 )
 _SELECT_MOVES: Final = "SELECT * FROM pointer_moves ORDER BY move"
+_SELECT_BOUNDARIES: Final = "SELECT * FROM recovery_boundaries ORDER BY boundary"
+_INSERT_BOUNDARY: Final = (
+    "INSERT INTO recovery_boundaries (backup_set, backup_created_at, restored_at,"
+    " restored_current_id, first_publication_id) VALUES (?, ?, ?, ?, ?)"
+)
 
 # Recipes, kept forever, and each distinct configuration they name.
 _INSERT_SNAPSHOT: Final = (
@@ -462,7 +467,42 @@ class GoldStore:
 
     def recovery_boundaries(self) -> Sequence[RecoveryBoundary]:
         """Return every recorded recovery boundary, oldest first."""
-        return ()
+        return self._owner.read(
+            lambda connection: tuple(
+                _boundary(row) for row in connection.execute(_SELECT_BOUNDARIES)
+            )
+        )
+
+    def record_recovery_boundary(
+        self, backup_set: str, backup_created_at: datetime, restored_at: datetime
+    ) -> RecoveryBoundary:
+        """Record that this store's history was restored from `backup_set`.
+
+        The publication current now is the set's, and every id from the next
+        one on belongs to a publication built after the restore.
+        """
+        connection = self._owner.connection(write=True)
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            pointer = connection.execute(_SELECT_CURRENT_ID).fetchone()
+            boundary = RecoveryBoundary(
+                backup_set=backup_set,
+                backup_created_at=backup_created_at,
+                restored_at=restored_at,
+                restored_current_id=None if pointer is None else int(pointer[0]),
+                first_publication_id=_next_publication_id(connection),
+            )
+            connection.execute(
+                _INSERT_BOUNDARY,
+                (
+                    boundary.backup_set,
+                    boundary.backup_created_at.isoformat(),
+                    boundary.restored_at.isoformat(),
+                    boundary.restored_current_id,
+                    boundary.first_publication_id,
+                ),
+            )
+        return boundary
 
     def classification_reviews(
         self,
@@ -853,6 +893,17 @@ def _move_pointer(
     moved_at = datetime.now(UTC).isoformat()
     connection.execute(
         _INSERT_MOVE, (moved_at, from_publication_id, to_publication_id, cause)
+    )
+
+
+def _boundary(row: sqlite3.Row) -> RecoveryBoundary:
+    """Read one `recovery_boundaries` row."""
+    return RecoveryBoundary(
+        backup_set=row["backup_set"],
+        backup_created_at=datetime.fromisoformat(row["backup_created_at"]),
+        restored_at=datetime.fromisoformat(row["restored_at"]),
+        restored_current_id=row["restored_current_id"],
+        first_publication_id=row["first_publication_id"],
     )
 
 
