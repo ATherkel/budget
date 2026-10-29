@@ -82,6 +82,7 @@ class EvidenceExport:
     """
 
     import_run_id: str
+    payload_id: str
     account_id: str
     exported_on: date
     covers_from: date
@@ -103,6 +104,7 @@ class ImportRunResult:
     """Whether a stored import run was admitted, and why not."""
 
     import_run_id: str
+    payload_id: str
     account_id: str
     status: Literal["accepted", "quarantined"]
     covered_from: date

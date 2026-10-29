@@ -118,6 +118,7 @@ def _publish(profile: Profile, accounts: tuple[Account, ...]) -> None:
         code_version=None,
         contract_version="0.2",
         silver_identity_version="1",
+        late_booking_days=7,
         python_version=sys.version.split()[0],
         sqlite_version=sqlite3.sqlite_version,
     )

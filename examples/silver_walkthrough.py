@@ -4,8 +4,9 @@
 `budget import` and `budget review` are exercised on invented data in one
 temporary folder: a local development profile is written, and two exports are
 each saved in the account's inbox folder and imported with
-`budget import --ranges`, which rebuilds Silver after storing them. The open
-review items are listed after each import. The profile, inbox, ranges files,
+`budget import --ranges`, which rebuilds Silver and publishes Gold after
+storing them. The open review items are listed after each import. The
+profile, inbox, ranges files,
 stores, archive, import log and routine log all stay in the temporary folder,
 and no real profile, export or bank data is read or written.
 
@@ -36,6 +37,17 @@ account_type = "current"
 ownership_scope = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
+"""
+TAXONOMY = """\
+format = 1
+
+[group.food]
+name = "Food"
+direction = "expense"
+
+[category.groceries]
+name = "Groceries"
+group = "food"
 """
 HEADER = '"Dato","Kategori","Underkategori","Tekst","Beløb","Saldo","Status","Afstemt"'
 # One export the bank states cleanly, and one whose balance chain breaks.
@@ -119,6 +131,8 @@ def walkthrough(root: Path) -> None:
     accounts = root / "inputs" / "accounts.toml"
     accounts.parent.mkdir(parents=True, exist_ok=True)
     accounts.write_text(ACCOUNTS, encoding="utf-8")
+    (accounts.parent / "taxonomy.toml").write_text(TAXONOMY, encoding="utf-8")
+    (accounts.parent / "rules.toml").write_text("format = 1\n", encoding="utf-8")
 
     # The account's inbox folder is its declaration (README: `budget import`).
     inbox = root / "inbox" / "joint-current"

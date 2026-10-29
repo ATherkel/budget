@@ -19,7 +19,7 @@ from budget.bronze.models import ImportRun
 from budget.gold import ClassificationReviewKind
 from budget.gold.models import GoldReviewTarget
 from budget.inbox import LEFT_IN_INBOX, FileOutcome, ImportedInbox
-from budget.rebuilding import SilverRebuild
+from budget.rebuilding import GoldRebuild, SilverRebuild
 from budget.reviewing import OpenGoldReview, OpenReview, OpenReviews
 from budget.silver import ImportRunResult, ReviewItem, SilverResult
 
@@ -61,6 +61,17 @@ def rebuild_summary(rebuild: SilverRebuild) -> str:
     lines = [_bronze_line(rebuild.runs), *_account_lines(rows, rebuild.result)]
     lines.extend(_run_line(row) for row in rows)
     return "\n".join(lines) + "\n"
+
+
+def gold_line(rebuilt: GoldRebuild) -> str:
+    """Say whether a Gold rebuild published, and which publication is current."""
+    number = rebuilt.publication.publication_id
+    if rebuilt.published:
+        return f"Gold     published publication {number}"
+    return (
+        "Gold     the recipe is unchanged; nothing was published "
+        f"(publication {number} stays current)"
+    )
 
 
 def _row(run: ImportRun, rebuild: SilverRebuild) -> _Row:
@@ -165,6 +176,12 @@ def import_summary(imported: ImportedInbox) -> str:
     A file is named by its number in the listing the prompt showed, never by
     its filename, which can carry a bank account number.
     """
+    if imported.held_back is not None:
+        lines = [_file_line(each, {}) for each in imported.files]
+        lines.append("Silver and Gold were not rebuilt.")
+        if imported.backup is not None:
+            lines.append(f"Backup   backup set {imported.backup.name} written")
+        return "\n".join(lines) + "\n"
     if imported.rebuilt is None:
         lines = [_file_line(each, {}) for each in imported.files]
         lines.append("Nothing was imported.")
@@ -176,6 +193,8 @@ def import_summary(imported: ImportedInbox) -> str:
         f"Silver   {counts['admitted']} admitted, {counts['quarantined']}"
         f" quarantined, {counts['dropped']} dropped"
     )
+    if imported.published is not None:
+        lines.append(gold_line(imported.published))
     if imported.backup is not None:
         lines.append(f"Backup   backup set {imported.backup.name} written")
     return "\n".join(lines) + "\n"

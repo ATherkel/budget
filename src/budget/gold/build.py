@@ -54,7 +54,7 @@ def build(
     transactions = gold_transactions(silver.transactions)
     problems = (
         *_closing_problems(configuration.accounts, transactions),
-        *_decision_problems(decisions, configuration),
+        *decision_problems(decisions, configuration),
     )
     if problems:
         raise ConfigurationError(problems)
@@ -140,7 +140,7 @@ def _closing_problems(
         )
 
     return tuple(
-        _closed_too_early(account_id, closed_on, latest)
+        closed_too_early(account_id, closed_on, latest)
         for account_id in sorted(accounts)
         if (closed_on := accounts[account_id].closed_on) is not None
         and (latest := latest_transaction.get(account_id)) is not None
@@ -148,7 +148,7 @@ def _closing_problems(
     )
 
 
-def _decision_problems(
+def decision_problems(
     decisions: Sequence[GoldDecision], configuration: ConfigurationSnapshot
 ) -> tuple[str, ...]:
     """Name every decision the configuration alone shows cannot hold.
@@ -210,7 +210,7 @@ def _decision_problem(
             return None
 
 
-def _closed_too_early(account_id: str, closed_on: date, latest: date) -> str:
+def closed_too_early(account_id: str, closed_on: date, latest: date) -> str:
     """Name the account and both dates, and say how to fix it."""
     return (
         f'{ACCOUNTS_FILE_NAME}: account "{account_id}": closed_on '
