@@ -1,8 +1,9 @@
 # Copyright 2026 Therkel
-"""Danish display of dates and months, as the dashboard's reader sees them."""
+"""Danish display of amounts, dates and months, as the dashboard's reader sees them."""
 
 from collections.abc import Iterator
 from datetime import date, datetime
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from budget.analytics import InvalidSelectionError
@@ -24,6 +25,18 @@ _MONTH_NAMES = (
     "november",
     "december",
 )
+
+
+def amount(value: Decimal | None, currency: str) -> str:
+    """Return an exact amount as a Danish reader reads it, such as `9.020,00 kr.`.
+
+    An unknown amount says so, rather than reading as zero.
+    """
+    if value is None:
+        return "Ingen data endnu"
+    digits = f"{abs(value):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+    sign = "\N{MINUS SIGN}" if value < 0 else ""
+    return f"{sign}{digits} {'kr.' if currency == 'DKK' else currency}"
 
 
 def copenhagen_date(now: datetime) -> date:

@@ -16,7 +16,7 @@ the same refusals, reached through `migrate_silver` and the Silver schema.
 import sqlite3
 import unittest
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
@@ -27,8 +27,9 @@ from budget.bronze import migrate_bronze
 from budget.bronze.storage import open_bronze_connection
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
-from budget.silver import storage
+from budget.silver import SilverStore, storage
 from budget.silver.storage import migrate_silver, open_silver_connection
+from tests.bronze.migration_resources import SILVER_MIGRATIONS
 
 # The whole persisted result: the identity table, the account currency
 # snapshot, every collection of a Silver build, and the parent rows their
@@ -79,7 +80,7 @@ class SilverStorageTests(unittest.TestCase):
                 assert set(definitions) == STORE_TABLES
                 for definition in definitions.values():
                     assert "STRICT" in definition
-                assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
                 assert connection.execute(
                     "SELECT profile, stage FROM store_identity"
                 ).fetchall() == [("test", "silver")]
@@ -93,7 +94,7 @@ class SilverStorageTests(unittest.TestCase):
             migrate_silver(profile)
 
             with _connected(profile.silver_store) as connection:
-                assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
                 assert connection.execute(
                     "SELECT profile, stage FROM store_identity"
                 ).fetchall() == [("test", "silver")]
@@ -331,6 +332,36 @@ class SilverStorageTests(unittest.TestCase):
 
             open_bronze_connection(profile).close()
             open_silver_connection(profile).close()
+
+
+def test_a_store_at_schema_version_1_migrates_and_must_be_rebuilt() -> None:
+    with TemporaryDirectory() as directory:
+        profile = make_test_profile(directory)
+        profile.silver_store.parent.mkdir(parents=True)
+        schema = (SILVER_MIGRATIONS / "0001_create_silver_store.sql").read_text("utf-8")
+        with closing(sqlite3.connect(profile.silver_store)) as connection:
+            connection.execute("PRAGMA journal_mode = WAL")
+            connection.executescript(schema)
+            connection.execute("PRAGMA user_version = 1")
+            connection.execute(
+                "INSERT INTO store_identity VALUES (1, ?, 'silver')", (profile.name,)
+            )
+            connection.execute(
+                "INSERT INTO account_currencies VALUES ('joint-current', 'DKK')"
+            )
+            connection.execute(
+                "INSERT INTO import_run_results VALUES"
+                " (1, 'run-1', 'joint-current', 'accepted', '2026-03-01', '2026-03-04')"
+            )
+            connection.commit()
+
+        migrate_silver(profile)
+
+        with SilverStore(profile) as store:
+            # Version 2 records each run's payload, which version 1 never did,
+            # so what version 1 derived is cleared and Silver is rebuilt.
+            assert not store.is_built()
+            assert store.read().import_run_results == ()
 
 
 if __name__ == "__main__":

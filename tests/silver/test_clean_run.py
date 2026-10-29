@@ -218,6 +218,7 @@ def test_a_clean_run_is_accepted_with_the_dates_it_covers() -> None:
     assert result.import_run_results == (
         ImportRunResult(
             import_run_id=RUN,
+            payload_id=PAYLOAD,
             account_id=ACCOUNT,
             status="accepted",
             covered_from=MARCH_1,

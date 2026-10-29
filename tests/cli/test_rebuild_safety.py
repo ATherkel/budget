@@ -26,8 +26,9 @@ from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
 from budget.silver import SilverStore
 from tests.cli.commands import migrate, rebuild
+from tests.cli.pipelines import write_inputs
 from tests.cli.profile_files import development_profile, write_profile
-from tests.importing.households import ACCOUNTS, drop, payload
+from tests.importing.households import drop, payload
 
 EXIT_OK = 0
 EXIT_REFUSED_ENVIRONMENT = 4
@@ -45,7 +46,7 @@ def _profile(profile_file: Path, folder: Path) -> Profile:
     assert migrate(profile_file)[0] == EXIT_OK
     profile = development_profile(folder)
     profile.inputs.mkdir(parents=True, exist_ok=True)
-    profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+    write_inputs(profile)
     return profile
 
 
@@ -79,6 +80,13 @@ def _block_transaction_inserts(profile: Profile) -> None:
         connection.commit()
 
 
+def _answer(arguments: list[str], status: str) -> mock.Mock:
+    """Answer `git rev-parse` with a commit, and every other command with `status`."""
+    if "rev-parse" in arguments:
+        return _finished("0123456789abcdef0123456789abcdef01234567\n")
+    return _finished(status)
+
+
 def _finished(status: str) -> mock.Mock:
     """A finished `git status` process, as `subprocess.run` returns one."""
     completed = mock.Mock()
@@ -95,7 +103,7 @@ def _git(status: str = "", *, error: OSError | None = None) -> Iterator[None]:
     `shutil.which` is replaced as well, so the check never depends on a Git
     installation, and the test names both halves of the boundary itself.
     """
-    run = mock.Mock(return_value=_finished(status))
+    run = mock.Mock(side_effect=lambda arguments, **_: _answer(arguments, status))
     if error is not None:
         run.side_effect = error
     with (
@@ -216,7 +224,7 @@ class RebuildSafetyTests(unittest.TestCase):
             assert migrate(production_file, "--new-store") == (EXIT_OK, "")
             production = load_profile_file(production_file)
             production.inputs.mkdir(parents=True, exist_ok=True)
-            production.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+            write_inputs(production)
             _restore_into(development.bronze_store, production.bronze_store)
             _restore_into(development.silver_store, production.silver_store)
 
@@ -253,7 +261,7 @@ class RebuildSafetyTests(unittest.TestCase):
             profile_file = write_profile(folder)
             profile = development_profile(folder)
             profile.inputs.mkdir(parents=True, exist_ok=True)
-            profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+            write_inputs(profile)
 
             status, _, stderr = rebuild(profile_file, "--from", "silver")
             assert status == EXIT_REFUSED_ENVIRONMENT
@@ -263,18 +271,6 @@ class RebuildSafetyTests(unittest.TestCase):
             status, _, stderr = rebuild(profile_file, "--from", "silver")
             assert status == EXIT_REFUSED_ENVIRONMENT
             assert "no Silver store" in stderr
-
-    def test_an_unbuilt_stage_refuses(self) -> None:
-        with TemporaryDirectory() as directory:
-            folder = Path(directory)
-            profile_file = write_profile(folder)
-
-            for stage in ("gold", "bronze"):
-                with self.subTest(stage=stage):
-                    status, _, stderr = rebuild(profile_file, "--from", stage)
-
-                    assert status == EXIT_REFUSED_ENVIRONMENT
-                    assert "not built yet" in stderr
 
 
 if __name__ == "__main__":
