@@ -64,7 +64,7 @@ current household interpretation.
 | `ownership_scope` | `OwnershipScope` | Yes | `household` or `person`. |
 | `currency` | ISO 4217 string | Yes | Currency of every amount and balance on this account. `DKK` in the first release. |
 | `closed_on` | `date`/null | No | Date the account closed; null while open. Ends the account's managed period. |
-| `coverage_start` | `date`/null | No | First day of the account's earliest evidence range (`silver-layer.md`, *Evidence Ranges*), which is the earliest `covers_from` over its admitted import runs, so a quiet account can be `complete` from the start of its first range. Null when the account has no admitted import run. |
+| `coverage_start` | `date`/null | No | First day of the account's earliest evidence range (`silver-layer.md`, *Evidence Ranges*), which is the earliest `covers_from` over its admitted import runs. With `evidence_through`, it lets consumers report an account with no transactions as `no_data` even before it has a managed period (`gold-layer.md`). Null when the account has no admitted import run. |
 | `evidence_through` | `date`/null | No | Last day of the account's latest evidence range (`silver-layer.md`, *Evidence Ranges*). Gold takes it from Silver's ranges and never derives it from an export date. Null when no export of the account has been imported. Days between the two dates can still fall in a gap between ranges. |
 
 ### `GoldCategory`
@@ -153,7 +153,7 @@ one row per month in that range, including months with no transactions.
 | `opening_balance` | `Decimal`/null | No | Balance immediately before the month's first transaction: that transaction's `balance_after` minus its `amount`. For a complete quiet month, carry the last bank-stated balance into both opening and closing. Null when the required balance is missing, the month is `no_data`, or the month is quiet and not `complete`. |
 | `closing_balance` | `Decimal`/null | No | `balance_after` of the month's last transaction by `account_sequence`, bank-stated only. For a complete quiet month, carry the last bank-stated balance into both opening and closing. Null when the required balance is missing, the month is `no_data`, or the month is quiet and not `complete`. |
 | `coverage` | `Coverage` | Yes | Trust status for this account and month (see `gold-layer.md`). |
-| `late_bookings_settled` | bool | Yes | True when one of the import runs counted in the account's evidence (admitted runs, and `repeat` runs of an admitted payload) was exported at least 7 days after the month's last day and its declared range covers that day, so late bookings into the month have had time to appear (see `gold-layer.md`, *Late bookings settled*). Computed at build from recorded export dates and ranges, never from the clock. |
+| `late_bookings_settled` | bool | Yes | True when one of the import runs counted in the account's evidence (admitted runs, and `repeat` runs of an admitted payload) was exported at least the late-booking window (7 days unless the profile sets another) after the month's last day and its declared range covers that day, so late bookings into the month have had time to appear (see `gold-layer.md`, *Late bookings settled*). Computed at build from recorded export dates and ranges, never from the clock. |
 
 Additivity: `amount` is additive across every dimension within one currency,
 on both the transaction and the allocation fact. The two are never summed
@@ -169,7 +169,9 @@ accounts for the same month, never across months. `coverage` is non-additive.
    immutable and are never reused for a different meaning. A category or
    account is retired by deactivating it, never by repointing its key. Every
    other attribute may change, and changing one restates history, which is
-   what Type 1 means.
+   what Type 1 means. A Silver transaction on an account the registry no
+   longer declares refuses the build rather than publishing an orphan fact
+   (see [`accounts.toml`](operations.md#accountstoml)).
 2. Each booked Silver transaction on a Gold account yields exactly one
    `GoldTransaction`. Only `booking_status=booked` rows qualify; pending and
    cancelled records remain provenance.
@@ -205,7 +207,10 @@ accounts for the same month, never across months. `coverage` is non-additive.
     `opening_balance + sum(amounts in the month) == closing_balance`.
 13. All first-release accounts use `DKK`. Consumers must never aggregate
     amounts or balances across different currencies.
-14. No `transaction_date` falls after its account's `closed_on`.
+14. No `transaction_date` falls after its account's `closed_on`. The Gold
+    build refuses a `closed_on` that would break this, rather than dropping
+    the transactions after it
+    ([`operations.md`, `accounts.toml`](operations.md#accountstoml)).
 15. A consumer reads exactly one Gold publication at a time, and every record
     it reads belongs to that publication. A consumer reads the current
     publication unless it opens another one explicitly. Identity across
@@ -226,7 +231,9 @@ accounts for the same month, never across months. `coverage` is non-additive.
 Analytics, forecasting, APIs, and presentation-facing services depend on this
 protocol only. The persistence technology is not part of this contract.
 All date and month ranges are inclusive. `account_ids=None` means every
-account, and an empty collection means none.
+account, and an empty collection means none. A bare `str` raises `TypeError`:
+it type-checks as a collection of strings, but means a forgotten pair of
+brackets.
 
 ```python
 class GoldRepository(Protocol):
@@ -295,9 +302,24 @@ class GoldPublications(Protocol):
 one, the previous one, and every labeled one. `current()` returns `None` when
 there is no current publication: before a store's first successful build, and
 between a Gold migration that could not convert the current result and the
-build that follows it. `open()` raises `PublicationUnavailable`
+build that follows it. `open()` raises `PublicationUnavailableError`
 when the publication does not exist or its result is not retained, including
 one deleted after a consumer last opened it.
+
+The concrete `GoldStore` owns one connection for one synchronous request or
+task. Open, use, and close it on the thread that created it. Do not cache a
+store or repository across requests or use it from another server thread; a
+page carries `ReportContext`, and each follow-up request opens a fresh reader
+in its own thread. A repository borrowed from `open()` cannot outlive its
+store. `GoldStore(profile, read_only=True)` uses SQLite `mode=ro` for reporting,
+while the default remains writable for publishing.
+
+Use after close raises `GoldStoreClosedError`. Use from another thread raises
+`GoldStoreThreadError`; these are separate `GoldStoreLifecycleError`
+subclasses and never mean that a publication was removed by retention. Closing
+is idempotent on the creating thread. A close attempted from another thread
+fails without closing or releasing the owner's connection. Read-only publishing
+raises `GoldStoreReadOnlyError` before writing.
 
 #### `GoldPublication`
 
@@ -339,9 +361,13 @@ class GoldLineageRepository(Protocol):
 | `classification_source` | enum | Yes | `manual`, `transfer_match`, `rule`, or `unclassified`. |
 | `rule_ids` | list of string | Yes | The highest-priority matching rules; they decided only when `classification_source` is `rule`. Empty when no rule matched. |
 | `decision_id` | string/null | Conditional | The manual decision that decided. Required when `classification_source` is `manual`, otherwise null. |
-| `classification_version` | string | Yes | Fingerprint of the classification inputs: the configuration snapshot (account registry, taxonomy, rules, and matching policy) and the effective classification decisions ([`publications.md`](publications.md)). |
+| `classification_version` | string | Yes | Fingerprint of the classification inputs: the configuration snapshot (account registry, taxonomy, and rules) and the effective classification decisions ([`publications.md`](publications.md)). The transfer matching policy and the classifier's code are not part of it; they change with the recipe's code version. |
 | `transfer_evidence` | `TransferEvidence`/null | Conditional | Required on every `transfer`, otherwise null. |
 | `review_item_ids` | list of string | Yes | Open classification review items involving this transaction. Often empty. |
+| `bank_category` | string/null | Optional | The bank's category label, retained as privileged provenance for rule explanation and review. It never becomes a Gold Category. Null means the source supplied none or an older publication did not retain it. |
+| `adjustment_reason` | string/null | Conditional | The explanation invariant 3 asks of an adjustment: the reason its rule or decision gives. Required on every `adjustment`, otherwise null. |
+
+🤖 Added by Codex (DeepSeek V4.1 Flash)
 
 The classification fields describe how the transaction's type and its
 allocations were derived. While a classified transaction has exactly one
@@ -374,7 +400,13 @@ Confidence is a named evidence basis, not a score.
 | `reason` | string/null | No | Detail, such as `counterpart-may-not-be-imported`, `no-candidate`, or `target-missing`. |
 
 Gold derives review items afresh on every build, so an item exists exactly
-while its cause does. Silver's import review items (issue #5) are separate.
+while its cause does. A retained publication stores its review items and their
+existing target and rule identifiers atomically with its result. The privileged
+review reader selects the current publication in one SQLite read snapshot and
+does not expose this reader through the analytics interface. A non-applicable
+decision remains discoverable by its decision identifier and any surviving
+targets; a missing target is not reconstructed. Silver's import review items
+(issue #5) are separate.
 
 Each publication's recipe (its import runs, configuration snapshot,
 decision-log position, and code version) is privileged metadata for the CLI
@@ -389,10 +421,11 @@ a classified transaction and its single allocation summing to its amount; a
 transaction type that must carry no allocation; manual classification decision
 (visible through lineage); missing balance; chain break that demotes the
 previous month; first managed month (`partial`); complete quiet month; partial
-quiet month crossed by a broken link; `no_data` month beyond evidence; an
+quiet month crossed by a broken link; partial quiet month after a last
+transaction with no balance; `no_data` month beyond evidence; an
 account whose exports lag behind the latest published month; a month whose
-late bookings are settled and one whose covering export was produced fewer
-than 7 days after it ended; closed account; and two categories sharing a
+late bookings are settled and one whose covering export was produced less
+than the late-booking window after it ended; closed account; and two categories sharing a
 group. The worked example in `gold-layer.md` covers most of these.
 
 Classification fixtures reproduce every synthetic scenario and taxonomy change
@@ -422,6 +455,7 @@ migrating from either version finds the whole path in one place.
 | `category_id` on the transaction | `GoldCategoryAllocation`, a fact at the grain of one category allocation of one transaction | Category assignment is its own grain. Writing it this way now means splitting a transaction later changes no grain, no interface, and no consumer query (ADR-008). |
 | `classification_source` value `imported` | Removed; `transfer_match` added | Bank categories never classify on their own (ADR-011). |
 | No transfer evidence or review items | `TransferEvidence`, `rule_ids`, `decision_id`, and `classification_review_items` in lineage | Transfers need auditable evidence, and the CLI review workflow needs a stable source (ADR-011, ADR-012). |
+| No adjustment explanation | `adjustment_reason` in lineage | Invariant 3 asks every adjustment for an explanation, and `classification.md` says lineage keeps its reason (issue #170). |
 | `boundary_transactions()` *(0.2 draft)* | Removed | Consumers fetched the links into and out of a period only to judge coverage themselves. Gold now publishes coverage, so nothing reads them (ADR-007). |
 | `day_sequence` on the transaction *(0.2 draft)* | `account_sequence` | Ordering within a date is Silver's (ADR-009). Gold publishes one account-wide order instead, so a consumer never reconstructs it from two fields. |
 | `category_direction` on the transaction *(0.2 draft)* | `GoldCategory.direction` | Direction is an attribute of the category. Copying it onto every fact row lets the two disagree. |

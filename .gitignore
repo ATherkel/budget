@@ -6,7 +6,9 @@ __pycache__/
 dist/
 build/
 .claude/worktrees/
+.codex/
 /.tmp/
+/.coverage
 
 # SQLite stores hold real bank data and never belong in the repository.
 *.db

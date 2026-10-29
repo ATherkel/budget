@@ -24,6 +24,7 @@ from budget.silver.currencies import minor_unit_places
 from budget.silver.models import (
     AccountEvidence,
     BalanceObservation,
+    EvidenceExport,
     ImportRunResult,
     ReviewItem,
     SilverResult,
@@ -50,6 +51,7 @@ _CLEAR: Final = (
     "DELETE FROM import_run_result_review_items",
     "DELETE FROM validation_errors",
     "DELETE FROM import_run_results",
+    "DELETE FROM evidence_exports",
     "DELETE FROM account_evidence",
     "DELETE FROM balance_observations",
     "DELETE FROM unbooked_records",
@@ -87,10 +89,15 @@ _INSERT_RANGES: Final = (
     "INSERT INTO account_evidence"
     " (ordinal, account_id, covers_from, covers_through) VALUES (?, ?, ?, ?)"
 )
+_INSERT_EXPORTS: Final = (
+    "INSERT INTO evidence_exports (ordinal, import_run_id, payload_id,"
+    " account_id, exported_on, covers_from, covers_through)"
+    " VALUES (?, ?, ?, ?, ?, ?, ?)"
+)
 _INSERT_RESULTS: Final = (
     "INSERT INTO import_run_results"
-    " (ordinal, import_run_id, account_id, status, covered_from, covered_to)"
-    " VALUES (?, ?, ?, ?, ?, ?)"
+    " (ordinal, import_run_id, payload_id, account_id, status, covered_from,"
+    " covered_to) VALUES (?, ?, ?, ?, ?, ?, ?)"
 )
 _INSERT_ERRORS: Final = (
     "INSERT INTO validation_errors (import_run_ordinal, position, payload_id,"
@@ -118,6 +125,7 @@ _SELECT_EVIDENCE: Final = "SELECT * FROM transaction_evidence ORDER BY ordinal"
 _SELECT_UNBOOKED: Final = "SELECT * FROM unbooked_records ORDER BY ordinal"
 _SELECT_OBSERVATIONS: Final = "SELECT * FROM balance_observations ORDER BY ordinal"
 _SELECT_RANGES: Final = "SELECT * FROM account_evidence ORDER BY ordinal"
+_SELECT_EXPORTS: Final = "SELECT * FROM evidence_exports ORDER BY ordinal"
 _SELECT_RESULTS: Final = "SELECT * FROM import_run_results ORDER BY ordinal"
 _SELECT_ITEMS: Final = "SELECT * FROM review_items ORDER BY ordinal"
 
@@ -132,6 +140,7 @@ class _Encoded:
     unbooked_records: Rows
     balance_observations: Rows
     account_evidence: Rows
+    evidence_exports: Rows
     import_run_results: Rows
     validation_errors: Rows
     import_run_result_review_items: Rows
@@ -182,6 +191,17 @@ class SilverStore:
                 self._connection.execute(statement)
             _write(self._connection, encoded)
 
+    def is_built(self) -> bool:
+        """Whether any build has replaced this store's result.
+
+        A build always stores the account currencies it was given, so a store
+        that holds none was never built, however empty its result reads.
+        """
+        row = self._connection.execute(
+            "SELECT EXISTS (SELECT 1 FROM account_currencies)"
+        ).fetchone()
+        return bool(row[0])
+
     def read(self) -> SilverResult:
         """Return the complete stored result, with Decimal money.
 
@@ -205,6 +225,7 @@ def _write(connection: sqlite3.Connection, encoded: _Encoded) -> None:
     connection.executemany(_INSERT_UNBOOKED, encoded.unbooked_records)
     connection.executemany(_INSERT_OBSERVATIONS, encoded.balance_observations)
     connection.executemany(_INSERT_RANGES, encoded.account_evidence)
+    connection.executemany(_INSERT_EXPORTS, encoded.evidence_exports)
     connection.executemany(_INSERT_RESULTS, encoded.import_run_results)
     connection.executemany(_INSERT_ERRORS, encoded.validation_errors)
     connection.executemany(_INSERT_REVIEW_IDS, encoded.import_run_result_review_items)
@@ -223,6 +244,7 @@ def _encode(result: SilverResult, currencies: Mapping[str, str]) -> _Encoded:
             result.balance_observations, currencies
         ),
         account_evidence=_encode_ranges(result.account_evidence),
+        evidence_exports=_encode_exports(result.evidence_exports),
         import_run_results=_encode_results(result.import_run_results),
         validation_errors=_encode_errors(result.import_run_results),
         import_run_result_review_items=_encode_review_ids(result.import_run_results),
@@ -354,11 +376,27 @@ def _encode_ranges(items: Sequence[AccountEvidence]) -> Rows:
     )
 
 
+def _encode_exports(items: Sequence[EvidenceExport]) -> Rows:
+    return tuple(
+        (
+            ordinal,
+            item.import_run_id,
+            item.payload_id,
+            item.account_id,
+            item.exported_on.isoformat(),
+            item.covers_from.isoformat(),
+            item.covers_through.isoformat(),
+        )
+        for ordinal, item in enumerate(items, start=1)
+    )
+
+
 def _encode_results(items: Sequence[ImportRunResult]) -> Rows:
     return tuple(
         (
             ordinal,
             item.import_run_id,
+            item.payload_id,
             item.account_id,
             item.status,
             item.covered_from.isoformat(),
@@ -441,6 +479,9 @@ def _decode(connection: sqlite3.Connection) -> SilverResult:
         account_evidence=tuple(
             _range(row) for row in connection.execute(_SELECT_RANGES)
         ),
+        evidence_exports=tuple(
+            _export(row) for row in connection.execute(_SELECT_EXPORTS)
+        ),
         import_run_results=tuple(
             _result(row, errors, review_ids)
             for row in connection.execute(_SELECT_RESULTS)
@@ -515,6 +556,17 @@ def _range(row: sqlite3.Row) -> AccountEvidence:
     )
 
 
+def _export(row: sqlite3.Row) -> EvidenceExport:
+    return EvidenceExport(
+        import_run_id=row["import_run_id"],
+        payload_id=row["payload_id"],
+        account_id=row["account_id"],
+        exported_on=date.fromisoformat(row["exported_on"]),
+        covers_from=date.fromisoformat(row["covers_from"]),
+        covers_through=date.fromisoformat(row["covers_through"]),
+    )
+
+
 def _result(
     row: sqlite3.Row,
     errors: Mapping[int, tuple[ValidationError, ...]],
@@ -523,6 +575,7 @@ def _result(
     ordinal = row["ordinal"]
     return ImportRunResult(
         import_run_id=row["import_run_id"],
+        payload_id=row["payload_id"],
         account_id=row["account_id"],
         status=row["status"],
         covered_from=date.fromisoformat(row["covered_from"]),

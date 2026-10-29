@@ -124,6 +124,12 @@ The last day of an account's latest *evidence range*. Earlier days can still
 fall in a gap between ranges.
 _Avoid_: last import date (the export, not the import, bounds the evidence)
 
+**Late-booking window**:
+How many days after a month's last day an export's *Export date* must fall
+for the export to show the month's late bookings. It is set per profile in
+whole days, 7 unless changed, and recorded in each recipe. The rule
+is in [`gold-layer.md`](architecture/gold-layer.md#late-bookings-settled).
+
 **Monthly balance snapshot**:
 One account's balance position for one reporting month of its Managed period:
 the balance before the month's first transaction, the balance after its last,
@@ -203,6 +209,19 @@ The same booked transaction appearing in more than one source record,
 typically in overlapping exports. Duplicates collapse to one booked
 transaction.
 _Avoid_: repeat, copy
+
+**Cross-account duplicate**:
+One payload sitting in the inbox under two or more declared accounts at
+once, so which account the bank exported it for is unknown. Every file it
+holds is refused together, and only a person's explicit continuation imports
+the files it does not hold.
+_Avoid_: duplicate (that is Silver's collapse of one booked transaction),
+account conflict
+
+**Duplicate incident**:
+One cross-account duplicate as an import reports it: the group of inbox files
+that hold the same bytes.
+_Avoid_: duplicate, incident on its own
 
 **Repeated transaction**:
 One of several distinct booked transactions that look identical: same account,

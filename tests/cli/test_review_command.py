@@ -78,9 +78,11 @@ _RESULT = SilverResult(
     unbooked_records=(),
     balance_observations=(),
     account_evidence=(),
+    evidence_exports=(),
     import_run_results=(
         ImportRunResult(
             import_run_id=RUN_A,
+            payload_id="payload",
             account_id=CURRENT,
             status="quarantined",
             covered_from=date(2026, 3, 1),
@@ -90,6 +92,7 @@ _RESULT = SilverResult(
         ),
         ImportRunResult(
             import_run_id=RUN_B,
+            payload_id="payload",
             account_id=CURRENT,
             status="quarantined",
             covered_from=date(2026, 3, 1),
@@ -99,6 +102,7 @@ _RESULT = SilverResult(
         ),
         ImportRunResult(
             import_run_id=RUN_C,
+            payload_id="payload",
             account_id=SAVINGS,
             status="quarantined",
             covered_from=date(2026, 4, 1),
@@ -108,6 +112,7 @@ _RESULT = SilverResult(
         ),
         ImportRunResult(
             import_run_id=RUN_D,
+            payload_id="payload",
             account_id=CURRENT,
             status="quarantined",
             covered_from=date(2026, 3, 15),
@@ -117,6 +122,7 @@ _RESULT = SilverResult(
         ),
         ImportRunResult(
             import_run_id=RUN_E,
+            payload_id="payload",
             account_id=SAVINGS,
             status="quarantined",
             covered_from=date(2026, 4, 10),
@@ -126,6 +132,7 @@ _RESULT = SilverResult(
         ),
         ImportRunResult(
             import_run_id=RUN_F,
+            payload_id="payload",
             account_id=CURRENT,
             status="accepted",
             covered_from=date(2026, 5, 1),

@@ -16,13 +16,14 @@ import budget
 from budget.profiles import Profile, load_profile_file
 from budget.silver import SilverResult, SilverStore
 from tests.cli.commands import migrate, rebuild
+from tests.cli.pipelines import write_inputs
 from tests.cli.profile_files import write_profile
-from tests.importing.households import ACCOUNTS
 
 EXIT_OK = 0
 EXIT_REFUSED_ENVIRONMENT = 4
+COMMIT = "0123456789abcdef0123456789abcdef01234567\n"
 DIRTY_STATUS = " M src/budget/cli.py\n"
-EMPTY_RESULT = SilverResult((), (), (), (), (), (), ())
+EMPTY_RESULT = SilverResult((), (), (), (), (), (), (), ())
 
 
 def _git(returncode: int, stdout: str) -> mock.Mock:
@@ -45,7 +46,7 @@ def _write_accounts(profile_file: Path) -> Profile:
     """Write the synthetic `accounts.toml` the profile's rebuild reads."""
     profile = load_profile_file(profile_file)
     profile.inputs.mkdir(parents=True, exist_ok=True)
-    profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+    write_inputs(profile)
     return profile
 
 
@@ -74,14 +75,18 @@ class ProductionRebuildCodeTests(unittest.TestCase):
                 assert store.read() == EMPTY_RESULT
 
             # Clean code: the same command runs, like it does in development.
-            run = mock.Mock(return_value=_git(0, ""))
+            run = mock.Mock(
+                side_effect=lambda arguments, **_: _git(
+                    0, COMMIT if "rev-parse" in arguments else ""
+                )
+            )
             with mock.patch("subprocess.run", run):
                 status, produced, stderr = rebuild(production_file, "--from", "silver")
 
             assert (status, stderr) == (EXIT_OK, "")
-            called = run.call_args
-            assert called is not None
-            arguments, kwargs = called
+            ((arguments, kwargs),) = [
+                each for each in run.call_args_list if "status" in each.args[0]
+            ]
             # A PATH-resolved absolute executable, `git` or `git.exe`, running
             # the fixed `git status` command.
             assert Path(arguments[0][0]).name.startswith("git")
@@ -100,7 +105,9 @@ class ProductionRebuildCodeTests(unittest.TestCase):
                 development_file, "--from", "silver"
             )
             assert (development_status, development_stderr) == (EXIT_OK, "")
-            assert produced == developed
+            *summary, backup_line = produced.splitlines()
+            assert summary == developed.splitlines()
+            assert backup_line.startswith("Backup   backup set ")
             with SilverStore(production) as store:
                 production_result = store.read()
             with SilverStore(development) as store:

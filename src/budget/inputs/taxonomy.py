@@ -76,6 +76,18 @@ def _group_problems(groups: Mapping[str, object]) -> list[str]:
     ]
 
 
+# The transaction types that carry no category, so no category may take their
+# names. Gold's `TransactionType` declares every type.
+_UNCATEGORISED_TYPES = frozenset({"transfer", "adjustment", "unknown"})
+
+
+def _uncategorised_type(category_id: str) -> list[str]:
+    """Refuse a category ID that names a type carrying no category."""
+    if category_id not in _UNCATEGORISED_TYPES:
+        return []
+    return ["the ID is a transaction type that carries no category"]
+
+
 def _undeclared_group(entry: object, groups: Mapping[str, object]) -> list[str]:
     """Name a category's group that no `[group.<id>]` table declares."""
     group = entry.get("group") if isinstance(entry, dict) else None
@@ -91,6 +103,7 @@ def _category_problems(
     problems = []
     for category_id, entry in categories.items():
         found = entry_problems(category_id, entry, _CATEGORY_FIELDS, "groceries")
+        found.extend(_uncategorised_type(category_id))
         found.extend(_undeclared_group(entry, groups))
         problems.extend(_entry_problem("category", category_id, p) for p in found)
     return problems

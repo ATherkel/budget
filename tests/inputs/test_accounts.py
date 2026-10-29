@@ -285,6 +285,25 @@ ownership_scope = "family"
                 (problem,) = refusal.value.problems
                 assert problem.startswith(entry_problem(account_id, ""))
 
+    def test_a_reserved_account_type_is_refused(self) -> None:
+        # account.md reserves these until a reporting policy exists, so they
+        # never reach Gold.
+        for reserved in ("credit", "investment", "other"):
+            content = ACCOUNTS.replace(
+                'account_type = "savings"', f'account_type = "{reserved}"'
+            )
+            with self.subTest(account_type=reserved), TemporaryDirectory() as directory:
+                profile = profile_with_accounts(directory, content)
+
+                with pytest.raises(ConfigurationError) as refusal:
+                    load_accounts(profile)
+
+                assert refusal.value.problems == (
+                    entry_problem(
+                        "joint-savings", "account_type must be one of current, savings"
+                    ),
+                )
+
     def test_two_accounts_may_not_declare_one_bank_account_number(self) -> None:
         content = ACCOUNTS.replace(
             "closed_on = 2027-06-30", 'bank_account_number = "0012345678"'

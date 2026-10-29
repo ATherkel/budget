@@ -16,6 +16,7 @@ from budget.silver.decisions import (
 from budget.silver.models import (
     AccountEvidence,
     BalanceObservation,
+    EvidenceExport,
     ImportRunResult,
     ReviewItem,
     SilverResult,
@@ -24,7 +25,12 @@ from budget.silver.models import (
     UnbookedRecord,
     ValidationError,
 )
-from budget.silver.rebuild import SilverBuildInputs, rebuild_silver
+from budget.silver.rebuild import (
+    SilverBuildInputs,
+    derive_silver,
+    rebuild_silver,
+    store_silver,
+)
 from budget.silver.storage import (
     CurrencySnapshotMismatchError,
     MoneyError,
@@ -41,6 +47,7 @@ __all__ = [
     "AccountEvidence",
     "BalanceObservation",
     "CurrencySnapshotMismatchError",
+    "EvidenceExport",
     "ImportRunResult",
     "MoneyError",
     "MoneyPrecisionError",
@@ -60,6 +67,8 @@ __all__ = [
     "VoidImportRun",
     "Withdrawn",
     "build",
+    "derive_silver",
     "migrate_silver",
     "rebuild_silver",
+    "store_silver",
 ]

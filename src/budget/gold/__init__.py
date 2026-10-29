@@ -5,6 +5,7 @@
 `docs/architecture/gold-contract.md`.
 """
 
+from budget.gold.build import build
 from budget.gold.models import (
     AccountType,
     BalanceCheck,
@@ -27,8 +28,17 @@ from budget.gold.models import (
     TransferBasis,
     TransferEvidence,
 )
-from budget.gold.repository import GoldLineageRepository, GoldRepository
-from budget.gold.result import GoldRecords, GoldResult
+from budget.gold.repository import (
+    GoldLineageRepository,
+    GoldPublications,
+    GoldRepository,
+    GoldStoreClosedError,
+    GoldStoreLifecycleError,
+    GoldStoreReadOnlyError,
+    GoldStoreThreadError,
+    PublicationUnavailableError,
+)
+from budget.gold.result import GoldLineageRecords, GoldRecords, GoldResult
 
 __all__ = [
     "AccountType",
@@ -41,18 +51,26 @@ __all__ = [
     "GoldAccount",
     "GoldCategory",
     "GoldCategoryAllocation",
+    "GoldLineageRecords",
     "GoldLineageRepository",
     "GoldPublication",
+    "GoldPublications",
     "GoldRecords",
     "GoldRepository",
     "GoldResult",
+    "GoldStoreClosedError",
+    "GoldStoreLifecycleError",
+    "GoldStoreReadOnlyError",
+    "GoldStoreThreadError",
     "GoldTransaction",
     "GoldTransactionLineage",
     "MonthlyBalanceSnapshot",
     "OwnershipScope",
     "PublicationKind",
+    "PublicationUnavailableError",
     "ReportingMonth",
     "TransactionType",
     "TransferBasis",
     "TransferEvidence",
+    "build",
 ]

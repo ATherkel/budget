@@ -133,15 +133,16 @@ each access, so a folder or file replaced by a symlink is refused instead of
 followed. The command line below builds a development or production profile
 from a profile file; a test profile is never a file.
 
-`migrate_bronze` and `migrate_silver` are the only operations that create or
-upgrade a store. Both run one shared runner, `budget.sqlstore`, over their own
-numbered SQL files, `migrations/bronze/` and `migrations/silver/`, which ship
+`migrate_bronze`, `migrate_silver` and `migrate_gold` are the only operations
+that create or upgrade a store. All three run one shared runner,
+`budget.sqlstore`, over their own numbered SQL files, `migrations/bronze/`,
+`migrations/silver/` and `migrations/gold/`, which ship
 inside the installed wheel and sdist so an installation can migrate without a
 source checkout. Each store records its own `PRAGMA user_version` and a one-row
 `store_identity` naming the profile and stage. The runner applies every
 pending file in one transaction, so a migration that fails leaves the store at
-the version it had. Gold's store will run the same runner over
-`migrations/gold/`. Opening a store never creates or changes the schema: it
+the version it had. `budget migrate` runs all three, and the backup sets hold
+every store started. Opening a store never creates or changes the schema: it
 requires an existing file, `mode=rw`, a version this code knows, and a
 matching identity, and it sets `foreign_keys = ON`, `busy_timeout = 5000` and
 `synchronous = FULL`. A new store is created in WAL mode.
@@ -184,15 +185,26 @@ of the `Profile`, so one command keeps one lock instead of acquiring a second.
 
 `budget rebuild --from silver` is that command. It holds the profile's writer
 lock for its whole run — the guard, the Bronze read, the replacement, the
-summary and the routine log — so a competing command exits 4 at once. Only
-`silver` is built so far: `--from bronze` and `--from gold` refuse with exit 4,
-and Gold publishing, `dev refresh` and restore are later slices. A rebuild always reads the profile's own local stores, so production
-data reaches development only through a restored backup set, which is not built
-yet.
+summary and the routine log — so a competing command exits 4 at once.
+`--from silver` rebuilds Silver and then publishes Gold, `--from gold` publishes
+Gold from the Silver as it stands (default), and `--from bronze` parses every
+retained payload again with the parser of its declared format, then does what
+`--from silver` does. It never creates an import run or an import-log entry,
+and a payload declared as more than one format, or in a format this code has no
+parser for, refuses with exit 3. Each derives its stages in memory and checks
+every household file first, so a refusal changes no store; a production
+rebuild that wrote stores then writes a backup set. Gold publishes only when its recipe
+changed: it names the import runs Silver was built from, the configuration,
+the decision log, the late-booking window and the code. `dev refresh` and
+restore are later slices. A rebuild always reads the profile's own local
+stores, so production data reaches development only through a restored backup
+set, which is not built yet.
 
-When `inputs/decisions.jsonl` holds any decision, the rebuild refuses with exit
-3 and says so: the decision-log reader is a later slice, and a build must not
-silently ignore a household decision. A missing log, or one holding only a
+A rebuild reads `inputs/decisions.jsonl` and applies every Silver decision in
+force (`void-import-run`, `accept-discrepancy`, `withdrawn`,
+`same-transaction`); the Gold decisions are applied when Gold is built. A log
+with an invalid entry refuses the rebuild with exit 3, naming the entry and
+never repeating the decision's text. A missing log, or one holding only a
 byte-order mark and whitespace, means no decisions and is allowed.
 
 `budget review [--kind <kind>] [--account <id>]` lists the open Silver review
@@ -213,6 +225,37 @@ by `budget migrate`, which backs the store up first (see below).
 `BronzeStore(profile, parsers=...)` accepts an optional mapping for
 tests that need two versions of one format; the mapping is copied, and a parser
 registered under an ID it does not name is refused.
+
+## Gold publications
+
+`gold.db` holds Gold publications (ADR-014, `docs/architecture/publications.md`).
+`GoldStore` serves them as `GoldPublications`: `current()` is `None` until the
+first publish, `available()` lists the publications whose results are retained,
+and `open(publication_id)` returns a `GoldRepository` bound to one of them, or
+raises `PublicationUnavailableError`.
+
+```python
+from budget.gold.storage import migrate_gold
+from budget.gold.store import GoldStore
+
+migrate_gold(profile)
+
+with GoldStore(profile) as store:
+    publication_id = store.next_publication_id()
+    # ... build a GoldResult bound to a GoldPublication with that id ...
+    store.publish(result, recipe, configuration)
+    gold = store.open(publication_id)
+```
+
+`publish` takes the `GoldResult`, its `Recipe` and the `ConfigurationSnapshot`
+the recipe names. In one transaction it stores the publication, the recipe, the
+configuration's canonical text (once per fingerprint) and the records, and
+appends a `build` move to the pointer history. A failure before that commit
+leaves the previous publication current. A later transaction deletes every
+result that is neither current, previous nor labeled; recipes and publication
+metadata are kept forever. Every Gold table is keyed by `publication_id` first
+and every repository read filters on one, so a hand-written query against
+`gold.db` must do the same or it adds retained publications together.
 
 ## Importing the inbox: `budget import`
 
@@ -254,7 +297,7 @@ The exit status is 3, because two files stayed in the inbox. Each file is
 imported on its own: `joint-current`'s export was stored, archived under
 `exports\joint-current\`, logged in `inputs\imports.jsonl`, and removed from
 the inbox, whatever happened to the others. Then Silver was rebuilt from
-everything Bronze holds. In production a backup set of both stores follows,
+everything Bronze holds. In production a backup set of every store follows,
 and the summary ends `Backup   backup set <name> written`.
 
 The summary names a file by its number in the listing, never by its
@@ -274,9 +317,9 @@ log records counts only.
 
 | Exit | `import` |
 | --- | --- |
-| 0 | Every file was stored or a repeat; or the inbox is empty; or you did not answer `y` |
-| 3 | A file was refused, misfiled, unreadable or a format failure, and stays in the inbox. Also, with nothing stored: a ranges file or `accounts.toml` that breaks its rules, a decision log holding a decision (its reader is not built yet), or an account Silver cannot build |
-| 4 | Nothing stored: another command is running, or production's code is uncommitted, or its stores folder holds a store no backup set covers. After the imports: production's backup set could not be written; run `budget backup` once the message's problem is put right |
+| 0 | Every file was stored or a repeat; or the inbox is empty and nothing was left outstanding; or you did not answer `y` |
+| 3 | A file was refused, misfiled, unreadable or a format failure, and stays in the inbox. Also, with nothing stored: a ranges file or `accounts.toml` that breaks its rules, an invalid decision log, a household file Gold cannot load, a decision naming a category the taxonomy dropped, an account closed before an incoming transaction, or an account Silver cannot build |
+| 4 | Nothing stored: another command is running, or production's code is uncommitted, or its stores folder holds a store no backup set covers. After the imports: Silver and Gold could not be rebuilt, so the files are in Bronze but not in the figures (run `budget import` again once the message's problem is put right: it finishes the rebuild, the publication and the backup), or production's backup set could not be written (run `budget backup`) |
 | 5 | Nothing stored: `imports.jsonl` disagrees with Bronze |
 
 The range is the one you set on the bank's slider. It is never inferred from
@@ -363,27 +406,108 @@ budget migrate -> 0
 budget import --ranges ranges-march.toml -> 0
   [1] joint-current  stored
   Silver   1 admitted, 0 quarantined, 0 dropped
+  Gold     published publication 1
 budget review -> 0
-# (no output: no open review items)
+  <id>  unclassified  gold  publication 1  targets 641b439a
+    target 641b439a  joint-current  2026-03-01  -45.00 DKK  "NETTO"  bank category Mad
+    settle  choose a rule or classify a target as a category or adjustment
 budget import --ranges ranges-april.toml -> 0
   [1] joint-current  stored; Silver quarantined it: balance-break, balance-chain-break
   Silver   1 admitted, 1 quarantined, 0 dropped
+  Gold     published publication 2
 budget review -> 0
   <id>  balance-break  joint-current  2026-04-02..2026-04-02  run <id>  payload <id>
+  <id>  unclassified  gold  publication 2  targets 641b439a
+    target 641b439a  joint-current  2026-03-01  -45.00 DKK  "NETTO"  bank category Mad
+    settle  choose a rule or classify a target as a category or adjustment
 ```
 
-Each import rebuilds Silver from everything Bronze holds, so the walkthrough
-runs no `budget rebuild --from silver` of its own. The profile is a
+Each import rebuilds Silver from everything Bronze holds and publishes Gold
+from it, so the walkthrough runs no `budget rebuild` of its own. It writes a
+small `taxonomy.toml` and an empty `rules.toml` beside `accounts.toml`,
+because Gold needs both. With no rules the
+transaction stays unclassified, so `budget review` lists Gold's `unclassified`
+item beside Silver's. The profile is a
 development one, so no backup set follows; in production the summary would
 end `Backup   backup set <name> written`. The April import exits 0 even though
 Silver quarantines its run: a quarantine is a result, not a failure, and the
 file was stored, archived and removed from the inbox. `budget review` prints
 nothing when no item is open, and exits 0.
 
+## The dashboard: `budget serve`
+
+`budget serve` starts the household's read-only dashboard over Gold, in Danish.
+It logs in, pins one Gold publication and reference date, lets the reader pick
+accounts and a month, and says plainly when there is nothing published, a
+newer build exists, or a selection cannot be shown. The dashboard shell is
+responsive on phones and desktop browsers, supports keyboard use, and exposes
+loading, empty, unavailable and request-failure states. Numerical financial
+reports remain in #104.
+
+Gold migration and publication storage are implemented. A profile's dashboard
+still shows the shell until a publication exists; `budget serve` never creates
+or changes Gold.
+
+Name where the passphrase hash lives, and optionally the address and port, in
+the profile file; `bind` defaults to `127.0.0.1` and `port` to 8750.
+`passphrase_file` must be an absolute path outside OneDrive and the repository:
+
+```toml
+[dashboard]
+passphrase_file = 'C:\Users\<you>\AppData\Roaming\budget\dashboard-passphrase'
+bind = "127.0.0.1"
+port = 8750
+```
+
+```powershell
+budget set-passphrase   # asks twice; never echoes; replaces the hash and logs out every device
+budget serve            # refuses to start until a passphrase is set and Gold exists
+```
+
+Open the address `serve` is bound to and log in with the passphrase. A login
+lasts 30 days from the last visit, five failures in a row lock login for 30
+seconds (doubling to 15 minutes), and "Log ud" ends the login in that
+browser. [operations.md](docs/architecture/operations.md#dashboard-access)
+holds the rules.
+
+To run the complete dashboard without an existing profile or household data,
+create a new isolated synthetic development demo from this checkout:
+
+```powershell
+$demo = Join-Path $env:TEMP ("budget-demo-" + [guid]::NewGuid().ToString("N"))
+uv run budget demo --directory $demo --port 8765
+```
+
+The command creates only the new folder, publishes synthetic demo accounts,
+sets a demo-only login, and starts the real `budget serve` path on
+`http://127.0.0.1:8765`. It never reads or changes a profile outside that
+folder and refuses to reuse an existing target. Open the address, sign in with
+`budget-demo`, and expect two checked demo accounts (`Demo current` and
+`Demo savings`), the current month, and the report shell. The shell deliberately
+shows no financial figures; those belong to #104.
+
+Stop the foreground command with `Ctrl+C`, then remove only the isolated demo
+folder:
+
+```powershell
+Remove-Item -LiteralPath $demo -Recurse
+```
+
+Tests continue to use ephemeral test profiles. This command uses a separate
+development profile and leaves household configuration untouched.
+
+The real-browser dashboard tests require Google Chrome installed. Playwright is
+pinned as a development dependency, but the tests launch the installed Chrome
+channel rather than downloading a browser:
+
+```powershell
+uv run pytest tests/dashboard/test_overview_browser.py
+```
+
 ## Command line
 
 `uv sync` installs a `budget` command; `python -m budget` runs the same thing.
-Every command needs a profile file, named by `--profile` or, failing that, the
+Every command except `demo` needs a profile file, named by `--profile` or, failing that, the
 `BUDGET_PROFILE` environment variable. There is no default profile. Keep
 profile files outside the repository, for example in `%APPDATA%\budget\`. This
 PowerShell writes a development profile there, and refuses to replace one that
@@ -421,21 +545,19 @@ be absolute, and the inbox and exports folders may not overlap. `profile` is
 budget --profile "$env:APPDATA\budget\development.toml" migrate
 ```
 
-`migrate` creates or upgrades the profile's Bronze and Silver stores, Bronze
-first, and `--stage bronze` or `--stage silver` names one of them. Every stage
-goes through the same runner, so each one refuses the same way: a store
-recorded for another profile or another stage, or at a schema version this
-code does not know, is left as it is and refused with exit 4. `--stage gold`
-is refused with exit 4 until that store exists. A run that succeeds prints
-nothing:
+`migrate` creates or upgrades the profile's Bronze, Silver and Gold stores, in
+that order, and `--stage bronze`, `--stage silver` or `--stage gold` names one
+of them. Every stage goes through the same runner, so each one refuses the
+same way: a store recorded for another profile or another stage, or at a
+schema version this code does not know, is left as it is and refused with
+exit 4. A run that succeeds prints nothing:
 
 ```powershell
 $env:BUDGET_PROFILE = "$env:APPDATA\budget\development.toml"
 budget migrate --stage bronze; $LASTEXITCODE   # 0: bronze.db created or upgraded
 budget migrate --stage silver; $LASTEXITCODE   # 0: silver.db created or upgraded
-budget migrate; $LASTEXITCODE                  # 0: both, already current
-budget migrate --stage gold; $LASTEXITCODE     # 4
-# budget: the gold stage is not built yet: only bronze and silver can be migrated
+budget migrate --stage gold; $LASTEXITCODE     # 0: gold.db created or upgraded
+budget migrate; $LASTEXITCODE                  # 0: all three, already current
 ```
 
 Had `bronze.db` been replaced by a copy of `silver.db`, `migrate` would refuse
@@ -457,12 +579,12 @@ are published in, and may hold a `[backups]` table of retention keys
 not overlap the stores, inputs, inbox or exports folders. In production,
 `migrate` writes a verified backup set before it changes an existing store
 and another after, and a migration that fails commits none of its steps. A
-set holds the Bronze store and the Silver store, each snapshotted through
-SQLite's backup API, so production migrates both stages as development does.
+set holds the Bronze, Silver and Gold stores, each snapshotted through
+SQLite's backup API, so production migrates every stage as development does.
 A missing production store is started only with `--new-store`, only where
-none of the stores it would start is started already, Silver's only beside a
-Bronze store a set can hold, and only when no complete backup set holds one
-that could restore it instead. A store file left empty by an interrupted
+none of the stores it would start is started already, Silver's and Gold's
+only beside a Bronze store a set can hold, and only when no complete backup
+set holds one that could restore it instead. A store file left empty by an interrupted
 start counts as missing: rerunning `--new-store` starts it, or, where an
 earlier stage's store was started, names the `--stage` that starts the rest.
 `budget backup` writes a set of production by hand and prints its name.
@@ -471,43 +593,45 @@ rebuild that follows them.
 [operations.md](docs/architecture/operations.md#backup-and-restore) describes
 the sets, their manifest and retention.
 
-A new production profile starts both stores in one run, then writes its
+A new production profile starts all three stores in one run, then writes its
 first set:
 
 ```powershell
 $env:BUDGET_PROFILE = "$env:APPDATA\budget\production.toml"
-budget migrate --new-store; $LASTEXITCODE   # 0: bronze.db and silver.db created, then a backup set
-budget migrate; $LASTEXITCODE               # 0: both already current, so no new set
+budget migrate --new-store; $LASTEXITCODE   # 0: bronze.db, silver.db and gold.db created, then a backup set
+budget migrate; $LASTEXITCODE               # 0: all already current, so no new set
 budget backup; $LASTEXITCODE                # 0
 # backup set 2026-10-06T15-28-41.154905Z written
 budget migrate --new-store; $LASTEXITCODE   # 4
 # budget: C:\Users\<you>\AppData\Local\budget\production\bronze.db is already a Bronze store: migrate it without --new-store
 ```
 
-A production profile whose Bronze store and sets come from before sets held
-Silver has no Silver store yet. `migrate` refuses, before Bronze changes,
-until Silver's is started. Its older sets hold Bronze alone; they stay
-complete and are kept like any other set, and since they hold no Silver
-store, they do not stop one being started:
+A production profile whose stores and sets come from before sets held Silver
+or Gold has no store of that stage yet. `migrate` refuses, before Bronze
+changes, until the first missing one is started. Its older sets hold Bronze
+alone, or Bronze and Silver; they stay complete and are kept like any other
+set, and since they hold no store of the later stage, they do not stop one
+being started:
 
 ```powershell
 budget migrate; $LASTEXITCODE                              # 4
 # budget: the production profile has no Silver store: start one with `budget migrate --stage silver --new-store`, unless production had one, which must be restored from a backup set instead
-budget migrate --stage silver --new-store; $LASTEXITCODE   # 0: silver.db created, then a set of both stores
+budget migrate --stage silver --new-store; $LASTEXITCODE   # 0: silver.db created, then a set
+budget migrate --stage gold --new-store; $LASTEXITCODE     # 0: gold.db created, then a set of all three stores
 ```
 
-Once a complete set holds a Silver store, a lost one must be restored, not
-started anew, and no backup is written until it is; a file an interrupted
-start left empty in its place counts as lost. Before then, a backup leaves
-such a file out. A backup is still refused
-while the stores folder holds a store no set covers, such as Gold's, since
-the set would not be a complete copy of the profile. All three exit 4 and
-write nothing:
+Once a complete set holds a Silver or Gold store, a lost one must be
+restored, not started anew, and no backup is written until it is; a file an
+interrupted start left empty in its place counts as lost. Before then, a
+backup leaves such a file out. A backup is still refused while the stores
+folder holds a store no set covers, such as Gold's `gold\` folder of legacy
+extracts, since the set would not be a complete copy of the profile. All
+three exit 4 and write nothing:
 
 ```text
 budget: the backups folder holds complete backup sets of this profile, so its Silver store must be restored from the newest that holds one, not started anew; nothing was written
 budget: the stores folder has no Silver store, but backup sets of this profile hold one: the Silver store must be restored from the newest that holds one; nothing was published
-budget: the stores folder holds gold.db, which no backup set covers yet: only the Bronze and Silver stores are backed up; nothing was published
+budget: the stores folder holds gold, which no backup set covers yet: only the Bronze, Silver and Gold stores are backed up; nothing was published
 ```
 
 | Exit | Meaning |

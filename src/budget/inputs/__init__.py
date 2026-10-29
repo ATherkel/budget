@@ -17,6 +17,7 @@ from budget.inputs.rules import (
     Rule,
     RuleConditions,
     RuleOutcome,
+    fold,
 )
 from budget.inputs.snapshot import ConfigurationSnapshot, load_configuration
 from budget.inputs.taxonomy import Category, CategoryGroup, Taxonomy
@@ -35,6 +36,7 @@ __all__ = [
     "RuleConditions",
     "RuleOutcome",
     "Taxonomy",
+    "fold",
     "load_accounts",
     "load_configuration",
 ]

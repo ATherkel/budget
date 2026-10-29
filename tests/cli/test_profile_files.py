@@ -10,12 +10,15 @@ import io
 import shutil
 import unittest
 from contextlib import chdir, redirect_stderr
+from datetime import timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pytest
+
 from budget.bronze import BronzeStore
 from budget.cli import main
-from budget.profiles import RetentionPolicy, load_profile_file
+from budget.profiles import ProfileFileError, RetentionPolicy, load_profile_file
 from tests.cli.profile_files import development_profile, write_profile
 
 EXIT_OK = 0
@@ -121,6 +124,24 @@ class ProfileFileTests(unittest.TestCase):
             "an inbox that is the export archive": VALID_HEADER
             + absolute.replace(f"exports = '{exports}'", f"exports = '{inbox}'"),
             **self._backup_refusals(stores),
+            **{
+                f"a late_booking_days that is {problem}": VALID_HEADER
+                + absolute
+                + f"\n[gold]\nlate_booking_days = {value}\n"
+                for problem, value in {
+                    "negative": "-1",
+                    "over a year": "367",
+                    # Past what `timedelta` holds: refused, not a traceback.
+                    "far too large": "1000000000",
+                    "a fraction": "1.5",
+                    "true": "true",
+                    "text": '"7"',
+                }.items()
+            },
+            "an unknown gold key": (
+                VALID_HEADER + absolute + "\n[gold]\nlate_booking_hours = 1\n"
+            ),
+            "a gold key that is not a table": VALID_HEADER + "gold = 7\n" + absolute,
         }
 
     def _backup_refusals(self, stores: Path) -> dict[str, str]:
@@ -248,6 +269,153 @@ class ProfileFileTests(unittest.TestCase):
             assert RetentionPolicy() == RetentionPolicy(
                 keep_all_days=14, keep_daily_days=365, keep_monthly=None
             )
+
+    def test_a_profile_file_sets_the_late_booking_window_in_whole_days(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            cases = {
+                "no [gold] table": ("", timedelta(days=7)),
+                "ten days": ("\n[gold]\nlate_booking_days = 10\n", timedelta(days=10)),
+                # 0 is legal: an export on a month's last day settles it.
+                "zero days": ("\n[gold]\nlate_booking_days = 0\n", timedelta(0)),
+                "a leap year, the most": (
+                    "\n[gold]\nlate_booking_days = 366\n",
+                    timedelta(days=366),
+                ),
+            }
+            for name in ("development", "production"):
+                for case, (table, expected) in cases.items():
+                    with self.subTest(name=name, case=case):
+                        profile_file = write_profile(folder, name=name)
+                        with profile_file.open("a", encoding="utf-8") as file:
+                            file.write(table)
+
+                        profile = load_profile_file(profile_file)
+
+                        assert profile.late_booking_window == expected
+
+    def test_a_profile_file_names_the_dashboard_passphrase_file(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            passphrase = folder / "secrets" / "dashboard-passphrase"
+            for name in ("development", "production"):
+                with self.subTest(name=name):
+                    profile_file = write_profile(folder, name=name)
+                    with profile_file.open("a", encoding="utf-8") as file:
+                        file.write(f"\n[dashboard]\npassphrase_file = '{passphrase}'\n")
+
+                    profile = load_profile_file(profile_file)
+
+                    assert profile.passphrase_file == passphrase
+
+    def test_a_profile_file_names_the_address_and_port_the_dashboard_serves_on(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            for name in ("development", "production"):
+                with self.subTest(name=name):
+                    profile_file = write_profile(folder, name=name)
+                    with profile_file.open("a", encoding="utf-8") as file:
+                        file.write(
+                            '\n[dashboard]\nbind = "192.168.1.20"\nport = 8750\n'
+                        )
+
+                    profile = load_profile_file(profile_file)
+
+                    assert (profile.dashboard_bind, profile.dashboard_port) == (
+                        "192.168.1.20",
+                        8750,
+                    )
+
+    def test_a_refused_dashboard_setting_names_its_key(self) -> None:
+        # A relative passphrase file would land wherever the command runs,
+        # perhaps in OneDrive or the repository; a typo must not be ignored.
+        port = r"dashboard\.port must be a whole number, from 1 to 65535"
+        cases = {
+            "a relative passphrase file": (
+                "",
+                "passphrase_file = 'secrets/dashboard-passphrase'",
+                r"dashboard\.passphrase_file must be an absolute path",
+            ),
+            "a passphrase file that is not text": (
+                "",
+                "passphrase_file = 5",
+                r"dashboard\.passphrase_file must be a path in quotes",
+            ),
+            **{
+                f"port = {value}": ("", f"port = {value}", port)
+                for value in ('"8750"', "0", "65536", "true", "8750.5")
+            },
+            "a bind address that is not text": (
+                "",
+                "bind = 5",
+                r"dashboard\.bind must be an address in quotes",
+            ),
+            "an unknown dashboard key": (
+                "",
+                'address = "127.0.0.1"',
+                r"unknown key dashboard\.address",
+            ),
+            "a dashboard key that is not a table": (
+                "dashboard = 7\n",
+                "",
+                r"dashboard must be a \[dashboard\] table",
+            ),
+        }
+        with TemporaryDirectory() as directory:
+            for case, (top_level, dashboard, message) in cases.items():
+                with self.subTest(case):
+                    profile_file = write_profile(Path(directory))
+                    # A top-level key must come before the [paths] table.
+                    text = profile_file.read_text(encoding="utf-8")
+                    profile_file.write_text(
+                        text.replace("\n[paths]", f"{top_level}\n[paths]")
+                        + (f"\n[dashboard]\n{dashboard}\n" if dashboard else ""),
+                        encoding="utf-8",
+                    )
+
+                    with pytest.raises(ProfileFileError, match=message):
+                        load_profile_file(profile_file)
+
+    def test_a_refused_late_booking_window_names_its_key(self) -> None:
+        days = r"gold\.late_booking_days must be a whole number, from 0 to 366"
+        cases = {
+            **{
+                f"late_booking_days = {value}": (
+                    "",
+                    f"late_booking_days = {value}",
+                    days,
+                )
+                for value in ("-1", "367", "1000000000", "1.5", "true", '"7"')
+            },
+            "an unknown gold key": (
+                "",
+                "late_booking_hours = 1",
+                r"unknown key gold\.late_booking_hours",
+            ),
+            "a gold key that is not a table": (
+                "gold = 7\n",
+                "",
+                r"gold must be a \[gold\] table",
+            ),
+        }
+        with TemporaryDirectory() as directory:
+            for case, (top_level, gold, message) in cases.items():
+                with self.subTest(case):
+                    profile_file = write_profile(Path(directory))
+                    # A top-level key must come before the [paths] table.
+                    text = profile_file.read_text(encoding="utf-8")
+                    profile_file.write_text(
+                        text.replace("\n[paths]", f"{top_level}\n[paths]")
+                        + (f"\n[gold]\n{gold}\n" if gold else ""),
+                        encoding="utf-8",
+                    )
+
+                    with pytest.raises(ProfileFileError, match=message):
+                        load_profile_file(profile_file)
 
     def test_a_development_profile_file_names_no_backups(self) -> None:
         with TemporaryDirectory() as directory:

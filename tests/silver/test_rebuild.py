@@ -140,7 +140,7 @@ class SilverRebuildTests(unittest.TestCase):
 
             # Nothing was written, so the store holds no result yet.
             with SilverStore(profile) as store:
-                assert store.read() == SilverResult((), (), (), (), (), (), ())
+                assert store.read() == SilverResult((), (), (), (), (), (), (), ())
 
     def test_a_held_writer_lock_is_the_rebuild_target(self) -> None:
         # A command that reads another store's inputs holds the profile's

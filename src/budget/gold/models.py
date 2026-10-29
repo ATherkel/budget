@@ -155,6 +155,24 @@ class GoldTransactionLineage:
     classification_version: str
     transfer_evidence: TransferEvidence | None
     review_item_ids: tuple[str, ...]
+    # The explanation an `adjustment` carries; `None` for every other type.
+    adjustment_reason: str | None
+    # The bank's label is provenance for rules and review; it never classifies.
+    bank_category: str | None = None
+
+
+@dataclass(frozen=True)
+class GoldReviewTarget:
+    """One published transaction fact materialized to explain a review item."""
+
+    review_item_id: str
+    transaction_id: str
+    account_id: str
+    transaction_date: date
+    amount: Decimal
+    currency: str
+    description: str
+    bank_category: str | None
 
 
 @dataclass(frozen=True)

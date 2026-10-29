@@ -38,24 +38,29 @@ class ConfigurationSnapshot:
     rules: Mapping[str, Rule]
 
     @property
-    def fingerprint(self) -> str:
-        """The SHA-256 of the snapshot's canonical content, in hexadecimal.
+    def canonical_text(self) -> str:
+        """The snapshot's canonical content, as the JSON its fingerprint hashes.
 
         The content is what the files mean, not how they are written: keys and
-        entries in any order, any TOML spelling, and an amount's trailing zeros
-        all give the same fingerprint.
+        entries in any order, any TOML spelling, a literal pattern's case and
+        an amount's trailing zeros all give the same text. A regular
+        expression is kept as written: in one, case is syntax.
         """
-        canonical = json.dumps(
+        return json.dumps(
             _canonical(self),
             sort_keys=True,
             separators=(",", ":"),
             ensure_ascii=False,
             default=_json_value,
         )
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    @property
+    def fingerprint(self) -> str:
+        """The SHA-256 of `canonical_text`, in hexadecimal."""
+        return hashlib.sha256(self.canonical_text.encode("utf-8")).hexdigest()
 
 
-def _canonical_amount(amount: Decimal) -> str:
+def canonical_amount(amount: Decimal) -> str:
     """Write an amount exactly, without trailing zeros or a negative zero.
 
     Formatting a `Decimal` without a precision is exact, so no amount is
@@ -71,7 +76,7 @@ def _canonical_amount(amount: Decimal) -> str:
 def _json_value(value: object) -> str:
     """Write a value JSON has no type for: a decimal amount or a date."""
     if isinstance(value, Decimal):
-        return _canonical_amount(value)
+        return canonical_amount(value)
     if isinstance(value, date):
         return value.isoformat()
     message = f"no canonical form for {type(value).__name__}"
@@ -104,16 +109,16 @@ def _canonical_when(when: RuleConditions) -> dict[str, object]:
     return _set(
         {
             "account": when.account,
-            "description_contains": _any_of(when.description_contains),
-            "description_starts_with": _any_of(when.description_starts_with),
+            "description_contains": _any_of(when.folded_contains),
+            "description_starts_with": _any_of(when.folded_starts_with),
             "description_regex": _any_of(when.description_regex),
             "amount_sign": when.amount_sign,
             "amount_min": when.amount_min,
             "amount_max": when.amount_max,
             "date_from": when.date_from,
             "date_to": when.date_to,
-            "bank_category": when.bank_category,
-            "bank_subcategory": when.bank_subcategory,
+            "bank_category": when.folded_bank_category,
+            "bank_subcategory": when.folded_bank_subcategory,
         }
     )
 

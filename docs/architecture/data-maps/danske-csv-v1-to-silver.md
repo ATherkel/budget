@@ -33,7 +33,7 @@ Kimball's columns are adapted to this pipeline:
 | `SourceRecord` of a payload with no `FormatFailure` | one row of one payload | every per-row value |
 | `FormatFailure` of a stored payload | one verdict on one payload and format | `ImportRunResult.errors` and `status`; the payload has no source records |
 | `ImportRun` with outcome `stored`, not voided | one presentation of a payload | account, format, admission order |
-| `ImportRun` with outcome `repeat` | one presentation of stored bytes | `AccountEvidence` only, never records |
+| `ImportRun` with outcome `repeat` | one presentation of stored bytes | `AccountEvidence` and `EvidenceExport` only, never records |
 | account configuration | one account | currency, and through it the decimal places of the minor unit (ADR-013) |
 | manual decision, from the decision log ([`operations.md`](../operations.md#decisionsjsonl-the-decision-log)) | one recorded ruling | *same transaction*: `TransactionEvidence.transaction_id`, the `Transaction` grain and `ImportRunResult.status`. *withdrawn*: the `Transaction` grain and `ImportRunResult.status`. *accept discrepancy*: `ImportRunResult.status`, `balance` and `end_of_day_balance`. *void import run*: excluded by "not voided" above |
 
@@ -210,8 +210,9 @@ source records.
 | `errors` | `Sequence` | derived | every `ValidationError` listed under *Validation* in `silver-layer.md`, with the codes under Error codes where this map names one. Errors a manual decision settled stay listed (ADR-010: "the import run lists it") |
 | `review_item_ids` | `Sequence` | derived | review items raised for this run, settled or not, one `dropped-transaction` item per transaction it dropped (ADR-018); a settled one names its decision in `ReviewItem.resolved_by` |
 
-`AccountEvidence` reads only `ImportRun` fields, so it is format-independent
-and the formula in `silver-layer.md` is its whole map.
+`AccountEvidence` and `EvidenceExport` read only `ImportRun` fields, so they
+are format-independent and `silver-layer.md` (*Evidence Ranges*) is their whole
+map.
 
 ## Open Questions
 
