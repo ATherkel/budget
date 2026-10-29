@@ -132,20 +132,23 @@ def _swap_in(profile: Profile, staging: Path, stores: Iterable[str]) -> None:
     """Replace development's stores with the staged ones, as one group.
 
     Every store there, a set's or not, is moved aside first, so no old store
-    stays beside new ones. If a move in fails, the new stores are taken out
-    and the old ones put back.
+    stays beside new ones. If any move fails, moving one aside or one in,
+    the new stores moved in are taken out and the old ones put back.
     """
     aside = profile.stores / WRITABLE_REPLACED
     shutil.rmtree(aside, ignore_errors=True)
     aside.mkdir()
-    for found in _own_store_files(profile):
-        found.replace(aside / found.name)
+    moved_in: list[Path] = []
     try:
-        for store in stores:
-            (staging / store).replace(profile.stores / store)
-    except OSError:
         for found in _own_store_files(profile):
-            found.unlink()
+            found.replace(aside / found.name)
+        # Each move is recorded as it is made, so a failure keeps those before.
+        moved_in.extend(
+            (staging / store).replace(profile.stores / store) for store in stores
+        )
+    except OSError:
+        for new in moved_in:
+            new.unlink()
         for kept in aside.iterdir():
             kept.replace(profile.stores / kept.name)
         raise

@@ -185,6 +185,31 @@ class DecisionLogRecoveryTests(CleanCheckoutTestCase):
                 f"set {written.name} cannot be recovered\n"
             ) in stdout
 
+    def test_restore_reports_a_cut_off_final_decision_line_and_leaves_it(
+        self,
+    ) -> None:
+        # Owner decision, 21 October: the line counts as never written, as
+        # `check` treats it, and only the operator removes it.
+        first, second, *_ = _decisions()
+        with TemporaryDirectory() as directory:
+            profile_file, production, written = _production_with_decisions(
+                Path(directory), [first]
+            )
+            shutil.rmtree(production.stores)
+            log = production.input_file("decisions.jsonl")
+            cut_off = first + second[:20]
+            log.write_bytes(cut_off)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "the decision log's final line was cut off: it counts as never "
+                "written and is left in place; delete it before recording a "
+                "decision\n"
+            ) in stdout
+            assert log.read_bytes() == cut_off
+
     def test_restore_stops_on_a_damaged_decision_log(self) -> None:
         # It begins with the set's entries, but a later line is no entry.
         first, second, *_ = _decisions()
@@ -222,6 +247,38 @@ class DecisionLogRecoveryTests(CleanCheckoutTestCase):
             production.input_file("decisions.jsonl").unlink()
             shutil.rmtree(production.stores)
             assert restore(profile_file, written.name)[0] == EXIT_VERIFICATION_FAILED
+            archived.write_bytes(export)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "the decision log was missing: decisions recorded after backup "
+                f"set {written.name} cannot be recovered\n"
+            ) in stdout
+
+    def test_a_retry_refused_before_moving_keeps_the_decision_log_report(
+        self,
+    ) -> None:
+        # A retry the import log refuses must not forget that the decision
+        # log in place is only the set's copy.
+        first, second, *_ = _decisions()
+        with TemporaryDirectory() as directory:
+            profile_file, production, written = _production_with_decisions(
+                Path(directory), [first, second]
+            )
+            with writer_lock(production) as lock:
+                import_one(lock, "export-20260509.csv")
+            archived = production.archive_file("joint-current/export-20260509.csv")
+            export = archived.read_bytes()
+            archived.unlink()
+            production.input_file("decisions.jsonl").unlink()
+            shutil.rmtree(production.stores)
+            assert restore(profile_file, written.name)[0] == EXIT_VERIFICATION_FAILED
+            logged = production.import_log_file.read_bytes()
+            production.import_log_file.write_bytes(logged + b"not an entry\n")
+            assert restore(profile_file, written.name)[0] == EXIT_VERIFICATION_FAILED
+            production.import_log_file.write_bytes(logged)
             archived.write_bytes(export)
 
             status, stdout, stderr = restore(profile_file, written.name)
