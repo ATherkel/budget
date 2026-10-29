@@ -13,6 +13,7 @@ import sqlite3
 from collections.abc import Callable, Mapping
 from contextlib import closing
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Final
 
@@ -21,7 +22,7 @@ from budget.bronze import BronzeStore, ImportRun
 from budget.bronze.storage import bronze_stage
 from budget.decision_log import read_decision_log
 from budget.durability import sync_folder
-from budget.gold.storage import gold_stage
+from budget.gold.storage import GOLD_STAGE, gold_stage
 from budget.inputs import ConfigurationError
 from budget.locking import WriterLock
 from budget.profiles import (
@@ -31,6 +32,7 @@ from budget.profiles import (
     INPUTS_FOLDER,
     Profile,
 )
+from budget.rebuilding import GoldRebuild, rebuild_through_gold
 from budget.replaying import (
     REPLAY_REFUSALS,
     ArchivedExportMismatchError,
@@ -166,6 +168,7 @@ class Restored:
     replayed: int
     missing_logs: tuple[str, ...]
     decision_line_cut_off: bool
+    gold: GoldRebuild | None
 
     @property
     def decisions_lost(self) -> bool:
@@ -545,7 +548,7 @@ def _lost_inputs(profile: Profile, backup: BackupSet) -> dict[str, Path]:
     }
 
 
-def restore(lock: WriterLock, name: str | None = None) -> Restored:
+def restore(lock: WriterLock, name: str | None = None, *, now: datetime) -> Restored:
     """Restore every store of one complete set; report what was restored.
 
     `name` selects the set; without it, the newest complete set this code
@@ -581,6 +584,12 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
             replayed = replay_import_log(lock)
         except REPLAY_REFUSALS as error:
             raise CatchUpRefusedError(selected.name, error) from error
+    # Silver and Gold from everything recovered: the replayed runs, the
+    # decisions and configuration since the set, and the running code.
+    # Gold publishes only when that recipe differs from the restored one.
+    gold = None
+    if GOLD_STAGE in stores:
+        gold = rebuild_through_gold(lock, now=now).gold
     # The moves first: a marker gone after a crash must not leave stores that
     # are not in place. Then durably: a marker that came back after a crash
     # would let a later restore remove a finished profile's stores as its own.
@@ -594,4 +603,5 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
         replayed=len(replayed),
         missing_logs=missing_logs,
         decision_line_cut_off=decision_line_cut_off,
+        gold=gold,
     )
