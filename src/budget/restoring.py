@@ -23,7 +23,7 @@ from budget.bronze.storage import bronze_stage
 from budget.decision_log import read_decision_log
 from budget.durability import sync_folder
 from budget.gold.storage import GOLD_STAGE, gold_stage
-from budget.gold.store import GoldStore
+from budget.gold.store import GoldStore, RecoveryBoundary
 from budget.inputs import ConfigurationError
 from budget.locking import WriterLock
 from budget.profiles import (
@@ -154,6 +154,34 @@ def _require_no_stores(profile: Profile) -> None:
 
 
 @dataclass(frozen=True)
+class UndoAfterCatchUp:
+    """Where undo goes after a catch-up build published (`publications.md`).
+
+    Undo returns to `publication_id`, the set's current publication, while
+    its result is `usable`; never to one lost after the set.
+    """
+
+    publication_id: int
+    usable: bool
+
+
+def _undo_after_catch_up(
+    profile: Profile, boundary: RecoveryBoundary, gold: GoldRebuild
+) -> UndoAfterCatchUp | None:
+    """Name undo's target once catch-up has published, or None.
+
+    Without a build, the restored pointer history keeps its ordinary undo.
+    A set without a publication leaves undo nothing to return to.
+    """
+    target = boundary.restored_current_id
+    if not gold.published or target is None:
+        return None
+    with GoldStore(profile) as gold_store:
+        retained = {found.publication_id for found in gold_store.available()}
+    return UndoAfterCatchUp(publication_id=target, usable=target in retained)
+
+
+@dataclass(frozen=True)
 class Restored:
     """What `restore` did: the set, the newer sets passed over, the inputs put back.
 
@@ -168,6 +196,7 @@ class Restored:
     replayed: int
     missing_logs: tuple[str, ...]
     gold: GoldRebuild | None
+    undo: UndoAfterCatchUp | None
 
     @property
     def decisions_lost(self) -> bool:
@@ -565,12 +594,16 @@ def restore(lock: WriterLock, name: str | None = None, *, now: datetime) -> Rest
     # the decisions and configuration since the set, and the running code.
     # Gold publishes only when that recipe differs from the restored one.
     gold = None
+    undo = None
     if GOLD_STAGE in stores:
         # Recorded before the build, so the boundary names the set's current
         # publication and the first id any later build takes.
         with GoldStore(profile) as gold_store:
-            gold_store.record_recovery_boundary(selected.name, selected.created_at, now)
+            boundary = gold_store.record_recovery_boundary(
+                selected.name, selected.created_at, now
+            )
         gold = rebuild_through_gold(lock, now=now).gold
+        undo = _undo_after_catch_up(profile, boundary, gold)
     (profile.stores / RESTORE_MARKER).unlink()
     sync_folder(profile.stores)
     return Restored(
@@ -580,4 +613,5 @@ def restore(lock: WriterLock, name: str | None = None, *, now: datetime) -> Rest
         replayed=len(replayed),
         missing_logs=missing_logs,
         gold=gold,
+        undo=undo,
     )
