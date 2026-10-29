@@ -20,6 +20,7 @@ from typing import Final
 from budget.backups import BackupSet, complete_backup_sets, set_store_files
 from budget.bronze import BronzeStore
 from budget.bronze.storage import bronze_stage
+from budget.codeversion import UncommittedCodeError
 from budget.decision_log import read_decision_log
 from budget.durability import sync_folder
 from budget.gold.storage import GOLD_STAGE, gold_stage
@@ -474,6 +475,36 @@ _CATCH_UP_PROBLEMS: Final[dict[type[Exception], str]] = {
 }
 
 
+def _build_refused(name: str, reason: Exception) -> str:
+    """Say a catch-up build was refused, and that the restore is unfinished.
+
+    The build's own refusal ends by saying nothing was written, which is
+    true of its build but not of the restore: the stores are in place.
+    """
+    found = str(reason).removesuffix("; nothing was written")
+    return (
+        f"backup set {name} is in place, but its catch-up build was refused: "
+        f"{found}; the restore has not finished: put that right, then rerun "
+        "`budget restore`"
+    )
+
+
+class CatchUpInputsRefusedError(RuntimeError):
+    """The household's inputs refuse the catch-up build: restore is unfinished."""
+
+    def __init__(self, name: str, reason: Exception) -> None:
+        """Name the set, the build's refusal, and what to do."""
+        super().__init__(_build_refused(name, reason))
+
+
+class CatchUpCodeRefusedError(RuntimeError):
+    """The running code cannot build production: restore is unfinished."""
+
+    def __init__(self, name: str, reason: Exception) -> None:
+        """Name the set, the build's refusal, and what to do."""
+        super().__init__(_build_refused(name, reason))
+
+
 class UnfinishedRestoreError(RuntimeError):
     """A restore has not finished: its stores are not a profile to use yet."""
 
@@ -642,7 +673,12 @@ def restore(lock: WriterLock, name: str | None = None, *, now: datetime) -> Rest
     # Then Silver and Gold from everything recovered: the replayed runs,
     # the decisions and configuration since the set, and the running code.
     # Gold publishes only when that recipe differs from the restored one.
-    gold = rebuild_through_gold(lock, now=now).gold
+    try:
+        gold = rebuild_through_gold(lock, now=now).gold
+    except ConfigurationError as error:
+        raise CatchUpInputsRefusedError(selected.name, error) from error
+    except UncommittedCodeError as error:
+        raise CatchUpCodeRefusedError(selected.name, error) from error
     undo = _undo_after_catch_up(profile, boundary, gold)
     # Durably: a marker that came back after a crash would let a later
     # restore remove a finished profile's stores as its own.
