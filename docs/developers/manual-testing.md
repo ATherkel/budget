@@ -179,7 +179,83 @@ README's [dashboard section](../../README.md#the-dashboard-budget-serve).
 
 ## Restore and dev refresh
 
-To be filled by #121.
+Both read production's backup sets. Your dev profile needs `upstream_backups`
+under `[paths]`, naming production's `backups` folder; development only
+reads it.
+
+### Dev refresh
+
+```powershell
+uv run budget dev refresh
+```
+
+Expect `restored backup set <name> into upstream (read-only)`, and the
+read-only copies in `$stores\upstream\`. Your own stores and inputs are left
+alone. `--inputs` also replaces your inputs with the set's copy, so run it only
+after [Set up](#set-up) has saved them.
+
+`--writable` replaces your own stores with the set's, relabelled as
+development, to rehearse a `migrate` on production's data. It replaces your
+Bronze too, so copy your stores aside first and put them back after:
+
+```powershell
+$devStores = "$env:LOCALAPPDATA\budget\manual-test-stores"
+Copy-Item $stores $devStores -Recurse
+uv run budget dev refresh --writable
+```
+
+Expect `restored backup set <name> into development's own stores (writable)`.
+
+### Restore
+
+`restore` runs on production only, so try it on a scratch production profile
+that has a copy of one set and no stores. It builds as production, so run it
+from a clean checkout of `main`:
+
+```powershell
+$scratch = "$env:LOCALAPPDATA\budget\manual-test-restore"
+$set = Get-ChildItem $paths.upstream_backups -Directory | Sort-Object Name | Select-Object -Last 1
+New-Item -ItemType Directory -Force "$scratch\backups", "$scratch\inputs", "$scratch\inbox", "$scratch\exports" | Out-Null
+Copy-Item $set.FullName "$scratch\backups" -Recurse
+Copy-Item "$exports\*" "$scratch\exports" -Recurse
+Set-Content "$scratch\production.toml" -Value @"
+format = 1
+profile = "production"
+
+[paths]
+stores = '$scratch\stores'
+inputs = '$scratch\inputs'
+inbox = '$scratch\inbox'
+exports = '$scratch\exports'
+backups = '$scratch\backups'
+"@
+$env:BUDGET_PROFILE = "$scratch\production.toml"
+uv run budget restore
+```
+
+Expect a `put back inputs/<file> from the backup set` line per input, one
+line saying the decision log or import log was missing for each that the set
+held, the Gold line, `restored backup set <name>`, and `backup set <new name>
+written`. Then:
+
+| Do | Expect |
+| --- | --- |
+| `uv run budget restore` again | Exit 4: the stores folder still holds `bronze.db` |
+| `uv run python -c "import sqlite3,sys; print(sqlite3.connect(sys.argv[1]).execute('select * from recovery_boundaries').fetchall())" "$scratch\stores\gold.db"` | One row naming the set |
+
+Point `BUDGET_PROFILE` back at your dev profile and remove the scratch profile:
+
+```powershell
+$env:BUDGET_PROFILE = $devProfile
+Remove-Item $scratch -Recurse
+```
+
+After `--writable`, put your own stores back:
+
+```powershell
+Remove-Item $stores -Recurse
+Move-Item $devStores $stores
+```
 
 ## Status and check
 
