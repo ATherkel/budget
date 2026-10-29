@@ -329,6 +329,26 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
                 assert current is not None
                 assert current.publication_id == 2
 
+    def test_restore_records_where_the_recovered_publication_history_ends(
+        self,
+    ) -> None:
+        # Publications made after the set are lost: the boundary says so, so
+        # a lookup can report the gap instead of inferring continuous use.
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            shutil.rmtree(built.profile.stores)
+
+            before = datetime.now(UTC)
+            assert restore(built.profile_file, written.name)[0] == EXIT_OK
+
+            with GoldStore(built.profile) as gold:
+                (boundary,) = gold.recovery_boundaries()
+            assert boundary.backup_set == written.name
+            assert boundary.backup_created_at == written.created_at
+            assert boundary.restored_at >= before
+            assert boundary.restored_current_id == 1
+            assert boundary.first_publication_id == 2
+
     def test_restore_keeps_the_restored_publication_when_nothing_changed(
         self,
     ) -> None:
