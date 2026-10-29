@@ -158,7 +158,9 @@ class UndoAfterCatchUp:
     """Where undo goes after a catch-up build published (`publications.md`).
 
     Undo returns to `publication_id`, the set's current publication, while
-    its result is `usable`; never to one lost after the set.
+    its result is `usable`; never to one lost after the set. The undo
+    command is #177's: this names where its first step from the catch-up
+    build must land, which is the pointer's move before that build.
     """
 
     publication_id: int
