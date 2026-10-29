@@ -244,6 +244,38 @@ class DecisionLogRecoveryTests(unittest.TestCase):
                 f"set {written.name} cannot be recovered\n"
             ) in stdout
 
+    def test_a_retry_refused_before_moving_keeps_the_decision_log_report(
+        self,
+    ) -> None:
+        # A retry the import log refuses must not forget that the decision
+        # log in place is only the set's copy.
+        first, second, *_ = _decisions()
+        with TemporaryDirectory() as directory:
+            profile_file, production, written = _production_with_decisions(
+                Path(directory), [first, second]
+            )
+            with writer_lock(production) as lock:
+                import_one(lock, "export-20260509.csv")
+            archived = production.archive_file("joint-current/export-20260509.csv")
+            export = archived.read_bytes()
+            archived.unlink()
+            production.input_file("decisions.jsonl").unlink()
+            shutil.rmtree(production.stores)
+            assert restore(profile_file, written.name)[0] == EXIT_VERIFICATION_FAILED
+            logged = production.import_log_file.read_bytes()
+            production.import_log_file.write_bytes(logged + b"not an entry\n")
+            assert restore(profile_file, written.name)[0] == EXIT_VERIFICATION_FAILED
+            production.import_log_file.write_bytes(logged)
+            archived.write_bytes(export)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "the decision log was missing: decisions recorded after backup "
+                f"set {written.name} cannot be recovered\n"
+            ) in stdout
+
 
 class LostStoreAdviceTests(unittest.TestCase):
     # A store is never restored beside live ones, so the advice for a lost
