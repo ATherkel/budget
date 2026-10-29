@@ -14,23 +14,43 @@ marked "to be filled" waits on the issue it names.
 
 ## Set up
 
-Close DB Browser for SQLite if it has a dev store open. Then:
+Close DB Browser for SQLite if it has a dev store open, then run each block in
+turn.
 
 ```powershell
 uv sync
-$devProfile = "$env:APPDATA\budget\development.toml"
+```
+
+Use `BUDGET_PROFILE` if it is set, otherwise the usual development profile:
+
+```powershell
+$devProfile = $env:BUDGET_PROFILE ?? "$env:APPDATA\budget\development.toml"
 $env:BUDGET_PROFILE = $devProfile
+```
+
+Check that it is a development profile. This prints `development`; stop if
+it prints anything else:
+
+```powershell
+uv run python -c "import sys,tomllib; print(tomllib.load(open(sys.argv[1],'rb'))['profile'])" $devProfile
+```
+
+Read the profile's folders:
+
+```powershell
 $paths = uv run python -c "import json,sys,tomllib; print(json.dumps(tomllib.load(open(sys.argv[1],'rb'))['paths']))" $devProfile | ConvertFrom-Json
 $stores = $paths.stores; $inputs = $paths.inputs; $exports = $paths.exports; $inbox = $paths.inbox
 $ranges = "$env:LOCALAPPDATA\budget\dev-household\ranges.toml"
+```
 
-# Save what the tests change, so Clean up can put it back.
+`inputs` must hold `accounts.toml`, `taxonomy.toml` and `rules.toml`. Save
+what the tests change, so [Clean up](#clean-up) can put it back:
+
+```powershell
 $backup = "$env:LOCALAPPDATA\budget\manual-test-backup"
 New-Item -ItemType Directory -Force $backup | Out-Null
 Copy-Item $devProfile, "$inputs\taxonomy.toml", "$inputs\rules.toml", "$inputs\accounts.toml", "$inputs\decisions.jsonl" $backup
 ```
-
-`inputs` must hold `accounts.toml`, `taxonomy.toml` and `rules.toml`.
 
 ### If an older profile fails
 
@@ -59,6 +79,9 @@ Copy-Item $devProfile, "$inputs\taxonomy.toml", "$inputs\rules.toml", "$inputs\a
   name = "Eating out"
   group = "food"
   '@
+  ```
+
+  ```powershell
   Set-Content "$inputs\rules.toml" -Value @'
   format = 1
 
@@ -87,21 +110,31 @@ counts, then `Gold     published publication N`. Then:
 
 ## Rules and decisions
 
-| Do | Expect |
-| --- | --- |
-| Change `"NETTO"` to `"netto"` in `rules.toml`, or add a comment, then `rebuild` | Unchanged: same meaning |
-| Append the classify line below, then `rebuild` | A new publication, the amount under Eating out |
-| Append the retract line below, then `rebuild` | A new publication matching the one before the decision |
+Change `"NETTO"` to `"netto"` in `rules.toml`, or add a comment, then
+`uv run budget rebuild`. Expect unchanged: the meaning is the same.
 
-For an empty log; the first line picks the latest MENY purchase:
+The decisions below assume an empty log. Pick the latest MENY purchase in the
+current publication (the highest `publication_id` while there is no undo):
 
 ```powershell
 $id = uv run python -c "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); p=c.execute('select max(publication_id) from publications').fetchone()[0]; print(c.execute(""select transaction_id from transactions where publication_id=? and description like 'MENY%' order by transaction_date desc limit 1"",(p,)).fetchone()[0])" "$stores\gold.db"
-Add-Content "$inputs\decisions.jsonl" "{`"format`": 1, `"entry`": 1, `"decision_id`": `"d-0001`", `"recorded_at`": `"2026-10-27T18:00:00Z`", `"kind`": `"classify`", `"targets`": [`"$id`"], `"category`": `"eating-out`", `"reason`": `"dev test`", `"supersedes`": []}"
-Add-Content "$inputs\decisions.jsonl" '{"format": 1, "entry": 2, "decision_id": "d-0002", "recorded_at": "2026-10-27T18:05:00Z", "kind": "retract", "targets": [], "reason": "dev test", "supersedes": ["d-0001"]}'
 ```
 
-`max(publication_id)` is the current publication while there is no undo.
+Classify it as eating out. Expect a new publication, with the amount under
+Eating out:
+
+```powershell
+Add-Content "$inputs\decisions.jsonl" "{`"format`": 1, `"entry`": 1, `"decision_id`": `"d-0001`", `"recorded_at`": `"2026-10-27T18:00:00Z`", `"kind`": `"classify`", `"targets`": [`"$id`"], `"category`": `"eating-out`", `"reason`": `"dev test`", `"supersedes`": []}"
+uv run budget rebuild
+```
+
+Retract it. Expect a new publication whose figures match the one before the
+decision:
+
+```powershell
+Add-Content "$inputs\decisions.jsonl" '{"format": 1, "entry": 2, "decision_id": "d-0002", "recorded_at": "2026-10-27T18:05:00Z", "kind": "retract", "targets": [], "reason": "dev test", "supersedes": ["d-0001"]}'
+uv run budget rebuild
+```
 
 ## Refusals
 
@@ -154,11 +187,17 @@ To be filled by #296 and #303.
 
 ## Clean up
 
+Put the profile and inputs back, and build from them:
+
 ```powershell
-Copy-Item "$backup\development.toml" $devProfile
+Copy-Item "$backup\$(Split-Path $devProfile -Leaf)" $devProfile
 Copy-Item "$backup\taxonomy.toml", "$backup\rules.toml", "$backup\accounts.toml", "$backup\decisions.jsonl" $inputs
 uv run budget rebuild --from silver
-Remove-Item Env:BUDGET_PROFILE
+```
+
+Then remove the backup:
+
+```powershell
 Remove-Item $backup -Recurse
 ```
 
