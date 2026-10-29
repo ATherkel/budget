@@ -60,7 +60,7 @@ the red/green handoffs, test seam agreement, and permitted exceptions.
 
 ### Pull request reviews
 
-Review, freeze and merge PRs as `docs/agents/pr-review.md` describes.
+Review and fix PRs as `docs/agents/pr-review.md` describes.
 
 ## Agent skills
 

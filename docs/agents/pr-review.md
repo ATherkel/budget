@@ -3,16 +3,25 @@ type: agents
 ---
 # Pull Request Reviews
 
-How a PR moves from review to merge, so a stack of PRs never needs rework
-below its top.
+How a PR is reviewed and fixed until it is safe to merge on its own. The
+rationale is in issue #362.
 
-- **Scope**: a critical review covers only the PR's own diff, taken from the
-  merge-base with the PR's base branch. File each finding outside that diff
-  as an issue instead of fixing it in the PR.
-- **One round**: each PR gets one review round. Once its findings are fixed
-  or filed, the PR is frozen: no further commits.
-- **Fix forward**: after review, the stack only grows upward. A problem found
-  later in a frozen PR is fixed in a new PR on top of the stack, not by
-  rewriting the PR that holds it.
-- **Merge on pass**: merge each PR as soon as it passes review and CI. Don't
-  hold it for the PRs above it.
+- **Contract**: each PR names the accepted behavior it owns, its exclusions
+  and the PRs it needs first.
+- **Scope**: start from the diff against the PR's base, then follow the
+  callers and dependencies it touches. A finding is in scope wherever the
+  code lives if this PR causes or exposes it. File unrelated pre-existing
+  defects as issues.
+- **Findings**: classify each one as *required* (breaks the contract or
+  regresses behavior, with evidence), *decision needed* (an open scope or
+  contract choice for the owner) or *optional* (stays out of the PR unless
+  accepted). Never downgrade a required finding or weaken its test.
+- **Fix in place**: a required finding is fixed in the PR that introduced it,
+  then carried up through the branches stacked on it. A later PR never makes
+  an earlier one correct; after merge, fix it in a follow-up PR.
+- **Re-review**: re-check the fix, the interactions it changes and any
+  conflict resolutions. Repeated design-level findings mean replanning, not
+  more patches.
+- **Ready**: a PR is ready for the owner to merge once its contract holds,
+  its required findings are fixed with evidence and its checks pass. Agents
+  don't merge.
