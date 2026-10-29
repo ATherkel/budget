@@ -8,6 +8,7 @@ Every test passes `main` an explicit environment.
 
 import errno
 import json
+import re
 import shutil
 import sqlite3
 from contextlib import closing
@@ -61,6 +62,16 @@ def _production_with_a_set(folder: Path) -> tuple[Path, Profile, BackupSet, str]
         # After the set `migrate` wrote, so it is the newest.
         written = back_up(lock, now=datetime.now(UTC))
     return profile_file, production, written, run_id
+
+
+def _reported(stdout: str) -> str:
+    """A finished restore's report, without the set it backs up to last.
+
+    That set is named by the time it is written, which a test cannot know.
+    """
+    report, _, last = stdout.rstrip("\n").rpartition("\n")
+    assert re.fullmatch(r"backup set \S+ written", last), stdout
+    return report + "\n" if report else ""
 
 
 def _live_run_ids(profile: Profile) -> list[str]:
@@ -412,6 +423,34 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
             assert boundary.restored_current_id is None
             assert boundary.first_publication_id == 1
 
+    def test_restore_backs_up_the_restored_profile_when_it_finishes(self) -> None:
+        # As `migrate` does after it changes stores: the boundary and any
+        # catch-up publication are in a set at once (owner decision, 29 Oct).
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            shutil.rmtree(built.profile.stores)
+
+            status, stdout, stderr = restore(built.profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            newest = complete_backup_sets(built.profile)[0]
+            assert newest.name != written.name
+            assert stdout.endswith(
+                f"restored backup set {written.name}\n"
+                f"backup set {newest.name} written\n"
+            )
+            assert run_ids(newest.path / "bronze.db") == run_ids(
+                written.path / "bronze.db"
+            )
+            with closing(
+                sqlite3.connect(
+                    f"{(newest.path / 'gold.db').as_uri()}?mode=ro&immutable=1",
+                    uri=True,
+                )
+            ) as copy:
+                held = copy.execute("SELECT backup_set FROM recovery_boundaries")
+                assert [row[0] for row in held] == [written.name]
+
     def test_a_recovery_boundary_survives_a_later_backup_and_restore(self) -> None:
         with TemporaryDirectory() as directory:
             built, written = _published_production(Path(directory) / "prod")
@@ -508,7 +547,10 @@ class RestoreCommandTests(CleanCheckoutTestCase):
             status, stdout, stderr = restore(profile_file)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert stdout == FIRST_GOLD + f"restored backup set {written.name}\n"
+            assert (
+                _reported(stdout)
+                == FIRST_GOLD + f"restored backup set {written.name}\n"
+            )
             assert run_ids(production.bronze_store) == [run_id]
             # Bronze is the set's own copy; catch-up then rebuilds Silver and
             # Gold from it, so those are no longer the set's bytes.
@@ -544,7 +586,9 @@ class RestoreCommandTests(CleanCheckoutTestCase):
             status, stdout, stderr = restore(profile_file, older.name)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert stdout == FIRST_GOLD + f"restored backup set {older.name}\n"
+            assert (
+                _reported(stdout) == FIRST_GOLD + f"restored backup set {older.name}\n"
+            )
             # The set `migrate` wrote holds no import run yet.
             assert run_ids(production.bronze_store) == []
 
@@ -658,7 +702,7 @@ class RestoreCommandTests(CleanCheckoutTestCase):
             status, stdout, stderr = restore(profile_file)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert stdout == (
+            assert _reported(stdout) == (
                 f"skipped backup set {written.name}: this code cannot read it\n"
                 + FIRST_GOLD
                 + f"restored backup set {older.name}\n"
@@ -721,7 +765,7 @@ class RestoreCommandTests(CleanCheckoutTestCase):
             status, stdout, stderr = restore(profile_file, written.name)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert stdout == (
+            assert _reported(stdout) == (
                 "replayed 1 import run from the export archive\n"
                 + FIRST_GOLD
                 + f"restored backup set {written.name}\n"
@@ -782,7 +826,10 @@ class RestoreCommandTests(CleanCheckoutTestCase):
             status, stdout, stderr = restore(profile_file, written.name)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert stdout == FIRST_GOLD + f"restored backup set {written.name}\n"
+            assert (
+                _reported(stdout)
+                == FIRST_GOLD + f"restored backup set {written.name}\n"
+            )
             assert _live_run_ids(production) == [run_id]
 
     def test_restore_stops_before_anything_on_an_import_log_that_conflicts(
@@ -863,7 +910,7 @@ class RestoreCommandTests(CleanCheckoutTestCase):
             status, stdout, stderr = restore(profile_file)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert stdout == (
+            assert _reported(stdout) == (
                 f"skipped backup set {written.name}: this code cannot read it\n"
                 + FIRST_GOLD
                 + f"restored backup set {older.name}\n"
@@ -889,7 +936,7 @@ class RestoreCommandTests(CleanCheckoutTestCase):
             status, stdout, stderr = restore(profile_file)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert stdout.endswith(f"restored backup set {older.name}\n")
+            assert _reported(stdout).endswith(f"restored backup set {older.name}\n")
 
     def test_a_restore_whose_store_copy_fails_puts_back_no_input(self) -> None:
         # "Nothing was restored" must hold for the inputs too.
@@ -939,7 +986,10 @@ class RestoreCommandTests(CleanCheckoutTestCase):
             status, stdout, stderr = restore(profile_file, written.name)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert stdout == FIRST_GOLD + f"restored backup set {written.name}\n"
+            assert (
+                _reported(stdout)
+                == FIRST_GOLD + f"restored backup set {written.name}\n"
+            )
             assert run_ids(production.bronze_store) == [run_id]
             assert checksum(production.bronze_store) == checksum(
                 written.path / "bronze.db"
@@ -988,7 +1038,7 @@ class RestoreCommandTests(CleanCheckoutTestCase):
             status, stdout, _ = restore(profile_file, written.name)
 
             assert status == EXIT_OK
-            assert stdout == (
+            assert _reported(stdout) == (
                 "put back inputs/accounts.toml from the backup set\n"
                 + FIRST_GOLD
                 + f"restored backup set {written.name}\n"
