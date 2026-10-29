@@ -45,6 +45,7 @@ EXIT_OK = 0
 FIRST_GOLD = "Gold     published publication 1\n"
 # An export of a later week than the pipeline household's, for catch-up.
 EXPORT_LATER = payload("08.03.2026")
+EXIT_REFUSED_INPUT = 3
 EXIT_REFUSED_ENVIRONMENT = 4
 EXIT_VERIFICATION_FAILED = 5
 
@@ -327,6 +328,38 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
                 current = gold.current()
                 assert current is not None
                 assert current.publication_id == 2
+
+    def test_restore_keeps_the_restored_publication_when_nothing_changed(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            shutil.rmtree(built.profile.stores)
+
+            status, stdout, stderr = restore(built.profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "Gold     the recipe is unchanged; nothing was published "
+                "(publication 1 stays current)\n"
+            ) in stdout
+            with GoldStore(built.profile) as gold:
+                assert [move.cause for move in gold.pointer_history()] == ["build"]
+
+    def test_a_refused_catch_up_build_leaves_the_restore_unfinished(self) -> None:
+        # Restored stores without their catch-up are not a complete restore.
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            shutil.rmtree(built.profile.stores)
+            # The surviving registry no longer declares the restored run's
+            # account, so the catch-up build refuses.
+            built.profile.accounts_file.write_text("format = 1\n", encoding="utf-8")
+
+            status, stdout, _ = restore(built.profile_file, written.name)
+
+            assert status == EXIT_REFUSED_INPUT
+            assert "restored backup set" not in stdout
+            assert backup(built.profile_file)[0] == EXIT_REFUSED_ENVIRONMENT
 
 
 class LostStoreAdviceTests(CleanCheckoutTestCase):
