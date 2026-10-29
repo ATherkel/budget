@@ -5,7 +5,8 @@ an immutable Bronze → Silver → Gold data pipeline so reports remain independ
 of bank and import format.
 
 Start with the [documentation map](docs/README.md) and the
-[delivery roadmap](docs/03-roadmap.md).
+[delivery roadmap](docs/03-roadmap.md). To try each feature by hand on your
+development profile, follow [testing by hand](docs/developers/manual-testing.md).
 
 ## Install and test
 
