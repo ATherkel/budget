@@ -28,7 +28,9 @@ from budget.backups import (
     back_up,
     require_backup_allowed,
 )
-from budget.bronze.storage import bronze_stage
+from budget.bronze.parsers.registry import UnsupportedSourceFormatError
+from budget.bronze.storage import BRONZE_STAGE, bronze_stage
+from budget.bronze.store import ConflictingDeclaredFormatsError
 from budget.codeversion import UncommittedCodeError, require_committed_code
 from budget.dashboard import create_app
 from budget.dashboard.passphrase import PassphraseNotSetError, set_passphrase
@@ -117,16 +119,6 @@ class NoProfileSelectedError(Exception):
         """Say how to select a profile, since there is no default."""
         super().__init__(
             f"no profile selected: pass --profile <file> or set {PROFILE_VARIABLE}"
-        )
-
-
-class RebuildFromStageNotBuiltError(Exception):
-    """The stage a rebuild would read from has no reader in this code yet."""
-
-    def __init__(self, stage: str) -> None:
-        """Name the one stage reading that exists, rather than pretend."""
-        super().__init__(
-            f"rebuilding from {stage} is not built yet: only --from {SILVER_STAGE} is"
         )
 
 
@@ -319,8 +311,6 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
     replacement it writes, and the summary and completion log belong to that
     same lock.
     """
-    if from_stage not in {SILVER_STAGE, GOLD_STAGE}:
-        raise RebuildFromStageNotBuiltError(from_stage)
     started = perf_counter()
     with writer_lock(profile) as lock:
         require_committed_code(lock.profile)
@@ -330,8 +320,10 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
         now = datetime.now(UTC)
         summary = ""
         counts: dict[str, int] = {}
-        if from_stage == SILVER_STAGE:
-            rebuilt = rebuild_through_gold(lock, now=now, inputs=inputs)
+        if from_stage in {BRONZE_STAGE, SILVER_STAGE}:
+            rebuilt = rebuild_through_gold(
+                lock, now=now, inputs=inputs, from_bronze=from_stage == BRONZE_STAGE
+            )
             summary = summaries.rebuild_summary(rebuilt.silver)
             counts = _rebuild_counts(rebuilt.silver)
             published = rebuilt.gold
@@ -346,7 +338,7 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
         summary += summaries.gold_line(published) + "\n"
         # Every production write is followed by a set covering what it wrote;
         # a Gold rebuild that publishes nothing wrote nothing.
-        wrote = from_stage == SILVER_STAGE or published.published
+        wrote = from_stage != GOLD_STAGE or published.published
         if profile.name != PRODUCTION_PROFILE_NAME or not wrote:
             sys.stdout.write(summary)
             return
@@ -588,6 +580,8 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
     except (
         ProfileFileError,
         ConfigurationError,
+        ConflictingDeclaredFormatsError,
+        UnsupportedSourceFormatError,
         NoPassphraseFileError,
         NoPassphraseTypedError,
         EmptyPassphraseError,
@@ -597,7 +591,6 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         return _refuse(error, EXIT_REFUSED_INPUT)
     except (
         NoProfileSelectedError,
-        RebuildFromStageNotBuiltError,
         UncommittedCodeError,
         SilverNotBuiltError,
         WriterLockHeldError,
