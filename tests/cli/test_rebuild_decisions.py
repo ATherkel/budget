@@ -13,6 +13,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+import pytest
+
 from budget.importing import Coverage, import_inbox_file
 from budget.locking import writer_lock
 from budget.profiles import Profile
@@ -154,6 +156,32 @@ class RebuildDecisionLogTests(unittest.TestCase):
             assert SENTINEL not in stderr
             assert SENTINEL not in stdout
             assert "SENSITIVE-SENTINEL-TARGET" not in stderr
+            with SilverStore(profile) as store:
+                assert store.read() == before
+
+    def test_an_unreadable_decision_log_refuses_without_changing_silver(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _migrated_profile_with_accounts(profile_file, folder)
+            _import_one_export(profile)
+            assert rebuild(profile_file, "--from", "silver")[0] == EXIT_OK
+            with SilverStore(profile) as store:
+                before = store.read()
+            decision_log = profile.input_file(DECISION_LOG)
+            decision_log.mkdir()
+            with pytest.raises(OSError, match=DECISION_LOG) as unreadable:
+                decision_log.read_bytes()
+            os_reason = unreadable.value.strerror
+            assert os_reason is not None
+
+            status, stdout, stderr = rebuild(profile_file, "--from", "silver")
+
+            assert status == EXIT_REFUSED_INPUT
+            assert stdout == ""
+            assert DECISION_LOG in stderr
+            assert os_reason in stderr
+            assert "Traceback" not in stderr
             with SilverStore(profile) as store:
                 assert store.read() == before
 
