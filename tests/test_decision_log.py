@@ -353,6 +353,17 @@ class CollisionTests(unittest.TestCase):
 
 
 class TypedDecisionTests(unittest.TestCase):
+    def test_an_adjustment_decision_carries_its_own_reason(self) -> None:
+        log = decision(
+            1, "classify", ["tx-a"], adjustment=True, reason="Opening balance fix"
+        )
+
+        read = read_log(log.encode())
+
+        assert read.gold == (
+            ClassifyAdjustment("d-0001", "tx-a", "Opening balance fix"),
+        )
+
     def test_each_kind_in_force_reads_as_its_typed_decision(self) -> None:
         log = (
             decision(1, "classify", ["tx-a"], category="gifts")
@@ -379,7 +390,7 @@ class TypedDecisionTests(unittest.TestCase):
 
         assert read.gold == (
             Classify("d-0001", "tx-a", "gifts"),
-            ClassifyAdjustment("d-0002", "tx-b"),
+            ClassifyAdjustment("d-0002", "tx-b", "Synthetic"),
             Pair("d-0003", ("tx-c", "tx-d")),
             OneSidedTransfer("d-0004", "tx-e", "joint-savings"),
         )

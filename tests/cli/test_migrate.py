@@ -1,5 +1,5 @@
 # Copyright 2026 Therkel
-"""`budget migrate`: creating and upgrading a profile's Bronze and Silver stores.
+"""`budget migrate`: creating and upgrading a profile's Bronze, Silver and Gold stores.
 
 Every test passes `main` an explicit environment, so a `BUDGET_PROFILE` set in
 the operator's shell never reaches a test.
@@ -7,13 +7,14 @@ the operator's shell never reaches a test.
 
 import sqlite3
 import unittest
-from contextlib import closing
+from contextlib import AbstractContextManager, closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
 import pytest
 
+from budget import sqlstore
 from budget.bronze import BronzeStore, migrate_bronze
 from budget.bronze.storage import (
     ForeignKeyViolationError,
@@ -21,6 +22,7 @@ from budget.bronze.storage import (
     StoreIdentityError,
 )
 from budget.cli import main
+from budget.gold.store import GoldStore
 from budget.profiles import test_profile as make_test_profile
 from budget.silver import SilverStore, migrate_silver
 from tests.bronze.migration_resources import (
@@ -34,6 +36,9 @@ from tests.cli.profile_files import development_profile, write_profile
 EXIT_OK = 0
 EXIT_REFUSED_ENVIRONMENT = 4
 
+_SHORT_BUSY_TIMEOUT_MS = 100
+_MARKER_TABLE = "CREATE TABLE marker (x TEXT) STRICT;\n"
+
 _ORPHAN_SOURCE_RECORD = (
     "INSERT INTO source_records (payload_id, record_ordinal, fields)"
     " VALUES ('missing-payload', 1, '{}');\n"
@@ -44,6 +49,17 @@ _INVALID_STATEMENT = "INSERT INTO nowhere (x) VALUES (this is not valid sql);\n"
 def _user_version(path: Path) -> int:
     with closing(sqlite3.connect(path)) as connection:
         return int(connection.execute("PRAGMA user_version").fetchone()[0])
+
+
+def _table_names(path: Path) -> set[str]:
+    with closing(sqlite3.connect(path)) as connection:
+        rows = connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        return {name for (name,) in rows}
+
+
+def _short_busy_timeout() -> AbstractContextManager[object]:
+    """Wait 100 ms for a held store instead of the real five seconds."""
+    return mock.patch.object(sqlstore, "BUSY_TIMEOUT_MS", _SHORT_BUSY_TIMEOUT_MS)
 
 
 class MigrateTests(unittest.TestCase):
@@ -83,7 +99,19 @@ class MigrateTests(unittest.TestCase):
             with SilverStore(development):
                 pass
 
-    def test_migrate_creates_both_stores_when_no_stage_is_named(self) -> None:
+    def test_the_gold_stage_can_be_migrated(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+
+            status, _ = migrate(write_profile(folder), "--stage", "gold")
+
+            assert status == EXIT_OK
+            development = development_profile(folder)
+            assert development.gold_store.exists()
+            with GoldStore(development):
+                pass
+
+    def test_migrate_creates_every_store_when_no_stage_is_named(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
 
@@ -93,7 +121,10 @@ class MigrateTests(unittest.TestCase):
             development = development_profile(folder)
             assert development.bronze_store.exists()
             assert development.silver_store.exists()
+            assert development.gold_store.exists()
             with BronzeStore(development), SilverStore(development):
+                pass
+            with GoldStore(development):
                 pass
 
 
@@ -108,16 +139,6 @@ class MigrateRefusalTests(unittest.TestCase):
 
             assert status == EXIT_REFUSED_ENVIRONMENT
             assert "production" in stderr
-            assert not (folder / "stores").exists()
-
-    def test_a_stage_that_is_not_built_yet_is_refused(self) -> None:
-        with TemporaryDirectory() as directory:
-            folder = Path(directory)
-
-            status, stderr = migrate(write_profile(folder), "--stage", "gold")
-
-            assert status == EXIT_REFUSED_ENVIRONMENT
-            assert "gold" in stderr
             assert not (folder / "stores").exists()
 
     def test_a_store_of_another_profile_is_refused(self) -> None:
@@ -157,6 +178,11 @@ class MigrateRefusalTests(unittest.TestCase):
                 }
                 assert migrate(profile_file, "--stage", other)[0] == EXIT_OK
                 paths[other].rename(paths[stage])
+                if stage == "bronze":
+                    # Silver is at a newer schema version than Bronze knows;
+                    # pretend otherwise so the stage mismatch is what refuses.
+                    with closing(sqlite3.connect(paths[stage])) as connection:
+                        connection.execute("PRAGMA user_version = 1")
 
                 status, stderr = migrate(profile_file, "--stage", stage)
 
@@ -227,12 +253,14 @@ class MigrateRefusalTests(unittest.TestCase):
 
     def test_a_store_another_program_holds_is_refused(self) -> None:
         # Such as DB Browser for SQLite, left open in a write transaction.
-        # The command waits out the real busy timeout, about five seconds.
         with TemporaryDirectory() as directory:
             folder = Path(directory)
             store = development_profile(folder).bronze_store
             store.parent.mkdir(parents=True)
-            with closing(sqlite3.connect(store, isolation_level=None)) as holder:
+            with (
+                closing(sqlite3.connect(store, isolation_level=None)) as holder,
+                _short_busy_timeout(),
+            ):
                 holder.execute("BEGIN EXCLUSIVE")
 
                 status, stderr = migrate(write_profile(folder))
@@ -241,6 +269,68 @@ class MigrateRefusalTests(unittest.TestCase):
             assert status == EXIT_REFUSED_ENVIRONMENT
             assert f"{store} is in use" in stderr
             assert store.read_bytes() == b""
+
+    def test_a_silver_store_another_program_holds_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            store = development_profile(folder).silver_store
+            store.parent.mkdir(parents=True)
+            with (
+                closing(sqlite3.connect(store, isolation_level=None)) as holder,
+                _short_busy_timeout(),
+            ):
+                holder.execute("BEGIN EXCLUSIVE")
+
+                status, stderr = migrate(write_profile(folder), "--stage", "silver")
+
+                holder.execute("ROLLBACK")
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert f"{store} is in use" in stderr
+            assert store.read_bytes() == b""
+
+    def test_a_gold_store_another_program_holds_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            store = development_profile(folder).gold_store
+            store.parent.mkdir(parents=True)
+            with (
+                closing(sqlite3.connect(store, isolation_level=None)) as holder,
+                _short_busy_timeout(),
+            ):
+                holder.execute("BEGIN EXCLUSIVE")
+
+                status, stderr = migrate(write_profile(folder), "--stage", "gold")
+
+                holder.execute("ROLLBACK")
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert f"{store} is in use" in stderr
+            assert store.read_bytes() == b""
+
+    def test_a_silver_store_another_program_writes_to_is_refused_an_upgrade(
+        self,
+    ) -> None:
+        # A migrated store is in WAL mode, where a writer leaves reads open: the
+        # refusal comes only when the pending migration starts to write.
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            migrate(profile_file, "--stage", "silver")
+            store = development_profile(folder).silver_store
+            version = _user_version(store)
+            with (
+                closing(sqlite3.connect(store, isolation_level=None)) as holder,
+                added_migration(_MARKER_TABLE, folder=SILVER_MIGRATIONS),
+                _short_busy_timeout(),
+            ):
+                holder.execute("BEGIN IMMEDIATE")
+
+                status, stderr = migrate(profile_file, "--stage", "silver")
+
+                holder.execute("ROLLBACK")
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert f"{store} is in use" in stderr
+            assert _user_version(store) == version
+            assert "marker" not in _table_names(store)
 
 
 class MigrateDefectTests(unittest.TestCase):

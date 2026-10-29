@@ -20,10 +20,14 @@ class Classify:
 
 @dataclass(frozen=True)
 class ClassifyAdjustment:
-    """Classify one transaction as an adjustment, which takes no category."""
+    """Classify one transaction as an adjustment, which takes no category.
+
+    `reason` is the decision's own, the explanation every adjustment carries.
+    """
 
     decision_id: str
     transaction_id: str
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -44,3 +48,21 @@ class OneSidedTransfer:
 
 
 type GoldDecision = Classify | ClassifyAdjustment | Pair | OneSidedTransfer
+
+
+def log_kind(decision: GoldDecision) -> str:
+    """Name the decision's kind as the decision log writes it."""
+    match decision:
+        case Classify() | ClassifyAdjustment():
+            return "classify"
+        case Pair():
+            return "pair"
+        case OneSidedTransfer():
+            return "one-sided-transfer"
+
+
+def targets(decision: GoldDecision) -> tuple[str, ...]:
+    """Name the transactions a decision targets."""
+    if isinstance(decision, Pair):
+        return decision.transaction_ids
+    return (decision.transaction_id,)

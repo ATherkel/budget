@@ -74,7 +74,7 @@ A recipe names each input exactly and never by "latest":
 
 | Part | Content |
 | --- | --- |
-| Data | The set of import runs, each with its `import_run_id` and payload hash. Silver derives admission and quarantine from these; admission is not an input. |
+| Data | The set of import runs Silver was built from, each with its `import_run_id` and payload hash: the stored runs, admitted or quarantined, and the `repeat` runs of an admitted payload. Silver derives admission and quarantine from these; admission is not an input. A refused run is no input to Silver, so it is not named, and presenting a refused file again publishes nothing. The recipe is read from Silver, never from Bronze, so Gold does not read Bronze. |
 | Configuration snapshot | The parsed, canonical content of the account registry, category taxonomy, and classification rules. It is stored once per distinct content and referenced by its fingerprint. |
 | Late-booking window | The profile's `[gold] late_booking_days` at the build, in whole days ([`operations.md`](operations.md#selecting-a-profile)). `late_bookings_settled` depends on it, so changing it requires a new publication, and an earlier publication keeps the window its recipe records. |
 | Decision log position | The last decision-log entry included. The effective decisions are derived from the log up to that entry. |
@@ -195,6 +195,14 @@ The publication current at a moment is the `to_publication_id` of the last
 move at or before it. The previous current publication is the
 `from_publication_id` of the last move. The printed diff and the dashboard
 banner show the cause.
+
+### Publication recovery
+
+`restore` brings back Gold's recipes, results and pointer history as they
+stood in the backup set; publications, labels and pointer moves made after it
+are lost. If the recipe changed since, catch-up builds a new current
+publication, and undo returns from it to the set's current one while that
+result is still usable. How the gap is recorded is left to issue #121.
 
 ### Past views
 
@@ -348,6 +356,38 @@ follows it. The dashboard then says that nothing is published. `open()` raises
 not retained. Example: a page is pinned to P5, two imports run, and P5's
 result is deleted. The page's next request gets `PublicationUnavailableError`, and
 the dashboard offers the current publication instead.
+
+### Reader Connection Lifetime
+
+The dashboard's production reader is a `GoldStore(profile, read_only=True)`.
+It owns one SQLite connection opened with `mode=ro`. Open, use, and close that
+store on the thread that created it, within one synchronous request or task:
+
+```python
+with GoldStore(profile, read_only=True) as publications:
+    reports = HouseholdReports(publications)
+    overview = reports.monthly_overview(context)
+
+# `overview` and `context` are immutable DTOs; the store's connection is gone.
+```
+
+A page carries its `ReportContext`, not a live store or `GoldRepository`.
+Follow-up requests may run on different server threads, and each creates a
+fresh read-only store in the thread that will use it. A repository returned by
+`open()` borrows its store's connection and cannot outlive that store.
+
+Lifecycle misuse has explicit public errors. A store used after close raises
+`GoldStoreClosedError`; a store or borrowed repository used from another thread
+raises `GoldStoreThreadError`. These errors subclass
+`GoldStoreLifecycleError`. They are not `PublicationUnavailableError`, because
+retention has not removed the result, and analytics propagates them unchanged.
+Closing is idempotent on the creating thread. A wrong-thread close raises
+`GoldStoreThreadError` without closing or releasing the owner's connection.
+SQLite's thread check stays enabled; the supported design opens a new
+connection per thread and request instead of sharing one across threads.
+
+Publishing remains a writable-store operation. Calling `publish()` on a
+read-only store raises `GoldStoreReadOnlyError` before any write.
 
 ## Synthetic Scenarios
 

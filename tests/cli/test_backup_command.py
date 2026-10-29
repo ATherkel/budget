@@ -83,6 +83,48 @@ class BackupCommandTests(unittest.TestCase):
                 "bronze": {"path": "bronze.db", "schema_version": 1},
             }
 
+    def test_backup_leaves_out_a_gold_store_an_interrupted_start_left_empty(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            for stage in ("bronze", "silver"):
+                started = migrate(profile_file, "--stage", stage, "--new-store")
+                assert started[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            # What a first `--stage gold --new-store` cut off inside Gold's
+            # migration leaves: a WAL-mode file at schema version 0, no tables.
+            with closing(sqlite3.connect(production.gold_store)) as store:
+                store.execute("PRAGMA journal_mode = WAL")
+
+            status, _, stderr = backup(profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            newest, *_ = complete_backup_sets(production)
+            assert manifest(newest.path)["stores"] == {
+                "bronze": {"path": "bronze.db", "schema_version": 1},
+                "silver": {"path": "silver.db", "schema_version": 2},
+            }
+
+    def test_backup_is_refused_where_a_gold_store_its_sets_hold_is_left_empty(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory), name="production")
+            assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+            production = load_profile_file(profile_file)
+            sets = complete_backup_sets(production)
+            for lost in production.stores.glob("gold.db*"):
+                lost.unlink()
+            with closing(sqlite3.connect(production.gold_store)) as store:
+                store.execute("PRAGMA journal_mode = WAL")
+
+            status, stdout, stderr = backup(profile_file)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "Gold store must be restored" in stderr
+            assert complete_backup_sets(production) == sets
+
     def test_backup_is_refused_where_a_store_its_sets_hold_is_left_empty(
         self,
     ) -> None:

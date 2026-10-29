@@ -1,21 +1,48 @@
 # Copyright 2026 Therkel
 """The terminal summaries the pipeline commands end with.
 
-These lines reach the operator's terminal, never a routine log, and they carry
-only identifiers and existing reason codes: a run's validation-error codes and
-the kinds of the review items it raised. No amount, balance, description, bank
-category, original filename, transaction id or validation message appears.
+These lines reach the operator's terminal, never a routine log. Rebuild and
+import summaries carry only identifiers and existing reason codes. Review also
+prints the account, date, amount, description, bank category and short handle
+needed to classify a target; that financial context is permitted on stdout and
+is never passed to routine logging. No balance, original filename, full
+transaction id or arbitrary validation message appears.
 """
 
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Final
 
 from budget.bronze.models import ImportRun
+from budget.gold import ClassificationReviewKind
+from budget.gold.models import GoldReviewTarget
 from budget.inbox import LEFT_IN_INBOX, FileOutcome, ImportedInbox
-from budget.rebuilding import SilverRebuild
-from budget.reviewing import OpenReview, OpenReviews
+from budget.rebuilding import GoldRebuild, SilverRebuild
+from budget.reviewing import OpenGoldReview, OpenReview, OpenReviews
 from budget.silver import ImportRunResult, ReviewItem, SilverResult
+
+_MAX_BYTE_CODE_POINT: Final = 0xFF
+_SETTLEMENT_GUIDANCE: Final[Mapping[ClassificationReviewKind, str]] = MappingProxyType(
+    {
+        "unclassified": "choose a rule or {choice}",
+        "rule-conflict": ("adjust rule priority or narrow a rule; otherwise {choice}"),
+        "sign-mismatch": (
+            "choose a narrower rule; or {choice} "
+            "(a category decision cannot apply to zero)"
+        ),
+        "ambiguous-transfer": (
+            "pair the intended legs if their amounts still cancel; otherwise {choice}"
+        ),
+        "unmatched-transfer": (
+            "wait for the next import or pair the transfer if the counterpart "
+            "appears and amounts cancel; use one-sided-transfer only if the "
+            "counterpart is outside its managed period; otherwise {choice}"
+        ),
+        "decision-not-applicable": "supersede or retract the decision",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -34,6 +61,17 @@ def rebuild_summary(rebuild: SilverRebuild) -> str:
     lines = [_bronze_line(rebuild.runs), *_account_lines(rows, rebuild.result)]
     lines.extend(_run_line(row) for row in rows)
     return "\n".join(lines) + "\n"
+
+
+def gold_line(rebuilt: GoldRebuild) -> str:
+    """Say whether a Gold rebuild published, and which publication is current."""
+    number = rebuilt.publication.publication_id
+    if rebuilt.published:
+        return f"Gold     published publication {number}"
+    return (
+        "Gold     the recipe is unchanged; nothing was published "
+        f"(publication {number} stays current)"
+    )
 
 
 def _row(run: ImportRun, rebuild: SilverRebuild) -> _Row:
@@ -138,6 +176,12 @@ def import_summary(imported: ImportedInbox) -> str:
     A file is named by its number in the listing the prompt showed, never by
     its filename, which can carry a bank account number.
     """
+    if imported.held_back is not None:
+        lines = [_file_line(each, {}) for each in imported.files]
+        lines.append("Silver and Gold were not rebuilt.")
+        if imported.backup is not None:
+            lines.append(f"Backup   backup set {imported.backup.name} written")
+        return "\n".join(lines) + "\n"
     if imported.rebuilt is None:
         lines = [_file_line(each, {}) for each in imported.files]
         lines.append("Nothing was imported.")
@@ -149,6 +193,8 @@ def import_summary(imported: ImportedInbox) -> str:
         f"Silver   {counts['admitted']} admitted, {counts['quarantined']}"
         f" quarantined, {counts['dropped']} dropped"
     )
+    if imported.published is not None:
+        lines.append(gold_line(imported.published))
     if imported.backup is not None:
         lines.append(f"Backup   backup set {imported.backup.name} written")
     return "\n".join(lines) + "\n"
@@ -183,13 +229,107 @@ def _file_line(outcome: FileOutcome, quarantined: Mapping[str, tuple[str, ...]])
 
 
 def review_summary(reviews: OpenReviews) -> str:
-    """Report each open item, then each unshown quarantined run; else nothing."""
+    """Report Silver and Gold items, then each unshown quarantined run."""
     return "".join(
         [
             *(_review_line(entry) for entry in reviews.items),
+            *(_gold_review_line(entry) for entry in reviews.gold_items),
             *(_quarantined_line(run) for run in reviews.runs),
         ]
     )
+
+
+def _gold_review_line(entry: OpenGoldReview) -> str:
+    """One Gold item: stable references, publication and target contexts."""
+    item = entry.item
+    handles = ", ".join(transaction_id[:8] for transaction_id in item.transaction_ids)
+    parts = [
+        item.review_item_id,
+        item.kind,
+        "gold",
+        f"publication {entry.publication_id}",
+    ]
+    if handles:
+        parts.append(f"targets {handles}")
+    if item.rule_ids:
+        parts.append(f"rules {', '.join(item.rule_ids)}")
+    if item.decision_id is not None:
+        parts.append(f"decision {item.decision_id}")
+    header = "  ".join(parts)
+    targets = "".join(f"\n{_gold_target_line(target)}" for target in entry.targets)
+    return f"{header}{targets}\n{_gold_settlement_line(entry)}\n"
+
+
+def _gold_settlement_line(entry: OpenGoldReview) -> str:
+    """Name the decisions that can settle this kind, and their conditions."""
+    item = entry.item
+    if item.kind == "decision-not-applicable" and item.decision_id is not None:
+        guidance = f"supersede or retract decision {item.decision_id}"
+    else:
+        guidance = _SETTLEMENT_GUIDANCE[item.kind].format(
+            choice=_classification_choice(entry.targets)
+        )
+    return f"  settle  {guidance}"
+
+
+def _classification_choice(targets: Sequence[GoldReviewTarget]) -> str:
+    """Offer category decisions only for nonzero targets in the published item."""
+    has_zero = any(target.amount.is_zero() for target in targets)
+    has_nonzero = any(not target.amount.is_zero() for target in targets)
+    if has_zero and has_nonzero:
+        return (
+            "classify zero-amount targets as adjustments and nonzero targets as a "
+            "category or adjustment"
+        )
+    if has_zero:
+        return "classify a zero-amount target as an adjustment"
+    return "classify a target as a category or adjustment"
+
+
+def _gold_target_line(target: GoldReviewTarget) -> str:
+    """One target's account, date, money, description and bank category."""
+    bank_category = (
+        "unavailable"
+        if target.bank_category is None
+        else _terminal_text(target.bank_category)
+    )
+    return (
+        f"  target {target.transaction_id[:8]}  {target.account_id}"
+        f"  {target.transaction_date.isoformat()}"
+        f"  {target.amount} {target.currency}"
+        f"  {_quoted_terminal_text(target.description)}"
+        f"  bank category {bank_category}"
+    )
+
+
+def _quoted_terminal_text(text: str) -> str:
+    """Quote free text and escape control characters so it stays on one line."""
+    escaped = _terminal_text(text).replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _terminal_text(text: str) -> str:
+    """Escape backslashes and non-printing characters without hiding Unicode."""
+    escaped: list[str] = []
+    for character in text:
+        if character == "\\":
+            escaped.append("\\\\")
+        elif character.isprintable():
+            escaped.append(character)
+        elif character == "\n":
+            escaped.append("\\n")
+        elif character == "\r":
+            escaped.append("\\r")
+        elif character == "\t":
+            escaped.append("\\t")
+        else:
+            codepoint = ord(character)
+            escaped.append(
+                f"\\x{codepoint:02x}"
+                if codepoint <= _MAX_BYTE_CODE_POINT
+                else f"\\u{codepoint:04x}"
+            )
+    return "".join(escaped)
 
 
 def _quarantined_line(run: ImportRunResult) -> str:

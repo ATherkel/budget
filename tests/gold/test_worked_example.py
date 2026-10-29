@@ -12,11 +12,14 @@ from decimal import Decimal
 from itertools import dropwhile, takewhile
 from pathlib import Path
 
-from budget.gold import ReportingMonth
+from budget.gold import GoldResult, ReportingMonth
+from tests.gold.invariants import assert_contract_invariants
 from tests.gold.worked_example import (
     CATEGORY_ALLOCATIONS,
     CURRENT,
     MONTHLY_BALANCES,
+    PUBLICATION,
+    RECORDS,
     SAVINGS,
     TRANSACTIONS,
 )
@@ -141,3 +144,7 @@ def test_the_monthly_balances_are_the_docs() -> None:
     ]
 
     assert example == doc
+
+
+def test_the_worked_example_keeps_contract_invariants_10_and_12() -> None:
+    assert_contract_invariants(GoldResult(PUBLICATION, RECORDS))

@@ -64,6 +64,36 @@ def import_(
     return status, stdout.getvalue(), stderr.getvalue()
 
 
+def set_passphrase(profile_file: Path, typed: str) -> tuple[int, str, str]:
+    """Run `budget set-passphrase`; `typed` is the passphrase lines piped in."""
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with (
+        redirect_stdout(stdout),
+        redirect_stderr(stderr),
+        mock.patch("sys.stdin", io.StringIO(typed)),
+    ):
+        status = main(["--profile", str(profile_file), "set-passphrase"], environ={})
+    return status, stdout.getvalue(), stderr.getvalue()
+
+
+def serve(profile_file: Path) -> tuple[int, str, str]:
+    """Run `budget serve`, which a test only ever expects to refuse.
+
+    Starting the server would block the test run, so it fails at once instead.
+    """
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    started = AssertionError("serve started a server instead of refusing")
+    with (
+        redirect_stdout(stdout),
+        redirect_stderr(stderr),
+        mock.patch("uvicorn.run", side_effect=started),
+    ):
+        status = main(["--profile", str(profile_file), "serve"], environ={})
+    return status, stdout.getvalue(), stderr.getvalue()
+
+
 def review(profile_file: Path, *options: str) -> tuple[int, str, str]:
     """Run `budget review` with one profile file; return status and output."""
     stdout = io.StringIO()

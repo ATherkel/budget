@@ -174,6 +174,7 @@ keep_monthly    = "forever"   # then the newest set of each month
 late_booking_days = 7         # days after a month ends before an export settles it
 
 [dashboard]
+passphrase_file = 'C:\Users\household\AppData\Roaming\budget\production-passphrase'
 bind = "192.168.1.20"         # reserve this address for the PC in the router
 port = 8750
 ```
@@ -235,7 +236,7 @@ Because a restored set never changes, those stores are opened with SQLite's
 | --- | --- | --- | --- |
 | Source parsing (Bronze code) | `rebuild --from bronze` | Raw payloads and import runs | `bronze.db` (source records re-derived), `silver.db`, `gold.db` |
 | Silver mapping, identity, or a Silver decision | `rebuild --from silver` | `bronze.db` | `silver.db`, `gold.db` |
-| Accounts, taxonomy, rules, a classification decision, or Gold code | `rebuild --from gold` | `bronze.db`, `silver.db` | `gold.db` |
+| Accounts, taxonomy, rules, a classification decision, or Gold code | `rebuild --from gold` | `silver.db` | `gold.db` |
 
 Development's inputs are a working copy. `dev refresh --inputs` replaces them
 with production's; plain `dev refresh` leaves them alone. A development store
@@ -471,7 +472,8 @@ crash while it was being written, and is treated as never written: `check` repor
 refuses until the partial line is deleted. No build has read it, so deleting
 it is the one safe hand edit. If an earlier entry is ever damaged, copy the
 log back from the newest backup set, whose manifest records its length, and
-record again the decisions made since.
+record again the decisions made since. `restore` stops on a damaged log
+instead of replacing it.
 
 ### `imports.jsonl`: the import log
 
@@ -567,7 +569,7 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | `view --as-was <date> \| --known-at <date> --label <text>` | Builds or finds a past view (ADR-014). Without options, lists retained and legacy publications. | `gold.db`, through a scratch store | Never current |
 | `label <publication_id> <text>` / `unlabel …` | Keeps a result beyond the retention rule, or stops keeping it. | `gold.db` | No |
 | `backup` | Writes a backup set of production and names it. Also runs automatically; see below. | The backups folder | No |
-| `restore [<backup set>]` | Restores the newest complete set, or the one named, into an empty profile, catches up with the import log, then runs `verify`. | Every store | Yes, if it caught up |
+| `restore [<backup set>]` | Restores the newest complete set, or the one named, into an empty profile and catches up with the import log. | Every store | Yes, if it caught up |
 | `restore --from-archive` | Last resort: rebuilds Bronze from the archive and the import log, then Silver and Gold. | Every store | Yes |
 | `verify` | Checks integrity, and replays the current publication's recipe to prove it reproduces (ADR-014). | `scratch/` only | No |
 | `dev refresh [--inputs] [--writable]` | Development only: restores production's newest complete backup set into `upstream/`, or with `--writable` into development's own stores. | Development only | No |
@@ -588,7 +590,7 @@ matches more than one transaction is refused.
 | 0 | Done. Open review items and quarantined imports are results, not failures. |
 | 1 | Unexpected error: a defect. Python's own exit status for an unhandled exception. |
 | 2 | Usage error. `argparse`'s own exit status. |
-| 3 | Refused input: a configuration error, a rejected decision, a misfiled export, an import run Bronze refused, or an inbox file a cross-account duplicate refused. Every file such a group holds is refused, whether or not the person allowed the import of the rest, and `import` still publishes the files it stored. |
+| 3 | Refused input: a configuration error, a rejected decision, a misfiled export, an import run Bronze refused, a retained payload that `rebuild --from bronze` finds declared as more than one source format or in a format this code has no parser for, or an inbox file a cross-account duplicate refused. Every file such a group holds is refused, whether or not the person allowed the import of the rest, and `import` still publishes the files it stored. |
 | 4 | Refused environment: no profile, a store from another profile or stage, a missing or newer migration, SQLite below the version floor, uncommitted code in production, running code other than the code version a replayed recipe names (ADR-014), another writing command running, a store locked past its busy timeout, or `restore` into a profile that has stores. |
 | 5 | Verification failed: a fingerprint mismatch, a failed integrity check, a backup set whose checksums do not match its manifest, or an import log that disagrees with Bronze. |
 
@@ -723,7 +725,7 @@ On the new machine: install the code version the newest backup set's manifest
 names, write the production profile, run `budget restore`, then
 `budget serve`. `restore` takes the newest complete set, replays every import
 that the live `imports.jsonl` lists beyond the set, from the export archive,
-rebuilds with any decisions recorded since, and runs `verify`. Nothing is
+and rebuilds with any decisions recorded since. Nothing is
 missing, provided OneDrive had synchronised the inputs folder and the export
 archive.
 
@@ -738,11 +740,13 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 
 | Failure | Effect | Retry |
 | --- | --- | --- |
-| Configuration error, including an unknown file in the inputs folder | Nothing is built; exit 3 | Fix or remove the file and rerun |
+| Configuration error, including an unknown file in the inputs folder | Nothing is built and no store is replaced, `import` stores no file; exit 3. So are the refusals that follow from the files about to be imported: a decision naming a category the taxonomy dropped, an account closed before an incoming transaction | Fix or remove the file and rerun |
 | A declared range whose `from` falls after its `through` | At the prompt, the range is asked again and nothing reaches Bronze. In a ranges file, the whole file is refused, listing every problem, before anything is imported; exit 3 | Type the range again, or correct the ranges file and rerun |
+| `import` stored files, then Silver or Gold refused in a way no check before the first write could foresee | Bronze, the archive and the import log are committed and the inbox files are gone; Silver and Gold are not rebuilt and the previous publication stays current. Production still writes its backup set; exit 4, saying so and naming `budget import` | Put the cause right and run `import` again: with or without inbox files it finishes the Silver rebuild, the publication and production's backup. An `import` with nothing outstanding changes nothing |
+| A `rebuild` writes stores in production, then its backup set cannot be written | The stores are rebuilt; exit 4, saying so | Put right what the message names, then run `budget backup` |
 | Refused import run (account conflict, or a declared range that ends after the export date or leaves out one of the payload's transactions) | Recorded as refused and logged, with a copy of its bytes under `exports\<account_id>\refused\`; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file or correct the declaration, then rerun |
 | Misfiled export (the filename's account number is not the account's declared `bank_account_number`) | Rejected before Bronze: no import run is recorded and nothing reaches the import log; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file to the right account's folder, or fix the declaration, then rerun |
-| Format failure (the file's format cannot read it) | Found by the preview and not imported: nothing reaches Bronze, the file stays in the inbox, the other files are stored; exit 3. Bronze can still record a `FormatFailure`, but `import` holds the file instead, because nothing re-reads a stored failure until `rebuild --from bronze` exists | Download the export again, or fix the parser, then rerun `import`. Never edit the export by hand |
+| Format failure (the file's format cannot read it) | Found by the preview and not imported: nothing reaches Bronze, the file stays in the inbox, the other files are stored; exit 3. Bronze can still record a `FormatFailure`, but `import` holds the file instead, so a parser fix needs no new presentation: `rebuild --from bronze` parses the retained payload again | Download the export again, or fix the parser, then rerun `import`. Never edit the export by hand |
 | A payload the inbox holds under two or more declared accounts (a cross-account duplicate) | Reported before anything is written, with each file's account, filename, export date, record count and transaction dates; every file the group holds is refused and stays in the inbox, and no import run is recorded for it; the files the group does not hold are imported only if the person answers `y` or `yes`; with no terminal to ask, or any other answer, nothing is imported; exit 3 | Check which account the bank exported it from, download the affected accounts again, remove the duplicate, then rerun |
 | Crash during an import | Each file is idempotent: a file whose account, original filename and payload hash already have a `stored` or `repeat` run is finished (archived, logged once, and removed from the inbox) without a new run. Any other run Bronze holds but the log lacks is archived and logged by the next import | Rerun `import` |
 | The archive holds other bytes, a file where a folder must go, or a place reserved for other bytes, everywhere a run's export may go | Nothing is overwritten; the run stays in Bronze but is not logged; every import stops before writing, naming the account and the run | Move the conflicting archive file aside, then rerun |
@@ -759,9 +763,9 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | A decision-log line cut off by a crash | `check` reports it; `decide` refuses | Delete the partial last line |
 | Crash while writing a backup set | The set stays in `backup-staging\` or as a `.partial` folder, is never used, and is deleted by the next backup | Nothing to do |
 | The backup before a migration cannot be written or verified | The migration does not begin; the schema and its version are unchanged; exit 4, or 5 when a copy or the import log does not verify | Fix what the message names, then rerun `migrate` |
-| A migration fails | No step of it is committed and the store keeps its version, though a stage migrated before it (Bronze, before Silver) keeps its new one; the set taken first stays held for recovery until a migration succeeds, or a later backup records a store past it | Fix the defect; the held set restores the stores if needed |
+| A migration fails | No step of it is committed and the store keeps its version, though a stage migrated before it (Bronze before Silver, and both before Gold) keeps its new one; the set taken first stays held for recovery until a migration succeeds, or a later backup records a store past it | Fix the defect; the held set restores the stores if needed |
 | The backup after a migration fails | The store is migrated; the set taken first stays held; exit 4, saying so | Fix what the message names, then run `budget backup` |
-| `migrate` finds no production store for a stage, or only a file an interrupted start left empty | Nothing is created or changed, in any stage; exit 4. So is `--new-store` where one of the stores it would start is started already, naming the `--stage` that starts the rest, and Silver where Bronze has no store a backup set can hold, since every set holds Bronze | Restore the newest backup set that holds it, or, for a first store, rerun with `--new-store`, adding `--stage` for that stage alone when the other stage's store exists |
+| `migrate` finds no production store for a stage, or only a file an interrupted start left empty | Nothing is created or changed, in any stage; exit 4. So is `--new-store` where one of the stores it would start is started already, naming the `--stage` that starts the rest, and Silver or Gold where Bronze has no store a backup set can hold, since every set holds Bronze | Restore the newest backup set that holds it, or, for a first store, rerun with `--new-store`, adding `--stage` for that stage alone when another stage's store exists |
 | A store a complete backup set holds is missing, or only a file an interrupted start left empty | `backup`, and a `migrate` that would back up, publish nothing and change nothing; exit 4 | Restore the store from the newest backup set that holds it |
 | OneDrive offline | Complete backup sets wait in the local OneDrive folder | Nothing to do |
 
@@ -775,16 +779,18 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   holds a snapshot of every store taken through SQLite's backup API, a copy of
   every file in the inputs folder under `inputs\`, and `manifest.json`. The
   export archive is not copied, because Bronze holds each payload's bytes.
-  Until Gold has a store, a set holds `bronze.db` and, once the profile has
-  one, `silver.db`, and a backup is refused while the stores folder holds any
-  other store: `gold.db`, a `gold\` folder, or any other SQLite file. A set
-  without it would claim to be a complete copy of the profile. A set written
-  before sets covered Silver holds `bronze.db` alone, in the same manifest
-  format: it stays complete, retention treats it as any other set, and since
-  it holds no Silver store, it never stops `migrate --new-store` starting one.
-  Once a complete set holds a Silver store, a backup is refused while the
-  stores folder has none: a set without it would drop a store the profile
-  had, and retention would in time prune every set holding it.
+  A set holds `bronze.db` and, once the profile has them, `silver.db` and
+  `gold.db`. A backup is refused while the stores folder holds any other
+  store: a `gold\` folder of legacy extracts, which nothing writes before the
+  history release, or any other SQLite file. A set without it would claim to
+  be a complete copy of the profile. A set written before sets covered Silver
+  or Gold holds `bronze.db` alone, or `bronze.db` and `silver.db`, in the
+  same manifest format: it stays complete, retention treats it as any other
+  set, and since it holds no store of the later stage, it never stops
+  `migrate --new-store` starting one. Once a complete set holds a Silver or
+  Gold store, a backup is refused while the stores folder has none: a set
+  without it would drop a store the profile had, and retention would in time
+  prune every set holding it.
 - **The manifest** records, in this order:
 
   ```json
@@ -795,12 +801,14 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
     "code_version": {"package": "0.1.0", "source_sha256": "9f2c…"},
     "stores": {
       "bronze": {"path": "bronze.db", "schema_version": 1},
-      "silver": {"path": "silver.db", "schema_version": 1}
+      "silver": {"path": "silver.db", "schema_version": 1},
+      "gold": {"path": "gold.db", "schema_version": 1}
     },
     "logs": {"imports.jsonl": 1730, "decisions.jsonl": 0},
     "files": {
       "bronze.db": {"sha256": "c0ffee…", "bytes": 81920},
       "silver.db": {"sha256": "beefed…", "bytes": 90112},
+      "gold.db": {"sha256": "facade…", "bytes": 131072},
       "inputs/accounts.toml": {"sha256": "5ca1ab…", "bytes": 412},
       "inputs/imports.jsonl": {"sha256": "0ddba1…", "bytes": 1730}
     }
@@ -822,11 +830,14 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   logs and completes, so they are backed up as they are.
 - **When:** in production, before a `migrate` that changes an existing
   store, and after every `migrate` that changed anything, a new store
-  included; and by `budget backup`. A `migrate` that changes both Bronze and
-  Silver takes one set before the first change and one after the last. A
-  migration that changes nothing writes no set. After every `import` that
-  presented a file to Bronze, once Silver is rebuilt; an import whose inbox
-  is empty, or that is not confirmed, writes none. Only production writes
+  included; and by `budget backup`. A `migrate` that changes more than one
+  store, which it does in the order Bronze, Silver, Gold, takes one set
+  before the first change and one after the last. A migration that changes
+  nothing writes no set. After every `import` that presented a file to
+  Bronze, once Silver is rebuilt and Gold published or held back; an import
+  whose inbox is empty writes one only when it finishes what an earlier import
+  left outstanding, and one that is not confirmed writes none. After every
+  `rebuild` that wrote stores, too. Only production writes
   backup sets. What would refuse that set refuses the import before its
   first Bronze write; a set that still cannot be written leaves the imports
   committed, exits 4, and says to run `budget backup`.
@@ -852,7 +863,7 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   of daily sets can take a few gigabytes; the keys are there to tune that.
 - **Never pruned:** a set whose manifest format this code does not read,
   since a later version may record a reason to keep it, such as a legacy
-  entry (none exist before Gold has a store); and every set held for
+  entry (none exist before the history release); and every set held for
   recovery. A `migrate` holds the set it takes first in `recovery-sets.json`
   beside the stores, and releases it once a migration succeeds and its own
   set is written. A failed or interrupted migration therefore keeps its set
@@ -867,10 +878,16 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
 - **`restore`** writes only into a profile with no stores. It takes the newest
   complete set unless one is named, checks every SHA-256 against the
   manifest, runs `PRAGMA integrity_check`, and migrates stores older than the
-  code. It then catches up: it uses the live inputs folder, or the set's copy
-  when the live one is missing, replays every `imports.jsonl` line beyond the
-  length the manifest recorded, taking each file from the export archive, and
-  rebuilds if anything was replayed or decided since. Finally it runs `verify`.
+  code. It restores every store in the set together, never one beside
+  surviving stores: to recover a damaged profile, first move its `.db` files
+  and `gold\legacy\` out of the profile folder. It then catches up: it uses the
+  live inputs, or the set's copy of any that are missing, replays the import
+  log under [its rules](#importsjsonl-the-import-log), taking each file from
+  the export archive, and builds a new publication if the recipe changed. A
+  surviving decision log must extend the set's copy, or `restore` stops.
+  Publications made after the set are lost
+  ([Publication recovery](publications.md#publication-recovery)). It does not
+  run `verify`, whose recipe replay is deferred.
 - **`verify`** runs `PRAGMA integrity_check` on every store, then replays the
   current publication's recipe from Bronze in a scratch store and compares the
   result fingerprint with the recorded one. It refuses to run when the running
@@ -885,15 +902,25 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   firewall rule allows the port on private networks only. Nothing is reachable
   from the internet.
 - One household passphrase guards every page. It is stored as a `scrypt` hash
-  in a file under `%APPDATA%\budget\`, never in OneDrive or the repository. A
-  successful login sets an `HttpOnly`, `SameSite=Strict` session cookie
-  holding its expiry, signed with a key derived from the passphrase hash so
-  that it cannot be forged. The dashboard keeps no session store, so
-  restarting `serve` keeps logins. Repeated failed logins are slowed down.
+  in the file the profile's `[dashboard] passphrase_file` names: an absolute
+  path, under `%APPDATA%\budget\` in production, never in OneDrive or the
+  repository. `set-passphrase` asks for it twice, refuses an empty passphrase
+  or a confirmation that does not match, and replaces the file whole, so
+  `serve` never reads a half-written one. `serve` refuses to start until a
+  passphrase is set. A successful login sets an `HttpOnly`, `SameSite=Strict`
+  session cookie holding its expiry, signed with a key derived from the
+  passphrase hash so that it cannot be forged. The dashboard keeps no session
+  store, so restarting `serve` keeps logins.
+- Repeated failed logins are slowed down: after 5 failures in a row, every
+  login is refused (HTTP 429) for 30 seconds, and each further lock is twice
+  as long, up to 15 minutes. After a lock ends, 5 more failures lock again. A
+  successful login resets the count and the doubling. These are constants of
+  the code, and one count serves the whole household.
 - A login lasts while it is used: every request renews the cookie for another
-  30 days, so a device unused for 30 days asks for the passphrase again. There
-  is no absolute cap on a login's total age. The 30 days are a constant of the
-  code, not a profile setting.
+  30 days, so a device unused for 30 days asks for the passphrase again. The
+  cookie's `Max-Age` is the same 30 days, so closing the browser keeps it.
+  There is no absolute cap on a login's total age. The 30 days are a constant
+  of the code, not a profile setting.
 - Logout deletes the cookie in that browser only. To end a login on a device
   you no longer control, or a cookie that may have leaked, run
   `set-passphrase`, which logs out every device at once.
@@ -905,8 +932,10 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
 - **Plain HTTP on the home network is an accepted risk.** Someone on the same
   Wi-Fi who captures traffic could read the passphrase and pages. HTTPS with a
   locally trusted certificate is the upgrade path if that changes.
-- The dashboard opens `gold.db` read-only and is given no other store's
-  path. It has no route that writes, apart from login and logout.
+- The dashboard opens `gold.db` read-only and opens no other store. It is
+  built from the profile, which also names the other stores' paths, but it
+  reads Gold only through analytics. It has no route that writes, apart from
+  login and logout, and no response it sends may be cached.
 - The production address is fixed in the profile, so reserve it for the PC in
   the router; otherwise `serve` fails to start when the router hands out
   another one.
@@ -948,9 +977,11 @@ and run at least once in development against a restored production backup.
 
 - `uv` with a uv-managed Python 3.12 or newer, whose SQLite meets ADR-013's
   floor, on the household machine and in CI.
-- The CLI uses only the standard library: `argparse`, `tomllib`, `json`,
-  `sqlite3`, `hashlib`, `logging`. The dashboard adds its presentation stack
-  (FastAPI, Jinja, HTMX, Plotly) when it is built.
+- The pipeline commands use only the standard library: `argparse`,
+  `tomllib`, `json`, `sqlite3`, `hashlib`, `logging`. The dashboard, behind
+  `serve` and `set-passphrase`, adds its presentation stack: FastAPI with
+  uvicorn, Jinja, and htmx, whose script ships inside the package so nothing
+  is fetched from the internet. Plotly arrives with the first chart.
 - `git` on the household machine, so a production build can name its commit
   and refuse uncommitted code (ADR-014).
 - The existing quality gate: ruff, ty, complexipy, pytest.

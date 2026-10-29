@@ -306,6 +306,21 @@ build that follows it. `open()` raises `PublicationUnavailableError`
 when the publication does not exist or its result is not retained, including
 one deleted after a consumer last opened it.
 
+The concrete `GoldStore` owns one connection for one synchronous request or
+task. Open, use, and close it on the thread that created it. Do not cache a
+store or repository across requests or use it from another server thread; a
+page carries `ReportContext`, and each follow-up request opens a fresh reader
+in its own thread. A repository borrowed from `open()` cannot outlive its
+store. `GoldStore(profile, read_only=True)` uses SQLite `mode=ro` for reporting,
+while the default remains writable for publishing.
+
+Use after close raises `GoldStoreClosedError`. Use from another thread raises
+`GoldStoreThreadError`; these are separate `GoldStoreLifecycleError`
+subclasses and never mean that a publication was removed by retention. Closing
+is idempotent on the creating thread. A close attempted from another thread
+fails without closing or releasing the owner's connection. Read-only publishing
+raises `GoldStoreReadOnlyError` before writing.
+
 #### `GoldPublication`
 
 Publication metadata. None of it enters the result fingerprint.
@@ -349,6 +364,10 @@ class GoldLineageRepository(Protocol):
 | `classification_version` | string | Yes | Fingerprint of the classification inputs: the configuration snapshot (account registry, taxonomy, and rules) and the effective classification decisions ([`publications.md`](publications.md)). The transfer matching policy and the classifier's code are not part of it; they change with the recipe's code version. |
 | `transfer_evidence` | `TransferEvidence`/null | Conditional | Required on every `transfer`, otherwise null. |
 | `review_item_ids` | list of string | Yes | Open classification review items involving this transaction. Often empty. |
+| `bank_category` | string/null | Optional | The bank's category label, retained as privileged provenance for rule explanation and review. It never becomes a Gold Category. Null means the source supplied none or an older publication did not retain it. |
+| `adjustment_reason` | string/null | Conditional | The explanation invariant 3 asks of an adjustment: the reason its rule or decision gives. Required on every `adjustment`, otherwise null. |
+
+🤖 Added by Codex (DeepSeek V4.1 Flash)
 
 The classification fields describe how the transaction's type and its
 allocations were derived. While a classified transaction has exactly one
@@ -381,7 +400,13 @@ Confidence is a named evidence basis, not a score.
 | `reason` | string/null | No | Detail, such as `counterpart-may-not-be-imported`, `no-candidate`, or `target-missing`. |
 
 Gold derives review items afresh on every build, so an item exists exactly
-while its cause does. Silver's import review items (issue #5) are separate.
+while its cause does. A retained publication stores its review items and their
+existing target and rule identifiers atomically with its result. The privileged
+review reader selects the current publication in one SQLite read snapshot and
+does not expose this reader through the analytics interface. A non-applicable
+decision remains discoverable by its decision identifier and any surviving
+targets; a missing target is not reconstructed. Silver's import review items
+(issue #5) are separate.
 
 Each publication's recipe (its import runs, configuration snapshot,
 decision-log position, and code version) is privileged metadata for the CLI
@@ -430,6 +455,7 @@ migrating from either version finds the whole path in one place.
 | `category_id` on the transaction | `GoldCategoryAllocation`, a fact at the grain of one category allocation of one transaction | Category assignment is its own grain. Writing it this way now means splitting a transaction later changes no grain, no interface, and no consumer query (ADR-008). |
 | `classification_source` value `imported` | Removed; `transfer_match` added | Bank categories never classify on their own (ADR-011). |
 | No transfer evidence or review items | `TransferEvidence`, `rule_ids`, `decision_id`, and `classification_review_items` in lineage | Transfers need auditable evidence, and the CLI review workflow needs a stable source (ADR-011, ADR-012). |
+| No adjustment explanation | `adjustment_reason` in lineage | Invariant 3 asks every adjustment for an explanation, and `classification.md` says lineage keeps its reason (issue #170). |
 | `boundary_transactions()` *(0.2 draft)* | Removed | Consumers fetched the links into and out of a period only to judge coverage themselves. Gold now publishes coverage, so nothing reads them (ADR-007). |
 | `day_sequence` on the transaction *(0.2 draft)* | `account_sequence` | Ordering within a date is Silver's (ADR-009). Gold publishes one account-wide order instead, so a consumer never reconstructs it from two fields. |
 | `category_direction` on the transaction *(0.2 draft)* | `GoldCategory.direction` | Direction is an attribute of the category. Copying it onto every fact row lets the two disagree. |
