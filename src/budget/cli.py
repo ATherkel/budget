@@ -344,7 +344,7 @@ def _backup(profile: Profile) -> None:
 def _restore(profile: Profile, backup_set: str | None) -> None:
     """Restore the whole profile from a backup set, and name the set on stdout."""
     with writer_lock(profile) as lock:
-        restored = restore(lock, backup_set)
+        restored = restore(lock, backup_set, now=datetime.now(UTC))
     for skipped in restored.skipped:
         sys.stdout.write(f"skipped backup set {skipped}: this code cannot read it\n")
     for put_back in restored.put_back:
@@ -369,6 +369,8 @@ def _restore(profile: Profile, backup_set: str | None) -> None:
         sys.stdout.write(
             f"replayed {restored.replayed} import {runs} from the export archive\n"
         )
+    if restored.gold is not None:
+        sys.stdout.write(summaries.gold_line(restored.gold) + "\n")
     sys.stdout.write(f"restored backup set {restored.backup.name}\n")
 
 
