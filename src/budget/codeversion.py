@@ -62,6 +62,23 @@ def require_committed_code(profile: Profile) -> None:
         raise UncommittedCodeError(_UNCOMMITTED)
 
 
+def committed_code_version(profile: Profile) -> str | None:
+    """Name the commit a production build runs, or None where none is recorded.
+
+    Development and test profiles record no code version. Production's is the
+    checkout's `HEAD`, which `require_committed_code` has shown holds the code
+    that runs; a `HEAD` Git cannot name refuses the build like any unverifiable
+    checkout.
+    """
+    if profile.name != PRODUCTION_PROFILE_NAME:
+        return None
+    module = Path(budget.__file__).resolve()
+    head = _git(module.parent, "rev-parse", "HEAD")
+    if head is None or head.returncode != 0 or not head.stdout.strip():
+        raise UncommittedCodeError(_UNVERIFIABLE)
+    return head.stdout.strip()
+
+
 def _git(cwd: Path, *arguments: str) -> subprocess.CompletedProcess[str] | None:
     """Run one fixed Git command in `cwd`, or return None when it cannot run.
 

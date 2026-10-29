@@ -19,6 +19,7 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from budget.analytics import (
     HouseholdReports,
     InvalidSelectionError,
+    MonthlyOverview,
     NothingPublishedError,
     PublicationUnavailableError,
     ReportContext,
@@ -46,6 +47,7 @@ _TEMPLATES = Environment(
     loader=PackageLoader("budget.dashboard"),
     autoescape=select_autoescape(),
 )
+_TEMPLATES.filters["amount"] = display.amount
 
 
 def _send_to_login(request: Request) -> Response:
@@ -81,9 +83,10 @@ def _pinned_url(
     reference_date: date,
     accounts: Collection[str],
     month: str,
+    path: str = "/",
 ) -> str:
-    """Return the complete page address for one pinned selection."""
-    return "/?" + urlencode(
+    """Return the complete address of `path` for one pinned selection."""
+    return f"{path}?" + urlencode(
         [
             ("publication", publication_id),
             ("reference_date", reference_date.isoformat()),
@@ -186,13 +189,13 @@ def _refuse_login(
     return None
 
 
-def _render_report(
+def _read_overview(
     profile: Profile,
     pin: tuple[int, date],
     accounts: Collection[str],
     month: str,
-) -> str:
-    """Render the report fragment a selection asks for, or why it cannot be shown.
+) -> MonthlyOverview | str:
+    """Return the overview a selection asks for, or a fragment saying why not.
 
     The pinned context is used exactly as the page sent it: never re-resolved.
     """
@@ -206,7 +209,7 @@ def _render_report(
             reference_date=reference_date,
         )
         with GoldStore(profile, read_only=True) as store:
-            overview_report = HouseholdReports(store).monthly_overview(context)
+            return HouseholdReports(store).monthly_overview(context)
     except InvalidSelectionError as error:
         # A failure is shown, and echoes no context the page could render.
         return _TEMPLATES.get_template("invalid_selection.html").render(
@@ -214,6 +217,30 @@ def _render_report(
         )
     except PublicationUnavailableError:
         return _TEMPLATES.get_template("unavailable.html").render()
+
+
+def _answered_url(overview_report: MonthlyOverview, path: str) -> str:
+    """Return the address of `path` for the context `overview_report` answers."""
+    answered = overview_report.context
+    return _pinned_url(
+        answered.publication_id,
+        answered.reference_date,
+        answered.account_ids,
+        display.month_value(answered.month),
+        path,
+    )
+
+
+def _render_report(
+    profile: Profile,
+    pin: tuple[int, date],
+    accounts: Collection[str],
+    month: str,
+) -> str:
+    """Render the report fragment a selection asks for, or why it cannot be shown."""
+    overview_report = _read_overview(profile, pin, accounts, month)
+    if isinstance(overview_report, str):
+        return overview_report
     answered = overview_report.context
     return _TEMPLATES.get_template("report.html").render(
         is_current=overview_report.publication.is_current,
@@ -222,7 +249,48 @@ def _render_report(
         accounts=" ".join(sorted(answered.account_ids)),
         month=display.month_value(answered.month),
         month_label=display.month_label(answered.month),
+        overview=overview_report,
+        explanation_url=_answered_url(overview_report, "/explanation"),
     )
+
+
+def _render_explanation(
+    profile: Profile,
+    pin: tuple[int, date],
+    accounts: Collection[str],
+    month: str,
+) -> str:
+    """Render the explanation page of one pinned report's trust notes."""
+    overview_report = _read_overview(profile, pin, accounts, month)
+    if isinstance(overview_report, str):
+        return _TEMPLATES.get_template("explanation.html").render(
+            failure=overview_report
+        )
+    return _TEMPLATES.get_template("explanation.html").render(
+        overview=overview_report,
+        month_label=display.month_label(overview_report.context.month),
+        report_url=_answered_url(overview_report, "/"),
+    )
+
+
+def _report_response(
+    profile: Profile,
+    pin: tuple[int, date],
+    accounts: list[str],
+    month: str,
+) -> Response:
+    """Return the report fragment for one selection, or the empty-selection prompt.
+
+    The address becomes this selection's own page, so back and forward reopen
+    each selection the reader made.
+    """
+    page = _pinned_url(*pin, accounts, month)
+    if not accounts:
+        # An empty selection is a prompt, never a report of nothing.
+        prompt = _TEMPLATES.get_template("no_accounts.html").render()
+        return HTMLResponse(prompt, headers={"HX-Push-Url": page})
+    fragment = _render_report(profile, pin, accounts, month)
+    return HTMLResponse(fragment, headers={"HX-Push-Url": page})
 
 
 def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
@@ -269,6 +337,14 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         )
         return response
 
+    def for_reader(request: Request, respond: Callable[[], Response]) -> Response:
+        """Answer a logged-in reader with `respond()`; send anyone else to log in."""
+        authenticated_as = _logged_in(request, profile, clock)
+        if authenticated_as is None:
+            return _send_to_login(request)
+        # Every visit renews the login for another 30 days from now.
+        return start_session(respond(), authenticated_as)
+
     @app.get("/")
     def overview(
         request: Request,
@@ -277,17 +353,15 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         month: str | None = None,
         account: Annotated[list[str] | None, Query()] = None,
     ) -> Response:
-        authenticated_as = _logged_in(request, profile, clock)
-        if authenticated_as is None:
-            return _send_to_login(request)
         pin = (
             None
             if publication is None or reference_date is None
             else (publication, reference_date)
         )
-        # Every visit renews the login for another 30 days from now.
-        page = _render_overview(profile, clock, pin, account, month)
-        return start_session(HTMLResponse(page), authenticated_as)
+        return for_reader(
+            request,
+            lambda: HTMLResponse(_render_overview(profile, clock, pin, account, month)),
+        )
 
     @app.get("/report")
     def report(
@@ -297,24 +371,29 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         month: str,
         account: Annotated[list[str] | None, Query()] = None,
     ) -> Response:
-        authenticated_as = _logged_in(request, profile, clock)
-        if authenticated_as is None:
-            return _send_to_login(request)
-        page = _pinned_url(publication, reference_date, account or (), month)
-        if not account:
-            # An empty selection is a prompt, never a report of nothing.
-            prompt = _TEMPLATES.get_template("no_accounts.html").render()
-            return start_session(
-                HTMLResponse(prompt, headers={"HX-Push-Url": page}),
-                authenticated_as,
-            )
-        # The address becomes this selection's own page, so back and forward
-        # reopen each selection the reader made.
-        fragment = HTMLResponse(
-            _render_report(profile, (publication, reference_date), account, month),
-            headers={"HX-Push-Url": page},
+        return for_reader(
+            request,
+            lambda: _report_response(
+                profile, (publication, reference_date), account or [], month
+            ),
         )
-        return start_session(fragment, authenticated_as)
+
+    @app.get("/explanation")
+    def explanation(
+        request: Request,
+        publication: int,
+        reference_date: date,
+        month: str,
+        account: Annotated[list[str] | None, Query()] = None,
+    ) -> Response:
+        return for_reader(
+            request,
+            lambda: HTMLResponse(
+                _render_explanation(
+                    profile, (publication, reference_date), account or (), month
+                )
+            ),
+        )
 
     @app.get("/login")
     def login_page() -> Response:

@@ -74,7 +74,7 @@ A recipe names each input exactly and never by "latest":
 
 | Part | Content |
 | --- | --- |
-| Data | The set of import runs, each with its `import_run_id` and payload hash. Silver derives admission and quarantine from these; admission is not an input. |
+| Data | The set of import runs Silver was built from, each with its `import_run_id` and payload hash: the stored runs, admitted or quarantined, and the `repeat` runs of an admitted payload. Silver derives admission and quarantine from these; admission is not an input. A refused run is no input to Silver, so it is not named, and presenting a refused file again publishes nothing. The recipe is read from Silver, never from Bronze, so Gold does not read Bronze. |
 | Configuration snapshot | The parsed, canonical content of the account registry, category taxonomy, and classification rules. It is stored once per distinct content and referenced by its fingerprint. |
 | Late-booking window | The profile's `[gold] late_booking_days` at the build, in whole days ([`operations.md`](operations.md#selecting-a-profile)). `late_bookings_settled` depends on it, so changing it requires a new publication, and an earlier publication keeps the window its recipe records. |
 | Decision log position | The last decision-log entry included. The effective decisions are derived from the log up to that entry. |
