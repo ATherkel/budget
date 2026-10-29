@@ -24,9 +24,10 @@ from budget.bronze import BronzeStore
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
 from tests.backups.sets import checksum, import_one, manifest, run_ids
+from tests.cli.checkouts import CleanCheckoutTestCase
 from tests.cli.commands import dev_refresh, migrate, restore
+from tests.cli.pipelines import write_inputs
 from tests.cli.profile_files import write_profile
-from tests.importing.households import ACCOUNTS
 
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
@@ -39,8 +40,7 @@ def _production_with_a_set(folder: Path) -> tuple[Profile, BackupSet]:
     profile_file = write_profile(folder, name="production")
     assert migrate(profile_file, "--new-store")[0] == EXIT_OK
     production = load_profile_file(profile_file)
-    production.inputs.mkdir()
-    production.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+    write_inputs(production)
     with writer_lock(production) as lock:
         import_one(lock)
         written = back_up(lock, now=datetime.now(UTC))
@@ -59,7 +59,7 @@ def _development(folder: Path, production: Profile) -> tuple[Path, Profile]:
     return profile_file, load_profile_file(profile_file)
 
 
-class DevRefreshTests(unittest.TestCase):
+class DevRefreshTests(CleanCheckoutTestCase):
     def test_dev_refresh_restores_the_newest_set_into_upstream_read_only(
         self,
     ) -> None:
