@@ -334,6 +334,11 @@ def _restore(profile: Profile, backup_set: str | None) -> None:
             "the import log was missing: runs imported after backup set "
             f"{restored.backup.name} are not restored\n"
         )
+    if restored.decision_line_cut_off:
+        sys.stdout.write(
+            "the decision log's final line was cut off: it counts as never "
+            "written and is left in place; delete it before recording a decision\n"
+        )
     if restored.decisions_lost:
         sys.stdout.write(
             "the decision log was missing: decisions recorded after backup set "
