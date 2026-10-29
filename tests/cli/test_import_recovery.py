@@ -24,6 +24,7 @@ from budget.backups import complete_backup_sets
 from budget.gold.store import GoldStore
 from budget.inputs import ConfigurationError
 from budget.profiles import Profile
+from budget.silver import SilverStore
 from tests.backups.sets import run_ids
 from tests.cli.commands import import_, migrate
 from tests.cli.imports import clean_checkout, write_ranges
@@ -409,13 +410,8 @@ class SilverCurrencyTests(unittest.TestCase):
             status, _, stderr = _run_import(base)
 
             assert (status, stderr) == (EXIT_OK, "")
-            with closing(sqlite3.connect(base.profile.silver_store)) as silver:
-                stored = dict(
-                    silver.execute(
-                        "SELECT account_id, currency FROM account_currencies"
-                    )
-                )
-            assert stored["joint-savings"] == "EUR"
+            with SilverStore(base.profile) as silver:
+                assert silver.currencies()["joint-savings"] == "EUR"
 
 
 class RefusedFileTests(unittest.TestCase):

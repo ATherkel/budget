@@ -186,8 +186,12 @@ class StaleRecordsTests(unittest.TestCase):
             assert "published publication 2" in stdout
             with GoldStore(base.profile) as gold:
                 current = gold.current()
-            assert current is not None
-            assert current.publication_id == 2
+                assert current is not None
+                assert current.publication_id == 2
+                published = gold.open(2).transactions(
+                    start_date=date(2026, 3, 1), end_date=date(2026, 3, 31)
+                )
+            assert [t.description for t in published] == ["Café"]
 
 
 def _delete_taxonomy(profile: Profile) -> None:
