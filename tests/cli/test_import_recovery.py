@@ -392,6 +392,32 @@ class FailureAndRetryTests(unittest.TestCase):
             assert "before Gold was published" in stderr
 
 
+class SilverCurrencyTests(unittest.TestCase):
+    def test_a_currency_change_alone_is_stored_with_silver(self) -> None:
+        # joint-savings holds no run, so its new currency leaves Silver's
+        # result as it was: only the stored currency map can show it.
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            assert _run_import(base)[0] == EXIT_OK
+            savings = ACCOUNTS.split("[account.joint-savings]")[1]
+            write_inputs(
+                base.profile,
+                ACCOUNTS.replace(savings, savings.replace('"DKK"', '"EUR"')),
+            )
+
+            status, _, stderr = _run_import(base)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            with closing(sqlite3.connect(base.profile.silver_store)) as silver:
+                stored = dict(
+                    silver.execute(
+                        "SELECT account_id, currency FROM account_currencies"
+                    )
+                )
+            assert stored["joint-savings"] == "EUR"
+
+
 class RefusedFileTests(unittest.TestCase):
     def test_a_refused_file_retried_publishes_nothing(self) -> None:
         with TemporaryDirectory() as directory:
