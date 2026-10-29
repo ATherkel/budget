@@ -23,6 +23,7 @@ from budget.bronze.storage import bronze_stage
 from budget.decision_log import read_decision_log
 from budget.durability import sync_folder
 from budget.gold.storage import GOLD_STAGE, gold_stage
+from budget.gold.store import GoldStore
 from budget.inputs import ConfigurationError
 from budget.locking import WriterLock
 from budget.profiles import (
@@ -565,6 +566,10 @@ def restore(lock: WriterLock, name: str | None = None, *, now: datetime) -> Rest
     # Gold publishes only when that recipe differs from the restored one.
     gold = None
     if GOLD_STAGE in stores:
+        # Recorded before the build, so the boundary names the set's current
+        # publication and the first id any later build takes.
+        with GoldStore(profile) as gold_store:
+            gold_store.record_recovery_boundary(selected.name, selected.created_at, now)
         gold = rebuild_through_gold(lock, now=now).gold
     (profile.stores / RESTORE_MARKER).unlink()
     sync_folder(profile.stores)
