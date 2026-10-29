@@ -320,6 +320,35 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
                 f"{written.name}; publications made after that set are lost\n"
             ) in stdout
 
+    def test_restore_of_a_set_without_gold_starts_gold_and_says_so(self) -> None:
+        # A set from before sets held Gold: catch-up still builds a current
+        # publication, but no Gold history comes back, and restore says so.
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            listed = manifest(written.path)
+            stores, files = listed["stores"], listed["files"]
+            assert isinstance(stores, dict)
+            assert isinstance(files, dict)
+            del stores["gold"], files["gold.db"]
+            (written.path / "gold.db").unlink()
+            (written.path / "manifest.json").write_text(
+                json.dumps(listed), encoding="utf-8"
+            )
+            shutil.rmtree(built.profile.stores)
+
+            status, stdout, stderr = restore(built.profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                f"backup set {written.name} holds no Gold store: Gold was "
+                "started anew, and no earlier publication is recovered\n"
+            ) in stdout
+            assert FIRST_GOLD in stdout
+            with GoldStore(built.profile) as gold:
+                (boundary,) = gold.recovery_boundaries()
+            assert boundary.restored_current_id is None
+            assert boundary.first_publication_id == 1
+
     def test_a_recovery_boundary_survives_a_later_backup_and_restore(self) -> None:
         with TemporaryDirectory() as directory:
             built, written = _published_production(Path(directory) / "prod")
