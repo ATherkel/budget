@@ -202,6 +202,13 @@ class SilverStore:
         ).fetchone()
         return bool(row[0])
 
+    def currencies(self) -> dict[str, str]:
+        """Return the account currencies the last build stored, by account id."""
+        return {
+            row["account_id"]: row["currency"]
+            for row in self._connection.execute(_SELECT_CURRENCIES)
+        }
+
     def read(self) -> SilverResult:
         """Return the complete stored result, with Decimal money.
 

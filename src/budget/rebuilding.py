@@ -381,11 +381,12 @@ def rebuild_through_gold(
     with SilverStore(profile) as silver_store:
         built = silver_store.is_built()
         changed = silver_store.read() != derived
+        currencies_changed = silver_store.currencies() != dict(silver_inputs.currencies)
     plan = _plan_gold(profile, derived, household, now, silver_changed=changed)
     if reparsed is not None:
         with BronzeStore(profile) as bronze:
             bronze.replace_derived_records(reparsed)
-    if changed or not built:
+    if changed or currencies_changed or not built:
         store_silver(lock, silver_inputs, derived)
     return PipelineRebuild(
         silver=SilverRebuild(runs=silver_inputs.runs, result=derived),
