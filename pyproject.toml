@@ -30,7 +30,7 @@ dev = [
     "playwright==1.64.1",
     "pytest>=8",
     "ruff>=0.17.1",
-    "ty>=0.0.84",
+    "ty>=0.0.92",
 ]
 
 [tool.uv]
