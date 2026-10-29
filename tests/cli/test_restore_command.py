@@ -292,6 +292,24 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
             assert boundary.restored_current_id == 1
             assert boundary.first_publication_id == 2
 
+    def test_a_recovery_boundary_survives_a_later_backup_and_restore(self) -> None:
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            shutil.rmtree(built.profile.stores)
+            assert restore(built.profile_file, written.name)[0] == EXIT_OK
+            with writer_lock(built.profile) as lock:
+                later = back_up(lock, now=datetime.now(UTC))
+            shutil.rmtree(built.profile.stores)
+
+            assert restore(built.profile_file, later.name)[0] == EXIT_OK
+
+            with GoldStore(built.profile) as gold:
+                boundaries = gold.recovery_boundaries()
+            assert [boundary.backup_set for boundary in boundaries] == [
+                written.name,
+                later.name,
+            ]
+
     def test_restore_keeps_the_restored_publication_when_nothing_changed(
         self,
     ) -> None:
