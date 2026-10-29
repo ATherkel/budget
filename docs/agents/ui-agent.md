@@ -1,3 +1,6 @@
+---
+type: agents
+---
 # Presentation Agent Brief
 
 ## Mission

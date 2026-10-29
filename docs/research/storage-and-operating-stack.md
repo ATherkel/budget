@@ -1,3 +1,6 @@
+---
+type: research
+---
 # Storage for the household budget
 
 Research for [#9](https://github.com/ATherkel/budget/issues/9), simplified and reviewed on 2026-09-19. **Recommendation: SQLite.** The final choice and operating instructions belong to [#10](https://github.com/ATherkel/budget/issues/10).

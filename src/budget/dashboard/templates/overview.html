@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Oversigt · Budget{% endblock %}
+{% block head %}
+{# No page snapshots in browser storage: a history miss reloads the page. #}
+<meta name="htmx-config" content='{"historyCacheSize": 0, "refreshOnHistoryMiss": true}'>
+<script src="/static/htmx.min.js" defer></script>
+<script src="/static/app.js" defer></script>
+{% endblock %}
+{% block header_actions %}
+<a class="header-link" href="/">Nyeste data</a>
+{# Logout is a POST so that following a link can never end a login. #}
+<form id="logout" method="post" action="/logout"><button class="button button--quiet" type="submit">Log ud</button></form>
+{% endblock %}
+{% block content %}
+<div id="overview" data-canonical-url="{{ canonical_url }}">
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">Husstandsøkonomi</p>
+    <h1>Oversigt</h1>
+  </div>
+  <p class="page-heading-note">Alle valg på siden bruger samme offentliggjorte datasæt.</p>
+</div>
+<div class="dashboard-layout">
+<aside class="selection-panel" aria-labelledby="selection-heading">
+<div class="section-heading">
+  <p class="eyebrow">Rapportvalg</p>
+  <h2 id="selection-heading">Vælg konti og måned</h2>
+</div>
+{# Without scripts the form reloads the page; htmx swaps only the report, and
+   a newer change replaces any request still outstanding. #}
+<form id="selection" method="get" action="/" hx-get="/report" hx-target="#report-region" hx-swap="innerHTML" hx-sync="this:replace" hx-trigger="submit, change">
+<input type="hidden" name="publication" value="{{ publication_id }}">
+<input type="hidden" name="reference_date" value="{{ reference_date }}">
+<fieldset class="account-fieldset">
+<legend>Konti <span class="legend-note">Vælg mindst én</span></legend>
+{% for account in accounts %}
+<label class="account-option">
+  <input type="checkbox" name="account" value="{{ account.account_id }}"{% if account.account_id in selected_accounts %} checked{% endif %}>
+  <span>{{ account.display_name }}</span>
+</label>
+{% endfor %}
+</fieldset>
+<label class="field-label" for="month">Måned</label>
+<select id="month" name="month">
+{% for value, label in months %}
+<option value="{{ value }}"{% if value == selected_month %} selected{% endif %}>{{ label }}</option>
+{% endfor %}
+</select>
+<button class="button button--primary" type="submit">Vis rapport</button>
+<p class="field-help">Ændringer opdaterer rapporten med det samme.</p>
+</form>
+</aside>
+<section class="report-panel" aria-labelledby="report-heading">
+<div class="section-heading section-heading--row">
+  <div>
+    <p class="eyebrow">Aktuelt datasæt</p>
+    <h2 id="report-heading">Rapport</h2>
+  </div>
+  <span class="status-chip">Kun for husstanden</span>
+</div>
+{# The wrapper stays on the page and htmx swaps only what is inside it: a live
+   region that is replaced along with its content is often not announced. #}
+<div id="report-region" aria-live="polite" aria-busy="false">
+{% if report %}
+{{ report | safe }}
+{% else %}
+{% include "no_accounts.html" %}
+{% endif %}
+</div>
+</section>
+</div>
+</div>
+{% endblock %}

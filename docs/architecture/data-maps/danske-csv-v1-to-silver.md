@@ -1,3 +1,6 @@
+---
+type: data-maps
+---
 # Logical Data Map: `danske-csv-v1` → Silver
 
 **Status:** Accepted. The map restates, column by column, what
@@ -30,13 +33,14 @@ Kimball's columns are adapted to this pipeline:
 | `SourceRecord` of a payload with no `FormatFailure` | one row of one payload | every per-row value |
 | `FormatFailure` of a stored payload | one verdict on one payload and format | `ImportRunResult.errors` and `status`; the payload has no source records |
 | `ImportRun` with outcome `stored`, not voided | one presentation of a payload | account, format, admission order |
-| `ImportRun` with outcome `repeat` | one presentation of stored bytes | `AccountEvidence` only, never records |
+| `ImportRun` with outcome `repeat` | one presentation of stored bytes | `AccountEvidence` and `EvidenceExport` only, never records |
 | account configuration | one account | currency, and through it the decimal places of the minor unit (ADR-013) |
 | manual decision, from the decision log ([`operations.md`](../operations.md#decisionsjsonl-the-decision-log)) | one recorded ruling | *same transaction*: `TransactionEvidence.transaction_id`, the `Transaction` grain and `ImportRunResult.status`. *withdrawn*: the `Transaction` grain and `ImportRunResult.status`. *accept discrepancy*: `ImportRunResult.status`, `balance` and `end_of_day_balance`. *void import run*: excluded by "not voided" above |
 
-The `danske-csv-v1` fields. `bronze-layer.md` declares the header; the meanings
-come from it, `domains/transaction.md`, and the sample profile in
-`agents/bronze-agent.md`.
+The `danske-csv-v1` fields. `bronze-layer.md` declares the headers; the
+meanings come from it, `domains/transaction.md`, and the sample profile in
+`agents/bronze-agent.md`. An account without bank categories exports no
+`Kategori` or `Underkategori`, so its source records have neither field.
 
 | Field | Example | Meaning |
 | --- | --- | --- |
@@ -45,7 +49,7 @@ come from it, `domains/transaction.md`, and the sample profile in
 | `Underkategori` | ` Dagligvarer ` | bank subcategory, space-padded |
 | `Tekst` | ` Café` | transaction text |
 | `Beløb` | `-1.234,56` | amount, decimal comma, `.` groups thousands, negative is money out |
-| `Saldo` | `2.955,00` | running balance after the row, recalculated at export time; empty on `Slettet` rows |
+| `Saldo` | `2.955,00` | running balance after the row, recalculated at export time; empty on `Venter` and `Slettet` rows |
 | `Status` | `Udført` | the bank's booking status |
 | `Afstemt` | `Nej` | reconciled flag; not interpreted |
 
@@ -79,14 +83,19 @@ These apply wherever a column below names them.
   | `Status` | `booking_status` |
   | --- | --- |
   | `Udført` | `booked` |
+  | `Venter` | `pending` |
   | `Slettet` | `cancelled` |
   | anything else | `unknown-status` error |
 
-  *Map decision.* No pending value is known. The first export carrying one is
-  quarantined whole with an `unknown-status` error on each such record, and its
-  new dates wait. A person then decides what the value means, adds it to this
-  table and to the Silver code, and runs `rebuild --from silver`
-  ([`operations.md`](../operations.md)) to validate the run again.
+  *Map decision.* `Venter` is a row the bank has not booked yet (#212). It
+  stays an `UnbookedRecord`; when a later export shows the transaction booked,
+  that `Udført` row is an ordinary booked row and is not matched to the
+  pending one (`domains/transaction.md`). The first export carrying any other
+  value is quarantined whole with an `unknown-status` error on each such
+  record, and its new dates wait. A person then decides what the value means,
+  adds it to this table and to the Silver code, and runs
+  `rebuild --from silver` ([`operations.md`](../operations.md)) to validate
+  the run again.
 
 - **Identity text.** `Tekst` with leading and trailing Unicode whitespace
   removed and internal runs collapsed to one space, including 0xA0 (ADR-009).
@@ -94,17 +103,26 @@ These apply wherever a column below names them.
 - **Label.** `Kategori` or `Underkategori` with leading and trailing Unicode
   whitespace removed, including 0xA0, as for the identity text; internal
   whitespace is kept. A value that is empty afterwards is null
-  (`silver-layer.md`).
+  (`silver-layer.md`), and so is a field the source record does not have.
 - **Selected export.** For each account and date, the latest admitted export
   covering that date that shows every transaction kept for it (ADR-009). It
   supplies `balance`, `day_sequence`, `bank_category` and `bank_subcategory`
-  (`silver-layer.md`).
+  (`silver-layer.md`). An account's layout is not expected to change. If the
+  bank ever adds categories to one, exports from then on supply labels for
+  every date they cover, and dates that only older exports cover keep null
+  labels. The opposite is checked, not assumed: an export without categories
+  is held back with `label-layout-regressed` when one with categories already
+  supplies transactions on a date it covers (`silver-layer.md`, *Label
+  layout*).
 - **Error codes.** *Map decision.* `silver-layer.md` (*Validation*) lists the
-  errors in prose and names no `ValidationError.code`. This map names the four
-  its rules raise: `unparseable-date`, `unparseable-decimal`, `unknown-status`
-  and `missing-balance`. The other errors in that list, a format failure, a
-  wrong field count and a balance-chain break, do not depend on this format and
-  are not named here.
+  errors in prose and names the codes that do not depend on the source
+  format. This map names the four its rules raise against a record:
+  `unparseable-date`, `unparseable-decimal`, `unknown-status` and
+  `missing-balance`.
+- **Label layout.** *Map decision* (#138). The header with `Kategori` and
+  `Underkategori` is the layout with bank labels, and the header without
+  them is the layout without. `silver-layer.md` (*Label layout*) gives the
+  rule that holds back an export without labels.
 
 ## Target: `Transaction`
 
@@ -148,10 +166,10 @@ deduplicated.
 | `transaction_date` | `date` | `Dato` | Date rule |
 | `amount` | `Decimal` | `Beløb` | Decimal rule |
 | `source_status` | `str` | `Status` | copied verbatim |
-| `booking_status` | `Literal` | `Status` | Booking status rule; `cancelled` for `Slettet` |
+| `booking_status` | `Literal` | `Status` | Booking status rule; `pending` for `Venter`, `cancelled` for `Slettet` |
 
-`Saldo` is not read: a `Slettet` row carries none, and unbooked rows are
-outside the balance chain.
+`Saldo` is not read: `Venter` and `Slettet` rows carry none, and unbooked rows
+are outside the balance chain.
 
 ## Target: `TransactionEvidence`
 
@@ -185,14 +203,16 @@ source records.
 | Target column | Type | Source | Transformation |
 | --- | --- | --- | --- |
 | `import_run_id` | `str` | `ImportRun.import_run_id` | copied |
-| `status` | `Literal` | derived, and manual decisions | `accepted` when the run has no validation error and fails no merge check, or when every one it has belongs to a review item manual decisions have settled: *accept discrepancy* for a `balance-break`, and for a `dropped-transactions` a *withdrawn* or *same transaction* for each transaction the run dropped (ADR-010, ADR-017). Otherwise `quarantined` |
-| `covered_from` | `date \| None` | `Dato` | the earliest `Dato` among the payload's source records, booked or not; null when the payload has none, as with a `FormatFailure` or a header-only export (`silver-layer.md`) |
+| `account_id` | `str` | `ImportRun.declared_account_id` | copied |
+| `status` | `Literal` | derived, and manual decisions | `accepted` when the run has no validation error and fails no merge check, or when every one it has belongs to a review item manual decisions have settled: *accept discrepancy* for a `balance-break`, and for each `dropped-transaction`, one per transaction the run dropped, a *withdrawn* or *same transaction* (ADR-010, ADR-017, ADR-018). Otherwise `quarantined` |
+| `covered_from` | `date` | `ImportRun.covers_from` | copied |
 | `covered_to` | `date` | `ImportRun.covers_through` | copied |
 | `errors` | `Sequence` | derived | every `ValidationError` listed under *Validation* in `silver-layer.md`, with the codes under Error codes where this map names one. Errors a manual decision settled stay listed (ADR-010: "the import run lists it") |
-| `review_item_ids` | `Sequence` | derived | review items raised for this run, settled or not; a settled one names its decision in `ReviewItem.resolved_by` |
+| `review_item_ids` | `Sequence` | derived | review items raised for this run, settled or not, one `dropped-transaction` item per transaction it dropped (ADR-018); a settled one names its decision in `ReviewItem.resolved_by` |
 
-`AccountEvidence` reads only `ImportRun` fields, so it is format-independent
-and the formula in `silver-layer.md` is its whole map.
+`AccountEvidence` and `EvidenceExport` read only `ImportRun` fields, so they
+are format-independent and `silver-layer.md` (*Evidence Ranges*) is their whole
+map.
 
 ## Open Questions
 

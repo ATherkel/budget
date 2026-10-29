@@ -1,3 +1,6 @@
+---
+type: plans
+---
 ## Release placement confirmed — 28 September 2026
 
 While converting the dashboard prototype into specification #100, the maintainer

@@ -1,8 +1,14 @@
+---
+type: decisions
+---
 # ADR-017: Treat Every Dropped Transaction Like a Dropped Repeat
 
 **Status:** Accepted. Amends [ADR-009](ADR-009-transaction-identity.md): its
 `fewer-repeats` review item becomes `dropped-transactions` and also covers a
-transaction that was never repeated.
+transaction that was never repeated. Amended by
+[ADR-018](ADR-018-one-review-item-per-dropped-transaction.md): a run raises one
+`dropped-transaction` review item for each transaction it drops, not one item
+for all of them.
 
 ## Context
 

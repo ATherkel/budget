@@ -1,3 +1,6 @@
+---
+type: glossary
+---
 # Household Finance
 
 A platform that turns imported bank exports into trustworthy household financial
@@ -19,8 +22,9 @@ transfer-eligible account (same set)
 **Managed period**:
 The span of reporting months in which an account is part of the household's
 history: from the month of its first Booked transaction until the month it
-closes, or the latest reported month if it is still open. A month outside it
-is outside the reported history; a quiet month inside it is judged by Coverage.
+closes, or, while it is open, the latest month any account's exports reach. A
+month outside it is outside the reported history; a quiet month inside it is
+judged by Coverage.
 _Avoid_: Active period, account lifetime (the bank account may predate the
 household's data)
 
@@ -104,14 +108,27 @@ reflected in Coverage, never silently corrected.
 **Coverage**:
 A per-account, per-reporting-period status (`complete` / `partial` / `no_data`)
 saying whether the balance evidence shows that the whole period is covered.
-The rules are in [`gold-layer.md`](docs/architecture/gold-layer.md#coverage).
+The rules are in [`gold-layer.md`](architecture/gold-layer.md#coverage).
 A quiet month can be complete; absent evidence cannot be read as zero.
 
+**Evidence range**:
+A stretch of consecutive days an account's admitted exports are known to
+cover: the union of their declared *covers from*–*covers through* ranges, with
+no adjustment for the export day. A day no admitted export declares falls in a
+gap between two ranges. The rule is in
+[`silver-layer.md`](architecture/silver-layer.md#evidence-ranges).
+_Avoid_: coverage (that is Gold's per-period status)
+
 **Evidence through**:
-The last date an account's imported exports are known to cover, computed from
-its admitted exports by the formula in
-[`docs/architecture/silver-layer.md`](docs/architecture/silver-layer.md#evidence-through).
+The last day of an account's latest *evidence range*. Earlier days can still
+fall in a gap between ranges.
 _Avoid_: last import date (the export, not the import, bounds the evidence)
+
+**Late-booking window**:
+How many days after a month's last day an export's *Export date* must fall
+for the export to show the month's late bookings. It is set per profile in
+whole days, 7 unless changed, and recorded in each recipe. The rule
+is in [`gold-layer.md`](architecture/gold-layer.md#late-bookings-settled).
 
 **Monthly balance snapshot**:
 One account's balance position for one reporting month of its Managed period:
@@ -124,7 +141,7 @@ bank-stated balance after one transaction)
 **Provisional period**:
 A reporting period that includes the current calendar month or still awaits
 exports covering the late-booking window. How it must be labeled is in
-[`docs/architecture/presentation-layer.md`](docs/architecture/presentation-layer.md#data-trust-display).
+[`presentation-layer.md`](architecture/presentation-layer.md#data-trust-display).
 
 ### Imports and identity
 
@@ -139,13 +156,21 @@ import. It says when the file was made, not how far it reaches; the
 late-booking window is counted from it.
 _Avoid_: import date, range end
 
+**Covers from**:
+The first date one export's evidence covers: the start of the range the
+operator asked the bank for, declared at import and inclusive. Every
+transaction in the export falls on or after it. An export of the last three
+months and one of the last two years, made on the same day, differ only here.
+_Avoid_: export start, from-date
+
 **Covers through**:
-The last date one export's evidence reaches: the end of the range the operator
-asked the bank for, declared at import. Distinct from the *export date*, so a
-year of history exported today is not read as covering today. It falls back to
-the export date only where that cannot reach past the payload's last reporting
-period; see
-[`docs/architecture/bronze-layer.md`](docs/architecture/bronze-layer.md).
+The last date one export's evidence covers: the end of the range the operator
+asked the bank for, declared at import and inclusive. It is never later than
+the *export date*, and every transaction in the export falls on or before it.
+Distinct from the *export date*, so a year of history exported today is not
+read as covering today. Both ends of the range are required on every import
+and never inferred; see
+[`bronze-layer.md`](architecture/bronze-layer.md).
 _Avoid_: export range, to-date
 
 **Transaction date**:
@@ -184,6 +209,19 @@ The same booked transaction appearing in more than one source record,
 typically in overlapping exports. Duplicates collapse to one booked
 transaction.
 _Avoid_: repeat, copy
+
+**Cross-account duplicate**:
+One payload sitting in the inbox under two or more declared accounts at
+once, so which account the bank exported it for is unknown. Every file it
+holds is refused together, and only a person's explicit continuation imports
+the files it does not hold.
+_Avoid_: duplicate (that is Silver's collapse of one booked transaction),
+account conflict
+
+**Duplicate incident**:
+One cross-account duplicate as an import reports it: the group of inbox files
+that hold the same bytes.
+_Avoid_: duplicate, incident on its own
 
 **Repeated transaction**:
 One of several distinct booked transactions that look identical: same account,
@@ -237,7 +275,7 @@ _Avoid_: deleted import, undone import
 One complete, immutable build of Gold, holding its dimensions, facts, lineage,
 and review items, built from one Recipe, with a fingerprint of that result. A
 consumer reads exactly one at a time. The rules are in
-[`publications.md`](docs/architecture/publications.md).
+[`publications.md`](architecture/publications.md).
 _Avoid_: Version, snapshot (a Monthly balance snapshot is a fact), release
 
 **Recipe**:
@@ -265,7 +303,7 @@ _Avoid_: As-of report (ambiguous with As-was view)
 A labeled Publication that a Gold migration could not convert. It is kept in
 its old schema, in its own file and in the pre-migration Backup set, with the
 code version that opens it. The rules are in
-[`operations.md`](docs/architecture/operations.md#legacy-publications).
+[`operations.md`](architecture/operations.md#legacy-publications).
 _Avoid_: archived publication, old version
 
 ### Operations
@@ -274,7 +312,7 @@ _Avoid_: archived publication, old version
 One of `production`, `development`, or `test`: a configuration of the same
 code that names every path the application touches. Every store records the
 profile it belongs to. The rules are in
-[`docs/architecture/operations.md`](docs/architecture/operations.md).
+[`operations.md`](architecture/operations.md).
 _Avoid_: environment (ambiguous with the Python environment), instance
 
 **Household inputs**:

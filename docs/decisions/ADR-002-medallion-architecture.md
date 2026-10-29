@@ -1,3 +1,6 @@
+---
+type: decisions
+---
 # ADR-002: Use a Medallion Data Architecture
 
 **Status:** Accepted

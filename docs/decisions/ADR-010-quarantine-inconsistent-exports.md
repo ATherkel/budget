@@ -1,3 +1,6 @@
+---
+type: decisions
+---
 # ADR-010: Quarantine Exports Whose Stated Balances Are Inconsistent
 
 **Status:** Accepted. Supersedes part of ADR-006. Its first consequence is

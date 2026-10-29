@@ -1,5 +1,17 @@
 imports/
 /Chat.md
 __pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
 .claude/worktrees/
+.codex/
 /.tmp/
+/.coverage
+
+# SQLite stores hold real bank data and never belong in the repository.
+*.db
+*.db-wal
+*.db-shm
+*.db-journal

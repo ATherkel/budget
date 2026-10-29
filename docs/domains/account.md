@@ -1,3 +1,6 @@
+---
+type: domains
+---
 # Account Domain
 
 An account is a financial account whose activity can be imported into the

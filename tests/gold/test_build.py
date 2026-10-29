@@ -1,0 +1,622 @@
+# Copyright 2026 Therkel
+"""`gold.build`: Gold records from Silver, the account registry and the taxonomy.
+
+Nothing is classified yet, so every transaction is `unknown`. The expected
+records are the worked example's (`gold-layer.md`), and the other cases are
+synthetic. Records come in no fixed order, so they are compared as multisets.
+"""
+
+from collections import Counter
+from collections.abc import Sequence
+from dataclasses import replace
+from datetime import date, timedelta
+from decimal import Decimal
+
+import pytest
+
+from budget.gold import (
+    GoldAccount,
+    GoldResult,
+    GoldTransaction,
+    MonthlyBalanceSnapshot,
+    ReportingMonth,
+)
+from budget.inputs import Account, ConfigurationError
+from budget.silver import AccountEvidence, EvidenceExport, SilverResult, Transaction
+from tests.gold.worked_example import (
+    ACCOUNTS,
+    CATEGORIES,
+    CURRENT,
+    MONTHLY_BALANCES,
+    PUBLICATION,
+    SAVINGS,
+    TRANSACTIONS,
+)
+from tests.gold.worked_silver import (
+    COVERS_FROM,
+    REGISTRY,
+    SILVER,
+    build_from,
+    silver_transaction,
+)
+from tests.silver import exports
+
+
+def test_the_registry_and_taxonomy_are_published_as_dimensions() -> None:
+    result = build_from()
+
+    assert result.publication() == PUBLICATION
+    assert Counter(result.accounts()) == Counter(ACCOUNTS)
+    assert Counter(result.categories()) == Counter(CATEGORIES)
+
+
+def test_an_account_with_no_export_is_published_without_evidence() -> None:
+    unimported = Account(
+        account_id="own-savings",
+        display_name="Own savings",
+        account_type="savings",
+        ownership_scope="person",
+        currency="DKK",
+        source_format="danske-csv-v1",
+    )
+
+    result = build_from(accounts={**REGISTRY, "own-savings": unimported})
+
+    assert Counter(result.accounts()) == Counter(
+        (
+            *ACCOUNTS,
+            GoldAccount(
+                account_id="own-savings",
+                display_name="Own savings",
+                account_type="savings",
+                ownership_scope="person",
+                currency="DKK",
+                closed_on=None,
+                coverage_start=None,
+                evidence_through=None,
+            ),
+        )
+    )
+
+
+def test_a_silver_account_missing_from_the_registry_refuses_the_build() -> None:
+    with pytest.raises(ConfigurationError) as refusal:
+        build_from(accounts={"joint-current": REGISTRY["joint-current"]})
+
+    assert refusal.value.problems == (_undeclared("joint-savings"),)
+
+
+def test_every_undeclared_silver_account_is_named_in_account_order() -> None:
+    with pytest.raises(ConfigurationError) as refusal:
+        build_from(accounts={})
+
+    assert refusal.value.problems == (
+        _undeclared("joint-current"),
+        _undeclared("joint-savings"),
+    )
+
+
+def _undeclared(account_id: str) -> str:
+    """The refusal naming an account Silver holds and the registry lacks."""
+    return (
+        f'accounts.toml: account "{account_id}" is not declared, but Silver '
+        "holds transactions for it; restore it, with closed_on set if the "
+        "account has closed, before rebuilding; nothing was published"
+    )
+
+
+def _all_transactions(result: GoldResult) -> Sequence[GoldTransaction]:
+    return result.transactions(start_date=date.min, end_date=date.max)
+
+
+def test_each_booked_silver_transaction_is_one_unknown_gold_transaction() -> None:
+    result = build_from()
+
+    # The balance check has tests of its own.
+    assert Counter(
+        replace(t, balance_check="opening") for t in _all_transactions(result)
+    ) == Counter(
+        replace(
+            t,
+            description=f"TEXT {t.transaction_id}",
+            transaction_type="unknown",
+            transfer_group_id=None,
+            balance_check="opening",
+        )
+        for t in TRANSACTIONS
+    )
+
+
+def test_a_pending_or_cancelled_silver_transaction_is_no_gold_transaction() -> None:
+    unbooked = (
+        replace(
+            silver_transaction("pending", CURRENT, date(2026, 4, 28), "-60.00", None),
+            booking_status="pending",
+        ),
+        replace(
+            silver_transaction("cancelled", SAVINGS, date(2026, 3, 3), "5.00", None),
+            booking_status="cancelled",
+        ),
+    )
+    silver = replace(SILVER, transactions=(*SILVER.transactions, *unbooked))
+
+    found = _all_transactions(build_from(silver))
+
+    assert Counter(found) == Counter(_all_transactions(build_from()))
+
+
+def test_the_worked_examples_balance_checks_come_out_exactly() -> None:
+    result = build_from()
+
+    assert {t.transaction_id: t.balance_check for t in _all_transactions(result)} == {
+        t.transaction_id: t.balance_check for t in TRANSACTIONS
+    }
+
+
+def test_a_missing_balance_is_bridged_but_never_filled_in() -> None:
+    stated = (
+        silver_transaction("a", CURRENT, date(2026, 1, 5), "-5.00", None),
+        silver_transaction("b", CURRENT, date(2026, 1, 6), "-10.00", "100.00"),
+        silver_transaction("c", CURRENT, date(2026, 1, 7), "-10.00", None),
+        silver_transaction("d", CURRENT, date(2026, 1, 8), "-10.00", "80.00"),
+        silver_transaction("e", CURRENT, date(2026, 1, 9), "-10.00", "75.00"),
+    )
+
+    found = _all_transactions(build_from(replace(SILVER, transactions=stated)))
+
+    assert [(t.transaction_id, t.balance_after, t.balance_check) for t in found] == [
+        ("a", None, "missing_balance"),
+        ("b", Decimal("100.00"), "opening"),
+        ("c", None, "missing_balance"),
+        # 100.00 - 10.00 - 10.00, bridging c's missing balance
+        ("d", Decimal("80.00"), "consistent"),
+        ("e", Decimal("75.00"), "break"),
+    ]
+
+
+def _all_snapshots(result: GoldResult) -> Sequence[MonthlyBalanceSnapshot]:
+    return result.monthly_balances(
+        start_month=ReportingMonth(1, 1), end_month=ReportingMonth(9999, 12)
+    )
+
+
+def test_the_worked_examples_months_and_coverage_come_out_exactly() -> None:
+    result = build_from()
+
+    # One row per month from the first transaction through May, the month of
+    # the latest evidence_through, even though neither account has a May row.
+    assert Counter(
+        (s.account_id, s.month, s.coverage) for s in _all_snapshots(result)
+    ) == Counter((s.account_id, s.month, s.coverage) for s in MONTHLY_BALANCES)
+
+
+def test_the_worked_examples_balances_come_out_exactly() -> None:
+    result = build_from()
+
+    # joint-savings carries 53,000.00 through its complete quiet months, and
+    # May, quiet with partial evidence, has no balance on either account.
+    assert Counter(
+        (s.account_id, s.month, s.opening_balance, s.closing_balance)
+        for s in _all_snapshots(result)
+    ) == Counter(
+        (s.account_id, s.month, s.opening_balance, s.closing_balance)
+        for s in MONTHLY_BALANCES
+    )
+
+
+def test_the_worked_examples_snapshots_come_out_exactly() -> None:
+    result = build_from()
+
+    # The only export, dated 2026-05-08, settles every month through April.
+    assert Counter(_all_snapshots(result)) == Counter(MONTHLY_BALANCES)
+
+
+APRIL = ReportingMonth(2026, 4)
+
+
+def _settled(
+    *exports: EvidenceExport, window: timedelta = timedelta(days=7)
+) -> dict[ReportingMonth, bool]:
+    """Which of joint-current's months these exports settle."""
+    silver = replace(SILVER, evidence_exports=exports)
+    result = build_from(silver, late_booking_window=window)
+    return {
+        s.month: s.late_bookings_settled
+        for s in _all_snapshots(result)
+        if s.account_id == CURRENT
+    }
+
+
+def test_an_export_produced_under_7_days_after_a_month_does_not_settle_it() -> None:
+    six_days_after = EvidenceExport(
+        "run-6", "payload", CURRENT, date(2026, 5, 6), COVERS_FROM, date(2026, 5, 6)
+    )
+    seven_days_after = EvidenceExport(
+        "run-7", "payload", CURRENT, date(2026, 5, 7), COVERS_FROM, date(2026, 5, 7)
+    )
+
+    assert _settled(six_days_after)[APRIL] is False
+    assert _settled(seven_days_after)[APRIL] is True
+
+
+def test_a_longer_late_booking_window_needs_a_later_export() -> None:
+    seven_days_after = EvidenceExport(
+        "run-7", "payload", CURRENT, date(2026, 5, 7), COVERS_FROM, date(2026, 5, 7)
+    )
+    ten_days_after = EvidenceExport(
+        "run-10", "payload", CURRENT, date(2026, 5, 10), COVERS_FROM, date(2026, 5, 10)
+    )
+
+    assert _settled(seven_days_after, window=timedelta(days=10))[APRIL] is False
+    assert _settled(ten_days_after, window=timedelta(days=10))[APRIL] is True
+
+
+def test_a_zero_day_window_is_settled_by_an_export_on_the_months_last_day() -> None:
+    last_day = EvidenceExport(
+        "run-0", "payload", CURRENT, date(2026, 4, 30), COVERS_FROM, date(2026, 4, 30)
+    )
+    day_before = EvidenceExport(
+        "run-1", "payload", CURRENT, date(2026, 4, 29), COVERS_FROM, date(2026, 4, 29)
+    )
+
+    assert _settled(last_day, window=timedelta(0))[APRIL] is True
+    assert _settled(day_before, window=timedelta(0))[APRIL] is False
+
+
+@pytest.mark.parametrize(
+    "window",
+    [
+        pytest.param(timedelta(days=-1), id="negative"),
+        pytest.param(timedelta(days=7, hours=12), id="a fraction of a day"),
+        pytest.param(timedelta(hours=12), id="under a day"),
+        pytest.param(timedelta(days=7, microseconds=1), id="a microsecond over"),
+        pytest.param(timedelta(days=367), id="over a year"),
+        # Past the last date a month's end plus the window can reach.
+        pytest.param(timedelta(days=3_000_000), id="far too large"),
+    ],
+)
+def test_a_window_that_is_not_whole_days_from_0_to_366_refuses_the_build(
+    window: timedelta,
+) -> None:
+    with pytest.raises(ValueError, match="late_booking_window"):
+        build_from(late_booking_window=window)
+
+
+def test_a_366_day_window_is_the_longest_the_build_accepts() -> None:
+    a_year_after = EvidenceExport(
+        "run-366", "payload", CURRENT, date(2027, 5, 1), COVERS_FROM, date(2027, 5, 1)
+    )
+
+    assert _settled(a_year_after, window=timedelta(days=366))[APRIL] is True
+
+
+def test_an_export_whose_range_misses_the_months_last_day_never_settles_it() -> None:
+    starts_after = EvidenceExport(
+        "run-may",
+        "payload",
+        CURRENT,
+        date(2026, 6, 30),
+        date(2026, 5, 1),
+        date(2026, 6, 30),
+    )
+    ends_before = EvidenceExport(
+        "run-april",
+        "payload",
+        CURRENT,
+        date(2026, 6, 30),
+        COVERS_FROM,
+        date(2026, 4, 29),
+    )
+
+    # Each was produced long after April ended, but cannot show its late bookings.
+    assert _settled(starts_after)[APRIL] is False
+    assert _settled(ends_before)[APRIL] is False
+
+
+def _rows(result: GoldResult, account_id: str) -> list[tuple[object, ...]]:
+    """An account's (month, coverage, opening, closing, settled), month by month."""
+    return [
+        (
+            s.month,
+            s.coverage,
+            s.opening_balance,
+            s.closing_balance,
+            s.late_bookings_settled,
+        )
+        for s in sorted(_all_snapshots(result), key=lambda s: s.month)
+        if s.account_id == account_id
+    ]
+
+
+def test_an_account_whose_exports_lag_still_has_a_row_for_each_later_month() -> None:
+    lagging = replace(
+        SILVER,
+        transactions=(
+            *(t for t in SILVER.transactions if t.account_id == CURRENT),
+            silver_transaction(
+                "savings-01", SAVINGS, date(2026, 1, 20), "3000.00", "53000.00"
+            ),
+        ),
+        account_evidence=(
+            AccountEvidence(CURRENT, COVERS_FROM, date(2026, 5, 8)),
+            AccountEvidence(SAVINGS, COVERS_FROM, date(2026, 3, 15)),
+        ),
+        evidence_exports=(
+            EvidenceExport(
+                "run-c",
+                "payload",
+                CURRENT,
+                date(2026, 5, 8),
+                COVERS_FROM,
+                date(2026, 5, 8),
+            ),
+            EvidenceExport(
+                "run-s",
+                "payload",
+                SAVINGS,
+                date(2026, 3, 15),
+                COVERS_FROM,
+                date(2026, 3, 15),
+            ),
+        ),
+    )
+
+    result = build_from(lagging)
+
+    # joint-current's evidence reaches May, so joint-savings has rows through May.
+    assert _rows(result, SAVINGS) == [
+        (
+            ReportingMonth(2026, 1),
+            "partial",
+            Decimal("50000.00"),
+            Decimal("53000.00"),
+            True,
+        ),
+        (
+            ReportingMonth(2026, 2),
+            "complete",
+            Decimal("53000.00"),
+            Decimal("53000.00"),
+            True,
+        ),
+        (ReportingMonth(2026, 3), "partial", None, None, False),
+        (ReportingMonth(2026, 4), "no_data", None, None, False),
+        (ReportingMonth(2026, 5), "no_data", None, None, False),
+    ]
+
+
+def test_a_closed_accounts_rows_end_at_its_closing_or_the_latest_month() -> None:
+    def closing(on: date) -> list[ReportingMonth]:
+        accounts = {**REGISTRY, SAVINGS: replace(REGISTRY[SAVINGS], closed_on=on)}
+        result = build_from(accounts=accounts)
+        return sorted(
+            s.month for s in _all_snapshots(result) if s.account_id == SAVINGS
+        )
+
+    closed_in_april = closing(date(2026, 4, 30))
+    # A closing recorded ahead of time never reaches past the published data.
+    closing_in_september = closing(date(2026, 9, 30))
+
+    assert closed_in_april == [ReportingMonth(2026, month) for month in (1, 2, 3, 4)]
+    assert closing_in_september == [
+        ReportingMonth(2026, month) for month in (1, 2, 3, 4, 5)
+    ]
+
+
+def test_an_account_closed_before_its_latest_transaction_is_refused() -> None:
+    # joint-savings' latest transaction is its interest on 2026-04-30.
+    closed_early = replace(REGISTRY[SAVINGS], closed_on=date(2026, 3, 31))
+
+    with pytest.raises(ConfigurationError) as refused:
+        build_from(accounts={**REGISTRY, SAVINGS: closed_early})
+
+    assert refused.value.problems == (
+        _closed_early("joint-savings", "2026-03-31", "2026-04-30"),
+    )
+
+
+def test_every_account_closed_too_early_is_named_with_its_latest_date() -> None:
+    # joint-current has two transactions after 2026-03-31, rent on 2026-04-01
+    # and salary on 2026-04-24; the error names the latest.
+    closed_early = {
+        account_id: replace(account, closed_on=date(2026, 3, 31))
+        for account_id, account in REGISTRY.items()
+    }
+
+    with pytest.raises(ConfigurationError) as refused:
+        build_from(accounts=closed_early)
+
+    assert refused.value.problems == (
+        _closed_early("joint-current", "2026-03-31", "2026-04-24"),
+        _closed_early("joint-savings", "2026-03-31", "2026-04-30"),
+    )
+
+
+def test_an_account_closed_before_its_first_transaction_is_refused() -> None:
+    # joint-savings' first transaction is on 2026-01-20, so every one of its
+    # transactions falls after the close, and it would get no snapshot rows.
+    closed_early = replace(REGISTRY[SAVINGS], closed_on=date(2025, 12, 31))
+
+    with pytest.raises(ConfigurationError) as refused:
+        build_from(accounts={**REGISTRY, SAVINGS: closed_early})
+
+    assert refused.value.problems == (
+        _closed_early("joint-savings", "2025-12-31", "2026-04-30"),
+    )
+
+
+def test_a_pending_transaction_after_closed_on_does_not_refuse_the_build() -> None:
+    # Only booked rows become Gold facts, so a payment still pending after
+    # the close is no fact that could fall outside the managed period.
+    accounts = {
+        **REGISTRY,
+        SAVINGS: replace(REGISTRY[SAVINGS], closed_on=date(2026, 4, 30)),
+    }
+    pending = replace(
+        silver_transaction("pending", SAVINGS, date(2026, 5, 5), "-60.00", None),
+        booking_status="pending",
+    )
+    silver = replace(SILVER, transactions=(*SILVER.transactions, pending))
+
+    found = _all_transactions(build_from(silver, accounts=accounts))
+
+    assert Counter(found) == Counter(_all_transactions(build_from(accounts=accounts)))
+
+
+def _closed_early(account_id: str, closed_on: str, latest: str) -> str:
+    """The refusal naming an account closed before its latest transaction."""
+    return (
+        f'accounts.toml: account "{account_id}": closed_on {closed_on} is before '
+        f"its latest transaction on {latest}; correct closed_on in "
+        "accounts.toml; nothing was published"
+    )
+
+
+def test_a_quiet_accounts_repeated_export_settles_its_months() -> None:
+    first = exports.declared(
+        exports.export(
+            [exports.row("10.01.2026", "LOEN", "1000,00", "1000,00")],
+            run_id="run-1",
+            exported_on=date(2026, 2, 3),
+        ),
+        covers_from=date(2026, 1, 1),
+    )
+    # Nothing new was booked, so the bank's next export has the same bytes.
+    same_bytes = exports.repeat(first, run_id="run-2", exported_on=date(2026, 3, 10))
+    registry = {exports.ACCOUNT: REGISTRY[CURRENT]}
+
+    def settled(*runs: exports.Export) -> list[bool]:
+        result = build_from(exports.build_from(*runs), accounts=registry)
+        by_month = sorted(_all_snapshots(result), key=lambda s: s.month)
+        return [s.late_bookings_settled for s in by_month]
+
+    # Produced three days after January, the first export settles nothing.
+    assert settled(first) == [False, False]
+    assert settled(first, same_bytes) == [True, True, False]
+
+
+def _joint_current_only(
+    covers_from: date, through: date, *transactions: Transaction
+) -> SilverResult:
+    """Silver holding only these joint-current transactions.
+
+    One export, produced on `through`, declares `covers_from` through `through`.
+    """
+    return replace(
+        SILVER,
+        transactions=transactions,
+        account_evidence=(AccountEvidence(CURRENT, covers_from, through),),
+        evidence_exports=(
+            EvidenceExport("run-1", "payload", CURRENT, through, covers_from, through),
+        ),
+    )
+
+
+def test_the_managed_period_runs_across_a_year_end() -> None:
+    silver = _joint_current_only(
+        date(2025, 12, 1),
+        date(2026, 2, 10),
+        silver_transaction("dec", CURRENT, date(2025, 12, 15), "-5.00", "95.00"),
+    )
+
+    rows = _rows(build_from(silver), CURRENT)
+
+    assert rows == [
+        (
+            ReportingMonth(2025, 12),
+            "partial",
+            Decimal("100.00"),
+            Decimal("95.00"),
+            True,
+        ),
+        (ReportingMonth(2026, 1), "complete", Decimal("95.00"), Decimal("95.00"), True),
+        (ReportingMonth(2026, 2), "partial", None, None, False),
+    ]
+
+
+def test_a_link_beside_a_missing_balance_leaves_its_months_partial() -> None:
+    silver = _joint_current_only(
+        date(2026, 1, 1),
+        date(2026, 4, 30),
+        silver_transaction("jan", CURRENT, date(2026, 1, 10), "100.00", "100.00"),
+        silver_transaction("feb", CURRENT, date(2026, 2, 10), "-10.00", None),
+        silver_transaction("mar", CURRENT, date(2026, 3, 10), "-10.00", "80.00"),
+        silver_transaction("apr", CURRENT, date(2026, 4, 10), "-5.00", "75.00"),
+    )
+
+    result = build_from(silver)
+
+    # March's check bridges February's blank and is consistent, but neither
+    # link beside the blank is verified, so February and March stay partial.
+    assert [t.balance_check for t in _all_transactions(result)] == [
+        "opening",
+        "missing_balance",
+        "consistent",
+        "consistent",
+    ]
+    assert [(row[0], row[1]) for row in _rows(result, CURRENT)] == [
+        (ReportingMonth(2026, 1), "partial"),
+        (ReportingMonth(2026, 2), "partial"),
+        (ReportingMonth(2026, 3), "partial"),
+        (ReportingMonth(2026, 4), "complete"),
+    ]
+
+
+def test_quiet_months_after_a_last_transaction_without_a_balance_are_partial() -> None:
+    silver = _joint_current_only(
+        date(2026, 1, 1),
+        date(2026, 3, 31),
+        silver_transaction("jan-05", CURRENT, date(2026, 1, 5), "100.00", "100.00"),
+        silver_transaction("jan-20", CURRENT, date(2026, 1, 20), "-40.00", None),
+    )
+
+    result = build_from(silver)
+
+    # The true balance after January is 60.00, which no export states. Carrying
+    # 100.00 would overstate it, so the quiet months have no balance at all.
+    assert [row[:4] for row in _rows(result, CURRENT)] == [
+        (ReportingMonth(2026, 1), "partial", Decimal("0.00"), None),
+        (ReportingMonth(2026, 2), "partial", None, None),
+        (ReportingMonth(2026, 3), "partial", None, None),
+    ]
+
+
+def test_quiet_months_are_complete_again_once_a_balance_is_stated() -> None:
+    silver = _joint_current_only(
+        date(2026, 1, 1),
+        date(2026, 6, 30),
+        silver_transaction("jan-05", CURRENT, date(2026, 1, 5), "100.00", "100.00"),
+        silver_transaction("jan-20", CURRENT, date(2026, 1, 20), "-40.00", None),
+        silver_transaction("may-03", CURRENT, date(2026, 5, 3), "-10.00", "50.00"),
+    )
+
+    result = build_from(silver)
+
+    # This guards where the unknown stretch ends. May states 50.00, but the
+    # link into it is not verified, so May stays partial; June carries 50.00.
+    assert [row[:4] for row in _rows(result, CURRENT)] == [
+        (ReportingMonth(2026, 1), "partial", Decimal("0.00"), None),
+        (ReportingMonth(2026, 2), "partial", None, None),
+        (ReportingMonth(2026, 3), "partial", None, None),
+        (ReportingMonth(2026, 4), "partial", None, None),
+        (ReportingMonth(2026, 5), "partial", Decimal("60.00"), Decimal("50.00")),
+        (ReportingMonth(2026, 6), "complete", Decimal("50.00"), Decimal("50.00")),
+    ]
+
+
+def test_an_account_whose_source_states_no_balances_is_never_complete() -> None:
+    silver = _joint_current_only(
+        date(2026, 1, 1),
+        date(2026, 3, 31),
+        silver_transaction("jan-05", CURRENT, date(2026, 1, 5), "100.00", None),
+        silver_transaction("jan-20", CURRENT, date(2026, 1, 20), "-40.00", None),
+    )
+
+    result = build_from(silver)
+
+    # A complete month must state its balances, and none is ever stated here.
+    assert [row[:4] for row in _rows(result, CURRENT)] == [
+        (ReportingMonth(2026, 1), "partial", None, None),
+        (ReportingMonth(2026, 2), "partial", None, None),
+        (ReportingMonth(2026, 3), "partial", None, None),
+    ]

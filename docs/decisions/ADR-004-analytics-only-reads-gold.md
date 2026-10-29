@@ -1,3 +1,6 @@
+---
+type: decisions
+---
 # ADR-004: Analytics Reads Gold Only
 
 **Status:** Accepted

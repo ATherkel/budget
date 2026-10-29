@@ -1,3 +1,6 @@
+---
+type: plans
+---
 ## Dashboard specification and release split — 28 September 2026
 
 The prototype discussion is now organized into the modular specification #100

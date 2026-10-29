@@ -11,7 +11,7 @@ DTO proposal is still not an accepted production contract.
 🤖 Added by Codex (GPT-6 Astra)
 
 **Status: proposal for the maintainer. Nothing here is accepted, and no ADR is
-changed by it.** It uses the vocabulary of [CONTEXT.md](../../CONTEXT.md) and
+changed by it.** It uses the vocabulary of [CONTEXT.md](../../docs/CONTEXT.md) and
 the accepted rules in [gold-contract.md](../../docs/architecture/gold-contract.md)
 (0.2), [analytics-layer.md](../../docs/architecture/analytics-layer.md),
 [publications.md](../../docs/architecture/publications.md),

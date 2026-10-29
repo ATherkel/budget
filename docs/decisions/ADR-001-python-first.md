@@ -1,3 +1,6 @@
+---
+type: decisions
+---
 # ADR-001: Python-First Implementation
 
 **Status:** Accepted

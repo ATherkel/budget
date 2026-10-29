@@ -1,3 +1,6 @@
+---
+type: domains
+---
 # Forecast Domain
 
 A forecast is a derived projection, never a replacement for observed facts.

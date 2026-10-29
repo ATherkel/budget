@@ -1,0 +1,517 @@
+# Copyright 2026 Therkel
+"""The `import` application operation: every inbox export, then Silver.
+
+Each export in `inbox/<account_id>/` is previewed, then imported on its own
+through `import_inbox_file`, under the one writer lock the command holds, and
+Silver is then rebuilt from the Bronze those imports wrote. A payload the
+inbox holds under more than one declared account is a cross-account duplicate:
+every file in it is refused before the first write, because which account the
+bank really exported it for is unknown. A misfiled or
+unreadable export, or one its format cannot read, is found by its preview,
+before anyone is asked for its range, and never reaches Bronze: it waits
+in the inbox for a fresh download or a reader fix.
+"""
+
+from collections import Counter
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
+from datetime import UTC, date, datetime
+from hashlib import sha256
+from pathlib import Path
+from typing import Final
+
+from budget.backups import (
+    BACKUP_FAILURES,
+    BackupSet,
+    back_up,
+    require_backup_allowed,
+)
+from budget.bronze import BronzeStore
+from budget.bronze.models import ImportRun
+from budget.bronze.parsers.registry import source_parser
+from budget.codeversion import committed_code_version, require_committed_code
+from budget.gold.build import closed_too_early, decision_problems
+from budget.importing import (
+    Coverage,
+    NotAnInboxFileError,
+    UnknownInboxAccountError,
+    import_inbox_file,
+)
+from budget.importing import InboxImport as InboxFileImport
+from budget.inputs import Account, ConfigurationError, MisfiledExportError
+from budget.locking import WriterLock
+from budget.profiles import PRODUCTION_PROFILE_NAME, Profile
+from budget.rebuilding import (
+    GoldRebuild,
+    HouseholdInputs,
+    SilverRebuild,
+    read_household_inputs,
+    rebuild_through_gold,
+)
+
+# The outcomes that leave a file in the inbox and make `import` exit 3.
+LEFT_IN_INBOX: Final = frozenset(
+    {"refused", "misfiled", "unreadable", "format failure", "incident"}
+)
+# Why an incident file is never imported: the same bytes are in the inbox
+# under another account, and only a person can say which account they belong
+# to.
+INCIDENT_REASON: Final = "the same bytes are in the inbox under another account"
+# How a file in a folder that names no account is shown: the folder's name is
+# typed by hand, so it may carry a bank account number.
+NO_ACCOUNT: Final = "(no account)"
+_NO_EXPORT_DATE: Final = (
+    "the filename carries no export date; keep the name the bank gave it"
+)
+
+
+@dataclass(frozen=True)
+class ExportPreview:
+    """What one inbox file says about itself before anything is stored.
+
+    The transaction dates are the file's first and last, read by its
+    account's source format, so the person can check that the range they
+    declare covers them. Both are `None` when the file has no records.
+    `skipped` names why the file is not imported at all, `misfiled`,
+    `unreadable` or `format failure`, and `reason` says how; both are
+    empty when it can be imported, and then `exported_on` is the date its
+    filename carries. `payload_id` names the bytes the preview read, and is
+    empty when it read none: a file under no declared account, one whose name
+    is misfiled, and one that cannot be read.
+    """
+
+    source: Path
+    account_id: str
+    exported_on: date | None = None
+    first_transaction: date | None = None
+    last_transaction: date | None = None
+    records: int = 0
+    skipped: str = ""
+    reason: str = ""
+    payload_id: str = ""
+
+
+@dataclass(frozen=True)
+class DuplicateIncident:
+    """One payload the inbox holds under two or more declared accounts.
+
+    Every file in it is impacted, whichever declared account each one sits
+    under: which of them the bank really exported is unknown, so none of them
+    is imported and none is guessed at. `files` are the impacted files, in
+    the order the listing shows them.
+    """
+
+    files: tuple[ExportPreview, ...]
+
+
+@dataclass(frozen=True)
+class FileOutcome:
+    """What happened to one inbox file, named by its place in the listing.
+
+    `reason` is empty for a stored or repeat export, and never repeats a
+    filename, an amount or a description. `note` says why an accepted export
+    is still in the inbox, when it is. `silver_run_id` is the import run
+    Silver judged for an accepted export: its own, or for a repeat, the run
+    it repeats.
+    """
+
+    ordinal: int
+    account_id: str
+    status: str
+    reason: str = ""
+    note: str = ""
+    silver_run_id: str = ""
+
+
+@dataclass(frozen=True)
+class ImportedInbox:
+    """Every inbox file's outcome, the rebuilds and production's backup.
+
+    `rebuilt` is `None` when nothing was outstanding: no file reached Bronze
+    and Silver and Gold were already current, so no backup follows either.
+    `published` is what the Gold rebuild after the Silver one left current.
+    `held_back` is the configuration error that stopped Silver and Gold after
+    Bronze was written; the next `import` finishes them. `backup` is the set
+    written after the rebuilds; only production writes one.
+    `backup_failure` is why production's set could not be written, if so.
+    `incidents` are the cross-account duplicates the preflight found, so the
+    counts can report them even when a member is refused for another reason.
+    """
+
+    files: Sequence[FileOutcome]
+    rebuilt: SilverRebuild | None
+    incidents: tuple[DuplicateIncident, ...] = ()
+    published: GoldRebuild | None = None
+    held_back: ConfigurationError | None = None
+    backup: BackupSet | None = None
+    backup_failure: Exception | None = None
+
+    def counts(self) -> dict[str, int]:
+        """Count the files by outcome, the incidents, and Silver's runs and drops.
+
+        The incident counts are of the groups and of every file each one
+        holds, so a member refused for another reason is counted there too.
+        These are what the routine log records: never an account, a reason or
+        a filename.
+        """
+        outcomes = Counter(each.status for each in self.files)
+        result = None if self.rebuilt is None else self.rebuilt.result
+        runs = () if result is None else result.import_run_results
+        items = () if result is None else result.review_items
+        statuses = Counter(each.status for each in runs)
+        return {
+            "stored": outcomes["stored"],
+            "repeat": outcomes["repeat"],
+            "refused": outcomes["refused"],
+            "misfiled": outcomes["misfiled"],
+            "unreadable": outcomes["unreadable"],
+            "format_failure": outcomes["format failure"],
+            "incidents": len(self.incidents),
+            "incident_files": sum(len(each.files) for each in self.incidents),
+            "admitted": statuses["accepted"],
+            "quarantined": statuses["quarantined"],
+            "dropped": sum(1 for item in items if item.kind == "dropped-transaction"),
+            "published": int(self.published is not None and self.published.published),
+        }
+
+    @property
+    def any_left_in_inbox(self) -> bool:
+        """Whether any file stays in the inbox unimported: exit 3."""
+        return any(each.status in LEFT_IN_INBOX for each in self.files)
+
+
+def require_import_allowed(profile: Profile) -> HouseholdInputs:
+    """Refuse, before anything is asked or stored, what would refuse later.
+
+    The rebuilds refuse uncommitted code in production, a store that is
+    missing, a decision log they cannot read and household inputs that do not
+    load; production's backup refuses a stores folder no set can cover. Found
+    only after the Bronze writes, any of them would leave Bronze written
+    without the build and backup that must follow. The household files read
+    here come back, so the rebuilds after the import use the same ones.
+    """
+    require_committed_code(profile)
+    if profile.name == PRODUCTION_PROFILE_NAME:
+        require_backup_allowed(profile)
+    inputs = read_household_inputs(profile)
+    committed_code_version(profile)
+    return inputs
+
+
+def require_importable(
+    inputs: HouseholdInputs, previews: Sequence[ExportPreview]
+) -> None:
+    """Refuse now the Gold refusals the files about to be stored would cause.
+
+    A decision naming a category the taxonomy dropped refuses every Gold build,
+    and an account closed before a transaction the previews show refuses the
+    build that follows the import. Both are known before any file is consumed.
+    """
+    problems = list(decision_problems(inputs.log.gold, inputs.configuration))
+    for each in previews:
+        account = inputs.configuration.accounts.get(each.account_id)
+        last = each.last_transaction
+        if (
+            not each.skipped
+            and account is not None
+            and account.closed_on is not None
+            and last is not None
+            and account.closed_on < last
+        ):
+            problems.append(closed_too_early(each.account_id, account.closed_on, last))
+    if problems:
+        raise ConfigurationError(tuple(problems))
+
+
+def inbox_exports(profile: Profile) -> tuple[Path, ...]:
+    """List the files waiting in the inbox, in order.
+
+    That is every file anywhere under the inbox. Only one directly inside an
+    account folder can be imported, but an export saved in the inbox itself,
+    or in a folder inside an account's, is reported, never skipped without a
+    word.
+    """
+    if not profile.inbox.is_dir():
+        return ()
+    return tuple(sorted(path for path in profile.inbox.rglob("*") if path.is_file()))
+
+
+def _exported_on(account: Account, source: Path) -> date | str:
+    """Return the export date a file's name carries, or why it does not fit.
+
+    A name that carries another bank account's number, or no export date, is
+    misfiled; the returned reason never repeats the name.
+    """
+    try:
+        account.check_export_filename(source.name)
+    except MisfiledExportError as error:
+        return str(error)
+    parser = source_parser(account.source_format)
+    try:
+        exported_on = parser.exported_on_from_filename(source.name)
+    except ValueError as error:
+        # The parser contract: a date-shaped suffix that is not a real date.
+        return str(error)
+    return _NO_EXPORT_DATE if exported_on is None else exported_on
+
+
+def _misfiled(source: Path, account_id: str, reason: str) -> ExportPreview:
+    """Preview a file that cannot be imported where it lies."""
+    return ExportPreview(
+        source=source, account_id=account_id, skipped="misfiled", reason=reason
+    )
+
+
+def _unreadable(error: OSError) -> str:
+    """Say why a file cannot be read, never naming its path.
+
+    On Windows that is most often another program holding it without
+    sharing it, as a spreadsheet program can.
+    """
+    reason = error.strerror or type(error).__name__
+    return (
+        f"the file cannot be read ({reason}): close the program that holds "
+        "it, then rerun import"
+    )
+
+
+def preview(
+    profile: Profile, accounts: Mapping[str, Account], source: Path
+) -> ExportPreview:
+    """Read one inbox file's account and transaction dates, storing nothing."""
+    if source.parent.parent != profile.inbox:
+        problem = str(NotAnInboxFileError())
+        return _misfiled(source, NO_ACCOUNT, problem)
+    account = accounts.get(source.parent.name)
+    if account is None:
+        problem = str(UnknownInboxAccountError(source.parent.name))
+        return _misfiled(source, NO_ACCOUNT, problem)
+    exported_on = _exported_on(account, source)
+    if isinstance(exported_on, str):
+        return _misfiled(source, account.account_id, exported_on)
+    try:
+        content = source.read_bytes()
+    except OSError as error:
+        return ExportPreview(
+            source=source,
+            account_id=account.account_id,
+            skipped="unreadable",
+            reason=_unreadable(error),
+        )
+    parsed = source_parser(account.source_format).parse(content)
+    if parsed.failure_reason is not None:
+        # The parser's verdict never repeats source content.
+        return ExportPreview(
+            source=source,
+            account_id=account.account_id,
+            skipped="format failure",
+            reason=parsed.failure_reason,
+            payload_id=_payload_id(content),
+        )
+    return ExportPreview(
+        source=source,
+        account_id=account.account_id,
+        exported_on=exported_on,
+        first_transaction=parsed.first_transaction_date,
+        last_transaction=parsed.last_transaction_date,
+        records=len(parsed.records),
+        payload_id=_payload_id(content),
+    )
+
+
+def _payload_id(content: bytes) -> str:
+    """Name bytes as Bronze names a payload: the SHA-256 of the bytes."""
+    return sha256(content).hexdigest()
+
+
+def _read_payload_id(source: Path) -> str | None:
+    """Name a file's bytes now, or `None` when they cannot be read."""
+    try:
+        return _payload_id(source.read_bytes())
+    except OSError:
+        return None
+
+
+def cross_account_duplicates(
+    previews: Sequence[ExportPreview],
+) -> tuple[DuplicateIncident, ...]:
+    """Find every payload the whole inbox holds under two or more accounts.
+
+    A preview that read its bytes has already named the payload, and that name
+    is what the groups are built from: a second read could fail after the
+    preview, and a group must never be lost because one did. Only a preview
+    that read nothing - a misfiled name, say - is read here. A file under no
+    declared account has no account to compare, and one whose bytes cannot be
+    read has no bytes to compare, so neither takes part. Copies under one
+    account alone are repeats, not an incident.
+    """
+    groups: dict[str, list[ExportPreview]] = {}
+    for previewed in previews:
+        if previewed.account_id == NO_ACCOUNT:
+            continue
+        payload_id = previewed.payload_id or _read_payload_id(previewed.source)
+        if payload_id is None:
+            continue
+        groups.setdefault(payload_id, []).append(previewed)
+    return tuple(
+        DuplicateIncident(files=tuple(files))
+        for files in groups.values()
+        if len({each.account_id for each in files}) > 1
+    )
+
+
+def incident_files(incidents: Sequence[DuplicateIncident]) -> frozenset[Path]:
+    """Name every file the incidents hold, so none of them is imported."""
+    return frozenset(
+        previewed.source for incident in incidents for previewed in incident.files
+    )
+
+
+def refusal_reasons(run: ImportRun, previewed: ExportPreview) -> tuple[str, ...]:
+    """Say why Bronze refused a run, as `declared_range_refused` decides it.
+
+    Bronze records that a run was refused, not why, so the reasons are
+    derived again from the declaration and the file's own dates. A run whose
+    range Bronze allows was refused because its bytes are stored for another
+    account.
+    """
+    reasons = []
+    if run.covers_from > run.covers_through:
+        reasons.append("the declared range starts after it ends")
+    if run.covers_through > run.exported_on:
+        reasons.append("the declared range ends after the export date")
+    first, last = previewed.first_transaction, previewed.last_transaction
+    if first is not None and first < run.covers_from:
+        reasons.append("the file has transactions before the declared range starts")
+    if last is not None and last > run.covers_through:
+        reasons.append("the file has transactions after the declared range ends")
+    if not reasons:
+        reasons.append("the same bytes are already stored for another account")
+    return tuple(reasons)
+
+
+def _still_in_inbox(imported: InboxFileImport, source: Path) -> str:
+    """Say why an accepted export is still in the inbox, if it is.
+
+    Its bytes are archived and logged, so a rerun finishes it as a retry. The
+    file is either held open by another program, or was saved over while it
+    was imported, in which case it now holds bytes no run stored.
+    """
+    if not imported.left_in_inbox:
+        return ""
+    try:
+        changed = (
+            sha256(source.read_bytes()).hexdigest() != imported.import_run.payload_id
+        )
+    except OSError:
+        changed = False
+    if changed:
+        return (
+            "it stays in the inbox because it changed while it was imported: "
+            "rerun import to import it as it is now"
+        )
+    return (
+        "it stays in the inbox because another program holds it: close that "
+        "program, then rerun import"
+    )
+
+
+def _outcome(
+    ordinal: int, imported: InboxFileImport, previewed: ExportPreview
+) -> FileOutcome:
+    """Name one imported file's outcome, and why when it was refused."""
+    run = imported.import_run
+    account_id = run.declared_account_id
+    if run.outcome == "refused":
+        reason = "; ".join(refusal_reasons(run, previewed))
+        return FileOutcome(ordinal, account_id, "refused", reason)
+    note = _still_in_inbox(imported, previewed.source)
+    judged = run.repeat_of or run.import_run_id
+    return FileOutcome(
+        ordinal, account_id, run.outcome, note=note, silver_run_id=judged
+    )
+
+
+def import_inbox(
+    lock: WriterLock,
+    previews: Sequence[ExportPreview],
+    declared: Mapping[Path, Coverage],
+    incidents: Sequence[DuplicateIncident],
+    inputs: HouseholdInputs,
+) -> ImportedInbox:
+    """Import each file with its declared range, then rebuild Silver and Gold.
+
+    `declared` maps each file that is not skipped to the range the person
+    declared for it, all of them settled before this is called, and
+    `incidents` are the cross-account duplicates the preflight found: every
+    file they hold is refused as an incident file and never presented to
+    Bronze. Files are numbered in `previews`' order, the order the person was
+    shown them in.
+    """
+    excluded = incident_files(incidents)
+    files: list[FileOutcome] = []
+    for ordinal, previewed in enumerate(previews, start=1):
+        if previewed.skipped:
+            files.append(
+                FileOutcome(
+                    ordinal, previewed.account_id, previewed.skipped, previewed.reason
+                )
+            )
+            continue
+        if previewed.source in excluded:
+            files.append(
+                FileOutcome(ordinal, previewed.account_id, "incident", INCIDENT_REASON)
+            )
+            continue
+        imported = import_inbox_file(lock, previewed.source, declared[previewed.source])
+        files.append(_outcome(ordinal, imported, previewed))
+    found = tuple(incidents)
+    # Nothing was presented to Bronze when every file was skipped or held by
+    # an incident. Bronze may still be ahead of Silver and Gold, because an
+    # earlier import stopped after it stored: then this one finishes them.
+    nothing_new = all(
+        previewed.skipped or previewed.source in excluded for previewed in previews
+    )
+    if nothing_new and not _bronze_holds_runs(lock.profile):
+        return ImportedInbox(files=files, incidents=found, rebuilt=None)
+    try:
+        rebuilt = rebuild_through_gold(lock, now=datetime.now(UTC), inputs=inputs)
+    except ConfigurationError as error:
+        if nothing_new:
+            raise
+        return _backed_up(
+            lock,
+            ImportedInbox(files=files, incidents=found, rebuilt=None, held_back=error),
+        )
+    if nothing_new and not (rebuilt.silver_changed or rebuilt.gold.published):
+        return ImportedInbox(files=files, incidents=found, rebuilt=None)
+    return _backed_up(
+        lock,
+        ImportedInbox(
+            files=files,
+            incidents=found,
+            rebuilt=rebuilt.silver,
+            published=rebuilt.gold,
+        ),
+    )
+
+
+def _bronze_holds_runs(profile: Profile) -> bool:
+    """Whether Bronze has any import run, so Silver and Gold have inputs."""
+    with BronzeStore(profile) as store:
+        return bool(store.import_runs())
+
+
+def _backed_up(lock: WriterLock, imported: ImportedInbox) -> ImportedInbox:
+    """Add production's backup set to what an import wrote.
+
+    Every production write is followed by a set covering Bronze and what was
+    rebuilt from it. The imports are committed by now, so a set that cannot be
+    written is reported beside them, not instead of them.
+    """
+    if lock.profile.name != PRODUCTION_PROFILE_NAME:
+        return imported
+    try:
+        return replace(imported, backup=back_up(lock, now=datetime.now(UTC)))
+    except BACKUP_FAILURES as error:
+        return replace(imported, backup_failure=error)

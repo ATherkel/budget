@@ -1,5 +1,14 @@
 # #11 — month-overview prototype, second round
 
+> **Historical snapshot — 29 October 2026:** This September plan and
+> implementation status are preserved as history. Current main now has the
+> analytics and dashboard implementation; D0/#101 and #12 are accepted and
+> closed. [Issue #100](https://github.com/ATherkel/budget/issues/100) and
+> [report-contract.md](../../docs/architecture/report-contract.md) are
+> authoritative for current contracts and progress.
+>
+> 🤖 Added by Codex (GPT-6 Astra)
+
 ## Publication handoff — 29 September 2026
 
 The latest prototype includes Enkel / Avanceret, isolated Kontrol diagnostics,

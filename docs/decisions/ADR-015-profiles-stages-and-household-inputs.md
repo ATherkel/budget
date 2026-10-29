@@ -1,3 +1,6 @@
+---
+type: decisions
+---
 # ADR-015: Separate Profiles, One Store per ETL Stage, and Household Inputs as Text
 
 **Status:** Accepted

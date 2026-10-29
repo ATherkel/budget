@@ -1,3 +1,6 @@
+---
+type: plans
+---
 ## From prototype to implementation plan — 28 September 2026
 
 The maintainer requested conversion of the prototype and discussion into an

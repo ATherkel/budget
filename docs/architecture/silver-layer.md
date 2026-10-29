@@ -1,3 +1,6 @@
+---
+type: architecture
+---
 # Silver Layer
 
 ## Purpose
@@ -72,37 +75,52 @@ that the selected export does not show is appended after that export's rows, in
 `transaction_id` order. It is never numbered from its occurrence *k*: two
 appended transactions on one date can share a *k*, and `(account_id,
 transaction_date, day_sequence)` has to stay unique, because Gold numbers
-`account_sequence` from that order (`gold-contract.md` invariant 7). Under the
+`account_sequence` from that order (`gold-contract.md` invariant 10). Under the
 rules below the selected export always does show every transaction kept for its
 dates, so this is a guard and not a path — but it is
 written down because the obvious numbering is the colliding one.
 
-## Evidence Through
+## Evidence Ranges
 
-Silver computes each account's evidence bound and passes it forward as
-`AccountEvidence`. This is the single definition of the rule; `gold-contract.md`,
-ADR-006 and `CONTEXT.md` cite it instead of restating it, and Gold carries the
-value through to `GoldAccount.evidence_through` unchanged rather than deriving
-it again.
+Silver computes the days each account's admitted exports are known to cover
+and passes them forward as `AccountEvidence`, one row per stretch of
+consecutive covered days. This is the single definition of the rule;
+`gold-contract.md`, `gold-layer.md`, ADR-006 and `CONTEXT.md` cite it instead
+of restating it, and Gold reads the ranges rather than deriving them again.
 
 ```text
-evidence_through(account) = max over that account's admitted import runs of:
-    covers_through - 1 day   when covers_through == exported_on
-    covers_through           otherwise
+evidence(account) = the union, over that account's admitted import runs, of
+    [covers_from, covers_through]
+written as maximal stretches of consecutive days
 ```
 
-The adjustment is applied **per run, before the maximum**, never to the maximum
-afterwards. An export that reaches its own production day proves nothing about
-that day, because the day may still be booking; an export whose range ended
-earlier proves its whole range. Taking the maximum first would let one run's
-production-day adjustment truncate another run's fully proven range, or hide a
-production-day run behind an earlier one.
+Each run's `covers_from` and `covers_through` are the inclusive range the
+operator declared for it (`bronze-layer.md`, *Covers from and covers
+through*), so no run is adjusted, including one whose range ends on its own
+export date. How far the most recent days can be trusted, while late bookings
+may still arrive, is decided by the late-booking window
+([`presentation-layer.md`](presentation-layer.md#data-trust-display)), not
+here.
+
+Ranges that overlap, or touch because one ends the day before the next begins,
+form one stretch: exports declared for 1–15 March and 16–31 March give a single
+range, 1–31 March. A day that no admitted run declares is not evidence, so it
+falls in a gap between two ranges and is never read as covered. Exports
+declared for January–March and May–June give two ranges, and April is the gap
+between them. The union depends only on the set of declared ranges, never on
+import order.
 
 `repeat` runs of an already admitted payload count here: they carry their own
-`exported_on` and `covers_through` without contributing source records, which is
-how an account with no new activity extends its evidence. An account with no
-admitted import run produces no `AccountEvidence`, and
-`GoldAccount.evidence_through` is null.
+`exported_on`, `covers_from` and `covers_through` without contributing source
+records, which is how an account with no new activity extends its evidence. An
+account with no admitted import run produces no `AccountEvidence`, and
+`GoldAccount.coverage_start` and `evidence_through` are null.
+
+Silver also passes on each run it counted here as an `EvidenceExport`: its
+`import_run_id`, account, `exported_on`, `covers_from` and `covers_through`. Gold settles late
+bookings from them (`gold-layer.md`, *Late bookings settled*), so it never
+reads Bronze. `ImportRunResult` cannot serve, because Silver produces it only
+for `stored` runs.
 
 ## Other Outputs
 
@@ -132,16 +150,25 @@ BalanceObservation(             # bank-stated end-of-day balance per export
     payload_id: str,
 )
 
-AccountEvidence(                # the account's evidence bound; see above
+AccountEvidence(                # one evidence range; see Evidence Ranges
     account_id: str,
-    evidence_through: date,     # computed by the formula in Evidence Through
+    covers_from: date,          # first day of the range, inclusive
+    covers_through: date,       # last day of the range, inclusive
+)
+
+EvidenceExport(                 # one import run counted in an evidence range
+    import_run_id: str,         # the counted run (Bronze)
+    account_id: str,            # the account the run declared (Bronze)
+    exported_on: date,          # the run's export date (Bronze)
+    covers_from: date,          # the run's declared range, inclusive (Bronze)
+    covers_through: date,
 )
 
 ImportRunResult(
     import_run_id: str,
+    account_id: str,            # the account the run declared (Bronze); never empty
     status: Literal["accepted", "quarantined"],
-    covered_from: date | None,  # earliest transaction date in the payload, booked or not;
-                                # None when the payload has no source records
+    covered_from: date,         # the import run's covers_from (Bronze)
     covered_to: date,           # the import run's covers_through (Bronze)
     errors: Sequence[ValidationError],
     review_item_ids: Sequence[str],
@@ -156,28 +183,29 @@ ValidationError(
 
 ReviewItem(
     review_item_id: str,        # deterministic
-    kind: Literal["export-disagreement", "dropped-transactions", "balance-break"],
+    kind: Literal["export-disagreement", "dropped-transaction", "balance-break"],
     account_id: str,
     date_from: date,
     date_to: date,
     payload_ids: Sequence[str],
     resolved_by: str | None,    # manual decision id
+    transaction_id: str | None, # the dropped transaction, for `dropped-transaction`;
+                                # None for every other kind (ADR-018)
 )
 ```
 
-`ImportRunResult.covered_from` describes the file, not the transactions
-admitted from it: it is the earliest transaction date among all the payload's
-source records, whatever their `booking_status`. An export whose first row is
-cancelled on 28 August and whose first booked row is on 1 September has
-`covered_from` 28 August.
+`ImportRunResult.account_id` is the account the import run declared, copied
+from Bronze, so a reader can name a quarantined run's account from Silver
+alone.
 
-A payload with no source records has no transaction date to read, and
-`covered_from` is null. That happens for a payload with a `FormatFailure`,
-which Bronze yields with no source records, and for a header-only export,
-whose `covers_through` the operator must declare (`bronze-layer.md`). Silver
-does not invent a start date: Bronze records none, and a made-up one would read
-as evidence. `covered_to` is unaffected: it is always the import run's
-`covers_through`.
+`ImportRunResult.covered_from` and `covered_to` describe the file, not the
+transactions admitted from it: they are the range the operator declared for
+the import run, copied from Bronze. Bronze has already refused any run whose
+transactions fall outside that range, so every source record's date lies
+within it, whatever its `booking_status`. A payload with no source records,
+whether a header-only export of a quiet account or one with a `FormatFailure`,
+still has its declared range. Silver never derives a range from the
+transaction dates.
 
 ## Rules
 
@@ -194,9 +222,10 @@ as evidence. `covered_to` is unaffected: it is always the import run's
 
 **Booking state**
 - Each source format maps its status values to `booking_status`: `booked`,
-  `pending`, or `cancelled`. For `danske-csv-v1`, `Udført` is `booked` and
-  `Slettet` is `cancelled`. Only booked rows enter the canonical transaction
-  output; pending and cancelled rows remain `UnbookedRecord` provenance.
+  `pending`, or `cancelled`. For `danske-csv-v1`, `Udført` is `booked`,
+  `Venter` is `pending` and `Slettet` is `cancelled`. Only booked rows enter
+  the canonical transaction output; pending and cancelled rows remain
+  `UnbookedRecord` provenance.
 - An unknown status value is a validation error. Gold never sees a source
   status vocabulary.
 - `Afstemt` is retained in Bronze only and is not interpreted.
@@ -211,17 +240,65 @@ as evidence. `covered_to` is unaffected: it is always the import run's
     its currency allows;
   - an unknown status;
   - a booked row without a balance, or a balance-chain break within the
-    export (ADR-010).
+    export (ADR-010);
+  - an export without bank labels that would replace labelled transactions
+    (*Label layout*).
 - A booked row without a balance, or a chain break within the export, also
   raises a `balance-break` review item for that run alongside the validation
   errors. The errors say what is wrong with the file; the review item is what
   an *accept discrepancy* decision is prompted by and attaches to through
   `resolved_by` (ADR-010). Without it the quarantine is the only signal, and
   nothing in the operator's work list says there is a way back.
+- `ValidationError.code` names the error. The codes that do not depend on the
+  source format are `format-failure` and `label-layout-regressed`
+  (payload-level, so `record_ordinal` is null), `wrong-field-count` (the
+  record's fields are not exactly one of the format's headers) and
+  `balance-chain-break`. Each source format's data map names the rest.
+
+**Label layout**
+- Each source format says which of its layouts carry bank labels, and its
+  data map says which those are. An account's layout is not expected to
+  change.
+- A run none of whose records is in a layout with labels gets
+  `label-layout-regressed` when an admitted export with labels is the
+  selected export for a date the run covers and has transactions on it.
+  Admitting the run would replace those transactions' labels with nulls. A
+  date without transactions has no labels to lose, so it never triggers the
+  error, and neither does a run with no source records, which has no layout.
+- The message names each conflicting export by `payload_id`, with the first
+  and last date on which it supplies labels the run would replace.
+- Runs are judged in admission order (*Merge verification*), so an older
+  export without labels is admitted, and a newer one with them still
+  supplies labels. An export without labels is also admitted when no export
+  with labels has transactions on its dates. The rule keeps Silver from
+  losing labels it has; it does not notice an account whose labels stop. If
+  the bank ever drops an account's labels, only an export overlapping dates
+  with labelled transactions is held back. One that starts after them is
+  admitted, and later exports build on it.
+- The error quarantines the run, and no decision settles it. The likely
+  cause is an export declared for the wrong account, which may be the run or
+  the older export with labels. *Void import run* on whichever of the two
+  was declared for the wrong account removes the conflict (#138).
 
 **Identity and merging**
 - Per ADR-009: content plus occurrence identity, and the highest count per
   export when exports overlap.
+- `transaction_id` is the lowercase hexadecimal SHA-256 of the UTF-8 encoding
+  of the compact JSON array `[identity_version, account_id, transaction_date,
+  amount, description, occurrence]`:
+  - `transaction_date` is written in ISO 8601;
+  - `amount` is written with exactly the currency's decimal places, for
+    example `"-45.00"`;
+  - `occurrence` is an integer;
+  - `identity_version` is `"1"`.
+
+  The array's element boundaries keep any two different inputs from
+  serializing alike. `account_id` is an input, so identical purchases on two
+  accounts get two identifiers.
+- `review_item_id` is the same hash over `[kind, import_run_id]`, the run that
+  raised the item. A `dropped-transaction` item appends its `transaction_id`,
+  hashing `[kind, import_run_id, transaction_id]`, so two drops by one run give
+  two items (ADR-018).
 
 **Merge verification**
 - Import runs are admitted in `exported_on` order, then `started_at` for runs
@@ -243,11 +320,12 @@ as evidence. `covered_to` is unaffected: it is always the import run's
 - A run *drops* a transaction when, on a date it covers, it shows fewer booked
   transactions with that amount and identity text than are admitted, whether
   two became one or one became none. Any drop quarantines the run and raises
-  one `dropped-transactions` review item; the amounts of the dropped
-  transactions count as an explained difference, so a drop alone raises no
-  `export-disagreement`. The item is settled once each dropped transaction has
-  a *withdrawn* or *same transaction* decision, and the run is then admitted
-  unless another review item holds it (ADR-017).
+  one `dropped-transaction` review item for each transaction dropped; the
+  amounts of the dropped transactions count as an explained difference, so a
+  drop alone raises no `export-disagreement`. A *withdrawn* or *same
+  transaction* decision settles an item, and the run is admitted once each of
+  its items is settled, unless another review item holds it (ADR-017,
+  ADR-018).
 - An unexplained difference quarantines the later run and raises an
   `export-disagreement` review item.
 - Silver uses balances only to verify its own merge. Coverage and
@@ -273,6 +351,10 @@ Gold relies on three guarantees that Silver provides under
 - the source's category labels as trimmed Silver provenance (`bank_category`
   and `bank_subcategory`), which Gold rules may test; Bronze preserves the
   original labels ([`classification.md`](classification.md)).
+
+Gold also needs the evidence ranges and, for late bookings, the export date
+and declared range of every run counted in them; both are under
+[Evidence Ranges](#evidence-ranges).
 
 ## Responsibilities
 

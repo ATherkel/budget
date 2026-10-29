@@ -1,3 +1,6 @@
+---
+type: domains
+---
 # Category Change Log
 
 Gold's category dimension is Type 1: renaming a category, or moving it to
