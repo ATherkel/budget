@@ -292,6 +292,34 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
             assert boundary.restored_current_id == 1
             assert boundary.first_publication_id == 2
 
+    def test_restore_names_the_publication_undo_returns_to_after_catch_up(
+        self,
+    ) -> None:
+        # Undo returns to the set's current publication, never to one lost
+        # after the set.
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            later = drop(
+                built.profile, "joint-current", "danske-20260310.csv", EXPORT_LATER
+            )
+            with writer_lock(built.profile) as lock:
+                import_inbox_file(
+                    lock,
+                    later,
+                    Coverage(
+                        covers_from=date(2026, 3, 5), covers_through=date(2026, 3, 9)
+                    ),
+                )
+            shutil.rmtree(built.profile.stores)
+
+            status, stdout, stderr = restore(built.profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "undo returns to publication 1, the current one in backup set "
+                f"{written.name}; publications made after that set are lost\n"
+            ) in stdout
+
     def test_a_recovery_boundary_survives_a_later_backup_and_restore(self) -> None:
         with TemporaryDirectory() as directory:
             built, written = _published_production(Path(directory) / "prod")
