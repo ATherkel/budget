@@ -340,6 +340,39 @@ class DevRefreshTests(unittest.TestCase):
             for store, content in old.items():
                 assert (development.stores / store).read_bytes() == content
 
+    def test_a_writable_refresh_that_cannot_move_a_store_aside_keeps_them_all(
+        self,
+    ) -> None:
+        # As when another program holds development's Silver store open.
+        with TemporaryDirectory() as directory:
+            production, _ = _production_with_a_set(Path(directory) / "prod")
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+            development.stores.mkdir()
+            old = {
+                store: f"development's own {store}".encode()
+                for store in ("bronze.db", "silver.db", "gold.db")
+            }
+            for store, content in old.items():
+                (development.stores / store).write_bytes(content)
+            move = Path.replace
+
+            def silver_held_open(source: Path, target: Path) -> Path:
+                if Path(source) == development.silver_store:
+                    raise PermissionError(errno.EACCES, "Permission denied")
+                return move(source, target)
+
+            with mock.patch.object(
+                Path, "replace", autospec=True, side_effect=silver_held_open
+            ):
+                status, _, stderr = dev_refresh(profile_file, "--writable")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "development's stores are as they were" in stderr
+            for store, content in old.items():
+                assert (development.stores / store).read_bytes() == content
+
     def test_a_writable_refresh_leaves_no_store_the_set_does_not_hold(
         self,
     ) -> None:
