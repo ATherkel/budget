@@ -326,13 +326,13 @@ from = 2026-01-01
 through = 2026-03-30
 ```
 
-Dates are TOML dates, without quotes. Every `[account.<id>]` must name an
-account in `accounts.toml`, so a misspelt one is refused rather than
-silently given the default. An account with a file in the inbox and no range
-of its own, when there is no `[default]`, refuses the whole run. A file that
-breaks a rule lists every problem and imports nothing, with exit 3. Keep it
-outside `inputs\`, which holds only the household's input files, and
-outside the inbox.
+Dates are TOML dates, without quotes, and `from` falls on or before
+`through`. Every `[account.<id>]` must name an account in `accounts.toml`,
+so a misspelt one is refused rather than silently given the default. An
+account with a file in the inbox and no range of its own, when there is no
+`[default]`, refuses the whole run. A file that breaks a rule lists every
+problem and imports nothing, with exit 3. Keep it outside `inputs\`, which
+holds only the household's input files, and outside the inbox.
 
 ### A rerun
 
