@@ -569,7 +569,7 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | `view --as-was <date> \| --known-at <date> --label <text>` | Builds or finds a past view (ADR-014). Without options, lists retained and legacy publications. | `gold.db`, through a scratch store | Never current |
 | `label <publication_id> <text>` / `unlabel …` | Keeps a result beyond the retention rule, or stops keeping it. | `gold.db` | No |
 | `backup` | Writes a backup set of production and names it. Also runs automatically; see below. | The backups folder | No |
-| `restore [<backup set>]` | Restores the newest complete set, or the one named, into an empty profile and catches up with the import log. | Every store | Yes, if it caught up |
+| `restore [<backup set>]` | Restores the newest complete set, or the one named, into an empty profile, catches up with the import log, and rebuilds Silver and Gold, publishing when the recipe changed; records a recovery boundary. | Every store | Yes, if it caught up |
 | `restore --from-archive` | Last resort: rebuilds Bronze from the archive and the import log, then Silver and Gold. | Every store | Yes |
 | `verify` | Checks integrity, and replays the current publication's recipe to prove it reproduces (ADR-014). | `scratch/` only | No |
 | `dev refresh [--inputs] [--writable]` | Development only: restores production's newest complete backup set into `upstream/`, or with `--writable` into development's own stores. | Development only | No |
@@ -725,9 +725,12 @@ On the new machine: install the code version the newest backup set's manifest
 names, write the production profile, run `budget restore`, then
 `budget serve`. `restore` takes the newest complete set, replays every import
 that the live `imports.jsonl` lists beyond the set, from the export archive,
-and rebuilds with any decisions recorded since. Nothing is
+and rebuilds with any decisions recorded since. No import or decision is
 missing, provided OneDrive had synchronised the inputs folder and the export
-archive.
+archive. Gold history made after the set is lost: its publications, labels
+and pointer moves. `restore` records a recovery boundary so that loss reads
+as a gap, and says where undo returns
+([Publication recovery](publications.md#publication-recovery)).
 
 ### W7: every backup set is lost
 
