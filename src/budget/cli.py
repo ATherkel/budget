@@ -358,7 +358,7 @@ def _undo_line(undo: UndoAfterCatchUp, backup_set: str) -> str:
     )
 
 
-def _restore(profile: Profile, backup_set: str | None) -> None:
+def _restore(profile: Profile, backup_set: str | None) -> int:
     """Restore the whole profile from a backup set, and name the set on stdout."""
     with writer_lock(profile) as lock:
         restored = restore(lock, backup_set, now=datetime.now(UTC))
@@ -396,6 +396,16 @@ def _restore(profile: Profile, backup_set: str | None) -> None:
     if restored.undo is not None:
         sys.stdout.write(_undo_line(restored.undo, restored.backup.name))
     sys.stdout.write(f"restored backup set {restored.backup.name}\n")
+    if restored.backed_up is not None:
+        sys.stdout.write(f"backup set {restored.backed_up.name} written\n")
+    if restored.backup_failure is not None:
+        sys.stderr.write(
+            "budget: the restore is finished, but no backup set of it could be "
+            f"written: {restored.backup_failure}; run `budget backup` once that "
+            "is put right\n"
+        )
+        return EXIT_REFUSED_ENVIRONMENT
+    return EXIT_OK
 
 
 def _dev_refresh(profile: Profile, *, inputs: bool, writable: bool) -> None:
@@ -654,12 +664,12 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         require_no_unfinished_restore(profile)
     if arguments.command == "import":
         return _import(profile, arguments.ranges)
+    if arguments.command == "restore":
+        return _restore(profile, arguments.backup_set)
     if arguments.command == "backup":
         _backup(profile)
     elif arguments.command == "dev":
         _dev_refresh(profile, inputs=arguments.inputs, writable=arguments.writable)
-    elif arguments.command == "restore":
-        _restore(profile, arguments.backup_set)
     elif arguments.command == "rebuild":
         _rebuild(profile, arguments.from_stage)
     elif arguments.command == "review":
