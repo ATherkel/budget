@@ -543,8 +543,6 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     can read is taken, and every newer set is passed over.
     """
     profile = lock.profile
-    earlier = _clear_unfinished(profile)
-    _require_no_stores(profile)
     sets = complete_backup_sets(profile)
     if name is None:
         selected, skipped = _newest_readable(profile, sets)
@@ -553,6 +551,10 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     _require_decision_log_extends(profile, selected)
     decision_line_cut_off = _ends_cut_off(profile.input_file(DECISION_LOG_FILE_NAME))
     log_runs_ahead = _require_import_log_continues(profile, selected)
+    # Only now is an unfinished restore's work cleared: a refusal above keeps
+    # its marker, and with it the record of the inputs it put back.
+    earlier = _clear_unfinished(profile)
+    _require_no_stores(profile)
     stores = set_store_files(selected)
     put_back = _copy_whole(profile, selected, stores, earlier)
     # A log the profile lost and the set holds: only the set's copy stands
