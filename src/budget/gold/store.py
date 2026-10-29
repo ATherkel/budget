@@ -874,7 +874,10 @@ def _delete_stale_results(connection: sqlite3.Connection) -> None:
 def _next_publication_id(connection: sqlite3.Connection) -> int:
     """Return one more than the highest id the store has ever published.
 
-    A publication's metadata is never deleted, so no id is handed out twice.
+    A publication's metadata is never deleted, so within one history no id is
+    handed out twice. After a restore the sequence continues from the set's,
+    so an id can repeat one lost after the set (#376); the store's recovery
+    boundaries say where.
     """
     row = connection.execute(_SELECT_NEXT_ID).fetchone()
     return int(row[0])
