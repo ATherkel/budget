@@ -15,7 +15,9 @@ rationale is in issue #362.
 - **Findings**: classify each one as *required* (breaks the contract or
   regresses behavior, with evidence), *decision needed* (an open scope or
   contract choice for the owner) or *optional* (stays out of the PR unless
-  accepted). Never downgrade a required finding or weaken its test.
+  accepted). Do not silently downgrade a required finding or weaken its
+  acceptance test. Record evidence for reclassification; disputed findings or
+  changes to accepted behavior go to the owner before dependent work continues.
 - **Fix in place**: a required finding is fixed in the PR that introduced it,
   then carried up through the branches stacked on it. A later PR never makes
   an earlier one correct; after merge, fix it in a follow-up PR.
