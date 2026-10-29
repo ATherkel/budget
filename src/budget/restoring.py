@@ -45,7 +45,7 @@ from budget.replaying import (
     check_log_continues,
     replay_import_log,
 )
-from budget.silver.storage import silver_stage
+from budget.silver.storage import SILVER_STAGE, silver_stage
 from budget.sqlstore import StageStore, StoreError, migrate_store, open_store_snapshot
 
 # Where a restore copies a set's stores before moving them into place.
@@ -166,6 +166,23 @@ class UndoAfterCatchUp:
     usable: bool
 
 
+def _start_missing_stages(
+    profile: Profile, stores: Mapping[str, str]
+) -> tuple[str, ...]:
+    """Start each later stage's store the set does not hold; name those stages.
+
+    The set is the copy from before the change, so no backup is taken first.
+    """
+    started = []
+    for stage in (SILVER_STAGE, GOLD_STAGE):
+        if stage not in stores:
+            migrate_store(
+                _STAGES[stage](profile), new_store=True, before_migrating=lambda: None
+            )
+            started.append(stage)
+    return tuple(started)
+
+
 def _undo_after_catch_up(
     profile: Profile, boundary: RecoveryBoundary, gold: GoldRebuild
 ) -> UndoAfterCatchUp | None:
@@ -199,6 +216,12 @@ class Restored:
     decision_line_cut_off: bool
     gold: GoldRebuild | None
     undo: UndoAfterCatchUp | None
+    started: tuple[str, ...] = ()
+
+    @property
+    def gold_started(self) -> bool:
+        """Whether the set held no Gold store, so Gold began anew."""
+        return GOLD_STAGE in self.started
 
     @property
     def decisions_lost(self) -> bool:
@@ -614,20 +637,20 @@ def restore(lock: WriterLock, name: str | None = None, *, now: datetime) -> Rest
             replayed = replay_import_log(lock)
         except REPLAY_REFUSALS as error:
             raise CatchUpRefusedError(selected.name, error) from error
-    # Silver and Gold from everything recovered: the replayed runs, the
-    # decisions and configuration since the set, and the running code.
+    # A set from before sets held Silver or Gold restores none: those stages
+    # start empty, so no history of them is recovered, and none invented.
+    started = _start_missing_stages(profile, stores)
+    # Recorded before the build, so the boundary names the set's current
+    # publication and the first id any later build takes.
+    with GoldStore(profile) as gold_store:
+        boundary = gold_store.record_recovery_boundary(
+            selected.name, selected.created_at, now
+        )
+    # Then Silver and Gold from everything recovered: the replayed runs,
+    # the decisions and configuration since the set, and the running code.
     # Gold publishes only when that recipe differs from the restored one.
-    gold = None
-    undo = None
-    if GOLD_STAGE in stores:
-        # Recorded before the build, so the boundary names the set's current
-        # publication and the first id any later build takes.
-        with GoldStore(profile) as gold_store:
-            boundary = gold_store.record_recovery_boundary(
-                selected.name, selected.created_at, now
-            )
-        gold = rebuild_through_gold(lock, now=now).gold
-        undo = _undo_after_catch_up(profile, boundary, gold)
+    gold = rebuild_through_gold(lock, now=now).gold
+    undo = _undo_after_catch_up(profile, boundary, gold)
     # The moves first: a marker gone after a crash must not leave stores that
     # are not in place. Then durably: a marker that came back after a crash
     # would let a later restore remove a finished profile's stores as its own.
@@ -643,4 +666,5 @@ def restore(lock: WriterLock, name: str | None = None, *, now: datetime) -> Rest
         decision_line_cut_off=decision_line_cut_off,
         gold=gold,
         undo=undo,
+        started=started,
     )
