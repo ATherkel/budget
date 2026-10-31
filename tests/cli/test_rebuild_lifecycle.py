@@ -213,6 +213,36 @@ class UndoTests(unittest.TestCase):
                 ]
 
 
+class PostUndoBuildTests(unittest.TestCase):
+    def test_a_build_after_undo_compares_with_the_current_pointer(self) -> None:
+        with TemporaryDirectory() as directory:
+            household = at_second_publication(Path(directory))
+            correct_ikea_to_gifts(household.profile)
+            assert rebuild(household.profile_file)[0] == EXIT_OK
+            rules = household.profile.input_file("rules.toml")
+            rules.write_text(
+                rules.read_text(encoding="utf-8") + R_NET, encoding="utf-8"
+            )
+            assert rebuild(household.profile_file)[0] == EXIT_OK
+            assert undo(household.profile_file)[0] == EXIT_OK
+            rules.write_text(
+                rules.read_text(encoding="utf-8").replace(R_NET, R_NET_NARROW),
+                encoding="utf-8",
+            )
+
+            status, stdout, stderr = rebuild(household.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 5" in stdout
+            assert "Changes  no measure or review item changed." in stdout
+            with GoldStore(household.profile) as gold:
+                assert [
+                    (move.from_publication_id, move.to_publication_id, move.cause)
+                    for move in gold.pointer_history()
+                ][-1] == (3, 5, "build")
+                assert [each.publication_id for each in gold.available()] == [3, 5]
+
+
 class RetractedDecisionTests(unittest.TestCase):
     def test_a_decision_added_and_retracted_gives_the_earlier_result(self) -> None:
         with TemporaryDirectory() as directory:
