@@ -101,6 +101,16 @@ class PublicationKindError(ValueError):
         )
 
 
+class UndoUnavailableError(RuntimeError):
+    """The store has no previous current publication to restore."""
+
+    def __init__(self) -> None:
+        """Say why undo changed nothing."""
+        super().__init__(
+            "there is no previous publication to undo to; nothing was changed"
+        )
+
+
 class ConfigurationMismatchError(ValueError):
     """The configuration given is not the snapshot the recipe names."""
 
@@ -443,7 +453,29 @@ class GoldStore:
 
     def undo(self) -> PointerMove:
         """Move the pointer to the previous current publication."""
-        return self.pointer_history()[-1]
+        connection = self._owner.connection(write=True)
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            moves = connection.execute(_SELECT_MOVES).fetchall()
+            if not moves or moves[-1]["from_publication_id"] is None:
+                raise UndoUnavailableError
+            move = _move_pointer(connection, moves[-1]["from_publication_id"], "undo")
+        try:
+            _delete_stale_results(connection)
+        except sqlite3.Error as error:
+            code = getattr(error, "sqlite_errorcode", None)
+            if code is None or code & 0xFF not in _PASSING_CLEANUP_FAILURES:
+                error.add_note(
+                    f"publication {move.to_publication_id} is current; "
+                    "only deleting the results no longer retained failed"
+                )
+                raise
+            warnings.warn(
+                f"{_STALE_RESULTS_KEPT}: {error}",
+                StaleResultsWarning,
+                stacklevel=2,
+            )
+        return move
 
     def classification_reviews(
         self,
@@ -832,7 +864,7 @@ def _next_publication_id(connection: sqlite3.Connection) -> int:
 
 def _move_pointer(
     connection: sqlite3.Connection, to_publication_id: int, cause: PointerCause
-) -> None:
+) -> PointerMove:
     """Append one move from the current publication to `to_publication_id`.
 
     The move is the last statement of its transaction, so `moved_at` is read
@@ -843,6 +875,12 @@ def _move_pointer(
     moved_at = datetime.now(UTC).isoformat()
     connection.execute(
         _INSERT_MOVE, (moved_at, from_publication_id, to_publication_id, cause)
+    )
+    return PointerMove(
+        moved_at=datetime.fromisoformat(moved_at),
+        from_publication_id=from_publication_id,
+        to_publication_id=to_publication_id,
+        cause=cause,
     )
 
 
