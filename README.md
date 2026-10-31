@@ -237,6 +237,11 @@ metadata are kept forever. Every Gold table is keyed by `publication_id` first
 and every repository read filters on one, so a hand-written query against
 `gold.db` must do the same or it adds retained publications together.
 
+`budget undo` restores the previous current publication, appends an `undo`
+move to the same pointer history, and leaves household inputs and publication
+results unchanged. Undo is itself undoable. In production it follows the
+pointer write with a backup set.
+
 ## Importing the inbox: `budget import`
 
 Save each export in its account's inbox folder, `inbox\<account_id>\`: the

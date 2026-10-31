@@ -114,6 +114,8 @@ def test_a_read_only_store_refuses_publish_without_writing(profile: Profile) -> 
         assert reader.current() == first
         assert reader.open(first.publication_id).accounts()
         with pytest.raises(GoldStoreReadOnlyError):
+            reader.undo()
+        with pytest.raises(GoldStoreReadOnlyError):
             reader.publish(GoldResult(publication(2), RECORDS), RECIPE, CONFIGURATION)
 
     with GoldStore(profile) as writer:
@@ -130,6 +132,8 @@ CLOSED_ACTIONS: dict[str, Callable[[GoldStore, GoldRepository], object]] = {
     "recipe": lambda store, _repository: store.recipe(1),
     "pointer history": lambda store, _repository: store.pointer_history(),
     "classification reviews": lambda store, _repository: store.classification_reviews(),
+    "reviews": lambda store, _repository: store.reviews(1),
+    "undo": lambda store, _repository: store.undo(),
     "publish": lambda store, _repository: store.publish(
         GoldResult(publication(2), RECORDS), RECIPE, CONFIGURATION
     ),
