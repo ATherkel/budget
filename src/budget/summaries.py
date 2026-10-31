@@ -199,7 +199,7 @@ def _run_line(row: _Row) -> str:
     return f"Run  {row.import_run_id}  {row.account_id}  {row.status}{reasons}"
 
 
-def import_summary(imported: ImportedInbox) -> str:
+def import_summary(imported: ImportedInbox, *, diff_text: str = "") -> str:
     """Report each inbox file by its number, then Silver's counts.
 
     A file is named by its number in the listing the prompt showed, never by
@@ -224,6 +224,7 @@ def import_summary(imported: ImportedInbox) -> str:
     )
     if imported.published is not None:
         lines.append(gold_line(imported.published))
+        lines.extend(diff_text.rstrip().splitlines())
     if imported.backup is not None:
         lines.append(f"Backup   backup set {imported.backup.name} written")
     return "\n".join(lines) + "\n"

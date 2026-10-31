@@ -429,7 +429,12 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
         if not previews and done.rebuilt is None and done.held_back is None:
             sys.stdout.write("The inbox holds no exports; nothing was imported.\n")
             return EXIT_OK
-        sys.stdout.write(summaries.import_summary(done))
+        diff_text = (
+            summaries.publication_changes(profile, done.published)
+            if done.published is not None
+            else ""
+        )
+        sys.stdout.write(summaries.import_summary(done, diff_text=diff_text))
         routine_logging.finished(
             profile,
             "import",
