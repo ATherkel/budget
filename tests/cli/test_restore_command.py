@@ -12,12 +12,13 @@ import shutil
 import sqlite3
 import unittest
 from contextlib import closing
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
 from budget.backups import BackupSet, back_up, complete_backup_sets
+from budget.bronze import BronzeStore
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
 from tests.backups.sets import (
@@ -31,7 +32,8 @@ from tests.backups.sets import (
 from tests.bronze.migration_resources import SILVER_MIGRATIONS, added_migration
 from tests.cli.commands import backup, migrate, restore
 from tests.cli.profile_files import write_profile
-from tests.importing.households import ACCOUNTS
+from tests.importing.households import ACCOUNTS, log_entries
+from tests.test_decision_log import documented_example
 
 EXIT_OK = 0
 EXIT_REFUSED_ENVIRONMENT = 4
@@ -50,6 +52,12 @@ def _production_with_a_set(folder: Path) -> tuple[Path, Profile, BackupSet, str]
         # After the set `migrate` wrote, so it is the newest.
         written = back_up(lock, now=datetime.now(UTC))
     return profile_file, production, written, run_id
+
+
+def _live_run_ids(profile: Profile) -> list[str]:
+    """The runs a live Bronze store holds, its write-ahead log included."""
+    with BronzeStore(profile) as store:
+        return [run.import_run_id for run in store.import_runs()]
 
 
 def _rechecksum(backup: BackupSet, store: str, schema_version: int | None) -> None:
@@ -94,6 +102,179 @@ WHOLE_PROFILE_ADVICE = (
     "with the rest of the profile: move every store out of the stores "
     "folder, then run `budget restore`"
 )
+
+
+def _decisions() -> list[bytes]:
+    """The documented decision-log example, one complete line each."""
+    return [f"{line}\n".encode() for line in documented_example().splitlines()]
+
+
+def _production_with_decisions(
+    folder: Path, logged: list[bytes]
+) -> tuple[Path, Profile, BackupSet]:
+    """Start production with `logged` as its decision log, and back it up."""
+    profile_file = write_profile(folder, name="production")
+    assert migrate(profile_file, "--new-store")[0] == EXIT_OK
+    production = load_profile_file(profile_file)
+    production.inputs.mkdir()
+    production.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+    production.input_file("decisions.jsonl").write_bytes(b"".join(logged))
+    with writer_lock(production) as lock:
+        written = back_up(lock, now=datetime.now(UTC))
+    return profile_file, production, written
+
+
+class DecisionLogRecoveryTests(unittest.TestCase):
+    def test_restore_stops_on_a_decision_log_that_does_not_extend_the_sets(
+        self,
+    ) -> None:
+        # Shorter or rewritten, it may have lost decisions or be the newer
+        # truth: both copies are kept for the operator to decide between.
+        first, second, *_ = _decisions()
+        cases = {"shorter": first, "rewritten": second}
+        for case, live in cases.items():
+            with self.subTest(case), TemporaryDirectory() as directory:
+                profile_file, production, written = _production_with_decisions(
+                    Path(directory), [first, second]
+                )
+                shutil.rmtree(production.stores)
+                log = production.input_file("decisions.jsonl")
+                log.write_bytes(live)
+
+                status, stdout, stderr = restore(profile_file, written.name)
+
+                assert (status, stdout) == (EXIT_VERIFICATION_FAILED, "")
+                assert "decision log does not begin with the backup set's" in stderr
+                assert log.read_bytes() == live
+                assert (written.path / "inputs" / "decisions.jsonl").read_bytes() == (
+                    first + second
+                )
+                assert list(production.stores.glob("*.db")) == []
+
+    def test_restore_falls_back_to_the_sets_decision_log_and_says_what_is_lost(
+        self,
+    ) -> None:
+        first, second, *_ = _decisions()
+        with TemporaryDirectory() as directory:
+            profile_file, production, written = _production_with_decisions(
+                Path(directory), [first, second]
+            )
+            shutil.rmtree(production.stores)
+            log = production.input_file("decisions.jsonl")
+            log.unlink()
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert log.read_bytes() == first + second
+            assert (
+                "the decision log was missing: decisions recorded after backup "
+                f"set {written.name} cannot be recovered\n"
+            ) in stdout
+
+    def test_restore_reports_a_cut_off_final_decision_line_and_leaves_it(
+        self,
+    ) -> None:
+        # Owner decision, 21 October: the line counts as never written, as
+        # `check` treats it, and only the operator removes it.
+        first, second, *_ = _decisions()
+        with TemporaryDirectory() as directory:
+            profile_file, production, written = _production_with_decisions(
+                Path(directory), [first]
+            )
+            shutil.rmtree(production.stores)
+            log = production.input_file("decisions.jsonl")
+            cut_off = first + second[:20]
+            log.write_bytes(cut_off)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "the decision log's final line was cut off: it counts as never "
+                "written and is left in place; delete it before recording a "
+                "decision\n"
+            ) in stdout
+            assert log.read_bytes() == cut_off
+
+    def test_restore_stops_on_a_damaged_decision_log(self) -> None:
+        # It begins with the set's entries, but a later line is no entry.
+        first, second, *_ = _decisions()
+        with TemporaryDirectory() as directory:
+            profile_file, production, written = _production_with_decisions(
+                Path(directory), [first]
+            )
+            shutil.rmtree(production.stores)
+            log = production.input_file("decisions.jsonl")
+            damaged = first + b"not a decision\n" + second
+            log.write_bytes(damaged)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stdout) == (EXIT_VERIFICATION_FAILED, "")
+            assert "the live decision log is damaged" in stderr
+            assert log.read_bytes() == damaged
+            assert list(production.stores.glob("*.db")) == []
+
+    def test_a_retried_restore_still_says_the_decision_log_was_missing(
+        self,
+    ) -> None:
+        # The first attempt puts the set's copy back, then stops in catch-up;
+        # the retry finds a log, but it is still only the set's copy.
+        first, second, *_ = _decisions()
+        with TemporaryDirectory() as directory:
+            profile_file, production, written = _production_with_decisions(
+                Path(directory), [first, second]
+            )
+            with writer_lock(production) as lock:
+                import_one(lock, "export-20260509.csv")
+            archived = production.archive_file("joint-current/export-20260509.csv")
+            export = archived.read_bytes()
+            archived.unlink()
+            production.input_file("decisions.jsonl").unlink()
+            shutil.rmtree(production.stores)
+            assert restore(profile_file, written.name)[0] == EXIT_VERIFICATION_FAILED
+            archived.write_bytes(export)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "the decision log was missing: decisions recorded after backup "
+                f"set {written.name} cannot be recovered\n"
+            ) in stdout
+
+    def test_a_retry_refused_before_moving_keeps_the_decision_log_report(
+        self,
+    ) -> None:
+        # A retry the import log refuses must not forget that the decision
+        # log in place is only the set's copy.
+        first, second, *_ = _decisions()
+        with TemporaryDirectory() as directory:
+            profile_file, production, written = _production_with_decisions(
+                Path(directory), [first, second]
+            )
+            with writer_lock(production) as lock:
+                import_one(lock, "export-20260509.csv")
+            archived = production.archive_file("joint-current/export-20260509.csv")
+            export = archived.read_bytes()
+            archived.unlink()
+            production.input_file("decisions.jsonl").unlink()
+            shutil.rmtree(production.stores)
+            assert restore(profile_file, written.name)[0] == EXIT_VERIFICATION_FAILED
+            logged = production.import_log_file.read_bytes()
+            production.import_log_file.write_bytes(logged + b"not an entry\n")
+            assert restore(profile_file, written.name)[0] == EXIT_VERIFICATION_FAILED
+            production.import_log_file.write_bytes(logged)
+            archived.write_bytes(export)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "the decision log was missing: decisions recorded after backup "
+                f"set {written.name} cannot be recovered\n"
+            ) in stdout
 
 
 class LostStoreAdviceTests(unittest.TestCase):
@@ -163,6 +344,8 @@ class RestoreCommandTests(unittest.TestCase):
                 if found.name != written.name
             )
             shutil.rmtree(production.stores)
+            # Without a later log, restore has no run to catch up with.
+            production.import_log_file.unlink()
 
             status, stdout, stderr = restore(profile_file, older.name)
 
@@ -275,6 +458,8 @@ class RestoreCommandTests(unittest.TestCase):
             )
             _from_newer_code(written, "silver.db")
             shutil.rmtree(production.stores)
+            # Without a later log, restore has no run to catch up with.
+            production.import_log_file.unlink()
 
             status, stdout, stderr = restore(profile_file)
 
@@ -336,6 +521,8 @@ class RestoreCommandTests(unittest.TestCase):
             )
             _damaged_inside(written, "bronze.db")
             shutil.rmtree(production.stores)
+            # Without a later log, restore has no run to catch up with.
+            production.import_log_file.unlink()
 
             status, stdout, stderr = restore(profile_file)
 
@@ -376,7 +563,7 @@ class RestoreCommandTests(unittest.TestCase):
                 Path(directory)
             )
             with writer_lock(production) as lock:
-                import_one(lock, "export-20260509.csv")
+                later = import_one(lock, "export-20260509.csv")
             shutil.rmtree(production.stores)
 
             with added_migration(
@@ -387,7 +574,125 @@ class RestoreCommandTests(unittest.TestCase):
 
             assert (status, stderr) == (EXIT_OK, "")
             assert "added_after_the_set" in tables(production.silver_store)
-            assert run_ids(production.bronze_store) == [run_id]
+            assert _live_run_ids(production) == [run_id, later]
+
+    def test_restore_replays_runs_the_import_log_lists_beyond_the_set(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, run_id = _production_with_a_set(
+                Path(directory)
+            )
+            with writer_lock(production) as lock:
+                later = import_one(lock, "export-20260509.csv")
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout == (
+                "replayed 1 import run from the export archive\n"
+                f"restored backup set {written.name}\n"
+            )
+            assert _live_run_ids(production) == [run_id, later]
+
+    def test_restore_names_a_logged_export_missing_from_the_archive(self) -> None:
+        # The log is right and the export is not where it says: the advice
+        # is to put the export back, never to give up the log.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            with writer_lock(production) as lock:
+                import_one(lock, "export-20260509.csv")
+            production.archive_file("joint-current/export-20260509.csv").unlink()
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stdout) == (EXIT_VERIFICATION_FAILED, "")
+            assert "a run the import log lists has no export in the archive" in stderr
+            assert "put the export back where the log says" in stderr
+            assert "move it aside" not in stderr
+
+    def test_restore_says_what_is_lost_when_the_import_log_is_missing(
+        self,
+    ) -> None:
+        # The set's copy stands in, so runs logged only in the lost log are
+        # not restored, though their exports may still be in the archive.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            production.import_log_file.unlink()
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "the import log was missing: runs imported after backup set "
+                f"{written.name} are not restored\n"
+            ) in stdout
+
+    def test_restore_accepts_an_import_log_missing_runs_the_set_holds(
+        self,
+    ) -> None:
+        # The entries are reconstructible: the next import logs again every
+        # run Bronze holds that the log lacks (`operations.md`).
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, run_id = _production_with_a_set(
+                Path(directory)
+            )
+            production.import_log_file.write_bytes(b"")
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout == f"restored backup set {written.name}\n"
+            assert _live_run_ids(production) == [run_id]
+
+    def test_restore_stops_before_anything_on_an_import_log_that_conflicts(
+        self,
+    ) -> None:
+        # The live log records the set's run as started at another time, or
+        # does not read: it is kept as it is for the operator to decide on,
+        # and nothing is restored beside it.
+        def a_day_earlier(line: str, entry: dict[str, object]) -> str:
+            # Written exactly as an import writes it, so only the run differs.
+            started_at = str(entry["started_at"])
+            earlier = datetime.fromisoformat(started_at) - timedelta(days=1)
+            return line.replace(started_at, earlier.isoformat())
+
+        def not_an_entry(_: str, entry: dict[str, object]) -> str:
+            return json.dumps({**entry, "original_filename": "another.csv"}) + "\n"
+
+        cases = {
+            "conflicting run": (a_day_earlier, "records a run the set holds"),
+            "invalid entry": (not_an_entry, "an entry does not read"),
+        }
+        for case, (rewrite, reason) in cases.items():
+            with self.subTest(case), TemporaryDirectory() as directory:
+                profile_file, production, written, _ = _production_with_a_set(
+                    Path(directory)
+                )
+                (entry,) = log_entries(production)
+                line = production.import_log_file.read_bytes().decode("utf-8")
+                # As bytes: on Windows, text mode would write CRLF line ends.
+                production.import_log_file.write_bytes(
+                    rewrite(line, entry).encode("utf-8")
+                )
+                conflicting = production.import_log_file.read_bytes()
+                shutil.rmtree(production.stores)
+
+                status, stdout, stderr = restore(profile_file, written.name)
+
+                assert (status, stdout) == (EXIT_VERIFICATION_FAILED, "")
+                assert (
+                    f"the live import log does not agree with backup set {written.name}"
+                ) in stderr
+                assert reason in stderr
+                assert production.import_log_file.read_bytes() == conflicting
+                assert list(production.stores.glob("*.db")) == []
 
     def test_a_restore_whose_store_copy_fails_leaves_no_store_and_can_be_retried(
         self,

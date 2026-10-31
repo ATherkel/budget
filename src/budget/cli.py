@@ -85,7 +85,11 @@ from budget.rebuilding import (
     require_buildable_accounts,
 )
 from budget.restoring import (
+    CatchUpRefusedError,
     DamagedStoreError,
+    DecisionLogDamagedError,
+    DecisionLogDivergedError,
+    ImportLogDisagreesError,
     IncompleteSetError,
     NoUsableSetError,
     OccupiedProfileError,
@@ -325,6 +329,26 @@ def _restore(profile: Profile, backup_set: str | None) -> None:
         sys.stdout.write(f"skipped backup set {skipped}: this code cannot read it\n")
     for put_back in restored.put_back:
         sys.stdout.write(f"put back {put_back} from the backup set\n")
+    if restored.imports_lost:
+        sys.stdout.write(
+            "the import log was missing: runs imported after backup set "
+            f"{restored.backup.name} are not restored\n"
+        )
+    if restored.decision_line_cut_off:
+        sys.stdout.write(
+            "the decision log's final line was cut off: it counts as never "
+            "written and is left in place; delete it before recording a decision\n"
+        )
+    if restored.decisions_lost:
+        sys.stdout.write(
+            "the decision log was missing: decisions recorded after backup set "
+            f"{restored.backup.name} cannot be recovered\n"
+        )
+    if restored.replayed:
+        runs = "run" if restored.replayed == 1 else "runs"
+        sys.stdout.write(
+            f"replayed {restored.replayed} import {runs} from the export archive\n"
+        )
     sys.stdout.write(f"restored backup set {restored.backup.name}\n")
 
 
@@ -647,6 +671,10 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         BackupVerificationError,
         IncompleteSetError,
         DamagedStoreError,
+        CatchUpRefusedError,
+        ImportLogDisagreesError,
+        DecisionLogDivergedError,
+        DecisionLogDamagedError,
         ImportLogDamagedError,
         ImportLogAheadOfBronzeError,
     ) as error:

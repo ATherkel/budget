@@ -17,11 +17,30 @@ from pathlib import Path
 from typing import Final
 
 from budget.backups import BackupSet, complete_backup_sets, set_store_files
+from budget.bronze import BronzeStore
 from budget.bronze.storage import bronze_stage
+from budget.decision_log import read_decision_log
 from budget.durability import sync_folder
 from budget.gold.storage import gold_stage
+from budget.inputs import ConfigurationError
 from budget.locking import WriterLock
-from budget.profiles import INPUTS_FOLDER, Profile
+from budget.profiles import (
+    BRONZE_STORE_NAME,
+    DECISION_LOG_FILE_NAME,
+    IMPORT_LOG_FILE_NAME,
+    INPUTS_FOLDER,
+    Profile,
+)
+from budget.replaying import (
+    REPLAY_REFUSALS,
+    ArchivedExportMismatchError,
+    ArchivedExportMissingError,
+    ImportLogInvalidError,
+    NotALogPrefixError,
+    RunConflictError,
+    check_log_continues,
+    replay_import_log,
+)
 from budget.silver.storage import silver_stage
 from budget.sqlstore import StageStore, StoreError, migrate_store, open_store_snapshot
 
@@ -136,12 +155,32 @@ class Restored:
     """What `restore` did: the set, the newer sets passed over, the inputs put back.
 
     `put_back` names each household input the profile had lost, by its path
-    in the set, which was copied from the set.
+    in the set, which was copied from the set. `replayed` counts the import
+    runs restored from the export archive beyond the set.
     """
 
     backup: BackupSet
     skipped: tuple[str, ...]
     put_back: tuple[str, ...]
+    replayed: int
+    missing_logs: tuple[str, ...]
+    decision_line_cut_off: bool
+
+    @property
+    def decisions_lost(self) -> bool:
+        """Whether the decision log was missing, so only the set's copy stands in.
+
+        Decisions recorded after the set are then lost: a recovery limit.
+        """
+        return DECISION_LOG_FILE_NAME in self.missing_logs
+
+    @property
+    def imports_lost(self) -> bool:
+        """Whether the import log was missing, so only the set's copy stands in.
+
+        Runs imported after the set are then not restored: a recovery limit.
+        """
+        return IMPORT_LOG_FILE_NAME in self.missing_logs
 
 
 class DamagedStoreError(RuntimeError):
@@ -222,19 +261,159 @@ def _migrate_staged(profile: Profile, stage: str, staged: Path) -> None:
     migrate_store(store, before_migrating=lambda: None)
 
 
-def _mark_unfinished(profile: Profile, backup: BackupSet) -> None:
+def _mark_unfinished(
+    profile: Profile, backup: BackupSet, put_back: tuple[str, ...]
+) -> None:
     """Record, durably, that a restore is about to move stores into place.
 
     Until it is removed, every store in the stores folder is one this
-    restore put there, never one of the operator's.
+    restore put there, never one of the operator's. `put_back` names the
+    inputs it puts back from the set, so a retry still reports them.
     """
     marker = profile.stores / RESTORE_MARKER
-    content = json.dumps({"format": RESTORE_MARKER_FORMAT, "set": backup.name})
+    content = json.dumps(
+        {
+            "format": RESTORE_MARKER_FORMAT,
+            "set": backup.name,
+            "put_back": list(put_back),
+        }
+    )
     with marker.open("w", encoding="utf-8") as file:
         file.write(content + "\n")
         file.flush()
         os.fsync(file.fileno())
     sync_folder(profile.stores)
+
+
+class DecisionLogDivergedError(RuntimeError):
+    """The live decision log does not begin with the set's copy.
+
+    It is shorter, or was rewritten: it may have lost decisions, or be the
+    newer truth. Neither is replaced; the choice is the operator's.
+    """
+
+    def __init__(self, name: str) -> None:
+        """Name the set, and what to do."""
+        super().__init__(
+            "the live decision log does not begin with the backup set's copy "
+            f"in {name}: it may have lost decisions the set holds; both are "
+            "kept as they are. Put back the log to keep, then rerun "
+            "`budget restore`; nothing was restored"
+        )
+
+
+class DecisionLogDamagedError(RuntimeError):
+    """The live decision log does not read: no decision of it is dropped."""
+
+    def __init__(self, problems: Exception) -> None:
+        """Say what is wrong with it, and what to do."""
+        super().__init__(
+            f"the live decision log is damaged: {problems}; it is kept as it "
+            "is, beside the backup set's copy. Repair it, then rerun "
+            "`budget restore`; nothing was restored"
+        )
+
+
+def _ends_cut_off(log: Path) -> bool:
+    """Report whether a log's final line lacks its line feed, as a crash leaves it.
+
+    Such a line counts as never written (`operations.md`, *Failure and
+    Retry*); restore reports it and leaves it for the operator to delete.
+    """
+    try:
+        content = log.read_bytes()
+    except FileNotFoundError:
+        return False
+    return bool(content) and not content.endswith(b"\n")
+
+
+def _require_decision_log_extends(profile: Profile, backup: BackupSet) -> None:
+    """Refuse, touching nothing, a live decision log the set's does not begin.
+
+    Only the set copy's complete lines count: a final line a crash cut off
+    was not an entry yet. A live log that is absent is not refused here.
+    """
+    live = profile.input_file(DECISION_LOG_FILE_NAME)
+    copy = backup.path / INPUTS_FOLDER / DECISION_LOG_FILE_NAME
+    try:
+        current = live.read_bytes()
+    except FileNotFoundError:
+        return
+    recorded = copy.read_bytes() if copy.is_file() else b""
+    if not current.startswith(recorded[: recorded.rfind(b"\n") + 1]):
+        raise DecisionLogDivergedError(backup.name)
+    try:
+        read_decision_log(profile)
+    except ConfigurationError as error:
+        raise DecisionLogDamagedError(error) from None
+
+
+class ImportLogDisagreesError(RuntimeError):
+    """The live import log does not continue the set's Bronze: nothing is touched.
+
+    The log is kept as it is: it may list runs no set holds, which only the
+    operator can decide to give up.
+    """
+
+    def __init__(self, name: str, reason: str) -> None:
+        """Name the set and the disagreement, and what to do."""
+        super().__init__(
+            f"the live import log does not agree with backup set {name}: "
+            f"{reason}; it is kept as it is. Correct it, or choose another "
+            "set, then rerun `budget restore`; nothing was restored"
+        )
+
+
+# What each refusal of `check_log_continues` means for a restore.
+_DISAGREEMENTS: Final[dict[type[Exception], str]] = {
+    ImportLogInvalidError: "an entry does not read as a logged run",
+    RunConflictError: "it records a run the set holds differently",
+    NotALogPrefixError: "the set holds runs it does not list first",
+}
+
+
+def _require_import_log_continues(profile: Profile, backup: BackupSet) -> bool:
+    """Refuse, touching nothing, a live import log the set's Bronze cannot continue.
+
+    Returns whether the log lists runs beyond the set, to replay.
+    """
+    with BronzeStore(profile, snapshot=backup.path / BRONZE_STORE_NAME) as snapshot:
+        held = snapshot.import_runs()
+    try:
+        return check_log_continues(profile, held)
+    except (ImportLogInvalidError, RunConflictError, NotALogPrefixError) as error:
+        raise ImportLogDisagreesError(
+            backup.name, _DISAGREEMENTS[type(error)]
+        ) from None
+
+
+class CatchUpRefusedError(RuntimeError):
+    """The live import log does not agree with the restored set.
+
+    The stores are in place, but the restore has not finished: the live log
+    is kept as it is, for the operator to correct or set aside.
+    """
+
+    def __init__(self, name: str, reason: Exception) -> None:
+        """Name the set, what catch-up found, and what to do."""
+        found = _CATCH_UP_PROBLEMS.get(
+            type(reason), "a run the import log lists could not be replayed"
+        )
+        super().__init__(
+            f"backup set {name} is in place, but catch-up stopped: {found}. "
+            "The import log is kept as it is, and the restore has not "
+            "finished: put the export back where the log says, then rerun "
+            "`budget restore`"
+        )
+
+
+# What a replay refusal found, once the log is known to continue the set.
+_CATCH_UP_PROBLEMS: Final[dict[type[Exception], str]] = {
+    ArchivedExportMissingError: "a run the import log lists has no export in "
+    "the archive",
+    ArchivedExportMismatchError: "a run the import log lists has an archived "
+    "export that does not match its hash",
+}
 
 
 class UnfinishedRestoreError(RuntimeError):
@@ -268,25 +447,42 @@ def _marked_set(marker: Path) -> str:
     return str(name) if isinstance(name, str) else "(unreadable marker)"
 
 
-def _clear_unfinished(profile: Profile) -> None:
+def _marked_put_back(marker: Path) -> tuple[str, ...]:
+    """Return the inputs an unfinished restore's marker says it put back."""
+    try:
+        put_back = json.loads(marker.read_text(encoding="utf-8")).get("put_back")
+    except (OSError, ValueError, AttributeError):
+        return ()
+    if not isinstance(put_back, list):
+        return ()
+    return tuple(str(path) for path in put_back)
+
+
+def _clear_unfinished(profile: Profile) -> tuple[str, ...]:
     """Remove what an unfinished restore moved into place, then its marker.
 
     Only the stores, their SQLite files and the marker are removed: the
-    marker says no store in the folder is the operator's.
+    marker says no store in the folder is the operator's. Returns the inputs
+    that restore put back, which are still only the set's copies.
     """
     marker = profile.stores / RESTORE_MARKER
     if not marker.exists():
-        return
+        return ()
+    put_back = _marked_put_back(marker)
     try:
         for store in _store_files(profile):
             store.unlink(missing_ok=True)
         marker.unlink()
     except OSError as error:
         raise RestoreWriteError(error.strerror or type(error).__name__) from None
+    return put_back
 
 
 def _copy_whole(
-    profile: Profile, backup: BackupSet, stores: Mapping[str, str]
+    profile: Profile,
+    backup: BackupSet,
+    stores: Mapping[str, str],
+    earlier: tuple[str, ...],
 ) -> tuple[str, ...]:
     """Copy every store of a set into the stores folder, or none of them.
 
@@ -294,7 +490,8 @@ def _copy_whole(
     and upgraded there, and moved into place only once every copy is ready,
     so a copy that fails leaves no store a retry would find in its way. Lost
     inputs are put back only then, so such a failure leaves them alone too.
-    Returns each input put back.
+    The marker records them first, with `earlier`, those an unfinished
+    restore put back. Returns every input put back, `earlier` first.
     """
     staging = profile.stores / RESTORE_STAGING
     try:
@@ -303,8 +500,13 @@ def _copy_whole(
         for stage, store in stores.items():
             shutil.copyfile(backup.path / store, staging / store)
             _migrate_staged(profile, stage, staging / store)
-        put_back = _put_back_lost_inputs(profile, backup)
-        _mark_unfinished(profile, backup)
+        lost = _lost_inputs(profile, backup)
+        put_back = (*earlier, *(name for name in lost if name not in earlier))
+        _mark_unfinished(profile, backup, put_back)
+        for name, copy in lost.items():
+            live = profile.input_file(name.removeprefix(f"{INPUTS_FOLDER}/"))
+            live.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(copy, live)
         for store in stores.values():
             (staging / store).replace(profile.stores / store)
     except OSError as error:
@@ -314,29 +516,24 @@ def _copy_whole(
     return put_back
 
 
-def _put_back_lost_inputs(profile: Profile, backup: BackupSet) -> tuple[str, ...]:
-    """Copy each household input the profile lacks from the set's copy.
+def _lost_inputs(profile: Profile, backup: BackupSet) -> dict[str, Path]:
+    """Name each household input the profile lacks and the set holds a copy of.
 
     The live inputs, synchronised apart from the stores, are newer than any
-    set, so a file that survived is never replaced. Only missing files are
-    copied, so a restore cut off here leaves nothing a retry must undo.
-    Returns each file put back, by its path in the set.
+    set, so a file that survived is never replaced. Maps each file's path in
+    the set to the set's copy.
     """
     copies = backup.path / INPUTS_FOLDER
     if not copies.is_dir():
-        return ()
-    put_back = []
-    try:
-        for copy in sorted(copies.rglob("*")):
-            relative = copy.relative_to(copies).as_posix()
-            live = profile.input_file(relative)
-            if copy.is_file() and not live.exists():
-                live.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(copy, live)
-                put_back.append(f"{INPUTS_FOLDER}/{relative}")
-    except OSError as error:
-        raise RestoreWriteError(error.strerror or type(error).__name__) from None
-    return tuple(put_back)
+        return {}
+    return {
+        f"{INPUTS_FOLDER}/{relative}": copy
+        for copy in sorted(copies.rglob("*"))
+        if copy.is_file()
+        and not profile.input_file(
+            relative := copy.relative_to(copies).as_posix()
+        ).exists()
+    }
 
 
 def restore(lock: WriterLock, name: str | None = None) -> Restored:
@@ -346,17 +543,44 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     can read is taken, and every newer set is passed over.
     """
     profile = lock.profile
-    _clear_unfinished(profile)
-    _require_no_stores(profile)
     sets = complete_backup_sets(profile)
     if name is None:
         selected, skipped = _newest_readable(profile, sets)
     else:
         selected, skipped = _named(profile, sets, name), ()
+    _require_decision_log_extends(profile, selected)
+    decision_line_cut_off = _ends_cut_off(profile.input_file(DECISION_LOG_FILE_NAME))
+    log_runs_ahead = _require_import_log_continues(profile, selected)
+    # Only now is an unfinished restore's work cleared: a refusal above keeps
+    # its marker, and with it the record of the inputs it put back.
+    earlier = _clear_unfinished(profile)
+    _require_no_stores(profile)
     stores = set_store_files(selected)
-    put_back = _copy_whole(profile, selected, stores)
+    put_back = _copy_whole(profile, selected, stores, earlier)
+    # A log the profile lost and the set holds: only the set's copy stands
+    # in. A log neither has was never written, so nothing of it is lost.
+    missing_logs = tuple(
+        log
+        for log in (IMPORT_LOG_FILE_NAME, DECISION_LOG_FILE_NAME)
+        if f"{INPUTS_FOLDER}/{log}" in put_back
+    )
+    # Catch up: every run the live import log lists beyond the set comes
+    # back from the export archive, as logged (`replay_import_log`).
+    replayed: tuple[object, ...] = ()
+    if log_runs_ahead:
+        try:
+            replayed = replay_import_log(lock)
+        except REPLAY_REFUSALS as error:
+            raise CatchUpRefusedError(selected.name, error) from error
     # Durably: a marker that came back after a crash would let a later
     # restore remove a finished profile's stores as its own.
     (profile.stores / RESTORE_MARKER).unlink()
     sync_folder(profile.stores)
-    return Restored(backup=selected, skipped=skipped, put_back=put_back)
+    return Restored(
+        backup=selected,
+        skipped=skipped,
+        put_back=put_back,
+        replayed=len(replayed),
+        missing_logs=missing_logs,
+        decision_line_cut_off=decision_line_cut_off,
+    )
