@@ -230,7 +230,7 @@ def test_a_zero_net_category_change_does_not_emit_an_empty_change_line() -> None
     old = GoldCategory("old", "Old", "old-group", "Old group", "expense")
     new = GoldCategory("new", "New", "new-group", "New group", "expense")
     transactions = (
-        _transaction("positive", "50.00", "expense", 1),
+        _transaction("positive", "50.00", "refund", 1),
         _transaction("negative", "-50.00", "expense", 2),
     )
     before = GoldResult(
