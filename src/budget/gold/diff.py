@@ -158,29 +158,9 @@ def _changed_values(
     ]
 
 
-def _change(before: Decimal, after: Decimal) -> Decimal:
-    """Return the signed money moved when a measure changes."""
-    if after.is_zero():
-        return before
-    return after - before
-
-
 def _directed_change(before: Decimal, after: Decimal, direction: str) -> Decimal:
     """Return a change in spending magnitude, or in signed income."""
     return before - after if direction == "expense" else after - before
-
-
-def _changed(
-    key: tuple[ReportingMonth, str],
-    before: dict[tuple[ReportingMonth, str], _Measures],
-    after: dict[tuple[ReportingMonth, str], _Measures],
-) -> bool:
-    """Whether an account-month exists on both sides with different measures."""
-    return (
-        (key in before and key in after and before[key] != after[key])
-        or key not in before
-        or key not in after
-    )
 
 
 def _money(value: Decimal, currency: str) -> str:
@@ -193,7 +173,7 @@ def _line(
     before: _Measures,
     after: _Measures,
     context: _LineContext,
-) -> str:
+) -> str | None:
     """Format one changed account-month line."""
     month, account_id = key
     changes: list[str] = []
@@ -220,7 +200,7 @@ def _line(
         ("unclassified out", before.unclassified_out, after.unclassified_out),
     ):
         if old != new:
-            changes.append(f"{label} {_money(_change(old, new), context.currency)}")
+            changes.append(f"{label} {_money(new - old, context.currency)}")
     count_change = after.unclassified_count - before.unclassified_count
     if count_change:
         changes.append(f"unclassified count {count_change:+d}")
@@ -228,6 +208,8 @@ def _line(
         changes.append(
             f"coverage {before.coverage or 'absent'} -> {after.coverage or 'absent'}"
         )
+    if not changes:
+        return None
     return f"Changes  {month.year:04d}-{month.month:02d} {account_id}: " + "; ".join(
         changes
     )
@@ -264,18 +246,21 @@ def compare_publications(
     category_directions = {**previous_categories, **current_categories}
     group_directions = {**previous_groups, **current_groups}
     lines = [
-        _line(
-            key,
-            before.get(key, _Measures()),
-            after.get(key, _Measures()),
-            _LineContext(
-                currencies[key[1]],
-                category_directions,
-                group_directions,
-            ),
-        )
+        line
         for key in sorted(before.keys() | after.keys())
-        if _changed(key, before, after)
+        if (
+            line := _line(
+                key,
+                before.get(key, _Measures()),
+                after.get(key, _Measures()),
+                _LineContext(
+                    currencies[key[1]],
+                    category_directions,
+                    group_directions,
+                ),
+            )
+        )
+        is not None
     ]
     reviews = _reviews(previous_reviews, current_reviews)
     if reviews is not None:
