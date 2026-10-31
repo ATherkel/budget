@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
-from budget.gold.models import GoldCategory, ReportingMonth
+from budget.gold.models import Coverage, GoldCategory, ReportingMonth
 from budget.gold.repository import GoldRepository
 
 _FIRST_DAY = date.min
@@ -25,6 +25,7 @@ class _Measures:
     unclassified_in: Decimal = Decimal()
     unclassified_out: Decimal = Decimal()
     unclassified_count: int = 0
+    coverage: Coverage | None = None
 
 
 def _measures(
@@ -102,6 +103,12 @@ def _figures(
                 transaction.account_id,
                 transaction.amount,
             )
+    for snapshot in publication.monthly_balances(
+        start_month=_FIRST_MONTH, end_month=_LAST_MONTH
+    ):
+        _measures(
+            figures, snapshot.month, snapshot.account_id
+        ).coverage = snapshot.coverage
     return figures, currencies
 
 
@@ -166,6 +173,10 @@ def _line(
     count_change = after.unclassified_count - before.unclassified_count
     if count_change:
         changes.append(f"unclassified count {count_change:+d}")
+    if before.coverage != after.coverage:
+        changes.append(
+            f"coverage {before.coverage or 'absent'} -> {after.coverage or 'absent'}"
+        )
     return f"Changes  {month.year:04d}-{month.month:02d} {account_id}: " + "; ".join(
         changes
     )
