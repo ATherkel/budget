@@ -391,7 +391,7 @@ budget migrate -> 0
 budget import --ranges ranges-march.toml -> 0
   [1] joint-current  stored
   Silver   1 admitted, 0 quarantined, 0 dropped
-  Gold     published publication 1
+  Gold     published publication 1 (cause build)
   Changes  no previous publication to compare; publication 1 is current.
 budget review -> 0
   <id>  unclassified  gold  publication 1  targets 641b439a
@@ -400,7 +400,7 @@ budget review -> 0
 budget import --ranges ranges-april.toml -> 0
   [1] joint-current  stored; Silver quarantined it: balance-break, balance-chain-break
   Silver   1 admitted, 1 quarantined, 0 dropped
-  Gold     published publication 2
+  Gold     published publication 2 (cause build)
   Changes  no measure or review item changed.
 budget review -> 0
   <id>  balance-break  joint-current  2026-04-02..2026-04-02  run <id>  payload <id>
