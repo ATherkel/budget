@@ -24,6 +24,7 @@ from tests.cli.lifecycle import (
 )
 
 EXIT_OK = 0
+EXIT_REFUSED_ENVIRONMENT = 4
 # The lifecycle's rule change: `NET` also means groceries, at the same priority
 # as `r-streaming`, which disagrees about NETFLIX.
 R_NET = """
@@ -241,6 +242,20 @@ class PostUndoBuildTests(unittest.TestCase):
                     for move in gold.pointer_history()
                 ][-1] == (3, 5, "build")
                 assert [each.publication_id for each in gold.available()] == [3, 5]
+
+
+class UndoRefusalTests(unittest.TestCase):
+    def test_undo_refuses_before_there_is_a_previous_publication(self) -> None:
+        with TemporaryDirectory() as directory:
+            household = lifecycle(Path(directory))
+
+            status, stdout, stderr = undo(household.profile_file)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "there is no previous publication to undo to" in stderr
+            with GoldStore(household.profile) as gold:
+                assert gold.current() is None
+                assert gold.pointer_history() == ()
 
 
 class RetractedDecisionTests(unittest.TestCase):

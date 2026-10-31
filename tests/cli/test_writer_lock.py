@@ -18,8 +18,10 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 from budget.bronze import BronzeStore
+from budget.gold.store import GoldStore
 from budget.locking import writer_lock
-from tests.cli.commands import migrate
+from tests.cli.commands import migrate, rebuild, undo
+from tests.cli.pipelines import household
 from tests.cli.processes import explicit_environment
 from tests.cli.profile_files import development_profile, write_profile
 
@@ -43,6 +45,24 @@ class WriterLockTests(unittest.TestCase):
             assert migrate(profile_file)[0] == EXIT_OK
             with BronzeStore(development_profile(folder)):
                 pass
+
+    def test_undo_refuses_while_another_command_holds_the_lock(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+
+            with writer_lock(built.profile):
+                status, stdout, stderr = undo(built.profile_file)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "another command is running" in stderr
+            with GoldStore(built.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
+                assert [move.to_publication_id for move in gold.pointer_history()] == [
+                    1
+                ]
 
 
 def _patched_platform_lock(error: OSError) -> AbstractContextManager[object]:
