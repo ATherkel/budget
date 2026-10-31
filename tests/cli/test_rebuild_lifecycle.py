@@ -154,7 +154,7 @@ class ClosedReviewTests(unittest.TestCase):
             assert (
                 "Changes  2026-02 joint-current: expenses +129.00 DKK; "
                 "category streaming +129.00 DKK; group leisure +129.00 DKK; "
-                "unclassified out -129.00 DKK; unclassified count -1"
+                "unclassified out +129.00 DKK; unclassified count -1"
             ) in stdout
             assert "Review  1 rule-conflict closed" in stdout
 

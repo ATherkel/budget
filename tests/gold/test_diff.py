@@ -203,3 +203,63 @@ def test_diff_reports_review_items_opened_and_closed() -> None:
         previous_reviews=(closed,),
         current_reviews=(opened,),
     ) == ("Review  1 rule-conflict opened; 1 unclassified closed",)
+
+
+def test_unclassified_money_removed_from_either_direction_is_a_signed_delta() -> None:
+    after = GoldResult(
+        replace(CURRENT.publication(), publication_id=3),
+        replace(
+            CURRENT.records,
+            transactions=tuple(
+                transaction
+                for transaction in CURRENT.records.transactions
+                if not transaction.transaction_id.startswith("unknown-")
+            ),
+        ),
+    )
+
+    assert compare_publications(CURRENT, after) == (
+        (
+            "Changes  2026-02 joint-current: unclassified in -10.00 DKK; "
+            "unclassified out +80.00 DKK; unclassified count -2"
+        ),
+    )
+
+
+def test_a_zero_net_category_change_does_not_emit_an_empty_change_line() -> None:
+    old = GoldCategory("old", "Old", "old-group", "Old group", "expense")
+    new = GoldCategory("new", "New", "new-group", "New group", "expense")
+    transactions = (
+        _transaction("positive", "50.00", "expense", 1),
+        _transaction("negative", "-50.00", "expense", 2),
+    )
+    before = GoldResult(
+        replace(PUBLICATION, publication_id=1),
+        replace(
+            RECORDS,
+            accounts=(ACCOUNT,),
+            categories=(old,),
+            transactions=transactions,
+            category_allocations=(
+                _allocation("positive", "old", "50.00", 1),
+                _allocation("negative", "old", "-50.00", 2),
+            ),
+            monthly_balances=(),
+        ),
+    )
+    after = GoldResult(
+        replace(PUBLICATION, publication_id=2),
+        replace(
+            RECORDS,
+            accounts=(ACCOUNT,),
+            categories=(new,),
+            transactions=transactions,
+            category_allocations=(
+                _allocation("positive", "new", "50.00", 1),
+                _allocation("negative", "new", "-50.00", 2),
+            ),
+            monthly_balances=(),
+        ),
+    )
+
+    assert compare_publications(before, after) == ()
