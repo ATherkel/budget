@@ -441,6 +441,10 @@ class GoldStore:
             )
         )
 
+    def undo(self) -> PointerMove:
+        """Move the pointer to the previous current publication."""
+        return self.pointer_history()[-1]
+
     def classification_reviews(
         self,
         *,

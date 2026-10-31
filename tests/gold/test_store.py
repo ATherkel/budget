@@ -228,6 +228,35 @@ def test_a_first_publish_becomes_current(store: GoldStore) -> None:
     assert before <= move.moved_at <= after
 
 
+def test_undo_moves_to_the_previous_current_and_keeps_both_results(
+    store: GoldStore,
+) -> None:
+    first, second, third = (
+        publish(store, publication_id) for publication_id in (1, 2, 3)
+    )
+    second_accounts = store.open(second.publication_id).accounts()
+    third_accounts = store.open(third.publication_id).accounts()
+    before = datetime.now(UTC)
+
+    move = store.undo()
+
+    after = datetime.now(UTC)
+    assert store.current() == second
+    assert move == PointerMove(
+        moved_at=move.moved_at,
+        from_publication_id=third.publication_id,
+        to_publication_id=second.publication_id,
+        cause="undo",
+    )
+    assert before <= move.moved_at <= after
+    assert [each.to_publication_id for each in store.pointer_history()] == [1, 2, 3, 2]
+    assert store.open(second.publication_id).accounts() == second_accounts
+    assert store.open(third.publication_id).accounts() == third_accounts
+    assert first.publication_id not in {
+        publication.publication_id for publication in store.available()
+    }
+
+
 def test_the_store_hands_out_increasing_publication_ids(store: GoldStore) -> None:
     first = store.next_publication_id()
     publish(store, first)
