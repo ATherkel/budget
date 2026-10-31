@@ -95,6 +95,12 @@ class RuleChangeTests(unittest.TestCase):
 
             assert (status, stderr) == (EXIT_OK, "")
             assert "publication 4" in stdout
+            assert (
+                "Changes  2026-02 joint-current: expenses -129.00 DKK; "
+                "category streaming -129.00 DKK; group leisure -129.00 DKK; "
+                "unclassified out -129.00 DKK; unclassified count +1"
+            ) in stdout
+            assert "Review  1 rule-conflict opened" in stdout
             with GoldStore(household.profile) as gold:
                 february = gold.open(4)
                 assert february_by_category(february) == {

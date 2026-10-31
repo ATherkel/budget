@@ -139,9 +139,9 @@ def test_diff_reports_changed_money_measures_for_each_month_and_account() -> Non
     assert compare_publications(PREVIOUS, CURRENT) == (
         (
             "Changes  2026-02 joint-current: income +200.00 DKK; "
-            "expenses -200.00 DKK; category groceries -100.00 DKK; "
-            "category housing -100.00 DKK; category salary +200.00 DKK; "
-            "group food -100.00 DKK; group home -100.00 DKK; "
+            "expenses +200.00 DKK; category groceries +100.00 DKK; "
+            "category housing +100.00 DKK; category salary +200.00 DKK; "
+            "group food +100.00 DKK; group home +100.00 DKK; "
             "group income +200.00 DKK; unclassified in +10.00 DKK; "
             "unclassified out -50.00 DKK; unclassified count +1"
         ),
