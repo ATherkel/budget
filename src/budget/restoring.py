@@ -235,7 +235,7 @@ def _named(profile: Profile, sets: tuple[BackupSet, ...], name: str) -> BackupSe
     raise IncompleteSetError(name)
 
 
-def _newest_readable(
+def newest_readable(
     profile: Profile, sets: tuple[BackupSet, ...]
 ) -> tuple[BackupSet, tuple[str, ...]]:
     """Return the newest set this code can read, and the newer ones passed over."""
@@ -545,7 +545,7 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     profile = lock.profile
     sets = complete_backup_sets(profile)
     if name is None:
-        selected, skipped = _newest_readable(profile, sets)
+        selected, skipped = newest_readable(profile, sets)
     else:
         selected, skipped = _named(profile, sets, name), ()
     _require_decision_log_extends(profile, selected)

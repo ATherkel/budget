@@ -506,7 +506,14 @@ def complete_backup_sets(profile: Profile) -> tuple[BackupSet, ...]:
     A folder whose name is not a set's time, a set without a manifest, and a
     set whose files do not match their checksums are left out.
     """
-    folder = profile.backup_path(".")
+    return complete_sets_in(profile.backup_path("."))
+
+
+def complete_sets_in(folder: Path) -> tuple[BackupSet, ...]:
+    """Return the complete backup sets in one backups folder, newest first.
+
+    Development reads production's folder this way, never writing it.
+    """
     if not folder.is_dir():
         return ()
     found = []
@@ -517,6 +524,13 @@ def complete_backup_sets(profile: Profile) -> tuple[BackupSet, ...]:
     return tuple(
         sorted(found, key=lambda found_set: found_set.created_at, reverse=True)
     )
+
+
+def set_profile(backup: BackupSet) -> str | None:
+    """Return the profile a set's manifest says it was taken of, if it reads."""
+    manifest = _read_manifest(backup.path)
+    profile = manifest.get("profile") if manifest is not None else None
+    return profile if isinstance(profile, str) else None
 
 
 def set_store_files(backup: BackupSet) -> dict[str, str]:

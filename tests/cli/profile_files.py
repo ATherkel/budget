@@ -17,11 +17,18 @@ def write_profile(
     *,
     name: str = "development",
     stores: Path | None = None,
+    upstream_backups: Path | None = None,
 ) -> Path:
-    """Write a synthetic profile file whose folders stay inside `folder`."""
+    """Write a synthetic profile file whose folders stay inside `folder`.
+
+    `upstream_backups` names production's backups folder in a development
+    profile, which `dev refresh` reads.
+    """
     stores = folder / "stores" if stores is None else stores
     path = folder / f"{name}.toml"
     backups = f"backups = '{folder / 'backups'}'\n" if name == "production" else ""
+    if upstream_backups is not None:
+        backups += f"upstream_backups = '{upstream_backups}'\n"
     path.write_text(
         f'format = 1\nprofile = "{name}"\n\n[paths]\n'
         f"stores = '{stores}'\ninputs = '{folder / 'inputs'}'\n"

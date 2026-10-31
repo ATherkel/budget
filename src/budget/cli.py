@@ -84,6 +84,12 @@ from budget.rebuilding import (
     rebuild_through_gold,
     require_buildable_accounts,
 )
+from budget.refreshing import (
+    NotProductionsSetError,
+    NotRefreshableError,
+    refresh,
+    require_refreshable,
+)
 from budget.restoring import (
     CatchUpRefusedError,
     DamagedStoreError,
@@ -241,6 +247,19 @@ def _parser() -> argparse.ArgumentParser:
     restore_ = commands.add_parser(
         "restore", help="restore a whole profile from a backup set"
     )
+    dev = commands.add_parser("dev", help="development-only commands")
+    dev_commands = dev.add_subparsers(dest="dev_command", required=True)
+    refresh = dev_commands.add_parser(
+        "refresh", help="restore production's newest backup set for development"
+    )
+    refresh.add_argument(
+        "--inputs", action="store_true", help="also replace development's inputs"
+    )
+    refresh.add_argument(
+        "--writable",
+        action="store_true",
+        help="restore into development's own stores, to rehearse a migration",
+    )
     restore_.add_argument(
         "backup_set", nargs="?", help="the set to restore (default: the newest)"
     )
@@ -350,6 +369,21 @@ def _restore(profile: Profile, backup_set: str | None) -> None:
             f"replayed {restored.replayed} import {runs} from the export archive\n"
         )
     sys.stdout.write(f"restored backup set {restored.backup.name}\n")
+
+
+def _dev_refresh(profile: Profile, *, inputs: bool) -> None:
+    """Restore production's newest backup set for development; name it."""
+    # Refused before the lock, which would create the stores folder.
+    require_refreshable(profile)
+    with writer_lock(profile) as lock:
+        refreshed = refresh(lock, inputs=inputs)
+    sys.stdout.write(
+        f"restored backup set {refreshed.name} into upstream (read-only)\n"
+    )
+    if inputs:
+        sys.stdout.write(
+            f"replaced development's inputs with backup set {refreshed.name}'s\n"
+        )
 
 
 def _rebuild(profile: Profile, from_stage: str) -> None:
@@ -596,6 +630,8 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         return _import(profile, arguments.ranges)
     if arguments.command == "backup":
         _backup(profile)
+    elif arguments.command == "dev":
+        _dev_refresh(profile, inputs=arguments.inputs)
     elif arguments.command == "restore":
         _restore(profile, arguments.backup_set)
     elif arguments.command == "rebuild":
@@ -652,6 +688,8 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         RestoreInsteadError,
         OccupiedProfileError,
         RestoreWriteError,
+        NotRefreshableError,
+        NotProductionsSetError,
         NoUsableSetError,
         UnknownStageError,
         UnfinishedRestoreError,
