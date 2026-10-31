@@ -41,6 +41,9 @@ class FirstPublicationTests(unittest.TestCase):
 
             assert (status, stderr) == (EXIT_OK, "")
             assert "publication 1" in stdout
+            assert (
+                "Changes  no previous publication to compare; publication 1 is current."
+            ) in stdout
             with GoldStore(built.profile) as gold:
                 current = gold.current()
                 assert current is not None
