@@ -167,6 +167,10 @@ class RebuildSummaryTests(unittest.TestCase):
                 f"Run  {repeated}  joint-current  repeat accepted",
                 f"Run  {dropped}  joint-current  quarantined  dropped-transaction",
                 "Gold     published publication 1",
+                (
+                    "Changes  no previous publication to compare; "
+                    "publication 1 is current."
+                ),
             ]
             # Only identifiers and existing codes reach the terminal: no
             # amount, description, original filename, transaction id, or

@@ -387,6 +387,7 @@ budget import --ranges ranges-march.toml -> 0
   [1] joint-current  stored
   Silver   1 admitted, 0 quarantined, 0 dropped
   Gold     published publication 1
+  Changes  no previous publication to compare; publication 1 is current.
 budget review -> 0
   <id>  unclassified  gold  publication 1  targets 641b439a
     target 641b439a  joint-current  2026-03-01  -45.00 DKK  "NETTO"  bank category Mad
@@ -395,6 +396,7 @@ budget import --ranges ranges-april.toml -> 0
   [1] joint-current  stored; Silver quarantined it: balance-break, balance-chain-break
   Silver   1 admitted, 1 quarantined, 0 dropped
   Gold     published publication 2
+  Changes  no measure or review item changed.
 budget review -> 0
   <id>  balance-break  joint-current  2026-04-02..2026-04-02  run <id>  payload <id>
   <id>  unclassified  gold  publication 2  targets 641b439a
