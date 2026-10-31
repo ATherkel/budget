@@ -192,6 +192,26 @@ class UndoTests(unittest.TestCase):
                     for move in gold.pointer_history()
                 ][-1] == (4, 3, "undo")
 
+            status, stdout, stderr = undo(household.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout == ("Gold     publication 4 is current (was 3; cause undo)\n")
+            with GoldStore(household.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 4
+                assert [
+                    (move.from_publication_id, move.to_publication_id, move.cause)
+                    for move in gold.pointer_history()
+                ] == [
+                    (None, 1, "build"),
+                    (1, 2, "build"),
+                    (2, 3, "build"),
+                    (3, 4, "build"),
+                    (4, 3, "undo"),
+                    (3, 4, "undo"),
+                ]
+
 
 class RetractedDecisionTests(unittest.TestCase):
     def test_a_decision_added_and_retracted_gives_the_earlier_result(self) -> None:
