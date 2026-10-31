@@ -86,6 +86,9 @@ class UnchangedRecipeTests(unittest.TestCase):
 
             assert (status, stderr) == (EXIT_OK, "")
             assert "nothing was published" in stdout
+            assert (
+                "Changes  no publication was built; publication 1 remains current."
+            ) in stdout
             with GoldStore(built.profile) as gold:
                 assert gold.pointer_history() == moves
                 current = gold.current()
