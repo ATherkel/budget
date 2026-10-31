@@ -17,6 +17,7 @@ from typing import Final
 
 from budget.bronze.models import ImportRun
 from budget.gold import ClassificationReviewKind
+from budget.gold.diff import compare_publications
 from budget.gold.models import GoldReviewTarget
 from budget.gold.store import GoldStore
 from budget.inbox import LEFT_IN_INBOX, FileOutcome, ImportedInbox
@@ -90,7 +91,16 @@ def publication_changes(profile: Profile, rebuilt: GoldRebuild) -> str:
             "Changes  no previous publication to compare; "
             f"publication {rebuilt.publication.publication_id} is current.\n"
         )
-    return ""
+    previous_id = moves[-1].from_publication_id
+    current_id = moves[-1].to_publication_id
+    with GoldStore(profile, read_only=True) as gold:
+        lines = compare_publications(
+            gold.open(previous_id),
+            gold.open(current_id),
+            previous_reviews=gold.reviews(previous_id).items,
+            current_reviews=gold.reviews(current_id).items,
+        )
+    return "\n".join(lines or ("Changes  no measure or review item changed.",)) + "\n"
 
 
 def _row(run: ImportRun, rebuild: SilverRebuild) -> _Row:

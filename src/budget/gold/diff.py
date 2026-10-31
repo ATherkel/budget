@@ -35,6 +35,15 @@ class _Measures:
     coverage: Coverage | None = None
 
 
+@dataclass(frozen=True)
+class _LineContext:
+    """Account currency and category/group directions for one diff line."""
+
+    currency: str
+    categories: dict[str, str]
+    groups: dict[str, str]
+
+
 def _measures(
     figures: dict[tuple[ReportingMonth, str], _Measures],
     month: ReportingMonth,
@@ -82,7 +91,12 @@ def _add_unknown(
 
 def _figures(
     publication: GoldRepository,
-) -> tuple[dict[tuple[ReportingMonth, str], _Measures], dict[str, str]]:
+) -> tuple[
+    dict[tuple[ReportingMonth, str], _Measures],
+    dict[str, str],
+    dict[str, str],
+    dict[str, str],
+]:
     """Read the financial measures and currencies of one publication."""
     accounts = publication.accounts()
     currencies = {account.account_id: account.currency for account in accounts}
@@ -116,18 +130,44 @@ def _figures(
         _measures(
             figures, snapshot.month, snapshot.account_id
         ).coverage = snapshot.coverage
-    return figures, currencies
+    return (
+        figures,
+        currencies,
+        {category: value.direction for category, value in categories.items()},
+        {category.group_id: category.direction for category in categories.values()},
+    )
 
 
 def _changed_values(
-    before: dict[str, Decimal], after: dict[str, Decimal]
+    before: dict[str, Decimal],
+    after: dict[str, Decimal],
+    directions: dict[str, str],
 ) -> list[tuple[str, Decimal]]:
     """Return sorted values whose totals changed."""
     return [
-        (name, after.get(name, Decimal()) - before.get(name, Decimal()))
+        (
+            name,
+            _directed_change(
+                before.get(name, Decimal()),
+                after.get(name, Decimal()),
+                directions[name],
+            ),
+        )
         for name in sorted(before.keys() | after.keys())
         if before.get(name, Decimal()) != after.get(name, Decimal())
     ]
+
+
+def _change(before: Decimal, after: Decimal) -> Decimal:
+    """Return the signed money moved when a measure changes."""
+    if after.is_zero():
+        return before
+    return after - before
+
+
+def _directed_change(before: Decimal, after: Decimal, direction: str) -> Decimal:
+    """Return a change in spending magnitude, or in signed income."""
+    return before - after if direction == "expense" else after - before
 
 
 def _changed(
@@ -152,31 +192,35 @@ def _line(
     key: tuple[ReportingMonth, str],
     before: _Measures,
     after: _Measures,
-    currency: str,
+    context: _LineContext,
 ) -> str:
     """Format one changed account-month line."""
     month, account_id = key
     changes: list[str] = []
-    for label, old, new in (
-        ("income", before.income, after.income),
-        ("expenses", before.expenses, after.expenses),
-    ):
-        if old != new:
-            changes.append(f"{label} {_money(new - old, currency)}")
+    if before.income != after.income:
+        changes.append(
+            f"income {_money(after.income - before.income, context.currency)}"
+        )
+    if before.expenses != after.expenses:
+        changes.append(
+            f"expenses {_money(before.expenses - after.expenses, context.currency)}"
+        )
     changes.extend(
-        f"category {name} {_money(change, currency)}"
-        for name, change in _changed_values(before.categories, after.categories)
+        f"category {name} {_money(change, context.currency)}"
+        for name, change in _changed_values(
+            before.categories, after.categories, context.categories
+        )
     )
     changes.extend(
-        f"group {name} {_money(change, currency)}"
-        for name, change in _changed_values(before.groups, after.groups)
+        f"group {name} {_money(change, context.currency)}"
+        for name, change in _changed_values(before.groups, after.groups, context.groups)
     )
     for label, old, new in (
         ("unclassified in", before.unclassified_in, after.unclassified_in),
         ("unclassified out", before.unclassified_out, after.unclassified_out),
     ):
         if old != new:
-            changes.append(f"{label} {_money(new - old, currency)}")
+            changes.append(f"{label} {_money(_change(old, new), context.currency)}")
     count_change = after.unclassified_count - before.unclassified_count
     if count_change:
         changes.append(f"unclassified count {count_change:+d}")
@@ -212,15 +256,23 @@ def compare_publications(
     current_reviews: Sequence[ClassificationReviewItem] = (),
 ) -> tuple[str, ...]:
     """Return terminal lines for the measures that differ between publications."""
-    before, previous_currencies = _figures(previous)
-    after, current_currencies = _figures(current)
+    before, previous_currencies, previous_categories, previous_groups = _figures(
+        previous
+    )
+    after, current_currencies, current_categories, current_groups = _figures(current)
     currencies = {**previous_currencies, **current_currencies}
+    category_directions = {**previous_categories, **current_categories}
+    group_directions = {**previous_groups, **current_groups}
     lines = [
         _line(
             key,
             before.get(key, _Measures()),
             after.get(key, _Measures()),
-            currencies[key[1]],
+            _LineContext(
+                currencies[key[1]],
+                category_directions,
+                group_directions,
+            ),
         )
         for key in sorted(before.keys() | after.keys())
         if _changed(key, before, after)

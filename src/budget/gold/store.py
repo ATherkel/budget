@@ -469,6 +469,15 @@ class GoldStore:
 
         return self._owner.read(read)
 
+    def reviews(self, publication_id: int) -> PublishedClassificationReviews:
+        """Read one retained publication's review items in one snapshot."""
+
+        def read(connection: sqlite3.Connection) -> PublishedClassificationReviews:
+            _retained(connection, publication_id)
+            return _classification_reviews(connection, publication_id, None, None)
+
+        return self._owner.read(read)
+
     def publish(
         self,
         result: GoldResult,
