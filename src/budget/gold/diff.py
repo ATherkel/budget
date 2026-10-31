@@ -1,11 +1,17 @@
 # Copyright 2026 Therkel
 """Compare two publications through their public Gold repository interfaces."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
-from budget.gold.models import Coverage, GoldCategory, ReportingMonth
+from budget.gold.models import (
+    ClassificationReviewItem,
+    Coverage,
+    GoldCategory,
+    ReportingMonth,
+)
 from budget.gold.repository import GoldRepository
 
 _FIRST_DAY = date.min
@@ -185,8 +191,12 @@ def _line(
 def compare_publications(
     previous: GoldRepository,
     current: GoldRepository,
+    *,
+    previous_reviews: Sequence[ClassificationReviewItem] = (),
+    current_reviews: Sequence[ClassificationReviewItem] = (),
 ) -> tuple[str, ...]:
     """Return terminal lines for the measures that differ between publications."""
+    del previous_reviews, current_reviews
     before, previous_currencies = _figures(previous)
     after, current_currencies = _figures(current)
     currencies = {**previous_currencies, **current_currencies}

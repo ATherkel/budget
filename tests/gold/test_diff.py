@@ -6,6 +6,7 @@ from datetime import date
 from decimal import Decimal
 
 from budget.gold import (
+    ClassificationReviewItem,
     GoldAccount,
     GoldCategory,
     GoldCategoryAllocation,
@@ -168,3 +169,37 @@ def test_diff_reports_changed_coverage_for_each_month_and_account() -> None:
     assert compare_publications(before, after) == (
         "Changes  2026-02 joint-current: coverage partial -> complete",
     )
+
+
+def test_diff_reports_review_items_opened_and_closed() -> None:
+    closed = ClassificationReviewItem(
+        review_item_id="a" * 64,
+        kind="unclassified",
+        transaction_ids=(),
+        rule_ids=(),
+        decision_id=None,
+        reason=None,
+    )
+    opened = ClassificationReviewItem(
+        review_item_id="b" * 64,
+        kind="rule-conflict",
+        transaction_ids=(),
+        rule_ids=(),
+        decision_id=None,
+        reason=None,
+    )
+    before = GoldResult(
+        replace(CURRENT.publication(), publication_id=1),
+        CURRENT.records,
+    )
+    after = GoldResult(
+        replace(CURRENT.publication(), publication_id=2),
+        CURRENT.records,
+    )
+
+    assert compare_publications(
+        before,
+        after,
+        previous_reviews=(closed,),
+        current_reviews=(opened,),
+    ) == ("Review  1 rule-conflict opened; 1 unclassified closed",)
