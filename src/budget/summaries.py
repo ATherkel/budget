@@ -79,7 +79,10 @@ def gold_line(rebuilt: GoldRebuild) -> str:
 def publication_changes(profile: Profile, rebuilt: GoldRebuild) -> str:
     """Describe the terminal-only publication change after a successful build."""
     if not rebuilt.published:
-        return ""
+        return (
+            "Changes  no publication was built; "
+            f"publication {rebuilt.publication.publication_id} remains current.\n"
+        )
     with GoldStore(profile, read_only=True) as gold:
         moves = gold.pointer_history()
     if not moves or moves[-1].from_publication_id is None:
