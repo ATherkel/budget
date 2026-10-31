@@ -32,6 +32,9 @@ id = "r-net"
 when.description_contains = "NET"
 then.category = "groceries"
 """
+R_NET_NARROW = R_NET.replace(
+    'description_contains = "NET"', 'description_contains = "NETTO"'
+)
 
 
 class FirstTwoPublicationsTests(unittest.TestCase):
@@ -123,6 +126,36 @@ class RuleChangeTests(unittest.TestCase):
             assert [t.transaction_id for t in reviews.targets] == [
                 netflix.transaction_id
             ]
+
+
+class ClosedReviewTests(unittest.TestCase):
+    def test_a_build_that_resolves_the_rule_conflict_reports_it_closed(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            household = at_second_publication(Path(directory))
+            correct_ikea_to_gifts(household.profile)
+            assert rebuild(household.profile_file)[0] == EXIT_OK
+            rules = household.profile.input_file("rules.toml")
+            rules.write_text(
+                rules.read_text(encoding="utf-8") + R_NET, encoding="utf-8"
+            )
+            assert rebuild(household.profile_file)[0] == EXIT_OK
+            rules.write_text(
+                rules.read_text(encoding="utf-8").replace(R_NET, R_NET_NARROW),
+                encoding="utf-8",
+            )
+
+            status, stdout, stderr = rebuild(household.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 5" in stdout
+            assert (
+                "Changes  2026-02 joint-current: expenses +129.00 DKK; "
+                "category streaming +129.00 DKK; group leisure +129.00 DKK; "
+                "unclassified out -129.00 DKK; unclassified count -1"
+            ) in stdout
+            assert "Review  1 rule-conflict closed" in stdout
 
 
 class RetractedDecisionTests(unittest.TestCase):
