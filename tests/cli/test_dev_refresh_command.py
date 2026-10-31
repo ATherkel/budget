@@ -6,6 +6,7 @@ whose `upstream_backups` names production's backups folder, both in one
 temporary folder. Every test passes `main` an explicit environment.
 """
 
+import errno
 import json
 import shutil
 import sqlite3
@@ -15,11 +16,13 @@ from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
-from budget.backups import BackupSet, back_up
+from budget.backups import BackupSet, back_up, complete_backup_sets
+from budget.bronze import BronzeStore
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
-from tests.backups.sets import checksum, import_one, manifest
+from tests.backups.sets import checksum, import_one, manifest, run_ids
 from tests.cli.commands import dev_refresh, migrate, restore
 from tests.cli.profile_files import write_profile
 from tests.importing.households import ACCOUNTS
@@ -224,6 +227,179 @@ class DevRefreshTests(unittest.TestCase):
                     assert (status, stdout) == (EXIT_REFUSED_INPUT, "")
                     assert "upstream backups folder" in stderr
                     assert upstream.is_dir()
+
+    def test_dev_refresh_writable_restores_developments_own_stores(self) -> None:
+        # Relabelled as development's, so development's commands open them;
+        # Bronze's evidence, its runs, comes over unchanged.
+        with TemporaryDirectory() as directory:
+            production, written = _production_with_a_set(Path(directory) / "prod")
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+            sets_bronze = checksum(written.path / "bronze.db")
+
+            status, stdout, stderr = dev_refresh(profile_file, "--writable")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout == (
+                f"restored backup set {written.name} into development's own "
+                "stores (writable)\n"
+            )
+            with BronzeStore(development) as store:
+                restored = [run.import_run_id for run in store.import_runs()]
+            assert restored == run_ids(written.path / "bronze.db")
+            for stage_store in (development.silver_store, development.gold_store):
+                assert stage_store.exists()
+            assert checksum(written.path / "bronze.db") == sets_bronze
+
+    def test_dev_refresh_refuses_when_production_has_no_complete_set(
+        self,
+    ) -> None:
+        # As when the synchronised backups folder is offline or empty.
+        with TemporaryDirectory() as directory:
+            (Path(directory) / "dev").mkdir()
+            profile_file = write_profile(
+                Path(directory) / "dev",
+                upstream_backups=Path(directory) / "no backups yet",
+            )
+
+            status, stdout, stderr = dev_refresh(profile_file)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "no complete backup set this code can read" in stderr
+
+    def test_dev_refresh_never_relabels_a_store_of_another_profile(self) -> None:
+        # The manifest says production, but the store itself does not.
+        with TemporaryDirectory() as directory:
+            production, written = _production_with_a_set(Path(directory) / "prod")
+            silver = written.path / "silver.db"
+            with closing(sqlite3.connect(silver)) as connection, connection:
+                connection.execute("UPDATE store_identity SET profile = 'test'")
+            listed = manifest(written.path)
+            files = listed["files"]
+            assert isinstance(files, dict)
+            files["silver.db"] = checksum(silver)
+            (written.path / "manifest.json").write_text(
+                json.dumps(listed), encoding="utf-8"
+            )
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+            older = next(
+                found
+                for found in complete_backup_sets(production)
+                if found.name != written.name
+            )
+
+            status, stdout, stderr = dev_refresh(profile_file, "--writable")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout.endswith(
+                f"restored backup set {older.name} into development's own "
+                "stores (writable)\n"
+            )
+            assert checksum(development.bronze_store) != checksum(
+                written.path / "bronze.db"
+            )
+
+    def test_a_writable_refresh_cut_off_while_moving_keeps_the_old_stores(
+        self,
+    ) -> None:
+        # Never new Bronze beside old Silver: the stores change as a group.
+        with TemporaryDirectory() as directory:
+            production, _ = _production_with_a_set(Path(directory) / "prod")
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+            development.stores.mkdir()
+            old = {
+                store: f"development's own {store}".encode()
+                for store in ("bronze.db", "silver.db", "gold.db")
+            }
+            for store, content in old.items():
+                (development.stores / store).write_bytes(content)
+            move = Path.replace
+            failed: list[Path] = []
+
+            def cut_off_once_at_silver(source: Path, target: Path) -> Path:
+                # Once: the move putting the old store back then succeeds.
+                if Path(target) == development.silver_store and not failed:
+                    failed.append(Path(target))
+                    raise OSError(errno.EIO, "Input/output error")
+                return move(source, target)
+
+            with mock.patch.object(
+                Path, "replace", autospec=True, side_effect=cut_off_once_at_silver
+            ):
+                status, stdout, stderr = dev_refresh(profile_file, "--writable")
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "Input/output error; development's stores are as they were" in (
+                stderr
+            )
+            for store, content in old.items():
+                assert (development.stores / store).read_bytes() == content
+
+    def test_a_writable_refresh_that_cannot_move_a_store_aside_keeps_them_all(
+        self,
+    ) -> None:
+        # As when another program holds development's Silver store open.
+        with TemporaryDirectory() as directory:
+            production, _ = _production_with_a_set(Path(directory) / "prod")
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+            development.stores.mkdir()
+            old = {
+                store: f"development's own {store}".encode()
+                for store in ("bronze.db", "silver.db", "gold.db")
+            }
+            for store, content in old.items():
+                (development.stores / store).write_bytes(content)
+            move = Path.replace
+
+            def silver_held_open(source: Path, target: Path) -> Path:
+                if Path(source) == development.silver_store:
+                    raise PermissionError(errno.EACCES, "Permission denied")
+                return move(source, target)
+
+            with mock.patch.object(
+                Path, "replace", autospec=True, side_effect=silver_held_open
+            ):
+                status, _, stderr = dev_refresh(profile_file, "--writable")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "development's stores are as they were" in stderr
+            for store, content in old.items():
+                assert (development.stores / store).read_bytes() == content
+
+    def test_a_writable_refresh_leaves_no_store_the_set_does_not_hold(
+        self,
+    ) -> None:
+        # A set from before Gold was backed up restores no Gold: development
+        # must not keep its old Gold store beside production's Bronze.
+        with TemporaryDirectory() as directory:
+            production, written = _production_with_a_set(Path(directory) / "prod")
+            listed = manifest(written.path)
+            stores, files = listed["stores"], listed["files"]
+            assert isinstance(stores, dict)
+            assert isinstance(files, dict)
+            del stores["gold"], files["gold.db"]
+            (written.path / "gold.db").unlink()
+            (written.path / "manifest.json").write_text(
+                json.dumps(listed), encoding="utf-8"
+            )
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+            development.stores.mkdir()
+            development.gold_store.write_bytes(b"development's old Gold")
+
+            status, _, stderr = dev_refresh(profile_file, "--writable")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert development.bronze_store.exists()
+            assert not development.gold_store.exists()
 
     def test_dev_refresh_replaces_upstream_with_a_newer_set(self) -> None:
         with TemporaryDirectory() as directory:
