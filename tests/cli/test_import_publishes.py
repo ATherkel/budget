@@ -15,7 +15,7 @@ from tests.cli.commands import import_, migrate
 from tests.cli.imports import write_ranges
 from tests.cli.pipelines import write_inputs
 from tests.cli.profile_files import development_profile, write_profile
-from tests.importing.households import drop, payload
+from tests.importing.households import chained_payload, drop, payload
 
 EXIT_OK = 0
 
@@ -35,19 +35,34 @@ class ImportPublishesTests(unittest.TestCase):
 
             assert (status, stderr) == (EXIT_OK, "")
             assert "published publication 1" in stdout
+            assert (
+                "Changes  no previous publication to compare; publication 1 is current."
+            ) in stdout
             with GoldStore(profile) as gold:
                 transactions = gold.open(1).transactions(
                     start_date=date(2026, 3, 1), end_date=date(2026, 3, 31)
                 )
             assert [t.description for t in transactions] == ["Café"]
-            drop(profile, "joint-current", "danske-20260311.csv", payload("02.03.2026"))
+            drop(
+                profile,
+                "joint-current",
+                "danske-20260311.csv",
+                chained_payload("01.03.2026", "02.03.2026"),
+            )
 
             status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
             assert (status, stderr) == (EXIT_OK, "")
             assert "published publication 2" in stdout
+            assert (
+                "Changes  2026-03 joint-current: "
+                "unclassified out -45.00 DKK; unclassified count +1"
+            ) in stdout
+            assert "Review  1 unclassified opened" in stdout
             with GoldStore(profile) as gold:
                 assert [m.to_publication_id for m in gold.pointer_history()] == [1, 2]
+            log = profile.log_file("commands.jsonl").read_text(encoding="utf-8")
+            assert "-45.00" not in log
 
 
 if __name__ == "__main__":
