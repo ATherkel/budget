@@ -84,6 +84,14 @@ from budget.rebuilding import (
     rebuild_through_gold,
     require_buildable_accounts,
 )
+from budget.restoring import (
+    DamagedStoreError,
+    IncompleteSetError,
+    NoUsableSetError,
+    OccupiedProfileError,
+    UnknownStageError,
+    restore,
+)
 from budget.reviewing import REVIEW_KINDS, open_reviews
 from budget.silver.storage import SILVER_STAGE
 
@@ -223,6 +231,12 @@ def _parser() -> argparse.ArgumentParser:
         help="start a new production store where none exists",
     )
     commands.add_parser("backup", help="write a backup set of production")
+    restore_ = commands.add_parser(
+        "restore", help="restore a whole profile from a backup set"
+    )
+    restore_.add_argument(
+        "backup_set", nargs="?", help="the set to restore (default: the newest)"
+    )
     rebuild = commands.add_parser("rebuild", help="rebuild a stage and every later one")
     rebuild.add_argument(
         "--from",
@@ -298,6 +312,15 @@ def _backup(profile: Profile) -> None:
     with writer_lock(profile) as lock:
         written = back_up(lock, now=datetime.now(UTC))
     sys.stdout.write(f"backup set {written.name} written\n")
+
+
+def _restore(profile: Profile, backup_set: str | None) -> None:
+    """Restore the whole profile from a backup set, and name the set on stdout."""
+    with writer_lock(profile) as lock:
+        restored = restore(lock, backup_set)
+    for skipped in restored.skipped:
+        sys.stdout.write(f"skipped backup set {skipped}: this code cannot read it\n")
+    sys.stdout.write(f"restored backup set {restored.backup.name}\n")
 
 
 def _rebuild(profile: Profile, from_stage: str) -> None:
@@ -541,6 +564,8 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         return _import(profile, arguments.ranges)
     if arguments.command == "backup":
         _backup(profile)
+    elif arguments.command == "restore":
+        _restore(profile, arguments.backup_set)
     elif arguments.command == "rebuild":
         _rebuild(profile, arguments.from_stage)
     elif arguments.command == "review":
@@ -593,6 +618,9 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         WriterLockHeldError,
         StoresFolderUnavailableError,
         RestoreInsteadError,
+        OccupiedProfileError,
+        NoUsableSetError,
+        UnknownStageError,
         MigratedWithoutBackupError,
         ImportedWithoutBackupError,
         ImportedWithoutPublicationError,
@@ -607,6 +635,8 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         return _refuse(error, EXIT_REFUSED_ENVIRONMENT)
     except (
         BackupVerificationError,
+        IncompleteSetError,
+        DamagedStoreError,
         ImportLogDamagedError,
         ImportLogAheadOfBronzeError,
     ) as error:

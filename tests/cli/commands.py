@@ -27,6 +27,15 @@ def backup(profile_file: Path) -> tuple[int, str, str]:
     return status, stdout.getvalue(), stderr.getvalue()
 
 
+def restore(profile_file: Path, *options: str) -> tuple[int, str, str]:
+    """Run `budget restore` with one profile file; return status and output."""
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        status = main(["--profile", str(profile_file), "restore", *options], environ={})
+    return status, stdout.getvalue(), stderr.getvalue()
+
+
 def rebuild(profile_file: Path, *options: str) -> tuple[int, str, str]:
     """Run `budget rebuild` with one profile file; return status and output."""
     stdout = io.StringIO()
