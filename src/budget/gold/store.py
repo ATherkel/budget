@@ -195,6 +195,7 @@ _INSERT_MOVE: Final = (
     " (moved_at, from_publication_id, to_publication_id, cause)"
     " VALUES (?, ?, ?, ?)"
 )
+_SELECT_LAST_MOVE: Final = "SELECT * FROM pointer_moves ORDER BY move DESC LIMIT 1"
 _SELECT_MOVES: Final = "SELECT * FROM pointer_moves ORDER BY move"
 
 # Recipes, kept forever, and each distinct configuration they name.
@@ -456,25 +457,22 @@ class GoldStore:
         connection = self._owner.connection(write=True)
         with connection:
             connection.execute("BEGIN IMMEDIATE")
-            moves = connection.execute(_SELECT_MOVES).fetchall()
-            if not moves or moves[-1]["from_publication_id"] is None:
+            last_move = connection.execute(_SELECT_LAST_MOVE).fetchone()
+            if last_move is None or last_move["from_publication_id"] is None:
                 raise UndoUnavailableError
-            move = _move_pointer(connection, moves[-1]["from_publication_id"], "undo")
-        try:
-            _delete_stale_results(connection)
-        except sqlite3.Error as error:
-            code = getattr(error, "sqlite_errorcode", None)
-            if code is None or code & 0xFF not in _PASSING_CLEANUP_FAILURES:
-                error.add_note(
-                    f"publication {move.to_publication_id} is current; "
-                    "only deleting the results no longer retained failed"
-                )
-                raise
-            warnings.warn(
-                f"{_STALE_RESULTS_KEPT}: {error}",
-                StaleResultsWarning,
-                stacklevel=2,
-            )
+            if (
+                connection.execute(
+                    _SELECT_RESULT, (last_move["to_publication_id"],)
+                ).fetchone()
+                is None
+                or connection.execute(
+                    _SELECT_RESULT, (last_move["from_publication_id"],)
+                ).fetchone()
+                is None
+            ):
+                raise UndoUnavailableError
+            move = _move_pointer(connection, last_move["from_publication_id"], "undo")
+        _cleanup_after_move(connection, move.to_publication_id)
         return move
 
     def classification_reviews(
@@ -558,20 +556,7 @@ class GoldStore:
             _write_recipe(connection, publication.publication_id, recipe, configuration)
             _write(connection, encoded)
             _move_pointer(connection, publication.publication_id, "build")
-        try:
-            _delete_stale_results(connection)
-        except sqlite3.Error as error:
-            # The publish has committed, so a failure here never undoes it.
-            code = getattr(error, "sqlite_errorcode", None)
-            if code is None or code & 0xFF not in _PASSING_CLEANUP_FAILURES:
-                error.add_note(
-                    f"publication {publication.publication_id} is current; "
-                    "only deleting the results no longer retained failed"
-                )
-                raise
-            warnings.warn(
-                f"{_STALE_RESULTS_KEPT}: {error}", StaleResultsWarning, stacklevel=2
-            )
+        _cleanup_after_move(connection, publication.publication_id)
 
 
 class StoredPublication:
@@ -851,6 +836,25 @@ def _delete_stale_results(connection: sqlite3.Connection) -> None:
         stale = connection.execute(_SELECT_STALE_IDS).fetchall()
         for statement in _DELETE_RESULT:
             connection.executemany(statement, stale)
+
+
+def _cleanup_after_move(connection: sqlite3.Connection, current_id: int) -> None:
+    """Delete unreferenced results after a committed pointer move."""
+    try:
+        _delete_stale_results(connection)
+    except sqlite3.Error as error:
+        code = getattr(error, "sqlite_errorcode", None)
+        if code is None or code & 0xFF not in _PASSING_CLEANUP_FAILURES:
+            error.add_note(
+                f"publication {current_id} is current; "
+                "only deleting the results no longer retained failed"
+            )
+            raise
+        warnings.warn(
+            f"{_STALE_RESULTS_KEPT}: {error}",
+            StaleResultsWarning,
+            stacklevel=2,
+        )
 
 
 def _next_publication_id(connection: sqlite3.Connection) -> int:

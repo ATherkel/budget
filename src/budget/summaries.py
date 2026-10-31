@@ -94,14 +94,13 @@ def publication_changes(profile: Profile, rebuilt: GoldRebuild) -> str:
         )
     with GoldStore(profile, read_only=True) as gold:
         moves = gold.pointer_history()
-    if not moves or moves[-1].from_publication_id is None:
-        return (
-            "Changes  no previous publication to compare; "
-            f"publication {rebuilt.publication.publication_id} is current.\n"
-        )
-    previous_id = moves[-1].from_publication_id
-    current_id = moves[-1].to_publication_id
-    with GoldStore(profile, read_only=True) as gold:
+        if not moves or moves[-1].from_publication_id is None:
+            return (
+                "Changes  no previous publication to compare; "
+                f"publication {rebuilt.publication.publication_id} is current.\n"
+            )
+        previous_id = moves[-1].from_publication_id
+        current_id = moves[-1].to_publication_id
         lines = compare_publications(
             gold.open(previous_id),
             gold.open(current_id),
