@@ -332,7 +332,11 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
             counts={**counts, "published": int(published.published)},
             duration_ms=_milliseconds(started),
         )
-        summary += summaries.gold_line(published) + "\n"
+        summary += (
+            summaries.gold_line(published)
+            + "\n"
+            + summaries.publication_changes(profile, published)
+        )
         # Every production write is followed by a set covering what it wrote;
         # a Gold rebuild that publishes nothing wrote nothing.
         wrote = from_stage != GOLD_STAGE or published.published

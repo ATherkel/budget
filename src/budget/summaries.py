@@ -18,7 +18,9 @@ from typing import Final
 from budget.bronze.models import ImportRun
 from budget.gold import ClassificationReviewKind
 from budget.gold.models import GoldReviewTarget
+from budget.gold.store import GoldStore
 from budget.inbox import LEFT_IN_INBOX, FileOutcome, ImportedInbox
+from budget.profiles import Profile
 from budget.rebuilding import GoldRebuild, SilverRebuild
 from budget.reviewing import OpenGoldReview, OpenReview, OpenReviews
 from budget.silver import ImportRunResult, ReviewItem, SilverResult
@@ -72,6 +74,20 @@ def gold_line(rebuilt: GoldRebuild) -> str:
         "Gold     the recipe is unchanged; nothing was published "
         f"(publication {number} stays current)"
     )
+
+
+def publication_changes(profile: Profile, rebuilt: GoldRebuild) -> str:
+    """Describe the terminal-only publication change after a successful build."""
+    if not rebuilt.published:
+        return ""
+    with GoldStore(profile, read_only=True) as gold:
+        moves = gold.pointer_history()
+    if not moves or moves[-1].from_publication_id is None:
+        return (
+            "Changes  no previous publication to compare; "
+            f"publication {rebuilt.publication.publication_id} is current.\n"
+        )
+    return ""
 
 
 def _row(run: ImportRun, rebuild: SilverRebuild) -> _Row:
