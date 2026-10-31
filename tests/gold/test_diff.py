@@ -145,3 +145,26 @@ def test_diff_reports_changed_money_measures_for_each_month_and_account() -> Non
             "unclassified out -50.00 DKK; unclassified count +1"
         ),
     )
+
+
+def test_diff_reports_changed_coverage_for_each_month_and_account() -> None:
+    before = GoldResult(
+        replace(CURRENT.publication(), publication_id=1),
+        CURRENT.records,
+    )
+    after = GoldResult(
+        replace(CURRENT.publication(), publication_id=2),
+        replace(
+            CURRENT.records,
+            monthly_balances=(
+                replace(
+                    CURRENT.records.monthly_balances[0],
+                    coverage="complete",
+                ),
+            ),
+        ),
+    )
+
+    assert compare_publications(before, after) == (
+        "Changes  2026-02 joint-current: coverage partial -> complete",
+    )
