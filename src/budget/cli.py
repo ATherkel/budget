@@ -89,7 +89,10 @@ from budget.restoring import (
     IncompleteSetError,
     NoUsableSetError,
     OccupiedProfileError,
+    RestoreWriteError,
+    UnfinishedRestoreError,
     UnknownStageError,
+    require_no_unfinished_restore,
     restore,
 )
 from budget.reviewing import REVIEW_KINDS, open_reviews
@@ -320,6 +323,8 @@ def _restore(profile: Profile, backup_set: str | None) -> None:
         restored = restore(lock, backup_set)
     for skipped in restored.skipped:
         sys.stdout.write(f"skipped backup set {skipped}: this code cannot read it\n")
+    for put_back in restored.put_back:
+        sys.stdout.write(f"put back {put_back} from the backup set\n")
     sys.stdout.write(f"restored backup set {restored.backup.name}\n")
 
 
@@ -560,6 +565,9 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         return EXIT_OK
     profile_file = _selected_profile_file(arguments.profile, environ)
     profile = load_profile_file(profile_file)
+    # Until a restore finishes, its stores are its own half-done work.
+    if arguments.command not in {"restore", "set-passphrase"}:
+        require_no_unfinished_restore(profile)
     if arguments.command == "import":
         return _import(profile, arguments.ranges)
     if arguments.command == "backup":
@@ -619,8 +627,10 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         StoresFolderUnavailableError,
         RestoreInsteadError,
         OccupiedProfileError,
+        RestoreWriteError,
         NoUsableSetError,
         UnknownStageError,
+        UnfinishedRestoreError,
         MigratedWithoutBackupError,
         ImportedWithoutBackupError,
         ImportedWithoutPublicationError,

@@ -6,6 +6,7 @@ folder, whose stores are deleted as a machine that died would lose them.
 Every test passes `main` an explicit environment.
 """
 
+import errno
 import json
 import shutil
 import sqlite3
@@ -14,11 +15,20 @@ from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 from budget.backups import BackupSet, back_up, complete_backup_sets
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
-from tests.backups.sets import checksum, import_one, manifest, run_ids, tables
+from tests.backups.sets import (
+    checksum,
+    import_one,
+    manifest,
+    run_ids,
+    tables,
+    user_version,
+)
+from tests.bronze.migration_resources import SILVER_MIGRATIONS, added_migration
 from tests.cli.commands import backup, migrate, restore
 from tests.cli.profile_files import write_profile
 from tests.importing.households import ACCOUNTS
@@ -127,8 +137,11 @@ class RestoreCommandTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_OK, "")
             assert stdout == f"restored backup set {written.name}\n"
             assert run_ids(production.bronze_store) == [run_id]
+            # The set's own copies, not fresh stores with the same tables.
             for store in ("silver.db", "gold.db"):
-                assert tables(production.stores / store) == tables(written.path / store)
+                assert checksum(production.stores / store) == checksum(
+                    written.path / store
+                )
 
     def test_restore_refuses_a_profile_with_no_complete_set(self) -> None:
         with TemporaryDirectory() as directory:
@@ -331,3 +344,196 @@ class RestoreCommandTests(unittest.TestCase):
                 f"skipped backup set {written.name}: this code cannot read it\n"
                 f"restored backup set {older.name}\n"
             )
+
+    def test_restore_migrates_a_store_the_set_holds_at_an_older_version(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, run_id = _production_with_a_set(
+                Path(directory)
+            )
+            older_version = user_version(written.path / "silver.db")
+            shutil.rmtree(production.stores)
+
+            with added_migration(
+                "CREATE TABLE added_after_the_set (id INTEGER PRIMARY KEY);",
+                folder=SILVER_MIGRATIONS,
+            ):
+                status, _, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert user_version(production.silver_store) == older_version + 1
+            assert "added_after_the_set" in tables(production.silver_store)
+            assert run_ids(production.bronze_store) == [run_id]
+
+    def test_restore_migrates_an_older_set_though_the_import_log_runs_ahead(
+        self,
+    ) -> None:
+        # The machine died after an import the set does not hold: the
+        # surviving log is ahead of the restored Bronze, as catch-up expects.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, run_id = _production_with_a_set(
+                Path(directory)
+            )
+            with writer_lock(production) as lock:
+                import_one(lock, "export-20260509.csv")
+            shutil.rmtree(production.stores)
+
+            with added_migration(
+                "CREATE TABLE added_after_the_set (id INTEGER PRIMARY KEY);",
+                folder=SILVER_MIGRATIONS,
+            ):
+                status, _, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "added_after_the_set" in tables(production.silver_store)
+            assert run_ids(production.bronze_store) == [run_id]
+
+    def test_a_restore_whose_store_copy_fails_leaves_no_store_and_can_be_retried(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, run_id = _production_with_a_set(
+                Path(directory)
+            )
+            shutil.rmtree(production.stores)
+            copy = shutil.copyfile
+
+            def disk_full_at_gold(source: Path, target: Path) -> object:
+                if Path(target).name == "gold.db":
+                    raise OSError(errno.ENOSPC, "No space left on device")
+                return copy(source, target)
+
+            with mock.patch("shutil.copyfile", side_effect=disk_full_at_gold):
+                status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "No space left on device; nothing was restored" in stderr
+            assert list(production.stores.glob("*.db")) == []
+            assert restore(profile_file, written.name)[0] == EXIT_OK
+            assert run_ids(production.bronze_store) == [run_id]
+
+    def test_a_restore_whose_store_copy_fails_puts_back_no_input(self) -> None:
+        # "Nothing was restored" must hold for the inputs too.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            shutil.rmtree(production.stores)
+            production.accounts_file.unlink()
+            copy = shutil.copyfile
+
+            def disk_full_at_gold(source: Path, target: Path) -> object:
+                if Path(target).name == "gold.db":
+                    raise OSError(errno.ENOSPC, "No space left on device")
+                return copy(source, target)
+
+            with mock.patch("shutil.copyfile", side_effect=disk_full_at_gold):
+                status, _, stderr = restore(profile_file, written.name)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "nothing was restored" in stderr
+            assert not production.accounts_file.exists()
+
+    def test_a_restore_cut_off_while_moving_stores_into_place_can_be_retried(
+        self,
+    ) -> None:
+        # Bronze is in place and Silver is not: the stores folder holds what
+        # an unfinished restore left, which a retry finishes.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, run_id = _production_with_a_set(
+                Path(directory)
+            )
+            shutil.rmtree(production.stores)
+            move = Path.replace
+
+            def cut_off_at_silver(source: Path, target: Path) -> Path:
+                if Path(target).name == "silver.db":
+                    raise OSError(errno.EIO, "Input/output error")
+                return move(source, target)
+
+            with mock.patch.object(
+                Path, "replace", autospec=True, side_effect=cut_off_at_silver
+            ):
+                assert restore(profile_file, written.name)[0] != EXIT_OK
+            assert production.bronze_store.exists()
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout == f"restored backup set {written.name}\n"
+            assert run_ids(production.bronze_store) == [run_id]
+            assert checksum(production.silver_store) == checksum(
+                written.path / "silver.db"
+            )
+
+    def test_commands_refuse_a_profile_whose_restore_has_not_finished(self) -> None:
+        # Its stores are a restore's half-done work, not a profile to use.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            shutil.rmtree(production.stores)
+            move = Path.replace
+
+            def cut_off_at_silver(source: Path, target: Path) -> Path:
+                if Path(target).name == "silver.db":
+                    raise OSError(errno.EIO, "Input/output error")
+                return move(source, target)
+
+            with mock.patch.object(
+                Path, "replace", autospec=True, side_effect=cut_off_at_silver
+            ):
+                restore(profile_file, written.name)
+            bronze = production.bronze_store.read_bytes()
+
+            backed_up = backup(profile_file)
+            migrated = migrate(profile_file)
+
+            unfinished = (
+                f"a restore of backup set {written.name} has not finished; "
+                "rerun `budget restore`"
+            )
+            for status, stderr in (backed_up[::2], migrated):
+                assert status == EXIT_REFUSED_ENVIRONMENT
+                assert unfinished in stderr
+            assert production.bronze_store.read_bytes() == bronze
+
+    def test_restore_names_each_household_input_it_put_back(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            shutil.rmtree(production.stores)
+            production.accounts_file.unlink()
+
+            status, stdout, _ = restore(profile_file, written.name)
+
+            assert status == EXIT_OK
+            assert stdout == (
+                "put back inputs/accounts.toml from the backup set\n"
+                f"restored backup set {written.name}\n"
+            )
+
+    def test_restore_puts_back_a_household_input_the_profile_has_lost(
+        self,
+    ) -> None:
+        # The live inputs are newer than any set, so only what is missing is
+        # taken from the set; what survived is left as it is.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            shutil.rmtree(production.stores)
+            production.accounts_file.unlink()
+            survived = production.import_log_file.read_bytes()
+
+            status, _, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert production.accounts_file.is_file(), "accounts.toml not put back"
+            assert (
+                production.accounts_file.read_bytes()
+                == (written.path / "inputs" / "accounts.toml").read_bytes()
+            )
+            assert production.import_log_file.read_bytes() == survived
