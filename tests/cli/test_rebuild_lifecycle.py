@@ -13,7 +13,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from budget.gold.store import GoldStore
-from tests.cli.commands import rebuild
+from tests.cli.commands import rebuild, undo
 from tests.cli.lifecycle import (
     at_second_publication,
     correct_ikea_to_gifts,
@@ -156,6 +156,41 @@ class ClosedReviewTests(unittest.TestCase):
                 "unclassified out -129.00 DKK; unclassified count -1"
             ) in stdout
             assert "Review  1 rule-conflict closed" in stdout
+
+
+class UndoTests(unittest.TestCase):
+    def test_undo_restores_the_previous_publication_without_changing_inputs(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            household = at_second_publication(Path(directory))
+            correct_ikea_to_gifts(household.profile)
+            assert rebuild(household.profile_file)[0] == EXIT_OK
+            rules = household.profile.input_file("rules.toml")
+            rules.write_text(
+                rules.read_text(encoding="utf-8") + R_NET, encoding="utf-8"
+            )
+            assert rebuild(household.profile_file)[0] == EXIT_OK
+            inputs = {
+                name: household.profile.input_file(name).read_bytes()
+                for name in ("accounts.toml", "taxonomy.toml", "rules.toml")
+            }
+
+            status, stdout, stderr = undo(household.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout == ("Gold     publication 3 is current (was 4; cause undo)\n")
+            assert {
+                name: household.profile.input_file(name).read_bytes() for name in inputs
+            } == inputs
+            with GoldStore(household.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 3
+                assert [
+                    (move.from_publication_id, move.to_publication_id, move.cause)
+                    for move in gold.pointer_history()
+                ][-1] == (4, 3, "undo")
 
 
 class RetractedDecisionTests(unittest.TestCase):
