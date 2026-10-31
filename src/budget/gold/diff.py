@@ -1,6 +1,7 @@
 # Copyright 2026 Therkel
 """Compare two publications through their public Gold repository interfaces."""
 
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
@@ -188,6 +189,21 @@ def _line(
     )
 
 
+def _reviews(
+    previous: Sequence[ClassificationReviewItem],
+    current: Sequence[ClassificationReviewItem],
+) -> str | None:
+    """Summarize review item identity sets that appeared or disappeared."""
+    before = {item.review_item_id: item.kind for item in previous}
+    after = {item.review_item_id: item.kind for item in current}
+    opened = Counter(after[item_id] for item_id in after.keys() - before.keys())
+    closed = Counter(before[item_id] for item_id in before.keys() - after.keys())
+    changes = [f"{opened[kind]} {kind} opened" for kind in sorted(opened)] + [
+        f"{closed[kind]} {kind} closed" for kind in sorted(closed)
+    ]
+    return None if not changes else "Review  " + "; ".join(changes)
+
+
 def compare_publications(
     previous: GoldRepository,
     current: GoldRepository,
@@ -196,11 +212,10 @@ def compare_publications(
     current_reviews: Sequence[ClassificationReviewItem] = (),
 ) -> tuple[str, ...]:
     """Return terminal lines for the measures that differ between publications."""
-    del previous_reviews, current_reviews
     before, previous_currencies = _figures(previous)
     after, current_currencies = _figures(current)
     currencies = {**previous_currencies, **current_currencies}
-    return tuple(
+    lines = [
         _line(
             key,
             before.get(key, _Measures()),
@@ -209,4 +224,8 @@ def compare_publications(
         )
         for key in sorted(before.keys() | after.keys())
         if _changed(key, before, after)
-    )
+    ]
+    reviews = _reviews(previous_reviews, current_reviews)
+    if reviews is not None:
+        lines.append(reviews)
+    return tuple(lines)
