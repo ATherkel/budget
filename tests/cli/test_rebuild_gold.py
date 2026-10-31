@@ -40,7 +40,7 @@ class FirstPublicationTests(unittest.TestCase):
             status, stdout, stderr = rebuild(built.profile_file)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert "publication 1" in stdout
+            assert "Gold     published publication 1 (cause build)" in stdout
             assert (
                 "Changes  no previous publication to compare; publication 1 is current."
             ) in stdout
