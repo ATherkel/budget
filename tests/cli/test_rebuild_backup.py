@@ -13,7 +13,7 @@ from unittest import mock
 
 from budget.backups import BackupWriteError, complete_backup_sets
 from budget.gold.store import GoldStore
-from tests.cli.commands import rebuild
+from tests.cli.commands import rebuild, undo
 from tests.cli.imports import clean_checkout
 from tests.cli.pipelines import household
 
@@ -90,6 +90,47 @@ class ProductionRebuildBackupTests(unittest.TestCase):
             assert "`budget backup`" in stderr
             with GoldStore(built.profile) as gold:
                 assert gold.current() is not None
+
+    def test_undo_writes_a_backup_set_after_restoring_the_pointer(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory), name="production")
+            assert _rebuild(built.profile_file)[0] == EXIT_OK
+            with built.profile_file.open("a", encoding="utf-8") as profile_file:
+                profile_file.write("\n[gold]\nlate_booking_days = 14\n")
+            assert _rebuild(built.profile_file)[0] == EXIT_OK
+            sets_before = len(complete_backup_sets(built.profile))
+
+            status, stdout, stderr = undo(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "publication 1 is current (was 2; cause undo)" in stdout
+            assert "Backup   backup set" in stdout
+            assert len(complete_backup_sets(built.profile)) == sets_before + 1
+            with GoldStore(built.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
+
+    def test_an_undo_whose_backup_fails_reports_the_restored_pointer(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory), name="production")
+            assert _rebuild(built.profile_file)[0] == EXIT_OK
+            with built.profile_file.open("a", encoding="utf-8") as profile_file:
+                profile_file.write("\n[gold]\nlate_booking_days = 14\n")
+            assert _rebuild(built.profile_file)[0] == EXIT_OK
+            failure = BackupWriteError("the disk is full")
+
+            with mock.patch("budget.cli.back_up", side_effect=failure):
+                status, stdout, stderr = undo(built.profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "publication 1 is current (was 2; cause undo)" in stdout
+            assert "the current publication was restored" in stderr
+            assert "the disk is full" in stderr
+            with GoldStore(built.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
 
 
 if __name__ == "__main__":
