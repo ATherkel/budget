@@ -70,7 +70,7 @@ def gold_line(rebuilt: GoldRebuild) -> str:
     """Say whether a Gold rebuild published, and which publication is current."""
     number = rebuilt.publication.publication_id
     if rebuilt.published:
-        return f"Gold     published publication {number}"
+        return f"Gold     published publication {number} (cause build)"
     return (
         "Gold     the recipe is unchanged; nothing was published "
         f"(publication {number} stays current)"
