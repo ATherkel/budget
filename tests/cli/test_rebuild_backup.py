@@ -6,6 +6,7 @@ written (`operations.md`, *Backup and Restore*). The Git check is the system
 boundary, so these tests replace `subprocess.run`.
 """
 
+import errno
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -118,15 +119,15 @@ class ProductionRebuildBackupTests(unittest.TestCase):
             with built.profile_file.open("a", encoding="utf-8") as profile_file:
                 profile_file.write("\n[gold]\nlate_booking_days = 14\n")
             assert _rebuild(built.profile_file)[0] == EXIT_OK
-            failure = BackupWriteError("the disk is full")
+            failure = OSError(errno.ENOSPC, "No space left on device")
 
-            with mock.patch("budget.cli.back_up", side_effect=failure):
+            with mock.patch("budget.backups.os.fsync", side_effect=failure):
                 status, stdout, stderr = undo(built.profile_file)
 
             assert status == EXIT_REFUSED_ENVIRONMENT
             assert "publication 1 is current (was 2; cause undo)" in stdout
             assert "the current publication was restored" in stderr
-            assert "the disk is full" in stderr
+            assert "No space left on device" in stderr
             with GoldStore(built.profile) as gold:
                 current = gold.current()
                 assert current is not None

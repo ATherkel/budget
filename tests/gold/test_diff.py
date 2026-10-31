@@ -263,3 +263,76 @@ def test_a_zero_net_category_change_does_not_emit_an_empty_change_line() -> None
     )
 
     assert compare_publications(before, after) == ()
+
+
+def test_changed_measures_remain_separate_by_account_and_month() -> None:
+    savings = replace(
+        ACCOUNT,
+        account_id="joint-savings",
+        display_name="Joint savings",
+    )
+    groceries = CATEGORIES[1]
+    january_current = replace(
+        _transaction("january-current", "-10.00", "expense", 1),
+        transaction_date=date(2026, 1, 1),
+    )
+    january_savings = replace(
+        _transaction("january-savings", "-20.00", "expense", 1),
+        account_id=savings.account_id,
+        transaction_date=date(2026, 1, 1),
+    )
+    february_current = replace(
+        _transaction("february-current", "-30.00", "expense", 1),
+        transaction_date=date(2026, 2, 1),
+    )
+    before = GoldResult(
+        replace(PUBLICATION, publication_id=1),
+        replace(
+            RECORDS,
+            accounts=(ACCOUNT, savings),
+            categories=(groceries,),
+            transactions=(),
+            category_allocations=(),
+            monthly_balances=(),
+        ),
+    )
+    after = GoldResult(
+        replace(PUBLICATION, publication_id=2),
+        replace(
+            RECORDS,
+            accounts=(ACCOUNT, savings),
+            categories=(groceries,),
+            transactions=(january_current, january_savings, february_current),
+            category_allocations=(
+                replace(
+                    _allocation("january-current", "groceries", "-10.00", 1),
+                    transaction_date=date(2026, 1, 1),
+                ),
+                replace(
+                    _allocation("january-savings", "groceries", "-20.00", 1),
+                    account_id=savings.account_id,
+                    transaction_date=date(2026, 1, 1),
+                ),
+                replace(
+                    _allocation("february-current", "groceries", "-30.00", 1),
+                    transaction_date=date(2026, 2, 1),
+                ),
+            ),
+            monthly_balances=(),
+        ),
+    )
+
+    assert compare_publications(before, after) == (
+        (
+            "Changes  2026-01 joint-current: expenses +10.00 DKK; "
+            "category groceries +10.00 DKK; group food +10.00 DKK"
+        ),
+        (
+            "Changes  2026-01 joint-savings: expenses +20.00 DKK; "
+            "category groceries +20.00 DKK; group food +20.00 DKK"
+        ),
+        (
+            "Changes  2026-02 joint-current: expenses +30.00 DKK; "
+            "category groceries +30.00 DKK; group food +30.00 DKK"
+        ),
+    )
