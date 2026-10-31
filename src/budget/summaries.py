@@ -19,7 +19,7 @@ from budget.bronze.models import ImportRun
 from budget.gold import ClassificationReviewKind
 from budget.gold.diff import compare_publications
 from budget.gold.models import GoldReviewTarget
-from budget.gold.store import GoldStore
+from budget.gold.store import GoldStore, PointerMove
 from budget.inbox import LEFT_IN_INBOX, FileOutcome, ImportedInbox
 from budget.profiles import Profile
 from budget.rebuilding import GoldRebuild, SilverRebuild
@@ -74,6 +74,14 @@ def gold_line(rebuilt: GoldRebuild) -> str:
     return (
         "Gold     the recipe is unchanged; nothing was published "
         f"(publication {number} stays current)"
+    )
+
+
+def undo_line(move: PointerMove) -> str:
+    """Report the publication restored by an undo, and what it replaced."""
+    return (
+        f"Gold     publication {move.to_publication_id} is current "
+        f"(was {move.from_publication_id}; cause {move.cause})"
     )
 
 

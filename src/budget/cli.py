@@ -36,6 +36,7 @@ from budget.dashboard import create_app
 from budget.dashboard.passphrase import PassphraseNotSetError, set_passphrase
 from budget.demo import DEFAULT_DEMO_PORT, DemoDirectoryExistsError, create_demo_profile
 from budget.gold.storage import GOLD_STAGE
+from budget.gold.store import GoldStore, UndoUnavailableError
 from budget.importing import (
     Coverage,
     ImportLogAheadOfBronzeError,
@@ -142,6 +143,17 @@ class RebuiltWithoutBackupError(Exception):
         super().__init__(
             "the stores were rebuilt, but no backup set could be written after "
             f"them: {reason}. Put that right, then run `budget backup`"
+        )
+
+
+class UndoneWithoutBackupError(Exception):
+    """The undo is committed, but no backup set followed it."""
+
+    def __init__(self, reason: Exception) -> None:
+        """Say what was done and what to run."""
+        super().__init__(
+            "the current publication was restored, but no backup set could be "
+            f"written after it: {reason}. Put that right, then run `budget backup`"
         )
 
 
@@ -479,6 +491,32 @@ def _review(profile: Profile, kind: str | None, account: str | None) -> None:
     sys.stdout.write(summary)
 
 
+def _undo(profile: Profile) -> None:
+    """Move the current Gold pointer back once, under the profile's writer lock."""
+    started = perf_counter()
+    with writer_lock(profile) as lock:
+        if profile.name == PRODUCTION_PROFILE_NAME:
+            require_backup_allowed(profile)
+        with GoldStore(profile) as gold:
+            move = gold.undo()
+        routine_logging.finished(
+            profile,
+            "undo",
+            counts={},
+            duration_ms=_milliseconds(started),
+        )
+        summary = summaries.undo_line(move)
+        if profile.name != PRODUCTION_PROFILE_NAME:
+            sys.stdout.write(summary + "\n")
+            return
+        try:
+            written = back_up(lock, now=datetime.now(UTC))
+        except BACKUP_FAILURES as error:
+            sys.stdout.write(summary + "\n")
+            raise UndoneWithoutBackupError(error) from None
+        sys.stdout.write(f"{summary}\nBackup   backup set {written.name} written\n")
+
+
 def _set_passphrase(profile: Profile) -> None:
     """Ask for the new dashboard passphrase twice, then store its hash."""
     # Refused before asking, so no one types a passphrase that cannot be kept.
@@ -556,7 +594,7 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
     elif arguments.command == "review":
         _review(profile, arguments.kind, arguments.account)
     elif arguments.command == "undo":
-        pass
+        _undo(profile)
     elif arguments.command == "set-passphrase":
         _set_passphrase(profile)
     elif arguments.command == "serve":
@@ -609,6 +647,8 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         ImportedWithoutBackupError,
         ImportedWithoutPublicationError,
         RebuiltWithoutBackupError,
+        UndoneWithoutBackupError,
+        UndoUnavailableError,
         BackupWriteError,
         UnsupportedStoresError,
         LostStoreError,
