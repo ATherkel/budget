@@ -8,17 +8,19 @@ Every test passes `main` an explicit environment.
 
 import errno
 import json
+import re
 import shutil
 import sqlite3
-import unittest
 from contextlib import closing
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
 from budget.backups import BackupSet, back_up, complete_backup_sets
 from budget.bronze import BronzeStore
+from budget.gold.store import GoldStore
+from budget.importing import Coverage, import_inbox_file
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
 from tests.backups.sets import (
@@ -30,12 +32,21 @@ from tests.backups.sets import (
     user_version,
 )
 from tests.bronze.migration_resources import SILVER_MIGRATIONS, added_migration
-from tests.cli.commands import backup, migrate, restore
+from tests.cli.checkouts import CleanCheckoutTestCase
+from tests.cli.commands import backup, migrate, rebuild, restore
+from tests.cli.pipelines import TAXONOMY, Household, household, write_inputs
 from tests.cli.profile_files import write_profile
-from tests.importing.households import ACCOUNTS, log_entries
+from tests.cli.test_production_rebuild_gold import _clean_checkout
+from tests.importing.households import drop, log_entries, payload
 from tests.test_decision_log import documented_example
 
 EXIT_OK = 0
+# What catch-up prints for a set whose Gold holds no publication yet: the
+# fresh build becomes the first.
+FIRST_GOLD = "Gold     published publication 1\n"
+# An export of a later week than the pipeline household's, for catch-up.
+EXPORT_LATER = payload("08.03.2026")
+EXIT_REFUSED_INPUT = 3
 EXIT_REFUSED_ENVIRONMENT = 4
 EXIT_VERIFICATION_FAILED = 5
 
@@ -45,13 +56,22 @@ def _production_with_a_set(folder: Path) -> tuple[Path, Profile, BackupSet, str]
     profile_file = write_profile(folder, name="production")
     assert migrate(profile_file, "--new-store")[0] == EXIT_OK
     production = load_profile_file(profile_file)
-    production.inputs.mkdir()
-    production.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+    write_inputs(production)
     with writer_lock(production) as lock:
         run_id = import_one(lock)
         # After the set `migrate` wrote, so it is the newest.
         written = back_up(lock, now=datetime.now(UTC))
     return profile_file, production, written, run_id
+
+
+def _reported(stdout: str) -> str:
+    """A finished restore's report, without the set it backs up to last.
+
+    That set is named by the time it is written, which a test cannot know.
+    """
+    report, _, last = stdout.rstrip("\n").rpartition("\n")
+    assert re.fullmatch(r"backup set \S+ written", last), stdout
+    return report + "\n" if report else ""
 
 
 def _live_run_ids(profile: Profile) -> list[str]:
@@ -116,15 +136,19 @@ def _production_with_decisions(
     profile_file = write_profile(folder, name="production")
     assert migrate(profile_file, "--new-store")[0] == EXIT_OK
     production = load_profile_file(profile_file)
-    production.inputs.mkdir()
-    production.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+    write_inputs(production)
+    # The documented decisions classify into `gifts`.
+    production.input_file("taxonomy.toml").write_text(
+        TAXONOMY + '\n[category.gifts]\nname = "Gifts"\ngroup = "food"\n',
+        encoding="utf-8",
+    )
     production.input_file("decisions.jsonl").write_bytes(b"".join(logged))
     with writer_lock(production) as lock:
         written = back_up(lock, now=datetime.now(UTC))
     return profile_file, production, written
 
 
-class DecisionLogRecoveryTests(unittest.TestCase):
+class DecisionLogRecoveryTests(CleanCheckoutTestCase):
     def test_restore_stops_on_a_decision_log_that_does_not_extend_the_sets(
         self,
     ) -> None:
@@ -277,7 +301,214 @@ class DecisionLogRecoveryTests(unittest.TestCase):
             ) in stdout
 
 
-class LostStoreAdviceTests(unittest.TestCase):
+def _published_production(folder: Path) -> tuple[Household, BackupSet]:
+    """A production household with Gold publication 1, and a set holding it."""
+    built = household(folder, name="production")
+    with mock.patch("subprocess.run", side_effect=_clean_checkout):
+        assert rebuild(built.profile_file)[0] == EXIT_OK
+    with writer_lock(built.profile) as lock:
+        written = back_up(lock, now=datetime.now(UTC))
+    return built, written
+
+
+class GoldCatchUpTests(CleanCheckoutTestCase):
+    def test_restore_publishes_gold_when_catch_up_changes_the_recipe(self) -> None:
+        # A run imported after the set changes what Gold is built from, so a
+        # fresh publication follows the restored one.
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            later = drop(
+                built.profile, "joint-current", "danske-20260310.csv", EXPORT_LATER
+            )
+            with writer_lock(built.profile) as lock:
+                import_inbox_file(
+                    lock,
+                    later,
+                    Coverage(
+                        covers_from=date(2026, 3, 5), covers_through=date(2026, 3, 9)
+                    ),
+                )
+            shutil.rmtree(built.profile.stores)
+
+            with mock.patch("subprocess.run", side_effect=_clean_checkout):
+                status, stdout, stderr = restore(built.profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "Gold     published publication 2\n" in stdout
+            with GoldStore(built.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 2
+                # The set's history comes back as it was, one move on.
+                moves = gold.pointer_history()
+                assert [(move.to_publication_id, move.cause) for move in moves] == [
+                    (1, "build"),
+                    (2, "build"),
+                ]
+
+    def test_restore_records_where_the_recovered_publication_history_ends(
+        self,
+    ) -> None:
+        # Publications made after the set are lost: the boundary says so, so
+        # a lookup can report the gap instead of inferring continuous use.
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            shutil.rmtree(built.profile.stores)
+
+            before = datetime.now(UTC)
+            assert restore(built.profile_file, written.name)[0] == EXIT_OK
+
+            with GoldStore(built.profile) as gold:
+                (boundary,) = gold.recovery_boundaries()
+            assert boundary.backup_set == written.name
+            assert boundary.backup_created_at == written.created_at
+            assert boundary.restored_at >= before
+            assert boundary.restored_current_id == 1
+            assert boundary.first_publication_id == 2
+
+    def test_restore_names_the_publication_undo_returns_to_after_catch_up(
+        self,
+    ) -> None:
+        # Undo returns to the set's current publication, never to one lost
+        # after the set.
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            later = drop(
+                built.profile, "joint-current", "danske-20260310.csv", EXPORT_LATER
+            )
+            with writer_lock(built.profile) as lock:
+                import_inbox_file(
+                    lock,
+                    later,
+                    Coverage(
+                        covers_from=date(2026, 3, 5), covers_through=date(2026, 3, 9)
+                    ),
+                )
+            shutil.rmtree(built.profile.stores)
+
+            status, stdout, stderr = restore(built.profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "undo returns to publication 1, the current one in backup set "
+                f"{written.name}; publications made after that set are lost\n"
+            ) in stdout
+
+    def test_restore_of_a_set_without_gold_starts_gold_and_says_so(self) -> None:
+        # A set from before sets held Gold: catch-up still builds a current
+        # publication, but no Gold history comes back, and restore says so.
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            listed = manifest(written.path)
+            stores, files = listed["stores"], listed["files"]
+            assert isinstance(stores, dict)
+            assert isinstance(files, dict)
+            del stores["gold"], files["gold.db"]
+            (written.path / "gold.db").unlink()
+            (written.path / "manifest.json").write_text(
+                json.dumps(listed), encoding="utf-8"
+            )
+            shutil.rmtree(built.profile.stores)
+
+            status, stdout, stderr = restore(built.profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                f"backup set {written.name} holds no Gold store: Gold was "
+                "started anew, and no earlier publication is recovered\n"
+            ) in stdout
+            assert FIRST_GOLD in stdout
+            with GoldStore(built.profile) as gold:
+                (boundary,) = gold.recovery_boundaries()
+            assert boundary.restored_current_id is None
+            assert boundary.first_publication_id == 1
+
+    def test_restore_backs_up_the_restored_profile_when_it_finishes(self) -> None:
+        # As `migrate` does after it changes stores: the boundary and any
+        # catch-up publication are in a set at once (owner decision, 29 Oct).
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            shutil.rmtree(built.profile.stores)
+
+            status, stdout, stderr = restore(built.profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            newest = complete_backup_sets(built.profile)[0]
+            assert newest.name != written.name
+            assert stdout.endswith(
+                f"restored backup set {written.name}\n"
+                f"backup set {newest.name} written\n"
+            )
+            assert run_ids(newest.path / "bronze.db") == run_ids(
+                written.path / "bronze.db"
+            )
+            with closing(
+                sqlite3.connect(
+                    f"{(newest.path / 'gold.db').as_uri()}?mode=ro&immutable=1",
+                    uri=True,
+                )
+            ) as copy:
+                held = copy.execute("SELECT backup_set FROM recovery_boundaries")
+                assert [row[0] for row in held] == [written.name]
+
+    def test_a_recovery_boundary_survives_a_later_backup_and_restore(self) -> None:
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            shutil.rmtree(built.profile.stores)
+            assert restore(built.profile_file, written.name)[0] == EXIT_OK
+            with writer_lock(built.profile) as lock:
+                later = back_up(lock, now=datetime.now(UTC))
+            shutil.rmtree(built.profile.stores)
+
+            assert restore(built.profile_file, later.name)[0] == EXIT_OK
+
+            with GoldStore(built.profile) as gold:
+                boundaries = gold.recovery_boundaries()
+            assert [boundary.backup_set for boundary in boundaries] == [
+                written.name,
+                later.name,
+            ]
+
+    def test_restore_keeps_the_restored_publication_when_nothing_changed(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            shutil.rmtree(built.profile.stores)
+
+            status, stdout, stderr = restore(built.profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "Gold     the recipe is unchanged; nothing was published "
+                "(publication 1 stays current)\n"
+            ) in stdout
+            with GoldStore(built.profile) as gold:
+                assert [move.cause for move in gold.pointer_history()] == ["build"]
+
+    def test_a_refused_catch_up_build_leaves_the_restore_unfinished(self) -> None:
+        # Restored stores without their catch-up are not a complete restore.
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            shutil.rmtree(built.profile.stores)
+            # The surviving registry no longer declares the restored run's
+            # account, so the catch-up build refuses.
+            built.profile.accounts_file.write_text("format = 1\n", encoding="utf-8")
+
+            status, stdout, stderr = restore(built.profile_file, written.name)
+
+            assert status == EXIT_REFUSED_INPUT
+            assert "restored backup set" not in stdout
+            assert (
+                f"backup set {written.name} is in place, but its catch-up build "
+                "was refused: accounts.toml"
+            ) in stderr
+            assert "the restore has not finished" in stderr
+            assert "nothing was written" not in stderr
+            assert backup(built.profile_file)[0] == EXIT_REFUSED_ENVIRONMENT
+
+
+class LostStoreAdviceTests(CleanCheckoutTestCase):
     # A store is never restored beside live ones, so the advice for a lost
     # store is a whole-profile restore.
     def test_backup_advises_a_whole_profile_restore_for_a_lost_store(self) -> None:
@@ -303,7 +534,7 @@ class LostStoreAdviceTests(unittest.TestCase):
             assert f"Gold store must be restored {WHOLE_PROFILE_ADVICE}" in stderr
 
 
-class RestoreCommandTests(unittest.TestCase):
+class RestoreCommandTests(CleanCheckoutTestCase):
     def test_restore_puts_every_store_of_the_newest_set_into_an_empty_profile(
         self,
     ) -> None:
@@ -316,13 +547,18 @@ class RestoreCommandTests(unittest.TestCase):
             status, stdout, stderr = restore(profile_file)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert stdout == f"restored backup set {written.name}\n"
+            assert (
+                _reported(stdout)
+                == FIRST_GOLD + f"restored backup set {written.name}\n"
+            )
             assert run_ids(production.bronze_store) == [run_id]
-            # The set's own copies, not fresh stores with the same tables.
-            for store in ("silver.db", "gold.db"):
-                assert checksum(production.stores / store) == checksum(
-                    written.path / store
-                )
+            # Bronze is the set's own copy; catch-up then rebuilds Silver and
+            # Gold from it, so those are no longer the set's bytes.
+            assert checksum(production.bronze_store) == checksum(
+                written.path / "bronze.db"
+            )
+            with GoldStore(production) as gold:
+                assert [move.cause for move in gold.pointer_history()] == ["build"]
 
     def test_restore_refuses_a_profile_with_no_complete_set(self) -> None:
         with TemporaryDirectory() as directory:
@@ -350,7 +586,9 @@ class RestoreCommandTests(unittest.TestCase):
             status, stdout, stderr = restore(profile_file, older.name)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert stdout == f"restored backup set {older.name}\n"
+            assert (
+                _reported(stdout) == FIRST_GOLD + f"restored backup set {older.name}\n"
+            )
             # The set `migrate` wrote holds no import run yet.
             assert run_ids(production.bronze_store) == []
 
@@ -464,9 +702,10 @@ class RestoreCommandTests(unittest.TestCase):
             status, stdout, stderr = restore(profile_file)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert stdout == (
+            assert _reported(stdout) == (
                 f"skipped backup set {written.name}: this code cannot read it\n"
-                f"restored backup set {older.name}\n"
+                + FIRST_GOLD
+                + f"restored backup set {older.name}\n"
             )
             assert run_ids(production.bronze_store) == []
 
@@ -507,7 +746,7 @@ class RestoreCommandTests(unittest.TestCase):
             status, stdout, stderr = restore(profile_file)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert stdout.endswith(f"restored backup set {older.name}\n")
+            assert _reported(stdout).endswith(f"restored backup set {older.name}\n")
 
     def test_restore_passes_over_a_newest_set_whose_store_is_damaged(self) -> None:
         with TemporaryDirectory() as directory:
@@ -527,9 +766,10 @@ class RestoreCommandTests(unittest.TestCase):
             status, stdout, stderr = restore(profile_file)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert stdout == (
+            assert _reported(stdout) == (
                 f"skipped backup set {written.name}: this code cannot read it\n"
-                f"restored backup set {older.name}\n"
+                + FIRST_GOLD
+                + f"restored backup set {older.name}\n"
             )
 
     def test_restore_migrates_a_store_the_set_holds_at_an_older_version(
@@ -588,9 +828,10 @@ class RestoreCommandTests(unittest.TestCase):
             status, stdout, stderr = restore(profile_file, written.name)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert stdout == (
+            assert _reported(stdout) == (
                 "replayed 1 import run from the export archive\n"
-                f"restored backup set {written.name}\n"
+                + FIRST_GOLD
+                + f"restored backup set {written.name}\n"
             )
             assert _live_run_ids(production) == [run_id, later]
 
@@ -648,7 +889,10 @@ class RestoreCommandTests(unittest.TestCase):
             status, stdout, stderr = restore(profile_file, written.name)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert stdout == f"restored backup set {written.name}\n"
+            assert (
+                _reported(stdout)
+                == FIRST_GOLD + f"restored backup set {written.name}\n"
+            )
             assert _live_run_ids(production) == [run_id]
 
     def test_restore_stops_before_anything_on_an_import_log_that_conflicts(
@@ -766,10 +1010,13 @@ class RestoreCommandTests(unittest.TestCase):
             status, stdout, stderr = restore(profile_file, written.name)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert stdout == f"restored backup set {written.name}\n"
+            assert (
+                _reported(stdout)
+                == FIRST_GOLD + f"restored backup set {written.name}\n"
+            )
             assert run_ids(production.bronze_store) == [run_id]
-            assert checksum(production.silver_store) == checksum(
-                written.path / "silver.db"
+            assert checksum(production.bronze_store) == checksum(
+                written.path / "bronze.db"
             )
 
     def test_commands_refuse_a_profile_whose_restore_has_not_finished(self) -> None:
@@ -815,9 +1062,10 @@ class RestoreCommandTests(unittest.TestCase):
             status, stdout, _ = restore(profile_file, written.name)
 
             assert status == EXIT_OK
-            assert stdout == (
+            assert _reported(stdout) == (
                 "put back inputs/accounts.toml from the backup set\n"
-                f"restored backup set {written.name}\n"
+                + FIRST_GOLD
+                + f"restored backup set {written.name}\n"
             )
 
     def test_restore_puts_back_a_household_input_the_profile_has_lost(

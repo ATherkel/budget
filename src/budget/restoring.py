@@ -13,15 +13,24 @@ import sqlite3
 from collections.abc import Callable, Mapping
 from contextlib import closing
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Final
 
-from budget.backups import BackupSet, complete_backup_sets, set_store_files
+from budget.backups import (
+    BACKUP_FAILURES,
+    BackupSet,
+    back_up,
+    complete_backup_sets,
+    set_store_files,
+)
 from budget.bronze import BronzeStore
 from budget.bronze.storage import bronze_stage
+from budget.codeversion import UncommittedCodeError
 from budget.decision_log import read_decision_log
 from budget.durability import sync_folder
-from budget.gold.storage import gold_stage
+from budget.gold.storage import GOLD_STAGE, gold_stage
+from budget.gold.store import GoldStore, RecoveryBoundary
 from budget.inputs import ConfigurationError
 from budget.locking import WriterLock
 from budget.profiles import (
@@ -31,6 +40,7 @@ from budget.profiles import (
     INPUTS_FOLDER,
     Profile,
 )
+from budget.rebuilding import GoldRebuild, rebuild_through_gold
 from budget.replaying import (
     REPLAY_REFUSALS,
     ArchivedExportMismatchError,
@@ -41,7 +51,7 @@ from budget.replaying import (
     check_log_continues,
     replay_import_log,
 )
-from budget.silver.storage import silver_stage
+from budget.silver.storage import SILVER_STAGE, silver_stage
 from budget.sqlstore import StageStore, StoreError, migrate_store, open_store_snapshot
 
 # Where a restore copies a set's stores before moving them into place.
@@ -151,6 +161,53 @@ def _require_no_stores(profile: Profile) -> None:
 
 
 @dataclass(frozen=True)
+class UndoAfterCatchUp:
+    """Where undo goes after a catch-up build published (`publications.md`).
+
+    Undo returns to `publication_id`, the set's current publication, while
+    its result is `usable`; never to one lost after the set. The undo
+    command is #177's: this names where its first step from the catch-up
+    build must land, which is the pointer's move before that build.
+    """
+
+    publication_id: int
+    usable: bool
+
+
+def _start_missing_stages(
+    profile: Profile, stores: Mapping[str, str]
+) -> tuple[str, ...]:
+    """Start each later stage's store the set does not hold; name those stages.
+
+    The set is the copy from before the change, so no backup is taken first.
+    """
+    started = []
+    for stage in (SILVER_STAGE, GOLD_STAGE):
+        if stage not in stores:
+            migrate_store(
+                _STAGES[stage](profile), new_store=True, before_migrating=lambda: None
+            )
+            started.append(stage)
+    return tuple(started)
+
+
+def _undo_after_catch_up(
+    profile: Profile, boundary: RecoveryBoundary, gold: GoldRebuild
+) -> UndoAfterCatchUp | None:
+    """Name undo's target once catch-up has published, or None.
+
+    Without a build, the restored pointer history keeps its ordinary undo.
+    A set without a publication leaves undo nothing to return to.
+    """
+    target = boundary.restored_current_id
+    if not gold.published or target is None:
+        return None
+    with GoldStore(profile) as gold_store:
+        retained = {found.publication_id for found in gold_store.available()}
+    return UndoAfterCatchUp(publication_id=target, usable=target in retained)
+
+
+@dataclass(frozen=True)
 class Restored:
     """What `restore` did: the set, the newer sets passed over, the inputs put back.
 
@@ -165,6 +222,16 @@ class Restored:
     replayed: int
     missing_logs: tuple[str, ...]
     decision_line_cut_off: bool
+    gold: GoldRebuild | None
+    undo: UndoAfterCatchUp | None
+    started: tuple[str, ...] = ()
+    backed_up: BackupSet | None = None
+    backup_failure: str | None = None
+
+    @property
+    def gold_started(self) -> bool:
+        """Whether the set held no Gold store, so Gold began anew."""
+        return GOLD_STAGE in self.started
 
     @property
     def decisions_lost(self) -> bool:
@@ -416,6 +483,36 @@ _CATCH_UP_PROBLEMS: Final[dict[type[Exception], str]] = {
 }
 
 
+def _build_refused(name: str, reason: Exception) -> str:
+    """Say a catch-up build was refused, and that the restore is unfinished.
+
+    The build's own refusal ends by saying nothing was written, which is
+    true of its build but not of the restore: the stores are in place.
+    """
+    found = str(reason).removesuffix("; nothing was written")
+    return (
+        f"backup set {name} is in place, but its catch-up build was refused: "
+        f"{found}; the restore has not finished: put that right, then rerun "
+        "`budget restore`"
+    )
+
+
+class CatchUpInputsRefusedError(RuntimeError):
+    """The household's inputs refuse the catch-up build: restore is unfinished."""
+
+    def __init__(self, name: str, reason: Exception) -> None:
+        """Name the set, the build's refusal, and what to do."""
+        super().__init__(_build_refused(name, reason))
+
+
+class CatchUpCodeRefusedError(RuntimeError):
+    """The running code cannot build production: restore is unfinished."""
+
+    def __init__(self, name: str, reason: Exception) -> None:
+        """Name the set, the build's refusal, and what to do."""
+        super().__init__(_build_refused(name, reason))
+
+
 class UnfinishedRestoreError(RuntimeError):
     """A restore has not finished: its stores are not a profile to use yet."""
 
@@ -536,7 +633,7 @@ def _lost_inputs(profile: Profile, backup: BackupSet) -> dict[str, Path]:
     }
 
 
-def restore(lock: WriterLock, name: str | None = None) -> Restored:
+def restore(lock: WriterLock, name: str | None = None, *, now: datetime) -> Restored:
     """Restore every store of one complete set; report what was restored.
 
     `name` selects the set; without it, the newest complete set this code
@@ -572,10 +669,30 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
             replayed = replay_import_log(lock)
         except REPLAY_REFUSALS as error:
             raise CatchUpRefusedError(selected.name, error) from error
+    # A set from before sets held Silver or Gold restores none: those stages
+    # start empty, so no history of them is recovered, and none invented.
+    started = _start_missing_stages(profile, stores)
+    # Recorded before the build, so the boundary names the set's current
+    # publication and the first id any later build takes.
+    with GoldStore(profile) as gold_store:
+        boundary = gold_store.record_recovery_boundary(
+            selected.name, selected.created_at, now
+        )
+    # Then Silver and Gold from everything recovered: the replayed runs,
+    # the decisions and configuration since the set, and the running code.
+    # Gold publishes only when that recipe differs from the restored one.
+    try:
+        gold = rebuild_through_gold(lock, now=now).gold
+    except ConfigurationError as error:
+        raise CatchUpInputsRefusedError(selected.name, error) from error
+    except UncommittedCodeError as error:
+        raise CatchUpCodeRefusedError(selected.name, error) from error
+    undo = _undo_after_catch_up(profile, boundary, gold)
     # Durably: a marker that came back after a crash would let a later
     # restore remove a finished profile's stores as its own.
     (profile.stores / RESTORE_MARKER).unlink()
     sync_folder(profile.stores)
+    backed_up, backup_failure = _back_up_restored(lock, now)
     return Restored(
         backup=selected,
         skipped=skipped,
@@ -583,4 +700,27 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
         replayed=len(replayed),
         missing_logs=missing_logs,
         decision_line_cut_off=decision_line_cut_off,
+        gold=gold,
+        undo=undo,
+        started=started,
+        backed_up=backed_up,
+        backup_failure=backup_failure,
     )
+
+
+def _back_up_restored(
+    lock: WriterLock, now: datetime
+) -> tuple[BackupSet | None, str | None]:
+    """Back the finished restore up, as `migrate` does after it changes stores.
+
+    The boundary and any catch-up publication are then in a set at once.
+    The restore is finished either way: a set that cannot be written is
+    reported, for `budget backup` to write once its problem is put right.
+    Only a profile that writes sets is backed up.
+    """
+    if lock.profile.backups is None:
+        return None, None
+    try:
+        return back_up(lock, now=now), None
+    except BACKUP_FAILURES as error:
+        return None, str(error)

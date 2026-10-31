@@ -92,6 +92,8 @@ from budget.refreshing import (
     require_refreshable,
 )
 from budget.restoring import (
+    CatchUpCodeRefusedError,
+    CatchUpInputsRefusedError,
     CatchUpRefusedError,
     DamagedStoreError,
     DecisionLogDamagedError,
@@ -101,6 +103,7 @@ from budget.restoring import (
     NoUsableSetError,
     OccupiedProfileError,
     RestoreWriteError,
+    UndoAfterCatchUp,
     UnfinishedRestoreError,
     UnknownStageError,
     require_no_unfinished_restore,
@@ -341,10 +344,24 @@ def _backup(profile: Profile) -> None:
     sys.stdout.write(f"backup set {written.name} written\n")
 
 
-def _restore(profile: Profile, backup_set: str | None) -> None:
+def _undo_line(undo: UndoAfterCatchUp, backup_set: str) -> str:
+    """Say where undo returns after catch-up, or that it cannot."""
+    number = undo.publication_id
+    if not undo.usable:
+        return (
+            f"undo cannot return to publication {number}, the current one in "
+            f"backup set {backup_set}: its result is no longer retained\n"
+        )
+    return (
+        f"undo returns to publication {number}, the current one in backup set "
+        f"{backup_set}; publications made after that set are lost\n"
+    )
+
+
+def _restore(profile: Profile, backup_set: str | None) -> int:
     """Restore the whole profile from a backup set, and name the set on stdout."""
     with writer_lock(profile) as lock:
-        restored = restore(lock, backup_set)
+        restored = restore(lock, backup_set, now=datetime.now(UTC))
     for skipped in restored.skipped:
         sys.stdout.write(f"skipped backup set {skipped}: this code cannot read it\n")
     for put_back in restored.put_back:
@@ -369,7 +386,26 @@ def _restore(profile: Profile, backup_set: str | None) -> None:
         sys.stdout.write(
             f"replayed {restored.replayed} import {runs} from the export archive\n"
         )
+    if restored.gold_started:
+        sys.stdout.write(
+            f"backup set {restored.backup.name} holds no Gold store: Gold was "
+            "started anew, and no earlier publication is recovered\n"
+        )
+    if restored.gold is not None:
+        sys.stdout.write(summaries.gold_line(restored.gold) + "\n")
+    if restored.undo is not None:
+        sys.stdout.write(_undo_line(restored.undo, restored.backup.name))
     sys.stdout.write(f"restored backup set {restored.backup.name}\n")
+    if restored.backed_up is not None:
+        sys.stdout.write(f"backup set {restored.backed_up.name} written\n")
+    if restored.backup_failure is not None:
+        sys.stderr.write(
+            "budget: the restore is finished, but no backup set of it could be "
+            f"written: {restored.backup_failure}; run `budget backup` once that "
+            "is put right\n"
+        )
+        return EXIT_REFUSED_ENVIRONMENT
+    return EXIT_OK
 
 
 def _dev_refresh(profile: Profile, *, inputs: bool, writable: bool) -> None:
@@ -628,12 +664,12 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         require_no_unfinished_restore(profile)
     if arguments.command == "import":
         return _import(profile, arguments.ranges)
+    if arguments.command == "restore":
+        return _restore(profile, arguments.backup_set)
     if arguments.command == "backup":
         _backup(profile)
     elif arguments.command == "dev":
         _dev_refresh(profile, inputs=arguments.inputs, writable=arguments.writable)
-    elif arguments.command == "restore":
-        _restore(profile, arguments.backup_set)
     elif arguments.command == "rebuild":
         _rebuild(profile, arguments.from_stage)
     elif arguments.command == "review":
@@ -677,11 +713,13 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         EmptyPassphraseError,
         PassphraseMismatchError,
         DemoDirectoryExistsError,
+        CatchUpInputsRefusedError,
     ) as error:
         return _refuse(error, EXIT_REFUSED_INPUT)
     except (
         NoProfileSelectedError,
         UncommittedCodeError,
+        CatchUpCodeRefusedError,
         SilverNotBuiltError,
         WriterLockHeldError,
         StoresFolderUnavailableError,
