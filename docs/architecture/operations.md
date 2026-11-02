@@ -248,8 +248,11 @@ clean checkout, separate from the one used for development.
 `dev refresh --writable` restores the set into development's own stores
 instead of `upstream/`, relabelled as development. It exists to rehearse a
 migration on real data: `migrate` then upgrades stores that already hold
-production's history, exactly as it will in production (W5). Until the next
-plain `dev refresh`, development reads every stage from its own stores.
+production's history, exactly as it will in production (W5). It leaves any
+`upstream/` folder as it is. A refresh killed part-way can leave stores in
+`stores/writable-replaced`; development's stores make no promise to keep, so
+the next `--writable` refresh deletes them. With `--inputs` the inputs are
+replaced first, so if that fails no store has changed.
 
 ## Household Inputs
 

@@ -224,10 +224,11 @@ def _restore_writable(profile: Profile, backup: BackupSet) -> None:
 def refresh(
     lock: WriterLock, *, inputs: bool = False, writable: bool = False
 ) -> Refreshed:
-    """Restore production's newest complete set into `upstream`, read-only.
+    """Restore production's newest complete set for development.
 
-    The copies are made in a staging folder beside it and replace the old
-    `upstream` folder only once they are all made. With `inputs`,
+    By default it goes into `upstream`, read-only. The copies are made in a
+    staging folder beside it and replace the old `upstream` folder only once
+    they are all made. With `inputs`,
     development's inputs are replaced by the set's too. With `writable`, the
     set is restored into development's own stores instead of `upstream`.
     """
