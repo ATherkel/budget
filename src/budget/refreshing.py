@@ -62,13 +62,13 @@ class NotProductionsSetError(RuntimeError):
 
 
 class InputsNotReplacedError(RuntimeError):
-    """`--inputs` could not swap in the set's inputs: development's are intact."""
+    """`--inputs` could not swap in the set's inputs: nothing was refreshed."""
 
     def __init__(self, cause: OSError) -> None:
-        """Say what failed; upstream was already refreshed."""
+        """Say what failed; the inputs and upstream are as they were."""
         super().__init__(
             f"could not replace development's inputs ({cause.strerror or cause}); "
-            "they are unchanged, but upstream was refreshed"
+            "they are unchanged; nothing was refreshed"
         )
 
 
@@ -101,7 +101,8 @@ def _replace_inputs(profile: Profile, backup: BackupSet) -> None:
     shutil.rmtree(replaced, ignore_errors=True)
     try:
         shutil.copytree(backup.path / INPUTS_FOLDER, replacing)
-        inputs.rename(replaced)
+        if inputs.exists():
+            inputs.rename(replaced)
     except OSError as error:
         shutil.rmtree(replacing, ignore_errors=True)
         raise InputsNotReplacedError(error) from error
@@ -130,10 +131,16 @@ def refresh(lock: WriterLock, *, inputs: bool = False) -> Refreshed:
     # its own identity, at a schema version this code knows, and intact.
     as_production = replace(profile, name=PRODUCTION_PROFILE_NAME)
     sets = complete_sets_in(Path(str(profile.upstream_backups)))
+    # Before vetting: a set of another profile fails the identity check and
+    # would be passed over as unreadable instead of refused.
+    for found in sets:
+        taken_of = set_profile(found)
+        if taken_of != PRODUCTION_PROFILE_NAME:
+            raise NotProductionsSetError(found.name, taken_of)
     newest, skipped = newest_readable(as_production, sets)
-    taken_of = set_profile(newest)
-    if taken_of != PRODUCTION_PROFILE_NAME:
-        raise NotProductionsSetError(newest.name, taken_of)
+    # Inputs first: if they cannot be swapped, upstream is left as it was.
+    if inputs:
+        _replace_inputs(profile, newest)
     upstream = profile.stores / UPSTREAM_FOLDER
     staging = profile.stores / UPSTREAM_STAGING
     _remove_read_only(staging)
@@ -144,6 +151,4 @@ def refresh(lock: WriterLock, *, inputs: bool = False) -> Refreshed:
         copy.chmod(stat.S_IREAD)
     _remove_read_only(upstream)
     staging.rename(upstream)
-    if inputs:
-        _replace_inputs(profile, newest)
     return Refreshed(newest, skipped)
