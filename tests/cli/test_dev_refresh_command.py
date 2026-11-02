@@ -132,6 +132,7 @@ class DevRefreshTests(unittest.TestCase):
             assert "replaced development's inputs" not in stdout
             assert "could not replace development's inputs" in stderr
             assert "Traceback" not in stderr
+            assert not (development.stores / "upstream").exists()
             assert development.accounts_file.read_bytes() == b"# a development edit\n"
             assert held.read_bytes() == b"# draft rules\n"
 
@@ -270,3 +271,53 @@ class DevRefreshTests(unittest.TestCase):
             )
             upstream = development.stores / "upstream" / "bronze.db"
             assert checksum(upstream) == checksum(newer.path / "bronze.db")
+
+    def test_dev_refresh_with_inputs_gives_a_new_profile_the_sets_inputs(self) -> None:
+        # Development has no inputs folder yet: there is nothing to set aside.
+        with TemporaryDirectory() as directory:
+            production, written = _production_with_a_set(Path(directory) / "prod")
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+            assert not development.inputs.exists()
+
+            status, stdout, stderr = dev_refresh(profile_file, "--inputs")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                f"replaced development's inputs with backup set {written.name}'s"
+                in (stdout)
+            )
+            assert (
+                development.accounts_file.read_bytes()
+                == (written.path / "inputs" / "accounts.toml").read_bytes()
+            )
+
+    def test_dev_refresh_refuses_a_newest_set_taken_of_another_profile(self) -> None:
+        # Not skipped as unreadable, so an older production set is not used
+        # in its place.
+        with TemporaryDirectory() as directory:
+            production, older = _production_with_a_set(Path(directory) / "prod")
+            with writer_lock(production) as lock:
+                newer = back_up(lock, now=datetime.now(UTC))
+            with closing(sqlite3.connect(newer.path / "bronze.db")) as connection:
+                connection.execute("UPDATE store_identity SET profile = 'development'")
+                connection.commit()
+            listed = manifest(newer.path)
+            listed["profile"] = "development"
+            files = listed["files"]
+            assert isinstance(files, dict)
+            files["bronze.db"] = checksum(newer.path / "bronze.db")
+            (newer.path / "manifest.json").write_text(
+                json.dumps(listed), encoding="utf-8"
+            )
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+
+            status, stdout, stderr = dev_refresh(profile_file)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert f"backup set {newer.name} is the development profile's" in stderr
+            assert older.name not in stderr
+            assert not (development.stores / "upstream").exists()
