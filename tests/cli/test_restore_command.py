@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 import sqlite3
+import stat
 import unittest
 from contextlib import closing
 from datetime import UTC, datetime
@@ -531,7 +532,10 @@ class RestoreCommandTests(unittest.TestCase):
             real_unlink = Path.unlink
 
             def fsync(descriptor: int) -> None:
-                events.append("fsync")
+                # Only files count: on Linux sync_folder fsyncs a directory
+                # too, and that is tracked as "sync" below.
+                if stat.S_ISREG(os.fstat(descriptor).st_mode):
+                    events.append("fsync")
                 real_fsync(descriptor)
 
             def sync_folder(folder: Path) -> None:
