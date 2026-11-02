@@ -377,13 +377,12 @@ def _dev_refresh(profile: Profile, *, inputs: bool) -> None:
     require_refreshable(profile)
     with writer_lock(profile) as lock:
         refreshed = refresh(lock, inputs=inputs)
-    sys.stdout.write(
-        f"restored backup set {refreshed.name} into upstream (read-only)\n"
-    )
+    for skipped in refreshed.skipped:
+        sys.stdout.write(f"skipped backup set {skipped}: this code cannot read it\n")
+    name = refreshed.backup.name
+    sys.stdout.write(f"restored backup set {name} into upstream (read-only)\n")
     if inputs:
-        sys.stdout.write(
-            f"replaced development's inputs with backup set {refreshed.name}'s\n"
-        )
+        sys.stdout.write(f"replaced development's inputs with backup set {name}'s\n")
 
 
 def _rebuild(profile: Profile, from_stage: str) -> None:

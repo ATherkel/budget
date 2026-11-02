@@ -9,7 +9,7 @@ inputs alone (`operations.md`, *Development diverges from a stage*).
 
 import shutil
 import stat
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final
 
@@ -87,7 +87,15 @@ def _replace_inputs(profile: Profile, backup: BackupSet) -> None:
     replacing.rename(inputs)
 
 
-def refresh(lock: WriterLock, *, inputs: bool = False) -> BackupSet:
+@dataclass(frozen=True)
+class Refreshed:
+    """What `refresh` did: the set used and the newer sets passed over."""
+
+    backup: BackupSet
+    skipped: tuple[str, ...]
+
+
+def refresh(lock: WriterLock, *, inputs: bool = False) -> Refreshed:
     """Restore production's newest complete set into `upstream`, read-only.
 
     The copies are made in a staging folder beside it and replace the old
@@ -100,7 +108,7 @@ def refresh(lock: WriterLock, *, inputs: bool = False) -> BackupSet:
     # its own identity, at a schema version this code knows, and intact.
     as_production = replace(profile, name=PRODUCTION_PROFILE_NAME)
     sets = complete_sets_in(Path(str(profile.upstream_backups)))
-    newest, _ = newest_readable(as_production, sets)
+    newest, skipped = newest_readable(as_production, sets)
     taken_of = set_profile(newest)
     if taken_of != PRODUCTION_PROFILE_NAME:
         raise NotProductionsSetError(newest.name, taken_of)
@@ -116,4 +124,4 @@ def refresh(lock: WriterLock, *, inputs: bool = False) -> BackupSet:
     staging.rename(upstream)
     if inputs:
         _replace_inputs(profile, newest)
-    return newest
+    return Refreshed(newest, skipped)
