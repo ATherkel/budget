@@ -10,6 +10,7 @@ import json
 import shutil
 import sqlite3
 import stat
+import sys
 import unittest
 from contextlib import closing
 from datetime import UTC, datetime
@@ -109,6 +110,30 @@ class DevRefreshTests(unittest.TestCase):
                 development.accounts_file.read_bytes()
                 == (sets_inputs / "accounts.toml").read_bytes()
             )
+
+    @unittest.skipUnless(sys.platform == "win32", "needs a file Windows cannot delete")
+    def test_dev_refresh_with_inputs_keeps_inputs_it_cannot_replace(self) -> None:
+        # An open file cannot be deleted on Windows: the refresh must stop
+        # with development's inputs as they were, not half deleted.
+        with TemporaryDirectory() as directory:
+            production, _ = _production_with_a_set(Path(directory) / "prod")
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+            development.inputs.mkdir()
+            development.accounts_file.write_bytes(b"# a development edit\n")
+            held = development.input_file("rules.toml")
+            held.write_bytes(b"# draft rules\n")
+
+            with held.open("rb"):
+                status, stdout, stderr = dev_refresh(profile_file, "--inputs")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "replaced development's inputs" not in stdout
+            assert "could not replace development's inputs" in stderr
+            assert "Traceback" not in stderr
+            assert development.accounts_file.read_bytes() == b"# a development edit\n"
+            assert held.read_bytes() == b"# draft rules\n"
 
     def test_dev_refresh_refuses_a_profile_that_reads_no_upstream_sets(
         self,
