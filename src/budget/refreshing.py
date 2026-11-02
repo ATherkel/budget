@@ -70,6 +70,14 @@ class RefreshWriteError(RuntimeError):
         )
 
 
+class NotProductionsStoreError(RefreshWriteError):
+    """A store copied for a writable refresh is not production's."""
+
+    def __init__(self, store: str) -> None:
+        """Name the store; it was not relabelled."""
+        super().__init__(f"{store} is not production's store")
+
+
 class NotProductionsSetError(RuntimeError):
     """The newest set in `upstream_backups` is another profile's."""
 
@@ -142,10 +150,16 @@ def _relabel(copy: Path, profile: Profile) -> None:
     """Make a copy of production's store development's, changing nothing else.
 
     Only the one-row `store_identity` changes, so Bronze's runs and payloads,
-    its evidence, come over exactly as production recorded them.
+    its evidence, come over exactly as production recorded them. A copy that
+    is not production's is refused: the set was checked before it was copied.
     """
     with closing(sqlite3.connect(copy)) as connection, connection:
-        connection.execute("UPDATE store_identity SET profile = ?", (profile.name,))
+        relabelled = connection.execute(
+            "UPDATE store_identity SET profile = ? WHERE profile = ?",
+            (profile.name, PRODUCTION_PROFILE_NAME),
+        )
+    if relabelled.rowcount != 1:
+        raise NotProductionsStoreError(copy.name)
 
 
 def _own_store_files(profile: Profile) -> list[Path]:

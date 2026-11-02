@@ -497,3 +497,38 @@ class DevRefreshTests(unittest.TestCase):
             assert f"backup set {newer.name} is the development profile's" in stderr
             assert older.name not in stderr
             assert not (development.stores / "upstream").exists()
+
+    def test_a_writable_refresh_refuses_a_copy_that_is_not_production_s(
+        self,
+    ) -> None:
+        # The set changed after it was checked: it must not be relabelled.
+        with TemporaryDirectory() as directory:
+            production, _ = _production_with_a_set(Path(directory) / "prod")
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+            development.stores.mkdir()
+            old = {
+                store: f"development's own {store}".encode()
+                for store in ("bronze.db", "silver.db", "gold.db")
+            }
+            for store, content in old.items():
+                (development.stores / store).write_bytes(content)
+            copy = shutil.copyfile
+
+            def another_profile_s_silver(source: Path, target: Path) -> Path:
+                copied = copy(source, target)
+                if Path(target).name == "silver.db":
+                    with closing(sqlite3.connect(target)) as connection, connection:
+                        connection.execute("UPDATE store_identity SET profile = 'test'")
+                return copied
+
+            with mock.patch.object(
+                shutil, "copyfile", side_effect=another_profile_s_silver
+            ):
+                status, stdout, stderr = dev_refresh(profile_file, "--writable")
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "silver.db" in stderr
+            for store, content in old.items():
+                assert (development.stores / store).read_bytes() == content
