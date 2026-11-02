@@ -48,7 +48,7 @@ from tests.cli.commands import (
 )
 from tests.cli.pipelines import TAXONOMY, Household, household, write_inputs
 from tests.cli.profile_files import write_profile
-from tests.cli.test_production_rebuild_gold import _clean_checkout
+from tests.cli.test_production_rebuild_gold import DIRTY_STATUS, _clean_checkout, _git
 from tests.importing.households import drop, log_entries, payload
 from tests.test_decision_log import documented_example
 
@@ -515,6 +515,26 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
                 f"backup set {written.name} is in place, but its catch-up build "
                 "was refused: accounts.toml"
             ) in stderr
+            assert "the restore has not finished" in stderr
+            assert "nothing was written" not in stderr
+            assert backup(built.profile_file)[0] == EXIT_REFUSED_ENVIRONMENT
+
+    def test_uncommitted_code_leaves_the_restore_unfinished(self) -> None:
+        # The running code cannot build production, so the catch-up cannot run.
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            shutil.rmtree(built.profile.stores)
+
+            with mock.patch("subprocess.run", return_value=_git(DIRTY_STATUS)):
+                status, stdout, stderr = restore(built.profile_file, written.name)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "restored backup set" not in stdout
+            assert (
+                f"backup set {written.name} is in place, but its catch-up build "
+                "was refused: "
+            ) in stderr
+            assert "uncommitted" in stderr
             assert "the restore has not finished" in stderr
             assert "nothing was written" not in stderr
             assert backup(built.profile_file)[0] == EXIT_REFUSED_ENVIRONMENT
