@@ -85,6 +85,7 @@ from budget.rebuilding import (
     require_buildable_accounts,
 )
 from budget.refreshing import (
+    InputsNotReplacedError,
     NotProductionsSetError,
     NotRefreshableError,
     refresh,
@@ -689,6 +690,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         RestoreWriteError,
         NotRefreshableError,
         NotProductionsSetError,
+        InputsNotReplacedError,
         NoUsableSetError,
         UnknownStageError,
         UnfinishedRestoreError,

@@ -34,6 +34,8 @@ UPSTREAM_FOLDER: Final = "upstream"
 UPSTREAM_STAGING: Final = "upstream-staging"
 # The suffix of development's inputs folder while `--inputs` replaces it.
 INPUTS_REPLACING_SUFFIX: Final = ".replacing"
+# The suffix of the old inputs folder, set aside until the new one is in place.
+INPUTS_REPLACED_SUFFIX: Final = ".replaced"
 
 
 class NotRefreshableError(RuntimeError):
@@ -59,6 +61,17 @@ class NotProductionsSetError(RuntimeError):
         )
 
 
+class InputsNotReplacedError(RuntimeError):
+    """`--inputs` could not swap in the set's inputs: development's are intact."""
+
+    def __init__(self, cause: OSError) -> None:
+        """Say what failed; upstream was already refreshed."""
+        super().__init__(
+            f"could not replace development's inputs ({cause.strerror or cause}); "
+            "they are unchanged, but upstream was refreshed"
+        )
+
+
 def require_refreshable(profile: Profile) -> None:
     """Refuse, touching nothing, a profile that has no upstream sets to read."""
     if profile.name != DEVELOPMENT_PROFILE_NAME or profile.upstream_backups is None:
@@ -77,14 +90,23 @@ def _remove_read_only(folder: Path) -> None:
 def _replace_inputs(profile: Profile, backup: BackupSet) -> None:
     """Make development's inputs folder the set's copy of production's.
 
-    The copy is made beside the folder and replaces it only once whole.
+    The copy is made beside the folder and replaces it only once whole. The
+    old folder is moved aside first and deleted last, so a folder that cannot
+    be moved (a file in it is open) leaves it exactly as it was.
     """
     inputs = Path(profile.inputs)
     replacing = inputs.with_name(inputs.name + INPUTS_REPLACING_SUFFIX)
+    replaced = inputs.with_name(inputs.name + INPUTS_REPLACED_SUFFIX)
     shutil.rmtree(replacing, ignore_errors=True)
-    shutil.copytree(backup.path / INPUTS_FOLDER, replacing)
-    shutil.rmtree(inputs, ignore_errors=True)
+    shutil.rmtree(replaced, ignore_errors=True)
+    try:
+        shutil.copytree(backup.path / INPUTS_FOLDER, replacing)
+        inputs.rename(replaced)
+    except OSError as error:
+        shutil.rmtree(replacing, ignore_errors=True)
+        raise InputsNotReplacedError(error) from error
     replacing.rename(inputs)
+    shutil.rmtree(replaced, ignore_errors=True)
 
 
 @dataclass(frozen=True)
