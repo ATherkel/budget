@@ -21,7 +21,7 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 from budget import restoring
-from budget.backups import BackupSet, back_up, complete_backup_sets
+from budget.backups import BackupSet, BackupWriteError, back_up, complete_backup_sets
 from budget.bronze import BronzeStore
 from budget.gold.store import GoldStore
 from budget.importing import Coverage, import_inbox_file
@@ -518,6 +518,26 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
             assert "the restore has not finished" in stderr
             assert "nothing was written" not in stderr
             assert backup(built.profile_file)[0] == EXIT_REFUSED_ENVIRONMENT
+
+    def test_a_set_that_cannot_be_written_leaves_the_restore_finished(self) -> None:
+        # The restore is complete; only its closing backup is missing.
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            shutil.rmtree(built.profile.stores)
+            failure = BackupWriteError("the disk is full")
+
+            with mock.patch("budget.restoring.back_up", side_effect=failure):
+                status, stdout, stderr = restore(built.profile_file, written.name)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert stdout.endswith(f"restored backup set {written.name}\n")
+            assert "the restore is finished" in stderr
+            assert "the disk is full" in stderr
+            assert "run `budget backup`" in stderr
+            with GoldStore(built.profile) as gold:
+                assert gold.current() is not None
+            # Finished, so the profile's commands are not refused as unfinished.
+            assert backup(built.profile_file)[0] == EXIT_OK
 
 
 class LostStoreAdviceTests(CleanCheckoutTestCase):

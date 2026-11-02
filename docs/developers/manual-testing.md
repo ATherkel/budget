@@ -236,7 +236,8 @@ uv run budget restore
 Expect a `put back inputs/<file> from the backup set` line per input, one
 line saying the decision log or import log was missing for each that the set
 held, the Gold line, `restored backup set <name>`, and `backup set <new name>
-written`. Then:
+written`. A profile with no `backups` path writes no closing set, so that last
+line is absent. Then:
 
 | Do | Expect |
 | --- | --- |

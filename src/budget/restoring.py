@@ -682,7 +682,9 @@ def restore(lock: WriterLock, name: str | None = None, *, now: datetime) -> Rest
     # start empty, so no history of them is recovered, and none invented.
     started = _start_missing_stages(profile, stores)
     # Recorded before the build, so the boundary names the set's current
-    # publication and the first id any later build takes.
+    # publication and the first id any later build takes. A restore cut off
+    # after this point keeps its marker, and the rerun clears the stores with
+    # this row in them, so no boundary is ever recorded twice.
     with GoldStore(profile) as gold_store:
         boundary = gold_store.record_recovery_boundary(
             selected.name, selected.created_at, now
