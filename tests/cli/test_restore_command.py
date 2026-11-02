@@ -8,6 +8,7 @@ Every test passes `main` an explicit environment.
 
 import errno
 import json
+import os
 import shutil
 import sqlite3
 import unittest
@@ -17,6 +18,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+from budget import restoring
 from budget.backups import BackupSet, back_up, complete_backup_sets
 from budget.locking import writer_lock
 from budget.profiles import Profile, load_profile_file
@@ -498,6 +500,54 @@ class RestoreCommandTests(unittest.TestCase):
                 assert status == EXIT_REFUSED_ENVIRONMENT
                 assert unfinished in stderr
             assert production.bronze_store.read_bytes() == bronze
+
+    def test_restore_forces_stores_to_disk_before_it_removes_the_marker(self) -> None:
+        # A crash must never leave a marker-less profile whose stores are not
+        # on disk: each staged copy is forced out before the moves, and the
+        # moves are forced out before the marker goes.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            shutil.rmtree(production.stores)
+            events: list[str] = []
+            real_fsync = os.fsync
+            real_sync_folder = restoring.sync_folder
+            real_replace = Path.replace
+            real_unlink = Path.unlink
+
+            def fsync(descriptor: int) -> None:
+                events.append("fsync")
+                real_fsync(descriptor)
+
+            def sync_folder(folder: Path) -> None:
+                events.append("sync")
+                real_sync_folder(folder)
+
+            def replace(source: Path, target: Path) -> Path:
+                events.append("move")
+                return real_replace(source, target)
+
+            def unlink(path: Path, *, missing_ok: bool = False) -> None:
+                if path.name == restoring.RESTORE_MARKER:
+                    events.append("unmark")
+                real_unlink(path, missing_ok=missing_ok)
+
+            with (
+                mock.patch.object(restoring.os, "fsync", fsync),
+                mock.patch.object(restoring, "sync_folder", sync_folder),
+                mock.patch.object(Path, "replace", autospec=True, side_effect=replace),
+                mock.patch.object(Path, "unlink", autospec=True, side_effect=unlink),
+            ):
+                status, _, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            first_move = events.index("move")
+            last_move = len(events) - 1 - events[::-1].index("move")
+            moves = events.count("move")
+            # One fsync for each staged store, and one for the marker.
+            assert events[:first_move].count("fsync") == moves + 1
+            assert "sync" in events[last_move : events.index("unmark")]
 
     def test_restore_names_each_household_input_it_put_back(self) -> None:
         with TemporaryDirectory() as directory:
