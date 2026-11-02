@@ -201,9 +201,8 @@ banner show the cause.
 `restore` brings back Gold's recipes, results and pointer history as they
 stood in the backup set; publications, labels and pointer moves made after it
 are lost. If the recipe changed since, catch-up builds a new current
-publication, and undo returns from it to the set's current one while that
-result is still usable; `restore` names that publication, or says it can no
-longer return there.
+publication, and undo returns from it to the set's current one, whose result
+the build's pointer move keeps; `restore` names that publication.
 
 Each restore records a **recovery boundary** in `gold.db`: the set it came
 from and when the set was taken, when the restore ran, the set's current

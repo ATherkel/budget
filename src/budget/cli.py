@@ -347,16 +347,10 @@ def _backup(profile: Profile) -> None:
 
 
 def _undo_line(undo: UndoAfterCatchUp, backup_set: str) -> str:
-    """Say where undo returns after catch-up, or that it cannot."""
-    number = undo.publication_id
-    if not undo.usable:
-        return (
-            f"undo cannot return to publication {number}, the current one in "
-            f"backup set {backup_set}: its result is no longer retained\n"
-        )
+    """Say where undo returns after catch-up."""
     return (
-        f"undo returns to publication {number}, the current one in backup set "
-        f"{backup_set}; publications made after that set are lost\n"
+        f"undo returns to publication {undo.publication_id}, the current one in "
+        f"backup set {backup_set}; publications made after that set are lost\n"
     )
 
 

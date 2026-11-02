@@ -26,7 +26,7 @@ from budget.backups import (
 )
 from budget.bronze import BronzeStore, ImportRun
 from budget.bronze.storage import bronze_stage
-from budget.codeversion import UncommittedCodeError
+from budget.codeversion import UncommittedCodeError, require_committed_code
 from budget.decision_log import read_decision_log
 from budget.durability import sync_folder
 from budget.gold.storage import GOLD_STAGE, gold_stage
@@ -165,14 +165,14 @@ def _require_no_stores(profile: Profile) -> None:
 class UndoAfterCatchUp:
     """Where undo goes after a catch-up build published (`publications.md`).
 
-    Undo returns to `publication_id`, the set's current publication, while
-    its result is `usable`; never to one lost after the set. The undo
+    Undo returns to `publication_id`, the set's current publication; never
+    to one lost after the set. The catch-up build's move keeps that
+    publication's result as the previous one, so it stays usable. The undo
     command is #177's: this names where its first step from the catch-up
     build must land, which is the pointer's move before that build.
     """
 
     publication_id: int
-    usable: bool
 
 
 def _start_missing_stages(
@@ -193,7 +193,7 @@ def _start_missing_stages(
 
 
 def _undo_after_catch_up(
-    profile: Profile, boundary: RecoveryBoundary, gold: GoldRebuild
+    boundary: RecoveryBoundary, gold: GoldRebuild
 ) -> UndoAfterCatchUp | None:
     """Name undo's target once catch-up has published, or None.
 
@@ -203,9 +203,7 @@ def _undo_after_catch_up(
     target = boundary.restored_current_id
     if not gold.published or target is None:
         return None
-    with GoldStore(profile) as gold_store:
-        retained = {found.publication_id for found in gold_store.available()}
-    return UndoAfterCatchUp(publication_id=target, usable=target in retained)
+    return UndoAfterCatchUp(publication_id=target)
 
 
 @dataclass(frozen=True)
@@ -693,12 +691,16 @@ def restore(lock: WriterLock, name: str | None = None, *, now: datetime) -> Rest
     # the decisions and configuration since the set, and the running code.
     # Gold publishes only when that recipe differs from the restored one.
     try:
+        # `rebuild` and `import` prove the code is committed before they
+        # build; so must the catch-up build, or Gold would record a commit
+        # the running code is not.
+        require_committed_code(profile)
         gold = rebuild_through_gold(lock, now=now).gold
     except ConfigurationError as error:
         raise CatchUpInputsRefusedError(selected.name, error) from error
     except UncommittedCodeError as error:
         raise CatchUpCodeRefusedError(selected.name, error) from error
-    undo = _undo_after_catch_up(profile, boundary, gold)
+    undo = _undo_after_catch_up(boundary, gold)
     # The moves first: a marker gone after a crash must not leave stores that
     # are not in place. Then durably: a marker that came back after a crash
     # would let a later restore remove a finished profile's stores as its own.
