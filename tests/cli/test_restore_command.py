@@ -13,7 +13,6 @@ import re
 import shutil
 import sqlite3
 import stat
-import unittest
 from contextlib import closing
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
