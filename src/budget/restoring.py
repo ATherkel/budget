@@ -285,6 +285,12 @@ def _clear_unfinished(profile: Profile) -> None:
         raise RestoreWriteError(error.strerror or type(error).__name__) from None
 
 
+def _force_to_disk(path: Path) -> None:
+    """Force a file's contents to disk, so a crash cannot leave it torn."""
+    with path.open("rb+") as file:
+        os.fsync(file.fileno())
+
+
 def _copy_whole(
     profile: Profile, backup: BackupSet, stores: Mapping[str, str]
 ) -> tuple[str, ...]:
@@ -303,6 +309,7 @@ def _copy_whole(
         for stage, store in stores.items():
             shutil.copyfile(backup.path / store, staging / store)
             _migrate_staged(profile, stage, staging / store)
+            _force_to_disk(staging / store)
         put_back = _put_back_lost_inputs(profile, backup)
         _mark_unfinished(profile, backup)
         for store in stores.values():
@@ -355,8 +362,10 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
         selected, skipped = _named(profile, sets, name), ()
     stores = set_store_files(selected)
     put_back = _copy_whole(profile, selected, stores)
-    # Durably: a marker that came back after a crash would let a later
-    # restore remove a finished profile's stores as its own.
+    # The moves first: a marker gone after a crash must not leave stores that
+    # are not in place. Then durably: a marker that came back after a crash
+    # would let a later restore remove a finished profile's stores as its own.
+    sync_folder(profile.stores)
     (profile.stores / RESTORE_MARKER).unlink()
     sync_folder(profile.stores)
     return Restored(backup=selected, skipped=skipped, put_back=put_back)
