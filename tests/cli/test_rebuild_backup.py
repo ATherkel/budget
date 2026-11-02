@@ -14,6 +14,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+import pytest
+
 from budget.backups import BackupWriteError, complete_backup_sets
 from budget.gold.store import GoldStore
 from tests.cli.commands import rebuild, undo
@@ -138,7 +140,7 @@ class ProductionRebuildBackupTests(unittest.TestCase):
                 profile_file.write("\n[gold]\nlate_booking_days = 14\n")
             sets_before = len(complete_backup_sets(built.profile))
 
-            with self.assertRaises(ValueError):
+            with pytest.raises(ValueError, match="month"):
                 _rebuild(built.profile_file)
 
             assert len(complete_backup_sets(built.profile)) == sets_before + 1
