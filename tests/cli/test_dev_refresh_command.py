@@ -532,3 +532,44 @@ class DevRefreshTests(unittest.TestCase):
             assert "silver.db" in stderr
             for store, content in old.items():
                 assert (development.stores / store).read_bytes() == content
+
+    def test_a_writable_refresh_whose_undo_fails_says_where_the_old_stores_are(
+        self,
+    ) -> None:
+        # Cut off moving Silver in, then Bronze cannot be put back either.
+        with TemporaryDirectory() as directory:
+            production, _ = _production_with_a_set(Path(directory) / "prod")
+            profile_file, development = _development(
+                Path(directory) / "dev", production
+            )
+            development.stores.mkdir()
+            old = {
+                store: f"development's own {store}".encode()
+                for store in ("bronze.db", "silver.db", "gold.db")
+            }
+            for store, content in old.items():
+                (development.stores / store).write_bytes(content)
+            aside = development.stores / "writable-replaced"
+            move = Path.replace
+
+            def cut_off_then_bronze_stuck(source: Path, target: Path) -> Path:
+                if Path(target) == development.silver_store and Path(
+                    source
+                ).parent.name == ("writable-staging"):
+                    raise OSError(errno.EIO, "Input/output error")
+                if Path(source).parent == aside and Path(source).name == "bronze.db":
+                    raise PermissionError(errno.EACCES, "Permission denied")
+                return move(source, target)
+
+            with mock.patch.object(
+                Path, "replace", autospec=True, side_effect=cut_off_then_bronze_stuck
+            ):
+                status, stdout, stderr = dev_refresh(profile_file, "--writable")
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "as they were" not in stderr
+            assert "writable-replaced" in stderr
+            assert "bronze.db" in stderr
+            assert (aside / "bronze.db").read_bytes() == old["bronze.db"]
+            for store in ("silver.db", "gold.db"):
+                assert (development.stores / store).read_bytes() == old[store]
