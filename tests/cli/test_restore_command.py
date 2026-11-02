@@ -31,7 +31,15 @@ from tests.backups.sets import (
     user_version,
 )
 from tests.bronze.migration_resources import SILVER_MIGRATIONS, added_migration
-from tests.cli.commands import backup, migrate, restore
+from tests.cli.commands import (
+    backup,
+    import_,
+    migrate,
+    rebuild,
+    restore,
+    review,
+    serve,
+)
 from tests.cli.profile_files import write_profile
 from tests.importing.households import ACCOUNTS
 
@@ -489,16 +497,22 @@ class RestoreCommandTests(unittest.TestCase):
                 restore(profile_file, written.name)
             bronze = production.bronze_store.read_bytes()
 
-            backed_up = backup(profile_file)
-            migrated = migrate(profile_file)
+            refused = {
+                "backup": backup(profile_file)[::2],
+                "migrate": migrate(profile_file),
+                "import": import_(profile_file)[::2],
+                "rebuild": rebuild(profile_file)[::2],
+                "review": review(profile_file)[::2],
+                "serve": serve(profile_file)[::2],
+            }
 
             unfinished = (
                 f"a restore of backup set {written.name} has not finished; "
                 "rerun `budget restore`"
             )
-            for status, stderr in (backed_up[::2], migrated):
-                assert status == EXIT_REFUSED_ENVIRONMENT
-                assert unfinished in stderr
+            for command, (status, stderr) in refused.items():
+                assert status == EXIT_REFUSED_ENVIRONMENT, command
+                assert unfinished in stderr, command
             assert production.bronze_store.read_bytes() == bronze
 
     def test_restore_forces_stores_to_disk_before_it_removes_the_marker(self) -> None:
