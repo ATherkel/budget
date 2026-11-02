@@ -199,7 +199,8 @@ class DevRefreshTests(unittest.TestCase):
             status, stdout, stderr = dev_refresh(profile_file)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert stdout.endswith(
+            assert stdout == (
+                f"skipped backup set {newer.name}: this code cannot read it\n"
                 f"restored backup set {older.name} into upstream (read-only)\n"
             )
             assert checksum(development.stores / "upstream" / "bronze.db") == (
