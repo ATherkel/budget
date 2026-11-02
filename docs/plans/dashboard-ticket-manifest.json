@@ -1,0 +1,163 @@
+{
+  "parent": {
+    "number": 100,
+    "url": "https://github.com/ATherkel/budget/issues/100"
+  },
+  "tickets": [
+    {
+      "key": "D0",
+      "title": "Specify the dashboard report contract and shared selection rules",
+      "deps": [],
+      "external": [],
+      "kind": "contract",
+      "number": 101,
+      "url": "https://github.com/ATherkel/budget/issues/101"
+    },
+    {
+      "key": "D1",
+      "title": "Specify immutable monthly budget inputs and reporting history",
+      "deps": [
+        "D0"
+      ],
+      "external": [],
+      "kind": "contract",
+      "number": 102,
+      "url": "https://github.com/ATherkel/budget/issues/102"
+    },
+    {
+      "key": "D2",
+      "title": "Build the authenticated dashboard shell and shared navigation",
+      "deps": [
+        "D0"
+      ],
+      "external": [
+        12
+      ],
+      "kind": "implementation",
+      "number": 103,
+      "url": "https://github.com/ATherkel/budget/issues/103"
+    },
+    {
+      "key": "D3",
+      "title": "Deliver the simple monthly actuals overview from analytics",
+      "deps": [
+        "D0",
+        "D2"
+      ],
+      "external": [],
+      "kind": "implementation",
+      "number": 104,
+      "url": "https://github.com/ATherkel/budget/issues/104"
+    },
+    {
+      "key": "D4",
+      "title": "Add category investigation and reusable detail navigation",
+      "deps": [
+        "D3"
+      ],
+      "external": [],
+      "kind": "implementation",
+      "number": 105,
+      "url": "https://github.com/ATherkel/budget/issues/105"
+    },
+    {
+      "key": "D5",
+      "title": "Add advanced account activity and isolated Kontrol diagnostics",
+      "deps": [
+        "D3",
+        "D4"
+      ],
+      "external": [],
+      "kind": "implementation",
+      "number": 106,
+      "url": "https://github.com/ATherkel/budget/issues/106"
+    },
+    {
+      "key": "D6",
+      "title": "Deliver read-only monthly budget comparisons and elapsed-month markers",
+      "deps": [
+        "D1",
+        "D3",
+        "D4"
+      ],
+      "external": [],
+      "kind": "implementation",
+      "number": 107,
+      "url": "https://github.com/ATherkel/budget/issues/107"
+    },
+    {
+      "key": "D7",
+      "title": "Deliver accessible actual-versus-budget trends and spending drill-down",
+      "deps": [
+        "D0",
+        "D3",
+        "D6"
+      ],
+      "external": [],
+      "kind": "implementation",
+      "number": 108,
+      "url": "https://github.com/ATherkel/budget/issues/108"
+    },
+    {
+      "key": "D8",
+      "title": "Add historical Publication navigation and concurrent-read recovery",
+      "deps": [
+        "D3",
+        "D5",
+        "D7"
+      ],
+      "external": [],
+      "kind": "implementation",
+      "number": 109,
+      "url": "https://github.com/ATherkel/budget/issues/109"
+    },
+    {
+      "key": "D9",
+      "title": "Follow-up: implement fixed expenses and planned monthly rådighedsbeløb",
+      "deps": [
+        "D1",
+        "D3",
+        "D6"
+      ],
+      "external": [
+        99
+      ],
+      "kind": "follow-up",
+      "number": 110,
+      "url": "https://github.com/ATherkel/budget/issues/110"
+    },
+    {
+      "key": "D10",
+      "title": "Integrate the production report adapter and validate the first usable dashboard",
+      "deps": [
+        "D2",
+        "D3",
+        "D4",
+        "D5",
+        "D6",
+        "D7",
+        "D8"
+      ],
+      "external": [
+        12
+      ],
+      "kind": "implementation",
+      "number": 111,
+      "url": "https://github.com/ATherkel/budget/issues/111"
+    },
+    {
+      "key": "F1",
+      "title": "Follow-up: specify selected-category carry-forward and earmarked savings",
+      "deps": [
+        "D1"
+      ],
+      "external": [],
+      "kind": "contract-follow-up",
+      "number": 112,
+      "url": "https://github.com/ATherkel/budget/issues/112"
+    }
+  ],
+  "timelineComment": "https://github.com/ATherkel/budget/issues/11#issuecomment-5873041376",
+  "releaseScopeComment": "https://github.com/ATherkel/budget/issues/2#issuecomment-5873042285",
+  "fixedExpenseComment": "https://github.com/ATherkel/budget/issues/99#issuecomment-5873043116"
+}
