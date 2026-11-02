@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Final
 
 from budget.backups import BackupSet, complete_backup_sets, set_store_files
-from budget.bronze import BronzeStore
+from budget.bronze import BronzeStore, ImportRun
 from budget.bronze.storage import bronze_stage
 from budget.decision_log import read_decision_log
 from budget.durability import sync_folder
@@ -573,7 +573,7 @@ def restore(lock: WriterLock, name: str | None = None) -> Restored:
     )
     # Catch up: every run the live import log lists beyond the set comes
     # back from the export archive, as logged (`replay_import_log`).
-    replayed: tuple[object, ...] = ()
+    replayed: tuple[ImportRun, ...] = ()
     if log_runs_ahead:
         try:
             replayed = replay_import_log(lock)
