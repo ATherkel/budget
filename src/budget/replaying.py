@@ -364,8 +364,8 @@ def check_log_continues(profile: Profile, held: tuple[ImportRun, ...]) -> bool:
     listing only runs it holds is behind, not in conflict: the next import
     logs again each run it lacks, so there is nothing to replay. Otherwise
     the log must be one a replay accepts. Returns whether a replay has runs
-    to restore. Raises `ImportLogInvalidError`, `RunConflictError` or
-    `NotALogPrefixError`.
+    to restore. Raises `ImportLogInvalidError`, `RunConflictError`,
+    `NotALogPrefixError` or `InvalidRepeatLinkError`.
     """
     logged = _read_log(profile)
     held_runs = {run.import_run_id: run for run in held}
@@ -375,6 +375,10 @@ def check_log_continues(profile: Profile, held: tuple[ImportRun, ...]) -> bool:
     if all(run.import_run_id in held_runs for run, _ in logged):
         return False
     _check_prefix(held, logged)
+    recorded = dict(held_runs)
+    for run, _ in logged[len(held) :]:
+        _check_repeat_link(run, recorded)
+        recorded[run.import_run_id] = run
     return True
 
 

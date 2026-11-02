@@ -36,6 +36,7 @@ from budget.replaying import (
     ArchivedExportMismatchError,
     ArchivedExportMissingError,
     ImportLogInvalidError,
+    InvalidRepeatLinkError,
     NotALogPrefixError,
     RunConflictError,
     check_log_continues,
@@ -369,6 +370,7 @@ _DISAGREEMENTS: Final[dict[type[Exception], str]] = {
     ImportLogInvalidError: "an entry does not read as a logged run",
     RunConflictError: "it records a run the set holds differently",
     NotALogPrefixError: "the set holds runs it does not list first",
+    InvalidRepeatLinkError: "a repeat in it does not link an earlier stored run",
 }
 
 
@@ -381,7 +383,7 @@ def _require_import_log_continues(profile: Profile, backup: BackupSet) -> bool:
         held = snapshot.import_runs()
     try:
         return check_log_continues(profile, held)
-    except (ImportLogInvalidError, RunConflictError, NotALogPrefixError) as error:
+    except tuple(_DISAGREEMENTS) as error:
         raise ImportLogDisagreesError(
             backup.name, _DISAGREEMENTS[type(error)]
         ) from None
