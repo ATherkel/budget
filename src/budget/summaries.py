@@ -17,12 +17,13 @@ from typing import Final
 
 from budget.bronze.models import ImportRun
 from budget.gold import ClassificationReviewKind
-from budget.gold.diff import compare_publications
+from budget.gold.diff import compare_publications, review_line
 from budget.gold.models import GoldReviewTarget
+from budget.gold.repository import PublicationUnavailableError
 from budget.gold.store import GoldStore, PointerMove
 from budget.inbox import LEFT_IN_INBOX, FileOutcome, ImportedInbox
 from budget.profiles import Profile
-from budget.rebuilding import GoldRebuild, SilverRebuild
+from budget.rebuilding import GoldRebuild, SilverRebuild, SilverReviews
 from budget.reviewing import OpenGoldReview, OpenReview, OpenReviews
 from budget.silver import ImportRunResult, ReviewItem, SilverResult
 
@@ -85,27 +86,45 @@ def undo_line(move: PointerMove) -> str:
     )
 
 
-def publication_changes(profile: Profile, rebuilt: GoldRebuild) -> str:
+def _notice(line: str, silver_reviews: SilverReviews) -> str:
+    """Add Silver's review changes to a line that compares no publications."""
+    reviews = review_line(silver_reviews.before, silver_reviews.after)
+    return f"{line}\n" if reviews is None else f"{line}\n{reviews}\n"
+
+
+def publication_changes(
+    profile: Profile, rebuilt: GoldRebuild, silver_reviews: SilverReviews
+) -> str:
     """Describe the terminal-only publication change after a successful build."""
+    number = rebuilt.publication.publication_id
     if not rebuilt.published:
-        return (
-            "Changes  no publication was built; "
-            f"publication {rebuilt.publication.publication_id} remains current.\n"
+        return _notice(
+            f"Changes  no publication was built; publication {number} remains current.",
+            silver_reviews,
         )
     with GoldStore(profile, read_only=True) as gold:
         moves = gold.pointer_history()
         if not moves or moves[-1].from_publication_id is None:
-            return (
+            return _notice(
                 "Changes  no previous publication to compare; "
-                f"publication {rebuilt.publication.publication_id} is current.\n"
+                f"publication {number} is current.",
+                silver_reviews,
             )
         previous_id = moves[-1].from_publication_id
         current_id = moves[-1].to_publication_id
+        try:
+            previous = gold.open(previous_id)
+        except PublicationUnavailableError:
+            return _notice(
+                f"Changes  publication {previous_id} is no longer retained, so "
+                f"nothing can be compared; publication {number} is current.",
+                silver_reviews,
+            )
         lines = compare_publications(
-            gold.open(previous_id),
+            previous,
             gold.open(current_id),
-            previous_reviews=gold.reviews(previous_id).items,
-            current_reviews=gold.reviews(current_id).items,
+            previous_reviews=(*silver_reviews.before, *gold.reviews(previous_id).items),
+            current_reviews=(*silver_reviews.after, *gold.reviews(current_id).items),
         )
     return "\n".join(lines or ("Changes  no measure or review item changed.",)) + "\n"
 

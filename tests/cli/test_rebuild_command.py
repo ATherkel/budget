@@ -171,6 +171,7 @@ class RebuildSummaryTests(unittest.TestCase):
                     "Changes  no previous publication to compare; "
                     "publication 1 is current."
                 ),
+                "Review  1 balance-break opened; 1 dropped-transaction opened",
             ]
             # Only identifiers and existing codes reach the terminal: no
             # amount, description, original filename, transaction id, or

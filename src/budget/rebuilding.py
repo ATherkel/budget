@@ -42,6 +42,7 @@ from budget.inputs import (
 from budget.locking import WriterLock
 from budget.profiles import ACCOUNTS_FILE_NAME, Profile
 from budget.silver import (
+    ReviewItem,
     SilverBuildInputs,
     SilverResult,
     SilverStore,
@@ -243,6 +244,22 @@ class _GoldPlan:
 
 
 @dataclass(frozen=True)
+class SilverReviews:
+    """The Silver review items open before and after one rebuild.
+
+    Silver keeps no history, so the rebuild is the one moment both are known.
+    """
+
+    before: tuple[ReviewItem, ...] = ()
+    after: tuple[ReviewItem, ...] = ()
+
+
+def _open_reviews(result: SilverResult) -> tuple[ReviewItem, ...]:
+    """Return the review items no decision has settled."""
+    return tuple(item for item in result.review_items if item.resolved_by is None)
+
+
+@dataclass(frozen=True)
 class PipelineRebuild:
     """One rebuild through Silver and Gold: what each stage left behind.
 
@@ -253,6 +270,7 @@ class PipelineRebuild:
     silver: SilverRebuild
     silver_changed: bool
     gold: GoldRebuild
+    silver_reviews: SilverReviews = SilverReviews()
 
 
 def _recipe(
@@ -372,15 +390,16 @@ def rebuild_through_gold(
     derived = derive_silver(silver_inputs)
     plan = _plan_gold(profile, derived, household, now)
     with SilverStore(profile) as silver_store:
-        changed = silver_store.read() != derived
+        stored = silver_store.read()
     if reparsed is not None:
         with BronzeStore(profile) as bronze:
             bronze.replace_derived_records(reparsed)
     store_silver(lock, silver_inputs, derived)
     return PipelineRebuild(
         silver=SilverRebuild(runs=silver_inputs.runs, result=derived),
-        silver_changed=changed,
+        silver_changed=stored != derived,
         gold=_publish(profile, plan),
+        silver_reviews=SilverReviews(_open_reviews(stored), _open_reviews(derived)),
     )
 
 

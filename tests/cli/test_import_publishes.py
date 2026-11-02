@@ -116,7 +116,11 @@ class ImportPublishesTests(unittest.TestCase):
             status, stdout, stderr = rebuild(profile_file, "--from", "silver")
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert "Review  1 balance-break closed" in stdout
+            # Accepting the run admits it, so the row it left out now counts
+            # as dropped: that item opens as the balance break closes.
+            assert (
+                "Review  1 dropped-transaction opened; 1 balance-break closed"
+            ) in stdout
 
 
 if __name__ == "__main__":

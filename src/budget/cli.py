@@ -80,6 +80,7 @@ from budget.rebuilding import (
     HouseholdInputs,
     SilverNotBuiltError,
     SilverRebuild,
+    SilverReviews,
     read_household_inputs,
     rebuild_from_gold,
     rebuild_through_gold,
@@ -330,6 +331,7 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
         now = datetime.now(UTC)
         summary = ""
         counts: dict[str, int] = {}
+        silver_reviews = SilverReviews()
         if from_stage in {BRONZE_STAGE, SILVER_STAGE}:
             rebuilt = rebuild_through_gold(
                 lock, now=now, inputs=inputs, from_bronze=from_stage == BRONZE_STAGE
@@ -337,6 +339,7 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
             summary = summaries.rebuild_summary(rebuilt.silver)
             counts = _rebuild_counts(rebuilt.silver)
             published = rebuilt.gold
+            silver_reviews = rebuilt.silver_reviews
         else:
             published = rebuild_from_gold(lock, now=now, inputs=inputs)
         routine_logging.finished(
@@ -345,23 +348,25 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
             counts={**counts, "published": int(published.published)},
             duration_ms=_milliseconds(started),
         )
-        summary += (
-            summaries.gold_line(published)
-            + "\n"
-            + summaries.publication_changes(profile, published)
-        )
         # Every production write is followed by a set covering what it wrote;
-        # a Gold rebuild that publishes nothing wrote nothing.
+        # a Gold rebuild that publishes nothing wrote nothing. The set comes
+        # before the diff, so a diff that fails cannot cost it.
         wrote = from_stage != GOLD_STAGE or published.published
-        if profile.name != PRODUCTION_PROFILE_NAME or not wrote:
-            sys.stdout.write(summary)
-            return
-        try:
-            written = back_up(lock, now=datetime.now(UTC))
-        except BACKUP_FAILURES as error:
-            sys.stdout.write(summary)
-            raise RebuiltWithoutBackupError(error) from None
-        sys.stdout.write(f"{summary}Backup   backup set {written.name} written\n")
+        written = None
+        failure = None
+        if profile.name == PRODUCTION_PROFILE_NAME and wrote:
+            try:
+                written = back_up(lock, now=datetime.now(UTC))
+            except BACKUP_FAILURES as error:
+                failure = error
+        sys.stdout.write(f"{summary}{summaries.gold_line(published)}\n")
+        sys.stdout.write(
+            summaries.publication_changes(profile, published, silver_reviews)
+        )
+        if failure is not None:
+            raise RebuiltWithoutBackupError(failure) from None
+        if written is not None:
+            sys.stdout.write(f"Backup   backup set {written.name} written\n")
 
 
 def _declared_ranges(
@@ -443,7 +448,7 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
             sys.stdout.write("The inbox holds no exports; nothing was imported.\n")
             return EXIT_OK
         diff_text = (
-            summaries.publication_changes(profile, done.published)
+            summaries.publication_changes(profile, done.published, done.silver_reviews)
             if done.published is not None
             else ""
         )

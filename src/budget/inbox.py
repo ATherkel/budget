@@ -14,7 +14,7 @@ in the inbox for a fresh download or a reader fix.
 
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -45,6 +45,7 @@ from budget.rebuilding import (
     GoldRebuild,
     HouseholdInputs,
     SilverRebuild,
+    SilverReviews,
     read_household_inputs,
     rebuild_through_gold,
 )
@@ -136,6 +137,7 @@ class ImportedInbox:
     `backup_failure` is why production's set could not be written, if so.
     `incidents` are the cross-account duplicates the preflight found, so the
     counts can report them even when a member is refused for another reason.
+    `silver_reviews` are the Silver review items open around the rebuild.
     """
 
     files: Sequence[FileOutcome]
@@ -145,6 +147,7 @@ class ImportedInbox:
     held_back: ConfigurationError | None = None
     backup: BackupSet | None = None
     backup_failure: Exception | None = None
+    silver_reviews: SilverReviews = field(default_factory=SilverReviews)
 
     def counts(self) -> dict[str, int]:
         """Count the files by outcome, the incidents, and Silver's runs and drops.
@@ -492,6 +495,7 @@ def import_inbox(
             incidents=found,
             rebuilt=rebuilt.silver,
             published=rebuilt.gold,
+            silver_reviews=rebuilt.silver_reviews,
         ),
     )
 

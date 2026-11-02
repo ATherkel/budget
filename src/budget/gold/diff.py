@@ -6,9 +6,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+from typing import Protocol
 
 from budget.gold.models import (
-    ClassificationReviewItem,
     Coverage,
     GoldCategory,
     ReportingMonth,
@@ -19,6 +19,18 @@ _FIRST_DAY = date.min
 _LAST_DAY = date.max
 _FIRST_MONTH = ReportingMonth(1, 1)
 _LAST_MONTH = ReportingMonth(9999, 12)
+
+
+class ReviewedItem(Protocol):
+    """A Silver or Gold review item, known by its identity and kind."""
+
+    @property
+    def review_item_id(self) -> str:
+        """The item's stable identity."""
+
+    @property
+    def kind(self) -> str:
+        """What kind of question the item asks."""
 
 
 @dataclass
@@ -215,9 +227,9 @@ def _line(
     )
 
 
-def _reviews(
-    previous: Sequence[ClassificationReviewItem],
-    current: Sequence[ClassificationReviewItem],
+def review_line(
+    previous: Sequence[ReviewedItem],
+    current: Sequence[ReviewedItem],
 ) -> str | None:
     """Summarize review item identity sets that appeared or disappeared."""
     before = {item.review_item_id: item.kind for item in previous}
@@ -234,8 +246,8 @@ def compare_publications(
     previous: GoldRepository,
     current: GoldRepository,
     *,
-    previous_reviews: Sequence[ClassificationReviewItem] = (),
-    current_reviews: Sequence[ClassificationReviewItem] = (),
+    previous_reviews: Sequence[ReviewedItem] = (),
+    current_reviews: Sequence[ReviewedItem] = (),
 ) -> tuple[str, ...]:
     """Return terminal lines for the measures that differ between publications."""
     before, previous_currencies, previous_categories, previous_groups = _figures(
@@ -262,7 +274,7 @@ def compare_publications(
         )
         is not None
     ]
-    reviews = _reviews(previous_reviews, current_reviews)
+    reviews = review_line(previous_reviews, current_reviews)
     if reviews is not None:
         lines.append(reviews)
     return tuple(lines)
