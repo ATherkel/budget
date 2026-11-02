@@ -70,6 +70,18 @@ class RefreshWriteError(RuntimeError):
         )
 
 
+class RefreshUndoError(RuntimeError):
+    """A writable refresh failed and could not put every old store back."""
+
+    def __init__(self, stuck: list[str], aside: Path) -> None:
+        """Name the stores to check, and where the old ones were kept."""
+        super().__init__(
+            f"the backup set could not be refreshed into development's stores, "
+            f"and these could not be put back: {', '.join(stuck)}; "
+            f"development's old stores that remain are in {aside}"
+        )
+
+
 class NotProductionsStoreError(RefreshWriteError):
     """A store copied for a writable refresh is not production's."""
 
@@ -191,13 +203,32 @@ def _swap_in(profile: Profile, staging: Path, stores: Iterable[str]) -> None:
         moved_in.extend(
             (staging / store).replace(profile.stores / store) for store in stores
         )
-    except OSError:
-        for new in moved_in:
-            new.unlink()
-        for kept in aside.iterdir():
-            kept.replace(profile.stores / kept.name)
+    except OSError as error:
+        stuck = _undo_swap(profile, aside, moved_in)
+        if stuck:
+            raise RefreshUndoError(stuck, aside) from error
         raise
     shutil.rmtree(aside, ignore_errors=True)
+
+
+def _undo_swap(profile: Profile, aside: Path, moved_in: list[Path]) -> list[str]:
+    """Take the new stores out and put the old back; name each that stays stuck.
+
+    Every step is tried even if one fails, so the old stores that can be put
+    back are, and the folder `aside` is kept for those that cannot.
+    """
+    stuck: list[str] = []
+    for new in moved_in:
+        try:
+            new.unlink()
+        except OSError:
+            stuck.append(new.name)
+    for kept in list(aside.iterdir()):
+        try:
+            kept.replace(profile.stores / kept.name)
+        except OSError:
+            stuck.append(kept.name)
+    return sorted(set(stuck))
 
 
 def _restore_writable(profile: Profile, backup: BackupSet) -> None:
