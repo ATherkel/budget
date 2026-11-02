@@ -624,6 +624,93 @@ class RestoreCommandTests(unittest.TestCase):
             assert "put the export back where the log says" in stderr
             assert "move it aside" not in stderr
 
+    def test_restore_names_a_logged_export_that_is_not_the_bytes_it_names(
+        self,
+    ) -> None:
+        # The file stands where the log says, but its hash is not the entry's.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            with writer_lock(production) as lock:
+                import_one(lock, "export-20260509.csv")
+            production.archive_file("joint-current/export-20260509.csv").write_bytes(
+                b"not the export"
+            )
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stdout) == (EXIT_VERIFICATION_FAILED, "")
+            assert (
+                "a run the import log lists has an archived export that does not "
+                "match its hash"
+            ) in stderr
+            assert "put the export back where the log says" in stderr
+
+    def test_a_restore_refused_at_catch_up_is_unfinished_until_a_retry_finishes_it(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, run_id = _production_with_a_set(
+                Path(directory)
+            )
+            with writer_lock(production) as lock:
+                later = import_one(lock, "export-20260509.csv")
+            export = production.archive_file("joint-current/export-20260509.csv")
+            content = export.read_bytes()
+            export.unlink()
+            shutil.rmtree(production.stores)
+            assert restore(profile_file, written.name)[0] == EXIT_VERIFICATION_FAILED
+
+            status, _, stderr = backup(profile_file)
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert (
+                f"a restore of backup set {written.name} has not finished; "
+                "rerun `budget restore`"
+            ) in stderr
+
+            export.write_bytes(content)
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "replayed 1 import run from the export archive\n" in stdout
+            assert _live_run_ids(production) == [run_id, later]
+
+    def test_restore_stops_before_anything_on_a_repeat_that_links_no_earlier_run(
+        self,
+    ) -> None:
+        # Written exactly as an import writes a repeat, but the run it says it
+        # repeats is in neither the set nor the log: replay would refuse it
+        # only after the stores were moved.
+        with TemporaryDirectory() as directory:
+            profile_file, production, written, _ = _production_with_a_set(
+                Path(directory)
+            )
+            (entry,) = log_entries(production)
+            started_at = datetime.fromisoformat(str(entry["started_at"]))
+            forged = {
+                **entry,
+                "import_run_id": "run-forged",
+                "started_at": (started_at + timedelta(days=1)).isoformat(),
+                "outcome": "repeat",
+                "repeat_of": "run-missing",
+            }
+            with production.import_log_file.open("ab") as log:
+                log.write((json.dumps(forged, ensure_ascii=False) + "\n").encode())
+            logged = production.import_log_file.read_bytes()
+            shutil.rmtree(production.stores)
+
+            status, stdout, stderr = restore(profile_file, written.name)
+
+            assert (status, stdout) == (EXIT_VERIFICATION_FAILED, "")
+            assert (
+                f"the live import log does not agree with backup set {written.name}"
+            ) in stderr
+            assert "a repeat in it does not link an earlier stored run" in stderr
+            assert production.import_log_file.read_bytes() == logged
+            assert list(production.stores.glob("*.db")) == []
+
     def test_restore_says_what_is_lost_when_the_import_log_is_missing(
         self,
     ) -> None:
