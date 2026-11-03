@@ -15,6 +15,7 @@ from budget.locking import WriterLock, writer_lock
 from budget.profiles import Profile
 from budget.silver.build import build
 from budget.silver.decisions import SilverDecision
+from budget.silver.formats import SourceFormat
 from budget.silver.models import SilverResult
 from budget.silver.store import SilverStore
 
@@ -28,6 +29,7 @@ class SilverBuildInputs:
     format_failures: Mapping[str, Sequence[FormatFailure]]
     currencies: Mapping[str, str]
     decisions: Sequence[SilverDecision] = ()
+    formats: Mapping[str, SourceFormat] | None = None
 
 
 def rebuild_silver(

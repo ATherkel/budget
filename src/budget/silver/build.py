@@ -10,6 +10,7 @@ from budget.silver.admission import Admission, Decisions, admit, judge
 from budget.silver.decisions import (
     SilverDecision,
 )
+from budget.silver.formats import SourceFormat
 from budget.silver.identity import IDENTITY_VERSION
 from budget.silver.merge import Ledger
 from budget.silver.models import (
@@ -32,6 +33,7 @@ def build(
     format_failures: Mapping[str, Sequence[FormatFailure]],
     currencies: Mapping[str, str],
     decisions: Sequence[SilverDecision] = (),
+    formats: Mapping[str, SourceFormat] | None = None,
 ) -> SilverResult:
     """Derive Silver from import runs, their payloads' records and currencies."""
     indexed = Decisions.of(decisions)
