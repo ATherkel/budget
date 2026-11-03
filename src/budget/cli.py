@@ -32,7 +32,7 @@ from budget.bronze.parsers.registry import UnsupportedSourceFormatError
 from budget.bronze.storage import BRONZE_STAGE, bronze_stage
 from budget.bronze.store import ConflictingDeclaredFormatsError
 from budget.codeversion import UncommittedCodeError, require_committed_code
-from budget.completeness import completeness
+from budget.completeness import Completeness, completeness
 from budget.dashboard import create_app
 from budget.dashboard.passphrase import PassphraseNotSetError, set_passphrase
 from budget.demo import DEFAULT_DEMO_PORT, DemoDirectoryExistsError, create_demo_profile
@@ -484,6 +484,7 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
         sys.stdout.write(
             summaries.publication_changes(profile, published, silver_reviews)
         )
+        _show_completeness(profile)
         if failure is not None:
             raise RebuiltWithoutBackupError(failure) from None
         if written is not None:
@@ -643,14 +644,20 @@ def _undo(profile: Profile) -> None:
         sys.stdout.write(f"{summary}\nBackup   backup set {written.name} written\n")
 
 
+def _show_completeness(profile: Profile) -> Completeness:
+    """Print the completeness output to the terminal only, never to a log."""
+    found = completeness(profile, now=datetime.now(UTC))
+    sys.stdout.write(summaries.completeness_summary(found))
+    return found
+
+
 def _status(profile: Profile) -> int:
     """Show balance and classification completeness, with no lock.
 
     Completeness findings never change the exit status; evidence that cannot
     be read is a defect in a store, not a finding, so it does.
     """
-    found = completeness(profile, now=datetime.now(UTC))
-    sys.stdout.write(summaries.completeness_summary(found))
+    found = _show_completeness(profile)
     if found.evidence is not None and found.evidence.unreadable is not None:
         sys.stderr.write("budget: the import evidence could not be read\n")
         return (
