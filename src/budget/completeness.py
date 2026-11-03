@@ -21,7 +21,7 @@ from budget.analytics.reports import (
 from budget.gold import Coverage, ReportingMonth
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
-from budget.silver import SilverStore
+from budget.silver import ImportRunResult, SilverStore
 from budget.timezone import COPENHAGEN
 
 # The default completeness output covers this many reporting months.
@@ -56,6 +56,7 @@ class AccountEvidenceStatus:
     account_id: str
     latest_export: date
     evidence_through: date
+    quarantined: tuple[ImportRunResult, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -98,7 +99,16 @@ def _import_evidence(profile: Profile) -> ImportEvidence | None:
         )
     return ImportEvidence(
         tuple(
-            AccountEvidenceStatus(account_id, exports[account_id], through[account_id])
+            AccountEvidenceStatus(
+                account_id,
+                exports[account_id],
+                through[account_id],
+                tuple(
+                    run
+                    for run in result.import_run_results
+                    if run.account_id == account_id and run.status == "quarantined"
+                ),
+            )
             for account_id in sorted(exports.keys() & through.keys())
         )
     )

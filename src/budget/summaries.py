@@ -16,7 +16,11 @@ from types import MappingProxyType
 from typing import Final
 
 from budget.bronze.models import ImportRun
-from budget.completeness import AccountMonthCompleteness, Completeness
+from budget.completeness import (
+    AccountEvidenceStatus,
+    AccountMonthCompleteness,
+    Completeness,
+)
 from budget.gold import ClassificationReviewKind
 from budget.gold.diff import compare_publications, review_line
 from budget.gold.models import GoldReviewTarget
@@ -80,12 +84,28 @@ def completeness_summary(found: Completeness) -> str:
         lines.extend(_unclassified_line(each) for each in published.months)
     if found.evidence is not None:
         lines.append("Import evidence (operational, apart from published figures)")
-        lines.extend(
+        for each in found.evidence.accounts:
+            lines.extend(_evidence_lines(each))
+    return "\n".join(lines) + "\n"
+
+
+def _evidence_lines(each: AccountEvidenceStatus) -> list[str]:
+    """Say one account's latest export, Evidence through, and quarantined runs."""
+    lines = [
+        (
             f"{each.account_id}  latest export {each.latest_export.isoformat()}"
             f"  evidence through {each.evidence_through.isoformat()}"
-            for each in found.evidence.accounts
         )
-    return "\n".join(lines) + "\n"
+    ]
+    if not each.quarantined:
+        return [*lines, "  quarantined  none"]
+    for run in each.quarantined:
+        codes = ", ".join(sorted({error.code for error in run.errors}))
+        lines.append(
+            f"  quarantined  {run.import_run_id}  {run.covered_from}..{run.covered_to}"
+            + (f"  {codes}" if codes else "")
+        )
+    return lines
 
 
 def _unclassified_line(each: AccountMonthCompleteness) -> str:
