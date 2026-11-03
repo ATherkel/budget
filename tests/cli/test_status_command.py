@@ -6,17 +6,25 @@ tests observe what an operator reads, not the report objects behind it.
 """
 
 import unittest
-from datetime import UTC, datetime
+from dataclasses import replace
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from budget.gold import GoldRecords, GoldResult, MonthlyBalanceSnapshot, ReportingMonth
+from budget.gold import (
+    GoldRecords,
+    GoldResult,
+    GoldTransaction,
+    MonthlyBalanceSnapshot,
+    ReportingMonth,
+)
 from budget.gold.storage import migrate_gold
 from budget.gold.store import GoldStore
 from tests.cli.commands import status
 from tests.cli.profile_files import development_profile, write_profile
 from tests.gold.publishing import CONFIGURATION, RECIPE, publication, publish
-from tests.gold.worked_example import ACCOUNTS, CURRENT
+from tests.gold.worked_example import ACCOUNTS, CURRENT, RECORDS
 
 EXIT_OK = 0
 # The day after the worked example's only export, so May is its current month.
@@ -145,6 +153,58 @@ class StatusProvisionalTests(unittest.TestCase):
             assert lines(in_june, "2026-05") == [
                 "joint-current  2026-05  partial  provisional: late bookings unsettled"
             ]
+
+
+class StatusClassificationTests(unittest.TestCase):
+    def test_status_shows_unclassified_money_in_and_out_without_netting(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            migrate_gold(profile)
+            with GoldStore(profile) as store:
+                store.publish(
+                    GoldResult(publication(1), _with_a_second_unknown_in_march()),
+                    RECIPE,
+                    CONFIGURATION,
+                )
+
+            code, stdout, stderr = status(profile_file, now=PUBLISHED_AT)
+
+            lines = stdout.splitlines()
+            assert (code, stderr) == (EXIT_OK, "")
+            assert "Unclassified money, by account and month" in lines
+            by_month = {
+                line.split("  ")[2]: line
+                for line in lines
+                if line.startswith("  joint-current  ")
+            }
+            assert by_month["2026-03"] == (
+                "  joint-current  2026-03"
+                "  in 200.00 DKK, out -450.00 DKK, 2 transactions"
+            )
+            assert by_month["2026-04"] == (
+                "  joint-current  2026-04  in 0.00 DKK, out 0.00 DKK, 0 transactions"
+            )
+
+
+def _with_a_second_unknown_in_march() -> GoldRecords:
+    """The worked example plus an unknown inflow beside March's unknown outflow."""
+    inflow = GoldTransaction(
+        transaction_id="current-12",
+        account_id=CURRENT,
+        transaction_date=date(2026, 3, 15),
+        account_sequence=12,
+        amount=Decimal("200.00"),
+        description="UNKNOWN",
+        transaction_type="unknown",
+        transfer_group_id=None,
+        balance_after=None,
+        balance_check="consistent",
+    )
+    return replace(RECORDS, transactions=(*RECORDS.transactions, inflow))
 
 
 def _fourteen_months() -> GoldRecords:
