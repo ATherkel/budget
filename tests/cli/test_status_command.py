@@ -21,6 +21,7 @@ from budget.gold import (
 )
 from budget.gold.storage import migrate_gold
 from budget.gold.store import GoldStore
+from budget.locking import writer_lock
 from tests.cli.commands import status
 from tests.cli.profile_files import development_profile, write_profile
 from tests.gold.publishing import CONFIGURATION, RECIPE, publication, publish
@@ -34,8 +35,16 @@ NOTHING_PUBLISHED = "Published figures: unavailable, nothing is published"
 
 
 def _everything_under(folder: Path) -> list[str]:
-    """Every path under `folder`, relative to it, in a fixed order."""
-    return sorted(str(path.relative_to(folder)) for path in folder.rglob("*"))
+    """Every path under `folder` the application owns, relative to it, in order.
+
+    SQLite's own `-wal` and `-shm` files are left out: any read-only
+    connection to a WAL store opens them, as `review` and `serve` do.
+    """
+    return sorted(
+        str(path.relative_to(folder))
+        for path in folder.rglob("*")
+        if not path.name.endswith(("-wal", "-shm"))
+    )
 
 
 class StatusCommandTests(unittest.TestCase):
@@ -188,6 +197,42 @@ class StatusClassificationTests(unittest.TestCase):
             assert by_month["2026-04"] == (
                 "  joint-current  2026-04  in 0.00 DKK, out 0.00 DKK, 0 transactions"
             )
+
+    def test_status_marks_a_month_without_data_unavailable_not_zero(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            migrate_gold(profile)
+            with GoldStore(profile) as store:
+                publish(store, 1)
+
+            _, stdout, _ = status(profile_file, now=datetime(2026, 6, 10, tzinfo=UTC))
+
+            assert (
+                "  joint-current  2026-06  unavailable: no data" in stdout.splitlines()
+            )
+
+
+class StatusReadOnlyTests(unittest.TestCase):
+    def test_status_runs_beside_a_writer_and_changes_nothing(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            migrate_gold(profile)
+            with GoldStore(profile) as store:
+                publish(store, 1)
+            gold_before = profile.gold_store.read_bytes()
+
+            with writer_lock(profile):
+                before = _everything_under(folder)
+                code, _, stderr = status(profile_file, now=PUBLISHED_AT)
+                after = _everything_under(folder)
+
+            assert (code, stderr) == (EXIT_OK, "")
+            assert profile.gold_store.read_bytes() == gold_before
+            assert after == before
 
 
 def _with_a_second_unknown_in_march() -> GoldRecords:
