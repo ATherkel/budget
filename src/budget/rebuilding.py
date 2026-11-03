@@ -52,6 +52,7 @@ from budget.silver import (
 )
 from budget.silver.currencies import UnknownCurrencyError, minor_unit_places
 from budget.silver.decisions import SilverDecision
+from budget.silver.formats import SourceFormat
 from budget.silver.identity import IDENTITY_VERSION
 from budget.silver.storage import silver_stage
 
@@ -371,6 +372,7 @@ def rebuild_through_gold(
     now: datetime,
     inputs: HouseholdInputs | None = None,
     from_bronze: bool = False,
+    formats: Mapping[str, SourceFormat] | None = None,
 ) -> PipelineRebuild:
     """Rebuild Silver from Bronze, then publish Gold from it.
 
@@ -378,7 +380,10 @@ def rebuild_through_gold(
     again from the retained payloads first. Every stage is derived in memory
     before anything is stored, so a refusal Bronze's parsers, Silver's build or
     Gold's build make leaves every store as it was; only then are the stages
-    replaced in order and Gold published.
+    replaced in order and Gold published. `formats` replace the built-in
+    source formats Silver reads, as `SilverBuildInputs.formats` does; they apply
+    only to the Silver read, and `from_bronze=True` re-parses with the built-in
+    Bronze parsers.
     """
     profile = lock.profile
     household = read_household_inputs(profile) if inputs is None else inputs
@@ -386,7 +391,9 @@ def rebuild_through_gold(
     if from_bronze:
         with BronzeStore(profile) as bronze:
             reparsed = bronze.derive_records()
-    silver_inputs = bronze_inputs(profile, household.log.silver, reparsed)
+    silver_inputs = replace(
+        bronze_inputs(profile, household.log.silver, reparsed), formats=formats
+    )
     derived = derive_silver(silver_inputs)
     plan = _plan_gold(profile, derived, household, now)
     with SilverStore(profile) as silver_store:

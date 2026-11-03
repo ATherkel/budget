@@ -75,6 +75,18 @@ can present the same bytes under two versions of one format and observe that
 the derived cache is replaced; ordinary callers keep the declared registry, and
 the one-format scope above is unchanged.
 
+## Supplying a Format to a Build
+
+Silver reads each run in the format its import declared, from the built-in
+`budget.silver.formats.FORMATS`. `SilverBuildInputs(formats=...)` replaces that
+map for one build, and `rebuild_through_gold(..., formats=...)` passes it on;
+`None` keeps the built-ins. A supplied map replaces the built-in one rather
+than adding to it, so a profile that holds a built-in format and a test format
+passes `{**FORMATS, ...}`. As with `BronzeStore(parsers=...)`, this exists so a
+test can prove source independence with a second format that lives only in test
+code (`tests/silver/synthetic_ledger.py`, `tests/cli/test_second_source.py`).
+Nothing in `budget.analytics` or a presentation module changes or imports it.
+
 ## Where The Tests Live
 
 Test directories follow the application's responsibilities, and each module
