@@ -35,12 +35,12 @@ from budget.importing import Coverage, import_inbox_file
 from budget.locking import writer_lock
 from budget.profiles import Profile
 from budget.rebuilding import rebuild_through_gold
+from tests.cli.lifecycle import RULES, RUN_1_ROWS, TAXONOMY, export
 from tests.cli.pipelines import prepared
 from tests.importing.households import drop
 from tests.silver import synthetic_ledger
 
 EXPORTED_ON = date(2026, 3, 5)
-COVERS = Coverage(covers_from=date(2026, 3, 1), covers_through=EXPORTED_ON)
 BUILT_AT = datetime(2026, 3, 6, tzinfo=UTC)
 
 # Opening balance 1000,00; every account, text and amount is invented.
@@ -57,25 +57,48 @@ SYNTHETIC = synthetic_ledger.payload(
 )
 
 
-def _danske_household(folder: Path) -> Profile:
+def _household(folder: Path, *, categorised: bool) -> Profile:
+    """A migrated household; `categorised` gives it the lifecycle's rules."""
     profile = prepared(folder).profile
-    source = drop(profile, "joint-current", "danske-20260305.csv", DANSKE)
+    if categorised:
+        profile.input_file("taxonomy.toml").write_text(TAXONOMY, encoding="utf-8")
+        profile.input_file("rules.toml").write_text(RULES, encoding="utf-8")
+    return profile
+
+
+def _danske_household(
+    folder: Path,
+    *,
+    content: bytes = DANSKE,
+    covers_from: date = date(2026, 3, 1),
+    exported_on: date = EXPORTED_ON,
+    categorised: bool = False,
+) -> Profile:
+    profile = _household(folder, categorised=categorised)
+    source = drop(profile, "joint-current", f"danske-{exported_on:%Y%m%d}.csv", content)
     with writer_lock(profile) as lock:
-        import_inbox_file(lock, source, COVERS)
+        import_inbox_file(lock, source, Coverage(covers_from, exported_on))
         rebuild_through_gold(lock, now=BUILT_AT)
     return profile
 
 
-def _synthetic_household(folder: Path) -> Profile:
-    profile = prepared(folder).profile
+def _synthetic_household(
+    folder: Path,
+    *,
+    content: bytes = SYNTHETIC,
+    covers_from: date = date(2026, 3, 1),
+    exported_on: date = EXPORTED_ON,
+    categorised: bool = False,
+) -> Profile:
+    profile = _household(folder, categorised=categorised)
     source = folder / "ledger.tsv"
-    source.write_bytes(SYNTHETIC)
+    source.write_bytes(content)
     declaration = ImportDeclaration(
         declared_account_id="joint-current",
         source_format=synthetic_ledger.FORMAT_ID,
-        covers_from=COVERS.covers_from,
-        covers_through=COVERS.covers_through,
-        exported_on=EXPORTED_ON,
+        covers_from=covers_from,
+        covers_through=exported_on,
+        exported_on=exported_on,
     )
     parsers = {synthetic_ledger.FORMAT_ID: synthetic_ledger.PARSER}
     with BronzeStore(profile, parsers=parsers) as bronze:
@@ -135,15 +158,15 @@ def test_both_sources_publish_the_same_gold_records(
     assert from_synthetic == from_danske
 
 
-def _overview(profile: Profile) -> MonthlyOverview:
-    """March 2026's household overview from the profile's current publication."""
+def _overview(profile: Profile, month: ReportingMonth) -> MonthlyOverview:
+    """`month`'s household overview from the profile's current publication."""
     with GoldStore(profile, read_only=True) as store:
         current = store.current()
         assert current is not None
         context = ReportContext(
             publication_id=current.publication_id,
             account_ids=frozenset({"joint-current"}),
-            month=ReportingMonth(2026, 3),
+            month=month,
             reference_date=date(2026, 4, 15),
         )
         return HouseholdReports(store).monthly_overview(context)
@@ -152,10 +175,68 @@ def _overview(profile: Profile) -> MonthlyOverview:
 def test_both_sources_give_the_same_monthly_report(
     danske: Profile, synthetic: Profile
 ) -> None:
-    from_danske = _overview(danske)
-    from_synthetic = _overview(synthetic)
+    march = ReportingMonth(2026, 3)
+    from_danske = _overview(danske, march)
+    from_synthetic = _overview(synthetic, march)
 
     assert from_danske.unclassified == MoneyInOut(
         money_in=Decimal("2000.00"), money_out=Decimal("-925.50"), count=3
     )
+    assert from_synthetic == from_danske
+
+
+# February is the lifecycle's rows; March continues their balance chain.
+CATEGORISED_ROWS = (
+    *RUN_1_ROWS,
+    ("03.03.2026", "NETTO 0412", "-200,00", "6.751,00"),
+    ("10.03.2026", "IKEA 551", "-500,00", "6.251,00"),
+    ("15.03.2026", "NETFLIX.COM", "-129,00", "6.122,00"),
+)
+CATEGORISED_EXPORTED_ON = date(2026, 4, 2)
+
+
+def _iso(dato: str) -> str:
+    day, month, year = dato.split(".")
+    return f"{year}-{month}-{day}"
+
+
+def _plain(amount: str) -> str:
+    return amount.replace(".", "").replace(",", ".")
+
+
+def _categorised_pair(
+    folder: Path, rows: tuple[tuple[str, str, str, str], ...] = CATEGORISED_ROWS
+) -> tuple[Profile, Profile]:
+    """The same rows built through Gold from each source, under the lifecycle rules."""
+    shared = {
+        "covers_from": date(2026, 2, 1),
+        "exported_on": CATEGORISED_EXPORTED_ON,
+        "categorised": True,
+    }
+    danske_profile = _danske_household(
+        folder / "danske", content=export(rows), **shared
+    )
+    synthetic_profile = _synthetic_household(
+        folder / "synthetic",
+        content=synthetic_ledger.payload(
+            *(
+                (_iso(dato), _plain(amount), text, _plain(saldo))
+                for dato, text, amount, saldo in rows
+            )
+        ),
+        **shared,
+    )
+    return danske_profile, synthetic_profile
+
+
+@pytest.mark.parametrize("month", [ReportingMonth(2026, 2), ReportingMonth(2026, 3)])
+def test_both_sources_categorise_each_month_the_same(
+    tmp_path: Path, month: ReportingMonth
+) -> None:
+    danske_profile, synthetic_profile = _categorised_pair(tmp_path)
+
+    from_danske = _overview(danske_profile, month)
+    from_synthetic = _overview(synthetic_profile, month)
+
+    assert from_danske.categories != ()
     assert from_synthetic == from_danske
