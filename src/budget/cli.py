@@ -10,7 +10,7 @@ import argparse
 import os
 import sys
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
@@ -32,6 +32,7 @@ from budget.bronze.parsers.registry import UnsupportedSourceFormatError
 from budget.bronze.storage import BRONZE_STAGE, bronze_stage
 from budget.bronze.store import ConflictingDeclaredFormatsError
 from budget.codeversion import UncommittedCodeError, require_committed_code
+from budget.completeness import completeness
 from budget.dashboard import create_app
 from budget.dashboard.passphrase import PassphraseNotSetError, set_passphrase
 from budget.demo import DEFAULT_DEMO_PORT, DemoDirectoryExistsError, create_demo_profile
@@ -306,9 +307,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     review.add_argument("--account", help="list one account's items and runs only")
     commands.add_parser("undo", help="restore the previous current publication")
-    commands.add_parser(
-        "status", help="show balance and classification completeness"
-    )
+    commands.add_parser("status", help="show balance and classification completeness")
     commands.add_parser("serve", help="start the read-only dashboard")
     commands.add_parser(
         "set-passphrase",
@@ -646,6 +645,7 @@ def _undo(profile: Profile) -> None:
 
 def _status(profile: Profile) -> None:
     """Show balance and classification completeness, with no lock."""
+    sys.stdout.write(summaries.completeness_summary(completeness(profile)))
 
 
 def _set_passphrase(profile: Profile) -> None:
@@ -709,6 +709,16 @@ def _milliseconds(started: float) -> int:
     return int((perf_counter() - started) * 1000)
 
 
+# The commands that take nothing but the profile.
+_PROFILE_ONLY_COMMANDS: Final[Mapping[str, Callable[[Profile], None]]] = {
+    "backup": _backup,
+    "status": _status,
+    "undo": _undo,
+    "set-passphrase": _set_passphrase,
+    "serve": _serve,
+}
+
+
 def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
     """Select and load the profile, run the command, and return its status."""
     if arguments.command == "demo":
@@ -723,22 +733,14 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         return _import(profile, arguments.ranges)
     if arguments.command == "restore":
         return _restore(profile, arguments.backup_set)
-    if arguments.command == "backup":
-        _backup(profile)
+    if arguments.command in _PROFILE_ONLY_COMMANDS:
+        _PROFILE_ONLY_COMMANDS[arguments.command](profile)
     elif arguments.command == "dev":
         _dev_refresh(profile, inputs=arguments.inputs, writable=arguments.writable)
     elif arguments.command == "rebuild":
         _rebuild(profile, arguments.from_stage)
     elif arguments.command == "review":
         _review(profile, arguments.kind, arguments.account)
-    elif arguments.command == "status":
-        _status(profile)
-    elif arguments.command == "undo":
-        _undo(profile)
-    elif arguments.command == "set-passphrase":
-        _set_passphrase(profile)
-    elif arguments.command == "serve":
-        _serve(profile)
     else:
         _migrate(profile, arguments.stage, new_store=arguments.new_store)
     return EXIT_OK

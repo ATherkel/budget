@@ -16,6 +16,7 @@ from types import MappingProxyType
 from typing import Final
 
 from budget.bronze.models import ImportRun
+from budget.completeness import Completeness
 from budget.gold import ClassificationReviewKind
 from budget.gold.diff import compare_publications, review_line
 from budget.gold.models import GoldReviewTarget
@@ -65,6 +66,13 @@ def rebuild_summary(rebuild: SilverRebuild) -> str:
     lines = [_bronze_line(rebuild.runs), *_account_lines(rows, rebuild.result)]
     lines.extend(_run_line(row) for row in rows)
     return "\n".join(lines) + "\n"
+
+
+def completeness_summary(found: Completeness) -> str:
+    """Report what `status` found, saying plainly what could not be shown."""
+    if found.published is None:
+        return "Published figures: unavailable, nothing is published\n"
+    return f"Published figures: publication {found.published}\n"
 
 
 def gold_line(rebuilt: GoldRebuild) -> str:
