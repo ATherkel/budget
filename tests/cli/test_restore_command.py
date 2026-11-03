@@ -53,8 +53,8 @@ from tests.test_decision_log import documented_example
 
 EXIT_OK = 0
 # What catch-up prints for a set whose Gold holds no publication yet: the
-# fresh build becomes the first.
-FIRST_GOLD = "Gold     published publication 1 (cause build)\n"
+# fresh build takes the restore's first id, the first million (#376).
+FIRST_GOLD = "Gold     published publication 1000000 (cause build)\n"
 # An export of a later week than the pipeline household's, for catch-up.
 EXPORT_LATER = payload("08.03.2026")
 EXIT_REFUSED_INPUT = 3
@@ -345,16 +345,18 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
                 status, stdout, stderr = restore(built.profile_file, written.name)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert "Gold     published publication 2 (cause build)\n" in stdout
+            # The catch-up build takes the boundary's id, not the one after
+            # the set's highest (#376).
+            assert "Gold     published publication 1000000 (cause build)\n" in stdout
             with GoldStore(built.profile) as gold:
                 current = gold.current()
                 assert current is not None
-                assert current.publication_id == 2
+                assert current.publication_id == 1_000_000
                 # The set's history comes back as it was, one move on.
                 moves = gold.pointer_history()
                 assert [(move.to_publication_id, move.cause) for move in moves] == [
                     (1, "build"),
-                    (2, "build"),
+                    (1_000_000, "build"),
                 ]
 
     def test_restore_records_where_the_recovered_publication_history_ends(
