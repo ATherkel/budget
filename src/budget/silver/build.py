@@ -10,8 +10,8 @@ from budget.silver.admission import Admission, Decisions, admit, judge
 from budget.silver.decisions import (
     SilverDecision,
 )
-from budget.silver.formats import SourceFormat
 from budget.silver.identity import IDENTITY_VERSION
+from budget.silver.inputs import SilverBuildInputs
 from budget.silver.merge import Ledger
 from budget.silver.models import (
     AccountEvidence,
@@ -33,11 +33,23 @@ def build(
     format_failures: Mapping[str, Sequence[FormatFailure]],
     currencies: Mapping[str, str],
     decisions: Sequence[SilverDecision] = (),
-    formats: Mapping[str, SourceFormat] | None = None,
 ) -> SilverResult:
     """Derive Silver from import runs, their payloads' records and currencies."""
-    indexed = Decisions.of(decisions)
-    runs = [r for r in runs if r.import_run_id not in indexed.voided]
+    return derive(
+        SilverBuildInputs(
+            runs=runs,
+            source_records=source_records,
+            format_failures=format_failures,
+            currencies=currencies,
+            decisions=decisions,
+        )
+    )
+
+
+def derive(inputs: SilverBuildInputs) -> SilverResult:
+    """Derive Silver from `inputs`, reading each run in its declared format."""
+    indexed = Decisions.of(inputs.decisions)
+    runs = [r for r in inputs.runs if r.import_run_id not in indexed.voided]
     stored = sorted(
         (r for r in runs if r.outcome == "stored"),
         key=lambda r: (r.exported_on, r.started_at, r.import_run_id),
@@ -47,9 +59,10 @@ def build(
     for run in stored:
         each = read_run(
             run,
-            source_records.get(run.payload_id, ()),
-            format_failures.get(run.payload_id, ()),
-            currencies,
+            inputs.source_records.get(run.payload_id, ()),
+            inputs.format_failures.get(run.payload_id, ()),
+            inputs.currencies,
+            inputs.formats,
         )
         ledger = ledgers.setdefault(each.account_id, Ledger(each.account_id))
         judged.append(admit(judge(each, indexed), ledger, indexed))
