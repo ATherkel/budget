@@ -173,7 +173,6 @@ _SELECT_RETAINED_ONE: Final = (
     " JOIN results USING (publication_id) WHERE publication_id = ?"
 )
 _SELECT_RESULT: Final = "SELECT 1 FROM results WHERE publication_id = ?"
-_SELECT_NEXT_ID: Final = "SELECT coalesce(max(publication_id), 0) + 1 FROM publications"
 _SELECT_HIGHEST_ID: Final = "SELECT coalesce(max(publication_id), 0) FROM publications"
 # After a restore, new ids start at the next multiple of this (#376).
 _RECOVERY_ID_STEP: Final = 1_000_000
@@ -939,7 +938,7 @@ def _next_publication_id(connection: sqlite3.Connection) -> int:
     twice, and a restore jumps past every id lost after its set (#376). Only
     a second restore of the same or an older set can reuse a range (#414).
     """
-    following = int(connection.execute(_SELECT_NEXT_ID).fetchone()[0])
+    following = int(connection.execute(_SELECT_HIGHEST_ID).fetchone()[0]) + 1
     boundary = connection.execute(_SELECT_LATEST_BOUNDARY_ID).fetchone()
     if boundary is None:
         return following
