@@ -5,6 +5,7 @@ Every profile and result is synthetic. The seam is the CLI itself; the Silver
 result is written through the store's own public `replace`.
 """
 
+import sqlite3
 import unittest
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -32,6 +33,7 @@ from tests.gold.worked_example import RECORDS
 
 EXIT_OK = 0
 EXIT_VERIFICATION_FAILED = 5
+EXIT_REFUSED_ENVIRONMENT = 4
 CURRENT = "joint-current"
 SAVINGS = "joint-savings"
 PUBLISHED_AT = datetime(2026, 5, 9, 8, 0, tzinfo=UTC)
@@ -347,3 +349,23 @@ class StatusNoEvidenceTests(unittest.TestCase):
             assert unreadable.startswith("  unavailable: could not be read: ")
             assert "none recorded" not in stdout
             assert profile.silver_store.read_bytes() == b"this is not a database"
+
+    def test_status_exits_as_an_environment_refusal_for_a_newer_silver_store(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            migrate_silver(profile)
+            with sqlite3.connect(profile.silver_store) as connection:
+                connection.execute("PRAGMA user_version = 999")
+            connection.close()
+
+            code, stdout, stderr = status(profile_file, now=PUBLISHED_AT)
+
+            lines = stdout.splitlines()
+            assert code == EXIT_REFUSED_ENVIRONMENT, stderr
+            assert EVIDENCE_HEADING in lines, stdout
+            unreadable = lines[lines.index(EVIDENCE_HEADING) + 1]
+            assert unreadable.startswith("  unavailable: could not be read: ")
