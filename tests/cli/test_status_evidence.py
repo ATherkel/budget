@@ -234,6 +234,29 @@ class StatusEvidenceTests(unittest.TestCase):
                 "  quarantined  none",
             ]
 
+    def test_status_lists_an_account_whose_only_runs_are_quarantined(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            _store_silver(
+                development_profile(folder),
+                _silver(
+                    import_run_results=(
+                        _run("run-9", SAVINGS, "quarantined", "unknown-status"),
+                    )
+                ),
+            )
+
+            code, stdout, stderr = status(profile_file, now=PUBLISHED_AT)
+
+            lines = stdout.splitlines()
+            assert (code, stderr) == (EXIT_OK, "")
+            assert EVIDENCE_HEADING in lines, stdout
+            assert lines[lines.index(EVIDENCE_HEADING) + 1 :] == [
+                f"{SAVINGS}  latest export none  evidence through none",
+                "  quarantined  run-9  2026-03-15..2026-03-16  unknown-status",
+            ]
+
 
 class StatusReviewItemTests(unittest.TestCase):
     def test_status_counts_open_review_items_by_kind_silver_apart_from_gold(
