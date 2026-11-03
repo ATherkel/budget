@@ -10,9 +10,8 @@ its own.
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Final
-from zoneinfo import ZoneInfo
 
-from budget.analytics.household import HouseholdReports
+from budget.analytics.household import COPENHAGEN, HouseholdReports
 from budget.analytics.reports import (
     MoneyInOut,
     ProvisionalReason,
@@ -25,7 +24,6 @@ from budget.profiles import Profile
 
 # The default completeness output covers this many reporting months.
 LATEST_MONTHS: Final = 12
-_COPENHAGEN: Final = ZoneInfo("Europe/Copenhagen")
 
 
 @dataclass(frozen=True)
@@ -60,7 +58,7 @@ def completeness(profile: Profile, *, now: datetime) -> Completeness:
     """Read the completeness figures of the current publication, as of `now`."""
     if not profile.gold_store.exists():
         return Completeness(published=None)
-    reference_date = now.astimezone(_COPENHAGEN).date()
+    reference_date = now.astimezone(COPENHAGEN).date()
     with GoldStore(profile, read_only=True) as store:
         current = store.current()
         if current is None:

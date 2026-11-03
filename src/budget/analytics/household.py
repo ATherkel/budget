@@ -43,12 +43,12 @@ class PublicationUnavailableError(GoldPublicationUnavailableError):
             self.add_note(f"current publication: {current_publication_id}")
 
 
-_COPENHAGEN: Final = ZoneInfo("Europe/Copenhagen")
+COPENHAGEN: Final = ZoneInfo("Europe/Copenhagen")
 
 
 def _copenhagen_date(moment: datetime) -> date:
     """Return the Copenhagen date of a recorded UTC moment."""
-    return moment.astimezone(_COPENHAGEN).date()
+    return moment.astimezone(COPENHAGEN).date()
 
 
 def _reference_date(publication: GoldPublication, requested: date) -> date:
