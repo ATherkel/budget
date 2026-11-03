@@ -575,6 +575,7 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
             else ""
         )
         sys.stdout.write(summaries.import_summary(done, diff_text=diff_text))
+        _show_completeness(profile)
         routine_logging.finished(
             profile,
             "import",
