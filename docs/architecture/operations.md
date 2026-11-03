@@ -248,8 +248,11 @@ clean checkout, separate from the one used for development.
 `dev refresh --writable` restores the set into development's own stores
 instead of `upstream/`, relabelled as development. It exists to rehearse a
 migration on real data: `migrate` then upgrades stores that already hold
-production's history, exactly as it will in production (W5). Until the next
-plain `dev refresh`, development reads every stage from its own stores.
+production's history, exactly as it will in production (W5). It leaves any
+`upstream/` folder as it is. A refresh killed part-way can leave stores in
+`stores/writable-replaced`; development's stores make no promise to keep, so
+the next `--writable` refresh deletes them. With `--inputs` the inputs are
+replaced first, so if that fails no store has changed.
 
 ## Household Inputs
 
@@ -569,7 +572,7 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | `view --as-was <date> \| --known-at <date> --label <text>` | Builds or finds a past view (ADR-014). Without options, lists retained and legacy publications. | `gold.db`, through a scratch store | Never current |
 | `label <publication_id> <text>` / `unlabel …` | Keeps a result beyond the retention rule, or stops keeping it. | `gold.db` | No |
 | `backup` | Writes a backup set of production and names it. Also runs automatically; see below. | The backups folder | No |
-| `restore [<backup set>]` | Restores the newest complete set, or the one named, into an empty profile and catches up with the import log. | Every store | Yes, if it caught up |
+| `restore [<backup set>]` | Restores the newest complete set, or the one named, into an empty profile, catches up with the import log, and rebuilds Silver and Gold, publishing when the recipe changed; records a recovery boundary. | Every store | Yes, if it caught up |
 | `restore --from-archive` | Last resort: rebuilds Bronze from the archive and the import log, then Silver and Gold. | Every store | Yes |
 | `verify` | Checks integrity, and replays the current publication's recipe to prove it reproduces (ADR-014). | `scratch/` only | No |
 | `dev refresh [--inputs] [--writable]` | Development only: restores production's newest complete backup set into `upstream/`, or with `--writable` into development's own stores. | Development only | No |
@@ -725,9 +728,12 @@ On the new machine: install the code version the newest backup set's manifest
 names, write the production profile, run `budget restore`, then
 `budget serve`. `restore` takes the newest complete set, replays every import
 that the live `imports.jsonl` lists beyond the set, from the export archive,
-and rebuilds with any decisions recorded since. Nothing is
+and rebuilds with any decisions recorded since. No import or decision is
 missing, provided OneDrive had synchronised the inputs folder and the export
-archive.
+archive. Gold history made after the set is lost: its publications, labels
+and pointer moves. `restore` records a recovery boundary so that loss reads
+as a gap, and says where undo returns
+([Publication recovery](publications.md#publication-recovery)).
 
 ### W7: every backup set is lost
 
@@ -765,8 +771,8 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | The backup before a migration cannot be written or verified | The migration does not begin; the schema and its version are unchanged; exit 4, or 5 when a copy or the import log does not verify | Fix what the message names, then rerun `migrate` |
 | A migration fails | No step of it is committed and the store keeps its version, though a stage migrated before it (Bronze before Silver, and both before Gold) keeps its new one; the set taken first stays held for recovery until a migration succeeds, or a later backup records a store past it | Fix the defect; the held set restores the stores if needed |
 | The backup after a migration fails | The store is migrated; the set taken first stays held; exit 4, saying so | Fix what the message names, then run `budget backup` |
-| `migrate` finds no production store for a stage, or only a file an interrupted start left empty | Nothing is created or changed, in any stage; exit 4. So is `--new-store` where one of the stores it would start is started already, naming the `--stage` that starts the rest, and Silver or Gold where Bronze has no store a backup set can hold, since every set holds Bronze | Restore the newest backup set that holds it, or, for a first store, rerun with `--new-store`, adding `--stage` for that stage alone when another stage's store exists |
-| A store a complete backup set holds is missing, or only a file an interrupted start left empty | `backup`, and a `migrate` that would back up, publish nothing and change nothing; exit 4 | Restore the store from the newest backup set that holds it |
+| `migrate` finds no production store for a stage, or only a file an interrupted start left empty | Nothing is created or changed, in any stage; exit 4. So is `--new-store` where one of the stores it would start is started already, naming the `--stage` that starts the rest, and Silver or Gold where Bronze has no store a backup set can hold, since every set holds Bronze | Move every store out of the stores folder and run `budget restore`, which restores the whole profile; or, for a first store, rerun with `--new-store`, adding `--stage` for that stage alone when another stage's store exists |
+| A store a complete backup set holds is missing, or only a file an interrupted start left empty | `backup`, and a `migrate` that would back up, publish nothing and change nothing; exit 4 | Move every store out of the stores folder, then run `budget restore`: a store is never restored beside live ones |
 | OneDrive offline | Complete backup sets wait in the local OneDrive folder | Nothing to do |
 
 A genuine repeat export has a new export date in its filename, so it is

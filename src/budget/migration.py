@@ -49,8 +49,9 @@ class RestoreInsteadError(RuntimeError):
         """Say why nothing was started, and what to do instead."""
         super().__init__(
             "the backups folder holds complete backup sets of this profile, so "
-            f"its {label} store must be restored from the newest that holds "
-            "one, not started anew; nothing was written"
+            f"its {label} store must be restored with the rest of the profile: "
+            "move every store out of the stores folder, then run "
+            "`budget restore`; it is not started anew; nothing was written"
         )
 
 
