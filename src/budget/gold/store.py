@@ -143,8 +143,8 @@ class RecoveryBoundary:
     at `backup_created_at`; any made after it, before the failure, are lost.
     `restored_current_id` is the publication current in the set, or None.
     Every publication from `first_publication_id` on was built after the
-    restore at `restored_at`. A bare id from before the restore can still
-    name a lost publication that a new one now shares (#376).
+    restore at `restored_at`. That id is the next multiple of 1,000,000 above
+    the set's highest, so no new publication shares a lost one's id (#376).
     """
 
     backup_set: str
@@ -519,8 +519,9 @@ class GoldStore:
     ) -> RecoveryBoundary:
         """Record that this store's history was restored from `backup_set`.
 
-        The publication current now is the set's, and every id from the next
-        one on belongs to a publication built after the restore.
+        The publication current now is the set's. New ids start at the next
+        multiple of 1,000,000 above the highest id the store holds, and every
+        id from there on belongs to a publication built after the restore.
         """
         connection = self._owner.connection(write=True)
         with connection:
@@ -930,12 +931,13 @@ def _cleanup_after_move(connection: sqlite3.Connection, current_id: int) -> None
 
 
 def _next_publication_id(connection: sqlite3.Connection) -> int:
-    """Return one more than the highest id the store has ever published.
+    """Return the id the next publication must carry.
 
-    A publication's metadata is never deleted, so within one history no id is
-    handed out twice. After a restore the sequence continues from the set's,
-    so an id can repeat one lost after the set (#376); the store's recovery
-    boundaries say where.
+    That is one more than the highest id the store has ever published, or the
+    latest recovery boundary's first id when that is larger. A publication's
+    metadata is never deleted, so within one history no id is handed out
+    twice, and a restore jumps past every id lost after its set (#376). Only
+    a second restore of the same or an older set can reuse a range (#414).
     """
     following = int(connection.execute(_SELECT_NEXT_ID).fetchone()[0])
     boundary = connection.execute(_SELECT_LATEST_BOUNDARY_ID).fetchone()
