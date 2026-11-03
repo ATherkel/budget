@@ -75,7 +75,21 @@ def completeness_summary(found: Completeness) -> str:
         return "Published figures: unavailable, nothing is published\n"
     lines = [f"Published figures: publication {published.publication_id} (current)"]
     lines.extend(_month_line(each) for each in published.months)
+    lines.append("Unclassified money, by account and month")
+    lines.extend(_unclassified_line(each) for each in published.months)
     return "\n".join(lines) + "\n"
+
+
+def _unclassified_line(each: AccountMonthCompleteness) -> str:
+    """Say one account-month's unclassified money in and out, and how many."""
+    money = each.unclassified
+    prefix = f"  {each.account_id}  {each.month.year:04d}-{each.month.month:02d}  "
+    if money is None:
+        return f"{prefix}unavailable: no data"
+    return (
+        f"{prefix}in {money.money_in} {each.currency}, "
+        f"out {money.money_out} {each.currency}, {money.count} transactions"
+    )
 
 
 def _month_line(each: AccountMonthCompleteness) -> str:

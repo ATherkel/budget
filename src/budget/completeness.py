@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 
 from budget.analytics.household import HouseholdReports
 from budget.analytics.reports import (
+    MoneyInOut,
     ProvisionalReason,
     ReportContext,
     SelectionOptions,
@@ -35,6 +36,9 @@ class AccountMonthCompleteness:
     month: ReportingMonth
     coverage: Coverage
     provisional: tuple[ProvisionalReason, ...]
+    currency: str
+    # None when the month has no evidence, which is not the same as zero.
+    unclassified: MoneyInOut | None
 
 
 @dataclass(frozen=True)
@@ -99,5 +103,10 @@ def _account_month(
     )
     reasons = () if overview.provisional is None else overview.provisional.reasons
     return AccountMonthCompleteness(
-        account_id, month, overview.coverage.status, tuple(sorted(reasons))
+        account_id,
+        month,
+        overview.coverage.status,
+        tuple(sorted(reasons)),
+        overview.currency,
+        overview.unclassified,
     )
