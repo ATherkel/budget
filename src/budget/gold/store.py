@@ -219,6 +219,10 @@ _INSERT_MOVE: Final = (
 _SELECT_LAST_MOVE: Final = "SELECT * FROM pointer_moves ORDER BY move DESC LIMIT 1"
 _SELECT_MOVES: Final = "SELECT * FROM pointer_moves ORDER BY move"
 _SELECT_BOUNDARIES: Final = "SELECT * FROM recovery_boundaries ORDER BY boundary"
+_SELECT_LATEST_BOUNDARY_ID: Final = (
+    "SELECT first_publication_id FROM recovery_boundaries"
+    " ORDER BY boundary DESC LIMIT 1"
+)
 _INSERT_BOUNDARY: Final = (
     "INSERT INTO recovery_boundaries (backup_set, backup_created_at, restored_at,"
     " restored_current_id, first_publication_id) VALUES (?, ?, ?, ?, ?)"
@@ -930,6 +934,9 @@ def _next_publication_id(connection: sqlite3.Connection) -> int:
     so an id can repeat one lost after the set (#376); the store's recovery
     boundaries say where.
     """
+    boundary = connection.execute(_SELECT_LATEST_BOUNDARY_ID).fetchone()
+    if boundary is not None:
+        return int(boundary[0])
     row = connection.execute(_SELECT_NEXT_ID).fetchone()
     return int(row[0])
 
