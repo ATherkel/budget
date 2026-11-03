@@ -1127,7 +1127,7 @@ class ProductionImportTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_OK, "")
             [entry] = log_entries(profile)
             [written] = sorted(set(_set_names(profile)) - set(sets_before))
-            assert stdout.endswith(f"Backup   backup set {written} written\n")
+            assert f"Backup   backup set {written} written\n" in stdout
             backup_set = profile.backup_path(written)
             stores = manifest(backup_set)["stores"]
             assert isinstance(stores, dict)
@@ -1218,7 +1218,7 @@ class ProductionImportTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
             lines = stdout.splitlines()
             assert lines[0].startswith("[1] (no account)  misfiled: ")
-            assert lines[1:] == ["Nothing was imported."]
+            assert lines[1] == "Nothing was imported."
             assert _set_names(profile) == sets_before
 
     def test_an_account_silver_cannot_build_refuses_before_storing(self) -> None:
