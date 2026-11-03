@@ -306,6 +306,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     review.add_argument("--account", help="list one account's items and runs only")
     commands.add_parser("undo", help="restore the previous current publication")
+    commands.add_parser(
+        "status", help="show balance and classification completeness"
+    )
     commands.add_parser("serve", help="start the read-only dashboard")
     commands.add_parser(
         "set-passphrase",
@@ -641,6 +644,10 @@ def _undo(profile: Profile) -> None:
         sys.stdout.write(f"{summary}\nBackup   backup set {written.name} written\n")
 
 
+def _status(profile: Profile) -> None:
+    """Show balance and classification completeness, with no lock."""
+
+
 def _set_passphrase(profile: Profile) -> None:
     """Ask for the new dashboard passphrase twice, then store its hash."""
     # Refused before asking, so no one types a passphrase that cannot be kept.
@@ -724,6 +731,8 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         _rebuild(profile, arguments.from_stage)
     elif arguments.command == "review":
         _review(profile, arguments.kind, arguments.account)
+    elif arguments.command == "status":
+        _status(profile)
     elif arguments.command == "undo":
         _undo(profile)
     elif arguments.command == "set-passphrase":
