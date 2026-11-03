@@ -11,6 +11,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Literal
 
+from budget.gold import ClassificationReviewItem, GoldLineageRecords, GoldResult
 from budget.gold.storage import migrate_gold
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
@@ -18,6 +19,7 @@ from budget.silver import (
     AccountEvidence,
     EvidenceExport,
     ImportRunResult,
+    ReviewItem,
     SilverResult,
     SilverStore,
     ValidationError,
@@ -25,7 +27,8 @@ from budget.silver import (
 )
 from tests.cli.commands import status
 from tests.cli.profile_files import development_profile, write_profile
-from tests.gold.publishing import publish
+from tests.gold.publishing import CONFIGURATION, RECIPE, publication, publish
+from tests.gold.worked_example import RECORDS
 
 EXIT_OK = 0
 CURRENT = "joint-current"
@@ -56,6 +59,7 @@ def _silver(
     account_evidence: tuple[AccountEvidence, ...] = (),
     evidence_exports: tuple[EvidenceExport, ...] = (),
     import_run_results: tuple[ImportRunResult, ...] = (),
+    review_items: tuple[ReviewItem, ...] = (),
 ) -> SilverResult:
     return SilverResult(
         transactions=(),
@@ -65,7 +69,34 @@ def _silver(
         account_evidence=account_evidence,
         evidence_exports=evidence_exports,
         import_run_results=import_run_results,
-        review_items=(),
+        review_items=review_items,
+    )
+
+
+def _silver_item(
+    item_id: str,
+    kind: Literal["balance-break", "dropped-transaction"],
+    resolved_by: str | None = None,
+) -> ReviewItem:
+    return ReviewItem(
+        review_item_id=item_id,
+        kind=kind,
+        account_id=CURRENT,
+        date_from=date(2026, 3, 3),
+        date_to=date(2026, 3, 3),
+        payload_ids=(),
+        resolved_by=resolved_by,
+    )
+
+
+def _gold_item(item_id: str, decision_id: str) -> ClassificationReviewItem:
+    return ClassificationReviewItem(
+        review_item_id=item_id,
+        kind="decision-not-applicable",
+        transaction_ids=(),
+        rule_ids=(),
+        decision_id=decision_id,
+        reason="target-missing",
     )
 
 
@@ -191,4 +222,51 @@ class StatusEvidenceTests(unittest.TestCase):
                 ),
                 f"{SAVINGS}  latest export 2026-05-02  evidence through 2026-04-30",
                 "  quarantined  none",
+            ]
+
+
+class StatusReviewItemTests(unittest.TestCase):
+    def test_status_counts_open_review_items_by_kind_silver_apart_from_gold(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            migrate_gold(profile)
+            with GoldStore(profile) as store:
+                store.publish(
+                    GoldResult(
+                        publication(1),
+                        RECORDS,
+                        GoldLineageRecords(
+                            classification_review_items=(
+                                _gold_item("a" * 64, "d-0001"),
+                                _gold_item("b" * 64, "d-0002"),
+                            )
+                        ),
+                    ),
+                    RECIPE,
+                    CONFIGURATION,
+                )
+            _store_silver(
+                profile,
+                _silver(
+                    review_items=(
+                        _silver_item("1" * 64, "dropped-transaction"),
+                        _silver_item("2" * 64, "dropped-transaction"),
+                        _silver_item("3" * 64, "balance-break"),
+                        _silver_item("4" * 64, "balance-break", resolved_by="d-0009"),
+                    )
+                ),
+            )
+
+            code, stdout, stderr = status(profile_file, now=PUBLISHED_AT)
+
+            lines = stdout.splitlines()
+            assert (code, stderr) == (EXIT_OK, "")
+            assert "Open review items" in lines, stdout
+            assert lines[lines.index("Open review items") + 1 :][:2] == [
+                "  Silver (operational): balance-break 1, dropped-transaction 2",
+                "  Gold (publication 1): decision-not-applicable 2",
             ]
