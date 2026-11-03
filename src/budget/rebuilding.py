@@ -380,7 +380,8 @@ def rebuild_through_gold(
     again from the retained payloads first. Every stage is derived in memory
     before anything is stored, so a refusal Bronze's parsers, Silver's build or
     Gold's build make leaves every store as it was; only then are the stages
-    replaced in order and Gold published.
+    replaced in order and Gold published. `formats` replace the built-in
+    source formats Silver reads, as `SilverBuildInputs.formats` does.
     """
     profile = lock.profile
     household = read_household_inputs(profile) if inputs is None else inputs
@@ -388,7 +389,9 @@ def rebuild_through_gold(
     if from_bronze:
         with BronzeStore(profile) as bronze:
             reparsed = bronze.derive_records()
-    silver_inputs = bronze_inputs(profile, household.log.silver, reparsed)
+    silver_inputs = replace(
+        bronze_inputs(profile, household.log.silver, reparsed), formats=formats
+    )
     derived = derive_silver(silver_inputs)
     plan = _plan_gold(profile, derived, household, now)
     with SilverStore(profile) as silver_store:
