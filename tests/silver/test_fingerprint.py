@@ -188,6 +188,17 @@ def test_incidental_order_and_decimal_scale_do_not_change_the_fingerprint() -> N
     )
 
 
+def test_the_silver_fingerprint_is_a_versioned_hash_of_every_public_record() -> None:
+    fingerprint = result_fingerprint(
+        _every_record(),
+        currencies={"joint-savings": "EUR", "joint-current": "DKK"},
+    )
+
+    assert fingerprint == (
+        "6bd2f02b87c4cc09447b8479ca5b535e17fcd8a025ece2cc24e9db6f0a9b57ab"
+    )
+
+
 def _different_value(name: str, value: object) -> object:
     """Return a valid public value distinct from the one in the fixture."""
     if name in {"balance", "end_of_day_balance"}:
