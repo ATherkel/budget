@@ -88,7 +88,8 @@ def _unclassified_line(each: AccountMonthCompleteness) -> str:
         return f"{prefix}unavailable: no data"
     return (
         f"{prefix}in {money.money_in} {each.currency}, "
-        f"out {money.money_out} {each.currency}, {money.count} transactions"
+        f"out {money.money_out} {each.currency}, "
+        f"{money.count} {'transaction' if money.count == 1 else 'transactions'}"
     )
 
 
@@ -96,7 +97,7 @@ def _month_line(each: AccountMonthCompleteness) -> str:
     """Say one account-month's coverage, and why its figures may still change."""
     line = (
         f"{each.account_id}  {each.month.year:04d}-{each.month.month:02d}  "
-        f"{each.coverage}"
+        f"{each.coverage.replace('_', ' ')}"
     )
     if not each.provisional:
         return line
