@@ -369,3 +369,24 @@ class StatusNoEvidenceTests(unittest.TestCase):
             assert EVIDENCE_HEADING in lines, stdout
             unreadable = lines[lines.index(EVIDENCE_HEADING) + 1]
             assert unreadable.startswith("  unavailable: could not be read: ")
+
+    def test_status_says_silver_review_items_are_unavailable_when_unreadable(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            migrate_gold(profile)
+            with GoldStore(profile) as store:
+                publish(store, 1)
+            profile.silver_store.write_bytes(b"this is not a database")
+
+            _, stdout, _ = status(profile_file, now=PUBLISHED_AT)
+
+            lines = stdout.splitlines()
+            assert "Open review items" in lines, stdout
+            assert lines[lines.index("Open review items") + 1 :][:2] == [
+                "  Silver (operational): unavailable",
+                "  Gold (publication 1): none",
+            ]
