@@ -70,9 +70,16 @@ def rebuild_summary(rebuild: SilverRebuild) -> str:
 
 def completeness_summary(found: Completeness) -> str:
     """Report what `status` found, saying plainly what could not be shown."""
-    if found.published is None:
+    published = found.published
+    if published is None:
         return "Published figures: unavailable, nothing is published\n"
-    return f"Published figures: publication {found.published}\n"
+    lines = [f"Published figures: publication {published.publication_id} (current)"]
+    lines.extend(
+        f"{each.account_id}  {each.month.year:04d}-{each.month.month:02d}  "
+        f"{each.coverage}"
+        for each in published.months
+    )
+    return "\n".join(lines) + "\n"
 
 
 def gold_line(rebuilt: GoldRebuild) -> str:

@@ -645,7 +645,9 @@ def _undo(profile: Profile) -> None:
 
 def _status(profile: Profile) -> None:
     """Show balance and classification completeness, with no lock."""
-    sys.stdout.write(summaries.completeness_summary(completeness(profile)))
+    sys.stdout.write(
+        summaries.completeness_summary(completeness(profile, now=datetime.now(UTC)))
+    )
 
 
 def _set_passphrase(profile: Profile) -> None:
