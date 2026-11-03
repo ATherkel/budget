@@ -12,6 +12,7 @@ transaction id or arbitrary validation message appears.
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from types import MappingProxyType
 from typing import Final
 
@@ -112,12 +113,17 @@ def _kinds(counts: tuple[tuple[str, int], ...]) -> str:
     return ", ".join(f"{kind} {count}" for kind, count in counts) or "none"
 
 
+def _date_or_none(day: date | None) -> str:
+    """Say a date, or `none` when no evidence supplies one."""
+    return "none" if day is None else day.isoformat()
+
+
 def _evidence_lines(each: AccountEvidenceStatus) -> list[str]:
     """Say one account's latest export, Evidence through, and quarantined runs."""
     lines = [
         (
-            f"{each.account_id}  latest export {each.latest_export.isoformat()}"
-            f"  evidence through {each.evidence_through.isoformat()}"
+            f"{each.account_id}  latest export {_date_or_none(each.latest_export)}"
+            f"  evidence through {_date_or_none(each.evidence_through)}"
         )
     ]
     if not each.quarantined:

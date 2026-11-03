@@ -60,8 +60,10 @@ class AccountEvidenceStatus:
     """What the admitted exports say about one account, as Silver stored them."""
 
     account_id: str
-    latest_export: date
-    evidence_through: date
+    # None when no admitted export counts for the account, as with a first
+    # export that was quarantined.
+    latest_export: date | None
+    evidence_through: date | None
     quarantined: tuple[ImportRunResult, ...] = ()
 
 
@@ -116,15 +118,19 @@ def _import_evidence(profile: Profile) -> ImportEvidence | None:
         tuple(
             AccountEvidenceStatus(
                 account_id,
-                exports[account_id],
-                through[account_id],
+                exports.get(account_id),
+                through.get(account_id),
                 tuple(
                     run
                     for run in result.import_run_results
                     if run.account_id == account_id and run.status == "quarantined"
                 ),
             )
-            for account_id in sorted(exports.keys() & through.keys())
+            for account_id in sorted(
+                exports.keys()
+                | through.keys()
+                | {run.account_id for run in result.import_run_results}
+            )
         ),
         _by_kind(item.kind for item in result.review_items if item.resolved_by is None),
     )
