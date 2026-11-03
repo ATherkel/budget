@@ -212,11 +212,18 @@ backed up and restored with the publications. A past-view lookup reads it to
 report the time between the set and the restore as unavailable, never as the
 set's publication having stayed current.
 
-The boundary does not change publication ids: the next build after a restore
-continues the restored sequence, so it can carry the same `publication_id`
-as a publication that was lost. A bare id written down before the restore
-can therefore name a different result afterwards. Issue #376 makes the
-recovery part of a publication's identity, which closes that gap.
+Publication ids jump at a restore: the boundary's first `publication_id` is
+the smallest multiple of 1,000,000 strictly above the highest id the
+restored store holds (1,000,000 when it holds none). The catch-up build, or
+with no catch-up the next build, takes that id, and later builds continue
+from it. Publications lost after the set were numbered below the jump, so a
+bare id written down before the restore cannot name a publication built
+after it (#376). A store that was never restored numbers 1, 2, 3, ….
+
+One gap is accepted: a second restore of the same set, or of an older one,
+jumps from that set's highest id again, and so can reuse ids in a range that
+publications built between the two restores had taken. Issue #414 makes the
+recovery part of a publication's identity, which closes it.
 
 ### Past views
 
