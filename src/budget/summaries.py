@@ -83,10 +83,12 @@ def completeness_summary(found: Completeness) -> str:
         lines.append("Unclassified money, by account and month")
         lines.extend(_unclassified_line(each) for each in published.months)
     lines.extend(_review_lines(found))
-    if found.evidence is not None:
-        lines.append("Import evidence (operational, apart from published figures)")
-        for each in found.evidence.accounts:
-            lines.extend(_evidence_lines(each))
+    lines.append("Import evidence (operational, apart from published figures)")
+    accounts = () if found.evidence is None else found.evidence.accounts
+    if not accounts:
+        lines.append("  none recorded")
+    for each in accounts:
+        lines.extend(_evidence_lines(each))
     return "\n".join(lines) + "\n"
 
 

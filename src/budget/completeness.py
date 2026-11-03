@@ -92,6 +92,8 @@ def _import_evidence(profile: Profile) -> ImportEvidence | None:
     if not profile.silver_store.exists():
         return None
     with SilverStore(profile, read_only=True) as store:
+        if not store.is_built():
+            return None
         result = store.read()
     exports: dict[str, date] = {}
     for each in result.evidence_exports:
