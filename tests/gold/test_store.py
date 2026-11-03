@@ -280,6 +280,22 @@ def test_a_publish_under_another_id_is_refused(store: GoldStore, given: int) -> 
     assert len(store.pointer_history()) == 1
 
 
+def test_a_publish_after_a_recovery_boundary_must_carry_the_jump(
+    store: GoldStore,
+) -> None:
+    # The id a restore hands out and the id publish accepts follow one rule,
+    # so the id after the restored set's highest is refused (#376).
+    first = publish(store, 1)
+    restored_at = datetime(2026, 3, 10, tzinfo=UTC)
+    store.record_recovery_boundary("set", datetime(2026, 3, 9, tzinfo=UTC), restored_at)
+
+    with pytest.raises(PublicationIdError):
+        publish(store, 2)
+
+    assert store.current() == first
+    assert publish(store, 1_000_000).publication_id == 1_000_000
+
+
 def test_only_the_current_and_previous_results_are_retained(store: GoldStore) -> None:
     publications: GoldPublications = store
     first, second, third = (publish(store, n) for n in (1, 2, 3))
