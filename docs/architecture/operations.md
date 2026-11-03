@@ -750,6 +750,8 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | A declared range whose `from` falls after its `through` | At the prompt, the range is asked again and nothing reaches Bronze. In a ranges file, the whole file is refused, listing every problem, before anything is imported; exit 3 | Type the range again, or correct the ranges file and rerun |
 | `import` stored files, then Silver or Gold refused in a way no check before the first write could foresee | Bronze, the archive and the import log are committed and the inbox files are gone; Silver and Gold are not rebuilt and the previous publication stays current. Production still writes its backup set; exit 4, saying so and naming `budget import` | Put the cause right and run `import` again: with or without inbox files it finishes the Silver rebuild, the publication and production's backup. An `import` with nothing outstanding changes nothing |
 | A `rebuild` writes stores in production, then its backup set cannot be written | The stores are rebuilt; exit 4, saying so | Put right what the message names, then run `budget backup` |
+| `undo` with no previous publication, or with its result no longer retained | Nothing changes and no pointer move is recorded; exit 4 | Fix the input and rebuild: the next build publishes as usual |
+| An `undo` moves the pointer in production, then its backup set cannot be written | The previous publication is current again; exit 4, saying so | Put right what the message names, then run `budget backup` |
 | Refused import run (account conflict, or a declared range that ends after the export date or leaves out one of the payload's transactions) | Recorded as refused and logged, with a copy of its bytes under `exports\<account_id>\refused\`; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file or correct the declaration, then rerun |
 | Misfiled export (the filename's account number is not the account's declared `bank_account_number`) | Rejected before Bronze: no import run is recorded and nothing reaches the import log; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file to the right account's folder, or fix the declaration, then rerun |
 | Format failure (the file's format cannot read it) | Found by the preview and not imported: nothing reaches Bronze, the file stays in the inbox, the other files are stored; exit 3. Bronze can still record a `FormatFailure`, but `import` holds the file instead, so a parser fix needs no new presentation: `rebuild --from bronze` parses the retained payload again | Download the export again, or fix the parser, then rerun `import`. Never edit the export by hand |
@@ -843,8 +845,8 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   Bronze, once Silver is rebuilt and Gold published or held back; an import
   whose inbox is empty writes one only when it finishes what an earlier import
   left outstanding, and one that is not confirmed writes none. After every
-  `rebuild` that wrote stores, too. Only production writes
-  backup sets. What would refuse that set refuses the import before its
+  `rebuild` that wrote stores, too, and after every `undo` that moved the
+  pointer. Only production writes backup sets. What would refuse that set refuses the import before its
   first Bronze write; a set that still cannot be written leaves the imports
   committed, exits 4, and says to run `budget backup`.
 - **Written whole or not at all.** A set is written into the profile's local

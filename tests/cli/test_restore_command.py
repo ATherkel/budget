@@ -54,7 +54,7 @@ from tests.test_decision_log import documented_example
 EXIT_OK = 0
 # What catch-up prints for a set whose Gold holds no publication yet: the
 # fresh build becomes the first.
-FIRST_GOLD = "Gold     published publication 1\n"
+FIRST_GOLD = "Gold     published publication 1 (cause build)\n"
 # An export of a later week than the pipeline household's, for catch-up.
 EXPORT_LATER = payload("08.03.2026")
 EXIT_REFUSED_INPUT = 3
@@ -345,7 +345,7 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
                 status, stdout, stderr = restore(built.profile_file, written.name)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert "Gold     published publication 2\n" in stdout
+            assert "Gold     published publication 2 (cause build)\n" in stdout
             with GoldStore(built.profile) as gold:
                 current = gold.current()
                 assert current is not None

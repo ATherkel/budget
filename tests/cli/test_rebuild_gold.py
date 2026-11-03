@@ -40,7 +40,10 @@ class FirstPublicationTests(unittest.TestCase):
             status, stdout, stderr = rebuild(built.profile_file)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert "publication 1" in stdout
+            assert "Gold     published publication 1 (cause build)" in stdout
+            assert (
+                "Changes  no previous publication to compare; publication 1 is current."
+            ) in stdout
             with GoldStore(built.profile) as gold:
                 current = gold.current()
                 assert current is not None
@@ -83,6 +86,9 @@ class UnchangedRecipeTests(unittest.TestCase):
 
             assert (status, stderr) == (EXIT_OK, "")
             assert "nothing was published" in stdout
+            assert (
+                "Changes  no publication was built; publication 1 remains current."
+            ) in stdout
             with GoldStore(built.profile) as gold:
                 assert gold.pointer_history() == moves
                 current = gold.current()

@@ -36,6 +36,7 @@ from budget.dashboard import create_app
 from budget.dashboard.passphrase import PassphraseNotSetError, set_passphrase
 from budget.demo import DEFAULT_DEMO_PORT, DemoDirectoryExistsError, create_demo_profile
 from budget.gold.storage import GOLD_STAGE
+from budget.gold.store import GoldStore, UndoUnavailableError
 from budget.importing import (
     Coverage,
     ImportLogAheadOfBronzeError,
@@ -79,6 +80,7 @@ from budget.rebuilding import (
     HouseholdInputs,
     SilverNotBuiltError,
     SilverRebuild,
+    SilverReviews,
     read_household_inputs,
     rebuild_from_gold,
     rebuild_through_gold,
@@ -169,6 +171,17 @@ class RebuiltWithoutBackupError(Exception):
         super().__init__(
             "the stores were rebuilt, but no backup set could be written after "
             f"them: {reason}. Put that right, then run `budget backup`"
+        )
+
+
+class UndoneWithoutBackupError(Exception):
+    """The undo is committed, but no backup set followed it."""
+
+    def __init__(self, reason: Exception) -> None:
+        """Say what was done and what to run."""
+        super().__init__(
+            "the current publication was restored, but no backup set could be "
+            f"written after it: {reason}. Put that right, then run `budget backup`"
         )
 
 
@@ -292,6 +305,7 @@ def _parser() -> argparse.ArgumentParser:
         "--kind", choices=REVIEW_KINDS, help="list one kind of item only, no runs"
     )
     review.add_argument("--account", help="list one account's items and runs only")
+    commands.add_parser("undo", help="restore the previous current publication")
     commands.add_parser("serve", help="start the read-only dashboard")
     commands.add_parser(
         "set-passphrase",
@@ -436,6 +450,7 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
         now = datetime.now(UTC)
         summary = ""
         counts: dict[str, int] = {}
+        silver_reviews = SilverReviews()
         if from_stage in {BRONZE_STAGE, SILVER_STAGE}:
             rebuilt = rebuild_through_gold(
                 lock, now=now, inputs=inputs, from_bronze=from_stage == BRONZE_STAGE
@@ -443,6 +458,7 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
             summary = summaries.rebuild_summary(rebuilt.silver)
             counts = _rebuild_counts(rebuilt.silver)
             published = rebuilt.gold
+            silver_reviews = rebuilt.silver_reviews
         else:
             published = rebuild_from_gold(lock, now=now, inputs=inputs)
         routine_logging.finished(
@@ -451,19 +467,25 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
             counts={**counts, "published": int(published.published)},
             duration_ms=_milliseconds(started),
         )
-        summary += summaries.gold_line(published) + "\n"
         # Every production write is followed by a set covering what it wrote;
-        # a Gold rebuild that publishes nothing wrote nothing.
+        # a Gold rebuild that publishes nothing wrote nothing. The set comes
+        # before the diff, so a diff that fails cannot cost it.
         wrote = from_stage != GOLD_STAGE or published.published
-        if profile.name != PRODUCTION_PROFILE_NAME or not wrote:
-            sys.stdout.write(summary)
-            return
-        try:
-            written = back_up(lock, now=datetime.now(UTC))
-        except BACKUP_FAILURES as error:
-            sys.stdout.write(summary)
-            raise RebuiltWithoutBackupError(error) from None
-        sys.stdout.write(f"{summary}Backup   backup set {written.name} written\n")
+        written = None
+        failure = None
+        if profile.name == PRODUCTION_PROFILE_NAME and wrote:
+            try:
+                written = back_up(lock, now=datetime.now(UTC))
+            except BACKUP_FAILURES as error:
+                failure = error
+        sys.stdout.write(f"{summary}{summaries.gold_line(published)}\n")
+        sys.stdout.write(
+            summaries.publication_changes(profile, published, silver_reviews)
+        )
+        if failure is not None:
+            raise RebuiltWithoutBackupError(failure) from None
+        if written is not None:
+            sys.stdout.write(f"Backup   backup set {written.name} written\n")
 
 
 def _declared_ranges(
@@ -544,7 +566,12 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
         if not previews and done.rebuilt is None and done.held_back is None:
             sys.stdout.write("The inbox holds no exports; nothing was imported.\n")
             return EXIT_OK
-        sys.stdout.write(summaries.import_summary(done))
+        diff_text = (
+            summaries.publication_changes(profile, done.published, done.silver_reviews)
+            if done.published is not None
+            else ""
+        )
+        sys.stdout.write(summaries.import_summary(done, diff_text=diff_text))
         routine_logging.finished(
             profile,
             "import",
@@ -586,6 +613,32 @@ def _review(profile: Profile, kind: str | None, account: str | None) -> None:
         ),
     )
     sys.stdout.write(summary)
+
+
+def _undo(profile: Profile) -> None:
+    """Move the current Gold pointer back once, under the profile's writer lock."""
+    started = perf_counter()
+    with writer_lock(profile) as lock:
+        if profile.name == PRODUCTION_PROFILE_NAME:
+            require_backup_allowed(profile)
+        with GoldStore(profile) as gold:
+            move = gold.undo()
+        routine_logging.finished(
+            profile,
+            "undo",
+            counts={},
+            duration_ms=_milliseconds(started),
+        )
+        summary = summaries.undo_line(move)
+        if profile.name != PRODUCTION_PROFILE_NAME:
+            sys.stdout.write(summary + "\n")
+            return
+        try:
+            written = back_up(lock, now=datetime.now(UTC))
+        except BACKUP_FAILURES as error:
+            sys.stdout.write(summary + "\n")
+            raise UndoneWithoutBackupError(error) from None
+        sys.stdout.write(f"{summary}\nBackup   backup set {written.name} written\n")
 
 
 def _set_passphrase(profile: Profile) -> None:
@@ -671,6 +724,8 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         _rebuild(profile, arguments.from_stage)
     elif arguments.command == "review":
         _review(profile, arguments.kind, arguments.account)
+    elif arguments.command == "undo":
+        _undo(profile)
     elif arguments.command == "set-passphrase":
         _set_passphrase(profile)
     elif arguments.command == "serve":
@@ -735,6 +790,8 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         ImportedWithoutBackupError,
         ImportedWithoutPublicationError,
         RebuiltWithoutBackupError,
+        UndoneWithoutBackupError,
+        UndoUnavailableError,
         BackupWriteError,
         UnsupportedStoresError,
         LostStoreError,

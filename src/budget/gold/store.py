@@ -101,6 +101,16 @@ class PublicationKindError(ValueError):
         )
 
 
+class UndoUnavailableError(RuntimeError):
+    """The store has no previous current publication to restore."""
+
+    def __init__(self) -> None:
+        """Say why undo changed nothing."""
+        super().__init__(
+            "there is no previous publication to undo to; nothing was changed"
+        )
+
+
 class ConfigurationMismatchError(ValueError):
     """The configuration given is not the snapshot the recipe names."""
 
@@ -204,6 +214,7 @@ _INSERT_MOVE: Final = (
     " (moved_at, from_publication_id, to_publication_id, cause)"
     " VALUES (?, ?, ?, ?)"
 )
+_SELECT_LAST_MOVE: Final = "SELECT * FROM pointer_moves ORDER BY move DESC LIMIT 1"
 _SELECT_MOVES: Final = "SELECT * FROM pointer_moves ORDER BY move"
 _SELECT_BOUNDARIES: Final = "SELECT * FROM recovery_boundaries ORDER BY boundary"
 _INSERT_BOUNDARY: Final = (
@@ -465,6 +476,29 @@ class GoldStore:
             )
         )
 
+    def undo(self) -> PointerMove:
+        """Move the pointer to the previous current publication."""
+        connection = self._owner.connection(write=True)
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            last_move = connection.execute(_SELECT_LAST_MOVE).fetchone()
+            if last_move is None or last_move["from_publication_id"] is None:
+                raise UndoUnavailableError
+            if (
+                connection.execute(
+                    _SELECT_RESULT, (last_move["to_publication_id"],)
+                ).fetchone()
+                is None
+                or connection.execute(
+                    _SELECT_RESULT, (last_move["from_publication_id"],)
+                ).fetchone()
+                is None
+            ):
+                raise UndoUnavailableError
+            move = _move_pointer(connection, last_move["from_publication_id"], "undo")
+        _cleanup_after_move(connection, move.to_publication_id)
+        return move
+
     def recovery_boundaries(self) -> Sequence[RecoveryBoundary]:
         """Return every recorded recovery boundary, oldest first."""
         return self._owner.read(
@@ -532,6 +566,15 @@ class GoldStore:
 
         return self._owner.read(read)
 
+    def reviews(self, publication_id: int) -> PublishedClassificationReviews:
+        """Read one retained publication's review items in one snapshot."""
+
+        def read(connection: sqlite3.Connection) -> PublishedClassificationReviews:
+            _retained(connection, publication_id)
+            return _classification_reviews(connection, publication_id, None, None)
+
+        return self._owner.read(read)
+
     def publish(
         self,
         result: GoldResult,
@@ -576,20 +619,7 @@ class GoldStore:
             _write_recipe(connection, publication.publication_id, recipe, configuration)
             _write(connection, encoded)
             _move_pointer(connection, publication.publication_id, "build")
-        try:
-            _delete_stale_results(connection)
-        except sqlite3.Error as error:
-            # The publish has committed, so a failure here never undoes it.
-            code = getattr(error, "sqlite_errorcode", None)
-            if code is None or code & 0xFF not in _PASSING_CLEANUP_FAILURES:
-                error.add_note(
-                    f"publication {publication.publication_id} is current; "
-                    "only deleting the results no longer retained failed"
-                )
-                raise
-            warnings.warn(
-                f"{_STALE_RESULTS_KEPT}: {error}", StaleResultsWarning, stacklevel=2
-            )
+        _cleanup_after_move(connection, publication.publication_id)
 
 
 class StoredPublication:
@@ -871,6 +901,25 @@ def _delete_stale_results(connection: sqlite3.Connection) -> None:
             connection.executemany(statement, stale)
 
 
+def _cleanup_after_move(connection: sqlite3.Connection, current_id: int) -> None:
+    """Delete unreferenced results after a committed pointer move."""
+    try:
+        _delete_stale_results(connection)
+    except sqlite3.Error as error:
+        code = getattr(error, "sqlite_errorcode", None)
+        if code is None or code & 0xFF not in _PASSING_CLEANUP_FAILURES:
+            error.add_note(
+                f"publication {current_id} is current; "
+                "only deleting the results no longer retained failed"
+            )
+            raise
+        warnings.warn(
+            f"{_STALE_RESULTS_KEPT}: {error}",
+            StaleResultsWarning,
+            stacklevel=2,
+        )
+
+
 def _next_publication_id(connection: sqlite3.Connection) -> int:
     """Return one more than the highest id the store has ever published.
 
@@ -885,7 +934,7 @@ def _next_publication_id(connection: sqlite3.Connection) -> int:
 
 def _move_pointer(
     connection: sqlite3.Connection, to_publication_id: int, cause: PointerCause
-) -> None:
+) -> PointerMove:
     """Append one move from the current publication to `to_publication_id`.
 
     The move is the last statement of its transaction, so `moved_at` is read
@@ -896,6 +945,12 @@ def _move_pointer(
     moved_at = datetime.now(UTC).isoformat()
     connection.execute(
         _INSERT_MOVE, (moved_at, from_publication_id, to_publication_id, cause)
+    )
+    return PointerMove(
+        moved_at=datetime.fromisoformat(moved_at),
+        from_publication_id=from_publication_id,
+        to_publication_id=to_publication_id,
+        cause=cause,
     )
 
 

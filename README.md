@@ -237,6 +237,11 @@ metadata are kept forever. Every Gold table is keyed by `publication_id` first
 and every repository read filters on one, so a hand-written query against
 `gold.db` must do the same or it adds retained publications together.
 
+`budget undo` restores the previous current publication, appends an `undo`
+move to the same pointer history, and leaves household inputs and publication
+results unchanged. Undo is itself undoable. In production it follows the
+pointer write with a backup set.
+
 ## Importing the inbox: `budget import`
 
 Save each export in its account's inbox folder, `inbox\<account_id>\`: the
@@ -386,7 +391,8 @@ budget migrate -> 0
 budget import --ranges ranges-march.toml -> 0
   [1] joint-current  stored
   Silver   1 admitted, 0 quarantined, 0 dropped
-  Gold     published publication 1
+  Gold     published publication 1 (cause build)
+  Changes  no previous publication to compare; publication 1 is current.
 budget review -> 0
   <id>  unclassified  gold  publication 1  targets 641b439a
     target 641b439a  joint-current  2026-03-01  -45.00 DKK  "NETTO"  bank category Mad
@@ -394,7 +400,8 @@ budget review -> 0
 budget import --ranges ranges-april.toml -> 0
   [1] joint-current  stored; Silver quarantined it: balance-break, balance-chain-break
   Silver   1 admitted, 1 quarantined, 0 dropped
-  Gold     published publication 2
+  Gold     published publication 2 (cause build)
+  Review  1 balance-break opened
 budget review -> 0
   <id>  balance-break  joint-current  2026-04-02..2026-04-02  run <id>  payload <id>
   <id>  unclassified  gold  publication 2  targets 641b439a

@@ -100,7 +100,8 @@ uv run budget rebuild --from silver
 ```
 
 Expect a `Run <id>  <account>  accepted` line per import run, the Silver
-counts, then `Gold     published publication N`. Then:
+counts, then `Gold     published publication N (cause build)` and a `Changes`
+line comparing it with the previous publication. Then:
 
 | Do | Expect |
 | --- | --- |

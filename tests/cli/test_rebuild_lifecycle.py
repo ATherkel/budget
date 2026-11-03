@@ -13,7 +13,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from budget.gold.store import GoldStore
-from tests.cli.commands import rebuild
+from tests.cli.commands import rebuild, undo
 from tests.cli.lifecycle import (
     at_second_publication,
     correct_ikea_to_gifts,
@@ -24,6 +24,7 @@ from tests.cli.lifecycle import (
 )
 
 EXIT_OK = 0
+EXIT_REFUSED_ENVIRONMENT = 4
 # The lifecycle's rule change: `NET` also means groceries, at the same priority
 # as `r-streaming`, which disagrees about NETFLIX.
 R_NET = """
@@ -32,6 +33,9 @@ id = "r-net"
 when.description_contains = "NET"
 then.category = "groceries"
 """
+R_NET_NARROW = R_NET.replace(
+    'description_contains = "NET"', 'description_contains = "NETTO"'
+)
 
 
 class FirstTwoPublicationsTests(unittest.TestCase):
@@ -95,6 +99,12 @@ class RuleChangeTests(unittest.TestCase):
 
             assert (status, stderr) == (EXIT_OK, "")
             assert "publication 4" in stdout
+            assert (
+                "Changes  2026-02 joint-current: expenses -129.00 DKK; "
+                "category streaming -129.00 DKK; group leisure -129.00 DKK; "
+                "unclassified out -129.00 DKK; unclassified count +1"
+            ) in stdout
+            assert "Review  1 rule-conflict opened" in stdout
             with GoldStore(household.profile) as gold:
                 february = gold.open(4)
                 assert february_by_category(february) == {
@@ -117,6 +127,135 @@ class RuleChangeTests(unittest.TestCase):
             assert [t.transaction_id for t in reviews.targets] == [
                 netflix.transaction_id
             ]
+
+
+class ClosedReviewTests(unittest.TestCase):
+    def test_a_build_that_resolves_the_rule_conflict_reports_it_closed(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            household = at_second_publication(Path(directory))
+            correct_ikea_to_gifts(household.profile)
+            assert rebuild(household.profile_file)[0] == EXIT_OK
+            rules = household.profile.input_file("rules.toml")
+            rules.write_text(
+                rules.read_text(encoding="utf-8") + R_NET, encoding="utf-8"
+            )
+            assert rebuild(household.profile_file)[0] == EXIT_OK
+            rules.write_text(
+                rules.read_text(encoding="utf-8").replace(R_NET, R_NET_NARROW),
+                encoding="utf-8",
+            )
+
+            status, stdout, stderr = rebuild(household.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 5" in stdout
+            assert (
+                "Changes  2026-02 joint-current: expenses +129.00 DKK; "
+                "category streaming +129.00 DKK; group leisure +129.00 DKK; "
+                "unclassified out +129.00 DKK; unclassified count -1"
+            ) in stdout
+            assert "Review  1 rule-conflict closed" in stdout
+
+
+class UndoTests(unittest.TestCase):
+    def test_undo_restores_the_previous_publication_without_changing_inputs(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            household = at_second_publication(Path(directory))
+            correct_ikea_to_gifts(household.profile)
+            assert rebuild(household.profile_file)[0] == EXIT_OK
+            rules = household.profile.input_file("rules.toml")
+            rules.write_text(
+                rules.read_text(encoding="utf-8") + R_NET, encoding="utf-8"
+            )
+            assert rebuild(household.profile_file)[0] == EXIT_OK
+            inputs = {
+                name: household.profile.input_file(name).read_bytes()
+                for name in ("accounts.toml", "taxonomy.toml", "rules.toml")
+            }
+
+            status, stdout, stderr = undo(household.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout == ("Gold     publication 3 is current (was 4; cause undo)\n")
+            assert {
+                name: household.profile.input_file(name).read_bytes() for name in inputs
+            } == inputs
+            with GoldStore(household.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 3
+                assert [
+                    (move.from_publication_id, move.to_publication_id, move.cause)
+                    for move in gold.pointer_history()
+                ][-1] == (4, 3, "undo")
+
+            status, stdout, stderr = undo(household.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout == ("Gold     publication 4 is current (was 3; cause undo)\n")
+            with GoldStore(household.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 4
+                assert [
+                    (move.from_publication_id, move.to_publication_id, move.cause)
+                    for move in gold.pointer_history()
+                ] == [
+                    (None, 1, "build"),
+                    (1, 2, "build"),
+                    (2, 3, "build"),
+                    (3, 4, "build"),
+                    (4, 3, "undo"),
+                    (3, 4, "undo"),
+                ]
+
+
+class PostUndoBuildTests(unittest.TestCase):
+    def test_a_build_after_undo_compares_with_the_current_pointer(self) -> None:
+        with TemporaryDirectory() as directory:
+            household = at_second_publication(Path(directory))
+            correct_ikea_to_gifts(household.profile)
+            assert rebuild(household.profile_file)[0] == EXIT_OK
+            rules = household.profile.input_file("rules.toml")
+            rules.write_text(
+                rules.read_text(encoding="utf-8") + R_NET, encoding="utf-8"
+            )
+            assert rebuild(household.profile_file)[0] == EXIT_OK
+            assert undo(household.profile_file)[0] == EXIT_OK
+            rules.write_text(
+                rules.read_text(encoding="utf-8").replace(R_NET, R_NET_NARROW),
+                encoding="utf-8",
+            )
+
+            status, stdout, stderr = rebuild(household.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 5" in stdout
+            assert "Changes  no measure or review item changed." in stdout
+            with GoldStore(household.profile) as gold:
+                assert [
+                    (move.from_publication_id, move.to_publication_id, move.cause)
+                    for move in gold.pointer_history()
+                ][-1] == (3, 5, "build")
+                assert [each.publication_id for each in gold.available()] == [3, 5]
+
+
+class UndoRefusalTests(unittest.TestCase):
+    def test_undo_refuses_before_there_is_a_previous_publication(self) -> None:
+        with TemporaryDirectory() as directory:
+            household = lifecycle(Path(directory))
+
+            status, stdout, stderr = undo(household.profile_file)
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "there is no previous publication to undo to" in stderr
+            with GoldStore(household.profile) as gold:
+                assert gold.current() is None
+                assert gold.pointer_history() == ()
 
 
 class RetractedDecisionTests(unittest.TestCase):

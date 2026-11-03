@@ -114,6 +114,8 @@ def test_a_read_only_store_refuses_publish_without_writing(profile: Profile) -> 
         assert reader.current() == first
         assert reader.open(first.publication_id).accounts()
         with pytest.raises(GoldStoreReadOnlyError):
+            reader.undo()
+        with pytest.raises(GoldStoreReadOnlyError):
             reader.publish(GoldResult(publication(2), RECORDS), RECIPE, CONFIGURATION)
 
     with GoldStore(profile) as writer:
@@ -130,6 +132,8 @@ CLOSED_ACTIONS: dict[str, Callable[[GoldStore, GoldRepository], object]] = {
     "recipe": lambda store, _repository: store.recipe(1),
     "pointer history": lambda store, _repository: store.pointer_history(),
     "classification reviews": lambda store, _repository: store.classification_reviews(),
+    "reviews": lambda store, _repository: store.reviews(1),
+    "undo": lambda store, _repository: store.undo(),
     "publish": lambda store, _repository: store.publish(
         GoldResult(publication(2), RECORDS), RECIPE, CONFIGURATION
     ),
@@ -226,6 +230,35 @@ def test_a_first_publish_becomes_current(store: GoldStore) -> None:
         cause="build",
     )
     assert before <= move.moved_at <= after
+
+
+def test_undo_moves_to_the_previous_current_and_keeps_both_results(
+    store: GoldStore,
+) -> None:
+    first, second, third = (
+        publish(store, publication_id) for publication_id in (1, 2, 3)
+    )
+    second_accounts = store.open(second.publication_id).accounts()
+    third_accounts = store.open(third.publication_id).accounts()
+    before = datetime.now(UTC)
+
+    move = store.undo()
+
+    after = datetime.now(UTC)
+    assert store.current() == second
+    assert move == PointerMove(
+        moved_at=move.moved_at,
+        from_publication_id=third.publication_id,
+        to_publication_id=second.publication_id,
+        cause="undo",
+    )
+    assert before <= move.moved_at <= after
+    assert [each.to_publication_id for each in store.pointer_history()] == [1, 2, 3, 2]
+    assert store.open(second.publication_id).accounts() == second_accounts
+    assert store.open(third.publication_id).accounts() == third_accounts
+    assert first.publication_id not in {
+        publication.publication_id for publication in store.available()
+    }
 
 
 def test_the_store_hands_out_increasing_publication_ids(store: GoldStore) -> None:

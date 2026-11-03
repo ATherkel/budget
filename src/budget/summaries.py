@@ -17,9 +17,13 @@ from typing import Final
 
 from budget.bronze.models import ImportRun
 from budget.gold import ClassificationReviewKind
+from budget.gold.diff import compare_publications, review_line
 from budget.gold.models import GoldReviewTarget
+from budget.gold.repository import PublicationUnavailableError
+from budget.gold.store import GoldStore, PointerMove
 from budget.inbox import LEFT_IN_INBOX, FileOutcome, ImportedInbox
-from budget.rebuilding import GoldRebuild, SilverRebuild
+from budget.profiles import Profile
+from budget.rebuilding import GoldRebuild, SilverRebuild, SilverReviews
 from budget.reviewing import OpenGoldReview, OpenReview, OpenReviews
 from budget.silver import ImportRunResult, ReviewItem, SilverResult
 
@@ -67,11 +71,62 @@ def gold_line(rebuilt: GoldRebuild) -> str:
     """Say whether a Gold rebuild published, and which publication is current."""
     number = rebuilt.publication.publication_id
     if rebuilt.published:
-        return f"Gold     published publication {number}"
+        return f"Gold     published publication {number} (cause build)"
     return (
         "Gold     the recipe is unchanged; nothing was published "
         f"(publication {number} stays current)"
     )
+
+
+def undo_line(move: PointerMove) -> str:
+    """Report the publication restored by an undo, and what it replaced."""
+    return (
+        f"Gold     publication {move.to_publication_id} is current "
+        f"(was {move.from_publication_id}; cause {move.cause})"
+    )
+
+
+def _notice(line: str, silver_reviews: SilverReviews) -> str:
+    """Add Silver's review changes to a line that compares no publications."""
+    reviews = review_line(silver_reviews.before, silver_reviews.after)
+    return f"{line}\n" if reviews is None else f"{line}\n{reviews}\n"
+
+
+def publication_changes(
+    profile: Profile, rebuilt: GoldRebuild, silver_reviews: SilverReviews
+) -> str:
+    """Describe the terminal-only publication change after a successful build."""
+    number = rebuilt.publication.publication_id
+    if not rebuilt.published:
+        return _notice(
+            f"Changes  no publication was built; publication {number} remains current.",
+            silver_reviews,
+        )
+    with GoldStore(profile, read_only=True) as gold:
+        moves = gold.pointer_history()
+        if not moves or moves[-1].from_publication_id is None:
+            return _notice(
+                "Changes  no previous publication to compare; "
+                f"publication {number} is current.",
+                silver_reviews,
+            )
+        previous_id = moves[-1].from_publication_id
+        current_id = moves[-1].to_publication_id
+        try:
+            previous = gold.open(previous_id)
+        except PublicationUnavailableError:
+            return _notice(
+                f"Changes  publication {previous_id} is no longer retained, so "
+                f"nothing can be compared; publication {number} is current.",
+                silver_reviews,
+            )
+        lines = compare_publications(
+            previous,
+            gold.open(current_id),
+            previous_reviews=(*silver_reviews.before, *gold.reviews(previous_id).items),
+            current_reviews=(*silver_reviews.after, *gold.reviews(current_id).items),
+        )
+    return "\n".join(lines or ("Changes  no measure or review item changed.",)) + "\n"
 
 
 def _row(run: ImportRun, rebuild: SilverRebuild) -> _Row:
@@ -170,7 +225,7 @@ def _run_line(row: _Row) -> str:
     return f"Run  {row.import_run_id}  {row.account_id}  {row.status}{reasons}"
 
 
-def import_summary(imported: ImportedInbox) -> str:
+def import_summary(imported: ImportedInbox, *, diff_text: str = "") -> str:
     """Report each inbox file by its number, then Silver's counts.
 
     A file is named by its number in the listing the prompt showed, never by
@@ -195,6 +250,7 @@ def import_summary(imported: ImportedInbox) -> str:
     )
     if imported.published is not None:
         lines.append(gold_line(imported.published))
+        lines.extend(diff_text.rstrip().splitlines())
     if imported.backup is not None:
         lines.append(f"Backup   backup set {imported.backup.name} written")
     return "\n".join(lines) + "\n"
