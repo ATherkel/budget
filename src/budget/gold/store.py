@@ -934,11 +934,11 @@ def _next_publication_id(connection: sqlite3.Connection) -> int:
     so an id can repeat one lost after the set (#376); the store's recovery
     boundaries say where.
     """
+    following = int(connection.execute(_SELECT_NEXT_ID).fetchone()[0])
     boundary = connection.execute(_SELECT_LATEST_BOUNDARY_ID).fetchone()
-    if boundary is not None:
-        return int(boundary[0])
-    row = connection.execute(_SELECT_NEXT_ID).fetchone()
-    return int(row[0])
+    if boundary is None:
+        return following
+    return max(following, int(boundary[0]))
 
 
 def _move_pointer(
