@@ -21,6 +21,7 @@ from tests.gold.worked_example import ACCOUNTS, CURRENT
 EXIT_OK = 0
 # The day after the worked example's only export, so May is its current month.
 PUBLISHED_AT = datetime(2026, 5, 9, 8, 0, tzinfo=UTC)
+MAY_PROVISIONAL = "  provisional: current month, late bookings unsettled"
 NOTHING_PUBLISHED = "Published figures: unavailable, nothing is published"
 
 
@@ -65,12 +66,12 @@ class StatusCommandTests(unittest.TestCase):
                 "joint-current  2026-02  partial",
                 "joint-current  2026-03  partial",
                 "joint-current  2026-04  complete",
-                "joint-current  2026-05  partial",
+                f"joint-current  2026-05  partial{MAY_PROVISIONAL}",
                 "joint-savings  2026-01  partial",
                 "joint-savings  2026-02  complete",
                 "joint-savings  2026-03  complete",
                 "joint-savings  2026-04  complete",
-                "joint-savings  2026-05  partial",
+                f"joint-savings  2026-05  partial{MAY_PROVISIONAL}",
             ]
 
     def test_status_shows_only_the_latest_twelve_months_of_a_longer_history(
@@ -111,6 +112,38 @@ class StatusCommandTests(unittest.TestCase):
                 "2026-02",
                 "2026-03",
                 "2026-04",
+            ]
+
+
+class StatusProvisionalTests(unittest.TestCase):
+    def test_status_says_why_a_month_is_provisional(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            migrate_gold(profile)
+            with GoldStore(profile) as store:
+                publish(store, 1)
+
+            _, in_may, _ = status(profile_file, now=PUBLISHED_AT)
+            _, in_june, _ = status(profile_file, now=datetime(2026, 6, 10, tzinfo=UTC))
+
+            def lines(output: str, month: str) -> list[str]:
+                return [
+                    line
+                    for line in output.splitlines()
+                    if line.startswith("joint-current") and f"  {month}  " in line
+                ]
+
+            assert lines(in_may, "2026-04") == ["joint-current  2026-04  complete"]
+            assert lines(in_may, "2026-05") == [
+                (
+                    "joint-current  2026-05  partial"
+                    "  provisional: current month, late bookings unsettled"
+                )
+            ]
+            assert lines(in_june, "2026-05") == [
+                "joint-current  2026-05  partial  provisional: late bookings unsettled"
             ]
 
 
