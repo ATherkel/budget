@@ -7,6 +7,7 @@ absent. It reuses the figures analytics already publishes and defines none of
 its own.
 """
 
+import sqlite3
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ from budget.gold import Coverage, ReportingMonth
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
 from budget.silver import ImportRunResult, SilverStore
+from budget.sqlstore import StoreError
 from budget.timezone import COPENHAGEN
 
 # The default completeness output covers this many reporting months.
@@ -70,6 +72,8 @@ class ImportEvidence:
     accounts: tuple[AccountEvidenceStatus, ...]
     # Open Silver review items per kind.
     review_kinds: tuple[tuple[str, int], ...] = ()
+    # Why Silver could not be read, when it could not: never an empty result.
+    unreadable: str | None = None
 
 
 @dataclass(frozen=True)
@@ -91,10 +95,13 @@ def _import_evidence(profile: Profile) -> ImportEvidence | None:
     """Read each account's latest export and Evidence through from Silver."""
     if not profile.silver_store.exists():
         return None
-    with SilverStore(profile, read_only=True) as store:
-        if not store.is_built():
-            return None
-        result = store.read()
+    try:
+        with SilverStore(profile, read_only=True) as store:
+            if not store.is_built():
+                return None
+            result = store.read()
+    except (StoreError, sqlite3.DatabaseError) as error:
+        return ImportEvidence(accounts=(), unreadable=str(error))
     exports: dict[str, date] = {}
     for each in result.evidence_exports:
         exports[each.account_id] = max(

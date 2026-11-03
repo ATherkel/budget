@@ -643,11 +643,18 @@ def _undo(profile: Profile) -> None:
         sys.stdout.write(f"{summary}\nBackup   backup set {written.name} written\n")
 
 
-def _status(profile: Profile) -> None:
-    """Show balance and classification completeness, with no lock."""
-    sys.stdout.write(
-        summaries.completeness_summary(completeness(profile, now=datetime.now(UTC)))
-    )
+def _status(profile: Profile) -> int:
+    """Show balance and classification completeness, with no lock.
+
+    Completeness findings never change the exit status; evidence that cannot
+    be read is a defect in a store, not a finding, so it does.
+    """
+    found = completeness(profile, now=datetime.now(UTC))
+    sys.stdout.write(summaries.completeness_summary(found))
+    if found.evidence is not None and found.evidence.unreadable is not None:
+        sys.stderr.write("budget: the import evidence could not be read\n")
+        return EXIT_VERIFICATION_FAILED
+    return EXIT_OK
 
 
 def _set_passphrase(profile: Profile) -> None:
@@ -714,7 +721,6 @@ def _milliseconds(started: float) -> int:
 # The commands that take nothing but the profile.
 _PROFILE_ONLY_COMMANDS: Final[Mapping[str, Callable[[Profile], None]]] = {
     "backup": _backup,
-    "status": _status,
     "undo": _undo,
     "set-passphrase": _set_passphrase,
     "serve": _serve,
@@ -735,6 +741,8 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         return _import(profile, arguments.ranges)
     if arguments.command == "restore":
         return _restore(profile, arguments.backup_set)
+    if arguments.command == "status":
+        return _status(profile)
     if arguments.command in _PROFILE_ONLY_COMMANDS:
         _PROFILE_ONLY_COMMANDS[arguments.command](profile)
     elif arguments.command == "dev":

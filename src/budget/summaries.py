@@ -85,7 +85,9 @@ def completeness_summary(found: Completeness) -> str:
     lines.extend(_review_lines(found))
     lines.append("Import evidence (operational, apart from published figures)")
     accounts = () if found.evidence is None else found.evidence.accounts
-    if not accounts:
+    if found.evidence is not None and found.evidence.unreadable is not None:
+        lines.append(f"  unavailable: could not be read: {found.evidence.unreadable}")
+    elif not accounts:
         lines.append("  none recorded")
     for each in accounts:
         lines.extend(_evidence_lines(each))
@@ -95,7 +97,7 @@ def completeness_summary(found: Completeness) -> str:
 def _review_lines(found: Completeness) -> list[str]:
     """Say the open review items per kind, Silver's and Gold's on their own lines."""
     lines: list[str] = []
-    if found.evidence is not None:
+    if found.evidence is not None and found.evidence.unreadable is None:
         lines.append(f"  Silver (operational): {_kinds(found.evidence.review_kinds)}")
     if found.published is not None:
         lines.append(
