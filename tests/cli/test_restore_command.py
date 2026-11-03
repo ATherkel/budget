@@ -414,6 +414,42 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
                 1_000_001,
             ]
 
+    def test_a_restore_jumps_past_a_set_whose_highest_id_is_a_million(
+        self,
+    ) -> None:
+        # The jump is to the next million strictly above the set's highest
+        # id, so a set already holding 1,000,000 starts new ids at 2,000,000.
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            later = drop(
+                built.profile, "joint-current", "danske-20260310.csv", EXPORT_LATER
+            )
+            with writer_lock(built.profile) as lock:
+                import_inbox_file(
+                    lock,
+                    later,
+                    Coverage(
+                        covers_from=date(2026, 3, 5), covers_through=date(2026, 3, 9)
+                    ),
+                )
+            shutil.rmtree(built.profile.stores)
+            with mock.patch("subprocess.run", side_effect=_clean_checkout):
+                assert restore(built.profile_file, written.name)[0] == EXIT_OK
+            with GoldStore(built.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1_000_000
+            with writer_lock(built.profile) as lock:
+                jumped = back_up(lock, now=datetime.now(UTC))
+            shutil.rmtree(built.profile.stores)
+
+            assert restore(built.profile_file, jumped.name)[0] == EXIT_OK
+
+            with GoldStore(built.profile) as gold:
+                assert gold.recovery_boundaries()[-1].first_publication_id == (
+                    2_000_000
+                )
+
     def test_restore_records_where_the_recovered_publication_history_ends(
         self,
     ) -> None:
