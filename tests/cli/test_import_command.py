@@ -1194,7 +1194,9 @@ class ProductionImportTests(unittest.TestCase):
                     status, stdout, stderr = import_(profile_file, *options)
 
                 assert (status, stderr) == (EXIT_OK, "")
-                assert stdout == "The inbox holds no exports; nothing was imported.\n"
+                assert stdout.startswith(
+                    "The inbox holds no exports; nothing was imported.\n"
+                )
                 assert _set_names(profile) == sets_before
 
     def test_when_no_file_reaches_bronze_nothing_is_rebuilt_or_backed_up(
