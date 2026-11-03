@@ -52,6 +52,7 @@ from budget.silver import (
 )
 from budget.silver.currencies import UnknownCurrencyError, minor_unit_places
 from budget.silver.decisions import SilverDecision
+from budget.silver.formats import SourceFormat
 from budget.silver.identity import IDENTITY_VERSION
 from budget.silver.storage import silver_stage
 
@@ -371,6 +372,7 @@ def rebuild_through_gold(
     now: datetime,
     inputs: HouseholdInputs | None = None,
     from_bronze: bool = False,
+    formats: Mapping[str, SourceFormat] | None = None,
 ) -> PipelineRebuild:
     """Rebuild Silver from Bronze, then publish Gold from it.
 
