@@ -31,6 +31,7 @@ from tests.gold.publishing import CONFIGURATION, RECIPE, publication, publish
 from tests.gold.worked_example import RECORDS
 
 EXIT_OK = 0
+EXIT_VERIFICATION_FAILED = 5
 CURRENT = "joint-current"
 SAVINGS = "joint-savings"
 PUBLISHED_AT = datetime(2026, 5, 9, 8, 0, tzinfo=UTC)
@@ -300,3 +301,26 @@ class StatusNoEvidenceTests(unittest.TestCase):
                 assert (code, stderr) == (EXIT_OK, "")
                 assert lines[-2:] == [EVIDENCE_HEADING, "  none recorded"], stdout
                 assert _everything_under(folder) == before
+
+    def test_status_reports_unreadable_evidence_and_fails_instead_of_looking_fresh(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            migrate_gold(profile)
+            with GoldStore(profile) as store:
+                publish(store, 1)
+            profile.silver_store.write_bytes(b"this is not a database")
+
+            code, stdout, stderr = status(profile_file, now=PUBLISHED_AT)
+
+            lines = stdout.splitlines()
+            assert code == EXIT_VERIFICATION_FAILED, stderr
+            assert "Published figures: publication 1 (current)" in lines
+            assert EVIDENCE_HEADING in lines, stdout
+            unreadable = lines[lines.index(EVIDENCE_HEADING) + 1]
+            assert unreadable.startswith("  unavailable: could not be read: ")
+            assert "none recorded" not in stdout
+            assert profile.silver_store.read_bytes() == b"this is not a database"
