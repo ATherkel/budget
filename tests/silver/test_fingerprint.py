@@ -152,6 +152,42 @@ def test_every_public_silver_field_changes_the_fingerprint() -> None:
     assert result_fingerprint(base, currencies={"joint-current": "EUR"}) != fingerprint
 
 
+def test_incidental_order_and_decimal_scale_do_not_change_the_fingerprint() -> None:
+    base = _every_record()
+    first = base.transactions[0]
+    second = replace(
+        first,
+        transaction_id="t2",
+        description="OTHER",
+        amount=Decimal("1.20"),
+    )
+    ordered = replace(base, transactions=(first, second))
+    reordered = replace(
+        base,
+        transactions=(
+            replace(second, amount=Decimal("1.200")),
+            replace(first, amount=Decimal("12.300")),
+        ),
+        import_run_results=tuple(
+            replace(
+                run,
+                review_item_ids=tuple(reversed(run.review_item_ids)),
+            )
+            for run in base.import_run_results
+        ),
+        review_items=tuple(
+            replace(item, payload_ids=tuple(reversed(item.payload_ids)))
+            for item in base.review_items
+        ),
+    )
+    currencies = {"joint-savings": "EUR", "joint-current": "DKK"}
+    reversed_currencies = dict(reversed(tuple(currencies.items())))
+
+    assert result_fingerprint(ordered, currencies=currencies) == result_fingerprint(
+        reordered, currencies=reversed_currencies
+    )
+
+
 def _different_value(name: str, value: object) -> object:
     """Return a valid public value distinct from the one in the fixture."""
     if name in {"balance", "end_of_day_balance"}:
