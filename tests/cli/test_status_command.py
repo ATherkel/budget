@@ -6,13 +6,19 @@ tests observe what an operator reads, not the report objects behind it.
 """
 
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from budget.gold.storage import migrate_gold
+from budget.gold.store import GoldStore
 from tests.cli.commands import status
-from tests.cli.profile_files import write_profile
+from tests.cli.profile_files import development_profile, write_profile
+from tests.gold.publishing import publish
 
 EXIT_OK = 0
+# The day after the worked example's only export, so May is its current month.
+PUBLISHED_AT = datetime(2026, 5, 9, 8, 0, tzinfo=UTC)
 NOTHING_PUBLISHED = "Published figures: unavailable, nothing is published"
 
 
@@ -35,6 +41,35 @@ class StatusCommandTests(unittest.TestCase):
             assert (code, stderr) == (EXIT_OK, "")
             assert NOTHING_PUBLISHED in stdout.splitlines()
             assert _everything_under(folder) == before
+
+    def test_status_names_the_publication_and_each_account_months_coverage(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            migrate_gold(profile)
+            with GoldStore(profile) as store:
+                publish(store, 1)
+
+            code, stdout, stderr = status(profile_file, now=PUBLISHED_AT)
+
+            lines = stdout.splitlines()
+            assert (code, stderr) == (EXIT_OK, "")
+            assert "Published figures: publication 1 (current)" in lines
+            assert [line for line in lines if line.startswith("joint-")] == [
+                "joint-current  2026-01  partial",
+                "joint-current  2026-02  partial",
+                "joint-current  2026-03  partial",
+                "joint-current  2026-04  complete",
+                "joint-current  2026-05  partial",
+                "joint-savings  2026-01  partial",
+                "joint-savings  2026-02  complete",
+                "joint-savings  2026-03  complete",
+                "joint-savings  2026-04  complete",
+                "joint-savings  2026-05  partial",
+            ]
 
 
 if __name__ == "__main__":
