@@ -362,6 +362,8 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
     ) -> None:
         # Publications made after the set are lost: the boundary says so, so
         # a lookup can report the gap instead of inferring continuous use.
+        # New ids jump to the next million above the set's highest, so none
+        # reuses the id of a publication lost after the set (#376).
         with TemporaryDirectory() as directory:
             built, written = _published_production(Path(directory) / "prod")
             shutil.rmtree(built.profile.stores)
@@ -375,7 +377,7 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
             assert boundary.backup_created_at == written.created_at
             assert boundary.restored_at >= before
             assert boundary.restored_current_id == 1
-            assert boundary.first_publication_id == 2
+            assert boundary.first_publication_id == 1_000_000
 
     def test_restore_names_the_publication_undo_returns_to_after_catch_up(
         self,
@@ -432,7 +434,7 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
             with GoldStore(built.profile) as gold:
                 (boundary,) = gold.recovery_boundaries()
             assert boundary.restored_current_id is None
-            assert boundary.first_publication_id == 1
+            assert boundary.first_publication_id == 1_000_000
 
     def test_restore_backs_up_the_restored_profile_when_it_finishes(self) -> None:
         # As `migrate` does after it changes stores: the boundary and any
