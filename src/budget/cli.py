@@ -653,7 +653,11 @@ def _status(profile: Profile) -> int:
     sys.stdout.write(summaries.completeness_summary(found))
     if found.evidence is not None and found.evidence.unreadable is not None:
         sys.stderr.write("budget: the import evidence could not be read\n")
-        return EXIT_VERIFICATION_FAILED
+        return (
+            EXIT_VERIFICATION_FAILED
+            if found.evidence.damaged
+            else EXIT_REFUSED_ENVIRONMENT
+        )
     return EXIT_OK
 
 

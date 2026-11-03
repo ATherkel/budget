@@ -76,6 +76,9 @@ class ImportEvidence:
     review_kinds: tuple[tuple[str, int], ...] = ()
     # Why Silver could not be read, when it could not: never an empty result.
     unreadable: str | None = None
+    # True when the file is damaged, False when the environment refuses it
+    # (a migration is due, or the store is busy).
+    damaged: bool = False
 
 
 @dataclass(frozen=True)
@@ -102,8 +105,10 @@ def _import_evidence(profile: Profile) -> ImportEvidence | None:
             if not store.is_built():
                 return None
             result = store.read()
-    except (StoreError, sqlite3.DatabaseError) as error:
+    except StoreError as error:
         return ImportEvidence(accounts=(), unreadable=str(error))
+    except sqlite3.DatabaseError as error:
+        return ImportEvidence(accounts=(), unreadable=str(error), damaged=True)
     exports: dict[str, date] = {}
     for each in result.evidence_exports:
         exports[each.account_id] = max(
