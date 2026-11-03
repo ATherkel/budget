@@ -38,7 +38,8 @@ type SilverRecord = (
 def result_fingerprint(result: SilverResult, *, currencies: Mapping[str, str]) -> str:
     """Return the result and currency snapshot's lowercase hexadecimal hash."""
     document = {
-        "currencies": dict(currencies),
+        "scheme": SILVER_FINGERPRINT_SCHEME,
+        "currencies": _currencies(currencies),
         "transactions": _rows(result.transactions),
         "transaction_evidence": _rows(result.transaction_evidence),
         "unbooked_records": _rows(result.unbooked_records),
@@ -55,6 +56,14 @@ def result_fingerprint(result: SilverResult, *, currencies: Mapping[str, str]) -
         ensure_ascii=False,
     )
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _currencies(currencies: Mapping[str, str]) -> list[dict[str, str]]:
+    """Write the currency snapshot in account order."""
+    return [
+        {"account_id": account_id, "currency": currency}
+        for account_id, currency in sorted(currencies.items())
+    ]
 
 
 def _rows(records: Sequence[SilverRecord]) -> list[dict[str, object]]:
