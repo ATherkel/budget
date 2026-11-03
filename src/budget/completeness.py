@@ -7,6 +7,8 @@ absent. It reuses the figures analytics already publishes and defines none of
 its own.
 """
 
+from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Final
@@ -47,6 +49,8 @@ class PublishedCompleteness:
 
     publication_id: int
     months: tuple[AccountMonthCompleteness, ...]
+    # Open Gold review items per kind, from the same publication.
+    review_kinds: tuple[tuple[str, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -64,6 +68,8 @@ class ImportEvidence:
     """Operational import evidence, read apart from any publication's figures."""
 
     accounts: tuple[AccountEvidenceStatus, ...]
+    # Open Silver review items per kind.
+    review_kinds: tuple[tuple[str, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -110,8 +116,14 @@ def _import_evidence(profile: Profile) -> ImportEvidence | None:
                 ),
             )
             for account_id in sorted(exports.keys() & through.keys())
-        )
+        ),
+        _by_kind(item.kind for item in result.review_items if item.resolved_by is None),
     )
+
+
+def _by_kind(kinds: Iterable[str]) -> tuple[tuple[str, int], ...]:
+    """Count review items per kind, in kind order."""
+    return tuple(sorted(Counter(kinds).items()))
 
 
 def _published(profile: Profile, now: datetime) -> PublishedCompleteness | None:
@@ -130,7 +142,10 @@ def _published(profile: Profile, now: datetime) -> PublishedCompleteness | None:
             for account_id in (account.account_id for account in options.accounts)
             for month in _latest_months(options)
         )
-    return PublishedCompleteness(current.publication_id, months)
+        reviews = store.reviews(current.publication_id)
+    return PublishedCompleteness(
+        current.publication_id, months, _by_kind(item.kind for item in reviews.items)
+    )
 
 
 def _latest_months(options: SelectionOptions) -> list[ReportingMonth]:

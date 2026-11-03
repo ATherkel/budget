@@ -82,11 +82,30 @@ def completeness_summary(found: Completeness) -> str:
         lines.extend(_month_line(each) for each in published.months)
         lines.append("Unclassified money, by account and month")
         lines.extend(_unclassified_line(each) for each in published.months)
+    lines.extend(_review_lines(found))
     if found.evidence is not None:
         lines.append("Import evidence (operational, apart from published figures)")
         for each in found.evidence.accounts:
             lines.extend(_evidence_lines(each))
     return "\n".join(lines) + "\n"
+
+
+def _review_lines(found: Completeness) -> list[str]:
+    """Say the open review items per kind, Silver's and Gold's on their own lines."""
+    lines: list[str] = []
+    if found.evidence is not None:
+        lines.append(f"  Silver (operational): {_kinds(found.evidence.review_kinds)}")
+    if found.published is not None:
+        lines.append(
+            f"  Gold (publication {found.published.publication_id}): "
+            f"{_kinds(found.published.review_kinds)}"
+        )
+    return ["Open review items", *lines] if lines else []
+
+
+def _kinds(counts: tuple[tuple[str, int], ...]) -> str:
+    """Say review item counts as `kind n`, or `none` when there are none."""
+    return ", ".join(f"{kind} {count}" for kind, count in counts) or "none"
 
 
 def _evidence_lines(each: AccountEvidenceStatus) -> list[str]:
