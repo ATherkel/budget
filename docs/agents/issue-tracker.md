@@ -45,25 +45,27 @@ reclassification into substantive work.
 
 Each numbered release milestone has a definition of done: a short list of
 user-visible outcomes at the top of the release's acceptance issue. A new issue
-goes into the current release milestone only when one of these holds, and its
+goes into a release milestone only when one of these holds, and its
 body names which one:
 
 - Without it, an outcome in the release's definition of done fails.
 - It breaks a Gold contract invariant, or risks losing or corrupting household
   data.
 
-The gate applies to any numbered release milestone, not only the current one:
-an issue that would fail an outcome in a later release's definition of done
+The gate applies to any numbered release milestone, not only the current one.
+An issue that would fail an outcome in a later release's definition of done
 goes into that release's milestone, provided that definition of done already
-exists. Everything else goes to `Polish` or `Later` by the rules above, even
-when it was found while working on a pull request for the release. Only the
-owner moves an issue into a release milestone after it has been filed. Review
-findings follow the same gate: a finding classed required in a review means
-"fix it in this pull request", not "add an issue to the release".
+exists. Otherwise, note the suspected release in the body (for example
+"Suspected gate for 0.5") and file it in `Later`. Everything else goes to
+`Polish` or `Later` by the rules above, even when it was found while working on
+a pull request for the release. Only the owner moves an issue into a release
+milestone after it has been filed. Review findings follow the same gate: a
+finding classed required in a review means "fix it in this pull request", not
+"add an issue to the release".
 
-Before work on a release starts, check that its definition of done is written,
-then search `Later` for issues that fail one of its outcomes or meet the second
-condition above, and propose moving them into the release.
+Before work on a release starts, write its definition of done, then search
+`Later` for issues that fail one of its outcomes or meet the second condition
+above, and propose moving them in.
 
 ## Pull requests as a triage surface
 
