@@ -201,8 +201,22 @@ banner show the cause.
 `restore` brings back Gold's recipes, results and pointer history as they
 stood in the backup set; publications, labels and pointer moves made after it
 are lost. If the recipe changed since, catch-up builds a new current
-publication, and undo returns from it to the set's current one while that
-result is still usable. How the gap is recorded is left to issue #121.
+publication, and undo returns from it to the set's current one, whose result
+the build's pointer move keeps; `restore` names that publication.
+
+Each restore records a **recovery boundary** in `gold.db`: the set it came
+from and when the set was taken, when the restore ran, the set's current
+publication, and the first `publication_id` any build after the restore
+takes. The boundary lives in the store, so it survives a restart and is
+backed up and restored with the publications. A past-view lookup reads it to
+report the time between the set and the restore as unavailable, never as the
+set's publication having stayed current.
+
+The boundary does not change publication ids: the next build after a restore
+continues the restored sequence, so it can carry the same `publication_id`
+as a publication that was lost. A bare id written down before the restore
+can therefore name a different result afterwards. Issue #376 makes the
+recovery part of a publication's identity, which closes that gap.
 
 ### Past views
 

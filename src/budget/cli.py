@@ -86,6 +86,33 @@ from budget.rebuilding import (
     rebuild_through_gold,
     require_buildable_accounts,
 )
+from budget.refreshing import (
+    InputsNotReplacedError,
+    NotProductionsSetError,
+    NotRefreshableError,
+    RefreshUndoError,
+    RefreshWriteError,
+    refresh,
+    require_refreshable,
+)
+from budget.restoring import (
+    CatchUpCodeRefusedError,
+    CatchUpInputsRefusedError,
+    CatchUpRefusedError,
+    DamagedStoreError,
+    DecisionLogDamagedError,
+    DecisionLogDivergedError,
+    ImportLogDisagreesError,
+    IncompleteSetError,
+    NoUsableSetError,
+    OccupiedProfileError,
+    RestoreWriteError,
+    UndoAfterCatchUp,
+    UnfinishedRestoreError,
+    UnknownStageError,
+    require_no_unfinished_restore,
+    restore,
+)
 from budget.reviewing import REVIEW_KINDS, open_reviews
 from budget.silver.storage import SILVER_STAGE
 
@@ -236,6 +263,25 @@ def _parser() -> argparse.ArgumentParser:
         help="start a new production store where none exists",
     )
     commands.add_parser("backup", help="write a backup set of production")
+    restore_ = commands.add_parser(
+        "restore", help="restore a whole profile from a backup set"
+    )
+    dev = commands.add_parser("dev", help="development-only commands")
+    dev_commands = dev.add_subparsers(dest="dev_command", required=True)
+    refresh = dev_commands.add_parser(
+        "refresh", help="restore production's newest backup set for development"
+    )
+    refresh.add_argument(
+        "--inputs", action="store_true", help="also replace development's inputs"
+    )
+    refresh.add_argument(
+        "--writable",
+        action="store_true",
+        help="restore into development's own stores, to rehearse a migration",
+    )
+    restore_.add_argument(
+        "backup_set", nargs="?", help="the set to restore (default: the newest)"
+    )
     rebuild = commands.add_parser("rebuild", help="rebuild a stage and every later one")
     rebuild.add_argument(
         "--from",
@@ -312,6 +358,79 @@ def _backup(profile: Profile) -> None:
     with writer_lock(profile) as lock:
         written = back_up(lock, now=datetime.now(UTC))
     sys.stdout.write(f"backup set {written.name} written\n")
+
+
+def _undo_line(undo: UndoAfterCatchUp, backup_set: str) -> str:
+    """Say where undo returns after catch-up."""
+    return (
+        f"undo returns to publication {undo.publication_id}, the current one in "
+        f"backup set {backup_set}; publications made after that set are lost\n"
+    )
+
+
+def _restore(profile: Profile, backup_set: str | None) -> int:
+    """Restore the whole profile from a backup set, and name the set on stdout."""
+    with writer_lock(profile) as lock:
+        restored = restore(lock, backup_set, now=datetime.now(UTC))
+    for skipped in restored.skipped:
+        sys.stdout.write(f"skipped backup set {skipped}: this code cannot read it\n")
+    for put_back in restored.put_back:
+        sys.stdout.write(f"put back {put_back} from the backup set\n")
+    if restored.imports_lost:
+        sys.stdout.write(
+            "the import log was missing: runs imported after backup set "
+            f"{restored.backup.name} are not restored\n"
+        )
+    if restored.decision_line_cut_off:
+        sys.stdout.write(
+            "the decision log's final line was cut off: it counts as never "
+            "written and is left in place; delete it before recording a decision\n"
+        )
+    if restored.decisions_lost:
+        sys.stdout.write(
+            "the decision log was missing: decisions recorded after backup set "
+            f"{restored.backup.name} cannot be recovered\n"
+        )
+    if restored.replayed:
+        runs = "run" if restored.replayed == 1 else "runs"
+        sys.stdout.write(
+            f"replayed {restored.replayed} import {runs} from the export archive\n"
+        )
+    if restored.gold_started:
+        sys.stdout.write(
+            f"backup set {restored.backup.name} holds no Gold store: Gold was "
+            "started anew, and no earlier publication is recovered\n"
+        )
+    if restored.gold is not None:
+        sys.stdout.write(summaries.gold_line(restored.gold) + "\n")
+    if restored.undo is not None:
+        sys.stdout.write(_undo_line(restored.undo, restored.backup.name))
+    sys.stdout.write(f"restored backup set {restored.backup.name}\n")
+    if restored.backed_up is not None:
+        sys.stdout.write(f"backup set {restored.backed_up.name} written\n")
+    if restored.backup_failure is not None:
+        sys.stderr.write(
+            "budget: the restore is finished, but no backup set of it could be "
+            f"written: {restored.backup_failure}; run `budget backup` once that "
+            "is put right\n"
+        )
+        return EXIT_REFUSED_ENVIRONMENT
+    return EXIT_OK
+
+
+def _dev_refresh(profile: Profile, *, inputs: bool, writable: bool) -> None:
+    """Restore production's newest backup set for development; name it."""
+    # Refused before the lock, which would create the stores folder.
+    require_refreshable(profile)
+    with writer_lock(profile) as lock:
+        refreshed = refresh(lock, inputs=inputs, writable=writable)
+    for skipped in refreshed.skipped:
+        sys.stdout.write(f"skipped backup set {skipped}: this code cannot read it\n")
+    name = refreshed.backup.name
+    into = "development's own stores (writable)" if writable else "upstream (read-only)"
+    sys.stdout.write(f"restored backup set {name} into {into}\n")
+    if inputs:
+        sys.stdout.write(f"replaced development's inputs with backup set {name}'s\n")
 
 
 def _rebuild(profile: Profile, from_stage: str) -> None:
@@ -590,10 +709,17 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         return EXIT_OK
     profile_file = _selected_profile_file(arguments.profile, environ)
     profile = load_profile_file(profile_file)
+    # Until a restore finishes, its stores are its own half-done work.
+    if arguments.command not in {"restore", "set-passphrase"}:
+        require_no_unfinished_restore(profile)
     if arguments.command == "import":
         return _import(profile, arguments.ranges)
+    if arguments.command == "restore":
+        return _restore(profile, arguments.backup_set)
     if arguments.command == "backup":
         _backup(profile)
+    elif arguments.command == "dev":
+        _dev_refresh(profile, inputs=arguments.inputs, writable=arguments.writable)
     elif arguments.command == "rebuild":
         _rebuild(profile, arguments.from_stage)
     elif arguments.command == "review":
@@ -639,15 +765,27 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         EmptyPassphraseError,
         PassphraseMismatchError,
         DemoDirectoryExistsError,
+        CatchUpInputsRefusedError,
     ) as error:
         return _refuse(error, EXIT_REFUSED_INPUT)
     except (
         NoProfileSelectedError,
         UncommittedCodeError,
+        CatchUpCodeRefusedError,
         SilverNotBuiltError,
         WriterLockHeldError,
         StoresFolderUnavailableError,
         RestoreInsteadError,
+        OccupiedProfileError,
+        RestoreWriteError,
+        NotRefreshableError,
+        NotProductionsSetError,
+        InputsNotReplacedError,
+        RefreshWriteError,
+        RefreshUndoError,
+        NoUsableSetError,
+        UnknownStageError,
+        UnfinishedRestoreError,
         MigratedWithoutBackupError,
         ImportedWithoutBackupError,
         ImportedWithoutPublicationError,
@@ -664,6 +802,12 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         return _refuse(error, EXIT_REFUSED_ENVIRONMENT)
     except (
         BackupVerificationError,
+        IncompleteSetError,
+        DamagedStoreError,
+        CatchUpRefusedError,
+        ImportLogDisagreesError,
+        DecisionLogDivergedError,
+        DecisionLogDamagedError,
         ImportLogDamagedError,
         ImportLogAheadOfBronzeError,
     ) as error:
