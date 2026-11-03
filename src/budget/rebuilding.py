@@ -381,7 +381,9 @@ def rebuild_through_gold(
     before anything is stored, so a refusal Bronze's parsers, Silver's build or
     Gold's build make leaves every store as it was; only then are the stages
     replaced in order and Gold published. `formats` replace the built-in
-    source formats Silver reads, as `SilverBuildInputs.formats` does.
+    source formats Silver reads, as `SilverBuildInputs.formats` does; they apply
+    only to the Silver read, and `from_bronze=True` re-parses with the built-in
+    Bronze parsers.
     """
     profile = lock.profile
     household = read_household_inputs(profile) if inputs is None else inputs
