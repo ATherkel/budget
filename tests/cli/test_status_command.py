@@ -209,9 +209,27 @@ class StatusClassificationTests(unittest.TestCase):
 
             _, stdout, _ = status(profile_file, now=datetime(2026, 6, 10, tzinfo=UTC))
 
+            lines = stdout.splitlines()
             assert (
-                "  joint-current  2026-06  unavailable: no data" in stdout.splitlines()
-            )
+                "joint-current  2026-06  no data"
+                "  provisional: current month, late bookings unsettled"
+            ) in lines
+            assert "  joint-current  2026-06  unavailable: no data" in lines
+
+    def test_status_says_one_transaction_in_the_singular(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            migrate_gold(profile)
+            with GoldStore(profile) as store:
+                publish(store, 1)
+
+            _, stdout, _ = status(profile_file, now=PUBLISHED_AT)
+
+            assert (
+                "  joint-current  2026-03  in 0.00 DKK, out -450.00 DKK, 1 transaction"
+            ) in stdout.splitlines()
 
 
 class StatusReadOnlyTests(unittest.TestCase):
