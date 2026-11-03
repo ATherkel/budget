@@ -37,6 +37,15 @@ PUBLISHED_AT = datetime(2026, 5, 9, 8, 0, tzinfo=UTC)
 EVIDENCE_HEADING = "Import evidence (operational, apart from published figures)"
 
 
+def _everything_under(folder: Path) -> list[str]:
+    """Every path under `folder` but SQLite's own `-wal` and `-shm` sidecars."""
+    return sorted(
+        str(path.relative_to(folder))
+        for path in folder.rglob("*")
+        if not path.name.endswith(("-wal", "-shm"))
+    )
+
+
 def _export(
     run: str,
     exported_on: date,
@@ -270,3 +279,24 @@ class StatusReviewItemTests(unittest.TestCase):
                 "  Silver (operational): balance-break 1, dropped-transaction 2",
                 "  Gold (publication 1): decision-not-applicable 2",
             ]
+
+
+class StatusNoEvidenceTests(unittest.TestCase):
+    def test_status_says_no_evidence_is_recorded_rather_than_complete(self) -> None:
+        for migrated in (False, True):
+            with (
+                self.subTest(silver_store_migrated=migrated),
+                TemporaryDirectory() as d,
+            ):
+                folder = Path(d)
+                profile_file = write_profile(folder)
+                if migrated:
+                    migrate_silver(development_profile(folder))
+                before = _everything_under(folder)
+
+                code, stdout, stderr = status(profile_file)
+
+                lines = stdout.splitlines()
+                assert (code, stderr) == (EXIT_OK, "")
+                assert lines[-2:] == [EVIDENCE_HEADING, "  none recorded"], stdout
+                assert _everything_under(folder) == before
