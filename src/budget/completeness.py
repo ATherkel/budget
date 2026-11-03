@@ -21,6 +21,7 @@ from budget.analytics.reports import (
 from budget.gold import Coverage, ReportingMonth
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
+from budget.silver import SilverStore
 from budget.timezone import COPENHAGEN
 
 # The default completeness output covers this many reporting months.
@@ -49,21 +50,69 @@ class PublishedCompleteness:
 
 
 @dataclass(frozen=True)
+class AccountEvidenceStatus:
+    """What the admitted exports say about one account, as Silver stored them."""
+
+    account_id: str
+    latest_export: date
+    evidence_through: date
+
+
+@dataclass(frozen=True)
+class ImportEvidence:
+    """Operational import evidence, read apart from any publication's figures."""
+
+    accounts: tuple[AccountEvidenceStatus, ...]
+
+
+@dataclass(frozen=True)
 class Completeness:
     """The completeness of one profile; `published` is None with nothing published."""
 
     published: PublishedCompleteness | None
+    evidence: ImportEvidence | None = None
 
 
 def completeness(profile: Profile, *, now: datetime) -> Completeness:
+    """Read the import evidence and the current publication's figures."""
+    return Completeness(
+        published=_published(profile, now), evidence=_import_evidence(profile)
+    )
+
+
+def _import_evidence(profile: Profile) -> ImportEvidence | None:
+    """Read each account's latest export and Evidence through from Silver."""
+    if not profile.silver_store.exists():
+        return None
+    with SilverStore(profile, read_only=True) as store:
+        result = store.read()
+    exports: dict[str, date] = {}
+    for each in result.evidence_exports:
+        exports[each.account_id] = max(
+            each.exported_on, exports.get(each.account_id, each.exported_on)
+        )
+    through: dict[str, date] = {}
+    for each in result.account_evidence:
+        through[each.account_id] = max(
+            each.covers_through, through.get(each.account_id, each.covers_through)
+        )
+    return ImportEvidence(
+        tuple(
+            AccountEvidenceStatus(account_id, exports[account_id], through[account_id])
+            for account_id in sorted(exports.keys() & through.keys())
+        )
+    )
+
+
+def _published(profile: Profile, now: datetime) -> PublishedCompleteness | None:
     """Read the completeness figures of the current publication, as of `now`."""
     if not profile.gold_store.exists():
-        return Completeness(published=None)
+        return None
     reference_date = now.astimezone(COPENHAGEN).date()
     with GoldStore(profile, read_only=True) as store:
         current = store.current()
         if current is None:
-            return Completeness(published=None)
+            return None
         reports = HouseholdReports(store)
         options = reports.selection_options(current.publication_id, reference_date)
         months = tuple(
@@ -71,7 +120,7 @@ def completeness(profile: Profile, *, now: datetime) -> Completeness:
             for account_id in (account.account_id for account in options.accounts)
             for month in _latest_months(options)
         )
-    return Completeness(PublishedCompleteness(current.publication_id, months))
+    return PublishedCompleteness(current.publication_id, months)
 
 
 def _latest_months(options: SelectionOptions) -> list[ReportingMonth]:

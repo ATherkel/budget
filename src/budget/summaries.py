@@ -72,11 +72,19 @@ def completeness_summary(found: Completeness) -> str:
     """Report what `status` found, saying plainly what could not be shown."""
     published = found.published
     if published is None:
-        return "Published figures: unavailable, nothing is published\n"
-    lines = [f"Published figures: publication {published.publication_id} (current)"]
-    lines.extend(_month_line(each) for each in published.months)
-    lines.append("Unclassified money, by account and month")
-    lines.extend(_unclassified_line(each) for each in published.months)
+        lines = ["Published figures: unavailable, nothing is published"]
+    else:
+        lines = [f"Published figures: publication {published.publication_id} (current)"]
+        lines.extend(_month_line(each) for each in published.months)
+        lines.append("Unclassified money, by account and month")
+        lines.extend(_unclassified_line(each) for each in published.months)
+    if found.evidence is not None:
+        lines.append("Import evidence (operational, apart from published figures)")
+        lines.extend(
+            f"{each.account_id}  latest export {each.latest_export.isoformat()}"
+            f"  evidence through {each.evidence_through.isoformat()}"
+            for each in found.evidence.accounts
+        )
     return "\n".join(lines) + "\n"
 
 
