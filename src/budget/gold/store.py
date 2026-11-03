@@ -174,6 +174,7 @@ _SELECT_RETAINED_ONE: Final = (
 )
 _SELECT_RESULT: Final = "SELECT 1 FROM results WHERE publication_id = ?"
 _SELECT_NEXT_ID: Final = "SELECT coalesce(max(publication_id), 0) + 1 FROM publications"
+_SELECT_HIGHEST_ID: Final = "SELECT coalesce(max(publication_id), 0) FROM publications"
 # After a restore, new ids start at the next multiple of this (#376).
 _RECOVERY_ID_STEP: Final = 1_000_000
 _INSERT_PUBLICATION: Final = (
@@ -525,12 +526,14 @@ class GoldStore:
         with connection:
             connection.execute("BEGIN IMMEDIATE")
             pointer = connection.execute(_SELECT_CURRENT_ID).fetchone()
+            highest = int(connection.execute(_SELECT_HIGHEST_ID).fetchone()[0])
             boundary = RecoveryBoundary(
                 backup_set=backup_set,
                 backup_created_at=backup_created_at,
                 restored_at=restored_at,
                 restored_current_id=None if pointer is None else int(pointer[0]),
-                first_publication_id=_RECOVERY_ID_STEP,
+                first_publication_id=(highest // _RECOVERY_ID_STEP + 1)
+                * _RECOVERY_ID_STEP,
             )
             connection.execute(
                 _INSERT_BOUNDARY,
