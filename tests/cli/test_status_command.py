@@ -34,16 +34,16 @@ MAY_PROVISIONAL = "  provisional: current month, late bookings unsettled"
 NOTHING_PUBLISHED = "Published figures: unavailable, nothing is published"
 
 
-def _everything_under(folder: Path) -> list[str]:
-    """Every path under `folder` the application owns, relative to it, in order.
+def _everything_under(folder: Path, *, without_sidecars: bool = False) -> list[str]:
+    """Every path under `folder`, relative to it, in order.
 
-    SQLite's own `-wal` and `-shm` files are left out: any read-only
-    connection to a WAL store opens them, as `review` and `serve` do.
+    `without_sidecars` leaves out SQLite's own `-wal` and `-shm` files: any
+    read-only connection to a WAL store opens them, as `review` and `serve` do.
     """
     return sorted(
         str(path.relative_to(folder))
         for path in folder.rglob("*")
-        if not path.name.endswith(("-wal", "-shm"))
+        if not (without_sidecars and path.name.endswith(("-wal", "-shm")))
     )
 
 
@@ -244,13 +244,16 @@ class StatusReadOnlyTests(unittest.TestCase):
             gold_before = profile.gold_store.read_bytes()
 
             with writer_lock(profile):
-                before = _everything_under(folder)
+                before = _everything_under(folder, without_sidecars=True)
                 code, _, stderr = status(profile_file, now=PUBLISHED_AT)
-                after = _everything_under(folder)
+                after = _everything_under(folder, without_sidecars=True)
 
+            wal = profile.gold_store.with_name("gold.db-wal")
             assert (code, stderr) == (EXIT_OK, "")
             assert profile.gold_store.read_bytes() == gold_before
             assert after == before
+            # A read-only reader leaves the log empty; any data in it is a write.
+            assert not wal.exists() or wal.stat().st_size == 0
 
 
 def _with_a_second_unknown_in_march() -> GoldRecords:
