@@ -52,11 +52,18 @@ body names which one:
 - It breaks a Gold contract invariant, or risks losing or corrupting household
   data.
 
-Everything else goes to `Polish` or `Later` by the rules above, even when it
-was found while working on a pull request for the release. Only the owner moves
-an issue into a release milestone after it has been filed. Review findings
-follow the same gate: a finding classed required in a review means "fix it in
-this pull request", not "add an issue to the release".
+The gate applies to any numbered release milestone, not only the current one:
+an issue that would fail an outcome in a later release's definition of done
+goes into that release's milestone, provided that definition of done already
+exists. Everything else goes to `Polish` or `Later` by the rules above, even
+when it was found while working on a pull request for the release. Only the
+owner moves an issue into a release milestone after it has been filed. Review
+findings follow the same gate: a finding classed required in a review means
+"fix it in this pull request", not "add an issue to the release".
+
+Before work on a release starts, check that its definition of done is written,
+then search `Later` for issues that fail one of its outcomes or meet the second
+condition above, and propose moving them into the release.
 
 ## Pull requests as a triage surface
 
