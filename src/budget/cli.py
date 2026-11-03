@@ -484,11 +484,14 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
         sys.stdout.write(
             summaries.publication_changes(profile, published, silver_reviews)
         )
-        _show_completeness(profile)
-        if failure is not None:
-            raise RebuiltWithoutBackupError(failure) from None
         if written is not None:
             sys.stdout.write(f"Backup   backup set {written.name} written\n")
+        try:
+            _show_completeness(profile)
+        finally:
+            # A failed completeness read must not hide the missing backup.
+            if failure is not None:
+                raise RebuiltWithoutBackupError(failure) from None
 
 
 def _declared_ranges(
@@ -568,6 +571,7 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
             return done
         if not previews and done.rebuilt is None and done.held_back is None:
             sys.stdout.write("The inbox holds no exports; nothing was imported.\n")
+            _show_completeness(profile)
             return EXIT_OK
         diff_text = (
             summaries.publication_changes(profile, done.published, done.silver_reviews)
@@ -575,13 +579,13 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
             else ""
         )
         sys.stdout.write(summaries.import_summary(done, diff_text=diff_text))
-        _show_completeness(profile)
         routine_logging.finished(
             profile,
             "import",
             counts=done.counts(),
             duration_ms=_milliseconds(started),
         )
+        _show_completeness(profile)
     if done.held_back is not None:
         raise ImportedWithoutPublicationError(done.held_back, done.backup_failure)
     if done.backup_failure is not None:
