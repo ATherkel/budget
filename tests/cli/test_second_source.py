@@ -9,11 +9,18 @@ Gold records agree; nothing here touches analytics or presentation.
 
 from collections.abc import Sequence
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import NamedTuple
 
 import pytest
 
+from budget.analytics import (
+    HouseholdReports,
+    MoneyInOut,
+    MonthlyOverview,
+    ReportContext,
+)
 from budget.bronze import BronzeStore
 from budget.bronze.models import ImportDeclaration
 from budget.gold import (
@@ -21,6 +28,7 @@ from budget.gold import (
     GoldCategory,
     GoldCategoryAllocation,
     GoldTransaction,
+    ReportingMonth,
 )
 from budget.gold.store import GoldStore
 from budget.importing import Coverage, import_inbox_file
@@ -124,4 +132,30 @@ def test_both_sources_publish_the_same_gold_records(
     from_synthetic = _published(synthetic)
 
     assert len(from_danske.transactions) == 3
+    assert from_synthetic == from_danske
+
+
+def _overview(profile: Profile) -> MonthlyOverview:
+    """March 2026's household overview from the profile's current publication."""
+    with GoldStore(profile, read_only=True) as store:
+        current = store.current()
+        assert current is not None
+        context = ReportContext(
+            publication_id=current.publication_id,
+            account_ids=frozenset({"joint-current"}),
+            month=ReportingMonth(2026, 3),
+            reference_date=date(2026, 4, 15),
+        )
+        return HouseholdReports(store).monthly_overview(context)
+
+
+def test_both_sources_give_the_same_monthly_report(
+    danske: Profile, synthetic: Profile
+) -> None:
+    from_danske = _overview(danske)
+    from_synthetic = _overview(synthetic)
+
+    assert from_danske.unclassified == MoneyInOut(
+        money_in=Decimal("2000.00"), money_out=Decimal("-925.50"), count=3
+    )
     assert from_synthetic == from_danske
