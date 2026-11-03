@@ -13,7 +13,11 @@ from typing import Final
 from zoneinfo import ZoneInfo
 
 from budget.analytics.household import HouseholdReports
-from budget.analytics.reports import ReportContext, SelectionOptions
+from budget.analytics.reports import (
+    ProvisionalReason,
+    ReportContext,
+    SelectionOptions,
+)
 from budget.gold import Coverage, ReportingMonth
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
@@ -30,6 +34,7 @@ class AccountMonthCompleteness:
     account_id: str
     month: ReportingMonth
     coverage: Coverage
+    provisional: tuple[ProvisionalReason, ...]
 
 
 @dataclass(frozen=True)
@@ -92,4 +97,7 @@ def _account_month(
             reference_date=reference_date,
         )
     )
-    return AccountMonthCompleteness(account_id, month, overview.coverage.status)
+    reasons = () if overview.provisional is None else overview.provisional.reasons
+    return AccountMonthCompleteness(
+        account_id, month, overview.coverage.status, tuple(sorted(reasons))
+    )

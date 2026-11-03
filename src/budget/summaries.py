@@ -16,7 +16,7 @@ from types import MappingProxyType
 from typing import Final
 
 from budget.bronze.models import ImportRun
-from budget.completeness import Completeness
+from budget.completeness import AccountMonthCompleteness, Completeness
 from budget.gold import ClassificationReviewKind
 from budget.gold.diff import compare_publications, review_line
 from budget.gold.models import GoldReviewTarget
@@ -74,12 +74,20 @@ def completeness_summary(found: Completeness) -> str:
     if published is None:
         return "Published figures: unavailable, nothing is published\n"
     lines = [f"Published figures: publication {published.publication_id} (current)"]
-    lines.extend(
+    lines.extend(_month_line(each) for each in published.months)
+    return "\n".join(lines) + "\n"
+
+
+def _month_line(each: AccountMonthCompleteness) -> str:
+    """Say one account-month's coverage, and why its figures may still change."""
+    line = (
         f"{each.account_id}  {each.month.year:04d}-{each.month.month:02d}  "
         f"{each.coverage}"
-        for each in published.months
     )
-    return "\n".join(lines) + "\n"
+    if not each.provisional:
+        return line
+    reasons = ", ".join(reason.replace("_", " ") for reason in each.provisional)
+    return f"{line}  provisional: {reasons}"
 
 
 def gold_line(rebuilt: GoldRebuild) -> str:
