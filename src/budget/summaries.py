@@ -98,8 +98,13 @@ def completeness_summary(found: Completeness) -> str:
 def _review_lines(found: Completeness) -> list[str]:
     """Say the open review items per kind, Silver's and Gold's on their own lines."""
     lines: list[str] = []
-    if found.evidence is not None and found.evidence.unreadable is None:
-        lines.append(f"  Silver (operational): {_kinds(found.evidence.review_kinds)}")
+    if found.evidence is not None:
+        silver = (
+            "unavailable"
+            if found.evidence.unreadable is not None
+            else _kinds(found.evidence.review_kinds)
+        )
+        lines.append(f"  Silver (operational): {silver}")
     if found.published is not None:
         lines.append(
             f"  Gold (publication {found.published.publication_id}): "
