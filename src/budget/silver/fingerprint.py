@@ -3,10 +3,11 @@
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from decimal import Decimal
 from typing import Final
 
+from budget.inputs.snapshot import canonical_amount
 from budget.silver.models import (
     AccountEvidence,
     BalanceObservation,
@@ -44,8 +45,8 @@ def result_fingerprint(result: SilverResult, *, currencies: Mapping[str, str]) -
         "balance_observations": _rows(result.balance_observations),
         "account_evidence": _rows(result.account_evidence),
         "evidence_exports": _rows(result.evidence_exports),
-        "import_run_results": _rows(result.import_run_results),
-        "review_items": _rows(result.review_items),
+        "import_run_results": _import_runs(result),
+        "review_items": _review_items(result),
     }
     text = json.dumps(
         document,
@@ -57,12 +58,33 @@ def result_fingerprint(result: SilverResult, *, currencies: Mapping[str, str]) -
 
 
 def _rows(records: Sequence[SilverRecord]) -> list[dict[str, object]]:
-    """Write records in order, keeping every duplicate."""
-    return [_document(each) for each in records]
+    """Write records in canonical order, keeping every duplicate."""
+    return _sorted_documents(_document(each) for each in records)
+
+
+def _import_runs(result: SilverResult) -> list[dict[str, object]]:
+    """Write run results with their unordered nested identifier lists canonical."""
+    documents = []
+    for run in result.import_run_results:
+        document = _document(run)
+        document["errors"] = _sorted_documents(_document(each) for each in run.errors)
+        document["review_item_ids"] = sorted(run.review_item_ids)
+        documents.append(document)
+    return _sorted_documents(documents)
+
+
+def _review_items(result: SilverResult) -> list[dict[str, object]]:
+    """Write review items with their unordered payload lists canonical."""
+    documents = []
+    for item in result.review_items:
+        document = _document(item)
+        document["payload_ids"] = sorted(item.payload_ids)
+        documents.append(document)
+    return _sorted_documents(documents)
 
 
 def _document(record: SilverRecord) -> dict[str, object]:
-    """Turn one dataclass into a JSON-compatible document."""
+    """Turn one dataclass into a canonical JSON-compatible document."""
     if isinstance(
         record,
         Transaction | TransactionEvidence | UnbookedRecord | BalanceObservation,
@@ -81,7 +103,7 @@ def _transaction_document(
                 "transaction_id": record.transaction_id,
                 "account_id": record.account_id,
                 "transaction_date": record.transaction_date.isoformat(),
-                "amount": str(record.amount),
+                "amount": canonical_amount(record.amount),
                 "currency": record.currency,
                 "description": record.description,
                 "source_system": record.source_system,
@@ -108,7 +130,7 @@ def _transaction_document(
                 "import_run_id": record.import_run_id,
                 "account_id": record.account_id,
                 "transaction_date": record.transaction_date.isoformat(),
-                "amount": str(record.amount),
+                "amount": canonical_amount(record.amount),
                 "source_status": record.source_status,
                 "booking_status": record.booking_status,
             }
@@ -158,8 +180,8 @@ def _supporting_document(
                 "status": record.status,
                 "covered_from": record.covered_from.isoformat(),
                 "covered_to": record.covered_to.isoformat(),
-                "errors": _rows(record.errors),
-                "review_item_ids": list(record.review_item_ids),
+                "errors": [],
+                "review_item_ids": [],
             }
         case ReviewItem():
             return {
@@ -168,7 +190,7 @@ def _supporting_document(
                 "account_id": record.account_id,
                 "date_from": record.date_from.isoformat(),
                 "date_to": record.date_to.isoformat(),
-                "payload_ids": list(record.payload_ids),
+                "payload_ids": [],
                 "resolved_by": record.resolved_by,
                 "transaction_id": record.transaction_id,
             }
@@ -184,6 +206,26 @@ def _supporting_document(
             raise TypeError(message)
 
 
+def _sorted_documents(documents: Iterable[object]) -> list[dict[str, object]]:
+    """Sort encoded records by their complete canonical text."""
+    values = list(documents)
+    if not all(isinstance(value, dict) for value in values):
+        message = "a Silver record did not encode as an object"
+        raise TypeError(message)
+    objects = [value for value in values if isinstance(value, dict)]
+    return sorted(objects, key=_sort_key)
+
+
+def _sort_key(document: object) -> str:
+    """Return a complete deterministic key for one encoded record."""
+    return json.dumps(
+        document,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+
+
 def _optional_amount(amount: Decimal | None) -> str | None:
-    """Write an optional exact amount."""
-    return None if amount is None else str(amount)
+    """Write an optional exact amount canonically."""
+    return None if amount is None else canonical_amount(amount)
