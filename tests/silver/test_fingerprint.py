@@ -161,19 +161,28 @@ def test_incidental_order_and_decimal_scale_do_not_change_the_fingerprint() -> N
         description="OTHER",
         amount=Decimal("1.20"),
     )
-    ordered = replace(base, transactions=(first, second))
+    run = base.import_run_results[0]
+    errors = (
+        *run.errors,
+        replace(run.errors[0], record_ordinal=9, code="other-break"),
+    )
+    ordered = replace(
+        base,
+        transactions=(first, second),
+        import_run_results=(replace(run, errors=errors),),
+    )
     reordered = replace(
         base,
         transactions=(
             replace(second, amount=Decimal("1.200")),
             replace(first, amount=Decimal("12.300")),
         ),
-        import_run_results=tuple(
+        import_run_results=(
             replace(
                 run,
+                errors=tuple(reversed(errors)),
                 review_item_ids=tuple(reversed(run.review_item_ids)),
-            )
-            for run in base.import_run_results
+            ),
         ),
         review_items=tuple(
             replace(item, payload_ids=tuple(reversed(item.payload_ids)))
