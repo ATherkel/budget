@@ -45,7 +45,13 @@ from tests.cli.commands import (
     review,
     serve,
 )
-from tests.cli.pipelines import TAXONOMY, Household, household, write_inputs
+from tests.cli.pipelines import (
+    TAXONOMY,
+    Household,
+    household,
+    rebuild_silver_with,
+    write_inputs,
+)
 from tests.cli.profile_files import write_profile
 from tests.cli.test_production_rebuild_gold import DIRTY_STATUS, _clean_checkout, _git
 from tests.importing.households import drop, log_entries, payload
@@ -358,6 +364,55 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
                     (1, "build"),
                     (1_000_000, "build"),
                 ]
+
+    def test_builds_after_a_restore_continue_from_its_first_id(self) -> None:
+        # The catch-up build takes the boundary's id; the next build takes
+        # the one after it, never the boundary's id again (#376).
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            later = drop(
+                built.profile, "joint-current", "danske-20260310.csv", EXPORT_LATER
+            )
+            with writer_lock(built.profile) as lock:
+                import_inbox_file(
+                    lock,
+                    later,
+                    Coverage(
+                        covers_from=date(2026, 3, 5), covers_through=date(2026, 3, 9)
+                    ),
+                )
+            shutil.rmtree(built.profile.stores)
+            with mock.patch("subprocess.run", side_effect=_clean_checkout):
+                assert restore(built.profile_file, written.name)[0] == EXIT_OK
+            latest = drop(
+                built.profile,
+                "joint-current",
+                "danske-20260315.csv",
+                payload("12.03.2026"),
+            )
+            with writer_lock(built.profile) as lock:
+                import_inbox_file(
+                    lock,
+                    latest,
+                    Coverage(
+                        covers_from=date(2026, 3, 10),
+                        covers_through=date(2026, 3, 14),
+                    ),
+                )
+            rebuild_silver_with(built.profile)
+
+            with mock.patch("subprocess.run", side_effect=_clean_checkout):
+                status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "Gold     published publication 1000001 (cause build)\n" in stdout
+            with GoldStore(built.profile) as gold:
+                moves = gold.pointer_history()
+            assert [move.to_publication_id for move in moves] == [
+                1,
+                1_000_000,
+                1_000_001,
+            ]
 
     def test_restore_records_where_the_recovered_publication_history_ends(
         self,
