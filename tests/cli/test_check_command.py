@@ -180,3 +180,23 @@ class CheckCommandTests(unittest.TestCase):
                 "supersedes it",
                 "2 problems. Nothing was built.",
             ]
+    def test_a_cut_off_final_line_is_reported_and_left_as_it_is(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            write_inputs(profile)
+            log = _entry(1, "classify", ["t-netto"], category="groceries")
+            log += '{"format": 1, "entry": 2, "decision_id": "d-00'
+            _write(profile, "decisions.jsonl", log)
+            written = profile.input_file("decisions.jsonl").read_bytes()
+
+            code, stdout, stderr = check(profile_file)
+
+            assert (code, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert stdout.splitlines() == [
+                "decisions.jsonl: entry 2: the final line has no line feed, so it "
+                "was cut off while being written; delete it",
+                "1 problem. Nothing was built.",
+            ]
+            assert profile.input_file("decisions.jsonl").read_bytes() == written
