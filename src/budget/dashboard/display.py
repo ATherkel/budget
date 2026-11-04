@@ -37,6 +37,12 @@ def amount(value: Decimal | None, currency: str) -> str:
     return f"{sign}{digits} {'kr.' if currency == 'DKK' else currency}"
 
 
+def signed_amount(value: Decimal | None, currency: str) -> str:
+    """Return `amount`, with an explicit plus sign on a positive amount."""
+    shown = amount(value, currency)
+    return f"+{shown}" if value is not None and value > 0 else shown
+
+
 def copenhagen_date(now: datetime) -> date:
     """Return the date it is in Copenhagen at `now`."""
     return now.astimezone(COPENHAGEN).date()
