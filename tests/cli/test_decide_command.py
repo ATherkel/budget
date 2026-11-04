@@ -274,6 +274,58 @@ class ProductionTests(unittest.TestCase):
             assert len(complete_backup_sets(built.profile)) == sets_before + 1
 
 
+class RefusedRebuildTests(unittest.TestCase):
+    def test_a_decision_whose_rebuild_refuses_says_it_was_recorded(self) -> None:
+        # Finding R1 of the #178 review. An entry added by hand names a
+        # counterpart the registry lacks, so the rebuild after a valid
+        # decision refuses: the decision is recorded all the same.
+        with TemporaryDirectory() as directory:
+            built = prepared(Path(directory))
+            profile = built.profile
+            march = Coverage(
+                covers_from=date(2026, 3, 1), covers_through=date(2026, 3, 4)
+            )
+            export = chained_payload("01.03.2026", "02.03.2026")
+            with writer_lock(profile) as lock:
+                source = drop(profile, "joint-current", "danske-20260305.csv", export)
+                import_inbox_file(lock, source, march)
+                rebuild_from_silver(lock)
+            with SilverStore(profile) as silver:
+                first, other = (t.transaction_id for t in silver.read().transactions)
+            by_hand = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-03-06T09:00:00Z",
+                "kind": "one-sided-transfer",
+                "targets": [first],
+                "counterpart_account_id": "ghost",
+                "reason": "Synthetic",
+                "supersedes": [],
+            }
+            profile.input_file("decisions.jsonl").write_text(
+                json.dumps(by_hand) + "\n", encoding="utf-8"
+            )
+
+            status, stdout, stderr = decide(
+                built.profile_file,
+                "classify",
+                other[:8],
+                "groceries",
+                "--reason",
+                "Weekly shop",
+            )
+
+            assert status == EXIT_REFUSED_INPUT
+            assert stdout.startswith("Recorded d-0002.\n")
+            assert len(log_lines(profile)) == 2
+            assert 'counterpart account "ghost"' in stderr
+            assert (
+                "d-0002 is recorded, but nothing was published; put that right, "
+                "then run `budget rebuild` to publish it"
+            ) in stderr
+
+
 class RejectionTests(unittest.TestCase):
     def test_a_rejected_decision_exits_3_naming_its_reasons_and_records_nothing(
         self,
