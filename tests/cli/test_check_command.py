@@ -167,10 +167,13 @@ class CheckCommandTests(unittest.TestCase):
 
             assert (code, stderr) == (EXIT_REFUSED_INPUT, "")
             assert stdout.splitlines() == [
-                'decisions.jsonl: decision "d-0002": category "furniture" is not '
-                "in the taxonomy; record a decision that supersedes it",
+                (
+                    'decisions.jsonl: decision "d-0002": category "furniture" is not '
+                    "in the taxonomy; record a decision that supersedes it"
+                ),
                 "1 problem. Nothing was built.",
             ]
+
     def test_decisions_are_judged_against_the_accounts_while_rules_are_refused(
         self,
     ) -> None:
@@ -181,7 +184,10 @@ class CheckCommandTests(unittest.TestCase):
             write_inputs(profile)
             _write(profile, "rules.toml", RULES_AS_A_TABLE)
             log = _entry(
-                1, "one-sided-transfer", ["t-to-bo"], counterpart_account_id="bo-current"
+                1,
+                "one-sided-transfer",
+                ["t-to-bo"],
+                counterpart_account_id="bo-current",
             )
             _write(profile, "decisions.jsonl", log)
 
@@ -190,11 +196,14 @@ class CheckCommandTests(unittest.TestCase):
             assert (code, stderr) == (EXIT_REFUSED_INPUT, "")
             assert stdout.splitlines() == [
                 "rules.toml: rule must hold one [[rule]] block per rule",
-                'decisions.jsonl: decision "d-0001": counterpart account '
-                '"bo-current" is not in accounts.toml; record a decision that '
-                "supersedes it",
+                (
+                    'decisions.jsonl: decision "d-0001": counterpart account '
+                    '"bo-current" is not in accounts.toml; record a decision that '
+                    "supersedes it"
+                ),
                 "2 problems. Nothing was built.",
             ]
+
     def test_a_refused_taxonomy_suppresses_every_category_check_but_no_other(
         self,
     ) -> None:
@@ -207,7 +216,10 @@ class CheckCommandTests(unittest.TestCase):
             _write(profile, "rules.toml", RULES_NAMING_AN_UNKNOWN_CATEGORY)
             log = _entry(1, "classify", ["t-ikea"], category="furniture")
             log += _entry(
-                2, "one-sided-transfer", ["t-to-bo"], counterpart_account_id="bo-current"
+                2,
+                "one-sided-transfer",
+                ["t-to-bo"],
+                counterpart_account_id="bo-current",
             )
             _write(profile, "decisions.jsonl", log)
 
@@ -216,11 +228,14 @@ class CheckCommandTests(unittest.TestCase):
             assert (code, stderr) == (EXIT_REFUSED_INPUT, "")
             assert stdout.splitlines() == [
                 'taxonomy.toml: category "groceries": group "drink" is not declared',
-                'decisions.jsonl: decision "d-0002": counterpart account '
-                '"bo-current" is not in accounts.toml; record a decision that '
-                "supersedes it",
+                (
+                    'decisions.jsonl: decision "d-0002": counterpart account '
+                    '"bo-current" is not in accounts.toml; record a decision that '
+                    "supersedes it"
+                ),
                 "2 problems. Nothing was built.",
             ]
+
     def test_a_cut_off_final_line_is_reported_and_left_as_it_is(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
@@ -236,11 +251,14 @@ class CheckCommandTests(unittest.TestCase):
 
             assert (code, stderr) == (EXIT_REFUSED_INPUT, "")
             assert stdout.splitlines() == [
-                "decisions.jsonl: entry 2: the final line has no line feed, so it "
-                "was cut off while being written; delete it",
+                (
+                    "decisions.jsonl: entry 2: the final line has no line feed, so it "
+                    "was cut off while being written; delete it"
+                ),
                 "1 problem. Nothing was built.",
             ]
             assert profile.input_file("decisions.jsonl").read_bytes() == written
+
     def test_decisions_in_force_are_judged_even_when_another_entry_is_invalid(
         self,
     ) -> None:
@@ -257,10 +275,13 @@ class CheckCommandTests(unittest.TestCase):
             assert (code, stderr) == (EXIT_REFUSED_INPUT, "")
             assert stdout.splitlines() == [
                 "decisions.jsonl: entry 1: must be one JSON object",
-                'decisions.jsonl: decision "d-0002": category "furniture" is not '
-                "in the taxonomy; record a decision that supersedes it",
+                (
+                    'decisions.jsonl: decision "d-0002": category "furniture" is not '
+                    "in the taxonomy; record a decision that supersedes it"
+                ),
                 "2 problems. Nothing was built.",
             ]
+
     def test_an_entry_edited_inside_a_recipes_prefix_fails_verification(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
@@ -276,11 +297,14 @@ class CheckCommandTests(unittest.TestCase):
 
             assert (code, stderr) == (EXIT_VERIFICATION_FAILED, "")
             assert stdout.splitlines() == [
-                "decisions.jsonl: publication 1 was built from the log through "
-                "entry 1, which no longer matches; restore the log from the "
-                "newest backup set",
+                (
+                    "decisions.jsonl: publication 1 was built from the log through "
+                    "entry 1, which no longer matches; restore the log from the "
+                    "newest backup set"
+                ),
                 "1 problem. Nothing was built.",
             ]
+
     def test_a_log_cut_back_below_a_recipes_position_fails_verification(
         self,
     ) -> None:
@@ -299,9 +323,11 @@ class CheckCommandTests(unittest.TestCase):
 
             assert (code, stderr) == (EXIT_VERIFICATION_FAILED, "")
             assert stdout.splitlines() == [
-                "decisions.jsonl: publication 1 was built from the log through "
-                "entry 2, which no longer matches; restore the log from the "
-                "newest backup set",
+                (
+                    "decisions.jsonl: publication 1 was built from the log through "
+                    "entry 2, which no longer matches; restore the log from the "
+                    "newest backup set"
+                ),
                 "1 problem. Nothing was built.",
             ]
 
@@ -345,9 +371,11 @@ class CheckCommandTests(unittest.TestCase):
             assert (code, stderr) == (EXIT_VERIFICATION_FAILED, "")
             assert stdout.splitlines() == [
                 "rules.toml: rule must hold one [[rule]] block per rule",
-                "decisions.jsonl: publication 1 was built from the log through "
-                "entry 1, which no longer matches; restore the log from the "
-                "newest backup set",
+                (
+                    "decisions.jsonl: publication 1 was built from the log through "
+                    "entry 1, which no longer matches; restore the log from the "
+                    "newest backup set"
+                ),
                 "2 problems. Nothing was built.",
             ]
 

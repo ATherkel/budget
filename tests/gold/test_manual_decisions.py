@@ -261,11 +261,15 @@ def test_the_build_names_a_decision_the_configuration_refutes_in_full() -> None:
         )
 
     assert refused.value.problems == (
-        'decisions.jsonl: decision "d-0012": category "food-out" is not in the '
-        "taxonomy; record a decision that supersedes it; nothing was published",
-        'decisions.jsonl: decision "d-0014": counterpart account "bo-current" is '
-        "not in accounts.toml; record a decision that supersedes it; "
-        "nothing was published",
+        (
+            'decisions.jsonl: decision "d-0012": category "food-out" is not in the '
+            "taxonomy; record a decision that supersedes it; nothing was published"
+        ),
+        (
+            'decisions.jsonl: decision "d-0014": counterpart account "bo-current" is '
+            "not in accounts.toml; record a decision that supersedes it; "
+            "nothing was published"
+        ),
     )
 
 

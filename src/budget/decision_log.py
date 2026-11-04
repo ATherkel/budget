@@ -482,7 +482,7 @@ _SILVER_KINDS: Mapping[str, Callable[[Entry], SilverDecision]] = {
 
 
 def decision_log_bytes(profile: Profile) -> bytes:
-    """The profile's decision log as written; a missing log is empty."""
+    """Return the profile's decision log as written; a missing log is empty."""
     try:
         return profile.input_file(DECISION_LOG_FILE_NAME).read_bytes()
     except FileNotFoundError:
@@ -559,7 +559,7 @@ class RecordedPrefix:
 
 
 def _prefix_end(content: bytes, position: int) -> int | None:
-    """The byte just past entry `position`'s line feed, or None if it has none."""
+    """Find the byte just past entry `position`'s line feed, or None if absent."""
     end = 0
     for _ in range(position):
         found = content.find(b"\n", end)

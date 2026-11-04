@@ -243,9 +243,7 @@ _INSERT_RECIPE_RUNS: Final = (
     " VALUES (?, ?, ?)"
 )
 _SELECT_RECIPE: Final = "SELECT * FROM recipes WHERE publication_id = ?"
-_SELECT_RECIPE_IDS: Final = (
-    "SELECT publication_id FROM recipes ORDER BY publication_id"
-)
+_SELECT_RECIPE_IDS: Final = "SELECT publication_id FROM recipes ORDER BY publication_id"
 _SELECT_RECIPE_RUNS: Final = (
     "SELECT import_run_id, payload_id FROM recipe_import_runs WHERE publication_id = ?"
 )
@@ -481,10 +479,10 @@ class GoldStore:
         """Return every stored recipe with its publication id, retained or not."""
 
         def read(connection: sqlite3.Connection) -> tuple[tuple[int, Recipe], ...]:
-            return tuple(
-                (row["publication_id"], _stored_recipe(connection, row["publication_id"]))
-                for row in connection.execute(_SELECT_RECIPE_IDS)
-            )
+            ids: list[int] = [
+                row["publication_id"] for row in connection.execute(_SELECT_RECIPE_IDS)
+            ]
+            return tuple((id_, _stored_recipe(connection, id_)) for id_ in ids)
 
         return self._owner.read(read)
 
