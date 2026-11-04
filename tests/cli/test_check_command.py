@@ -200,3 +200,23 @@ class CheckCommandTests(unittest.TestCase):
                 "1 problem. Nothing was built.",
             ]
             assert profile.input_file("decisions.jsonl").read_bytes() == written
+    def test_decisions_in_force_are_judged_even_when_another_entry_is_invalid(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            write_inputs(profile)
+            log = "not json\n" + _entry(2, "classify", ["t-ikea"], category="furniture")
+            _write(profile, "decisions.jsonl", log)
+
+            code, stdout, stderr = check(profile_file)
+
+            assert (code, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert stdout.splitlines() == [
+                "decisions.jsonl: entry 1: must be one JSON object",
+                'decisions.jsonl: decision "d-0002": category "furniture" is not '
+                "in the taxonomy; record a decision that supersedes it",
+                "2 problems. Nothing was built.",
+            ]
