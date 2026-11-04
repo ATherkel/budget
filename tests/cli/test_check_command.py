@@ -36,6 +36,15 @@ format = 1
 [rule.r-netto]
 priority = 10
 """
+# Well-formed, but `furniture` is in no taxonomy this file's tests write.
+RULES_NAMING_AN_UNKNOWN_CATEGORY = """\
+format = 1
+
+[[rule]]
+id = "r-ikea"
+when = { description_contains = "IKEA" }
+then = { category = "furniture" }
+"""
 
 
 def _everything_under(folder: Path) -> list[str]:
@@ -141,6 +150,32 @@ class CheckCommandTests(unittest.TestCase):
             assert stdout.splitlines() == [
                 "rules.toml: rule must hold one [[rule]] block per rule",
                 'decisions.jsonl: decision "d-0001": counterpart account '
+                '"bo-current" is not in accounts.toml; record a decision that '
+                "supersedes it",
+                "2 problems. Nothing was built.",
+            ]
+    def test_a_refused_taxonomy_suppresses_every_category_check_but_no_other(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            write_inputs(profile)
+            _write(profile, "taxonomy.toml", TAXONOMY_WITH_AN_UNDECLARED_GROUP)
+            _write(profile, "rules.toml", RULES_NAMING_AN_UNKNOWN_CATEGORY)
+            log = _entry(1, "classify", ["t-ikea"], category="furniture")
+            log += _entry(
+                2, "one-sided-transfer", ["t-to-bo"], counterpart_account_id="bo-current"
+            )
+            _write(profile, "decisions.jsonl", log)
+
+            code, stdout, stderr = check(profile_file)
+
+            assert (code, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert stdout.splitlines() == [
+                'taxonomy.toml: category "groceries": group "drink" is not declared',
+                'decisions.jsonl: decision "d-0002": counterpart account '
                 '"bo-current" is not in accounts.toml; record a decision that '
                 "supersedes it",
                 "2 problems. Nothing was built.",
