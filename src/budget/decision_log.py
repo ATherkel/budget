@@ -185,6 +185,7 @@ _KINDS: Mapping[str, _Kind] = {
     ),
     RETRACT: _Kind(None, 0, {"targets": _JUDGED_APART}, _retract_problems),
 }
+DECISION_KINDS = tuple(_KINDS)
 # The kinds whose targets are import runs; every other kind but a retract
 # targets transactions.
 IMPORT_RUN_KINDS = frozenset(

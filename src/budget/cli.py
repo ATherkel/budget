@@ -35,6 +35,8 @@ from budget.codeversion import UncommittedCodeError, require_committed_code
 from budget.completeness import Completeness, completeness
 from budget.dashboard import create_app
 from budget.dashboard.passphrase import PassphraseNotSetError, set_passphrase
+from budget.deciding import DecisionLog, DecisionProposal, Recorded
+from budget.decision_log import DECISION_KINDS
 from budget.demo import DEFAULT_DEMO_PORT, DemoDirectoryExistsError, create_demo_profile
 from budget.gold.storage import GOLD_STAGE
 from budget.gold.store import GoldStore, UndoUnavailableError
@@ -116,6 +118,7 @@ from budget.restoring import (
 )
 from budget.reviewing import REVIEW_KINDS, open_reviews
 from budget.silver.storage import SILVER_STAGE
+from budget.silver.store import SilverStore
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
 EXIT_OK: Final = 0
@@ -202,6 +205,15 @@ class ImportedWithoutPublicationError(Exception):
         if backup_failure is not None:
             message += f". No backup set could be written either: {backup_failure}"
         super().__init__(message)
+
+
+class DecisionRejectedError(Exception):
+    """The boundary rejected the proposed decision; nothing was recorded."""
+
+    def __init__(self, reasons: tuple[str, ...]) -> None:
+        """Name every reason the boundary gave."""
+        self.reasons = reasons
+        super().__init__("\n".join(reasons))
 
 
 class PassphraseMismatchError(Exception):
@@ -306,6 +318,16 @@ def _parser() -> argparse.ArgumentParser:
         "--kind", choices=REVIEW_KINDS, help="list one kind of item only, no runs"
     )
     review.add_argument("--account", help="list one account's items and runs only")
+    decide = commands.add_parser(
+        "decide", help="record a manual decision, then rebuild from what it affects"
+    )
+    decide.add_argument("kind", choices=DECISION_KINDS)
+    decide.add_argument(
+        "targets",
+        nargs="*",
+        help="handles or IDs; for classify, the category comes last",
+    )
+    decide.add_argument("--reason", required=True)
     commands.add_parser("undo", help="restore the previous current publication")
     commands.add_parser("status", help="show balance and classification completeness")
     commands.add_parser(
@@ -626,6 +648,54 @@ def _review(profile: Profile, kind: str | None, account: str | None) -> None:
     sys.stdout.write(summary)
 
 
+def _transaction(profile: Profile, handle: str) -> str:
+    """Return the one Silver transaction whose ID starts with `handle`."""
+    with SilverStore(profile) as silver:
+        (transaction_id,) = (
+            t.transaction_id
+            for t in silver.read().transactions
+            if t.transaction_id.startswith(handle)
+        )
+    return transaction_id
+
+
+def _proposal(profile: Profile, arguments: argparse.Namespace) -> DecisionProposal:
+    """Turn the command line into the proposal the boundary judges."""
+    handle, category = arguments.targets
+    return DecisionProposal(
+        kind=arguments.kind,
+        targets=(_transaction(profile, handle),),
+        reason=arguments.reason,
+        details={"category": category},
+    )
+
+
+def _decide(profile: Profile, arguments: argparse.Namespace) -> None:
+    """Propose a decision under the writer lock, then rebuild and publish."""
+    started = perf_counter()
+    with writer_lock(profile) as lock:
+        require_committed_code(lock.profile)
+        log = DecisionLog(lock, clock=lambda: datetime.now(UTC))
+        recorded = log.propose(_proposal(profile, arguments))
+        if not isinstance(recorded, Recorded):
+            raise DecisionRejectedError(recorded.reasons)
+        inputs = read_household_inputs(lock.profile)
+        published = rebuild_from_gold(lock, now=datetime.now(UTC), inputs=inputs)
+        routine_logging.finished(
+            profile,
+            "decide",
+            counts={"published": int(published.published)},
+            duration_ms=_milliseconds(started),
+        )
+        sys.stdout.write(
+            f"Recorded {recorded.decision_id}.\n{summaries.gold_line(published)}\n"
+        )
+        sys.stdout.write(
+            summaries.publication_changes(profile, published, SilverReviews())
+        )
+        _show_completeness(profile)
+
+
 def _undo(profile: Profile) -> None:
     """Move the current Gold pointer back once, under the profile's writer lock."""
     started = perf_counter()
@@ -786,6 +856,8 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         _rebuild(profile, arguments.from_stage)
     elif arguments.command == "review":
         _review(profile, arguments.kind, arguments.account)
+    elif arguments.command == "decide":
+        _decide(profile, arguments)
     else:
         _migrate(profile, arguments.stage, new_store=arguments.new_store)
     return EXIT_OK
