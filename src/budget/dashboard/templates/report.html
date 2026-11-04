@@ -27,7 +27,7 @@
   <div id="unclassified" class="summary-figure"><dt>Ukategoriseret</dt><dd><span>Ind</span> <span id="unclassified-in">{{ (unclassified.money_in if unclassified else none) | signed_amount(overview.currency) }}</span></dd><dd><span>Ud</span> <span id="unclassified-out">{{ (unclassified.money_out if unclassified else none) | signed_amount(overview.currency) }}</span></dd></div>
 </dl>
 {% if overview.unclassified and overview.unclassified.count > 0 %}
-{# Quiet, without amounts or count: those belong to Kontrol. #}
+{# Quiet, without the count, which belongs to Kontrol; the amounts are in the summary. #}
 <p id="unclassified-note" class="trust-note">Nogle betalinger er endnu ikke placeret i en kategori, så penge tilbage kan ændre sig. <a id="unclassified-explanation" href="{{ explanation_url }}">Om betalinger uden kategori</a></p>
 {% endif %}
 {% if overview.categories %}
