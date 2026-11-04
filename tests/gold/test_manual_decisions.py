@@ -246,6 +246,29 @@ def test_18_every_decision_naming_a_missing_category_refuses_the_build() -> None
     assert ("d-0013" in second, "furniture" in second) == (True, True)
 
 
+def test_the_build_names_a_decision_the_configuration_refutes_in_full() -> None:
+    netto = booked("netto", CURRENT, date(2026, 2, 2), "-640.00", "NETTO 0412")
+    leg = booked("to-bo", CURRENT, date(2026, 2, 1), "-4000.00", "BUDGET TO BO")
+
+    with pytest.raises(ConfigurationError) as refused:
+        classified(
+            netto,
+            leg,
+            decisions=[
+                Classify("d-0012", "netto", "food-out"),
+                OneSidedTransfer("d-0014", "to-bo", "bo-current"),
+            ],
+        )
+
+    assert refused.value.problems == (
+        'decisions.jsonl: decision "d-0012": category "food-out" is not in the '
+        "taxonomy; record a decision that supersedes it; nothing was published",
+        'decisions.jsonl: decision "d-0014": counterpart account "bo-current" is '
+        "not in accounts.toml; record a decision that supersedes it; "
+        "nothing was published",
+    )
+
+
 def test_two_decisions_targeting_one_transaction_refuse_the_build() -> None:
     # Applied in turn, d-0016 would leave from-current a group on one leg alone.
     legs = (
