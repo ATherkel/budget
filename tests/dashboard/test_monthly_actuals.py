@@ -208,6 +208,18 @@ def test_offsetting_unclassified_money_shows_signed_in_and_out_never_netted(
     )
 
 
+def test_a_known_zero_of_unclassified_money_shows_zero_without_a_sign(
+    client: TestClient,
+) -> None:
+    # February: no Unclassified transactions, so 0.00 in and 0.00 out are known.
+    february = report(client, "2026-02")
+
+    assert (
+        february.text_of("unclassified-in"),
+        february.text_of("unclassified-out"),
+    ) == ("0,00 kr.", "0,00 kr.")
+
+
 def explanation(
     client: TestClient, month: str, accounts: tuple[str, ...] = (CURRENT, SAVINGS)
 ) -> Page:
