@@ -346,12 +346,17 @@ class CheckCommandTests(unittest.TestCase):
             _publish_after(profile, 2, first)
             _write(profile, "decisions.jsonl", first)
 
-            code, stdout, _ = check(profile_file)
+            code, stdout, stderr = check(profile_file)
 
-            assert code == EXIT_VERIFICATION_FAILED
-            assert stdout.splitlines()[0].startswith(
-                "decisions.jsonl: publication 1 was built"
-            )
+            assert (code, stderr) == (EXIT_VERIFICATION_FAILED, "")
+            assert stdout.splitlines() == [
+                (
+                    "decisions.jsonl: publication 1 was built from the log through "
+                    "entry 2, which no longer matches; restore the log from the "
+                    "newest backup set"
+                ),
+                "1 problem. Nothing was built.",
+            ]
 
     def test_refused_input_and_a_failed_verification_are_listed_and_exit_5(
         self,
