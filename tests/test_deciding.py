@@ -151,6 +151,43 @@ class VoidTests(unittest.TestCase):
             assert result == Rejected((reason,))
             assert profile.input_file("decisions.jsonl").read_bytes() == before
 
+    def test_a_void_stored_again_can_be_replaced_by_another_void_of_its_run(
+        self,
+    ) -> None:
+        # Decision D1 on the #178 review: a replacement void keeps the run
+        # voided, so it puts nothing in force again.
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            profile, voided = built.profile, built.import_run_id
+            with writer_lock(profile) as lock:
+                log = DecisionLog(lock, clock=lambda: RECORDED_AT)
+                log.propose(
+                    DecisionProposal(
+                        kind="void-import-run", targets=(voided,), reason="Wrong range"
+                    )
+                )
+                import_inbox_file(
+                    lock,
+                    drop(profile, "joint-current", "danske-20260305.csv", EXPORT),
+                    Coverage(
+                        covers_from=date(2026, 2, 1), covers_through=date(2026, 3, 4)
+                    ),
+                    voided={voided},
+                )
+
+                result = log.propose(
+                    DecisionProposal(
+                        kind="void-import-run",
+                        targets=(voided,),
+                        reason="Wrong range, and filed twice",
+                        supersedes=("d-0001",),
+                    )
+                )
+
+            assert result == Recorded(
+                decision_id="d-0002", entry=2, recorded_at="2026-04-10T17:02:11Z"
+            )
+
 
 class RejectedTests(unittest.TestCase):
     def test_a_rejection_names_every_reason_and_records_nothing(self) -> None:
