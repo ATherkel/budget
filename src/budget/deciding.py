@@ -20,6 +20,7 @@ from budget.decision_log import (
     IMPORT_RUN_KINDS,
     RETRACT,
     history_problems,
+    last_line_cut_off,
     read_decision_log,
     shape_problems,
     typed_decision,
@@ -40,6 +41,13 @@ from budget.inputs.rule_checks import KnownIds
 from budget.locking import WriterLock
 from budget.profiles import DECISION_LOG_FILE_NAME, Profile
 from budget.silver.store import SilverStore
+
+# No build has read a cut-off line, so deleting it is the one safe hand edit
+# (`operations.md`, *`decisions.jsonl`*); appending after it would join the two.
+_CUT_OFF = (
+    f"{DECISION_LOG_FILE_NAME}: the last line was cut off by a crash and counts "
+    "as never written; delete that partial line, then record the decision again"
+)
 
 
 @dataclass(frozen=True)
@@ -89,6 +97,8 @@ class DecisionLog:
         this returns.
         """
         profile = self._lock.profile
+        if last_line_cut_off(profile):
+            return Rejected((_CUT_OFF,))
         position = read_decision_log(profile).position + 1
         recorded = Recorded(
             decision_id=f"d-{position:04d}",

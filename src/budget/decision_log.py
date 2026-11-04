@@ -532,6 +532,15 @@ def _replay_lines(lines: Sequence[str]) -> _Replay:
     return replay
 
 
+def last_line_cut_off(profile: Profile) -> bool:
+    """Say whether the log ends in a line a crash cut off, without a line feed."""
+    try:
+        content = profile.input_file(DECISION_LOG_FILE_NAME).read_bytes()
+    except FileNotFoundError:
+        return False
+    return content != b"" and not content.endswith(b"\n")
+
+
 def shape_problems(entry: Entry, position: int) -> tuple[str, ...]:
     """Judge one entry on its own, as the entry at `position` in the log."""
     return tuple(_shape_problems(entry, position))
