@@ -5,18 +5,26 @@ Every profile, input and decision is synthetic. The seam is the CLI itself,
 so these tests observe what an operator reads and the exit status.
 """
 
+import hashlib
 import json
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from budget.gold import GoldResult
+from budget.gold.storage import migrate_gold
+from budget.gold.store import GoldStore
 from budget.profiles import Profile
 from tests.cli.commands import check
 from tests.cli.pipelines import write_inputs
 from tests.cli.profile_files import development_profile, write_profile
+from tests.gold.publishing import CONFIGURATION, RECIPE, publication
+from tests.gold.worked_example import RECORDS
 
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
+EXIT_VERIFICATION_FAILED = 5
 
 TAXONOMY_WITH_AN_UNDECLARED_GROUP = """\
 format = 1
@@ -71,6 +79,20 @@ def _entry(position: int, kind: str, targets: list[str], **fields: object) -> st
         **fields,
     }
     return json.dumps(entry) + "\n"
+
+
+def _publish_after(profile: Profile, publication_id: int, log: str) -> None:
+    """Publish the worked example as if built after reading all of `log`."""
+    migrate_gold(profile)
+    recipe = replace(
+        RECIPE,
+        decision_log_position=log.count("\n"),
+        decision_log_prefix_sha256=hashlib.sha256(log.encode()).hexdigest(),
+    )
+    with GoldStore(profile) as store:
+        store.publish(
+            GoldResult(publication(publication_id), RECORDS), recipe, CONFIGURATION
+        )
 
 
 class CheckCommandTests(unittest.TestCase):
@@ -219,4 +241,24 @@ class CheckCommandTests(unittest.TestCase):
                 'decisions.jsonl: decision "d-0002": category "furniture" is not '
                 "in the taxonomy; record a decision that supersedes it",
                 "2 problems. Nothing was built.",
+            ]
+    def test_an_entry_edited_inside_a_recipes_prefix_fails_verification(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            write_inputs(profile)
+            log = _entry(1, "classify", ["t-netto"], category="groceries")
+            _write(profile, "decisions.jsonl", log)
+            _publish_after(profile, 1, log)
+            _write(profile, "decisions.jsonl", log.replace("t-netto", "t-irma"))
+
+            code, stdout, stderr = check(profile_file)
+
+            assert (code, stderr) == (EXIT_VERIFICATION_FAILED, "")
+            assert stdout.splitlines() == [
+                "decisions.jsonl: publication 1 was built from the log through "
+                "entry 1, which no longer matches; restore the log from the "
+                "newest backup set",
+                "1 problem. Nothing was built.",
             ]
