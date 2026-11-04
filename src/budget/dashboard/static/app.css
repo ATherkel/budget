@@ -410,6 +410,13 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
+/* A direction inside a figure reads as a label, like the figure's name. */
+.summary-direction {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
 .category-list,
 .explanation-list {
   margin: 0 0 1rem;
