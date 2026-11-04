@@ -211,9 +211,10 @@ class DecisionRejectedError(Exception):
     """The boundary rejected the proposed decision; nothing was recorded."""
 
     def __init__(self, reasons: tuple[str, ...]) -> None:
-        """Name every reason the boundary gave."""
+        """Name every reason the boundary gave, one per line."""
         self.reasons = reasons
-        super().__init__("\n".join(reasons))
+        listed = "".join(f"\n  {reason}" for reason in reasons)
+        super().__init__(f"the decision was rejected; nothing was recorded:{listed}")
 
 
 class PassphraseMismatchError(Exception):
@@ -886,6 +887,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
     except (
         ProfileFileError,
         ConfigurationError,
+        DecisionRejectedError,
         ConflictingDeclaredFormatsError,
         UnsupportedSourceFormatError,
         NoPassphraseFileError,
