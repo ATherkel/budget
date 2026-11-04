@@ -481,16 +481,39 @@ _SILVER_KINDS: Mapping[str, Callable[[Entry], SilverDecision]] = {
 }
 
 
+def decision_log_bytes(profile: Profile) -> bytes:
+    """The profile's decision log as written; a missing log is empty."""
+    try:
+        return profile.input_file(DECISION_LOG_FILE_NAME).read_bytes()
+    except FileNotFoundError:
+        return b""
+
+
+def cut_off_problem(content: bytes) -> str | None:
+    """Name a final line with no line feed, which no read counts, if there is one.
+
+    It was cut off while it was being written. Deleting it is the one safe
+    hand edit (`operations.md`, *`decisions.jsonl`*), so it is never repaired.
+    """
+    end = content.rfind(b"\n") + 1
+    if end == len(content):
+        return None
+    position = content.count(b"\n") + 1
+    return _problem(
+        position,
+        None,
+        "the final line has no line feed, so it was cut off while being "
+        "written; delete it",
+    )
+
+
 def read_decision_log(profile: Profile) -> DecisionLogRead:
     """Read and validate the profile's decision log.
 
     A missing log holds no decisions. A final line without a line feed was cut
     off while it was being written, so it counts as never written.
     """
-    try:
-        content = profile.input_file(DECISION_LOG_FILE_NAME).read_bytes()
-    except FileNotFoundError:
-        content = b""
+    content = decision_log_bytes(profile)
     prefix = content[: content.rfind(b"\n") + 1]
     try:
         lines = prefix.decode("utf-8-sig").split("\n")[:-1]
