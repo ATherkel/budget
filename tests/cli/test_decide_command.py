@@ -9,14 +9,19 @@ in `operations.md` settles a review item. What was recorded is read back from
 
 import json
 import unittest
+from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from budget.gold.store import GoldStore
+from budget.importing import Coverage, import_inbox_file
+from budget.locking import writer_lock
 from budget.profiles import Profile
+from budget.rebuilding import rebuild_from_silver
 from budget.silver.store import SilverStore
 from tests.cli.commands import decide, rebuild
-from tests.cli.pipelines import household
+from tests.cli.pipelines import household, prepared
+from tests.importing.households import chained_payload, drop
 
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
@@ -91,3 +96,43 @@ class RejectionTests(unittest.TestCase):
             assert not built.profile.input_file("decisions.jsonl").exists()
             with GoldStore(built.profile) as gold:
                 assert [m.to_publication_id for m in gold.pointer_history()] == [1]
+
+    def test_a_handle_that_names_no_single_transaction_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = prepared(Path(directory))
+            profile = built.profile
+            march = Coverage(
+                covers_from=date(2026, 3, 1), covers_through=date(2026, 3, 4)
+            )
+            export = chained_payload("01.03.2026", "02.03.2026")
+            with writer_lock(profile) as lock:
+                source = drop(profile, "joint-current", "danske-20260305.csv", export)
+                import_inbox_file(lock, source, march)
+                rebuild_from_silver(lock)
+            with SilverStore(profile) as silver:
+                ids = sorted(t.transaction_id for t in silver.read().transactions)
+            # Every transaction ID starts with the empty handle.
+            refusals = {
+                "zzzzzzzz": 'no transaction in Silver has the handle "zzzzzzzz"',
+                "": (
+                    'the handle "" matches more than one transaction '
+                    f"({ids[0][:12]}…, {ids[1][:12]}…); type more of its ID"
+                ),
+            }
+            for handle, reason in refusals.items():
+                with self.subTest(handle=handle):
+                    status, _, stderr = decide(
+                        built.profile_file,
+                        "classify",
+                        handle,
+                        "groceries",
+                        "--reason",
+                        "Synthetic",
+                    )
+
+                    assert status == EXIT_REFUSED_INPUT
+                    assert stderr == (
+                        "budget: the decision was rejected; nothing was recorded:\n"
+                        f"  {reason}\n"
+                    )
+            assert not profile.input_file("decisions.jsonl").exists()
