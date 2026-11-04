@@ -22,11 +22,11 @@
   <div class="summary-figure"><dt>Indtægter</dt><dd id="income">{{ overview.income | amount(overview.currency) }}</dd></div>
   <div class="summary-figure"><dt>Udgifter</dt><dd id="expenses">{{ overview.expenses | amount(overview.currency) }}</dd></div>
   <div class="summary-figure"><dt>Penge tilbage</dt><dd id="money-left">{{ overview.net_cash_flow | amount(overview.currency) }}</dd></div>
-{% set unclassified = overview.unclassified %}
+  {% set unclassified = overview.unclassified %}
   {# Money in and out side by side, never netted, each named in words. #}
-  <div id="unclassified" class="summary-figure"><dt>Ukategoriseret</dt><dd><span>Ind</span> <span id="unclassified-in">{{ (unclassified.money_in if unclassified else none) | signed_amount(overview.currency) }}</span></dd><dd><span>Ud</span> <span id="unclassified-out">{{ (unclassified.money_out if unclassified else none) | signed_amount(overview.currency) }}</span></dd></div>
+  <div id="unclassified" class="summary-figure"><dt>Ukategoriseret</dt><dd id="unclassified-in-row"><span>Ind</span> <span id="unclassified-in">{{ (unclassified.money_in if unclassified else none) | signed_amount(overview.currency) }}</span></dd><dd id="unclassified-out-row"><span>Ud</span> <span id="unclassified-out">{{ (unclassified.money_out if unclassified else none) | signed_amount(overview.currency) }}</span></dd></div>
 </dl>
-{% if overview.unclassified and overview.unclassified.count > 0 %}
+{% if unclassified and unclassified.count > 0 %}
 {# Quiet, without the count, which belongs to Kontrol; the amounts are in the summary. #}
 <p id="unclassified-note" class="trust-note">Nogle betalinger er endnu ikke placeret i en kategori, så penge tilbage kan ændre sig. <a id="unclassified-explanation" href="{{ explanation_url }}">Om betalinger uden kategori</a></p>
 {% endif %}
