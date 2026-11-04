@@ -287,7 +287,10 @@ their exit codes and never reaches `commands.jsonl`.
 
 `check` validates every input file and the decision log, and compares the log
 with the prefix every Gold recipe recorded. It builds nothing, writes nothing
-and takes no lock, so it too is safe at any point:
+and takes no lock, so it too is safe at any point. Reading `gold.db` may leave
+`gold.db-wal` and `gold.db-shm` beside it. SQLite keeps these for every
+reader in WAL mode, and they are harmless (see
+[WAL sidecar files left by read-only reads](../../.out-of-scope/wal-sidecars-on-read-only-reads.md)).
 
 ```powershell
 uv run budget check; $LASTEXITCODE
