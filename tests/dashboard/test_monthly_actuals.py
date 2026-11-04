@@ -6,14 +6,15 @@ synthetic worked-example publication; the dashboard is driven in-process.
 """
 
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from budget.dashboard import create_app
-from budget.gold import GoldResult
+from budget.gold import GoldResult, GoldTransaction
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
 from tests.analytics.test_monthly_overview import LATER_GOLD, PERSON
@@ -129,26 +130,81 @@ def test_only_a_month_that_may_still_change_is_labelled_provisional(
     ) == ("Foreløbige tal", None)
 
 
-def test_unclassified_money_is_noted_quietly_without_its_amounts(
+def test_unclassified_money_keeps_its_quiet_note_and_explanation_link(
     client: TestClient,
 ) -> None:
     # March has one Unclassified transaction of -450.00; February has none.
-    # The amounts and the count belong to Kontrol, never to Enkel.
+    # Its amounts now show in the Ukategoriseret bucket (#380); the note stays.
     march, february = report(client, "2026-03"), report(client, "2026-02")
 
     assert (
         march.text_of("unclassified-note") is not None,
-        "450" in march.visible(),
         march.attributes("unclassified-explanation").get("href"),
         february.text_of("unclassified-note"),
     ) == (
         True,
-        False,
         (
             "/explanation?publication=1&reference_date=2026-05-14"
             f"&account={CURRENT}&account={SAVINGS}&month=2026-03"
         ),
         None,
+    )
+
+
+# Synthetic Unclassified money in April on Joint current: +1,000.00 in and
+# -600.00 and -400.00 out, which would net to zero.
+OFFSETTING = tuple(
+    GoldTransaction(
+        transaction_id=f"current-offset-{index}",
+        account_id=CURRENT,
+        transaction_date=date(2026, 4, 10),
+        account_sequence=100 + index,
+        amount=Decimal(amount),
+        description="UNKNOWN",
+        transaction_type="unknown",
+        transfer_group_id=None,
+        balance_after=None,
+        balance_check="missing_balance",
+    )
+    for index, amount in enumerate(("1000.00", "-600.00", "-400.00"))
+)
+
+
+@pytest.fixture
+def offsetting_client(tmp_path: Path) -> TestClient:
+    profile = dashboard_profile(tmp_path)
+    records = replace(RECORDS, transactions=(*RECORDS.transactions, *OFFSETTING))
+    with GoldStore(profile) as store:
+        store.publish(GoldResult(PUBLICATION, records), RECIPE, CONFIGURATION)
+    client = TestClient(
+        create_app(profile, clock=lambda: datetime(2026, 5, 14, 10, tzinfo=UTC)),
+        follow_redirects=False,
+    )
+    client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
+    return client
+
+
+def test_offsetting_unclassified_money_shows_signed_in_and_out_never_netted(
+    offsetting_client: TestClient,
+) -> None:
+    # April: income 25,000.00 and rent 8,500.00 are classified; the three
+    # Unclassified amounts sum to +1,000.00 in and -1,000.00 out.
+    april = report(offsetting_client, "2026-04", accounts=(CURRENT,))
+
+    assert (
+        april.text_of("unclassified"),
+        april.text_of("unclassified-in"),
+        april.text_of("unclassified-out"),
+        april.text_of("income"),
+        april.text_of("expenses"),
+        april.text_of("money-left"),
+    ) == (
+        "Ukategoriseret Ind +1.000,00 kr. Ud \N{MINUS SIGN}1.000,00 kr.",
+        "+1.000,00 kr.",
+        "\N{MINUS SIGN}1.000,00 kr.",
+        "25.000,00 kr.",
+        "8.500,00 kr.",
+        "16.500,00 kr.",
     )
 
 
