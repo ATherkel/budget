@@ -21,6 +21,7 @@ import uvicorn
 from budget import checking, routine_logging, sqlstore, summaries
 from budget.backups import (
     BACKUP_FAILURES,
+    BackupSet,
     BackupVerificationError,
     BackupWriteError,
     LostStoreError,
@@ -752,6 +753,9 @@ def _decide(profile: Profile, arguments: argparse.Namespace) -> None:
     started = perf_counter()
     with writer_lock(profile) as lock:
         require_committed_code(lock.profile)
+        production = profile.name == PRODUCTION_PROFILE_NAME
+        if production:
+            require_backup_allowed(profile)
         log = DecisionLog(lock, clock=lambda: datetime.now(UTC))
         recorded = log.propose(_proposal(profile, arguments))
         if not isinstance(recorded, Recorded):
@@ -775,6 +779,9 @@ def _decide(profile: Profile, arguments: argparse.Namespace) -> None:
             counts={"published": int(published.published)},
             duration_ms=_milliseconds(started),
         )
+        # The decision log and the stores are written, so production backs
+        # them up before the diff, as `rebuild` does.
+        written, failure = _back_up_production(lock) if production else (None, None)
         sys.stdout.write(
             f"Recorded {recorded.decision_id}.\n"
             f"{summary}{summaries.gold_line(published)}\n"
@@ -782,7 +789,23 @@ def _decide(profile: Profile, arguments: argparse.Namespace) -> None:
         sys.stdout.write(
             summaries.publication_changes(profile, published, silver_reviews)
         )
-        _show_completeness(profile)
+        if written is not None:
+            sys.stdout.write(f"Backup   backup set {written.name} written\n")
+        try:
+            _show_completeness(profile)
+        finally:
+            if failure is not None:
+                raise RebuiltWithoutBackupError(failure) from None
+
+
+def _back_up_production(
+    lock: WriterLock,
+) -> tuple[BackupSet | None, Exception | None]:
+    """Write production's backup set, or return why it could not be written."""
+    try:
+        return back_up(lock, now=datetime.now(UTC)), None
+    except BACKUP_FAILURES as error:
+        return None, error
 
 
 def _undo(profile: Profile) -> None:
