@@ -40,6 +40,7 @@ from budget.inputs import load_configuration
 from budget.inputs.rule_checks import KnownIds
 from budget.locking import WriterLock
 from budget.profiles import DECISION_LOG_FILE_NAME, Profile
+from budget.silver.decisions import VoidImportRun
 from budget.silver.store import SilverStore
 
 # No build has read a cut-off line, so deleting it is the one safe hand edit
@@ -119,6 +120,7 @@ class DecisionLog:
         problems = shape_problems(entry, position) or (
             *history_problems(profile, entry),
             *_target_problems(profile, entry),
+            *_restored_void_problems(profile, entry),
             *_configuration_problems(profile, entry),
         )
         if problems:
@@ -161,6 +163,45 @@ def _target_problems(profile: Profile, entry: Mapping[str, Any]) -> tuple[str, .
         problems.append(
             f"record {record['payload_id']}:{record['record_ordinal']} "
             "is not a source record in Bronze"
+        )
+    return tuple(problems)
+
+
+def _restored_void_problems(
+    profile: Profile, entry: Mapping[str, Any]
+) -> tuple[str, ...]:
+    """Name each void the entry withdraws whose export was stored again since.
+
+    Withdrawing it would put two stored runs of one export in force at once
+    (decision 3 on issue #178), so the void stays.
+    """
+    superseded = set(entry["supersedes"])
+    voids = [
+        decision
+        for decision in read_decision_log(profile).silver
+        if isinstance(decision, VoidImportRun)
+    ]
+    withdrawn = [void for void in voids if void.decision_id in superseded]
+    if not withdrawn:
+        return ()
+    still_voided = {
+        void.import_run_id for void in voids if void.decision_id not in superseded
+    }
+    with BronzeStore(profile) as bronze:
+        runs = bronze.import_runs()
+    problems = []
+    for void in withdrawn:
+        payload_id = next(
+            run.payload_id for run in runs if run.import_run_id == void.import_run_id
+        )
+        problems.extend(
+            f"withdrawing {void.decision_id} would put import run "
+            f"{void.import_run_id} in force again, but run {run.import_run_id} "
+            "has stored its export since"
+            for run in runs
+            if run.payload_id == payload_id
+            and run.outcome == "stored"
+            and run.import_run_id not in {void.import_run_id, *still_voided}
         )
     return tuple(problems)
 
