@@ -121,3 +121,27 @@ class CheckCommandTests(unittest.TestCase):
                 "in the taxonomy; record a decision that supersedes it",
                 "1 problem. Nothing was built.",
             ]
+    def test_decisions_are_judged_against_the_accounts_while_rules_are_refused(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            write_inputs(profile)
+            _write(profile, "rules.toml", RULES_AS_A_TABLE)
+            log = _entry(
+                1, "one-sided-transfer", ["t-to-bo"], counterpart_account_id="bo-current"
+            )
+            _write(profile, "decisions.jsonl", log)
+
+            code, stdout, stderr = check(profile_file)
+
+            assert (code, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert stdout.splitlines() == [
+                "rules.toml: rule must hold one [[rule]] block per rule",
+                'decisions.jsonl: decision "d-0001": counterpart account '
+                '"bo-current" is not in accounts.toml; record a decision that '
+                "supersedes it",
+                "2 problems. Nothing was built.",
+            ]
