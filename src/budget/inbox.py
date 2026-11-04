@@ -49,6 +49,7 @@ from budget.rebuilding import (
     read_household_inputs,
     rebuild_through_gold,
 )
+from budget.silver.decisions import VoidImportRun
 
 # The outcomes that leave a file in the inbox and make `import` exit 3.
 LEFT_IN_INBOX: Final = frozenset(
@@ -435,6 +436,15 @@ def _outcome(
     )
 
 
+def _voided_runs(inputs: HouseholdInputs) -> frozenset[str]:
+    """Return the import runs a `void-import-run` decision in force voids."""
+    return frozenset(
+        decision.import_run_id
+        for decision in inputs.log.silver
+        if isinstance(decision, VoidImportRun)
+    )
+
+
 def import_inbox(
     lock: WriterLock,
     previews: Sequence[ExportPreview],
@@ -452,6 +462,7 @@ def import_inbox(
     shown them in.
     """
     excluded = incident_files(incidents)
+    voided = _voided_runs(inputs)
     files: list[FileOutcome] = []
     for ordinal, previewed in enumerate(previews, start=1):
         if previewed.skipped:
@@ -466,7 +477,9 @@ def import_inbox(
                 FileOutcome(ordinal, previewed.account_id, "incident", INCIDENT_REASON)
             )
             continue
-        imported = import_inbox_file(lock, previewed.source, declared[previewed.source])
+        imported = import_inbox_file(
+            lock, previewed.source, declared[previewed.source], voided=voided
+        )
         files.append(_outcome(ordinal, imported, previewed))
     found = tuple(incidents)
     # Nothing was presented to Bronze when every file was skipped or held by
