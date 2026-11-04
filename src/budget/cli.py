@@ -650,14 +650,29 @@ def _review(profile: Profile, kind: str | None, account: str | None) -> None:
 
 
 def _transaction(profile: Profile, handle: str) -> str:
-    """Return the one Silver transaction whose ID starts with `handle`."""
+    """Return the one Silver transaction whose ID starts with `handle`.
+
+    Review shows a transaction by its first 8 characters (`operations.md`,
+    *Commands*); a handle that names no transaction, or more than one, is
+    refused before anything is proposed.
+    """
     with SilverStore(profile) as silver:
-        (transaction_id,) = (
+        matches = sorted(
             t.transaction_id
             for t in silver.read().transactions
             if t.transaction_id.startswith(handle)
         )
-    return transaction_id
+    if not matches:
+        reason = f'no transaction in Silver has the handle "{handle}"'
+        raise DecisionRejectedError((reason,))
+    if len(matches) > 1:
+        shown = ", ".join(f"{each[:12]}…" for each in matches)
+        reason = (
+            f'the handle "{handle}" matches more than one transaction ({shown}); '
+            "type more of its ID"
+        )
+        raise DecisionRejectedError((reason,))
+    return matches[0]
 
 
 def _proposal(profile: Profile, arguments: argparse.Namespace) -> DecisionProposal:
