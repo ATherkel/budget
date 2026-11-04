@@ -9,17 +9,20 @@ was recorded is read back from `decisions.jsonl` itself and through
 
 import json
 import unittest
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from budget.deciding import DecisionLog, DecisionProposal, Recorded, Rejected
 from budget.decision_log import read_decision_log
 from budget.gold.decisions import Classify
+from budget.importing import Coverage, import_inbox_file
 from budget.locking import writer_lock
 from budget.profiles import Profile
+from budget.rebuilding import rebuild_from_silver
 from budget.silver.store import SilverStore
-from tests.cli.pipelines import household
+from tests.cli.pipelines import household, prepared
+from tests.importing.households import drop, payload
 
 RECORDED_AT = datetime(2026, 4, 10, 17, 2, 11, 480000, tzinfo=UTC)
 
@@ -133,4 +136,37 @@ class RejectedTests(unittest.TestCase):
                     )
 
                     assert result == Rejected((reason,))
+            assert not profile.input_file("decisions.jsonl").exists()
+
+    def test_a_decision_gold_could_not_apply_is_rejected(self) -> None:
+        # Two outflows of 45.00, one in each account: no transfer of one
+        # into the other.
+        with TemporaryDirectory() as directory:
+            profile = prepared(Path(directory)).profile
+            march = Coverage(
+                covers_from=date(2026, 3, 1), covers_through=date(2026, 3, 4)
+            )
+            with writer_lock(profile) as lock:
+                for account_id, dato in (
+                    ("joint-current", "01.03.2026"),
+                    ("joint-savings", "02.03.2026"),
+                ):
+                    source = drop(
+                        profile, account_id, "danske-20260305.csv", payload(dato)
+                    )
+                    import_inbox_file(lock, source, march)
+                rebuild_from_silver(lock)
+            with SilverStore(profile) as silver:
+                first, second = (t.transaction_id for t in silver.read().transactions)
+
+            with writer_lock(profile) as lock:
+                result = DecisionLog(lock, clock=lambda: RECORDED_AT).propose(
+                    DecisionProposal(
+                        kind="pair", targets=(first, second), reason="Synthetic"
+                    )
+                )
+
+            assert result == Rejected(
+                (f"the amounts of {first} and {second} do not cancel",)
+            )
             assert not profile.input_file("decisions.jsonl").exists()
