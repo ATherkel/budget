@@ -208,6 +208,18 @@ def test_offsetting_unclassified_money_shows_signed_in_and_out_never_netted(
     )
 
 
+def test_each_unclassified_side_names_its_direction_beside_its_amount(
+    offsetting_client: TestClient,
+) -> None:
+    # Direction is told in words, never by colour or position alone.
+    april = report(offsetting_client, "2026-04", accounts=(CURRENT,))
+
+    assert (
+        april.text_of("unclassified-in-row"),
+        april.text_of("unclassified-out-row"),
+    ) == ("Ind +1.000,00 kr.", "Ud \N{MINUS SIGN}1.000,00 kr.")
+
+
 def test_a_known_zero_of_unclassified_money_shows_zero_without_a_sign(
     client: TestClient,
 ) -> None:
@@ -322,8 +334,8 @@ def test_the_explanation_names_the_incomplete_and_unsettled_months_of_the_pinned
 def test_the_explanation_says_whether_the_report_has_unclassified_money(
     client: TestClient,
 ) -> None:
-    # March has Unclassified money and February has none; neither shows its
-    # amounts or count, which belong to Kontrol.
+    # March has Unclassified money and February has none; the explanation
+    # shows neither its amounts nor its count.
     march, february = explanation(client, "2026-03"), explanation(client, "2026-02")
 
     assert (
