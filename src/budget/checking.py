@@ -10,10 +10,9 @@ from dataclasses import dataclass
 from budget.decision_log import (
     cut_off_problem,
     decision_log_bytes,
-    read_decision_log,
+    replay_decision_log,
 )
 from budget.gold.build import refuted_decisions
-from budget.inputs import ConfigurationError
 from budget.inputs.snapshot import read_configuration
 from budget.profiles import Profile
 
@@ -26,16 +25,20 @@ class CheckFindings:
 
 
 def check(profile: Profile) -> CheckFindings:
-    """Judge the profile's input files and decision log, listing every problem."""
+    """Judge the profile's input files and decision log, listing every problem.
+
+    The decisions the valid entries leave in force are judged against the
+    configuration files that loaded, even when other entries are invalid.
+    """
     configuration = read_configuration(profile)
-    problems = list(configuration.problems)
-    try:
-        log = read_decision_log(profile)
-    except ConfigurationError as error:
-        problems.extend(error.problems)
-    else:
-        problems.extend(refuted_decisions(log.gold, configuration.known))
-    cut_off = cut_off_problem(decision_log_bytes(profile))
-    if cut_off is not None:
-        problems.append(cut_off)
-    return CheckFindings(problems=tuple(problems))
+    content = decision_log_bytes(profile)
+    log = replay_decision_log(content)
+    cut_off = cut_off_problem(content)
+    return CheckFindings(
+        problems=(
+            *configuration.problems,
+            *log.problems,
+            *refuted_decisions(log.read.gold, configuration.known),
+            *(() if cut_off is None else (cut_off,)),
+        )
+    )

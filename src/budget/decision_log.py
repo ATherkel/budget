@@ -507,26 +507,36 @@ def cut_off_problem(content: bytes) -> str | None:
     )
 
 
-def read_decision_log(profile: Profile) -> DecisionLogRead:
-    """Read and validate the profile's decision log.
+@dataclass(frozen=True)
+class DecisionLogReplay:
+    """The log read without refusing: what is in force, and every problem.
 
-    A missing log holds no decisions. A final line without a line feed was cut
-    off while it was being written, so it counts as never written.
+    An invalid entry never comes into force, so `read` holds the decisions the
+    valid entries leave in force. A log that is not UTF-8 holds none.
     """
-    content = decision_log_bytes(profile)
+
+    read: DecisionLogRead
+    problems: tuple[str, ...]
+
+
+def replay_decision_log(content: bytes) -> DecisionLogReplay:
+    """Judge every entry of a decision log's bytes, refusing nothing.
+
+    A final line without a line feed was cut off while it was being written,
+    so it counts as never written.
+    """
     prefix = content[: content.rfind(b"\n") + 1]
     try:
         lines = prefix.decode("utf-8-sig").split("\n")[:-1]
     except UnicodeDecodeError:
+        nothing = DecisionLogRead((), (), 0, hashlib.sha256(b"").hexdigest())
         problem = f"{DECISION_LOG_FILE_NAME}: the file is not UTF-8"
-        raise ConfigurationError((problem,)) from None
+        return DecisionLogReplay(nothing, (problem,))
     replay = _Replay()
     for position, line in enumerate(lines, start=1):
         replay.read(position, line)
-    if replay.problems:
-        raise ConfigurationError(tuple(replay.problems))
     in_force = replay.in_force.values()
-    return DecisionLogRead(
+    read = DecisionLogRead(
         silver=tuple(
             _SILVER_KINDS[e["kind"]](e) for e in in_force if e["kind"] in _SILVER_KINDS
         ),
@@ -536,3 +546,17 @@ def read_decision_log(profile: Profile) -> DecisionLogRead:
         position=len(lines),
         prefix_sha256=hashlib.sha256(prefix).hexdigest(),
     )
+    return DecisionLogReplay(read, tuple(replay.problems))
+
+
+def read_decision_log(profile: Profile) -> DecisionLogRead:
+    """Read and validate the profile's decision log.
+
+    A missing log holds no decisions. A final line without a line feed was cut
+    off while it was being written, so it counts as never written. Any invalid
+    entry refuses the whole log, as one `ConfigurationError` naming every one.
+    """
+    replay = replay_decision_log(decision_log_bytes(profile))
+    if replay.problems:
+        raise ConfigurationError(replay.problems)
+    return replay.read
