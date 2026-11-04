@@ -22,6 +22,10 @@
   <div class="summary-figure"><dt>Indtægter</dt><dd id="income">{{ overview.income | amount(overview.currency) }}</dd></div>
   <div class="summary-figure"><dt>Udgifter</dt><dd id="expenses">{{ overview.expenses | amount(overview.currency) }}</dd></div>
   <div class="summary-figure"><dt>Penge tilbage</dt><dd id="money-left">{{ overview.net_cash_flow | amount(overview.currency) }}</dd></div>
+{% if overview.unclassified %}
+  {# Money in and out side by side, never netted, each named in words. #}
+  <div id="unclassified" class="summary-figure"><dt>Ukategoriseret</dt><dd><span>Ind</span> <span id="unclassified-in">{{ overview.unclassified.money_in | signed_amount(overview.currency) }}</span></dd><dd><span>Ud</span> <span id="unclassified-out">{{ overview.unclassified.money_out | signed_amount(overview.currency) }}</span></dd></div>
+{% endif %}
 </dl>
 {% if overview.unclassified and overview.unclassified.count > 0 %}
 {# Quiet, without amounts or count: those belong to Kontrol. #}
