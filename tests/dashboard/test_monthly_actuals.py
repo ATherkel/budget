@@ -220,6 +220,23 @@ def test_a_known_zero_of_unclassified_money_shows_zero_without_a_sign(
     ) == ("0,00 kr.", "0,00 kr.")
 
 
+def test_unclassified_money_without_evidence_shows_as_unknown_never_as_zero(
+    client: TestClient,
+) -> None:
+    # June on 3 June: no account has evidence yet, so both sides are unknown.
+    june = report(client, "2026-06", reference_date="2026-06-03")
+
+    assert (
+        june.text_of("unclassified"),
+        june.text_of("unclassified-in"),
+        june.text_of("unclassified-out"),
+    ) == (
+        "Ukategoriseret Ind Ingen data endnu Ud Ingen data endnu",
+        "Ingen data endnu",
+        "Ingen data endnu",
+    )
+
+
 def explanation(
     client: TestClient, month: str, accounts: tuple[str, ...] = (CURRENT, SAVINGS)
 ) -> Page:
