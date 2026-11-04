@@ -26,7 +26,15 @@ from budget.decision_log import (
 )
 from budget.durability import sync_folder
 from budget.gold.build import decision_problem
-from budget.gold.decisions import Classify, ClassifyAdjustment, OneSidedTransfer, Pair
+from budget.gold.classification import inapplicable
+from budget.gold.decisions import (
+    Classify,
+    ClassifyAdjustment,
+    OneSidedTransfer,
+    Pair,
+    targets,
+)
+from budget.gold.transactions import gold_transactions
 from budget.inputs import load_configuration
 from budget.inputs.rule_checks import KnownIds
 from budget.locking import WriterLock
@@ -150,7 +158,12 @@ def _target_problems(profile: Profile, entry: Mapping[str, Any]) -> tuple[str, .
 def _configuration_problems(
     profile: Profile, entry: Mapping[str, object]
 ) -> tuple[str, ...]:
-    """Name what the configuration shows wrong with a well-formed entry."""
+    """Name what the configuration and Silver show wrong with a Gold decision.
+
+    A decision Gold could not apply would only raise a
+    `decision-not-applicable` item once built, so it is refused here instead.
+    A missing target is named by `_target_problems` already.
+    """
     decision = typed_decision(entry)
     if not isinstance(
         decision, Classify | ClassifyAdjustment | Pair | OneSidedTransfer
@@ -162,7 +175,28 @@ def _configuration_problems(
         categories=configuration.taxonomy.categories.keys(),
     )
     problem = decision_problem(decision, known)
-    return () if problem is None else (problem,)
+    if problem is not None:
+        return (problem,)
+    with SilverStore(profile) as silver:
+        transactions = {
+            t.transaction_id: t for t in gold_transactions(silver.read().transactions)
+        }
+    reason = inapplicable(decision, transactions, configuration)
+    if reason is None or reason == "target-missing":
+        return ()
+    return (_NOT_APPLICABLE[reason].format(*targets(decision)),)
+
+
+# What each `decision-not-applicable` reason says of the decision's targets.
+_NOT_APPLICABLE: Mapping[str, str] = {
+    "zero-amount": "{0} has a zero amount, so it is neither money in nor out",
+    "amounts-do-not-cancel": "the amounts of {0} and {1} do not cancel",
+    "same-account": "{0} and {1} are in the same account",
+    "inside-managed-period": (
+        "{0} falls inside the counterpart account's managed period, "
+        "so it is no one-sided transfer"
+    ),
+}
 
 
 def _append(path: Path, data: bytes) -> None:
