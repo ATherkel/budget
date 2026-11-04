@@ -12,7 +12,9 @@ import unittest
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
+from budget.backups import complete_backup_sets
 from budget.bronze import BronzeStore
 from budget.gold.store import GoldStore
 from budget.importing import Coverage, import_inbox_file
@@ -21,6 +23,7 @@ from budget.profiles import Profile
 from budget.rebuilding import rebuild_from_silver
 from budget.silver.store import SilverStore
 from tests.cli.commands import decide, rebuild
+from tests.cli.imports import clean_checkout
 from tests.cli.pipelines import household, prepared
 from tests.importing.households import (
     chained_payload,
@@ -244,6 +247,31 @@ class SilverKindTests(unittest.TestCase):
                 "reason": "Same purchase under new text",
                 "supersedes": [],
             }
+
+
+class ProductionTests(unittest.TestCase):
+    def test_a_decision_in_production_is_followed_by_a_backup_set(self) -> None:
+        # Every production write is followed by a set covering what it wrote
+        # (`operations.md`, *Backup and Restore*); Git is the system boundary.
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory), name="production")
+            with mock.patch("subprocess.run", side_effect=clean_checkout):
+                assert rebuild(built.profile_file)[0] == EXIT_OK
+                sets_before = len(complete_backup_sets(built.profile))
+                transaction_id = only_transaction(built.profile)
+
+                status, stdout, stderr = decide(
+                    built.profile_file,
+                    "classify",
+                    transaction_id[:8],
+                    "groceries",
+                    "--reason",
+                    "Weekly shop",
+                )
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "Backup   backup set" in stdout
+            assert len(complete_backup_sets(built.profile)) == sets_before + 1
 
 
 class RejectionTests(unittest.TestCase):
