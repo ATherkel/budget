@@ -72,3 +72,30 @@ class VoidedRunTests(unittest.TestCase):
                 "2026-03-09",
             )
             assert not source.exists()
+
+    def test_bytes_a_voided_run_stored_are_no_account_conflict_elsewhere(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            household = prepared(folder)
+            profile = household.profile
+            content = payload("01.03.2026")
+            drop(profile, "joint-current", EXPORT, content)
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-09"))
+            assert (
+                import_(household.profile_file, "--ranges", str(ranges))[0] == EXIT_OK
+            )
+            (misfiled,) = log_entries(profile)
+            void(profile, str(misfiled["import_run_id"]))
+            source = drop(profile, "joint-savings", EXPORT, content)
+
+            status, _, stderr = import_(household.profile_file, "--ranges", str(ranges))
+
+            assert (status, stderr) == (EXIT_OK, "")
+            moved = log_entries(profile)[1]
+            assert (moved["account_id"], moved["outcome"]) == (
+                "joint-savings",
+                "stored",
+            )
+            assert not source.exists()
