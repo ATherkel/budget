@@ -59,6 +59,10 @@ def check(profile: Profile) -> CheckFindings:
     configuration files that loaded, even when other entries are invalid.
     """
     configuration = read_configuration(profile)
+    # Recipes first: the log is append-only, so a log read after them still
+    # holds every prefix they record, even if a build appends and publishes
+    # between the two reads.
+    recorded = _recorded_prefixes(profile)
     content = decision_log_bytes(profile)
     log = replay_decision_log(content)
     cut_off = cut_off_problem(content)
@@ -69,5 +73,5 @@ def check(profile: Profile) -> CheckFindings:
             *refuted_decisions(log.read.gold, configuration.known),
             *(() if cut_off is None else (cut_off,)),
         ),
-        mismatches=prefix_problems(content, _recorded_prefixes(profile)),
+        mismatches=prefix_problems(content, recorded),
     )
