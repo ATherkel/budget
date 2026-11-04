@@ -130,20 +130,21 @@ def _decide_outcome(
     )
 
     # Bytes already stored for another account are refused: the payload has one
-    # owner, and only a manual decision may move it.
-    account_conflict = None
+    # owner, and only a manual decision, a void of that run, may move it.
+    account_conflict = False
     if repeat_of is None:
-        account_conflict = connection.execute(
+        stored_elsewhere = connection.execute(
             """
             SELECT import_run_id FROM import_runs
             WHERE payload_id = ? AND outcome = 'stored'
                 AND declared_account_id <> ?
-            ORDER BY started_at, import_run_id
-            LIMIT 1
             """,
             (payload_id, declared_account_id),
-        ).fetchone()
-    refused = declaration_refused or account_conflict is not None
+        ).fetchall()
+        account_conflict = any(
+            row["import_run_id"] not in voided for row in stored_elsewhere
+        )
+    refused = declaration_refused or account_conflict
     if refused:
         # A refused run is nobody's original: it is never the run a later
         # presentation of these bytes repeats.
