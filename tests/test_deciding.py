@@ -107,3 +107,30 @@ class RejectedTests(unittest.TestCase):
                 'category "eating-out" is not in the taxonomy',
             )
             assert profile.input_file("decisions.jsonl").read_bytes() == before
+
+    def test_a_target_that_does_not_exist_is_rejected(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory)).profile
+            transaction_id = only_transaction(profile)
+            proposals = {
+                "0badc0de is not a transaction in Silver": classify(
+                    "0badc0de", "groceries"
+                ),
+                "run-0404 is not an import run in Bronze": DecisionProposal(
+                    kind="void-import-run", targets=("run-0404",), reason="Synthetic"
+                ),
+                "record nothing:7 is not a source record in Bronze": DecisionProposal(
+                    kind="same-transaction",
+                    targets=(transaction_id,),
+                    reason="Synthetic",
+                    details={"record": {"payload_id": "nothing", "record_ordinal": 7}},
+                ),
+            }
+            for reason, proposal in proposals.items():
+                with self.subTest(proposal.kind), writer_lock(profile) as lock:
+                    result = DecisionLog(lock, clock=lambda: RECORDED_AT).propose(
+                        proposal
+                    )
+
+                    assert result == Rejected((reason,))
+            assert not profile.input_file("decisions.jsonl").exists()
