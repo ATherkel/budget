@@ -41,7 +41,7 @@ from budget.silver.decisions import (
     Withdrawn,
 )
 
-_FORMAT_VERSION = 1
+DECISION_LOG_FORMAT = 1
 _RETRACT = "retract"
 
 # `recorded_at` as the platform writes it: UTC, to the second.
@@ -192,8 +192,8 @@ def _kind_refusal(entry: Entry) -> list[str]:
     version = entry.get("format")
     if version is None:
         return ["format is missing"]
-    if type(version) is not int or version != _FORMAT_VERSION:
-        return [f"format must be {_FORMAT_VERSION}"]
+    if type(version) is not int or version != DECISION_LOG_FORMAT:
+        return [f"format must be {DECISION_LOG_FORMAT}"]
     kind = entry.get("kind")
     if kind is None:
         return ["kind is missing"]

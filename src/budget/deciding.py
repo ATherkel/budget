@@ -6,11 +6,17 @@ and a browser editor calls the same one later, so it sits in the application
 layer, not in presentation. The dashboard has no route to it.
 """
 
+import json
+import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
+from pathlib import Path
 
+from budget.decision_log import DECISION_LOG_FORMAT, read_decision_log
+from budget.durability import sync_folder
 from budget.locking import WriterLock
+from budget.profiles import DECISION_LOG_FILE_NAME
 
 
 @dataclass(frozen=True)
@@ -54,6 +60,40 @@ class DecisionLog:
         self._clock = clock
 
     def propose(self, proposal: DecisionProposal) -> Recorded | Rejected:
-        """Validate `proposal`, then record it, or reject it naming every reason."""
-        del proposal
-        return Rejected(())
+        """Validate `proposal`, then record it, or reject it naming every reason.
+
+        A recorded entry is appended and forced to disk with `fsync` before
+        this returns.
+        """
+        profile = self._lock.profile
+        position = read_decision_log(profile).position + 1
+        recorded = Recorded(
+            decision_id=f"d-{position:04d}",
+            entry=position,
+            recorded_at=self._clock().astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+        entry = {
+            "format": DECISION_LOG_FORMAT,
+            "entry": recorded.entry,
+            "decision_id": recorded.decision_id,
+            "recorded_at": recorded.recorded_at,
+            "kind": proposal.kind,
+            "targets": list(proposal.targets),
+            **proposal.details,
+            "reason": proposal.reason,
+            "supersedes": list(proposal.supersedes),
+        }
+        line = json.dumps(entry, ensure_ascii=False) + "\n"
+        _append(profile.input_file(DECISION_LOG_FILE_NAME), line.encode("utf-8"))
+        return recorded
+
+
+def _append(path: Path, data: bytes) -> None:
+    """Append to the log and force it to disk before going on."""
+    created = not path.exists()
+    with path.open("ab") as file:
+        file.write(data)
+        file.flush()
+        os.fsync(file.fileno())
+    if created:
+        sync_folder(path.parent)
