@@ -6,14 +6,15 @@ synthetic worked-example publication; the dashboard is driven in-process.
 """
 
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from budget.dashboard import create_app
-from budget.gold import GoldResult
+from budget.gold import GoldResult, GoldTransaction
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
 from tests.analytics.test_monthly_overview import LATER_GOLD, PERSON
@@ -129,27 +130,159 @@ def test_only_a_month_that_may_still_change_is_labelled_provisional(
     ) == ("Foreløbige tal", None)
 
 
-def test_unclassified_money_is_noted_quietly_without_its_amounts(
+def test_unclassified_money_keeps_its_quiet_note_and_explanation_link(
     client: TestClient,
 ) -> None:
     # March has one Unclassified transaction of -450.00; February has none.
-    # The amounts and the count belong to Kontrol, never to Enkel.
+    # Its amounts now show in the Ukategoriseret bucket (#380); the note stays.
     march, february = report(client, "2026-03"), report(client, "2026-02")
 
     assert (
         march.text_of("unclassified-note") is not None,
-        "450" in march.visible(),
         march.attributes("unclassified-explanation").get("href"),
         february.text_of("unclassified-note"),
     ) == (
         True,
-        False,
         (
             "/explanation?publication=1&reference_date=2026-05-14"
             f"&account={CURRENT}&account={SAVINGS}&month=2026-03"
         ),
         None,
     )
+
+
+# Synthetic Unclassified money in April on Joint current: +1,000.00 in and
+# -600.00 and -400.00 out, which would net to zero.
+OFFSETTING = tuple(
+    GoldTransaction(
+        transaction_id=f"current-offset-{index}",
+        account_id=CURRENT,
+        transaction_date=date(2026, 4, 10),
+        account_sequence=100 + index,
+        amount=Decimal(amount),
+        description="UNKNOWN",
+        transaction_type="unknown",
+        transfer_group_id=None,
+        balance_after=None,
+        balance_check="missing_balance",
+    )
+    for index, amount in enumerate(("1000.00", "-600.00", "-400.00"))
+)
+
+
+@pytest.fixture
+def offsetting_client(tmp_path: Path) -> TestClient:
+    profile = dashboard_profile(tmp_path)
+    records = replace(RECORDS, transactions=(*RECORDS.transactions, *OFFSETTING))
+    with GoldStore(profile) as store:
+        store.publish(GoldResult(PUBLICATION, records), RECIPE, CONFIGURATION)
+    client = TestClient(
+        create_app(profile, clock=lambda: datetime(2026, 5, 14, 10, tzinfo=UTC)),
+        follow_redirects=False,
+    )
+    client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
+    return client
+
+
+def test_offsetting_unclassified_money_shows_signed_in_and_out_never_netted(
+    offsetting_client: TestClient,
+) -> None:
+    # April: income 25,000.00 and rent 8,500.00 are classified; the three
+    # Unclassified amounts sum to +1,000.00 in and -1,000.00 out.
+    april = report(offsetting_client, "2026-04", accounts=(CURRENT,))
+
+    assert (
+        april.text_of("unclassified"),
+        april.text_of("unclassified-in"),
+        april.text_of("unclassified-out"),
+        april.text_of("income"),
+        april.text_of("expenses"),
+        april.text_of("money-left"),
+    ) == (
+        "Ukategoriseret Ind +1.000,00 kr. Ud \N{MINUS SIGN}1.000,00 kr.",
+        "+1.000,00 kr.",
+        "\N{MINUS SIGN}1.000,00 kr.",
+        "25.000,00 kr.",
+        "8.500,00 kr.",
+        "16.500,00 kr.",
+    )
+
+
+def test_each_unclassified_side_names_its_direction_beside_its_amount(
+    offsetting_client: TestClient,
+) -> None:
+    # Direction is told in words, never by colour or position alone.
+    april = report(offsetting_client, "2026-04", accounts=(CURRENT,))
+
+    assert (
+        april.text_of("unclassified-in-row"),
+        april.text_of("unclassified-out-row"),
+    ) == ("Ind +1.000,00 kr.", "Ud \N{MINUS SIGN}1.000,00 kr.")
+
+
+def test_a_known_zero_of_unclassified_money_shows_zero_without_a_sign(
+    client: TestClient,
+) -> None:
+    # February: no Unclassified transactions, so 0.00 in and 0.00 out are known.
+    february = report(client, "2026-02")
+
+    assert (
+        february.text_of("unclassified-in"),
+        february.text_of("unclassified-out"),
+    ) == ("0,00 kr.", "0,00 kr.")
+
+
+def test_unclassified_money_without_evidence_shows_as_unknown_never_as_zero(
+    client: TestClient,
+) -> None:
+    # June on 3 June: no account has evidence yet, so both sides are unknown.
+    june = report(client, "2026-06", reference_date="2026-06-03")
+
+    assert (
+        june.text_of("unclassified"),
+        june.text_of("unclassified-in"),
+        june.text_of("unclassified-out"),
+    ) == (
+        "Ukategoriseret Ind Ingen data endnu Ud Ingen data endnu",
+        "Ingen data endnu",
+        "Ingen data endnu",
+    )
+
+
+def test_unclassified_money_follows_the_selected_accounts_on_load_and_update(
+    client: TestClient,
+) -> None:
+    # March's -450.00 Unclassified payment is on Joint current, so selecting
+    # Joint savings alone leaves a known zero on both sides.
+    def opened(accounts: tuple[str, ...]) -> Page:
+        response = client.get(
+            "/",
+            params={
+                "publication": str(PUBLICATION.publication_id),
+                "reference_date": REFERENCE_DATE,
+                "account": list(accounts),
+                "month": "2026-03",
+            },
+        )
+        assert response.status_code == 200
+        return read(response.text)
+
+    pages = (
+        opened((CURRENT, SAVINGS)),
+        opened((SAVINGS,)),
+        report(client, "2026-03"),
+        report(client, "2026-03", accounts=(SAVINGS,)),
+    )
+
+    assert [
+        (page.text_of("unclassified-in"), page.text_of("unclassified-out"))
+        for page in pages
+    ] == [
+        ("0,00 kr.", "\N{MINUS SIGN}450,00 kr."),
+        ("0,00 kr.", "0,00 kr."),
+        ("0,00 kr.", "\N{MINUS SIGN}450,00 kr."),
+        ("0,00 kr.", "0,00 kr."),
+    ]
 
 
 def explanation(
@@ -201,8 +334,8 @@ def test_the_explanation_names_the_incomplete_and_unsettled_months_of_the_pinned
 def test_the_explanation_says_whether_the_report_has_unclassified_money(
     client: TestClient,
 ) -> None:
-    # March has Unclassified money and February has none; neither shows its
-    # amounts or count, which belong to Kontrol.
+    # March has Unclassified money and February has none; the explanation
+    # shows neither its amounts nor its count.
     march, february = explanation(client, "2026-03"), explanation(client, "2026-02")
 
     assert (
