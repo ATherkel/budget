@@ -12,12 +12,14 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from budget.gold.store import GoldStore
 from budget.profiles import Profile
 from budget.silver.store import SilverStore
 from tests.cli.commands import decide, rebuild
 from tests.cli.pipelines import household
 
 EXIT_OK = 0
+EXIT_REFUSED_INPUT = 3
 
 
 def only_transaction(profile: Profile) -> str:
@@ -61,3 +63,31 @@ class WalkthroughTests(unittest.TestCase):
                 "groceries",
             )
             assert entry["reason"] == "Weekly shop"
+
+
+class RejectionTests(unittest.TestCase):
+    def test_a_rejected_decision_exits_3_naming_its_reasons_and_records_nothing(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            transaction_id = only_transaction(built.profile)
+
+            status, stdout, stderr = decide(
+                built.profile_file,
+                "classify",
+                transaction_id[:8],
+                "eating-out",
+                "--reason",
+                "Synthetic",
+            )
+
+            assert (status, stdout) == (EXIT_REFUSED_INPUT, "")
+            assert stderr == (
+                "budget: the decision was rejected; nothing was recorded:\n"
+                '  category "eating-out" is not in the taxonomy\n'
+            )
+            assert not built.profile.input_file("decisions.jsonl").exists()
+            with GoldStore(built.profile) as gold:
+                assert [m.to_publication_id for m in gold.pointer_history()] == [1]
