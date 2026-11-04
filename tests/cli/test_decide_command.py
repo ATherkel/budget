@@ -21,7 +21,12 @@ from budget.rebuilding import rebuild_from_silver
 from budget.silver.store import SilverStore
 from tests.cli.commands import decide, rebuild
 from tests.cli.pipelines import household, prepared
-from tests.importing.households import chained_payload, drop
+from tests.importing.households import (
+    chained_payload,
+    drop,
+    incoming_payload,
+    payload,
+)
 
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
@@ -68,6 +73,118 @@ class WalkthroughTests(unittest.TestCase):
                 "groceries",
             )
             assert entry["reason"] == "Weekly shop"
+
+
+def decided(profile_file: Path, *arguments: str) -> None:
+    """Run `budget decide` and require it to record and publish."""
+    status, _, stderr = decide(profile_file, *arguments)
+    assert (status, stderr) == (EXIT_OK, "")
+
+
+def fields(entry: dict[str, object]) -> dict[str, object]:
+    """An entry without the fields the platform sets."""
+    return {
+        key: value
+        for key, value in entry.items()
+        if key not in {"format", "entry", "decision_id", "recorded_at"}
+    }
+
+
+class GrammarTests(unittest.TestCase):
+    """Each kind's command line records the entry `operations.md` documents."""
+
+    def test_a_pair_names_two_handles_and_a_retract_only_what_it_supersedes(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = prepared(Path(directory))
+            profile = built.profile
+            march = Coverage(
+                covers_from=date(2026, 3, 1), covers_through=date(2026, 3, 4)
+            )
+            with writer_lock(profile) as lock:
+                for account_id, export in (
+                    ("joint-current", payload("01.03.2026")),
+                    ("joint-savings", incoming_payload("01.03.2026")),
+                ):
+                    source = drop(profile, account_id, "danske-20260305.csv", export)
+                    import_inbox_file(lock, source, march)
+                rebuild_from_silver(lock)
+            with SilverStore(profile) as silver:
+                by_account = {
+                    t.account_id: t.transaction_id for t in silver.read().transactions
+                }
+            out, into = by_account["joint-current"], by_account["joint-savings"]
+
+            decided(built.profile_file, "pair", out[:8], into[:8], "--reason", "Moved")
+            decided(
+                built.profile_file,
+                "retract",
+                "--supersedes",
+                "d-0001",
+                "--reason",
+                "Not a transfer",
+            )
+
+            assert [fields(entry) for entry in log_lines(profile)] == [
+                {
+                    "kind": "pair",
+                    "targets": [out, into],
+                    "reason": "Moved",
+                    "supersedes": [],
+                },
+                {
+                    "kind": "retract",
+                    "targets": [],
+                    "reason": "Not a transfer",
+                    "supersedes": ["d-0001"],
+                },
+            ]
+
+    def test_an_adjustment_and_a_one_sided_transfer_take_their_options(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            transaction_id = only_transaction(built.profile)
+            handle = transaction_id[:8]
+
+            decided(
+                built.profile_file,
+                "classify",
+                handle,
+                "--adjustment",
+                "--reason",
+                "Bank correction",
+            )
+            decided(
+                built.profile_file,
+                "one-sided-transfer",
+                handle,
+                "--counterpart",
+                "joint-savings",
+                "--supersedes",
+                "d-0001",
+                "--reason",
+                "To savings",
+            )
+
+            assert [fields(entry) for entry in log_lines(built.profile)] == [
+                {
+                    "kind": "classify",
+                    "targets": [transaction_id],
+                    "adjustment": True,
+                    "reason": "Bank correction",
+                    "supersedes": [],
+                },
+                {
+                    "kind": "one-sided-transfer",
+                    "targets": [transaction_id],
+                    "counterpart_account_id": "joint-savings",
+                    "reason": "To savings",
+                    "supersedes": ["d-0001"],
+                },
+            ]
 
 
 class RejectionTests(unittest.TestCase):
