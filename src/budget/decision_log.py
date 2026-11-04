@@ -42,7 +42,7 @@ from budget.silver.decisions import (
 )
 
 DECISION_LOG_FORMAT = 1
-_RETRACT = "retract"
+RETRACT = "retract"
 
 # `recorded_at` as the platform writes it: UTC, to the second.
 _UTC_TIME = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
@@ -183,8 +183,13 @@ _KINDS: Mapping[str, _Kind] = {
         {"record": FieldRule(lambda v: isinstance(v, dict), "must be an object")},
         _record_problems,
     ),
-    _RETRACT: _Kind(None, 0, {"targets": _JUDGED_APART}, _retract_problems),
+    RETRACT: _Kind(None, 0, {"targets": _JUDGED_APART}, _retract_problems),
 }
+# The kinds whose targets are import runs; every other kind but a retract
+# targets transactions.
+IMPORT_RUN_KINDS = frozenset(
+    kind for kind, rules in _KINDS.items() if rules.group == _IMPORT_RUN
+)
 
 
 def _kind_refusal(entry: Entry) -> list[str]:
@@ -355,7 +360,7 @@ class _Replay:
         for superseded in entry["supersedes"]:
             for claim in _claims(self.in_force.pop(superseded)):
                 del self.holders[claim.group, claim.target][claim.payload]
-        if entry["kind"] != _RETRACT:
+        if entry["kind"] != RETRACT:
             self.in_force[entry["decision_id"]] = entry
             for claim in _claims(entry):
                 held = self.holders.setdefault((claim.group, claim.target), {})
@@ -410,7 +415,7 @@ class _Replay:
         Superseding one would quietly cancel a decision on another target, or
         across Silver and Gold. A `retract` withdraws whatever it names.
         """
-        if entry["kind"] == _RETRACT:
+        if entry["kind"] == RETRACT:
             return []
         claims = _claims(entry)
         return [

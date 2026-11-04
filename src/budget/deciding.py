@@ -12,9 +12,13 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
+from budget.bronze import BronzeStore
 from budget.decision_log import (
     DECISION_LOG_FORMAT,
+    IMPORT_RUN_KINDS,
+    RETRACT,
     history_problems,
     read_decision_log,
     shape_problems,
@@ -27,6 +31,7 @@ from budget.inputs import load_configuration
 from budget.inputs.rule_checks import KnownIds
 from budget.locking import WriterLock
 from budget.profiles import DECISION_LOG_FILE_NAME, Profile
+from budget.silver.store import SilverStore
 
 
 @dataclass(frozen=True)
@@ -95,6 +100,7 @@ class DecisionLog:
         }
         problems = shape_problems(entry, position) or (
             *history_problems(profile, entry),
+            *_target_problems(profile, entry),
             *_configuration_problems(profile, entry),
         )
         if problems:
@@ -102,6 +108,43 @@ class DecisionLog:
         line = json.dumps(entry, ensure_ascii=False) + "\n"
         _append(profile.input_file(DECISION_LOG_FILE_NAME), line.encode("utf-8"))
         return recorded
+
+
+def _target_problems(profile: Profile, entry: Mapping[str, Any]) -> tuple[str, ...]:
+    """Name each target, and a `same-transaction` record, that does not exist.
+
+    Transactions are looked for in the stored Silver, which the rebuild after
+    the decision reads; import runs and source records in Bronze.
+    """
+    kind = entry["kind"]
+    if kind == RETRACT:
+        return ()
+    with BronzeStore(profile) as bronze:
+        runs = {run.import_run_id for run in bronze.import_runs()}
+        record = entry.get("record")
+        record_missing = isinstance(record, dict) and record["record_ordinal"] not in {
+            each.record_ordinal
+            for each in bronze.get_source_records(record["payload_id"])
+        }
+    if kind in IMPORT_RUN_KINDS:
+        return tuple(
+            f"{target} is not an import run in Bronze"
+            for target in entry["targets"]
+            if target not in runs
+        )
+    with SilverStore(profile) as silver:
+        transactions = {t.transaction_id for t in silver.read().transactions}
+    problems = [
+        f"{target} is not a transaction in Silver"
+        for target in entry["targets"]
+        if target not in transactions
+    ]
+    if record_missing:
+        problems.append(
+            f"record {record['payload_id']}:{record['record_ordinal']} "
+            "is not a source record in Bronze"
+        )
+    return tuple(problems)
 
 
 def _configuration_problems(
