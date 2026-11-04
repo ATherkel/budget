@@ -402,8 +402,8 @@ the same month changes neither.
 | `provisional` | null |
 
 The Unclassified count is 1, so Enkel shows its quiet Unclassified note beside
-money left of −1,000.00, and its Ukategoriseret figure reads Ind 0,00 kr. and
-Ud −450,00 kr., without the count. Were the 450.00 an
+money left of −1,000.00, and its Ukategoriseret figure shows `money_in` 0.00
+and `money_out` −450.00, without the count. Were the 450.00 an
 expense, money left would be 450.00 lower; were it a Transfer, it would stand.
 
 **May: current month, no activity yet.** Income, Expenses and net cash flow
