@@ -22,9 +22,10 @@ import io
 import re
 import sys
 from contextlib import redirect_stderr, redirect_stdout
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 from budget.cli import main as budget_main
 
@@ -56,6 +57,8 @@ APRIL = (
     ("01.04.2026", "NETTO", "-45,00", "955,00"),
     ("02.04.2026", "BIO", "-100,00", "955,00"),
 )
+# The day after the last export, so April is the current month.
+TODAY = datetime(2026, 4, 4, 8, 0, tzinfo=UTC)
 _IDENTIFIER = re.compile(r"[0-9a-f]{16,}")
 
 
@@ -75,10 +78,20 @@ def _export(*rows: tuple[str, str, str, str]) -> bytes:
 
 
 def _budget(profile_file: Path, *arguments: str) -> tuple[int, str, str]:
-    """Run one `budget` command in-process; return status, stdout, stderr."""
+    """Run one `budget` command in-process; return status, stdout, stderr.
+
+    The commands read the clock as `TODAY`, so the completeness output they
+    end with lists the same months whenever the script runs.
+    """
     stdout = io.StringIO()
     stderr = io.StringIO()
-    with redirect_stdout(stdout), redirect_stderr(stderr):
+    clock = mock.Mock(wraps=datetime)
+    clock.now.return_value = TODAY
+    with (
+        redirect_stdout(stdout),
+        redirect_stderr(stderr),
+        mock.patch("budget.cli.datetime", clock),
+    ):
         status = budget_main(["--profile", str(profile_file), *arguments], environ={})
     return status, stdout.getvalue(), stderr.getvalue()
 

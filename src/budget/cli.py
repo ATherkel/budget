@@ -10,7 +10,7 @@ import argparse
 import os
 import sys
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
@@ -32,6 +32,7 @@ from budget.bronze.parsers.registry import UnsupportedSourceFormatError
 from budget.bronze.storage import BRONZE_STAGE, bronze_stage
 from budget.bronze.store import ConflictingDeclaredFormatsError
 from budget.codeversion import UncommittedCodeError, require_committed_code
+from budget.completeness import Completeness, completeness
 from budget.dashboard import create_app
 from budget.dashboard.passphrase import PassphraseNotSetError, set_passphrase
 from budget.demo import DEFAULT_DEMO_PORT, DemoDirectoryExistsError, create_demo_profile
@@ -306,6 +307,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     review.add_argument("--account", help="list one account's items and runs only")
     commands.add_parser("undo", help="restore the previous current publication")
+    commands.add_parser("status", help="show balance and classification completeness")
     commands.add_parser("serve", help="start the read-only dashboard")
     commands.add_parser(
         "set-passphrase",
@@ -482,10 +484,14 @@ def _rebuild(profile: Profile, from_stage: str) -> None:
         sys.stdout.write(
             summaries.publication_changes(profile, published, silver_reviews)
         )
-        if failure is not None:
-            raise RebuiltWithoutBackupError(failure) from None
         if written is not None:
             sys.stdout.write(f"Backup   backup set {written.name} written\n")
+        try:
+            _show_completeness(profile)
+        finally:
+            # A failed completeness read must not hide the missing backup.
+            if failure is not None:
+                raise RebuiltWithoutBackupError(failure) from None
 
 
 def _declared_ranges(
@@ -565,6 +571,7 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
             return done
         if not previews and done.rebuilt is None and done.held_back is None:
             sys.stdout.write("The inbox holds no exports; nothing was imported.\n")
+            _show_completeness(profile)
             return EXIT_OK
         diff_text = (
             summaries.publication_changes(profile, done.published, done.silver_reviews)
@@ -578,6 +585,7 @@ def _import(profile: Profile, ranges_file: str | None) -> int:
             counts=done.counts(),
             duration_ms=_milliseconds(started),
         )
+        _show_completeness(profile)
     if done.held_back is not None:
         raise ImportedWithoutPublicationError(done.held_back, done.backup_failure)
     if done.backup_failure is not None:
@@ -641,6 +649,30 @@ def _undo(profile: Profile) -> None:
         sys.stdout.write(f"{summary}\nBackup   backup set {written.name} written\n")
 
 
+def _show_completeness(profile: Profile) -> Completeness:
+    """Print the completeness output to the terminal only, never to a log."""
+    found = completeness(profile, now=datetime.now(UTC))
+    sys.stdout.write(summaries.completeness_summary(found))
+    return found
+
+
+def _status(profile: Profile) -> int:
+    """Show balance and classification completeness, with no lock.
+
+    Completeness findings never change the exit status; evidence that cannot
+    be read is a defect in a store, not a finding, so it does.
+    """
+    found = _show_completeness(profile)
+    if found.evidence is not None and found.evidence.unreadable is not None:
+        sys.stderr.write("budget: the import evidence could not be read\n")
+        return (
+            EXIT_VERIFICATION_FAILED
+            if found.evidence.damaged
+            else EXIT_REFUSED_ENVIRONMENT
+        )
+    return EXIT_OK
+
+
 def _set_passphrase(profile: Profile) -> None:
     """Ask for the new dashboard passphrase twice, then store its hash."""
     # Refused before asking, so no one types a passphrase that cannot be kept.
@@ -702,6 +734,15 @@ def _milliseconds(started: float) -> int:
     return int((perf_counter() - started) * 1000)
 
 
+# The commands that take nothing but the profile.
+_PROFILE_ONLY_COMMANDS: Final[Mapping[str, Callable[[Profile], None]]] = {
+    "backup": _backup,
+    "undo": _undo,
+    "set-passphrase": _set_passphrase,
+    "serve": _serve,
+}
+
+
 def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
     """Select and load the profile, run the command, and return its status."""
     if arguments.command == "demo":
@@ -716,20 +757,16 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         return _import(profile, arguments.ranges)
     if arguments.command == "restore":
         return _restore(profile, arguments.backup_set)
-    if arguments.command == "backup":
-        _backup(profile)
+    if arguments.command == "status":
+        return _status(profile)
+    if arguments.command in _PROFILE_ONLY_COMMANDS:
+        _PROFILE_ONLY_COMMANDS[arguments.command](profile)
     elif arguments.command == "dev":
         _dev_refresh(profile, inputs=arguments.inputs, writable=arguments.writable)
     elif arguments.command == "rebuild":
         _rebuild(profile, arguments.from_stage)
     elif arguments.command == "review":
         _review(profile, arguments.kind, arguments.account)
-    elif arguments.command == "undo":
-        _undo(profile)
-    elif arguments.command == "set-passphrase":
-        _set_passphrase(profile)
-    elif arguments.command == "serve":
-        _serve(profile)
     else:
         _migrate(profile, arguments.stage, new_store=arguments.new_store)
     return EXIT_OK

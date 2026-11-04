@@ -12,10 +12,16 @@ transaction id or arbitrary validation message appears.
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from types import MappingProxyType
 from typing import Final
 
 from budget.bronze.models import ImportRun
+from budget.completeness import (
+    AccountEvidenceStatus,
+    AccountMonthCompleteness,
+    Completeness,
+)
 from budget.gold import ClassificationReviewKind
 from budget.gold.diff import compare_publications, review_line
 from budget.gold.models import GoldReviewTarget
@@ -65,6 +71,100 @@ def rebuild_summary(rebuild: SilverRebuild) -> str:
     lines = [_bronze_line(rebuild.runs), *_account_lines(rows, rebuild.result)]
     lines.extend(_run_line(row) for row in rows)
     return "\n".join(lines) + "\n"
+
+
+def completeness_summary(found: Completeness) -> str:
+    """Report what `status` found, saying plainly what could not be shown."""
+    published = found.published
+    if published is None:
+        lines = ["Published figures: unavailable, nothing is published"]
+    else:
+        lines = [f"Published figures: publication {published.publication_id} (current)"]
+        lines.extend(_month_line(each) for each in published.months)
+        lines.append("Unclassified money, by account and month")
+        lines.extend(_unclassified_line(each) for each in published.months)
+    lines.extend(_review_lines(found))
+    lines.append("Import evidence (operational, apart from published figures)")
+    accounts = () if found.evidence is None else found.evidence.accounts
+    if found.evidence is not None and found.evidence.unreadable is not None:
+        lines.append(f"  unavailable: could not be read: {found.evidence.unreadable}")
+    elif not accounts:
+        lines.append("  none recorded")
+    for each in accounts:
+        lines.extend(_evidence_lines(each))
+    return "\n".join(lines) + "\n"
+
+
+def _review_lines(found: Completeness) -> list[str]:
+    """Say the open review items per kind, Silver's and Gold's on their own lines."""
+    lines: list[str] = []
+    if found.evidence is not None:
+        silver = (
+            "unavailable"
+            if found.evidence.unreadable is not None
+            else _kinds(found.evidence.review_kinds)
+        )
+        lines.append(f"  Silver (operational): {silver}")
+    if found.published is not None:
+        lines.append(
+            f"  Gold (publication {found.published.publication_id}): "
+            f"{_kinds(found.published.review_kinds)}"
+        )
+    return ["Open review items", *lines] if lines else []
+
+
+def _kinds(counts: tuple[tuple[str, int], ...]) -> str:
+    """Say review item counts as `kind n`, or `none` when there are none."""
+    return ", ".join(f"{kind} {count}" for kind, count in counts) or "none"
+
+
+def _date_or_none(day: date | None) -> str:
+    """Say a date, or `none` when no evidence supplies one."""
+    return "none" if day is None else day.isoformat()
+
+
+def _evidence_lines(each: AccountEvidenceStatus) -> list[str]:
+    """Say one account's latest export, Evidence through, and quarantined runs."""
+    lines = [
+        (
+            f"{each.account_id}  latest export {_date_or_none(each.latest_export)}"
+            f"  evidence through {_date_or_none(each.evidence_through)}"
+        )
+    ]
+    if not each.quarantined:
+        return [*lines, "  quarantined  none"]
+    for run in each.quarantined:
+        codes = ", ".join(sorted({error.code for error in run.errors}))
+        lines.append(
+            f"  quarantined  {run.import_run_id}  {run.covered_from}..{run.covered_to}"
+            + (f"  {codes}" if codes else "")
+        )
+    return lines
+
+
+def _unclassified_line(each: AccountMonthCompleteness) -> str:
+    """Say one account-month's unclassified money in and out, and how many."""
+    money = each.unclassified
+    prefix = f"  {each.account_id}  {each.month.year:04d}-{each.month.month:02d}  "
+    if money is None:
+        return f"{prefix}unavailable: no data"
+    return (
+        f"{prefix}in {money.money_in} {each.currency}, "
+        f"out {money.money_out} {each.currency}, "
+        f"{money.count} {'transaction' if money.count == 1 else 'transactions'}"
+    )
+
+
+def _month_line(each: AccountMonthCompleteness) -> str:
+    """Say one account-month's coverage, and why its figures may still change."""
+    line = (
+        f"{each.account_id}  {each.month.year:04d}-{each.month.month:02d}  "
+        f"{each.coverage.replace('_', ' ')}"
+    )
+    if not each.provisional:
+        return line
+    reasons = ", ".join(reason.replace("_", " ") for reason in each.provisional)
+    return f"{line}  provisional: {reasons}"
 
 
 def gold_line(rebuilt: GoldRebuild) -> str:

@@ -4,12 +4,10 @@
 from collections.abc import Iterator
 from datetime import date, datetime
 from decimal import Decimal
-from zoneinfo import ZoneInfo
 
 from budget.analytics import InvalidSelectionError
 from budget.gold import ReportingMonth
-
-COPENHAGEN = ZoneInfo("Europe/Copenhagen")
+from budget.timezone import COPENHAGEN
 
 _MONTH_NAMES = (
     "januar",

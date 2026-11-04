@@ -261,7 +261,31 @@ Move-Item $devStores $stores
 
 ## Status and check
 
-To be filled by #296 and #303.
+`status` reads the stores and writes nothing, so it is safe at any point:
+
+```powershell
+uv run budget status
+```
+
+Expect these blocks, in order. `Published figures: publication N (current)`
+with a coverage line per account and month (the latest 12 reporting months),
+`Unclassified money, by account and month` with money in, money out and a
+count per account and month, `Open review items` with Silver's and Gold's on
+separate lines, and `Import evidence (operational, apart from published
+figures)` with each account's latest export date, evidence-through date and
+quarantined runs. Then:
+
+| Do | Expect |
+| --- | --- |
+| `uv run budget rebuild`, then `uv run budget status` | The last lines of `rebuild` are the same block `status` prints |
+| `uv run budget import --ranges $ranges` with an export in the inbox | The same block at the end, after the `Changes` lines |
+| `uv run budget rebuild` with nothing changed | `nothing was published`, then the same block |
+| Move `gold.db` aside, then `uv run budget status`, then put it back | `Published figures: unavailable, nothing is published`; the import evidence still shows; nothing is created |
+
+`import` and `rebuild` print the block to the terminal only. It never changes
+their exit codes and never reaches `commands.jsonl`.
+
+`check` is added by #303.
 
 ## Clean up
 
