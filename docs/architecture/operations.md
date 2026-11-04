@@ -586,6 +586,14 @@ matches more than one transaction is refused.
 `decide` rebuilds from Silver for `void-import-run`, `same-transaction`,
 `withdrawn` and `accept-discrepancy`, and from Gold for the rest.
 
+`decide`'s targets are transaction handles, except for `void-import-run` and
+`accept-discrepancy`, which name an `import_run_id`. A `classify` names its
+category after its handle, or takes `--adjustment` instead. The other fields
+are options: `--counterpart <account_id>` for a `one-sided-transfer`,
+`--record <payload_id>:<record_ordinal>` for a `same-transaction`, and
+`--supersedes <decision_id>`, repeated for each decision the new one
+replaces. `decide` never fills in `supersedes` itself.
+
 ### Exit codes
 
 | Code | Meaning |
@@ -686,9 +694,14 @@ unmatched-transfer  no-candidate
   3f9a2c1e  joint-current  2026-02-16  −1,000.00  TO SAVINGS
   settle with: classify, pair, one-sided-transfer, or a rule change
 > budget decide classify 3f9a2c1e external-saving --reason "To Bo's savings, not imported"
-Recorded d-0005. Gold publication 44 is current (was 43).
-Changes  February: external-saving +1,000.00; unclassified out −1,000.00
+Recorded d-0005.
+Gold     published publication 44 (cause build)
+Changes  2026-02 joint-current: expenses +1000.00 DKK; category external-saving +1000.00 DKK; group saving +1000.00 DKK; unclassified out +1000.00 DKK; unclassified count -1
+Review  1 unmatched-transfer closed
 ```
+
+`decide` then ends with the completeness output, as `import` and `rebuild`
+do. A rejected decision records nothing, names every reason and exits 3.
 
 ### W3: changing a rule
 
