@@ -21,7 +21,7 @@ from budget.locking import writer_lock
 from budget.profiles import Profile
 from budget.rebuilding import rebuild_from_silver
 from budget.silver.store import SilverStore
-from tests.cli.pipelines import household, prepared
+from tests.cli.pipelines import EXPORT, household, prepared
 from tests.importing.households import drop, payload
 
 RECORDED_AT = datetime(2026, 4, 10, 17, 2, 11, 480000, tzinfo=UTC)
@@ -109,6 +109,47 @@ class CutOffLineTests(unittest.TestCase):
             )
             assert result == Rejected((reason,))
             assert profile.input_file("decisions.jsonl").read_bytes() == cut_off
+
+
+class VoidTests(unittest.TestCase):
+    def test_a_void_whose_export_was_stored_again_cannot_be_withdrawn(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            profile, voided = built.profile, built.import_run_id
+            with writer_lock(profile) as lock:
+                log = DecisionLog(lock, clock=lambda: RECORDED_AT)
+                log.propose(
+                    DecisionProposal(
+                        kind="void-import-run", targets=(voided,), reason="Wrong range"
+                    )
+                )
+                # The household drops the export again with the right range.
+                again = import_inbox_file(
+                    lock,
+                    drop(profile, "joint-current", "danske-20260305.csv", EXPORT),
+                    Coverage(
+                        covers_from=date(2026, 2, 1), covers_through=date(2026, 3, 4)
+                    ),
+                    voided={voided},
+                )
+                before = profile.input_file("decisions.jsonl").read_bytes()
+
+                result = log.propose(
+                    DecisionProposal(
+                        kind="retract",
+                        targets=(),
+                        reason="Synthetic",
+                        supersedes=("d-0001",),
+                    )
+                )
+
+            stored_again = again.import_run.import_run_id
+            reason = (
+                f"withdrawing d-0001 would put import run {voided} in force "
+                f"again, but run {stored_again} has stored its export since"
+            )
+            assert result == Rejected((reason,))
+            assert profile.input_file("decisions.jsonl").read_bytes() == before
 
 
 class RejectedTests(unittest.TestCase):
