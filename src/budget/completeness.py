@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Final
 
-from budget.analytics.household import COPENHAGEN, HouseholdReports
+from budget.analytics.household import HouseholdReports
 from budget.analytics.reports import (
     MoneyInOut,
     ProvisionalReason,
@@ -21,6 +21,7 @@ from budget.analytics.reports import (
 from budget.gold import Coverage, ReportingMonth
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
+from budget.timezone import COPENHAGEN
 
 # The default completeness output covers this many reporting months.
 LATEST_MONTHS: Final = 12

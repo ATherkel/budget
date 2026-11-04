@@ -43,12 +43,14 @@ class PublicationUnavailableError(GoldPublicationUnavailableError):
             self.add_note(f"current publication: {current_publication_id}")
 
 
-COPENHAGEN: Final = ZoneInfo("Europe/Copenhagen")
+# Analytics may import only the standard library and the Gold seam
+# (tests/analytics/test_boundary.py), so it keeps its own copy of this zone.
+_COPENHAGEN: Final = ZoneInfo("Europe/Copenhagen")
 
 
 def _copenhagen_date(moment: datetime) -> date:
     """Return the Copenhagen date of a recorded UTC moment."""
-    return moment.astimezone(COPENHAGEN).date()
+    return moment.astimezone(_COPENHAGEN).date()
 
 
 def _reference_date(publication: GoldPublication, requested: date) -> date:
