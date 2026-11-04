@@ -329,6 +329,21 @@ def _parser() -> argparse.ArgumentParser:
         help="handles or IDs; for classify, the category comes last",
     )
     decide.add_argument("--reason", required=True)
+    decide.add_argument(
+        "--supersedes",
+        action="append",
+        default=[],
+        metavar="DECISION_ID",
+        help="a decision this one replaces; repeat for several",
+    )
+    decide.add_argument(
+        "--adjustment",
+        action="store_true",
+        help="classify as an adjustment instead of a category",
+    )
+    decide.add_argument(
+        "--counterpart", help="a one-sided transfer's counterpart account"
+    )
     commands.add_parser("undo", help="restore the previous current publication")
     commands.add_parser("status", help="show balance and classification completeness")
     commands.add_parser(
@@ -675,14 +690,33 @@ def _transaction(profile: Profile, handle: str) -> str:
     return matches[0]
 
 
+def _details(arguments: argparse.Namespace) -> tuple[list[str], dict[str, object]]:
+    """Split the positionals into targets, and gather the kind's own fields.
+
+    A `classify` names its category after its handle, as walkthrough W2 does,
+    unless it is an adjustment. A wrong count is left to the boundary, which
+    names it.
+    """
+    targets: list[str] = [str(target) for target in arguments.targets]
+    details: dict[str, object] = {}
+    if arguments.kind == "classify" and arguments.adjustment:
+        details["adjustment"] = True
+    elif arguments.kind == "classify" and targets:
+        details["category"] = targets.pop()
+    if arguments.counterpart is not None:
+        details["counterpart_account_id"] = arguments.counterpart
+    return targets, details
+
+
 def _proposal(profile: Profile, arguments: argparse.Namespace) -> DecisionProposal:
     """Turn the command line into the proposal the boundary judges."""
-    handle, category = arguments.targets
+    targets, details = _details(arguments)
     return DecisionProposal(
         kind=arguments.kind,
-        targets=(_transaction(profile, handle),),
+        targets=tuple(_transaction(profile, handle) for handle in targets),
         reason=arguments.reason,
-        details={"category": category},
+        supersedes=tuple(arguments.supersedes),
+        details=details,
     )
 
 
