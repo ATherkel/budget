@@ -5,6 +5,7 @@ Every profile, input and decision is synthetic. The seam is the CLI itself,
 so these tests observe what an operator reads and the exit status.
 """
 
+import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -47,6 +48,22 @@ def _write(profile: Profile, name: str, text: str) -> None:
     profile.input_file(name).write_text(text, encoding="utf-8")
 
 
+def _entry(position: int, kind: str, targets: list[str], **fields: object) -> str:
+    """One well-formed `decisions.jsonl` line, `d-000<position>`, at `position`."""
+    entry = {
+        "format": 1,
+        "entry": position,
+        "decision_id": f"d-{position:04}",
+        "recorded_at": "2026-04-10T17:02:11Z",
+        "kind": kind,
+        "targets": targets,
+        "reason": "synthetic",
+        "supersedes": [],
+        **fields,
+    }
+    return json.dumps(entry) + "\n"
+
+
 class CheckCommandTests(unittest.TestCase):
     def test_valid_inputs_without_a_gold_store_pass_and_create_nothing(
         self,
@@ -82,4 +99,25 @@ class CheckCommandTests(unittest.TestCase):
                 "rules.toml: rule must hold one [[rule]] block per rule",
                 "decisions.jsonl: entry 1: must be one JSON object",
                 "3 problems. Nothing was built.",
+            ]
+
+    def test_a_classify_decision_naming_a_category_the_taxonomy_lacks_is_listed(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            write_inputs(profile)
+            log = _entry(1, "classify", ["t-netto"], category="groceries")
+            log += _entry(2, "classify", ["t-ikea"], category="furniture")
+            _write(profile, "decisions.jsonl", log)
+
+            code, stdout, stderr = check(profile_file)
+
+            assert (code, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert stdout.splitlines() == [
+                'decisions.jsonl: decision "d-0002": category "furniture" is not '
+                "in the taxonomy; record a decision that supersedes it",
+                "1 problem. Nothing was built.",
             ]
