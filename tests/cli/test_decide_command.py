@@ -13,6 +13,7 @@ from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from budget.bronze import BronzeStore
 from budget.gold.store import GoldStore
 from budget.importing import Coverage, import_inbox_file
 from budget.locking import writer_lock
@@ -185,6 +186,64 @@ class GrammarTests(unittest.TestCase):
                     "supersedes": ["d-0001"],
                 },
             ]
+
+
+class SilverKindTests(unittest.TestCase):
+    def test_a_void_rebuilds_silver_so_the_run_leaves_the_publication(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+
+            status, stdout, stderr = decide(
+                built.profile_file,
+                "void-import-run",
+                built.import_run_id,
+                "--reason",
+                "Declared with the wrong range",
+            )
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout.startswith("Recorded d-0001.\n")
+            assert "Gold     published publication 2 (cause build)" in stdout
+            with SilverStore(built.profile) as silver:
+                assert silver.read().transactions == ()
+            (entry,) = log_lines(built.profile)
+            assert fields(entry) == {
+                "kind": "void-import-run",
+                "targets": [built.import_run_id],
+                "reason": "Declared with the wrong range",
+                "supersedes": [],
+            }
+
+    def test_a_same_transaction_names_its_record_as_payload_and_ordinal(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            transaction_id = only_transaction(built.profile)
+            with BronzeStore(built.profile) as bronze:
+                payload_id = bronze.get_import_run(built.import_run_id).payload_id
+
+            decided(
+                built.profile_file,
+                "same-transaction",
+                transaction_id[:8],
+                "--record",
+                f"{payload_id}:1",
+                "--reason",
+                "Same purchase under new text",
+            )
+
+            (entry,) = log_lines(built.profile)
+            assert fields(entry) == {
+                "kind": "same-transaction",
+                "targets": [transaction_id],
+                "record": {"payload_id": payload_id, "record_ordinal": 1},
+                "reason": "Same purchase under new text",
+                "supersedes": [],
+            }
 
 
 class RejectionTests(unittest.TestCase):
