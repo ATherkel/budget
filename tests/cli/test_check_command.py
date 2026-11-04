@@ -15,6 +15,7 @@ from tempfile import TemporaryDirectory
 from budget.gold import GoldResult
 from budget.gold.storage import migrate_gold
 from budget.gold.store import GoldStore
+from budget.locking import writer_lock
 from budget.profiles import Profile
 from tests.cli.commands import check
 from tests.cli.pipelines import write_inputs
@@ -24,6 +25,7 @@ from tests.gold.worked_example import RECORDS
 
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
+EXIT_REFUSED_ENVIRONMENT = 4
 EXIT_VERIFICATION_FAILED = 5
 
 TAXONOMY_WITH_AN_UNDECLARED_GROUP = """\
@@ -60,9 +62,26 @@ def _everything_under(folder: Path) -> list[str]:
     return sorted(str(path.relative_to(folder)) for path in folder.rglob("*"))
 
 
+def _files_under(folder: Path) -> list[Path]:
+    """Every file under `folder` but SQLite's own `-wal` and `-shm` files.
+
+    Any read-only connection to a WAL store opens those, as `status` does.
+    """
+    return sorted(
+        path
+        for path in folder.rglob("*")
+        if path.is_file() and not path.name.endswith(("-wal", "-shm"))
+    )
+
+
+def _contents(files: list[Path], *, but: Path) -> dict[Path, bytes | None]:
+    """Each file's bytes, but only the name of `but`."""
+    return {path: None if path == but else path.read_bytes() for path in files}
+
+
 def _write(profile: Profile, name: str, text: str) -> None:
     """Replace one input file of `profile` with `text`."""
-    profile.input_file(name).write_text(text, encoding="utf-8")
+    profile.input_file(name).write_bytes(text.encode())
 
 
 def _entry(position: int, kind: str, targets: list[str], **fields: object) -> str:
@@ -262,3 +281,116 @@ class CheckCommandTests(unittest.TestCase):
                 "newest backup set",
                 "1 problem. Nothing was built.",
             ]
+    def test_a_log_cut_back_below_a_recipes_position_fails_verification(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            write_inputs(profile)
+            first = _entry(1, "classify", ["t-netto"], category="groceries")
+            log = first + _entry(2, "classify", ["t-irma"], category="groceries")
+            _write(profile, "decisions.jsonl", log)
+            _publish_after(profile, 1, log)
+            _write(profile, "decisions.jsonl", first)
+
+            code, stdout, stderr = check(profile_file)
+
+            assert (code, stderr) == (EXIT_VERIFICATION_FAILED, "")
+            assert stdout.splitlines() == [
+                "decisions.jsonl: publication 1 was built from the log through "
+                "entry 2, which no longer matches; restore the log from the "
+                "newest backup set",
+                "1 problem. Nothing was built.",
+            ]
+
+    def test_every_recipe_is_checked_not_only_the_current_publications(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            write_inputs(profile)
+            first = _entry(1, "classify", ["t-netto"], category="groceries")
+            log = first + _entry(2, "classify", ["t-irma"], category="groceries")
+            _publish_after(profile, 1, log)
+            # The current publication read only the first entry, which still holds.
+            _publish_after(profile, 2, first)
+            _write(profile, "decisions.jsonl", first)
+
+            code, stdout, _ = check(profile_file)
+
+            assert code == EXIT_VERIFICATION_FAILED
+            assert stdout.splitlines()[0].startswith(
+                "decisions.jsonl: publication 1 was built"
+            )
+
+    def test_refused_input_and_a_failed_verification_are_listed_and_exit_5(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            write_inputs(profile)
+            log = _entry(1, "classify", ["t-netto"], category="groceries")
+            _publish_after(profile, 1, log)
+            _write(profile, "decisions.jsonl", log.replace("t-netto", "t-irma"))
+            _write(profile, "rules.toml", RULES_AS_A_TABLE)
+
+            code, stdout, stderr = check(profile_file)
+
+            assert (code, stderr) == (EXIT_VERIFICATION_FAILED, "")
+            assert stdout.splitlines() == [
+                "rules.toml: rule must hold one [[rule]] block per rule",
+                "decisions.jsonl: publication 1 was built from the log through "
+                "entry 1, which no longer matches; restore the log from the "
+                "newest backup set",
+                "2 problems. Nothing was built.",
+            ]
+
+    def test_a_valid_entry_appended_after_every_prefix_passes(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            write_inputs(profile)
+            log = _entry(1, "classify", ["t-netto"], category="groceries")
+            _publish_after(profile, 1, log)
+            log += _entry(2, "classify", ["t-irma"], category="groceries")
+            _write(profile, "decisions.jsonl", log)
+
+            assert check(profile_file) == (EXIT_OK, "No problems found.\n", "")
+
+    def test_check_runs_while_the_lock_is_held_and_writes_nothing(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = development_profile(folder)
+            write_inputs(profile)
+            log = _entry(1, "classify", ["t-netto"], category="groceries")
+            _write(profile, "decisions.jsonl", log)
+            _publish_after(profile, 1, log)
+
+            with writer_lock(profile):
+                # The held lock file cannot be read while it is held.
+                stored = _contents(_files_under(folder), but=profile.writer_lock_file)
+                code, _, stderr = check(profile_file)
+                after = _contents(_files_under(folder), but=profile.writer_lock_file)
+
+            assert (code, stderr) == (EXIT_OK, "")
+            assert after == stored
+
+    def test_a_gold_store_of_another_profile_is_refused(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            write_inputs(development_profile(folder))
+            migrate_gold(replace(development_profile(folder), name="test", root=folder))
+
+            code, stdout, stderr = check(profile_file)
+
+            assert (code, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert stderr.startswith("budget: ")
