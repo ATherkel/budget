@@ -679,15 +679,15 @@ def _status(profile: Profile) -> int:
 def _check(profile: Profile) -> int:
     """Validate the inputs and the decision log, with no lock; build nothing."""
     found = checking.check(profile)
-    if not found.problems:
+    listed = (*found.problems, *found.mismatches)
+    if not listed:
         sys.stdout.write("No problems found.\n")
         return EXIT_OK
-    for problem in found.problems:
+    for problem in listed:
         sys.stdout.write(problem + "\n")
-    count = len(found.problems)
-    noun = "problem" if count == 1 else "problems"
-    sys.stdout.write(f"{count} {noun}. Nothing was built.\n")
-    return EXIT_REFUSED_INPUT
+    noun = "problem" if len(listed) == 1 else "problems"
+    sys.stdout.write(f"{len(listed)} {noun}. Nothing was built.\n")
+    return EXIT_VERIFICATION_FAILED if found.mismatches else EXIT_REFUSED_INPUT
 
 
 def _set_passphrase(profile: Profile) -> None:

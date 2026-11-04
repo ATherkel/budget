@@ -11,7 +11,7 @@ records.
 import hashlib
 import json
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -547,6 +547,45 @@ def replay_decision_log(content: bytes) -> DecisionLogReplay:
         prefix_sha256=hashlib.sha256(prefix).hexdigest(),
     )
     return DecisionLogReplay(read, tuple(replay.problems))
+
+
+@dataclass(frozen=True)
+class RecordedPrefix:
+    """The log prefix one publication's recipe records it was built from."""
+
+    publication_id: int
+    position: int
+    prefix_sha256: str
+
+
+def _prefix_end(content: bytes, position: int) -> int | None:
+    """The byte just past entry `position`'s line feed, or None if it has none."""
+    end = 0
+    for _ in range(position):
+        found = content.find(b"\n", end)
+        if found == -1:
+            return None
+        end = found + 1
+    return end
+
+
+def prefix_problems(
+    content: bytes, recorded: Iterable[RecordedPrefix]
+) -> tuple[str, ...]:
+    """Name each publication whose recorded log prefix the log no longer holds.
+
+    The log's first `position` entries must still exist and hash to the
+    recorded SHA-256, so an edit to an entry a build has read, or a log cut
+    back below it, is caught (`operations.md`, *`decisions.jsonl`*).
+    """
+    return tuple(
+        f"{DECISION_LOG_FILE_NAME}: publication {prefix.publication_id} was built "
+        f"from the log through entry {prefix.position}, which no longer matches; "
+        "restore the log from the newest backup set"
+        for prefix in recorded
+        if (end := _prefix_end(content, prefix.position)) is None
+        or hashlib.sha256(content[:end]).hexdigest() != prefix.prefix_sha256
+    )
 
 
 def read_decision_log(profile: Profile) -> DecisionLogRead:

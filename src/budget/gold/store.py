@@ -243,6 +243,9 @@ _INSERT_RECIPE_RUNS: Final = (
     " VALUES (?, ?, ?)"
 )
 _SELECT_RECIPE: Final = "SELECT * FROM recipes WHERE publication_id = ?"
+_SELECT_RECIPE_IDS: Final = (
+    "SELECT publication_id FROM recipes ORDER BY publication_id"
+)
 _SELECT_RECIPE_RUNS: Final = (
     "SELECT import_run_id, payload_id FROM recipe_import_runs WHERE publication_id = ?"
 )
@@ -473,6 +476,17 @@ class GoldStore:
         return self._owner.read(
             lambda connection: _stored_recipe(connection, publication_id),
         )
+
+    def recipes(self) -> Sequence[tuple[int, Recipe]]:
+        """Return every stored recipe with its publication id, retained or not."""
+
+        def read(connection: sqlite3.Connection) -> tuple[tuple[int, Recipe], ...]:
+            return tuple(
+                (row["publication_id"], _stored_recipe(connection, row["publication_id"]))
+                for row in connection.execute(_SELECT_RECIPE_IDS)
+            )
+
+        return self._owner.read(read)
 
     def pointer_history(self) -> Sequence[PointerMove]:
         """Return every move of the current pointer, oldest first."""
