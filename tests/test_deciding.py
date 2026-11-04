@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from budget.deciding import DecisionLog, DecisionProposal, Recorded
+from budget.deciding import DecisionLog, DecisionProposal, Recorded, Rejected
 from budget.decision_log import read_decision_log
 from budget.gold.decisions import Classify
 from budget.locking import writer_lock
@@ -73,3 +73,37 @@ class RecordedTests(unittest.TestCase):
             assert read_decision_log(profile).gold == (
                 Classify("d-0001", transaction_id, "groceries"),
             )
+
+
+def classify(transaction_id: str, category: str, *supersedes: str) -> DecisionProposal:
+    """Propose classifying one transaction into `category`."""
+    return DecisionProposal(
+        kind="classify",
+        targets=(transaction_id,),
+        reason="Synthetic",
+        supersedes=supersedes,
+        details={"category": category},
+    )
+
+
+class RejectedTests(unittest.TestCase):
+    def test_a_rejection_names_every_reason_and_records_nothing(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory)).profile
+            transaction_id = only_transaction(profile)
+            with writer_lock(profile) as lock:
+                log = DecisionLog(lock, clock=lambda: RECORDED_AT)
+                log.propose(classify(transaction_id, "groceries"))
+                before = profile.input_file("decisions.jsonl").read_bytes()
+
+                result = log.propose(classify(transaction_id, "eating-out"))
+
+            assert isinstance(result, Rejected)
+            assert result.reasons == (
+                (
+                    f"{transaction_id} is already decided by d-0001, "
+                    "which supersedes does not list"
+                ),
+                'category "eating-out" is not in the taxonomy',
+            )
+            assert profile.input_file("decisions.jsonl").read_bytes() == before
