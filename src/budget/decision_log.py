@@ -576,6 +576,10 @@ def typed_decision(entry: Entry) -> GoldDecision | SilverDecision | None:
     return None
 
 
+# The kinds Silver applies; a decision of one of them rebuilds from Silver.
+SILVER_DECISION_KINDS = frozenset(_SILVER_KINDS)
+
+
 def replay_decision_log(content: bytes) -> DecisionLogReplay:
     """Judge every entry of a decision log's bytes, refusing nothing.
 

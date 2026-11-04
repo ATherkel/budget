@@ -36,7 +36,11 @@ from budget.completeness import Completeness, completeness
 from budget.dashboard import create_app
 from budget.dashboard.passphrase import PassphraseNotSetError, set_passphrase
 from budget.deciding import DecisionLog, DecisionProposal, Recorded
-from budget.decision_log import DECISION_KINDS
+from budget.decision_log import (
+    DECISION_KINDS,
+    IMPORT_RUN_KINDS,
+    SILVER_DECISION_KINDS,
+)
 from budget.demo import DEFAULT_DEMO_PORT, DemoDirectoryExistsError, create_demo_profile
 from budget.gold.storage import GOLD_STAGE
 from budget.gold.store import GoldStore, UndoUnavailableError
@@ -343,6 +347,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     decide.add_argument(
         "--counterpart", help="a one-sided transfer's counterpart account"
+    )
+    decide.add_argument(
+        "--record",
+        type=_record,
+        metavar="PAYLOAD_ID:ORDINAL",
+        help="the source record a same-transaction shows under new text",
     )
     commands.add_parser("undo", help="restore the previous current publication")
     commands.add_parser("status", help="show balance and classification completeness")
@@ -705,15 +715,32 @@ def _details(arguments: argparse.Namespace) -> tuple[list[str], dict[str, object
         details["category"] = targets.pop()
     if arguments.counterpart is not None:
         details["counterpart_account_id"] = arguments.counterpart
+    if arguments.record is not None:
+        payload_id, ordinal = arguments.record
+        details["record"] = {"payload_id": payload_id, "record_ordinal": ordinal}
     return targets, details
 
 
+def _record(text: str) -> tuple[str, int]:
+    """Read `--record` as `<payload_id>:<record_ordinal>`."""
+    payload_id, _, ordinal = text.rpartition(":")
+    if not payload_id or not ordinal.isdigit():
+        message = "must be <payload_id>:<record_ordinal>, such as c0ffee…:3"
+        raise argparse.ArgumentTypeError(message)
+    return payload_id, int(ordinal)
+
+
 def _proposal(profile: Profile, arguments: argparse.Namespace) -> DecisionProposal:
-    """Turn the command line into the proposal the boundary judges."""
+    """Turn the command line into the proposal the boundary judges.
+
+    An import run is named by its ID; a transaction by its handle.
+    """
     targets, details = _details(arguments)
+    if arguments.kind not in IMPORT_RUN_KINDS:
+        targets = [_transaction(profile, handle) for handle in targets]
     return DecisionProposal(
         kind=arguments.kind,
-        targets=tuple(_transaction(profile, handle) for handle in targets),
+        targets=tuple(targets),
         reason=arguments.reason,
         supersedes=tuple(arguments.supersedes),
         details=details,
@@ -730,7 +757,18 @@ def _decide(profile: Profile, arguments: argparse.Namespace) -> None:
         if not isinstance(recorded, Recorded):
             raise DecisionRejectedError(recorded.reasons)
         inputs = read_household_inputs(lock.profile)
-        published = rebuild_from_gold(lock, now=datetime.now(UTC), inputs=inputs)
+        now = datetime.now(UTC)
+        summary = ""
+        silver_reviews = SilverReviews()
+        # `operations.md`, *Commands*: the Silver kinds rebuild from Silver,
+        # the rest from Gold.
+        if arguments.kind in SILVER_DECISION_KINDS:
+            rebuilt = rebuild_through_gold(lock, now=now, inputs=inputs)
+            summary = summaries.rebuild_summary(rebuilt.silver)
+            published = rebuilt.gold
+            silver_reviews = rebuilt.silver_reviews
+        else:
+            published = rebuild_from_gold(lock, now=now, inputs=inputs)
         routine_logging.finished(
             profile,
             "decide",
@@ -738,10 +776,11 @@ def _decide(profile: Profile, arguments: argparse.Namespace) -> None:
             duration_ms=_milliseconds(started),
         )
         sys.stdout.write(
-            f"Recorded {recorded.decision_id}.\n{summaries.gold_line(published)}\n"
+            f"Recorded {recorded.decision_id}.\n"
+            f"{summary}{summaries.gold_line(published)}\n"
         )
         sys.stdout.write(
-            summaries.publication_changes(profile, published, SilverReviews())
+            summaries.publication_changes(profile, published, silver_reviews)
         )
         _show_completeness(profile)
 
