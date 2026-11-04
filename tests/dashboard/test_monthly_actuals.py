@@ -237,6 +237,42 @@ def test_unclassified_money_without_evidence_shows_as_unknown_never_as_zero(
     )
 
 
+def test_unclassified_money_follows_the_selected_accounts_on_load_and_update(
+    client: TestClient,
+) -> None:
+    # March's -450.00 Unclassified payment is on Joint current, so selecting
+    # Joint savings alone leaves a known zero on both sides.
+    def opened(accounts: tuple[str, ...]) -> Page:
+        response = client.get(
+            "/",
+            params={
+                "publication": str(PUBLICATION.publication_id),
+                "reference_date": REFERENCE_DATE,
+                "account": list(accounts),
+                "month": "2026-03",
+            },
+        )
+        assert response.status_code == 200
+        return read(response.text)
+
+    pages = (
+        opened((CURRENT, SAVINGS)),
+        opened((SAVINGS,)),
+        report(client, "2026-03"),
+        report(client, "2026-03", accounts=(SAVINGS,)),
+    )
+
+    assert [
+        (page.text_of("unclassified-in"), page.text_of("unclassified-out"))
+        for page in pages
+    ] == [
+        ("0,00 kr.", "\N{MINUS SIGN}450,00 kr."),
+        ("0,00 kr.", "0,00 kr."),
+        ("0,00 kr.", "\N{MINUS SIGN}450,00 kr."),
+        ("0,00 kr.", "0,00 kr."),
+    ]
+
+
 def explanation(
     client: TestClient, month: str, accounts: tuple[str, ...] = (CURRENT, SAVINGS)
 ) -> Page:
