@@ -18,7 +18,7 @@ from typing import Final, NoReturn
 
 import uvicorn
 
-from budget import routine_logging, sqlstore, summaries
+from budget import checking, routine_logging, sqlstore, summaries
 from budget.backups import (
     BACKUP_FAILURES,
     BackupVerificationError,
@@ -54,12 +54,7 @@ from budget.inbox import (
     require_import_allowed,
     require_importable,
 )
-from budget.inputs import (
-    Account,
-    ConfigurationError,
-    load_accounts,
-    load_configuration,
-)
+from budget.inputs import Account, ConfigurationError, load_accounts
 from budget.locking import (
     StoresFolderUnavailableError,
     WriterLock,
@@ -683,9 +678,14 @@ def _status(profile: Profile) -> int:
 
 def _check(profile: Profile) -> int:
     """Validate the inputs and the decision log, with no lock; build nothing."""
-    load_configuration(profile)
-    sys.stdout.write("No problems found.\n")
-    return EXIT_OK
+    found = checking.check(profile)
+    if not found.problems:
+        sys.stdout.write("No problems found.\n")
+        return EXIT_OK
+    for problem in found.problems:
+        sys.stdout.write(problem + "\n")
+    sys.stdout.write(f"{len(found.problems)} problems. Nothing was built.\n")
+    return EXIT_REFUSED_INPUT
 
 
 def _set_passphrase(profile: Profile) -> None:
