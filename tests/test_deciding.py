@@ -89,6 +89,28 @@ def classify(transaction_id: str, category: str, *supersedes: str) -> DecisionPr
     )
 
 
+class CutOffLineTests(unittest.TestCase):
+    def test_a_log_whose_last_line_was_cut_off_records_nothing(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory)).profile
+            transaction_id = only_transaction(profile)
+            cut_off = b'{"format": 1, "entry": 1, "decision_id": "d-00'
+            profile.input_file("decisions.jsonl").write_bytes(cut_off)
+
+            with writer_lock(profile) as lock:
+                result = DecisionLog(lock, clock=lambda: RECORDED_AT).propose(
+                    classify(transaction_id, "groceries")
+                )
+
+            reason = (
+                "decisions.jsonl: the last line was cut off by a crash and "
+                "counts as never written; delete that partial line, then "
+                "record the decision again"
+            )
+            assert result == Rejected((reason,))
+            assert profile.input_file("decisions.jsonl").read_bytes() == cut_off
+
+
 class RejectedTests(unittest.TestCase):
     def test_a_rejection_names_every_reason_and_records_nothing(self) -> None:
         with TemporaryDirectory() as directory:
