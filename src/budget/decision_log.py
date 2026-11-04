@@ -11,7 +11,7 @@ records.
 import hashlib
 import json
 import re
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -345,7 +345,7 @@ class _Replay:
         found = (
             [f'key "{key}" appears more than once' for key in repeated]
             or _shape_problems(entry, position)
-            or self._history_problems(entry)
+            or self.history_problems(entry)
         )
         if found:
             decision_id = entry.get("decision_id")
@@ -361,7 +361,7 @@ class _Replay:
                 held = self.holders.setdefault((claim.group, claim.target), {})
                 held[claim.payload] = entry["decision_id"]
 
-    def _history_problems(self, entry: Entry) -> list[str]:
+    def history_problems(self, entry: Entry) -> list[str]:
         """Judge a well-formed entry against the entries before it."""
         decision_id = entry["decision_id"]
         problems = []
@@ -519,6 +519,48 @@ class DecisionLogReplay:
     problems: tuple[str, ...]
 
 
+def _replay_lines(lines: Sequence[str]) -> _Replay:
+    """Judge each complete line in turn, from entry 1."""
+    replay = _Replay()
+    for position, line in enumerate(lines, start=1):
+        replay.read(position, line)
+    return replay
+
+
+def shape_problems(entry: Entry, position: int) -> tuple[str, ...]:
+    """Judge one entry on its own, as the entry at `position` in the log."""
+    return tuple(_shape_problems(entry, position))
+
+
+def history_problems(profile: Profile, entry: Entry) -> tuple[str, ...]:
+    """Judge a well-formed `entry` against every entry of the profile's log.
+
+    These are the rules every build re-validates every entry with, so an
+    entry that passes them and `shape_problems` now passes every later read.
+    A log with an invalid entry is refused, as `read_decision_log` refuses it.
+    """
+    content = decision_log_bytes(profile)
+    problems = replay_decision_log(content).problems
+    if problems:
+        raise ConfigurationError(problems)
+    prefix = content[: content.rfind(b"\n") + 1]
+    lines = prefix.decode("utf-8-sig").split("\n")[:-1]
+    return tuple(_replay_lines(lines).history_problems(entry))
+
+
+def typed_decision(entry: Entry) -> GoldDecision | SilverDecision | None:
+    """Return a valid entry as the typed decision it puts in force.
+
+    A `retract` puts none in force.
+    """
+    kind = entry["kind"]
+    if kind in _GOLD_KINDS:
+        return _GOLD_KINDS[kind](entry)
+    if kind in _SILVER_KINDS:
+        return _SILVER_KINDS[kind](entry)
+    return None
+
+
 def replay_decision_log(content: bytes) -> DecisionLogReplay:
     """Judge every entry of a decision log's bytes, refusing nothing.
 
@@ -532,9 +574,7 @@ def replay_decision_log(content: bytes) -> DecisionLogReplay:
         nothing = DecisionLogRead((), (), 0, hashlib.sha256(b"").hexdigest())
         problem = f"{DECISION_LOG_FILE_NAME}: the file is not UTF-8"
         return DecisionLogReplay(nothing, (problem,))
-    replay = _Replay()
-    for position, line in enumerate(lines, start=1):
-        replay.read(position, line)
+    replay = _replay_lines(lines)
     in_force = replay.in_force.values()
     read = DecisionLogRead(
         silver=tuple(

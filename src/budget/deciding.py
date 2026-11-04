@@ -13,10 +13,20 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from budget.decision_log import DECISION_LOG_FORMAT, read_decision_log
+from budget.decision_log import (
+    DECISION_LOG_FORMAT,
+    history_problems,
+    read_decision_log,
+    shape_problems,
+    typed_decision,
+)
 from budget.durability import sync_folder
+from budget.gold.build import decision_problem
+from budget.gold.decisions import Classify, ClassifyAdjustment, OneSidedTransfer, Pair
+from budget.inputs import load_configuration
+from budget.inputs.rule_checks import KnownIds
 from budget.locking import WriterLock
-from budget.profiles import DECISION_LOG_FILE_NAME
+from budget.profiles import DECISION_LOG_FILE_NAME, Profile
 
 
 @dataclass(frozen=True)
@@ -83,9 +93,33 @@ class DecisionLog:
             "reason": proposal.reason,
             "supersedes": list(proposal.supersedes),
         }
+        problems = shape_problems(entry, position) or (
+            *history_problems(profile, entry),
+            *_configuration_problems(profile, entry),
+        )
+        if problems:
+            return Rejected(problems)
         line = json.dumps(entry, ensure_ascii=False) + "\n"
         _append(profile.input_file(DECISION_LOG_FILE_NAME), line.encode("utf-8"))
         return recorded
+
+
+def _configuration_problems(
+    profile: Profile, entry: Mapping[str, object]
+) -> tuple[str, ...]:
+    """Name what the configuration shows wrong with a well-formed entry."""
+    decision = typed_decision(entry)
+    if not isinstance(
+        decision, Classify | ClassifyAdjustment | Pair | OneSidedTransfer
+    ):
+        return ()
+    configuration = load_configuration(profile)
+    known = KnownIds(
+        accounts=configuration.accounts.keys(),
+        categories=configuration.taxonomy.categories.keys(),
+    )
+    problem = decision_problem(decision, known)
+    return () if problem is None else (problem,)
 
 
 def _append(path: Path, data: bytes) -> None:
