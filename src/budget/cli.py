@@ -684,7 +684,9 @@ def _check(profile: Profile) -> int:
         return EXIT_OK
     for problem in found.problems:
         sys.stdout.write(problem + "\n")
-    sys.stdout.write(f"{len(found.problems)} problems. Nothing was built.\n")
+    count = len(found.problems)
+    noun = "problem" if count == 1 else "problems"
+    sys.stdout.write(f"{count} {noun}. Nothing was built.\n")
     return EXIT_REFUSED_INPUT
 
 

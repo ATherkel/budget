@@ -9,7 +9,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from budget.decision_log import read_decision_log
+from budget.gold.build import refuted_decisions
 from budget.inputs import ConfigurationError, load_configuration
+from budget.inputs.rule_checks import KnownIds
 from budget.profiles import Profile
 
 
@@ -20,20 +22,24 @@ class CheckFindings:
     problems: tuple[str, ...]
 
 
-def _problems_of(read: Callable[[], object]) -> tuple[str, ...]:
-    """Run one reader, and give every problem it refuses with."""
+def _attempt[T](read: Callable[[], T], problems: list[str]) -> T | None:
+    """Run one reader, or keep every problem it refuses with and give nothing."""
     try:
-        read()
+        return read()
     except ConfigurationError as error:
-        return error.problems
-    return ()
+        problems.extend(error.problems)
+        return None
 
 
 def check(profile: Profile) -> CheckFindings:
     """Judge the profile's input files and decision log, listing every problem."""
-    return CheckFindings(
-        problems=(
-            *_problems_of(lambda: load_configuration(profile)),
-            *_problems_of(lambda: read_decision_log(profile)),
+    problems: list[str] = []
+    configuration = _attempt(lambda: load_configuration(profile), problems)
+    log = _attempt(lambda: read_decision_log(profile), problems)
+    if configuration is not None and log is not None:
+        known = KnownIds(
+            accounts=configuration.accounts.keys(),
+            categories=configuration.taxonomy.categories.keys(),
         )
-    )
+        problems.extend(refuted_decisions(log.gold, known))
+    return CheckFindings(problems=tuple(problems))
