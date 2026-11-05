@@ -8,13 +8,13 @@ layer, not in presentation. The dashboard has no route to it.
 
 import json
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from budget.bronze import BronzeStore
+from budget.bronze import BronzeStore, ImportRun
 from budget.decision_log import (
     DECISION_LOG_FORMAT,
     IMPORT_RUN_KINDS,
@@ -173,7 +173,9 @@ def _restored_void_problems(
     """Name each void the entry withdraws whose export was stored again since.
 
     Withdrawing it would put two stored runs of one export in force at once
-    (decision 3 on issue #178), so the void stays.
+    (decision 3 on issue #178), so the void stays. A void the entry replaces
+    with another void of the same run withdraws nothing: the run stays voided
+    (decision D1 on the #178 review).
     """
     superseded = set(entry["supersedes"])
     voids = [
@@ -181,29 +183,43 @@ def _restored_void_problems(
         for decision in read_decision_log(profile).silver
         if isinstance(decision, VoidImportRun)
     ]
-    withdrawn = [void for void in voids if void.decision_id in superseded]
-    if not withdrawn:
-        return ()
     still_voided = {
         void.import_run_id for void in voids if void.decision_id not in superseded
     }
+    if entry["kind"] == "void-import-run":
+        still_voided.update(entry["targets"])
+    withdrawn = [
+        void
+        for void in voids
+        if void.decision_id in superseded and void.import_run_id not in still_voided
+    ]
+    if not withdrawn:
+        return ()
     with BronzeStore(profile) as bronze:
         runs = bronze.import_runs()
-    problems = []
-    for void in withdrawn:
-        payload_id = next(
-            run.payload_id for run in runs if run.import_run_id == void.import_run_id
-        )
-        problems.extend(
-            f"withdrawing {void.decision_id} would put import run "
-            f"{void.import_run_id} in force again, but run {run.import_run_id} "
-            "has stored its export since"
-            for run in runs
-            if run.payload_id == payload_id
-            and run.outcome == "stored"
-            and run.import_run_id not in {void.import_run_id, *still_voided}
-        )
-    return tuple(problems)
+    return tuple(
+        problem
+        for void in withdrawn
+        for problem in _stored_since(void, runs, still_voided)
+    )
+
+
+def _stored_since(
+    void: VoidImportRun, runs: Sequence[ImportRun], still_voided: Collection[str]
+) -> list[str]:
+    """Name each run in force that stores the export a withdrawn void voided."""
+    payload_id = next(
+        run.payload_id for run in runs if run.import_run_id == void.import_run_id
+    )
+    return [
+        f"withdrawing {void.decision_id} would put import run "
+        f"{void.import_run_id} in force again, but run {run.import_run_id} "
+        "has stored its export since"
+        for run in runs
+        if run.payload_id == payload_id
+        and run.outcome == "stored"
+        and run.import_run_id not in {void.import_run_id, *still_voided}
+    ]
 
 
 def _configuration_problems(
