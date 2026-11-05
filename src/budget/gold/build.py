@@ -209,12 +209,16 @@ def refuted_decisions(
         f'{DECISION_LOG_FILE_NAME}: decision "{decision.decision_id}": '
         f"{problem}; record a decision that supersedes it"
         for decision in decisions
-        if (problem := _decision_problem(decision, known)) is not None
+        if (problem := decision_problem(decision, known)) is not None
     )
 
 
-def _decision_problem(decision: GoldDecision, known: KnownIds) -> str | None:
-    """Say what the declared IDs show wrong with one decision, if anything."""
+def decision_problem(decision: GoldDecision, known: KnownIds) -> str | None:
+    """Say what the declared IDs show wrong with one decision, if anything.
+
+    The decision boundary calls this too, so a proposal is refused for the
+    same reasons a build would refuse it.
+    """
     match decision:
         case Classify(category_id=category_id) if (
             known.categories is not None and category_id not in known.categories

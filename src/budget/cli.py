@@ -21,6 +21,7 @@ import uvicorn
 from budget import checking, routine_logging, sqlstore, summaries
 from budget.backups import (
     BACKUP_FAILURES,
+    BackupSet,
     BackupVerificationError,
     BackupWriteError,
     LostStoreError,
@@ -35,6 +36,12 @@ from budget.codeversion import UncommittedCodeError, require_committed_code
 from budget.completeness import Completeness, completeness
 from budget.dashboard import create_app
 from budget.dashboard.passphrase import PassphraseNotSetError, set_passphrase
+from budget.deciding import DecisionLog, DecisionProposal, Recorded
+from budget.decision_log import (
+    DECISION_KINDS,
+    IMPORT_RUN_KINDS,
+    SILVER_DECISION_KINDS,
+)
 from budget.demo import DEFAULT_DEMO_PORT, DemoDirectoryExistsError, create_demo_profile
 from budget.gold.storage import GOLD_STAGE
 from budget.gold.store import GoldStore, UndoUnavailableError
@@ -78,6 +85,7 @@ from budget.profiles import (
 from budget.prompting import ask_continue_after_duplicates, ask_passphrase, ask_ranges
 from budget.ranges import load_ranges
 from budget.rebuilding import (
+    GoldRebuild,
     HouseholdInputs,
     SilverNotBuiltError,
     SilverRebuild,
@@ -86,6 +94,7 @@ from budget.rebuilding import (
     rebuild_from_gold,
     rebuild_through_gold,
     require_buildable_accounts,
+    require_stores,
 )
 from budget.refreshing import (
     InputsNotReplacedError,
@@ -116,6 +125,7 @@ from budget.restoring import (
 )
 from budget.reviewing import REVIEW_KINDS, open_reviews
 from budget.silver.storage import SILVER_STAGE
+from budget.silver.store import SilverStore
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
 EXIT_OK: Final = 0
@@ -202,6 +212,30 @@ class ImportedWithoutPublicationError(Exception):
         if backup_failure is not None:
             message += f". No backup set could be written either: {backup_failure}"
         super().__init__(message)
+
+
+class DecisionRejectedError(Exception):
+    """The boundary rejected the proposed decision; nothing was recorded."""
+
+    def __init__(self, reasons: tuple[str, ...]) -> None:
+        """Name every reason the boundary gave, one per line."""
+        self.reasons = reasons
+        listed = "".join(f"\n  {reason}" for reason in reasons)
+        super().__init__(f"the decision was rejected; nothing was recorded:{listed}")
+
+
+class RecordedWithoutPublicationError(Exception):
+    """The decision is recorded, but the rebuild after it refused."""
+
+    def __init__(
+        self, decision_id: str, refused: ConfigurationError, *, from_silver: bool
+    ) -> None:
+        """Name the refusal, then say the decision stands and what publishes it."""
+        command = "budget rebuild --from silver" if from_silver else "budget rebuild"
+        super().__init__(
+            f"{refused}\n{decision_id} is recorded, but nothing was published; "
+            f"put that right, then run `{command}` to publish it"
+        )
 
 
 class PassphraseMismatchError(Exception):
@@ -306,6 +340,37 @@ def _parser() -> argparse.ArgumentParser:
         "--kind", choices=REVIEW_KINDS, help="list one kind of item only, no runs"
     )
     review.add_argument("--account", help="list one account's items and runs only")
+    decide = commands.add_parser(
+        "decide", help="record a manual decision, then rebuild from what it affects"
+    )
+    decide.add_argument("kind", choices=DECISION_KINDS)
+    decide.add_argument(
+        "targets",
+        nargs="*",
+        help="handles or IDs; for classify, the category comes last",
+    )
+    decide.add_argument("--reason", required=True)
+    decide.add_argument(
+        "--supersedes",
+        action="append",
+        default=[],
+        metavar="DECISION_ID",
+        help="a decision this one replaces; repeat for several",
+    )
+    decide.add_argument(
+        "--adjustment",
+        action="store_true",
+        help="classify as an adjustment instead of a category",
+    )
+    decide.add_argument(
+        "--counterpart", help="a one-sided transfer's counterpart account"
+    )
+    decide.add_argument(
+        "--record",
+        type=_record,
+        metavar="PAYLOAD_ID:ORDINAL",
+        help="the source record a same-transaction shows under new text",
+    )
     commands.add_parser("undo", help="restore the previous current publication")
     commands.add_parser("status", help="show balance and classification completeness")
     commands.add_parser(
@@ -626,6 +691,157 @@ def _review(profile: Profile, kind: str | None, account: str | None) -> None:
     sys.stdout.write(summary)
 
 
+def _transaction(profile: Profile, handle: str) -> str:
+    """Return the one Silver transaction whose ID starts with `handle`.
+
+    Review shows a transaction by its first 8 characters (`operations.md`,
+    *Commands*); a handle that names no transaction, or more than one, is
+    refused before anything is proposed.
+    """
+    with SilverStore(profile) as silver:
+        matches = sorted(
+            t.transaction_id
+            for t in silver.read().transactions
+            if t.transaction_id.startswith(handle)
+        )
+    if not matches:
+        reason = f'no transaction in Silver has the handle "{handle}"'
+        raise DecisionRejectedError((reason,))
+    if len(matches) > 1:
+        shown = ", ".join(f"{each[:12]}…" for each in matches)
+        reason = (
+            f'the handle "{handle}" matches more than one transaction ({shown}); '
+            "type more of its ID"
+        )
+        raise DecisionRejectedError((reason,))
+    return matches[0]
+
+
+def _details(arguments: argparse.Namespace) -> tuple[list[str], dict[str, object]]:
+    """Split the positionals into targets, and gather the kind's own fields.
+
+    A `classify` names its category after its handle, as walkthrough W2 does,
+    unless it is an adjustment. A wrong count is left to the boundary, which
+    names it.
+    """
+    targets: list[str] = [str(target) for target in arguments.targets]
+    details: dict[str, object] = {}
+    if arguments.kind == "classify" and arguments.adjustment:
+        details["adjustment"] = True
+    elif arguments.kind == "classify" and targets:
+        details["category"] = targets.pop()
+    if arguments.counterpart is not None:
+        details["counterpart_account_id"] = arguments.counterpart
+    if arguments.record is not None:
+        payload_id, ordinal = arguments.record
+        details["record"] = {"payload_id": payload_id, "record_ordinal": ordinal}
+    return targets, details
+
+
+def _record(text: str) -> tuple[str, int]:
+    """Read `--record` as `<payload_id>:<record_ordinal>`."""
+    payload_id, _, ordinal = text.rpartition(":")
+    if not payload_id or not ordinal.isdigit():
+        message = "must be <payload_id>:<record_ordinal>, such as c0ffee…:3"
+        raise argparse.ArgumentTypeError(message)
+    return payload_id, int(ordinal)
+
+
+def _proposal(profile: Profile, arguments: argparse.Namespace) -> DecisionProposal:
+    """Turn the command line into the proposal the boundary judges.
+
+    An import run is named by its ID; a transaction by its handle.
+    """
+    targets, details = _details(arguments)
+    if arguments.kind not in IMPORT_RUN_KINDS:
+        targets = [_transaction(profile, handle) for handle in targets]
+    return DecisionProposal(
+        kind=arguments.kind,
+        targets=tuple(targets),
+        reason=arguments.reason,
+        supersedes=tuple(arguments.supersedes),
+        details=details,
+    )
+
+
+def _decide(profile: Profile, arguments: argparse.Namespace) -> None:
+    """Propose a decision under the writer lock, then rebuild and publish."""
+    started = perf_counter()
+    with writer_lock(profile) as lock:
+        require_committed_code(lock.profile)
+        production = profile.name == PRODUCTION_PROFILE_NAME
+        if production:
+            require_backup_allowed(profile)
+        # A store the rebuild would find missing is refused before the
+        # decision is recorded, not after.
+        require_stores(lock.profile)
+        log = DecisionLog(lock, clock=lambda: datetime.now(UTC))
+        recorded = log.propose(_proposal(profile, arguments))
+        if not isinstance(recorded, Recorded):
+            raise DecisionRejectedError(recorded.reasons)
+        # Said at once: the decision is in the log whatever the rebuild does.
+        sys.stdout.write(f"Recorded {recorded.decision_id}.\n")
+        from_silver = arguments.kind in SILVER_DECISION_KINDS
+        try:
+            summary, published, silver_reviews = _rebuild_after_decision(
+                lock, from_silver=from_silver
+            )
+        except ConfigurationError as error:
+            raise RecordedWithoutPublicationError(
+                recorded.decision_id, error, from_silver=from_silver
+            ) from None
+        routine_logging.finished(
+            profile,
+            "decide",
+            counts={"published": int(published.published)},
+            duration_ms=_milliseconds(started),
+        )
+        # The decision log and the stores are written, so production backs
+        # them up before the diff, as `rebuild` does.
+        written, failure = _back_up_production(lock) if production else (None, None)
+        sys.stdout.write(f"{summary}{summaries.gold_line(published)}\n")
+        sys.stdout.write(
+            summaries.publication_changes(profile, published, silver_reviews)
+        )
+        if written is not None:
+            sys.stdout.write(f"Backup   backup set {written.name} written\n")
+        try:
+            _show_completeness(profile)
+        finally:
+            if failure is not None:
+                raise RebuiltWithoutBackupError(failure) from None
+
+
+def _rebuild_after_decision(
+    lock: WriterLock, *, from_silver: bool
+) -> tuple[str, GoldRebuild, SilverReviews]:
+    """Rebuild from the stage a decision's kind affects (`operations.md`, *Commands*).
+
+    Returns the Silver summary, empty from Gold, the Gold rebuild and the
+    Silver review items before and after.
+    """
+    inputs = read_household_inputs(lock.profile)
+    now = datetime.now(UTC)
+    if not from_silver:
+        return "", rebuild_from_gold(lock, now=now, inputs=inputs), SilverReviews()
+    rebuilt = rebuild_through_gold(lock, now=now, inputs=inputs)
+    return (
+        summaries.rebuild_summary(rebuilt.silver),
+        rebuilt.gold,
+        rebuilt.silver_reviews,
+    )
+
+
+def _back_up_production(
+    lock: WriterLock,
+) -> tuple[BackupSet | None, Exception | None]:
+    """Write production's backup set, or return why it could not be written."""
+    try:
+        return back_up(lock, now=datetime.now(UTC)), None
+    except BACKUP_FAILURES as error:
+        return None, error
+
+
 def _undo(profile: Profile) -> None:
     """Move the current Gold pointer back once, under the profile's writer lock."""
     started = perf_counter()
@@ -786,6 +1002,8 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         _rebuild(profile, arguments.from_stage)
     elif arguments.command == "review":
         _review(profile, arguments.kind, arguments.account)
+    elif arguments.command == "decide":
+        _decide(profile, arguments)
     else:
         _migrate(profile, arguments.stage, new_store=arguments.new_store)
     return EXIT_OK
@@ -814,6 +1032,8 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
     except (
         ProfileFileError,
         ConfigurationError,
+        DecisionRejectedError,
+        RecordedWithoutPublicationError,
         ConflictingDeclaredFormatsError,
         UnsupportedSourceFormatError,
         NoPassphraseFileError,
