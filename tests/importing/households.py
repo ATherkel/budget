@@ -53,6 +53,15 @@ def payload(*datos: str) -> bytes:
     return "\r\n".join([_HEADER, *rows]).encode("cp1252")
 
 
+def incoming_payload(dato: str) -> bytes:
+    """A `danske-csv-v1` export with one synthetic inflow of 45.00 on `Dato`."""
+    row = (
+        f'"{dato}"," Overførsel "," Fra konto ","Fra lønkonto",'
+        '"45,00","1045,00","Udført","Nej"'
+    )
+    return f"{_HEADER}\r\n{row}".encode("cp1252")
+
+
 def chained_payload(*datos: str) -> bytes:
     """A `danske-csv-v1` export whose rows' balances chain, so Silver admits it."""
     rows = [
