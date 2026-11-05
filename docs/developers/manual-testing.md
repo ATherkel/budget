@@ -261,7 +261,54 @@ Move-Item $devStores $stores
 
 ## Status and check
 
-To be filled by #296 and #303.
+`status` reads the stores and writes nothing, so it is safe at any point:
+
+```powershell
+uv run budget status
+```
+
+Expect these blocks, in order. `Published figures: publication N (current)`
+with a coverage line per account and month (the latest 12 reporting months),
+`Unclassified money, by account and month` with money in, money out and a
+count per account and month, `Open review items` with Silver's and Gold's on
+separate lines, and `Import evidence (operational, apart from published
+figures)` with each account's latest export date, evidence-through date and
+quarantined runs. Then:
+
+| Do | Expect |
+| --- | --- |
+| `uv run budget rebuild`, then `uv run budget status` | The last lines of `rebuild` are the same block `status` prints |
+| `uv run budget import --ranges $ranges` with an export in the inbox | The same block at the end, after the `Changes` lines |
+| `uv run budget rebuild` with nothing changed | `nothing was published`, then the same block |
+| Move `gold.db` aside, then `uv run budget status`, then put it back | `Published figures: unavailable, nothing is published`; the import evidence still shows; nothing is created |
+
+`import` and `rebuild` print the block to the terminal only. It never changes
+their exit codes and never reaches `commands.jsonl`.
+
+`check` validates every input file and the decision log, and compares the log
+with the prefix every Gold recipe recorded. It builds nothing, writes nothing
+and takes no lock, so it too is safe at any point. Reading `gold.db` may leave
+`gold.db-wal` and `gold.db-shm` beside it. SQLite keeps these for every
+reader in WAL mode, and they are harmless (see
+[WAL sidecar files left by read-only reads](../../.out-of-scope/wal-sidecars-on-read-only-reads.md)).
+
+```powershell
+uv run budget check; $LASTEXITCODE
+```
+
+On valid inputs it prints `No problems found.` and `0`. Then break one thing
+at a time, run the same command, and put the file back before the next row:
+
+| Break | Expect | Put back |
+| --- | --- | --- |
+| Add `[category.broken]` with `name = "Broken"` and `group = "nowhere"` to `taxonomy.toml` | `taxonomy.toml: category "broken": group "nowhere" is not declared`, then `1 problem. Nothing was built.` and `3` | `Copy-Item "$backup\taxonomy.toml" $inputs` |
+| The same, and a second error in `rules.toml` | Both problems, then `2 problems. Nothing was built.` and `3`: a refused file does not hide the other | Copy both back from `$backup` |
+| `Add-Content "$inputs\decisions.jsonl" '{"format": 1' -NoNewline` | `decisions.jsonl: entry N: the final line has no line feed, so it was cut off while being written; delete it` and `3`; `Get-FileHash` on the log is the same before and after `check` | `Copy-Item "$backup\decisions.jsonl" $inputs` |
+| With a publication built after at least one decision, change one letter inside the log's first entry | `decisions.jsonl: publication N was built from the log through entry M, which no longer matches; restore the log from the newest backup set`, once per publication, and `5` | `Copy-Item "$backup\decisions.jsonl" $inputs`, then `check` prints `No problems found.` |
+| Move `gold.db` aside | Inputs checked as usual, no prefix check, and nothing created in `$stores` | Move it back |
+
+Exit `5` wins over `3`: with both kinds of problem, every line is listed and
+the command exits `5`.
 
 ## Clean up
 

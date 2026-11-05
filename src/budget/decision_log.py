@@ -11,7 +11,7 @@ records.
 import hashlib
 import json
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -481,29 +481,62 @@ _SILVER_KINDS: Mapping[str, Callable[[Entry], SilverDecision]] = {
 }
 
 
-def read_decision_log(profile: Profile) -> DecisionLogRead:
-    """Read and validate the profile's decision log.
-
-    A missing log holds no decisions. A final line without a line feed was cut
-    off while it was being written, so it counts as never written.
-    """
+def decision_log_bytes(profile: Profile) -> bytes:
+    """Return the profile's decision log as written; a missing log is empty."""
     try:
-        content = profile.input_file(DECISION_LOG_FILE_NAME).read_bytes()
+        return profile.input_file(DECISION_LOG_FILE_NAME).read_bytes()
     except FileNotFoundError:
-        content = b""
+        return b""
+
+
+def cut_off_problem(content: bytes) -> str | None:
+    """Name a final line with no line feed, which no read counts, if there is one.
+
+    It was cut off while it was being written. Deleting it is the one safe
+    hand edit (`operations.md`, *`decisions.jsonl`*), so it is never repaired.
+    """
+    end = content.rfind(b"\n") + 1
+    if end == len(content):
+        return None
+    position = content.count(b"\n") + 1
+    return _problem(
+        position,
+        None,
+        "the final line has no line feed, so it was cut off while being "
+        "written; delete it",
+    )
+
+
+@dataclass(frozen=True)
+class DecisionLogReplay:
+    """The log read without refusing: what is in force, and every problem.
+
+    An invalid entry never comes into force, so `read` holds the decisions the
+    valid entries leave in force. A log that is not UTF-8 holds none.
+    """
+
+    read: DecisionLogRead
+    problems: tuple[str, ...]
+
+
+def replay_decision_log(content: bytes) -> DecisionLogReplay:
+    """Judge every entry of a decision log's bytes, refusing nothing.
+
+    A final line without a line feed was cut off while it was being written,
+    so it counts as never written.
+    """
     prefix = content[: content.rfind(b"\n") + 1]
     try:
         lines = prefix.decode("utf-8-sig").split("\n")[:-1]
     except UnicodeDecodeError:
+        nothing = DecisionLogRead((), (), 0, hashlib.sha256(b"").hexdigest())
         problem = f"{DECISION_LOG_FILE_NAME}: the file is not UTF-8"
-        raise ConfigurationError((problem,)) from None
+        return DecisionLogReplay(nothing, (problem,))
     replay = _Replay()
     for position, line in enumerate(lines, start=1):
         replay.read(position, line)
-    if replay.problems:
-        raise ConfigurationError(tuple(replay.problems))
     in_force = replay.in_force.values()
-    return DecisionLogRead(
+    read = DecisionLogRead(
         silver=tuple(
             _SILVER_KINDS[e["kind"]](e) for e in in_force if e["kind"] in _SILVER_KINDS
         ),
@@ -513,3 +546,56 @@ def read_decision_log(profile: Profile) -> DecisionLogRead:
         position=len(lines),
         prefix_sha256=hashlib.sha256(prefix).hexdigest(),
     )
+    return DecisionLogReplay(read, tuple(replay.problems))
+
+
+@dataclass(frozen=True)
+class RecordedPrefix:
+    """The log prefix one publication's recipe records it was built from."""
+
+    publication_id: int
+    position: int
+    prefix_sha256: str
+
+
+def _prefix_end(content: bytes, position: int) -> int | None:
+    """Find the byte just past entry `position`'s line feed, or None if absent."""
+    end = 0
+    for _ in range(position):
+        found = content.find(b"\n", end)
+        if found == -1:
+            return None
+        end = found + 1
+    return end
+
+
+def prefix_problems(
+    content: bytes, recorded: Iterable[RecordedPrefix]
+) -> tuple[str, ...]:
+    """Name each publication whose recorded log prefix the log no longer holds.
+
+    The log's first `position` entries must still exist and hash to the
+    recorded SHA-256, so an edit to an entry a build has read, or a log cut
+    back below it, is caught (`operations.md`, *`decisions.jsonl`*).
+    """
+    return tuple(
+        f"{DECISION_LOG_FILE_NAME}: publication {prefix.publication_id} was built "
+        f"from the log through entry {prefix.position}, which no longer matches; "
+        "restore the log from the newest backup set"
+        for prefix in recorded
+        if (end := _prefix_end(content, prefix.position)) is None
+        or hashlib.sha256(content[:end]).hexdigest() != prefix.prefix_sha256
+    )
+
+
+def read_decision_log(profile: Profile) -> DecisionLogRead:
+    """Read and validate the profile's decision log.
+
+    A missing log holds no decisions. A final line without a line feed was cut
+    off while it was being written, so it counts as never written. Any invalid
+    entry refuses the whole log, as one `ConfigurationError` naming every one.
+    """
+    replay = replay_decision_log(decision_log_bytes(profile))
+    if replay.problems:
+        raise ConfigurationError(replay.problems)
+    return replay.read

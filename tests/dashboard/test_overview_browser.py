@@ -314,3 +314,25 @@ def test_shared_shell_is_usable_at_desktop_and_phone_widths(
 
     if destination is not None:
         page.screenshot(path=destination / "dashboard-phone.png", full_page=True)
+
+
+def test_the_unclassified_bucket_stays_readable_at_phone_width(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+    page.set_viewport_size({"width": 390, "height": 844})
+    bucket = page.locator("#unclassified")
+    expect(bucket).to_contain_text("Ukategoriseret")
+    bucket_box = bucket.bounding_box()
+    assert bucket_box is not None
+    for value_id, label in (("unclassified-in", "Ind"), ("unclassified-out", "Ud")):
+        value = page.locator(f"#{value_id}")
+        expect(value).to_be_visible()
+        # The direction is named in words next to the value, never by colour.
+        expect(value.locator("xpath=..")).to_contain_text(label)
+        box = value.bounding_box()
+        assert box is not None
+        assert bucket_box["x"] <= box["x"]
+        assert box["x"] + box["width"] <= bucket_box["x"] + bucket_box["width"]
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")

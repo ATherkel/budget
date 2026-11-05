@@ -3,6 +3,7 @@
 
 import io
 from contextlib import redirect_stderr, redirect_stdout
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import override
 from unittest import mock
@@ -120,6 +121,33 @@ def review(profile_file: Path, *options: str) -> tuple[int, str, str]:
     with redirect_stdout(stdout), redirect_stderr(stderr):
         status = main(["--profile", str(profile_file), "review", *options], environ={})
     return status, stdout.getvalue(), stderr.getvalue()
+
+
+def check(profile_file: Path) -> tuple[int, str, str]:
+    """Run `budget check` with one profile file; return status and output."""
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        code = main(["--profile", str(profile_file), "check"], environ={})
+    return code, stdout.getvalue(), stderr.getvalue()
+
+
+def status(profile_file: Path, *, now: datetime | None = None) -> tuple[int, str, str]:
+    """Run `budget status` with one profile file; return status and output.
+
+    `now` is the moment the command reads as the present, when a test needs one.
+    """
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    clock = mock.Mock(wraps=datetime)
+    clock.now.return_value = datetime.now(UTC) if now is None else now
+    with (
+        redirect_stdout(stdout),
+        redirect_stderr(stderr),
+        mock.patch("budget.cli.datetime", clock),
+    ):
+        code = main(["--profile", str(profile_file), "status"], environ={})
+    return code, stdout.getvalue(), stderr.getvalue()
 
 
 def undo(profile_file: Path) -> tuple[int, str, str]:

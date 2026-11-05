@@ -4,12 +4,10 @@
 from collections.abc import Iterator
 from datetime import date, datetime
 from decimal import Decimal
-from zoneinfo import ZoneInfo
 
 from budget.analytics import InvalidSelectionError
 from budget.gold import ReportingMonth
-
-COPENHAGEN = ZoneInfo("Europe/Copenhagen")
+from budget.timezone import COPENHAGEN
 
 _MONTH_NAMES = (
     "januar",
@@ -37,6 +35,12 @@ def amount(value: Decimal | None, currency: str) -> str:
     digits = f"{abs(value):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
     sign = "\N{MINUS SIGN}" if value < 0 else ""
     return f"{sign}{digits} {'kr.' if currency == 'DKK' else currency}"
+
+
+def signed_amount(value: Decimal | None, currency: str) -> str:
+    """Return `amount`, with an explicit plus sign on a positive amount."""
+    shown = amount(value, currency)
+    return f"+{shown}" if value is not None and value > 0 else shown
 
 
 def copenhagen_date(now: datetime) -> date:

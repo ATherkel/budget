@@ -45,7 +45,13 @@ from tests.cli.commands import (
     review,
     serve,
 )
-from tests.cli.pipelines import TAXONOMY, Household, household, write_inputs
+from tests.cli.pipelines import (
+    TAXONOMY,
+    Household,
+    household,
+    rebuild_silver_with,
+    write_inputs,
+)
 from tests.cli.profile_files import write_profile
 from tests.cli.test_production_rebuild_gold import DIRTY_STATUS, _clean_checkout, _git
 from tests.importing.households import drop, log_entries, payload
@@ -53,8 +59,8 @@ from tests.test_decision_log import documented_example
 
 EXIT_OK = 0
 # What catch-up prints for a set whose Gold holds no publication yet: the
-# fresh build becomes the first.
-FIRST_GOLD = "Gold     published publication 1 (cause build)\n"
+# fresh build takes the restore's first id, the first million (#376).
+FIRST_GOLD = "Gold     published publication 1000000 (cause build)\n"
 # An export of a later week than the pipeline household's, for catch-up.
 EXPORT_LATER = payload("08.03.2026")
 EXIT_REFUSED_INPUT = 3
@@ -345,23 +351,112 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
                 status, stdout, stderr = restore(built.profile_file, written.name)
 
             assert (status, stderr) == (EXIT_OK, "")
-            assert "Gold     published publication 2 (cause build)\n" in stdout
+            # The catch-up build takes the boundary's id, not the one after
+            # the set's highest (#376).
+            assert "Gold     published publication 1000000 (cause build)\n" in stdout
             with GoldStore(built.profile) as gold:
                 current = gold.current()
                 assert current is not None
-                assert current.publication_id == 2
+                assert current.publication_id == 1_000_000
                 # The set's history comes back as it was, one move on.
                 moves = gold.pointer_history()
                 assert [(move.to_publication_id, move.cause) for move in moves] == [
                     (1, "build"),
-                    (2, "build"),
+                    (1_000_000, "build"),
                 ]
+
+    def test_builds_after_a_restore_continue_from_its_first_id(self) -> None:
+        # The catch-up build takes the boundary's id; the next build takes
+        # the one after it, never the boundary's id again (#376).
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            later = drop(
+                built.profile, "joint-current", "danske-20260310.csv", EXPORT_LATER
+            )
+            with writer_lock(built.profile) as lock:
+                import_inbox_file(
+                    lock,
+                    later,
+                    Coverage(
+                        covers_from=date(2026, 3, 5), covers_through=date(2026, 3, 9)
+                    ),
+                )
+            shutil.rmtree(built.profile.stores)
+            with mock.patch("subprocess.run", side_effect=_clean_checkout):
+                assert restore(built.profile_file, written.name)[0] == EXIT_OK
+            latest = drop(
+                built.profile,
+                "joint-current",
+                "danske-20260315.csv",
+                payload("12.03.2026"),
+            )
+            with writer_lock(built.profile) as lock:
+                import_inbox_file(
+                    lock,
+                    latest,
+                    Coverage(
+                        covers_from=date(2026, 3, 10),
+                        covers_through=date(2026, 3, 14),
+                    ),
+                )
+            rebuild_silver_with(built.profile)
+
+            with mock.patch("subprocess.run", side_effect=_clean_checkout):
+                status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "Gold     published publication 1000001 (cause build)\n" in stdout
+            with GoldStore(built.profile) as gold:
+                moves = gold.pointer_history()
+            assert [move.to_publication_id for move in moves] == [
+                1,
+                1_000_000,
+                1_000_001,
+            ]
+
+    def test_a_restore_jumps_past_a_set_whose_highest_id_is_a_million(
+        self,
+    ) -> None:
+        # The jump is to the next million strictly above the set's highest
+        # id, so a set already holding 1,000,000 starts new ids at 2,000,000.
+        with TemporaryDirectory() as directory:
+            built, written = _published_production(Path(directory) / "prod")
+            later = drop(
+                built.profile, "joint-current", "danske-20260310.csv", EXPORT_LATER
+            )
+            with writer_lock(built.profile) as lock:
+                import_inbox_file(
+                    lock,
+                    later,
+                    Coverage(
+                        covers_from=date(2026, 3, 5), covers_through=date(2026, 3, 9)
+                    ),
+                )
+            shutil.rmtree(built.profile.stores)
+            with mock.patch("subprocess.run", side_effect=_clean_checkout):
+                assert restore(built.profile_file, written.name)[0] == EXIT_OK
+            with GoldStore(built.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1_000_000
+            with writer_lock(built.profile) as lock:
+                jumped = back_up(lock, now=datetime.now(UTC))
+            shutil.rmtree(built.profile.stores)
+
+            assert restore(built.profile_file, jumped.name)[0] == EXIT_OK
+
+            with GoldStore(built.profile) as gold:
+                assert gold.recovery_boundaries()[-1].first_publication_id == (
+                    2_000_000
+                )
 
     def test_restore_records_where_the_recovered_publication_history_ends(
         self,
     ) -> None:
         # Publications made after the set are lost: the boundary says so, so
         # a lookup can report the gap instead of inferring continuous use.
+        # New ids jump to the next million above the set's highest, so none
+        # reuses the id of a publication lost after the set (#376).
         with TemporaryDirectory() as directory:
             built, written = _published_production(Path(directory) / "prod")
             shutil.rmtree(built.profile.stores)
@@ -375,7 +470,7 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
             assert boundary.backup_created_at == written.created_at
             assert boundary.restored_at >= before
             assert boundary.restored_current_id == 1
-            assert boundary.first_publication_id == 2
+            assert boundary.first_publication_id == 1_000_000
 
     def test_restore_names_the_publication_undo_returns_to_after_catch_up(
         self,
@@ -432,7 +527,7 @@ class GoldCatchUpTests(CleanCheckoutTestCase):
             with GoldStore(built.profile) as gold:
                 (boundary,) = gold.recovery_boundaries()
             assert boundary.restored_current_id is None
-            assert boundary.first_publication_id == 1
+            assert boundary.first_publication_id == 1_000_000
 
     def test_restore_backs_up_the_restored_profile_when_it_finishes(self) -> None:
         # As `migrate` does after it changes stores: the boundary and any

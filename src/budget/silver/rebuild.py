@@ -7,27 +7,12 @@ persisted rebuild takes its one profile authority and that one value rather
 than a long list of positional arguments.
 """
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
-
-from budget.bronze.models import FormatFailure, ImportRun, SourceRecord
 from budget.locking import WriterLock, writer_lock
 from budget.profiles import Profile
-from budget.silver.build import build
-from budget.silver.decisions import SilverDecision
+from budget.silver.build import derive
+from budget.silver.inputs import SilverBuildInputs
 from budget.silver.models import SilverResult
 from budget.silver.store import SilverStore
-
-
-@dataclass(frozen=True, kw_only=True)
-class SilverBuildInputs:
-    """Everything one Silver build reads, as `budget.silver.build` names it."""
-
-    runs: Sequence[ImportRun]
-    source_records: Mapping[str, Sequence[SourceRecord]]
-    format_failures: Mapping[str, Sequence[FormatFailure]]
-    currencies: Mapping[str, str]
-    decisions: Sequence[SilverDecision] = ()
 
 
 def rebuild_silver(
@@ -53,13 +38,7 @@ def rebuild_silver(
 
 def derive_silver(inputs: SilverBuildInputs) -> SilverResult:
     """Run the pure build over `inputs`, storing nothing."""
-    return build(
-        runs=inputs.runs,
-        source_records=inputs.source_records,
-        format_failures=inputs.format_failures,
-        currencies=inputs.currencies,
-        decisions=inputs.decisions,
-    )
+    return derive(inputs)
 
 
 def store_silver(

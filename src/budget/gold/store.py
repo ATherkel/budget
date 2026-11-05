@@ -143,8 +143,8 @@ class RecoveryBoundary:
     at `backup_created_at`; any made after it, before the failure, are lost.
     `restored_current_id` is the publication current in the set, or None.
     Every publication from `first_publication_id` on was built after the
-    restore at `restored_at`. A bare id from before the restore can still
-    name a lost publication that a new one now shares (#376).
+    restore at `restored_at`. That id is the next multiple of 1,000,000 above
+    the set's highest, so no new publication shares a lost one's id (#376).
     """
 
     backup_set: str
@@ -173,7 +173,9 @@ _SELECT_RETAINED_ONE: Final = (
     " JOIN results USING (publication_id) WHERE publication_id = ?"
 )
 _SELECT_RESULT: Final = "SELECT 1 FROM results WHERE publication_id = ?"
-_SELECT_NEXT_ID: Final = "SELECT coalesce(max(publication_id), 0) + 1 FROM publications"
+_SELECT_HIGHEST_ID: Final = "SELECT coalesce(max(publication_id), 0) FROM publications"
+# After a restore, new ids start at the next multiple of this (#376).
+_RECOVERY_ID_STEP: Final = 1_000_000
 _INSERT_PUBLICATION: Final = (
     "INSERT INTO publications (publication_id, kind, label, known_at, built_at,"
     " replayed_at, contract_version, fingerprint_scheme, result_fingerprint)"
@@ -217,6 +219,10 @@ _INSERT_MOVE: Final = (
 _SELECT_LAST_MOVE: Final = "SELECT * FROM pointer_moves ORDER BY move DESC LIMIT 1"
 _SELECT_MOVES: Final = "SELECT * FROM pointer_moves ORDER BY move"
 _SELECT_BOUNDARIES: Final = "SELECT * FROM recovery_boundaries ORDER BY boundary"
+_SELECT_LATEST_BOUNDARY_ID: Final = (
+    "SELECT first_publication_id FROM recovery_boundaries"
+    " ORDER BY boundary DESC LIMIT 1"
+)
 _INSERT_BOUNDARY: Final = (
     "INSERT INTO recovery_boundaries (backup_set, backup_created_at, restored_at,"
     " restored_current_id, first_publication_id) VALUES (?, ?, ?, ?, ?)"
@@ -237,6 +243,7 @@ _INSERT_RECIPE_RUNS: Final = (
     " VALUES (?, ?, ?)"
 )
 _SELECT_RECIPE: Final = "SELECT * FROM recipes WHERE publication_id = ?"
+_SELECT_RECIPE_IDS: Final = "SELECT publication_id FROM recipes ORDER BY publication_id"
 _SELECT_RECIPE_RUNS: Final = (
     "SELECT import_run_id, payload_id FROM recipe_import_runs WHERE publication_id = ?"
 )
@@ -468,6 +475,17 @@ class GoldStore:
             lambda connection: _stored_recipe(connection, publication_id),
         )
 
+    def recipes(self) -> Sequence[tuple[int, Recipe]]:
+        """Return every stored recipe with its publication id, retained or not."""
+
+        def read(connection: sqlite3.Connection) -> tuple[tuple[int, Recipe], ...]:
+            ids: list[int] = [
+                row["publication_id"] for row in connection.execute(_SELECT_RECIPE_IDS)
+            ]
+            return tuple((id_, _stored_recipe(connection, id_)) for id_ in ids)
+
+        return self._owner.read(read)
+
     def pointer_history(self) -> Sequence[PointerMove]:
         """Return every move of the current pointer, oldest first."""
         return self._owner.read(
@@ -512,19 +530,22 @@ class GoldStore:
     ) -> RecoveryBoundary:
         """Record that this store's history was restored from `backup_set`.
 
-        The publication current now is the set's, and every id from the next
-        one on belongs to a publication built after the restore.
+        The publication current now is the set's. New ids start at the next
+        multiple of 1,000,000 above the highest id the store holds, and every
+        id from there on belongs to a publication built after the restore.
         """
         connection = self._owner.connection(write=True)
         with connection:
             connection.execute("BEGIN IMMEDIATE")
             pointer = connection.execute(_SELECT_CURRENT_ID).fetchone()
+            highest = int(connection.execute(_SELECT_HIGHEST_ID).fetchone()[0])
             boundary = RecoveryBoundary(
                 backup_set=backup_set,
                 backup_created_at=backup_created_at,
                 restored_at=restored_at,
                 restored_current_id=None if pointer is None else int(pointer[0]),
-                first_publication_id=_next_publication_id(connection),
+                first_publication_id=(highest // _RECOVERY_ID_STEP + 1)
+                * _RECOVERY_ID_STEP,
             )
             connection.execute(
                 _INSERT_BOUNDARY,
@@ -921,15 +942,19 @@ def _cleanup_after_move(connection: sqlite3.Connection, current_id: int) -> None
 
 
 def _next_publication_id(connection: sqlite3.Connection) -> int:
-    """Return one more than the highest id the store has ever published.
+    """Return the id the next publication must carry.
 
-    A publication's metadata is never deleted, so within one history no id is
-    handed out twice. After a restore the sequence continues from the set's,
-    so an id can repeat one lost after the set (#376); the store's recovery
-    boundaries say where.
+    That is one more than the highest id the store has ever published, or the
+    latest recovery boundary's first id when that is larger. A publication's
+    metadata is never deleted, so within one history no id is handed out
+    twice, and a restore jumps past every id lost after its set (#376). Only
+    a second restore of the same or an older set can reuse a range (#414).
     """
-    row = connection.execute(_SELECT_NEXT_ID).fetchone()
-    return int(row[0])
+    following = int(connection.execute(_SELECT_HIGHEST_ID).fetchone()[0]) + 1
+    boundary = connection.execute(_SELECT_LATEST_BOUNDARY_ID).fetchone()
+    if boundary is None:
+        return following
+    return max(following, int(boundary[0]))
 
 
 def _move_pointer(

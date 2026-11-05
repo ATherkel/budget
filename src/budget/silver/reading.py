@@ -10,7 +10,7 @@ from decimal import Decimal
 from budget.bronze.models import FormatFailure, ImportRun, SourceRecord
 from budget.silver.balances import chain_errors
 from budget.silver.currencies import minor_unit_places
-from budget.silver.formats import FORMATS, ReadRecord, RecordError
+from budget.silver.formats import FORMATS, ReadRecord, RecordError, SourceFormat
 from budget.silver.identity import identity_text
 from budget.silver.models import ValidationError
 
@@ -63,10 +63,14 @@ def read_run(
     records: Sequence[SourceRecord],
     failures: Sequence[FormatFailure],
     currencies: Mapping[str, str],
+    formats: Mapping[str, SourceFormat] | None = None,
 ) -> ReadRun:
-    """Read every record of a run, keeping each error against its record."""
+    """Read every record of a run, keeping each error against its record.
+
+    The run is read in the supplied `formats`, or the built-in ones without.
+    """
     currency = currencies[run.declared_account_id]
-    source_format = FORMATS[run.source_format]
+    source_format = (FORMATS if formats is None else formats)[run.source_format]
     places = minor_unit_places(currency)
     results = [source_format.read(record, places) for record in records]
     found: list[tuple[int | None, RecordError]] = [
