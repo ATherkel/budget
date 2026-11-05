@@ -11,7 +11,7 @@ records.
 import hashlib
 import json
 import re
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -41,8 +41,8 @@ from budget.silver.decisions import (
     Withdrawn,
 )
 
-_FORMAT_VERSION = 1
-_RETRACT = "retract"
+DECISION_LOG_FORMAT = 1
+RETRACT = "retract"
 
 # `recorded_at` as the platform writes it: UTC, to the second.
 _UTC_TIME = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
@@ -183,8 +183,14 @@ _KINDS: Mapping[str, _Kind] = {
         {"record": FieldRule(lambda v: isinstance(v, dict), "must be an object")},
         _record_problems,
     ),
-    _RETRACT: _Kind(None, 0, {"targets": _JUDGED_APART}, _retract_problems),
+    RETRACT: _Kind(None, 0, {"targets": _JUDGED_APART}, _retract_problems),
 }
+DECISION_KINDS = tuple(_KINDS)
+# The kinds whose targets are import runs; every other kind but a retract
+# targets transactions.
+IMPORT_RUN_KINDS = frozenset(
+    kind for kind, rules in _KINDS.items() if rules.group == _IMPORT_RUN
+)
 
 
 def _kind_refusal(entry: Entry) -> list[str]:
@@ -192,8 +198,8 @@ def _kind_refusal(entry: Entry) -> list[str]:
     version = entry.get("format")
     if version is None:
         return ["format is missing"]
-    if type(version) is not int or version != _FORMAT_VERSION:
-        return [f"format must be {_FORMAT_VERSION}"]
+    if type(version) is not int or version != DECISION_LOG_FORMAT:
+        return [f"format must be {DECISION_LOG_FORMAT}"]
     kind = entry.get("kind")
     if kind is None:
         return ["kind is missing"]
@@ -345,7 +351,7 @@ class _Replay:
         found = (
             [f'key "{key}" appears more than once' for key in repeated]
             or _shape_problems(entry, position)
-            or self._history_problems(entry)
+            or self.history_problems(entry)
         )
         if found:
             decision_id = entry.get("decision_id")
@@ -355,13 +361,13 @@ class _Replay:
         for superseded in entry["supersedes"]:
             for claim in _claims(self.in_force.pop(superseded)):
                 del self.holders[claim.group, claim.target][claim.payload]
-        if entry["kind"] != _RETRACT:
+        if entry["kind"] != RETRACT:
             self.in_force[entry["decision_id"]] = entry
             for claim in _claims(entry):
                 held = self.holders.setdefault((claim.group, claim.target), {})
                 held[claim.payload] = entry["decision_id"]
 
-    def _history_problems(self, entry: Entry) -> list[str]:
+    def history_problems(self, entry: Entry) -> list[str]:
         """Judge a well-formed entry against the entries before it."""
         decision_id = entry["decision_id"]
         problems = []
@@ -410,7 +416,7 @@ class _Replay:
         Superseding one would quietly cancel a decision on another target, or
         across Silver and Gold. A `retract` withdraws whatever it names.
         """
-        if entry["kind"] == _RETRACT:
+        if entry["kind"] == RETRACT:
             return []
         claims = _claims(entry)
         return [
@@ -519,6 +525,61 @@ class DecisionLogReplay:
     problems: tuple[str, ...]
 
 
+def _replay_lines(lines: Sequence[str]) -> _Replay:
+    """Judge each complete line in turn, from entry 1."""
+    replay = _Replay()
+    for position, line in enumerate(lines, start=1):
+        replay.read(position, line)
+    return replay
+
+
+def last_line_cut_off(profile: Profile) -> bool:
+    """Say whether the log ends in a line a crash cut off, without a line feed."""
+    try:
+        content = profile.input_file(DECISION_LOG_FILE_NAME).read_bytes()
+    except FileNotFoundError:
+        return False
+    return content != b"" and not content.endswith(b"\n")
+
+
+def shape_problems(entry: Entry, position: int) -> tuple[str, ...]:
+    """Judge one entry on its own, as the entry at `position` in the log."""
+    return tuple(_shape_problems(entry, position))
+
+
+def history_problems(profile: Profile, entry: Entry) -> tuple[str, ...]:
+    """Judge a well-formed `entry` against every entry of the profile's log.
+
+    These are the rules every build re-validates every entry with, so an
+    entry that passes them and `shape_problems` now passes every later read.
+    A log with an invalid entry is refused, as `read_decision_log` refuses it.
+    """
+    content = decision_log_bytes(profile)
+    problems = replay_decision_log(content).problems
+    if problems:
+        raise ConfigurationError(problems)
+    prefix = content[: content.rfind(b"\n") + 1]
+    lines = prefix.decode("utf-8-sig").split("\n")[:-1]
+    return tuple(_replay_lines(lines).history_problems(entry))
+
+
+def typed_decision(entry: Entry) -> GoldDecision | SilverDecision | None:
+    """Return a valid entry as the typed decision it puts in force.
+
+    A `retract` puts none in force.
+    """
+    kind = entry["kind"]
+    if kind in _GOLD_KINDS:
+        return _GOLD_KINDS[kind](entry)
+    if kind in _SILVER_KINDS:
+        return _SILVER_KINDS[kind](entry)
+    return None
+
+
+# The kinds Silver applies; a decision of one of them rebuilds from Silver.
+SILVER_DECISION_KINDS = frozenset(_SILVER_KINDS)
+
+
 def replay_decision_log(content: bytes) -> DecisionLogReplay:
     """Judge every entry of a decision log's bytes, refusing nothing.
 
@@ -532,9 +593,7 @@ def replay_decision_log(content: bytes) -> DecisionLogReplay:
         nothing = DecisionLogRead((), (), 0, hashlib.sha256(b"").hexdigest())
         problem = f"{DECISION_LOG_FILE_NAME}: the file is not UTF-8"
         return DecisionLogReplay(nothing, (problem,))
-    replay = _Replay()
-    for position, line in enumerate(lines, start=1):
-        replay.read(position, line)
+    replay = _replay_lines(lines)
     in_force = replay.in_force.values()
     read = DecisionLogRead(
         silver=tuple(
