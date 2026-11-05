@@ -345,6 +345,37 @@ class RefusedRebuildTests(unittest.TestCase):
                 "then run `budget rebuild` to publish it"
             ) in stderr
 
+    def test_a_production_decision_whose_rebuild_refuses_is_backed_up(self) -> None:
+        # #456: the log is household input nothing else can rebuild, so the
+        # recorded entry gets a normal set even though nothing was published.
+        with TemporaryDirectory() as directory:
+            built, other = refusing_household(Path(directory), name="production")
+            sets_before = complete_backup_sets(built.profile)
+
+            with mock.patch("subprocess.run", side_effect=clean_checkout):
+                status, stdout, stderr = classify_weekly_shop(built.profile_file, other)
+
+            assert status == EXIT_REFUSED_INPUT
+            assert (
+                "d-0002 is recorded, but nothing was published; put that right, "
+                "then run `budget rebuild` to publish it\n"
+            ) in stderr
+            sets_after = complete_backup_sets(built.profile)
+            assert len(sets_after) == len(sets_before) + 1, "no new backup set"
+            newest = sets_after[0]
+            assert stdout == (
+                f"Recorded d-0002.\nBackup   backup set {newest.name} written\n"
+            )
+            backed_up = (newest.path / "inputs" / "decisions.jsonl").read_text(
+                encoding="utf-8"
+            )
+            assert [
+                json.loads(line)["decision_id"] for line in backed_up.splitlines()
+            ] == [
+                "d-0001",
+                "d-0002",
+            ]
+
     def test_a_development_decision_whose_rebuild_refuses_tries_no_backup(
         self,
     ) -> None:
