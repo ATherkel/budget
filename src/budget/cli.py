@@ -787,6 +787,12 @@ def _decide(profile: Profile, arguments: argparse.Namespace) -> None:
                 lock, from_silver=from_silver
             )
         except ConfigurationError as error:
+            # The log changed though nothing was published, so production
+            # still backs it up: it is household input nothing else rebuilds.
+            if production:
+                written, _ = _back_up_production(lock)
+                if written is not None:
+                    sys.stdout.write(f"Backup   backup set {written.name} written\n")
             raise RecordedWithoutPublicationError(
                 recorded.decision_id, error, from_silver=from_silver
             ) from None
