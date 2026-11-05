@@ -18,7 +18,7 @@ from typing import Final, NoReturn
 
 import uvicorn
 
-from budget import routine_logging, sqlstore, summaries
+from budget import checking, routine_logging, sqlstore, summaries
 from budget.backups import (
     BACKUP_FAILURES,
     BackupVerificationError,
@@ -308,6 +308,9 @@ def _parser() -> argparse.ArgumentParser:
     review.add_argument("--account", help="list one account's items and runs only")
     commands.add_parser("undo", help="restore the previous current publication")
     commands.add_parser("status", help="show balance and classification completeness")
+    commands.add_parser(
+        "check", help="validate every input file and the decision-log prefix"
+    )
     commands.add_parser("serve", help="start the read-only dashboard")
     commands.add_parser(
         "set-passphrase",
@@ -673,6 +676,20 @@ def _status(profile: Profile) -> int:
     return EXIT_OK
 
 
+def _check(profile: Profile) -> int:
+    """Validate the inputs and the decision log, with no lock; build nothing."""
+    found = checking.check(profile)
+    listed = (*found.problems, *found.mismatches)
+    if not listed:
+        sys.stdout.write("No problems found.\n")
+        return EXIT_OK
+    for problem in listed:
+        sys.stdout.write(problem + "\n")
+    noun = "problem" if len(listed) == 1 else "problems"
+    sys.stdout.write(f"{len(listed)} {noun}. Nothing was built.\n")
+    return EXIT_VERIFICATION_FAILED if found.mismatches else EXIT_REFUSED_INPUT
+
+
 def _set_passphrase(profile: Profile) -> None:
     """Ask for the new dashboard passphrase twice, then store its hash."""
     # Refused before asking, so no one types a passphrase that cannot be kept.
@@ -759,6 +776,8 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         return _restore(profile, arguments.backup_set)
     if arguments.command == "status":
         return _status(profile)
+    if arguments.command == "check":
+        return _check(profile)
     if arguments.command in _PROFILE_ONLY_COMMANDS:
         _PROFILE_ONLY_COMMANDS[arguments.command](profile)
     elif arguments.command == "dev":

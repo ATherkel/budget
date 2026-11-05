@@ -609,7 +609,7 @@ lists every one before stopping:
 rules.toml: rule "r-mobilepay-netto": then.category "food-out" is not in taxonomy.toml
 rules.toml: rule "r-furniture": when.amount_max must be a quoted decimal, got a number
 decisions.jsonl: entry 7 (d-0007): targets a transaction already decided by d-0002
-3 configuration errors. Nothing was built.
+3 problems. Nothing was built.
 ```
 
 A file that is itself refused declares nothing to check against: until
