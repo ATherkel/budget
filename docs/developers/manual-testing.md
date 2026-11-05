@@ -116,14 +116,25 @@ Change `"NETTO"` to `"netto"` in `rules.toml`, or add a comment, then
 
 Decisions are recorded with `budget decide`, which checks each one, appends
 it to `decisions.jsonl` and rebuilds. Never edit the log by hand. The
-decisions below assume an empty log, so the first is `d-0001`. Any
-transaction will do: `uv run budget review` shows each open item's 8-character
-handle. Or pick the latest MENY purchase in the current publication (the
-highest `publication_id` while there is no undo):
+decisions below assume an empty log, so the first is `d-0001`.
+
+List what is waiting to be classified:
 
 ```powershell
-$id = uv run python -c "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); p=c.execute('select max(publication_id) from publications').fetchone()[0]; print(c.execute(""select transaction_id from transactions where publication_id=? and description like 'MENY%' order by transaction_date desc limit 1"",(p,)).fetchone()[0])" "$stores\gold.db"
-$handle = $id.Substring(0, 8)
+uv run budget review --kind unclassified
+```
+
+Each item shows its transaction on a `target` line, with its 8-character
+handle first:
+
+```text
+  target b6a05be4  joint-current  2026-03-02  -120.00 DKK  "MENY HOVEDGADE"  bank category Mad
+```
+
+Pick one, such as a MENY purchase, and put its handle in `$handle`:
+
+```powershell
+$handle = "b6a05be4"
 ```
 
 Classify it as eating out:
