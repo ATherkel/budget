@@ -85,6 +85,7 @@ from budget.profiles import (
 from budget.prompting import ask_continue_after_duplicates, ask_passphrase, ask_ranges
 from budget.ranges import load_ranges
 from budget.rebuilding import (
+    GoldRebuild,
     HouseholdInputs,
     SilverNotBuiltError,
     SilverRebuild,
@@ -220,6 +221,20 @@ class DecisionRejectedError(Exception):
         self.reasons = reasons
         listed = "".join(f"\n  {reason}" for reason in reasons)
         super().__init__(f"the decision was rejected; nothing was recorded:{listed}")
+
+
+class RecordedWithoutPublicationError(Exception):
+    """The decision is recorded, but the rebuild after it refused."""
+
+    def __init__(
+        self, decision_id: str, refused: ConfigurationError, *, from_silver: bool
+    ) -> None:
+        """Name the refusal, then say the decision stands and what publishes it."""
+        command = "budget rebuild --from silver" if from_silver else "budget rebuild"
+        super().__init__(
+            f"{refused}\n{decision_id} is recorded, but nothing was published; "
+            f"put that right, then run `{command}` to publish it"
+        )
 
 
 class PassphraseMismatchError(Exception):
@@ -760,19 +775,17 @@ def _decide(profile: Profile, arguments: argparse.Namespace) -> None:
         recorded = log.propose(_proposal(profile, arguments))
         if not isinstance(recorded, Recorded):
             raise DecisionRejectedError(recorded.reasons)
-        inputs = read_household_inputs(lock.profile)
-        now = datetime.now(UTC)
-        summary = ""
-        silver_reviews = SilverReviews()
-        # `operations.md`, *Commands*: the Silver kinds rebuild from Silver,
-        # the rest from Gold.
-        if arguments.kind in SILVER_DECISION_KINDS:
-            rebuilt = rebuild_through_gold(lock, now=now, inputs=inputs)
-            summary = summaries.rebuild_summary(rebuilt.silver)
-            published = rebuilt.gold
-            silver_reviews = rebuilt.silver_reviews
-        else:
-            published = rebuild_from_gold(lock, now=now, inputs=inputs)
+        # Said at once: the decision is in the log whatever the rebuild does.
+        sys.stdout.write(f"Recorded {recorded.decision_id}.\n")
+        from_silver = arguments.kind in SILVER_DECISION_KINDS
+        try:
+            summary, published, silver_reviews = _rebuild_after_decision(
+                lock, from_silver=from_silver
+            )
+        except ConfigurationError as error:
+            raise RecordedWithoutPublicationError(
+                recorded.decision_id, error, from_silver=from_silver
+            ) from None
         routine_logging.finished(
             profile,
             "decide",
@@ -782,10 +795,7 @@ def _decide(profile: Profile, arguments: argparse.Namespace) -> None:
         # The decision log and the stores are written, so production backs
         # them up before the diff, as `rebuild` does.
         written, failure = _back_up_production(lock) if production else (None, None)
-        sys.stdout.write(
-            f"Recorded {recorded.decision_id}.\n"
-            f"{summary}{summaries.gold_line(published)}\n"
-        )
+        sys.stdout.write(f"{summary}{summaries.gold_line(published)}\n")
         sys.stdout.write(
             summaries.publication_changes(profile, published, silver_reviews)
         )
@@ -796,6 +806,26 @@ def _decide(profile: Profile, arguments: argparse.Namespace) -> None:
         finally:
             if failure is not None:
                 raise RebuiltWithoutBackupError(failure) from None
+
+
+def _rebuild_after_decision(
+    lock: WriterLock, *, from_silver: bool
+) -> tuple[str, GoldRebuild, SilverReviews]:
+    """Rebuild from the stage a decision's kind affects (`operations.md`, *Commands*).
+
+    Returns the Silver summary, empty from Gold, the Gold rebuild and the
+    Silver review items before and after.
+    """
+    inputs = read_household_inputs(lock.profile)
+    now = datetime.now(UTC)
+    if not from_silver:
+        return "", rebuild_from_gold(lock, now=now, inputs=inputs), SilverReviews()
+    rebuilt = rebuild_through_gold(lock, now=now, inputs=inputs)
+    return (
+        summaries.rebuild_summary(rebuilt.silver),
+        rebuilt.gold,
+        rebuilt.silver_reviews,
+    )
 
 
 def _back_up_production(
@@ -999,6 +1029,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         ProfileFileError,
         ConfigurationError,
         DecisionRejectedError,
+        RecordedWithoutPublicationError,
         ConflictingDeclaredFormatsError,
         UnsupportedSourceFormatError,
         NoPassphraseFileError,
