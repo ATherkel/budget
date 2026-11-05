@@ -228,14 +228,29 @@ class RecordedWithoutPublicationError(Exception):
     """The decision is recorded, but the rebuild after it refused."""
 
     def __init__(
-        self, decision_id: str, refused: ConfigurationError, *, from_silver: bool
+        self,
+        decision_id: str,
+        refused: ConfigurationError,
+        *,
+        from_silver: bool,
+        backup_failure: Exception | None = None,
     ) -> None:
-        """Name the refusal, then say the decision stands and what publishes it."""
+        """Name the refusal, say the decision stands and what publishes it.
+
+        A backup that failed after the refusal is named last, with the command
+        that writes the set, so neither failure hides the other.
+        """
         command = "budget rebuild --from silver" if from_silver else "budget rebuild"
-        super().__init__(
+        message = (
             f"{refused}\n{decision_id} is recorded, but nothing was published; "
             f"put that right, then run `{command}` to publish it"
         )
+        if backup_failure is not None:
+            message += (
+                f"\nNo backup set could be written either: {backup_failure}. "
+                "Put that right, then run `budget backup`"
+            )
+        super().__init__(message)
 
 
 class PassphraseMismatchError(Exception):
@@ -789,12 +804,14 @@ def _decide(profile: Profile, arguments: argparse.Namespace) -> None:
         except ConfigurationError as error:
             # The log changed though nothing was published, so production
             # still backs it up: it is household input nothing else rebuilds.
-            if production:
-                written, _ = _back_up_production(lock)
-                if written is not None:
-                    sys.stdout.write(f"Backup   backup set {written.name} written\n")
+            written, failure = _back_up_production(lock) if production else (None, None)
+            if written is not None:
+                sys.stdout.write(f"Backup   backup set {written.name} written\n")
             raise RecordedWithoutPublicationError(
-                recorded.decision_id, error, from_silver=from_silver
+                recorded.decision_id,
+                error,
+                from_silver=from_silver,
+                backup_failure=failure,
             ) from None
         routine_logging.finished(
             profile,
