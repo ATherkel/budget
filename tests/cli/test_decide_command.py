@@ -9,7 +9,7 @@ in `operations.md` settles a review item. What was recorded is read back from
 
 import json
 import unittest
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
@@ -36,6 +36,8 @@ from tests.importing.households import (
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
 EXIT_REFUSED_ENVIRONMENT = 4
+# After the hand-written entry's time, so the log's order holds.
+NOW = datetime(2026, 3, 7, 9, 0, tzinfo=UTC)
 
 
 def only_transaction(profile: Profile) -> str:
@@ -375,6 +377,33 @@ class RefusedRebuildTests(unittest.TestCase):
                 "d-0001",
                 "d-0002",
             ]
+
+    def test_a_failed_backup_after_a_refused_rebuild_is_named_with_the_refusal(
+        self,
+    ) -> None:
+        # #456: neither failure may hide the other, and exit 3 stays R1's.
+        with TemporaryDirectory() as directory:
+            built, other = refusing_household(Path(directory), name="production")
+            # The clock names the set after a folder that already exists, and
+            # a set never replaces another, so it cannot be written.
+            built.profile.backup_path(NOW.strftime("%Y-%m-%dT%H-%M-%S.%fZ")).mkdir()
+            clock = mock.Mock(wraps=datetime)
+            clock.now.return_value = NOW
+
+            with (
+                mock.patch("subprocess.run", side_effect=clean_checkout),
+                mock.patch("budget.cli.datetime", clock),
+            ):
+                status, stdout, stderr = classify_weekly_shop(built.profile_file, other)
+
+            assert (status, stdout) == (EXIT_REFUSED_INPUT, "Recorded d-0002.\n")
+            assert 'counterpart account "ghost"' in stderr
+            assert (
+                "d-0002 is recorded, but nothing was published; put that right, "
+                "then run `budget rebuild` to publish it"
+            ) in stderr
+            assert "no backup set could be written" in stderr.lower()
+            assert "`budget backup`" in stderr
 
     def test_a_development_decision_whose_rebuild_refuses_tries_no_backup(
         self,
