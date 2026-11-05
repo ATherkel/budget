@@ -586,6 +586,14 @@ matches more than one transaction is refused.
 `decide` rebuilds from Silver for `void-import-run`, `same-transaction`,
 `withdrawn` and `accept-discrepancy`, and from Gold for the rest.
 
+`decide`'s targets are transaction handles, except for `void-import-run` and
+`accept-discrepancy`, which name an `import_run_id`. A `classify` names its
+category after its handle, or takes `--adjustment` instead. The other fields
+are options: `--counterpart <account_id>` for a `one-sided-transfer`,
+`--record <payload_id>:<record_ordinal>` for a `same-transaction`, and
+`--supersedes <decision_id>`, repeated for each decision the new one
+replaces. `decide` never fills in `supersedes` itself.
+
 ### Exit codes
 
 | Code | Meaning |
@@ -686,9 +694,14 @@ unmatched-transfer  no-candidate
   3f9a2c1e  joint-current  2026-02-16  −1,000.00  TO SAVINGS
   settle with: classify, pair, one-sided-transfer, or a rule change
 > budget decide classify 3f9a2c1e external-saving --reason "To Bo's savings, not imported"
-Recorded d-0005. Gold publication 44 is current (was 43).
-Changes  February: external-saving +1,000.00; unclassified out −1,000.00
+Recorded d-0005.
+Gold     published publication 44 (cause build)
+Changes  2026-02 joint-current: expenses +1000.00 DKK; category external-saving +1000.00 DKK; group saving +1000.00 DKK; unclassified out +1000.00 DKK; unclassified count -1
+Review  1 unmatched-transfer closed
 ```
+
+`decide` then ends with the completeness output, as `import` and `rebuild`
+do. A rejected decision records nothing, names every reason and exits 3.
 
 ### W3: changing a rule
 
@@ -756,7 +769,7 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | Misfiled export (the filename's account number is not the account's declared `bank_account_number`) | Rejected before Bronze: no import run is recorded and nothing reaches the import log; the file stays in the inbox; the other files are stored and published; exit 3 | Move the file to the right account's folder, or fix the declaration, then rerun |
 | Format failure (the file's format cannot read it) | Found by the preview and not imported: nothing reaches Bronze, the file stays in the inbox, the other files are stored; exit 3. Bronze can still record a `FormatFailure`, but `import` holds the file instead, so a parser fix needs no new presentation: `rebuild --from bronze` parses the retained payload again | Download the export again, or fix the parser, then rerun `import`. Never edit the export by hand |
 | A payload the inbox holds under two or more declared accounts (a cross-account duplicate) | Reported before anything is written, with each file's account, filename, export date, record count and transaction dates; every file the group holds is refused and stays in the inbox, and no import run is recorded for it; the files the group does not hold are imported only if the person answers `y` or `yes`; with no terminal to ask, or any other answer, nothing is imported; exit 3 | Check which account the bank exported it from, download the affected accounts again, remove the duplicate, then rerun |
-| Crash during an import | Each file is idempotent: a file whose account, original filename and payload hash already have a `stored` or `repeat` run is finished (archived, logged once, and removed from the inbox) without a new run. Any other run Bronze holds but the log lacks is archived and logged by the next import | Rerun `import` |
+| Crash during an import | Each file is idempotent: a file whose account, original filename and payload hash already have a `stored` or `repeat` run that no decision voids is finished (archived, logged once, and removed from the inbox) without a new run. Any other run Bronze holds but the log lacks is archived and logged by the next import | Rerun `import` |
 | The archive holds other bytes, a file where a folder must go, or a place reserved for other bytes, everywhere a run's export may go | Nothing is overwritten; the run stays in Bronze but is not logged; every import stops before writing, naming the account and the run | Move the conflicting archive file aside, then rerun |
 | An inbox file is saved over while it is imported | The run for the bytes that were read is stored, archived and logged; the new file stays in the inbox | Rerun `import` |
 | An inbox file is removed while it is imported | The import finishes from the bytes it read; there is nothing left to remove | Nothing to do |
