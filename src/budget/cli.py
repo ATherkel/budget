@@ -94,6 +94,7 @@ from budget.rebuilding import (
     rebuild_from_gold,
     rebuild_through_gold,
     require_buildable_accounts,
+    require_stores,
 )
 from budget.refreshing import (
     InputsNotReplacedError,
@@ -771,6 +772,9 @@ def _decide(profile: Profile, arguments: argparse.Namespace) -> None:
         production = profile.name == PRODUCTION_PROFILE_NAME
         if production:
             require_backup_allowed(profile)
+        # A store the rebuild would find missing is refused before the
+        # decision is recorded, not after.
+        require_stores(lock.profile)
         log = DecisionLog(lock, clock=lambda: datetime.now(UTC))
         recorded = log.propose(_proposal(profile, arguments))
         if not isinstance(recorded, Recorded):
