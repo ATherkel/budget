@@ -16,6 +16,7 @@ from unittest import mock
 
 from budget.backups import complete_backup_sets
 from budget.bronze import BronzeStore
+from budget.gold.storage import gold_stage
 from budget.gold.store import GoldStore
 from budget.importing import Coverage, import_inbox_file
 from budget.locking import writer_lock
@@ -34,6 +35,7 @@ from tests.importing.households import (
 
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
+EXIT_REFUSED_ENVIRONMENT = 4
 
 
 def only_transaction(profile: Profile) -> str:
@@ -324,6 +326,27 @@ class RefusedRebuildTests(unittest.TestCase):
                 "d-0002 is recorded, but nothing was published; put that right, "
                 "then run `budget rebuild` to publish it"
             ) in stderr
+
+    def test_a_missing_store_refuses_before_anything_is_recorded(self) -> None:
+        # Finding R1 of the #178 review, fix (a): what the rebuild would
+        # refuse without the new entry is refused before it is recorded.
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            transaction_id = only_transaction(built.profile)
+            gold_stage(built.profile).path.unlink()
+
+            status, stdout, stderr = decide(
+                built.profile_file,
+                "classify",
+                transaction_id[:8],
+                "groceries",
+                "--reason",
+                "Weekly shop",
+            )
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "gold" in stderr.lower()
+            assert not built.profile.input_file("decisions.jsonl").exists()
 
 
 class RejectionTests(unittest.TestCase):
