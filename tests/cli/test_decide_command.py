@@ -8,6 +8,7 @@ in `operations.md` settles a review item. What was recorded is read back from
 """
 
 import json
+import shutil
 import unittest
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -23,7 +24,7 @@ from budget.locking import writer_lock
 from budget.profiles import Profile
 from budget.rebuilding import rebuild_from_silver
 from budget.silver.store import SilverStore
-from tests.cli.commands import decide, rebuild
+from tests.cli.commands import decide, rebuild, restore
 from tests.cli.imports import clean_checkout
 from tests.cli.pipelines import Prepared, household, prepared
 from tests.importing.households import (
@@ -374,6 +375,35 @@ class RefusedRebuildTests(unittest.TestCase):
             assert [
                 json.loads(line)["decision_id"] for line in backed_up.splitlines()
             ] == [
+                "d-0001",
+                "d-0002",
+            ]
+
+    def test_a_profile_lost_after_a_refused_rebuild_restores_the_decision(
+        self,
+    ) -> None:
+        # #456: a normal set, so the existing restore puts it in place and
+        # gives back the decision the household was told is recorded. Its
+        # catch-up build then refuses for the reason the rebuild after the
+        # decision did, and says so, as for any set with that log.
+        with TemporaryDirectory() as directory:
+            built, other = refusing_household(Path(directory), name="production")
+            profile = built.profile
+            with mock.patch("subprocess.run", side_effect=clean_checkout):
+                classify_weekly_shop(built.profile_file, other)
+                newest = complete_backup_sets(profile)[0]
+                shutil.rmtree(profile.stores)
+                profile.input_file("decisions.jsonl").unlink()
+
+                status, _, stderr = restore(built.profile_file, newest.name)
+
+            assert status == EXIT_REFUSED_INPUT
+            assert stderr.startswith(
+                f"budget: backup set {newest.name} is in place, but its catch-up "
+                'build was refused: decisions.jsonl: decision "d-0001": '
+                'counterpart account "ghost" is not in accounts.toml'
+            )
+            assert [entry["decision_id"] for entry in log_lines(profile)] == [
                 "d-0001",
                 "d-0002",
             ]
