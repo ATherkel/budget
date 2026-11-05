@@ -3,8 +3,15 @@ name: Code Quality
 # Hard gate for Python code: ruff (lint and format), ty (types) and complexipy
 # (cognitive complexity <= 15, mirroring SonarQube rule python:S3776). Every
 # job must pass; make each one a required status check on `main`. The jobs
-# always run, so docs-only PRs report the checks too and never wait on a check
-# that cannot start.
+# always run, so every PR reports the checks and never waits on a check that
+# cannot start.
+#
+# On a docs-only pull request (every changed path under docs/ or ending in
+# .md) each job passes after its "Detect docs-only change" step and skips the
+# rest, since no Python changed. Pushes to main always run the full gate. The
+# detection step is repeated in each job rather than shared through a
+# `needs:` job: a failed shared job would skip these jobs, and a skipped
+# required check would let the PR merge unchecked.
 
 on:
   pull_request:
@@ -24,13 +31,37 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Detect docs-only change
+        id: changes
+        # --no-renames lists a moved file under both paths, so moving code
+        # into docs/ is not mistaken for a docs-only change. An empty diff
+        # counts as not docs-only.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          docs_only=false
+          if [ "$EVENT_NAME" = pull_request ]; then
+            changed=$(git diff --name-only --no-renames "$BASE_SHA"...HEAD)
+            if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qvE '^docs/|\.md$'; then
+              docs_only=true
+              echo "::notice::Docs-only change; skipping ruff."
+            fi
+          fi
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
       - name: Setup uv
+        if: steps.changes.outputs.docs_only != 'true'
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - name: Sync dependencies
+        if: steps.changes.outputs.docs_only != 'true'
         run: uv sync --locked
       - name: Lint
+        if: steps.changes.outputs.docs_only != 'true'
         run: uv run ruff check --output-format=github .
       - name: Format
+        if: steps.changes.outputs.docs_only != 'true'
         run: uv run ruff format --check .
 
   ty:
@@ -38,11 +69,31 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Detect docs-only change
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          docs_only=false
+          if [ "$EVENT_NAME" = pull_request ]; then
+            changed=$(git diff --name-only --no-renames "$BASE_SHA"...HEAD)
+            if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qvE '^docs/|\.md$'; then
+              docs_only=true
+              echo "::notice::Docs-only change; skipping ty."
+            fi
+          fi
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
       - name: Setup uv
+        if: steps.changes.outputs.docs_only != 'true'
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - name: Sync dependencies
+        if: steps.changes.outputs.docs_only != 'true'
         run: uv sync --locked
       - name: Type check
+        if: steps.changes.outputs.docs_only != 'true'
         run: uv run ty check --output-format=github
 
   complexity:
@@ -50,9 +101,29 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Detect docs-only change
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          docs_only=false
+          if [ "$EVENT_NAME" = pull_request ]; then
+            changed=$(git diff --name-only --no-renames "$BASE_SHA"...HEAD)
+            if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qvE '^docs/|\.md$'; then
+              docs_only=true
+              echo "::notice::Docs-only change; skipping complexipy."
+            fi
+          fi
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
       - name: Setup uv
+        if: steps.changes.outputs.docs_only != 'true'
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - name: Sync dependencies
+        if: steps.changes.outputs.docs_only != 'true'
         run: uv sync --locked
       - name: Cognitive complexity
+        if: steps.changes.outputs.docs_only != 'true'
         run: uv run complexipy
