@@ -8,8 +8,9 @@ in `operations.md` settles a review item. What was recorded is read back from
 """
 
 import json
+import shutil
 import unittest
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
@@ -23,9 +24,9 @@ from budget.locking import writer_lock
 from budget.profiles import Profile
 from budget.rebuilding import rebuild_from_silver
 from budget.silver.store import SilverStore
-from tests.cli.commands import decide, rebuild
+from tests.cli.commands import decide, rebuild, restore
 from tests.cli.imports import clean_checkout
-from tests.cli.pipelines import household, prepared
+from tests.cli.pipelines import Prepared, household, prepared
 from tests.importing.households import (
     chained_payload,
     drop,
@@ -36,6 +37,18 @@ from tests.importing.households import (
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
 EXIT_REFUSED_ENVIRONMENT = 4
+# After the hand-written entry's time, so the log's order holds.
+NOW = datetime(2026, 3, 7, 9, 0, tzinfo=UTC)
+# The counterpart `refusing_household`'s hand-written entry names, registered.
+GHOST_ACCOUNT = """
+[account.ghost]
+display_name = "Ghost savings"
+account_type = "savings"
+ownership_scope = "household"
+currency = "DKK"
+source_format = "danske-csv-v1"
+bank_account_number = "0098765432"
+"""
 
 
 def only_transaction(profile: Profile) -> str:
@@ -276,47 +289,65 @@ class ProductionTests(unittest.TestCase):
             assert len(complete_backup_sets(built.profile)) == sets_before + 1
 
 
+def refusing_household(
+    folder: Path, *, name: str = "development"
+) -> tuple[Prepared, str]:
+    """Build a household whose next rebuild refuses, whatever is decided next.
+
+    Silver holds two transactions. An entry added to the log by hand names the
+    first with a counterpart the registry lacks, so a valid decision on the
+    other is recorded and the rebuild after it refuses. Returns the household
+    and the other transaction's ID.
+    """
+    built = prepared(folder, name=name)
+    profile = built.profile
+    march = Coverage(covers_from=date(2026, 3, 1), covers_through=date(2026, 3, 4))
+    export = chained_payload("01.03.2026", "02.03.2026")
+    with writer_lock(profile) as lock:
+        source = drop(profile, "joint-current", "danske-20260305.csv", export)
+        import_inbox_file(lock, source, march)
+        rebuild_from_silver(lock)
+    with SilverStore(profile) as silver:
+        first, other = (t.transaction_id for t in silver.read().transactions)
+    by_hand = {
+        "format": 1,
+        "entry": 1,
+        "decision_id": "d-0001",
+        "recorded_at": "2026-03-06T09:00:00Z",
+        "kind": "one-sided-transfer",
+        "targets": [first],
+        "counterpart_account_id": "ghost",
+        "reason": "Synthetic",
+        "supersedes": [],
+    }
+    profile.input_file("decisions.jsonl").write_text(
+        json.dumps(by_hand) + "\n", encoding="utf-8"
+    )
+    return built, other
+
+
+def classify_weekly_shop(
+    profile_file: Path, transaction_id: str
+) -> tuple[int, str, str]:
+    """Run `budget decide classify <handle> groceries --reason "Weekly shop"`."""
+    return decide(
+        profile_file,
+        "classify",
+        transaction_id[:8],
+        "groceries",
+        "--reason",
+        "Weekly shop",
+    )
+
+
 class RefusedRebuildTests(unittest.TestCase):
     def test_a_decision_whose_rebuild_refuses_says_it_was_recorded(self) -> None:
-        # Finding R1 of the #178 review. An entry added by hand names a
-        # counterpart the registry lacks, so the rebuild after a valid
-        # decision refuses: the decision is recorded all the same.
+        # Finding R1 of the #178 review: the decision is recorded all the same.
         with TemporaryDirectory() as directory:
-            built = prepared(Path(directory))
+            built, other = refusing_household(Path(directory))
             profile = built.profile
-            march = Coverage(
-                covers_from=date(2026, 3, 1), covers_through=date(2026, 3, 4)
-            )
-            export = chained_payload("01.03.2026", "02.03.2026")
-            with writer_lock(profile) as lock:
-                source = drop(profile, "joint-current", "danske-20260305.csv", export)
-                import_inbox_file(lock, source, march)
-                rebuild_from_silver(lock)
-            with SilverStore(profile) as silver:
-                first, other = (t.transaction_id for t in silver.read().transactions)
-            by_hand = {
-                "format": 1,
-                "entry": 1,
-                "decision_id": "d-0001",
-                "recorded_at": "2026-03-06T09:00:00Z",
-                "kind": "one-sided-transfer",
-                "targets": [first],
-                "counterpart_account_id": "ghost",
-                "reason": "Synthetic",
-                "supersedes": [],
-            }
-            profile.input_file("decisions.jsonl").write_text(
-                json.dumps(by_hand) + "\n", encoding="utf-8"
-            )
 
-            status, stdout, stderr = decide(
-                built.profile_file,
-                "classify",
-                other[:8],
-                "groceries",
-                "--reason",
-                "Weekly shop",
-            )
+            status, stdout, stderr = classify_weekly_shop(built.profile_file, other)
 
             assert status == EXIT_REFUSED_INPUT
             assert stdout.startswith("Recorded d-0002.\n")
@@ -326,6 +357,121 @@ class RefusedRebuildTests(unittest.TestCase):
                 "d-0002 is recorded, but nothing was published; put that right, "
                 "then run `budget rebuild` to publish it"
             ) in stderr
+
+    def test_a_production_decision_whose_rebuild_refuses_is_backed_up(self) -> None:
+        # #456: the log is household input nothing else can rebuild, so the
+        # recorded entry gets a normal set even though nothing was published.
+        with TemporaryDirectory() as directory:
+            built, other = refusing_household(Path(directory), name="production")
+            sets_before = complete_backup_sets(built.profile)
+
+            with mock.patch("subprocess.run", side_effect=clean_checkout):
+                status, stdout, stderr = classify_weekly_shop(built.profile_file, other)
+
+            assert status == EXIT_REFUSED_INPUT
+            assert (
+                "d-0002 is recorded, but nothing was published; put that right, "
+                "then run `budget rebuild` to publish it\n"
+            ) in stderr
+            sets_after = complete_backup_sets(built.profile)
+            assert len(sets_after) == len(sets_before) + 1, "no new backup set"
+            newest = sets_after[0]
+            assert stdout == (
+                f"Recorded d-0002.\nBackup   backup set {newest.name} written\n"
+            )
+            backed_up = (newest.path / "inputs" / "decisions.jsonl").read_text(
+                encoding="utf-8"
+            )
+            assert [
+                json.loads(line)["decision_id"] for line in backed_up.splitlines()
+            ] == [
+                "d-0001",
+                "d-0002",
+            ]
+
+    def test_a_profile_lost_after_a_refused_rebuild_restores_the_decision(
+        self,
+    ) -> None:
+        # #456: a normal set, so the existing restore puts it in place and
+        # gives back the decision the household was told is recorded. Its
+        # catch-up build then refuses for the reason the rebuild after the
+        # decision did, and says so, as for any set with that log.
+        with TemporaryDirectory() as directory:
+            built, other = refusing_household(Path(directory), name="production")
+            profile = built.profile
+            with mock.patch("subprocess.run", side_effect=clean_checkout):
+                classify_weekly_shop(built.profile_file, other)
+                newest = complete_backup_sets(profile)[0]
+                shutil.rmtree(profile.stores)
+                profile.input_file("decisions.jsonl").unlink()
+
+                status, _, stderr = restore(built.profile_file, newest.name)
+
+                assert status == EXIT_REFUSED_INPUT
+                assert stderr.startswith(
+                    f"budget: backup set {newest.name} is in place, but its "
+                    'catch-up build was refused: decisions.jsonl: decision "d-0001": '
+                    'counterpart account "ghost" is not in accounts.toml'
+                )
+                # Putting the input right, as the message says, then rerunning
+                # finishes the restore.
+                with profile.accounts_file.open("a", encoding="utf-8") as accounts:
+                    accounts.write(GHOST_ACCOUNT)
+                status, stdout, stderr = restore(built.profile_file, newest.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert f"restored backup set {newest.name}" in stdout
+            assert [entry["decision_id"] for entry in log_lines(profile)] == [
+                "d-0001",
+                "d-0002",
+            ]
+
+    def test_a_failed_backup_after_a_refused_rebuild_is_named_with_the_refusal(
+        self,
+    ) -> None:
+        # #456: neither failure may hide the other, and exit 3 stays R1's.
+        with TemporaryDirectory() as directory:
+            built, other = refusing_household(Path(directory), name="production")
+            # The clock names the set after a folder that already exists, and
+            # a set never replaces another, so it cannot be written.
+            built.profile.backup_path(NOW.strftime("%Y-%m-%dT%H-%M-%S.%fZ")).mkdir()
+            clock = mock.Mock(wraps=datetime)
+            clock.now.return_value = NOW
+
+            with (
+                mock.patch("subprocess.run", side_effect=clean_checkout),
+                mock.patch("budget.cli.datetime", clock),
+            ):
+                status, stdout, stderr = classify_weekly_shop(built.profile_file, other)
+
+            assert (status, stdout) == (EXIT_REFUSED_INPUT, "Recorded d-0002.\n")
+            assert 'counterpart account "ghost"' in stderr
+            assert (
+                "d-0002 is recorded, but nothing was published; put that right, "
+                "then run `budget rebuild` to publish it"
+            ) in stderr
+            assert "no backup set could be written" in stderr.lower()
+            assert "`budget backup`" in stderr
+
+    def test_a_development_decision_whose_rebuild_refuses_tries_no_backup(
+        self,
+    ) -> None:
+        # Only production backs up (`operations.md`, *Backup and Restore*); a
+        # development profile names no backups folder, so an attempt would
+        # show as a backup failure on stderr.
+        with TemporaryDirectory() as directory:
+            built, other = refusing_household(Path(directory))
+
+            status, stdout, stderr = classify_weekly_shop(built.profile_file, other)
+
+            assert (status, stdout) == (EXIT_REFUSED_INPUT, "Recorded d-0002.\n")
+            assert stderr == (
+                'budget: decisions.jsonl: decision "d-0001": counterpart account '
+                '"ghost" is not in accounts.toml; record a decision that '
+                "supersedes it; nothing was published\n"
+                "d-0002 is recorded, but nothing was published; put that right, "
+                "then run `budget rebuild` to publish it\n"
+            )
 
     def test_a_missing_store_refuses_before_anything_is_recorded(self) -> None:
         # Finding R1 of the #178 review, fix (a): what the rebuild would
