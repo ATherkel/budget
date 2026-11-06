@@ -859,7 +859,11 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   whose inbox is empty writes one only when it finishes what an earlier import
   left outstanding, and one that is not confirmed writes none. After every
   `rebuild` that wrote stores, too, and after every `undo` that moved the
-  pointer. Only production writes backup sets. What would refuse that set refuses the import before its
+  pointer. After every `decide` that recorded a decision, also when the
+  rebuild after it refuses: the log is household input nothing else
+  rebuilds, so the set pairs it with the stores as they are. There a set
+  that cannot be written is named after the refusal, and `decide` still
+  exits 3 and says to run `budget backup`. Only production writes backup sets. What would refuse that set refuses the import before its
   first Bronze write; a set that still cannot be written leaves the imports
   committed, exits 4, and says to run `budget backup`.
 - **Written whole or not at all.** A set is written into the profile's local
