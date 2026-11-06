@@ -39,6 +39,16 @@ EXIT_REFUSED_INPUT = 3
 EXIT_REFUSED_ENVIRONMENT = 4
 # After the hand-written entry's time, so the log's order holds.
 NOW = datetime(2026, 3, 7, 9, 0, tzinfo=UTC)
+# The counterpart `refusing_household`'s hand-written entry names, registered.
+GHOST_ACCOUNT = """
+[account.ghost]
+display_name = "Ghost savings"
+account_type = "savings"
+ownership_scope = "household"
+currency = "DKK"
+source_format = "danske-csv-v1"
+bank_account_number = "0098765432"
+"""
 
 
 def only_transaction(profile: Profile) -> str:
@@ -397,12 +407,20 @@ class RefusedRebuildTests(unittest.TestCase):
 
                 status, _, stderr = restore(built.profile_file, newest.name)
 
-            assert status == EXIT_REFUSED_INPUT
-            assert stderr.startswith(
-                f"budget: backup set {newest.name} is in place, but its catch-up "
-                'build was refused: decisions.jsonl: decision "d-0001": '
-                'counterpart account "ghost" is not in accounts.toml'
-            )
+                assert status == EXIT_REFUSED_INPUT
+                assert stderr.startswith(
+                    f"budget: backup set {newest.name} is in place, but its "
+                    'catch-up build was refused: decisions.jsonl: decision "d-0001": '
+                    'counterpart account "ghost" is not in accounts.toml'
+                )
+                # Putting the input right, as the message says, then rerunning
+                # finishes the restore.
+                with profile.accounts_file.open("a", encoding="utf-8") as accounts:
+                    accounts.write(GHOST_ACCOUNT)
+                status, stdout, stderr = restore(built.profile_file, newest.name)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert f"restored backup set {newest.name}" in stdout
             assert [entry["decision_id"] for entry in log_lines(profile)] == [
                 "d-0001",
                 "d-0002",
