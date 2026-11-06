@@ -11,7 +11,7 @@ name: Pytest
 # A docs-only pull request (every changed path under docs/ or ending in .md)
 # runs only `pytest -m docs`: the tests that read docs/ or README.md, which
 # tests/conftest.py marks by module. Every other PR, and every push to main,
-# runs the full suite.
+# runs the full suite. The detection lives in .github/actions/docs-only.
 
 on:
   pull_request:
@@ -35,21 +35,9 @@ jobs:
           fetch-depth: 0
       - name: Detect docs-only change
         id: changes
-        # --no-renames lists a moved file under both paths, so moving code
-        # into docs/ is not mistaken for a docs-only change. An empty diff
-        # counts as not docs-only.
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          docs_only=false
-          if [ "$EVENT_NAME" = pull_request ]; then
-            changed=$(git diff --name-only --no-renames "$BASE_SHA"...HEAD)
-            if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qvE '^docs/|\.md$'; then
-              docs_only=true
-            fi
-          fi
-          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+        uses: ./.github/actions/docs-only
+        with:
+          tool: running only the docs-marked tests
       - name: Setup uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - name: Sync dependencies
@@ -63,7 +51,6 @@ jobs:
         run: |
           status=0
           if [ "$DOCS_ONLY" = true ]; then
-            echo "::notice::Docs-only change; running only the docs-marked tests."
             uv run pytest -m docs || status=$?
           else
             uv run pytest || status=$?

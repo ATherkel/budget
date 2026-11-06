@@ -1,0 +1,38 @@
+name: Detect docs-only change
+description: >-
+  Set `docs_only` to true on a pull request whose every changed path is under
+  docs/ or ends in .md. Needs a checkout with fetch-depth 0.
+
+inputs:
+  tool:
+    description: What the calling job skips or narrows, named in the notice.
+    required: true
+
+outputs:
+  docs_only:
+    description: "'true' on a docs-only pull request, otherwise 'false'."
+    value: ${{ steps.detect.outputs.docs_only }}
+
+runs:
+  using: composite
+  steps:
+    - name: Detect docs-only change
+      id: detect
+      shell: bash
+      # --no-renames lists a moved file under both paths, so moving code
+      # into docs/ is not mistaken for a docs-only change. An empty diff
+      # counts as not docs-only.
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        TOOL: ${{ inputs.tool }}
+      run: |
+        docs_only=false
+        if [ "$EVENT_NAME" = pull_request ]; then
+          changed=$(git diff --name-only --no-renames "$BASE_SHA"...HEAD)
+          if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qvE '^docs/|\.md$'; then
+            docs_only=true
+            echo "::notice::Docs-only change; $TOOL."
+          fi
+        fi
+        echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
