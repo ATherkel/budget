@@ -7,7 +7,9 @@ back through `GoldStore`, so a test sees what a dashboard would.
 
 import json
 import re
+import sqlite3
 import unittest
+from contextlib import closing
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -248,6 +250,32 @@ class NeverBuiltSilverTests(unittest.TestCase):
             with GoldStore(built.profile) as gold:
                 assert gold.current() is None
                 assert gold.next_publication_id() == 1
+
+    def test_future_silver_provenance_is_refused_by_this_gold_consumer(
+        self,
+    ) -> None:
+        cases = {
+            "fingerprint scheme": (
+                "UPDATE silver_builds SET fingerprint_scheme = '999'",
+            ),
+            "identity contract": ("UPDATE silver_builds SET identity_version = '999'",),
+        }
+        for name, (statement,) in cases.items():
+            with self.subTest(name), TemporaryDirectory() as directory:
+                built = household(Path(directory))
+                with closing(sqlite3.connect(built.profile.silver_store)) as store:
+                    store.execute(statement)
+                    store.commit()
+
+                status, stdout, stderr = rebuild(built.profile_file)
+
+                assert status == EXIT_REFUSED_ENVIRONMENT
+                assert stdout == ""
+                assert "Silver provenance" in stderr
+                assert "rebuild --from silver" in stderr
+                with GoldStore(built.profile) as gold:
+                    assert gold.current() is None
+                    assert gold.pointer_history() == ()
 
     def test_a_gold_rebuild_over_a_silver_never_built_refuses(self) -> None:
         with TemporaryDirectory() as directory:
