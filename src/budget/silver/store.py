@@ -407,12 +407,10 @@ def _encode_provenance(
 
 
 def _encode_decisions(decisions: Sequence[SilverDecision]) -> Rows:
-    """Write each typed effective decision with its exact fields."""
+    """Write effective decisions in the log order Silver consumed them."""
     return tuple(
         (ordinal, *_decision_row(decision))
-        for ordinal, decision in enumerate(
-            sorted(decisions, key=_decision_key), start=1
-        )
+        for ordinal, decision in enumerate(decisions, start=1)
     )
 
 
