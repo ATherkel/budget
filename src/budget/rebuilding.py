@@ -81,6 +81,18 @@ class SilverNotBuiltError(RuntimeError):
         )
 
 
+class SilverProvenanceUnavailableError(RuntimeError):
+    """Gold cannot publish a completed Silver result of unknown origin."""
+
+    def __init__(self) -> None:
+        """Name the one recovery command."""
+        super().__init__(
+            "the stored Silver result has no trustworthy build provenance; "
+            "run `budget rebuild --from silver` before publishing Gold; "
+            "nothing was published"
+        )
+
+
 @dataclass(frozen=True)
 class GoldRebuild:
     """What one Gold rebuild left current, and whether it published it.
@@ -362,8 +374,10 @@ def rebuild_from_gold(
     with SilverStore(profile) as silver_store:
         if not silver_store.is_built():
             raise SilverNotBuiltError
-        silver = silver_store.read()
-    return _publish(profile, _plan_gold(profile, silver, household, now))
+        silver = silver_store.read_build()
+    if silver.provenance is None:
+        raise SilverProvenanceUnavailableError
+    return _publish(profile, _plan_gold(profile, silver.result, household, now))
 
 
 def rebuild_through_gold(
