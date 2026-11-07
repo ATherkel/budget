@@ -89,7 +89,7 @@ def open_reviews(
         if not silver_is_built:
             return OpenReviews(
                 items=(),
-                gold_items=(),
+                gold_items=_gold_reviews(profile, kind=kind, account=account),
                 runs=(),
                 silver_is_built=False,
             )
