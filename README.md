@@ -452,8 +452,9 @@ It logs in, pins one Gold publication and reference date, lets the reader pick
 accounts and a month, and says plainly when there is nothing published, a
 newer build exists, or a selection cannot be shown. The dashboard shell is
 responsive on phones and desktop browsers, supports keyboard use, and exposes
-loading, empty, unavailable and request-failure states. Numerical financial
-reports remain in #104.
+loading, empty, unavailable and request-failure states. The monthly overview
+shows income, expenses, money left, and uncategorized inflows and outflows.
+<!-- 🤖 Added by Codex (GPT-6 Astra) -->
 
 Gold migration and publication storage are implemented. A profile's dashboard
 still shows the shell until a publication exists; `budget serve` never creates
@@ -494,8 +495,10 @@ sets a demo-only login, and starts the real `budget serve` path on
 `http://127.0.0.1:8765`. It never reads or changes a profile outside that
 folder and refuses to reuse an existing target. Open the address, sign in with
 `budget-demo`, and expect two checked demo accounts (`Demo current` and
-`Demo savings`), the current month, and the report shell. The shell deliberately
-shows no financial figures; those belong to #104.
+`Demo savings`), the current month, and the monthly overview. The demo publishes
+balances without transactions, so its transaction-based summary figures are
+known zeros, including `0,00 kr.` for both Ind and Ud under Ukategoriseret.
+<!-- 🤖 Added by Codex (GPT-6 Astra) -->
 
 Stop the foreground command with `Ctrl+C`, then remove only the isolated demo
 folder:
