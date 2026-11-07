@@ -16,6 +16,7 @@ import sqlite3
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
+from typing import Self
 
 from budget import sqlstore
 from budget.bronze import BronzeStore
@@ -42,6 +43,7 @@ from budget.inputs import (
 from budget.locking import WriterLock
 from budget.profiles import ACCOUNTS_FILE_NAME, Profile
 from budget.silver import (
+    SILVER_FINGERPRINT_SCHEME,
     ReviewItem,
     SilverBuildInputs,
     SilverResult,
@@ -91,6 +93,28 @@ class SilverProvenanceUnavailableError(RuntimeError):
             "run `budget rebuild --from silver` before publishing Gold; "
             "nothing was published"
         )
+
+
+class IncompatibleSilverProvenanceError(RuntimeError):
+    """Stored Silver provenance is newer than this Gold consumer supports."""
+
+    def __init__(self, field: str) -> None:
+        """Name the incompatible contract and the required rebuild."""
+        super().__init__(
+            f"the stored Silver provenance has an unsupported {field}; "
+            "run `budget rebuild --from silver` before publishing Gold; "
+            "nothing was published"
+        )
+
+    @classmethod
+    def fingerprint_scheme(cls) -> Self:
+        """Refuse a fingerprint scheme this consumer cannot compare."""
+        return cls("fingerprint scheme")
+
+    @classmethod
+    def identity_version(cls) -> Self:
+        """Refuse an identity contract this consumer cannot interpret."""
+        return cls("identity contract")
 
 
 @dataclass(frozen=True)
@@ -377,6 +401,10 @@ def rebuild_from_gold(
         silver = silver_store.read_build()
     if silver.provenance is None:
         raise SilverProvenanceUnavailableError
+    if silver.provenance.fingerprint_scheme != SILVER_FINGERPRINT_SCHEME:
+        raise IncompatibleSilverProvenanceError.fingerprint_scheme()
+    if silver.provenance.identity_version != IDENTITY_VERSION:
+        raise IncompatibleSilverProvenanceError.identity_version()
     return _publish(profile, _plan_gold(profile, silver.result, household, now))
 
 
