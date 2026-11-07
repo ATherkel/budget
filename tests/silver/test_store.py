@@ -235,6 +235,33 @@ def _stored_minor_units(profile: Profile) -> int:
 
 
 class SilverStoreTests(unittest.TestCase):
+    def test_a_completed_build_preserves_decision_log_order_exactly(self) -> None:
+        result = _complete_result()
+        decisions = (
+            Withdrawn(
+                decision_id="z-withdrawn",
+                transaction_id=SECOND_COFFEE,
+            ),
+            AcceptDiscrepancy(
+                decision_id="a-accepted",
+                import_run_id="run-d",
+            ),
+        )
+        provenance = replace(_known_provenance(result), decisions=decisions)
+
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            migrate_silver(profile)
+
+            with SilverStore(profile) as store:
+                store.replace(
+                    result,
+                    currencies=CURRENCIES,
+                    provenance=provenance,
+                )
+
+                assert store.read_build().provenance == provenance
+
     def test_a_completed_build_reads_its_result_and_provenance_together(self) -> None:
         result = _complete_result()
         provenance = SilverProvenance(
