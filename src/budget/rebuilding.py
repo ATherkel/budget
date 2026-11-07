@@ -50,6 +50,7 @@ from budget.silver import (
     SilverStore,
     derive_silver,
     rebuild_silver,
+    silver_provenance,
     store_silver,
 )
 from budget.silver.currencies import UnknownCurrencyError, minor_unit_places
@@ -458,10 +459,11 @@ def rebuild_through_gold(
         formats=formats,
     )
     derived = derive_silver(silver_inputs)
+    prospective_provenance = silver_provenance(silver_inputs, derived)
     with SilverStore(profile) as silver_store:
         built = silver_store.is_built()
-        stored = silver_store.read()
-    changed = stored != derived
+        stored = silver_store.read_build()
+    changed = stored.result != derived or stored.provenance != prospective_provenance
     plan = _plan_gold(profile, derived, household, now, silver_changed=changed)
     if reparsed is not None:
         with BronzeStore(profile) as bronze:
@@ -472,7 +474,9 @@ def rebuild_through_gold(
         silver=SilverRebuild(runs=silver_inputs.runs, result=derived),
         silver_changed=changed,
         gold=_publish(profile, plan),
-        silver_reviews=SilverReviews(_open_reviews(stored), _open_reviews(derived)),
+        silver_reviews=SilverReviews(
+            _open_reviews(stored.result), _open_reviews(derived)
+        ),
     )
 
 
