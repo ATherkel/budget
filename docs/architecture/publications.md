@@ -324,10 +324,14 @@ read-only.
 
 - `view --as-was D --label L` finds the publication that was current at the
   end of D in the pointer history. If its result is retained, it is labeled.
-  Otherwise its recipe is replayed under the same `publication_id`, in a
-  scratch store, and the replay must match the recorded fingerprint. Replay
-  needs the code version the recipe names; the CLI refuses to replay with any
-  other code and names the version to use. A replay keeps the publication's
+  Otherwise replay requires the exact Silver result the recipe consumed and
+  the recorded Gold inputs and producer code. Where those prerequisites are
+  available, replay uses the same `publication_id` in a scratch store and must
+  match the recorded fingerprint. Reconstructing missing historical Silver
+  from Bronze is deferred: running both stages under the Gold producer's code
+  does not establish the original Silver or parser identity. Without the
+  required inputs, the historical result is unavailable, not reproducible by
+  substituting today's code. A supported replay keeps the publication's
   original `built_at` and `known_at`, and records when it happened in
   `replayed_at`, so the banner and the provisional label stay dated to the
   original build.
@@ -340,13 +344,22 @@ A view can never become current.
 
 ### Verify
 
-`verify` replays the current publication's recipe from Bronze in a scratch
-store and compares the result fingerprint with the recorded one. It publishes
-nothing and changes nothing. It refuses to run when the running code is not
-the code version the recipe names.
+Recipe replay by `verify` is deferred. Its stage-specific contract is to replay
+the exact consumed Silver result with the recorded Gold inputs and Gold
+producer code in a scratch store, then compare the Gold fingerprint. It
+publishes nothing and changes nothing. A different Gold producer or unavailable
+consumed Silver prevents this verification; it is not a fingerprint mismatch.
 
-- **Match:** reproducibility is shown, and `verify` says so.
-- **Mismatch:** a platform defect, not a data problem, so it never becomes a
+Rebuilding from Bronze with one current code version is not an equivalent
+check. Silver may have been produced by different code, and Bronze's historical
+parser identity is unknown. Historical Silver reconstruction needs its own
+supported provenance and replay contract before it can establish the inputs
+for this check.
+
+- **Match with the recorded inputs and producer:** Gold reproducibility is
+  shown; this does not establish historical Bronze-to-Silver replayability.
+- **Mismatch with those prerequisites established:** a platform defect, not a
+  data problem, so it never becomes a
   review item. `verify` fails with a non-zero exit status, prints both
   fingerprints and the first differing records by key, and leaves the current
   publication in place. The defect is fixed in code, and the fixed code's
@@ -354,7 +367,7 @@ the code version the recipe names.
 
 ### Scratch stores
 
-Views, replays, and `verify` derive Silver and Gold away from the current
+Views, supported replays, and recipe verification work away from the current
 state, in a **scratch store**: a temporary SQLite file in a location the
 profile configures ([`operations.md`](operations.md#stores)). The migrate
 runner creates it from the same migration files, so ADR-013's rule that only the migrate command creates a
@@ -383,13 +396,15 @@ A **result** (the publication's tables) is kept only for:
 - the previous current publication, so `undo` is instant;
 - every labeled publication, until its label is removed.
 
-Any other result is deleted when it stops qualifying. It can be re-created by
-replaying its recipe with the code it names.
+Any other result is deleted when it stops qualifying. Re-creation requires
+the replay prerequisites above; retaining a recipe alone does not guarantee
+that its consumed Silver result can be reconstructed.
 
 A Gold schema migration converts the retained results where it can. A result
 it cannot convert survives only in the backup that production takes before
 migrating (ADR-013), which the code version that built it can open. Its recipe
-also remains, and can be replayed with that code version into a separate store.
+also remains; replay into a separate store requires the recorded Gold producer
+and exact consumed Silver, as described above.
 A labeled result is also extracted to its own file and recorded as a legacy
 publication, and retention keeps its backup
 ([ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md),
@@ -537,7 +552,7 @@ Import run-1 starts on 2026-03-03, from an export covering through
 | 5 | 04-12 | `undo` | P3 current again | as step 3 | 3,349.00 | 0.00 |
 | 6 | 04-12 | Delete `r-net` from the rules file | Nothing published: the recipe equals P3's | as step 3 | 3,349.00 | 0.00 |
 | 7 | 05-02 | **Dimension change.** Rename `streaming` to "Subscriptions" and move it from `leisure` to `housing`; logged in `category-changes.md` | P5 current | as step 3 | 3,349.00 | 0.00 |
-| 8 | 05-03 | **Full rebuild.** `verify` rebuilds Silver and Gold from Bronze into a scratch store | Nothing published: the fingerprint equals P5's | as step 3 | 3,349.00 | 0.00 |
+| 8 | 05-03 | **Gold recipe verification (deferred).** Replay P5's exact consumed Silver with its recorded Gold inputs and producer in a scratch store | Nothing published: the fingerprint equals P5's | as step 3 | 3,349.00 | 0.00 |
 | 9 | 06-01 | New code version, with no change in behavior | P6 current, same result fingerprint as P5 | as step 3 | 3,349.00 | 0.00 |
 
 Notes:
@@ -559,8 +574,9 @@ Notes:
 - **Step 7.** No fact or allocation changes. The `GoldCategory` row changes,
   so the result fingerprint changes too. Group rollups restate for every
   month: `leisure` −129.00, `housing` +129.00 in February.
-- **Step 8.** The same recipe and code give the same result. This is the
-  routine proof of reproducibility.
+- **Step 8.** This deferred scenario assumes P5's exact consumed Silver is
+  available. The recorded Gold inputs and producer reproduce its Gold result;
+  it does not test historical reconstruction of Silver from Bronze.
 - **Step 9.** P6's recipe differs from P5's only in its code version. Both
   use the same fingerprint scheme, and the result fingerprint is unchanged.
   That shows the code change was behavior-neutral.
@@ -570,9 +586,13 @@ Pointer history after step 9: P1, P2, P3, P4, P3, P5, P6. Results kept: P6
 
 ### Views, on 2026-06-15
 
+The deferred V1 replay scenario assumes P1's exact consumed Silver and recorded
+Gold inputs and producer are available. Without them, an unretained P1 is
+unavailable; the recipe alone does not supply a historical Silver result.
+
 | # | Request | Publication read | February: groceries / household-goods / gifts / streaming (name, group) | Expenses |
 | --- | --- | --- | --- | --- |
-| V1 | `view --as-was 2026-03-05 --label "March review"` | P1, replayed from its recipe with P1's code; fingerprint verified | 520.00 / 2,400.00 / 0.00 / 129.00 ("Streaming", `leisure`) | 3,049.00 |
+| V1 | `view --as-was 2026-03-05 --label "March review"` | P1, replayed using its exact consumed Silver and recorded Gold inputs and producer; fingerprint verified | 520.00 / 2,400.00 / 0.00 / 129.00 ("Streaming", `leisure`) | 3,049.00 |
 | V2 | `view --known-at 2026-03-05 --label "Known 5 March"` | P7, kind `as_known_at`: run-1 only, today's interpretation | 520.00 / 0.00 / 2,400.00 / 129.00 ("Subscriptions", `housing`) | 3,049.00 |
 | V3 | the dashboard, default | P6 | 820.00 / 0.00 / 2,400.00 / 129.00 ("Subscriptions", `housing`) | 3,349.00 |
 

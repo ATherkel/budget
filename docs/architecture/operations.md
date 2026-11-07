@@ -975,12 +975,15 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   Publications made after the set are lost
   ([Publication recovery](publications.md#publication-recovery)). It does not
   run `verify`, whose recipe replay is deferred.
-- **`verify`** runs `PRAGMA integrity_check` on every store, then replays the
-  current publication's recipe from Bronze in a scratch store and compares the
-  result fingerprint with the recorded one. It refuses to run when the running
-  code is not the code version the recipe names
-  ([`publications.md`](publications.md#verify)). It also checks that the
+- **`verify`** runs `PRAGMA integrity_check` on every store and checks that the
   import log agrees with Bronze and that the decision-log prefix hashes match.
+  Recipe replay is deferred. Its contract requires the exact consumed Silver
+  result, recorded Gold inputs, and Gold producer code before comparing the
+  replayed Gold fingerprint in a scratch store. Unavailable historical inputs
+  prevent verification; they do not establish a platform defect. Rebuilding
+  both stages from Bronze with one current code version cannot substitute for
+  those inputs or the unrecorded historical parser identity
+  ([`publications.md`](publications.md#verify)).
 
 ## Dashboard Access
 
