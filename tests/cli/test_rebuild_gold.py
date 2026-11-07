@@ -126,6 +126,37 @@ class UnchangedRecipeTests(unittest.TestCase):
             with SilverStore(built.profile) as silver:
                 assert silver.read_build() == before
 
+    def test_a_gold_only_decision_rewrites_silver_provenance(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            with SilverStore(built.profile) as silver:
+                before = silver.read_build()
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "classify",
+                "targets": [before.result.transactions[0].transaction_id],
+                "category": "groceries",
+                "reason": "synthetic classification",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n",
+                encoding="utf-8",
+            )
+
+            status, _, stderr = rebuild(built.profile_file, "--from", "silver")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            with SilverStore(built.profile) as silver:
+                after = silver.read_build()
+            assert after.result == before.result
+            assert after.provenance != before.provenance
+            assert after.provenance is not None
+            assert after.provenance.decision_log_position == 1
+
     def test_a_second_rebuild_with_nothing_changed_publishes_nothing(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
