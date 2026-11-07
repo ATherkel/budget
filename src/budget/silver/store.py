@@ -271,7 +271,6 @@ class SilverStore:
         transaction: a failure anywhere in it leaves the previous result
         readable, down to the last row.
         """
-        _ = provenance
         encoded = _encode(result, currencies, provenance)
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE")
@@ -445,25 +444,6 @@ def _decision_row(decision: SilverDecision) -> tuple[object, ...]:
             return (
                 "same-transaction",
                 decision.decision_id,
-                decision.transaction_id,
-                decision.payload_id,
-                decision.record_ordinal,
-            )
-
-
-def _decision_key(decision: SilverDecision) -> tuple[object, ...]:
-    """Return the complete deterministic ordering key for one decision."""
-    match decision:
-        case AcceptDiscrepancy():
-            return (decision.decision_id, "accept-discrepancy", decision.import_run_id)
-        case VoidImportRun():
-            return (decision.decision_id, "void-import-run", decision.import_run_id)
-        case Withdrawn():
-            return (decision.decision_id, "withdrawn", decision.transaction_id)
-        case SameTransaction():
-            return (
-                decision.decision_id,
-                "same-transaction",
                 decision.transaction_id,
                 decision.payload_id,
                 decision.record_ordinal,
