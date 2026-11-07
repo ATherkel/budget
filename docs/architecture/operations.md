@@ -51,8 +51,8 @@ untransformed extract, is Bronze
 | Store | Step | Holds | Rebuildable from | In a backup set |
 | --- | --- | --- | --- | --- |
 | `bronze.db` | Extract | Raw payloads, import runs, source records, format failures | The export archive and the import log | Yes |
-| `silver.db` | Clean and conform | Canonical transactions, unbooked records, validation errors, import review items, evidence | Bronze and the inputs | Yes, so development can start from it |
-| `gold.db` | Deliver | The retained publications' Gold tables and lineage, recipes, configuration snapshots, the current pointer and its history, labels, legacy entries | Results: each from its recipe, replayed with its code (ADR-014). Recipes and the pointer history: no, they are history | Yes |
+| `silver.db` | Clean and conform | Canonical transactions, unbooked records, validation errors, import review items, evidence, and the fingerprint and completion provenance required by ADR-020 | Bronze and the inputs | Yes, so development can start from it |
+| `gold.db` | Deliver | The retained publications' Gold tables and lineage, recipes with their retained Silver provenance, configuration snapshots, the current pointer and its history, labels, legacy entries | Results: each from its recipe, replayed with its stage-aware code (ADR-014 and ADR-020). Recipes and the pointer history: no, they are history | Yes |
 | `gold/legacy/publication-<id>.db` | Deliver: legacy | One labeled publication that a Gold migration could not convert, in its old schema | Its recipe, replayed with its code | Yes |
 
 Silver's conforming makes the sources agree: it produces source-neutral
@@ -74,8 +74,9 @@ Rules for every store:
   exception is development's `upstream/` folder: development opens the
   production stores there read-only, and nowhere else.
 - **A write to one store is one transaction.** Silver and Gold commit
-  separately. Readers only reach Gold through the pointer, so a crash between
-  the two leaves the previous publication current.
+  separately. A stage's result and provenance commit together. Readers only
+  reach Gold through the pointer, so a crash between stages leaves the previous
+  publication current.
 - **One writing command at a time.** Every command that writes holds a lock on
   `budget.lock` in the profile's stores folder for its whole run, including
   the backup set it writes. A second writing command exits 4 at once with
@@ -104,6 +105,64 @@ against `gold.db` must filter on `publication_id`, or it adds retained
 publications together. Views restricted to the current publication
 (`current_*`) are deferred: a later migration can add them if hand queries
 become routine.
+
+### Stage-specific provenance
+
+ADR-020 makes Silver's result identity separate from Gold's producer identity.
+A completed Silver replacement commits these together:
+
+- a versioned fingerprint over every public Silver result field and the
+  consumed account-currency projection;
+- every stored and repeated import run Silver interpreted, represented by its
+  import-run identifier, payload hash, and declared account;
+- the exact currencies for those runs, including an account whose run was later
+  voided, together with the effective typed Silver decisions;
+- the decision-log position and prefix hash consumed;
+- the actual Silver producer commit when known and the identity-contract
+  version; and
+- an explicit `unknown` Bronze parser-provenance marker.
+
+Gold retains an immutable copy of those values in each new recipe and records
+its own producer commit, configuration, late-booking window, and its consumed
+position and prefix in the shared Decision log. Effective Gold decisions are
+derived from the complete entries through that position. Before publication it
+distinguishes these conditions:
+
+| Condition | Meaning | Outcome |
+| --- | --- | --- |
+| Not built | Silver has no completion row | Exit 4; run `budget rebuild --from silver` |
+| Unknown | A complete result lacks provenance | Exit 4; the result may be read but cannot authorize publication |
+| Incompatible | The fingerprint scheme or Silver identity contract is unsupported | Exit 4; this code cannot validate the result |
+| Stale | The consumed decision prefix, effective Silver decisions, or consumed currency projection changed | Exit 4 before writing Gold; run `budget rebuild --from silver` |
+| Undeclared consumed account | An account named by a consumed run is absent from `accounts.toml` | Exit 3; name the account and declare it again, with `closed_on` when appropriate |
+| Fresh | Every required identity and freshness check passes | Continue the Gold build |
+
+A malformed configuration file or invalid decision remains a refused input and
+exits 3. So does a consumed account absent from `accounts.toml`; a Silver
+rebuild cannot restore its declaration. An unknown, incompatible, or stale
+Silver context is a refused environment and exits 4. Gold-only decisions, Gold
+configuration changes, and an added empty account leave Silver fresh.
+
+A direct Silver store replacement without provenance records a completed but
+explicitly unknown build. Absence of the completion row means Silver was never
+built. A migration from a pre-provenance Silver schema clears its derived
+result so the operator rebuilds it from Bronze instead of inheriting an
+invented context. Historical Gold recipes without these fields stay readable
+but are never backfilled.
+
+Bronze records `source_format`, not parser implementation identity.
+`rebuild --from bronze` reparses each retained payload with the currently
+installed parser for its declared format and commits the new derived records
+before rebuilding Silver and Gold. A parser change can therefore yield a new
+Silver fingerprint and Gold publication. Parser capture and cross-parser
+replay remain separate work; current documentation must not represent the
+installed parser as the one that produced historical records.
+
+The baseline already provides the Silver fingerprint function, atomic
+result-and-currency replacement, and atomic per-store writes. It does not yet
+persist the completion row or copy provenance into Gold recipes. Until those
+land, today's Gold command cannot perform the freshness table above and must
+not be described as already satisfying ADR-020 end to end.
 
 ### Legacy publications
 
@@ -601,8 +660,8 @@ replaces. `decide` never fills in `supersedes` itself.
 | 0 | Done. Open review items and quarantined imports are results, not failures. |
 | 1 | Unexpected error: a defect. Python's own exit status for an unhandled exception. |
 | 2 | Usage error. `argparse`'s own exit status. |
-| 3 | Refused input: a configuration error, a rejected decision, a misfiled export, an import run Bronze refused, a retained payload that `rebuild --from bronze` finds declared as more than one source format or in a format this code has no parser for, or an inbox file a cross-account duplicate refused. Every file such a group holds is refused, whether or not the person allowed the import of the rest, and `import` still publishes the files it stored. |
-| 4 | Refused environment: no profile, a store from another profile or stage, a missing or newer migration, SQLite below the version floor, uncommitted code in production, running code other than the code version a replayed recipe names (ADR-014), another writing command running, a store locked past its busy timeout, or `restore` into a profile that has stores. |
+| 3 | Refused input: a configuration error, including a consumed account missing from `accounts.toml`; a rejected decision; a misfiled export; an import run Bronze refused; a retained payload that `rebuild --from bronze` finds declared as more than one source format or in a format this code has no parser for; or an inbox file a cross-account duplicate refused. Every file such a group holds is refused, whether or not the person allowed the import of the rest, and `import` still publishes the files it stored. |
+| 4 | Refused environment: no profile, a store from another profile or stage, a missing or newer migration, SQLite below the version floor, uncommitted code in production, running code other than the code version a replayed recipe names (ADR-014), Silver that is unbuilt or has unknown, incompatible, or stale provenance (ADR-020), another writing command running, a store locked past its busy timeout, or `restore` into a profile that has stores. |
 | 5 | Verification failed: a fingerprint mismatch, a failed integrity check, a backup set whose checksums do not match its manifest, or an import log that disagrees with Bronze. |
 
 The codes 1 and 2 are the ones Python and `argparse` already use, so every
@@ -785,6 +844,9 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | Crash while writing a backup set | The set stays in `backup-staging\` or as a `.partial` folder, is never used, and is deleted by the next backup | Nothing to do |
 | The backup before a migration cannot be written or verified | The migration does not begin; the schema and its version are unchanged; exit 4, or 5 when a copy or the import log does not verify | Fix what the message names, then rerun `migrate` |
 | A migration fails | No step of it is committed and the store keeps its version, though a stage migrated before it (Bronze before Silver, and both before Gold) keeps its new one; the set taken first stays held for recovery until a migration succeeds, or a later backup records a store past it | Fix the defect; the held set restores the stores if needed |
+| Silver migrates from a pre-provenance schema | The old derived result is cleared and the store reads as not built | Run `budget rebuild --from silver`; Gold can publish after a complete provenanced Silver result exists |
+| A consumed account is no longer declared in `accounts.toml` | Gold refuses input before writing and names the account | Declare it again, with `closed_on` when appropriate; a Silver rebuild cannot fix this |
+| Gold reads unbuilt, unknown, incompatible, or stale Silver provenance | Gold refuses environment state before writing and names the Silver rebuild when one is required | Correct the environment if needed, rebuild Silver, then rerun the intended Gold command |
 | The backup after a migration fails | The store is migrated; the set taken first stays held; exit 4, saying so | Fix what the message names, then run `budget backup` |
 | `migrate` finds no production store for a stage, or only a file an interrupted start left empty | Nothing is created or changed, in any stage; exit 4. So is `--new-store` where one of the stores it would start is started already, naming the `--stage` that starts the rest, and Silver or Gold where Bronze has no store a backup set can hold, since every set holds Bronze | Move every store out of the stores folder and run `budget restore`, which restores the whole profile; or, for a first store, rerun with `--new-store`, adding `--stage` for that stage alone when another stage's store exists |
 | A store a complete backup set holds is missing, or only a file an interrupted start left empty | `backup`, and a `migrate` that would back up, publish nothing and change nothing; exit 4 | Move every store out of the stores folder, then run `budget restore`: a store is never restored beside live ones |
