@@ -169,16 +169,20 @@ def bronze_inputs(
     profile: Profile,
     decisions: Sequence[SilverDecision] | None = None,
     derived: DerivedRecords | None = None,
+    *,
+    log: DecisionLogRead | None = None,
 ) -> SilverBuildInputs:
     """Read every Bronze input one Silver build needs, and the currencies.
 
     The profile's import runs, each run's payload's source records or format
     failures, and each declared account's currency are read as they stand now.
     `decisions` are the Silver decisions in force; without them the profile's
-    decision log is read. `derived` are source records and format failures
-    freshly parsed from the retained payloads, which stand in for the stored
-    ones when a rebuild starts from Bronze.
+    decision log is read. `log` is that same log when the caller already read
+    it. `derived` are source records and format failures freshly parsed from
+    the retained payloads, which stand in for the stored ones when a rebuild
+    starts from Bronze.
     """
+    decision_log = read_decision_log(profile) if log is None else log
     currencies = {
         account_id: account.currency
         for account_id, account in load_accounts(profile).items()
@@ -199,7 +203,10 @@ def bronze_inputs(
         source_records=source_records,
         format_failures=format_failures,
         currencies=currencies,
-        decisions=read_decision_log(profile).silver if decisions is None else decisions,
+        decisions=decision_log.silver if decisions is None else decisions,
+        decision_log_position=decision_log.position,
+        decision_log_prefix_sha256=decision_log.prefix_sha256,
+        code_version=committed_code_version(profile),
     )
 
 
@@ -442,7 +449,13 @@ def rebuild_through_gold(
         with BronzeStore(profile) as bronze:
             reparsed = bronze.derive_records()
     silver_inputs = replace(
-        bronze_inputs(profile, household.log.silver, reparsed), formats=formats
+        bronze_inputs(
+            profile,
+            household.log.silver,
+            reparsed,
+            log=household.log,
+        ),
+        formats=formats,
     )
     derived = derive_silver(silver_inputs)
     with SilverStore(profile) as silver_store:
@@ -476,7 +489,8 @@ def rebuild_from_silver(
     log is read here.
     """
     profile = lock.profile
-    decisions = None if inputs is None else inputs.log.silver
-    silver_inputs = bronze_inputs(profile, decisions)
+    decision_log = None if inputs is None else inputs.log
+    decisions = None if decision_log is None else decision_log.silver
+    silver_inputs = bronze_inputs(profile, decisions, log=decision_log)
     result = rebuild_silver(lock, inputs=silver_inputs)
     return SilverRebuild(runs=silver_inputs.runs, result=result)
