@@ -337,17 +337,25 @@ def _plan_gold(
     silver: SilverResult,
     household: HouseholdInputs,
     now: datetime,
+    *,
+    silver_changed: bool = False,
 ) -> _GoldPlan | GoldRebuild:
     """Derive Gold from `silver`, writing nothing, or find it already current.
 
     A recipe equal to the current publication's builds nothing and comes back
-    as the rebuild that publishes nothing. A configuration error is raised
-    here, before any store is replaced.
+    as the rebuild that publishes nothing, unless `silver_changed`: the recipe
+    names Silver's inputs, not its result, so a Silver that changed under the
+    same recipe still needs a new publication. A configuration error is
+    raised here, before any store is replaced.
     """
     recipe = _recipe(profile, silver, household)
     with GoldStore(profile) as gold:
         current = gold.current()
-        if current is not None and gold.recipe(current.publication_id) == recipe:
+        if (
+            current is not None
+            and not silver_changed
+            and gold.recipe(current.publication_id) == recipe
+        ):
             return GoldRebuild(publication=current, published=False)
         draft = GoldPublication(
             publication_id=gold.next_publication_id(),
@@ -437,16 +445,19 @@ def rebuild_through_gold(
         bronze_inputs(profile, household.log.silver, reparsed), formats=formats
     )
     derived = derive_silver(silver_inputs)
-    plan = _plan_gold(profile, derived, household, now)
     with SilverStore(profile) as silver_store:
+        built = silver_store.is_built()
         stored = silver_store.read()
+    changed = stored != derived
+    plan = _plan_gold(profile, derived, household, now, silver_changed=changed)
     if reparsed is not None:
         with BronzeStore(profile) as bronze:
             bronze.replace_derived_records(reparsed)
-    store_silver(lock, silver_inputs, derived)
+    if changed or not built:
+        store_silver(lock, silver_inputs, derived)
     return PipelineRebuild(
         silver=SilverRebuild(runs=silver_inputs.runs, result=derived),
-        silver_changed=stored != derived,
+        silver_changed=changed,
         gold=_publish(profile, plan),
         silver_reviews=SilverReviews(_open_reviews(stored), _open_reviews(derived)),
     )
