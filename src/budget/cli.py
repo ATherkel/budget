@@ -123,7 +123,11 @@ from budget.restoring import (
     require_no_unfinished_restore,
     restore,
 )
-from budget.reviewing import REVIEW_KINDS, open_reviews
+from budget.reviewing import (
+    REVIEW_KINDS,
+    SilverReviewUnavailableError,
+    open_reviews,
+)
 from budget.silver.storage import SILVER_STAGE
 from budget.silver.store import SilverStore
 
@@ -685,6 +689,9 @@ def _review(profile: Profile, kind: str | None, account: str | None) -> None:
     started = perf_counter()
     reviews = open_reviews(profile, kind=kind, account=account)
     summary = summaries.review_summary(reviews)
+    sys.stdout.write(summary)
+    if not reviews.silver_is_built:
+        raise SilverReviewUnavailableError
     routine_logging.finished(
         profile,
         "review",
@@ -703,7 +710,6 @@ def _review(profile: Profile, kind: str | None, account: str | None) -> None:
             )
         ),
     )
-    sys.stdout.write(summary)
 
 
 def _transaction(profile: Profile, handle: str) -> str:
@@ -1072,6 +1078,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         UncommittedCodeError,
         CatchUpCodeRefusedError,
         SilverNotBuiltError,
+        SilverReviewUnavailableError,
         WriterLockHeldError,
         StoresFolderUnavailableError,
         RestoreInsteadError,
