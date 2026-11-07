@@ -77,6 +77,26 @@ class FirstPublicationTests(unittest.TestCase):
 
 
 class UnchangedRecipeTests(unittest.TestCase):
+    def test_an_unchanged_silver_rebuild_does_not_replace_its_store(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            with SilverStore(built.profile) as silver:
+                before = silver.read_build()
+            with closing(sqlite3.connect(built.profile.silver_store)) as connection:
+                connection.execute(
+                    "CREATE TRIGGER ignore_build_insert BEFORE INSERT"
+                    " ON silver_builds BEGIN SELECT RAISE(IGNORE); END"
+                )
+                connection.commit()
+
+            status, stdout, stderr = rebuild(built.profile_file, "--from", "silver")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "nothing was published" in stdout
+            with SilverStore(built.profile) as silver:
+                assert silver.read_build() == before
+
     def test_a_second_rebuild_with_nothing_changed_publishes_nothing(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
