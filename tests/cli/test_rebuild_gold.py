@@ -77,6 +77,35 @@ class FirstPublicationTests(unittest.TestCase):
 
 
 class UnchangedRecipeTests(unittest.TestCase):
+    def test_rebuild_records_the_decision_log_context_it_consumed(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "void-import-run",
+                "targets": [built.import_run_id],
+                "reason": "synthetic void",
+                "supersedes": [],
+            }
+            encoded = (json.dumps(decision) + "\n").encode()
+            built.profile.input_file("decisions.jsonl").write_bytes(encoded)
+
+            status, _, stderr = rebuild(built.profile_file, "--from", "silver")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            with SilverStore(built.profile) as silver:
+                provenance = silver.read_build().provenance
+            assert provenance is not None
+            assert provenance.decisions == (
+                VoidImportRun("d-0001", built.import_run_id),
+            )
+            assert provenance.decision_log_position == 1
+            assert provenance.decision_log_prefix_sha256 == sha256(encoded).hexdigest()
+            assert provenance.code_version is None
+
     def test_an_unchanged_silver_rebuild_does_not_replace_its_store(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
