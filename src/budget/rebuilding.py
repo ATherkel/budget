@@ -112,6 +112,18 @@ class SilverDecisionFreshnessError(RuntimeError):
         )
 
 
+class SilverDecisionLogPrefixError(RuntimeError):
+    """The stored Silver log prefix is no longer in the current decision log."""
+
+    def __init__(self) -> None:
+        """Name the exact recovery command."""
+        super().__init__(
+            "the stored Silver decision-log prefix no longer matches decisions.jsonl; "
+            "run `budget rebuild --from silver` before publishing Gold; "
+            "nothing was published"
+        )
+
+
 class IncompatibleSilverProvenanceError(RuntimeError):
     """Stored Silver provenance is newer than this Gold consumer supports."""
 
@@ -438,6 +450,11 @@ def rebuild_from_gold(
     if silver.provenance.identity_version != IDENTITY_VERSION:
         raise IncompatibleSilverProvenanceError.identity_version()
     _require_current_silver_decisions(silver.provenance.decisions, household.log.silver)
+    if (
+        household.log.prefix_sha256_at(silver.provenance.decision_log_position)
+        != silver.provenance.decision_log_prefix_sha256
+    ):
+        raise SilverDecisionLogPrefixError
     return _publish(profile, _plan_gold(profile, silver.result, household, now))
 
 
