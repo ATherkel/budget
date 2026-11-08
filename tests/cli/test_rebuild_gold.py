@@ -22,6 +22,7 @@ from budget.inputs import load_configuration
 from budget.locking import WriterLock, writer_lock
 from budget.rebuilding import GoldRebuild, HouseholdInputs, rebuild_from_gold
 from budget.silver import SilverResult, SilverStore, VoidImportRun
+from budget.silver.currencies import UnknownCurrencyError
 from tests.cli.commands import rebuild
 from tests.cli.pipelines import (
     EXPORT,
@@ -31,6 +32,7 @@ from tests.cli.pipelines import (
 )
 
 EXIT_OK = 0
+EXIT_REFUSED_INPUT = 3
 EXIT_REFUSED_ENVIRONMENT = 4
 
 
@@ -291,6 +293,102 @@ class RecipeNamesSilversRunsTests(unittest.TestCase):
 
 
 class SilverChangeTests(unittest.TestCase):
+    def test_changing_a_consumed_account_currency_refuses_gold(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            accounts = built.profile.accounts_file.read_text(encoding="utf-8")
+            built.profile.accounts_file.write_text(
+                accounts.replace('currency = "DKK"', 'currency = "EUR"', 1),
+                encoding="utf-8",
+            )
+
+            try:
+                result = rebuild(built.profile_file)
+            except UnknownCurrencyError:
+                result = None
+
+            assert result is not None
+            status, stdout, stderr = result
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert stdout == ""
+            assert "consumed currency" in stderr
+            assert "rebuild --from silver" in stderr
+            with GoldStore(built.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
+                assert gold.next_publication_id() == 2
+
+    def test_voided_only_input_still_requires_its_consumed_currency(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "void-import-run",
+                "targets": [built.import_run_id],
+                "reason": "synthetic mistaken run",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n",
+                encoding="utf-8",
+            )
+            assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+            accounts = built.profile.accounts_file.read_text(encoding="utf-8")
+            built.profile.accounts_file.write_text(
+                accounts.replace('currency = "DKK"', 'currency = "EUR"', 1),
+                encoding="utf-8",
+            )
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert stdout == ""
+            assert "consumed currency" in stderr
+            assert "rebuild --from silver" in stderr
+            with GoldStore(built.profile) as gold:
+                history = gold.pointer_history()
+                assert [move.to_publication_id for move in history] == [1]
+
+    def test_removed_voided_only_account_is_refused_as_undeclared(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "void-import-run",
+                "targets": [built.import_run_id],
+                "reason": "synthetic mistaken run",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n",
+                encoding="utf-8",
+            )
+            assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+            accounts = built.profile.accounts_file.read_text(encoding="utf-8")
+            savings = accounts.index("[account.joint-savings]")
+            built.profile.accounts_file.write_text(
+                "format = 1\n\n" + accounts[savings:],
+                encoding="utf-8",
+            )
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert status == EXIT_REFUSED_INPUT
+            assert stdout == ""
+            assert 'account "joint-current" is not declared' in stderr
+            assert "nothing was published" in stderr
+            with GoldStore(built.profile) as gold:
+                history = gold.pointer_history()
+                assert [move.to_publication_id for move in history] == [1]
+
     def test_a_voided_run_changes_silver_and_publishes_a_new_publication(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
@@ -387,6 +485,38 @@ class LateBookingWindowTests(unittest.TestCase):
             with GoldStore(built.profile) as gold:
                 assert gold.recipe(1).late_booking_days == 7
                 assert gold.recipe(2).late_booking_days == 14
+
+
+class EmptyAccountTests(unittest.TestCase):
+    def test_adding_an_empty_account_publishes_without_a_silver_rebuild(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            accounts = built.profile.accounts_file.read_text(encoding="utf-8")
+            built.profile.accounts_file.write_text(
+                accounts
+                + """
+
+[account.joint-empty]
+display_name = "Joint empty"
+account_type = "savings"
+ownership_scope = "household"
+currency = "DKK"
+source_format = "danske-csv-v1"
+""",
+                encoding="utf-8",
+            )
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 2" in stdout
+            with GoldStore(built.profile) as gold:
+                accounts = gold.open(2).accounts()
+                assert {account.account_id for account in accounts} >= {
+                    "joint-current",
+                    "joint-empty",
+                }
 
 
 class RoutineLogTests(unittest.TestCase):
