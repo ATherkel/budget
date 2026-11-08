@@ -3,6 +3,9 @@ type: glossary
 ---
 # Household Finance
 
+This glossary defines the project's household-finance vocabulary and links
+each term to its governing rules.
+
 A platform that turns imported bank exports into trustworthy household financial
 reporting: reproducible Bronze → Silver → Gold transformation feeding read-only
 analytics and a dashboard.
@@ -279,40 +282,39 @@ consumer reads exactly one at a time. The rules are in
 _Avoid_: Version, snapshot (a Monthly balance snapshot is a fact), release
 
 **Recipe**:
-The immutable record of every input a Publication was built from: the stored
-Silver build it consumed, its configuration snapshot, its consumed position
-in the shared Decision log, and its Gold producer code version.
+The immutable record of the inputs a Publication consumed. Its fields are in
+[`publications.md`](architecture/publications.md#the-recipe).
 _Avoid_: Manifest, lineage (lineage explains one fact, not a build)
 
 **Silver build provenance**:
-The immutable record of a completed Silver result's inputs, result fingerprint,
-effective Silver Decisions, and producer identity. Gold copies it into a
-Recipe; a direct or legacy Silver result may have explicitly unknown
-provenance.
+The immutable record Silver commits with a completed result to identify its
+inputs, output and producer. Its fields are in
+[`silver-layer.md`](architecture/silver-layer.md#build-provenance).
 _Avoid_: Silver metadata (hides the atomicity and identity contract), current
 context
 
 **Fresh Silver provenance**:
-Silver build provenance that is complete and supported and still matches the
-effective Silver Decisions and consumed account currencies with which Gold
-will build, including a recorded Decision-log prefix that remains valid.
+Silver build provenance that matches the inputs and contracts Gold will use.
+The acceptance conditions are in
+[`publications.md`](architecture/publications.md#gold-acceptance).
 _Avoid_: Current Silver (does not say what was consumed)
 
 **Stale Silver provenance**:
-Silver build provenance whose recorded Decision-log prefix, effective Silver
-Decisions, or consumed account currencies no longer match the inputs Gold would
-publish from. It requires a Silver rebuild.
+Silver build provenance that no longer matches the relevant inputs Gold would
+use. The response is in
+[`operations.md`](architecture/operations.md#provenance-recovery).
 _Avoid_: Old publication, latest Silver
 
 **Unknown Silver provenance**:
-A complete Silver result whose consumed inputs or producer cannot be
-established. It is readable as Silver but cannot authorize a new Publication.
+A completed Silver result whose inputs or producer cannot be established.
+The acceptance consequence is in
+[`publications.md`](architecture/publications.md#gold-acceptance).
 _Avoid_: Missing Silver, current context
 
 **Undeclared consumed account**:
-An account named by a Silver run that `accounts.toml` no longer declares. It is
-refused input until the account is declared again, with `closed_on` when
-appropriate.
+An account named by a consumed Silver run that `accounts.toml` no longer
+declares. The recovery action is in
+[`operations.md`](architecture/operations.md#provenance-recovery).
 _Avoid_: Stale account, stale Silver
 
 **Current publication**:

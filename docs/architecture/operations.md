@@ -74,8 +74,9 @@ Rules for every store:
   exception is development's `upstream/` folder: development opens the
   production stores there read-only, and nowhere else.
 - **A write to one store is one transaction.** Silver and Gold commit
-  separately. A stage's result and provenance commit together. Readers only
-  reach Gold through the pointer, so a crash between stages leaves the previous
+  separately, with the Silver transaction boundary in
+  [`silver-layer.md`](silver-layer.md#build-provenance). Readers only reach Gold
+  through the pointer, so a crash between stages leaves the previous
   publication current.
 - **One writing command at a time.** Every command that writes holds a lock on
   `budget.lock` in the profile's stores folder for its whole run, including
@@ -106,63 +107,26 @@ publications together. Views restricted to the current publication
 (`current_*`) are deferred: a later migration can add them if hand queries
 become routine.
 
-### Stage-specific provenance
+### Provenance recovery
 
-ADR-020 makes Silver's result identity separate from Gold's producer identity.
-A completed Silver replacement commits these together:
+[Silver build provenance](silver-layer.md#build-provenance) defines what
+Silver stores and commits. [Gold acceptance](publications.md#gold-acceptance)
+defines when Gold may publish. The operator's recovery actions are:
 
-- a versioned fingerprint over every public Silver result field and the
-  consumed account-currency projection;
-- every stored and repeated import run Silver interpreted, represented by its
-  import-run identifier, payload hash, and declared account;
-- the exact currencies for those runs, including an account whose run was later
-  voided, together with the effective typed Silver decisions;
-- the decision-log position and prefix hash consumed;
-- the actual Silver producer commit when known and the identity-contract
-  version; and
-- an explicit `unknown` Bronze parser-provenance marker.
+| Observed state | Action |
+| --- | --- |
+| Silver reports unbuilt, for example after a pre-provenance migration | Run `budget rebuild --from silver`, then retry the intended Gold command. |
+| Stale decision prefix, effective Silver decisions, or consumed currency | Run `budget rebuild --from silver`; if the account registry is the cause, fix that first. |
+| A consumed account is missing from `accounts.toml` | Declare the account again, with `closed_on` where appropriate, and retry. A Silver rebuild cannot repair the missing declaration. |
+| Unknown provenance | Do not publish. Rebuild Silver from the known inputs, then retry the intended Gold command. |
+| Incompatible provenance or contract | Do not publish. Use compatible code or a matching backup set; never infer or edit provenance. |
+| Fresh | Continue the Gold build. |
 
-Gold retains an immutable copy of those values in each new recipe and records
-its own producer commit, configuration, late-booking window, and its consumed
-position and prefix in the shared Decision log. Effective Gold decisions are
-derived from the complete entries through that position. Before publication it
-distinguishes these conditions:
-
-| Condition | Meaning | Outcome |
-| --- | --- | --- |
-| Not built | Silver has no completion row | Exit 4; run `budget rebuild --from silver` |
-| Unknown | A complete result lacks provenance | Exit 4; the result may be read but cannot authorize publication |
-| Incompatible | The fingerprint scheme or Silver identity contract is unsupported | Exit 4; this code cannot validate the result |
-| Stale | The consumed decision prefix, effective Silver decisions, or consumed currency projection changed | Exit 4 before writing Gold; run `budget rebuild --from silver` |
-| Undeclared consumed account | An account named by a consumed run is absent from `accounts.toml` | Exit 3; name the account and declare it again, with `closed_on` when appropriate |
-| Fresh | Every required identity and freshness check passes | Continue the Gold build |
-
-A malformed configuration file or invalid decision remains a refused input and
-exits 3. So does a consumed account absent from `accounts.toml`; a Silver
-rebuild cannot restore its declaration. An unknown, incompatible, or stale
-Silver context is a refused environment and exits 4. Gold-only decisions, Gold
-configuration changes, and an added empty account leave Silver fresh.
-
-A direct Silver store replacement without provenance records a completed but
-explicitly unknown build. Absence of the completion row means Silver was never
-built. A migration from a pre-provenance Silver schema clears its derived
-result so the operator rebuilds it from Bronze instead of inheriting an
-invented context. Historical Gold recipes without these fields stay readable
-but are never backfilled.
-
-Bronze records `source_format`, not parser implementation identity.
-`rebuild --from bronze` reparses each retained payload with the currently
-installed parser for its declared format and commits the new derived records
-before rebuilding Silver and Gold. A parser change can therefore yield a new
-Silver fingerprint and Gold publication. Parser capture and cross-parser
-replay remain separate work; current documentation must not represent the
-installed parser as the one that produced historical records.
-
-The baseline already provides the Silver fingerprint function, atomic
-result-and-currency replacement, and atomic per-store writes. It does not yet
-persist the completion row or copy provenance into Gold recipes. Until those
-land, today's Gold command cannot perform the freshness table above and must
-not be described as already satisfying ADR-020 end to end.
+Gold-only decisions, Gold configuration, and an added empty account need no
+Silver rebuild. `rebuild --from bronze` is a new parse with the installed
+parser, not a historical parser replay. The implementation status for these
+accepted checks is maintained on the
+[documentation entry page](../README.md#provenance-at-a-glance).
 
 ### Legacy publications
 
@@ -633,7 +597,7 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | `backup` | Writes a backup set of production and names it. Also runs automatically; see below. | The backups folder | No |
 | `restore [<backup set>]` | Restores the newest complete set, or the one named, into an empty profile, catches up with the import log, and rebuilds Silver and Gold, publishing when the recipe changed; records a recovery boundary. | Every store | Yes, if it caught up |
 | `restore --from-archive` | Last resort: rebuilds Bronze from the archive and the import log, then Silver and Gold. | Every store | Yes |
-| `verify` | Checks integrity, and replays the current publication's recipe to prove it reproduces (ADR-014). | `scratch/` only | No |
+| `verify` | Checks integrity. Recipe replay remains deferred ([#259](https://github.com/ATherkel/budget/issues/259)). | `scratch/` only | No |
 | `dev refresh [--inputs] [--writable]` | Development only: restores production's newest complete backup set into `upstream/`, or with `--writable` into development's own stores. | Development only | No |
 | `serve` | Starts the read-only dashboard. | Nothing | No |
 | `set-passphrase` | Sets the dashboard passphrase, which logs out every device. | The passphrase file | No |
@@ -654,6 +618,10 @@ are options: `--counterpart <account_id>` for a `one-sided-transfer`,
 replaces. `decide` never fills in `supersedes` itself.
 
 ### Exit codes
+
+The provenance-refusal rows describe the accepted contract. Their
+implementation status is on the
+[documentation entry page](../README.md#provenance-at-a-glance).
 
 | Code | Meaning |
 | --- | --- |
@@ -790,9 +758,12 @@ rebuild there.
    hold production's real history, so `migrate` upgrades existing data exactly
    as it will in production, including any legacy extraction and the build
    that follows. Its printed diff must show only what the migration intends.
+   If it reports Silver unbuilt, follow [Provenance recovery](#provenance-recovery).
 2. In production: `migrate`, which writes a backup set first, converts the
    retained results, extracts and records any legacy publication, runs a
-   pipeline build (ADR-014), and writes a backup set after. Then `verify`.
+   pipeline build (ADR-014), and writes a backup set after. Follow
+   [Provenance recovery](#provenance-recovery) if migration reports unbuilt
+   Silver. Then `verify`.
 
 ### W6: the machine dies
 
@@ -844,9 +815,7 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | Crash while writing a backup set | The set stays in `backup-staging\` or as a `.partial` folder, is never used, and is deleted by the next backup | Nothing to do |
 | The backup before a migration cannot be written or verified | The migration does not begin; the schema and its version are unchanged; exit 4, or 5 when a copy or the import log does not verify | Fix what the message names, then rerun `migrate` |
 | A migration fails | No step of it is committed and the store keeps its version, though a stage migrated before it (Bronze before Silver, and both before Gold) keeps its new one; the set taken first stays held for recovery until a migration succeeds, or a later backup records a store past it | Fix the defect; the held set restores the stores if needed |
-| Silver migrates from a pre-provenance schema | The old derived result is cleared and the store reads as not built | Run `budget rebuild --from silver`; Gold can publish after a complete provenanced Silver result exists |
-| A consumed account is no longer declared in `accounts.toml` | Gold refuses input before writing and names the account | Declare it again, with `closed_on` when appropriate; a Silver rebuild cannot fix this |
-| Gold reads unbuilt, unknown, incompatible, or stale Silver provenance | Gold refuses environment state before writing and names the Silver rebuild when one is required | Correct the environment if needed, rebuild Silver, then rerun the intended Gold command |
+| A Silver migration clears a pre-provenance result, or Gold sees missing, unknown, incompatible, or stale provenance | Silver may read as unbuilt after that migration; Gold refuses before publishing and reports the state | Follow [Provenance recovery](#provenance-recovery) |
 | The backup after a migration fails | The store is migrated; the set taken first stays held; exit 4, saying so | Fix what the message names, then run `budget backup` |
 | `migrate` finds no production store for a stage, or only a file an interrupted start left empty | Nothing is created or changed, in any stage; exit 4. So is `--new-store` where one of the stores it would start is started already, naming the `--stage` that starts the rest, and Silver or Gold where Bronze has no store a backup set can hold, since every set holds Bronze | Move every store out of the stores folder and run `budget restore`, which restores the whole profile; or, for a first store, rerun with `--new-store`, adding `--stage` for that stage alone when another stage's store exists |
 | A store a complete backup set holds is missing, or only a file an interrupted start left empty | `backup`, and a `migrate` that would back up, publish nothing and change nothing; exit 4 | Move every store out of the stores folder, then run `budget restore`: a store is never restored beside live ones |
@@ -977,13 +946,8 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   run `verify`, whose recipe replay is deferred.
 - **`verify`** runs `PRAGMA integrity_check` on every store and checks that the
   import log agrees with Bronze and that the decision-log prefix hashes match.
-  Recipe replay is deferred. Its contract requires the exact consumed Silver
-  result, recorded Gold inputs, and Gold producer code before comparing the
-  replayed Gold fingerprint in a scratch store. Unavailable historical inputs
-  prevent verification; they do not establish a platform defect. Rebuilding
-  both stages from Bronze with one current code version cannot substitute for
-  those inputs or the unrecorded historical parser identity
-  ([`publications.md`](publications.md#verify)).
+  Recipe replay remains deferred; its prerequisites and failure rule are in
+  [`publications.md`, *Verify*](publications.md#verify).
 
 ## Dashboard Access
 

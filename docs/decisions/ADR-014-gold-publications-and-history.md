@@ -3,6 +3,9 @@ type: decisions
 ---
 # ADR-014: Publish Gold as Immutable Publications, with Recipes and a Decision Log
 
+This ADR records why Gold builds are immutable publications with immediate
+promotion, recipes, retention and two kinds of historical view.
+
 **Status:** Accepted. The retention decision is refined by
 [ADR-015](ADR-015-profiles-stages-and-household-inputs.md): a labeled result
 that a Gold migration cannot convert is also extracted and recorded as a legacy
@@ -45,32 +48,32 @@ The maintainer chose five things:
   increasing `publication_id`. Every Gold table is keyed by it, and every
   consumer read is confined to one. Facts do not carry it;
   `GoldRepository.publication()` does.
-- **Every publication has a recipe.** It names the inputs only: the import
-  runs, a content-addressed configuration snapshot, a decision-log position,
-  and the code version. The publication carries the fingerprint of its
-  result, with the version of the serialization it hashes. Recipes are kept
+- **Every publication has a retained recipe** with the exact fields in
+  [`publications.md`, *The Recipe*](../architecture/publications.md#the-recipe).
+  The publication carries its result fingerprint and scheme; recipes are kept
   forever.
 - **The build is a pure function of its recipe.** It never reads the clock.
   `built_at` is metadata outside the fingerprint, and anything that depends on
   today's date is computed when a report is read. The same recipe with the
-  same code yields the same fingerprint. A production build refuses to run
-  when it cannot name its code version. A development store makes no
-  reproducibility promise.
+  exact consumed Silver result and code yields the same fingerprint. A
+  production build refuses to run when it cannot name its code version; a
+  development store makes no reproducibility promise.
 - **Promotion is immediate.** A successful pipeline build becomes current in
   the same write transaction that stores it. The CLI prints the diff against
   the previous current publication. `undo` moves the pointer back, and the
   pointer history records every move. A build whose recipe equals the current
   one publishes nothing.
 - **Retention.** Results are kept for the current publication, the previous
-  one, and every labeled one. Any other result can be re-created by replaying
-  its recipe with the code it names. A result that a Gold migration cannot
-  convert survives in the backup production takes before migrating.
+  one, and every labeled one. Any other result can be re-created when the
+  replay prerequisites in
+  [`publications.md`, *What Reproducible Promises*](../architecture/publications.md#what-reproducible-promises)
+  are available. A result that a Gold migration cannot convert survives in the
+  backup production takes before migrating.
 - **Past views are publications too, built by the CLI.** An as-was view is the
-  publication current at D, either retained or replayed and checked against
-  its fingerprint. An as-known-at view is a new publication built from the
-  import runs started by D under today's interpretation, and it can never
-  become current. The dashboard stays read-only and opens any retained
-  publication.
+  publication current at D, retained or reproduced by the same exact-input
+  rule. An as-known-at view is built from the import runs started by D under
+  today's interpretation and can never become current. The dashboard stays
+  read-only.
 - **Manual decisions are an append-only log.** Each entry carries a
   platform-set `recorded_at`. A new entry supersedes one or more earlier
   decisions instead of editing them, and a `retract` entry supersedes one

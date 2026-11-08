@@ -209,64 +209,46 @@ transaction dates.
 
 ## Build Provenance
 
-The completed stage boundary stores the result and its identity together:
+Silver owns the stored identity of a build and its atomicity. The accepted
+completed boundary has these types:
 
-```python
-SilverBuild(
-    result: SilverResult,
-    currencies: Mapping[str, str],
-    provenance: SilverProvenance | None,
-)
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `SilverBuild.result` | `SilverResult` | The complete Silver result being stored. |
+| `SilverBuild.currencies` | `Mapping[str, str]` | Full account-to-currency snapshot needed to decode every persisted amount. |
+| `SilverBuild.provenance` | `SilverProvenance \| None` | Completed identity, or explicit unknown when a direct replacement supplies none. |
+| `SilverImportRun` | `import_run_id: str; payload_id: str; account_id: str` | Immutable Bronze reference for one stored or repeated run. |
+| `SilverProvenance.fingerprint_scheme` | `str` | Versioned identifier for the canonical fingerprint serialization. |
+| `SilverProvenance.result_fingerprint` | `str` | SHA-256 of the complete result and consumed-currency projection. |
+| `SilverProvenance.import_runs` | `frozenset[SilverImportRun]` | Every run Silver interpreted; mutable or descriptive run metadata is not copied. |
+| `SilverProvenance.currencies` | `Mapping[str, str]` | Currencies of exactly the run accounts, including a run account later voided. |
+| `SilverProvenance.decisions` | `Sequence[SilverDecision]` | Effective typed Silver decisions consumed by the build. |
+| `SilverProvenance.decision_log_position` | `int` | Position in the Decision log consumed. |
+| `SilverProvenance.decision_log_prefix_sha256` | `str` | SHA-256 of exactly the consumed log prefix. |
+| `SilverProvenance.code_version` | `str \| None` | Silver producer commit when the profile records one. |
+| `SilverProvenance.identity_version` | `str` | Silver identity-contract version. |
+| `SilverProvenance.bronze_parser_provenance` | `Literal["unknown"]` | No Bronze parser identity is established. |
 
-SilverImportRun(
-    import_run_id: str,
-    payload_id: str,
-    account_id: str,
-)
+The fingerprint covers every public result family and the consumed-currency
+projection. Incidental record order and decimal scale do not affect it;
+duplicates and meaningful sequence fields do.
 
-SilverProvenance(
-    fingerprint_scheme: str,
-    result_fingerprint: str,
-    import_runs: frozenset[SilverImportRun],
-    currencies: Mapping[str, str],
-    decisions: Sequence[SilverDecision],
-    decision_log_position: int,
-    decision_log_prefix_sha256: str,
-    code_version: str | None,
-    identity_version: str,
-    bronze_parser_provenance: Literal["unknown"],
-)
-```
+One transaction replaces `SilverBuild.result`, `SilverBuild.currencies`, the
+provenance value, and a completion marker. Readers take one SQLite snapshot,
+so they cannot combine rows from different builds.
 
-`SilverBuild.currencies` is the full currency snapshot needed to decode the
-stored result. `SilverProvenance.currencies` is the narrower projection for
-accounts named by the consumed runs, including an account whose run was later
-voided. Its run entries retain only the import-run identifier, payload hash,
-and declared account as immutable Bronze references; they do not copy mutable
-or descriptive run metadata.
+No completion marker means Silver has never been built. A direct replacement
+without provenance is complete but explicitly unknown. A migrated
+pre-provenance result is cleared because its old inputs and producer cannot be
+inferred.
 
-The versioned result fingerprint covers every public result family and the
-consumed currency projection. It ignores incidental record order and decimal
-scale while retaining duplicates and meaningful sequence fields. Result, full
-currency snapshot, and provenance are read in one SQLite snapshot and replaced
-in one transaction. A completion row distinguishes an empty completed build
-from one that has never been built. A direct replacement without provenance is
-complete but explicitly unknown.
-
-Bronze records each import run's declared `source_format`, but not the identity
-of the parser implementation that derived its source records. A
-`rebuild --from bronze` reparses retained payloads with the currently installed
-parser for each declared format; a changed parser result therefore starts a new
-Silver result. Until parser capture is implemented, Silver records that parser
-provenance is `unknown` and makes no claim about which parser produced older
-source records. Gold's freshness rules are in
-[`publications.md`](publications.md#silver-provenance).
-
-The baseline implementation currently computes this fingerprint and atomically
-stores the result with its currency snapshot, but has no completion row or
-persisted provenance value. `SilverStore.is_built()` therefore still infers a
-build from the presence of currencies. The types above define the accepted
-completed contract; they are not yet an implementation claim.
+Bronze records `source_format`, while `rebuild --from bronze` reparses retained
+payload with the parser installed at that time. A parser change can therefore
+produce a new Silver result from the same runs. Until Bronze records parser
+identity, Silver must not claim that today's parser produced historical
+records. Gold's use of this value is in
+[`publications.md`](publications.md#gold-acceptance), and current implementation
+status is in the [documentation map](../README.md#provenance-at-a-glance).
 
 ## Rules
 
