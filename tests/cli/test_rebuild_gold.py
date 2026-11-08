@@ -291,6 +291,51 @@ class RecipeNamesSilversRunsTests(unittest.TestCase):
 
 
 class SilverChangeTests(unittest.TestCase):
+    def test_an_unapplied_silver_decision_refuses_gold_then_rebuild_restores_it(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "void-import-run",
+                "targets": [built.import_run_id],
+                "reason": "synthetic void",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n",
+                encoding="utf-8",
+            )
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert stdout == ""
+            assert "current effective Silver decisions" in stderr
+            assert "budget rebuild --from silver" in stderr
+            with GoldStore(built.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
+                assert gold.next_publication_id() == 2
+
+            status, stdout, stderr = rebuild(built.profile_file, "--from", "silver")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 2" in stdout
+            with SilverStore(built.profile) as silver_store:
+                stored = silver_store.read_build()
+            assert stored.result.transactions == ()
+            assert stored.provenance is not None
+            assert stored.provenance.decisions == (
+                VoidImportRun("d-0001", built.import_run_id),
+            )
+
     def test_a_voided_run_changes_silver_and_publishes_a_new_publication(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
