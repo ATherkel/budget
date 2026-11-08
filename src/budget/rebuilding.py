@@ -16,6 +16,7 @@ import sqlite3
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
+from typing import Self
 
 from budget import sqlstore
 from budget.bronze import BronzeStore
@@ -42,12 +43,14 @@ from budget.inputs import (
 from budget.locking import WriterLock
 from budget.profiles import ACCOUNTS_FILE_NAME, Profile
 from budget.silver import (
+    SILVER_FINGERPRINT_SCHEME,
     ReviewItem,
     SilverBuildInputs,
     SilverResult,
     SilverStore,
     derive_silver,
     rebuild_silver,
+    silver_provenance,
     store_silver,
 )
 from budget.silver.currencies import UnknownCurrencyError, minor_unit_places
@@ -79,6 +82,40 @@ class SilverNotBuiltError(RuntimeError):
             "Silver has never been built, so there is nothing to publish; run "
             "`budget rebuild --from silver` first; nothing was published"
         )
+
+
+class SilverProvenanceUnavailableError(RuntimeError):
+    """Gold cannot publish a completed Silver result of unknown origin."""
+
+    def __init__(self) -> None:
+        """Name the one recovery command."""
+        super().__init__(
+            "the stored Silver result has no trustworthy build provenance; "
+            "run `budget rebuild --from silver` before publishing Gold; "
+            "nothing was published"
+        )
+
+
+class IncompatibleSilverProvenanceError(RuntimeError):
+    """Stored Silver provenance is newer than this Gold consumer supports."""
+
+    def __init__(self, field: str) -> None:
+        """Name the incompatible contract and the required rebuild."""
+        super().__init__(
+            f"the stored Silver provenance has an unsupported {field}; "
+            "run `budget rebuild --from silver` before publishing Gold; "
+            "nothing was published"
+        )
+
+    @classmethod
+    def fingerprint_scheme(cls) -> Self:
+        """Refuse a fingerprint scheme this consumer cannot compare."""
+        return cls("fingerprint scheme")
+
+    @classmethod
+    def identity_version(cls) -> Self:
+        """Refuse an identity contract this consumer cannot interpret."""
+        return cls("identity contract")
 
 
 @dataclass(frozen=True)
@@ -133,16 +170,20 @@ def bronze_inputs(
     profile: Profile,
     decisions: Sequence[SilverDecision] | None = None,
     derived: DerivedRecords | None = None,
+    *,
+    log: DecisionLogRead | None = None,
 ) -> SilverBuildInputs:
     """Read every Bronze input one Silver build needs, and the currencies.
 
     The profile's import runs, each run's payload's source records or format
     failures, and each declared account's currency are read as they stand now.
     `decisions` are the Silver decisions in force; without them the profile's
-    decision log is read. `derived` are source records and format failures
-    freshly parsed from the retained payloads, which stand in for the stored
-    ones when a rebuild starts from Bronze.
+    decision log is read. `log` is that same log when the caller already read
+    it. `derived` are source records and format failures freshly parsed from
+    the retained payloads, which stand in for the stored ones when a rebuild
+    starts from Bronze.
     """
+    decision_log = read_decision_log(profile) if log is None else log
     currencies = {
         account_id: account.currency
         for account_id, account in load_accounts(profile).items()
@@ -163,7 +204,10 @@ def bronze_inputs(
         source_records=source_records,
         format_failures=format_failures,
         currencies=currencies,
-        decisions=read_decision_log(profile).silver if decisions is None else decisions,
+        decisions=decision_log.silver if decisions is None else decisions,
+        decision_log_position=decision_log.position,
+        decision_log_prefix_sha256=decision_log.prefix_sha256,
+        code_version=committed_code_version(profile),
     )
 
 
@@ -301,17 +345,25 @@ def _plan_gold(
     silver: SilverResult,
     household: HouseholdInputs,
     now: datetime,
+    *,
+    silver_changed: bool = False,
 ) -> _GoldPlan | GoldRebuild:
     """Derive Gold from `silver`, writing nothing, or find it already current.
 
     A recipe equal to the current publication's builds nothing and comes back
-    as the rebuild that publishes nothing. A configuration error is raised
-    here, before any store is replaced.
+    as the rebuild that publishes nothing, unless `silver_changed`: the recipe
+    names Silver's inputs, not its result, so a Silver that changed under the
+    same recipe still needs a new publication. A configuration error is
+    raised here, before any store is replaced.
     """
     recipe = _recipe(profile, silver, household)
     with GoldStore(profile) as gold:
         current = gold.current()
-        if current is not None and gold.recipe(current.publication_id) == recipe:
+        if (
+            current is not None
+            and not silver_changed
+            and gold.recipe(current.publication_id) == recipe
+        ):
             return GoldRebuild(publication=current, published=False)
         draft = GoldPublication(
             publication_id=gold.next_publication_id(),
@@ -362,8 +414,14 @@ def rebuild_from_gold(
     with SilverStore(profile) as silver_store:
         if not silver_store.is_built():
             raise SilverNotBuiltError
-        silver = silver_store.read()
-    return _publish(profile, _plan_gold(profile, silver, household, now))
+        silver = silver_store.read_build()
+    if silver.provenance is None:
+        raise SilverProvenanceUnavailableError
+    if silver.provenance.fingerprint_scheme != SILVER_FINGERPRINT_SCHEME:
+        raise IncompatibleSilverProvenanceError.fingerprint_scheme()
+    if silver.provenance.identity_version != IDENTITY_VERSION:
+        raise IncompatibleSilverProvenanceError.identity_version()
+    return _publish(profile, _plan_gold(profile, silver.result, household, now))
 
 
 def rebuild_through_gold(
@@ -392,21 +450,33 @@ def rebuild_through_gold(
         with BronzeStore(profile) as bronze:
             reparsed = bronze.derive_records()
     silver_inputs = replace(
-        bronze_inputs(profile, household.log.silver, reparsed), formats=formats
+        bronze_inputs(
+            profile,
+            household.log.silver,
+            reparsed,
+            log=household.log,
+        ),
+        formats=formats,
     )
     derived = derive_silver(silver_inputs)
-    plan = _plan_gold(profile, derived, household, now)
+    prospective_provenance = silver_provenance(silver_inputs, derived)
     with SilverStore(profile) as silver_store:
-        stored = silver_store.read()
+        built = silver_store.is_built()
+        stored = silver_store.read_build()
+    changed = stored.result != derived or stored.provenance != prospective_provenance
+    plan = _plan_gold(profile, derived, household, now, silver_changed=changed)
     if reparsed is not None:
         with BronzeStore(profile) as bronze:
             bronze.replace_derived_records(reparsed)
-    store_silver(lock, silver_inputs, derived)
+    if changed or not built:
+        store_silver(lock, silver_inputs, derived)
     return PipelineRebuild(
         silver=SilverRebuild(runs=silver_inputs.runs, result=derived),
-        silver_changed=stored != derived,
+        silver_changed=changed,
         gold=_publish(profile, plan),
-        silver_reviews=SilverReviews(_open_reviews(stored), _open_reviews(derived)),
+        silver_reviews=SilverReviews(
+            _open_reviews(stored.result), _open_reviews(derived)
+        ),
     )
 
 
@@ -423,7 +493,8 @@ def rebuild_from_silver(
     log is read here.
     """
     profile = lock.profile
-    decisions = None if inputs is None else inputs.log.silver
-    silver_inputs = bronze_inputs(profile, decisions)
+    decision_log = None if inputs is None else inputs.log
+    decisions = None if decision_log is None else decision_log.silver
+    silver_inputs = bronze_inputs(profile, decisions, log=decision_log)
     result = rebuild_silver(lock, inputs=silver_inputs)
     return SilverRebuild(runs=silver_inputs.runs, result=result)
