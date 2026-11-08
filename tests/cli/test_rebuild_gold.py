@@ -291,6 +291,53 @@ class RecipeNamesSilversRunsTests(unittest.TestCase):
 
 
 class SilverChangeTests(unittest.TestCase):
+    def test_a_changed_or_truncated_consumed_prefix_refuses_gold(self) -> None:
+        cases = ("changed", "truncated")
+        for case in cases:
+            with self.subTest(case), TemporaryDirectory() as directory:
+                built = household(Path(directory))
+                with SilverStore(built.profile) as silver_store:
+                    transaction_id = silver_store.read().transactions[0].transaction_id
+                decision = {
+                    "format": 1,
+                    "entry": 1,
+                    "decision_id": "d-0001",
+                    "recorded_at": "2026-04-10T17:02:11Z",
+                    "kind": "classify",
+                    "targets": [transaction_id],
+                    "category": "groceries",
+                    "reason": "synthetic classification",
+                    "supersedes": [],
+                }
+                log = built.profile.input_file("decisions.jsonl")
+                original = json.dumps(decision) + "\n"
+                log.write_text(original, encoding="utf-8")
+                assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+                with GoldStore(built.profile) as gold:
+                    before = gold.pointer_history()
+
+                if case == "changed":
+                    log.write_text(
+                        json.dumps(decision | {"recorded_at": "2026-04-10T17:02:12Z"})
+                        + "\n",
+                        encoding="utf-8",
+                    )
+                else:
+                    log.write_bytes(original.encode()[:20])
+
+                status, stdout, stderr = rebuild(built.profile_file)
+
+                assert status == EXIT_REFUSED_ENVIRONMENT
+                assert stdout == ""
+                assert "decision-log prefix" in stderr
+                assert "budget rebuild --from silver" in stderr
+                with GoldStore(built.profile) as gold:
+                    assert gold.pointer_history() == before
+                    current = gold.current()
+                    assert current is not None
+                    assert current.publication_id == 1
+                    assert gold.next_publication_id() == 2
+
     def test_an_unapplied_silver_decision_refuses_gold_then_rebuild_restores_it(
         self,
     ) -> None:
