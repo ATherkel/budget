@@ -500,6 +500,11 @@ def decision_log_bytes(profile: Profile) -> bytes:
         return profile.input_file(DECISION_LOG_FILE_NAME).read_bytes()
     except FileNotFoundError:
         return b""
+    except OSError as error:
+        reason = error.strerror or type(error).__name__
+        raise ConfigurationError(
+            (f"{DECISION_LOG_FILE_NAME}: cannot be read: {reason}",)
+        ) from None
 
 
 def cut_off_problem(content: bytes) -> str | None:
