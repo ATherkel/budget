@@ -454,7 +454,6 @@ newer build exists, or a selection cannot be shown. The dashboard shell is
 responsive on phones and desktop browsers, supports keyboard use, and exposes
 loading, empty, unavailable and request-failure states. The monthly overview
 shows income, expenses, money left, and uncategorized inflows and outflows.
-<!-- 🤖 Added by Codex (GPT-6 Astra) -->
 
 Gold migration and publication storage are implemented. A profile's dashboard
 still shows the shell until a publication exists; `budget serve` never creates
@@ -498,7 +497,6 @@ folder and refuses to reuse an existing target. Open the address, sign in with
 `Demo savings`), the current month, and the monthly overview. The demo publishes
 balances without transactions, so its transaction-based summary figures are
 known zeros, including `0,00 kr.` for both Ind and Ud under Ukategoriseret.
-<!-- 🤖 Added by Codex (GPT-6 Astra) -->
 
 Stop the foreground command with `Ctrl+C`, then remove only the isolated demo
 folder:
