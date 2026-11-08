@@ -354,6 +354,41 @@ class SilverChangeTests(unittest.TestCase):
                 history = gold.pointer_history()
                 assert [move.to_publication_id for move in history] == [1]
 
+    def test_removed_voided_only_account_is_refused_as_undeclared(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "void-import-run",
+                "targets": [built.import_run_id],
+                "reason": "synthetic mistaken run",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n",
+                encoding="utf-8",
+            )
+            assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+            accounts = built.profile.accounts_file.read_text(encoding="utf-8")
+            savings = accounts.index("[account.joint-savings]")
+            built.profile.accounts_file.write_text(
+                "format = 1\n\n" + accounts[savings:],
+                encoding="utf-8",
+            )
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert status == EXIT_REFUSED_INPUT
+            assert stdout == ""
+            assert 'account "joint-current" is not declared' in stderr
+            assert "nothing was published" in stderr
+            with GoldStore(built.profile) as gold:
+                history = gold.pointer_history()
+                assert [move.to_publication_id for move in history] == [1]
+
     def test_a_voided_run_changes_silver_and_publishes_a_new_publication(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
