@@ -439,6 +439,20 @@ class SilverChangeTests(unittest.TestCase):
             rebuild_silver_with(
                 built.profile, VoidImportRun("d-0001", built.import_run_id)
             )
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "void-import-run",
+                "targets": [built.import_run_id],
+                "reason": "synthetic void",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n",
+                encoding="utf-8",
+            )
 
             status, stdout, stderr = rebuild(built.profile_file)
 
