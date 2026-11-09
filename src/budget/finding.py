@@ -8,6 +8,7 @@ from decimal import Decimal
 
 from budget.gold.models import ReportingMonth
 from budget.gold.store import GoldStore
+from budget.inputs import load_accounts
 from budget.profiles import Profile
 from budget.silver import SilverStore
 
@@ -25,6 +26,14 @@ class InvalidMonthError(FindInputError):
             f'--month "{month}" is not YYYY-MM; expected a calendar month '
             "such as 2026-03"
         )
+
+
+class UnknownAccountError(FindInputError):
+    """The requested account is not declared in household configuration."""
+
+    def __init__(self, account: str) -> None:
+        """Name the undeclared account."""
+        super().__init__(f'--account "{account}" is not declared in accounts.toml')
 
 
 @dataclass(frozen=True)
@@ -57,6 +66,8 @@ def find_transactions(
     account: str | None = None,
 ) -> FindResult:
     """Search current published descriptions without changing either store."""
+    if account is not None and account not in load_accounts(profile):
+        raise UnknownAccountError(account)
     start_date, end_date = date.min, date.max
     if month is not None:
         start_date = date(month.year, month.month, 1)
