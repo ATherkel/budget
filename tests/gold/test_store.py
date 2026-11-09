@@ -451,6 +451,34 @@ def test_a_recipe_without_complete_silver_provenance_is_refused(
     assert store.current() is None
 
 
+def test_a_recipe_with_an_unknown_import_run_account_writes_nothing(
+    store: GoldStore,
+) -> None:
+    first = publish(store, 1)
+    unknown = replace(
+        RECIPE,
+        import_runs=frozenset({RecipeImportRun("run-unknown", "c" * 64, None)}),
+    )
+
+    with pytest.raises(SilverRecipeUnavailableError):
+        store.publish(GoldResult(publication(2), RECORDS), unknown, CONFIGURATION)
+
+    assert store.current() == first
+    assert store.next_publication_id() == 2
+    assert store.recipe(1) == RECIPE
+    assert len(store.recipes()) == 1
+    assert [move.to_publication_id for move in store.pointer_history()] == [1]
+
+
+def test_a_recipe_with_no_import_runs_may_publish(store: GoldStore) -> None:
+    no_runs = replace(RECIPE, import_runs=frozenset())
+
+    store.publish(GoldResult(publication(1), RECORDS), no_runs, CONFIGURATION)
+
+    assert store.current() == publication(1)
+    assert store.recipe(1) == no_runs
+
+
 def test_a_configuration_other_than_the_recipes_is_refused(store: GoldStore) -> None:
     other = replace(CONFIGURATION, taxonomy=replace(TAXONOMY, categories={}))
 

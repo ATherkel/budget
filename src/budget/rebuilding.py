@@ -372,7 +372,7 @@ def _recipe(
     log = household.log
     return Recipe(
         import_runs=frozenset(
-            RecipeImportRun(run.import_run_id, run.payload_id, None)
+            RecipeImportRun(run.import_run_id, run.payload_id, run.account_id)
             for run in provenance.import_runs
         ),
         configuration_fingerprint=household.configuration.fingerprint,

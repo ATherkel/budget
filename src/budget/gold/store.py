@@ -129,12 +129,13 @@ class ConfigurationMismatchError(ValueError):
 
 
 class SilverRecipeUnavailableError(ValueError):
-    """A publication was offered without complete Silver provenance."""
+    """A publication was offered without complete, attributed Silver provenance."""
 
     def __init__(self) -> None:
         """Name the defect: no caller should build such a recipe."""
         super().__init__(
-            "a Gold recipe was built without complete Silver provenance; "
+            "a Gold recipe was built without complete Silver provenance or "
+            "an account for every consumed import run; "
             "this is a defect; nothing was published"
         )
 
@@ -1106,11 +1107,12 @@ def _write_recipe(
 
 
 def _has_silver_provenance(recipe: Recipe) -> bool:
-    """Whether a new recipe names every required part of Silver's provenance.
+    """Whether a new recipe names every required Silver input and account.
 
-    Silver's code version may be None, as for any development build.
+    Silver's code version may be None, as for any development build. An empty
+    import-run set is valid; each run present must carry its declared account.
     """
-    return all(
+    fields_are_known = all(
         field is not None
         for field in (
             recipe.silver_fingerprint_scheme,
@@ -1120,6 +1122,9 @@ def _has_silver_provenance(recipe: Recipe) -> bool:
             recipe.silver_decision_log_prefix_sha256,
             recipe.silver_bronze_parser_provenance,
         )
+    )
+    return fields_are_known and all(
+        run.account_id is not None for run in recipe.import_runs
     )
 
 

@@ -88,6 +88,12 @@ recipe's identity: they record where Silver read the log, for audit. The log
 can move while Silver's result stays the same, as a Gold-only decision does,
 and Silver's result fingerprint decides whether Gold republishes.
 
+A schema 6 recipe with consumed runs lacks their account IDs. Its first successful pipeline
+build after the Gold schema 7 upgrade records every consumed run's account,
+including voided and repeated runs. That build publishes once even when its
+result fingerprint is unchanged; a subsequent unchanged build is a no-op. A
+new recipe with any unknown run account is refused before anything is written.
+
 ### Gold Acceptance
 
 The recipe stores the consumed Silver provenance without rereading current

@@ -12,15 +12,15 @@ from budget.gold import GoldPublication, GoldResult
 from budget.gold.recipe import Recipe, RecipeImportRun
 from budget.gold.store import GoldStore
 from budget.inputs import ConfigurationSnapshot
-from tests.gold.worked_example import PUBLICATION, RECORDS
+from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
 from tests.gold.worked_silver import REGISTRY, TAXONOMY
 
 CONFIGURATION = ConfigurationSnapshot(accounts=REGISTRY, taxonomy=TAXONOMY, rules={})
 RECIPE = Recipe(
     import_runs=frozenset(
         {
-            RecipeImportRun("run-current", "a" * 64, None),
-            RecipeImportRun("run-savings", "b" * 64, None),
+            RecipeImportRun("run-current", "a" * 64, CURRENT),
+            RecipeImportRun("run-savings", "b" * 64, SAVINGS),
         }
     ),
     configuration_fingerprint=CONFIGURATION.fingerprint,

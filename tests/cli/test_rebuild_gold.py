@@ -61,6 +61,13 @@ def _forget_silver_provenance(gold_store: Path) -> None:
         connection.commit()
 
 
+def _forget_import_run_accounts(gold_store: Path) -> None:
+    """Leave every recipe as migration 0007 carries one over from schema 6."""
+    with closing(sqlite3.connect(gold_store)) as connection:
+        connection.execute("UPDATE recipe_import_runs SET account_id = NULL")
+        connection.commit()
+
+
 class FirstPublicationTests(unittest.TestCase):
     def test_the_gold_recipe_copies_the_exact_silver_provenance(self) -> None:
         with TemporaryDirectory() as directory:
@@ -157,7 +164,7 @@ class FirstPublicationTests(unittest.TestCase):
                             RecipeImportRun(
                                 built.import_run_id,
                                 sha256(EXPORT).hexdigest(),
-                                None,
+                                "joint-current",
                             )
                         }
                     ),
@@ -345,6 +352,41 @@ class UnchangedRecipeTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_OK, "")
             assert "nothing was published" in stdout
 
+    def test_the_first_rebuild_after_schema_6_publishes_once_to_record_accounts(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            _forget_import_run_accounts(built.profile.gold_store)
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "Gold     published publication 2 (cause build)" in stdout
+            with GoldStore(built.profile) as gold:
+                assert gold.recipe(2).import_runs == frozenset(
+                    {
+                        RecipeImportRun(
+                            built.import_run_id,
+                            sha256(EXPORT).hexdigest(),
+                            "joint-current",
+                        )
+                    }
+                )
+                assert gold.recipe(1).import_runs == frozenset(
+                    {
+                        RecipeImportRun(
+                            built.import_run_id,
+                            sha256(EXPORT).hexdigest(),
+                            None,
+                        )
+                    }
+                )
+            status, stdout, stderr = rebuild(built.profile_file)
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "nothing was published" in stdout
+
 
 class ClockTests(unittest.TestCase):
     def test_two_builds_of_one_recipe_at_different_times_share_a_fingerprint(
@@ -452,8 +494,8 @@ class RecipeNamesSilversRunsTests(unittest.TestCase):
             payload = sha256(EXPORT).hexdigest()
             with GoldStore(built.profile) as gold:
                 assert gold.recipe(2).import_runs == {
-                    RecipeImportRun(built.import_run_id, payload, None),
-                    RecipeImportRun(repeat, payload, None),
+                    RecipeImportRun(built.import_run_id, payload, "joint-current"),
+                    RecipeImportRun(repeat, payload, "joint-current"),
                 }
 
 
@@ -951,7 +993,9 @@ class SilverChangeTests(unittest.TestCase):
                 assert gold.recipe(2).import_runs == frozenset(
                     {
                         RecipeImportRun(
-                            built.import_run_id, sha256(EXPORT).hexdigest(), None
+                            built.import_run_id,
+                            sha256(EXPORT).hexdigest(),
+                            "joint-current",
                         )
                     }
                 )

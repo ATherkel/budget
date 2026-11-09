@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 
 from budget.cli import main
 from budget.dashboard import create_app
+from budget.gold.recipe import RecipeImportRun
 from budget.gold.store import GoldStore
 from budget.profiles import load_profile_file
 
@@ -105,6 +106,9 @@ def test_the_demo_recipe_names_complete_silver_provenance(tmp_path: Path) -> Non
         recipe = store.recipe(1)
     assert recipe.silver_fingerprint_scheme == "1"
     assert re.fullmatch("[0-9a-f]{64}", recipe.silver_result_fingerprint or "")
+    assert recipe.import_runs == frozenset(
+        {RecipeImportRun("synthetic-dashboard-demo", "a" * 64, "demo-current")}
+    )
     assert (
         recipe.silver_identity_version,
         recipe.silver_code_version,

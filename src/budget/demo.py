@@ -113,7 +113,7 @@ def _publish(profile: Profile, accounts: tuple[Account, ...]) -> None:
     configuration = _configuration(accounts)
     recipe = Recipe(
         import_runs=frozenset(
-            {RecipeImportRun("synthetic-dashboard-demo", "a" * 64, None)}
+            {RecipeImportRun("synthetic-dashboard-demo", "a" * 64, "demo-current")}
         ),
         configuration_fingerprint=configuration.fingerprint,
         decision_log_position=0,
