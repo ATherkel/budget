@@ -40,7 +40,7 @@ jobs:
           tool: skipping ruff
       - name: Setup uv
         if: steps.changes.outputs.docs_only != 'true'
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - name: Sync dependencies
         if: steps.changes.outputs.docs_only != 'true'
         run: uv sync --locked
@@ -65,7 +65,7 @@ jobs:
           tool: skipping ty
       - name: Setup uv
         if: steps.changes.outputs.docs_only != 'true'
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - name: Sync dependencies
         if: steps.changes.outputs.docs_only != 'true'
         run: uv sync --locked
@@ -87,7 +87,7 @@ jobs:
           tool: skipping complexipy
       - name: Setup uv
         if: steps.changes.outputs.docs_only != 'true'
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - name: Sync dependencies
         if: steps.changes.outputs.docs_only != 'true'
         run: uv sync --locked
