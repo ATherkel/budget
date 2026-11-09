@@ -43,6 +43,7 @@ from budget.decision_log import (
     SILVER_DECISION_KINDS,
 )
 from budget.demo import DEFAULT_DEMO_PORT, DemoDirectoryExistsError, create_demo_profile
+from budget.finding import find_transactions
 from budget.gold.storage import GOLD_STAGE
 from budget.gold.store import GoldStore, UndoUnavailableError
 from budget.importing import (
@@ -730,7 +731,9 @@ def _find(
     account: str | None,
 ) -> None:
     """Find transactions in the current publication."""
-    del profile, text, month, account
+    del month, account
+    found = find_transactions(profile, text)
+    sys.stdout.write(summaries.find_summary(found))
 
 
 def _transaction(profile: Profile, handle: str) -> str:
