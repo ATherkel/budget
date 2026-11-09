@@ -397,6 +397,39 @@ class FindCommandTests(unittest.TestCase):
                 )
             assert allocation.category_id == "groceries"
 
+    def test_no_match_prints_one_line_and_succeeds(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _profile_with_transactions(
+                Path(directory),
+                (
+                    _silver_transaction(
+                        CURRENT_ID,
+                        CURRENT,
+                        date(2026, 3, 1),
+                        "-45.00",
+                        "MENY GROCERY",
+                    ),
+                    _silver_transaction(
+                        SAVINGS_ID,
+                        SAVINGS,
+                        date(2026, 3, 2),
+                        "-20.00",
+                        "MENY SAVINGS",
+                    ),
+                    _silver_transaction(
+                        OTHER_ID,
+                        CURRENT,
+                        date(2026, 3, 3),
+                        "-5.00",
+                        "CAFE",
+                    ),
+                ),
+            )
+
+            result = find_transaction(profile_file, "no such merchant")
+
+            assert result == (EXIT_OK, "No transactions matched.\n", "")
+
 
 if __name__ == "__main__":
     unittest.main()
