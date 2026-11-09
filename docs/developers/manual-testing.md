@@ -148,12 +148,10 @@ as a MENY purchase, and put its printed handle in `$handle`:
 $handle = "b6a05be4"
 ```
 
-Classify it as eating out. When correcting an earlier decision, identify that
-decision with `--supersedes`:
+Classify it as eating out:
 
 ```powershell
 uv run budget decide classify $handle eating-out --reason "dev test"
-uv run budget decide classify $handle groceries --reason "dev test: correction" --supersedes d-0001
 ```
 
 Expect exit 0, then the completeness output after lines like these, with your
@@ -173,7 +171,7 @@ as it was:
 | Do | Expect |
 | --- | --- |
 | `uv run budget decide classify $handle groceries --reason "dev test"` | Rejected: `<transaction_id> is already decided by d-0001, which supersedes does not list` |
-| The same with `--supersedes d-0001` | Exit 0, `Recorded d-0002.`; `Changes` moves the amount from eating-out to groceries |
+| `uv run budget decide classify $handle groceries --supersedes d-0001 --reason "dev test"` | Exit 0, `Recorded d-0002.`; `Changes` moves the amount from eating-out to groceries |
 | `uv run budget decide classify $handle no-such-category --supersedes d-0002 --reason "dev test"` | Rejected: `category "no-such-category" is not in the taxonomy` |
 | `uv run budget decide classify zzzzzzzz groceries --reason "dev test"` | Rejected: `no transaction in Silver has the handle "zzzzzzzz"` |
 
