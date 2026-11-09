@@ -28,8 +28,8 @@ from budget.silver import (
     result_fingerprint,
 )
 from budget.silver.identity import IDENTITY_VERSION
-from tests.cli.commands import decide, find_transaction
-from tests.cli.pipelines import TAXONOMY, write_inputs
+from tests.cli.commands import decide, find_transaction, rebuild, undo
+from tests.cli.pipelines import TAXONOMY, household, write_inputs
 from tests.cli.profile_files import development_profile, write_profile
 from tests.gold.publishing import CONFIGURATION, RECIPE, publication
 from tests.gold.worked_example import ACCOUNTS, CATEGORIES, CURRENT, SAVINGS
@@ -476,6 +476,36 @@ class FindCommandTests(unittest.TestCase):
                 4,
                 "",
                 "budget: nothing is published: Gold has no current publication\n",
+            )
+
+    def test_find_refuses_after_voiding_a_run_and_undoing_the_publication(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            status, _, stderr = decide(
+                built.profile_file,
+                "void-import-run",
+                built.import_run_id,
+                "--reason",
+                "Synthetic wrong range",
+            )
+            assert (status, stderr) == (EXIT_OK, "")
+            status, _, stderr = undo(built.profile_file)
+            assert (status, stderr) == (EXIT_OK, "")
+
+            result = find_transaction(built.profile_file, "CAF\u00c9")
+
+            assert result == (
+                4,
+                "",
+                (
+                    "budget: the current Gold publication has matching "
+                    "transactions that are not in current Silver; run "
+                    "`budget rebuild` to publish Gold from current Silver "
+                    "before using `budget find`\n"
+                ),
             )
 
     def test_find_leaves_every_store_and_the_current_publication_unchanged(
