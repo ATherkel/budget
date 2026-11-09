@@ -83,6 +83,10 @@ A recipe holds inputs only, so two recipes can be compared before anything is
 built. The recipe also records the Python and SQLite versions that ran the
 build.
 They are diagnostic only and not part of the recipe's identity.
+Silver's decision-log position and prefix hash are also left out of the
+recipe's identity: they record where Silver read the log, for audit. The log
+can move while Silver's result stays the same, as a Gold-only decision does,
+and Silver's result fingerprint decides whether Gold republishes.
 
 ### Gold Acceptance
 

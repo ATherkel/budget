@@ -4,7 +4,9 @@
 A recipe names each input exactly and never by "latest", so two recipes can be
 compared before anything is built: equal recipes describe the same build. The
 Python and SQLite versions that ran the build are recorded beside it for
-diagnosis, and take no part in that comparison.
+diagnosis, and take no part in that comparison. Nor do Silver's decision-log
+position and prefix: the log can move while Silver's result stays the same,
+and Silver's result fingerprint decides whether Gold republishes.
 """
 
 from dataclasses import dataclass, field
@@ -36,6 +38,19 @@ class Recipe:
     of the log through them. `late_booking_days` is the profile's window at the
     build, in whole days. `code_version` is None where the profile records
     none, as a development build does.
+
+    The `silver_` fields copy the provenance of the Silver result the build
+    read (`silver-layer.md`, *Build provenance*): its fingerprint scheme and
+    result fingerprint, Silver's code version, where Silver read the decision
+    log, the Bronze parser provenance, the account currencies it consumed, and
+    the Silver decisions it applied, in order. `silver_decision_log_position`
+    and `silver_decision_log_prefix_sha256` record where Silver read the log,
+    for audit, and take no part in equality. The log can move while Silver's
+    result stays the same, as a Gold-only decision does. Silver's effect on
+    Gold is already named by `silver_result_fingerprint` and
+    `silver_decisions`, and `decision_log_prefix_sha256` covers the whole log
+    Gold read. A recipe stored before Silver provenance was kept reads back
+    with every `silver_` field empty and `silver_identity_version` None.
     """
 
     import_runs: frozenset[RecipeImportRun]
