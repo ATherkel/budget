@@ -362,20 +362,18 @@ class PipelineRebuild:
 
 
 def _recipe(
-    profile: Profile,
-    silver: SilverResult,
-    provenance: SilverProvenance,
-    household: HouseholdInputs,
+    profile: Profile, provenance: SilverProvenance, household: HouseholdInputs
 ) -> Recipe:
-    """Name every input a build from `silver` and the household's files reads.
+    """Name every input a build from Silver and the household's files reads.
 
-    Silver's part is its `provenance`: what built the Silver result Gold reads.
+    Silver's part is its `provenance`: what built the Silver result Gold reads,
+    including the import runs it consumed, voided ones too.
     """
     log = household.log
     return Recipe(
         import_runs=frozenset(
             RecipeImportRun(run.import_run_id, run.payload_id, None)
-            for run in (*silver.import_run_results, *silver.evidence_exports)
+            for run in provenance.import_runs
         ),
         configuration_fingerprint=household.configuration.fingerprint,
         decision_log_position=log.position,
@@ -419,7 +417,7 @@ def _plan_gold(
         silver.provenance.currencies,
         household.configuration.accounts,
     )
-    recipe = _recipe(profile, silver.result, silver.provenance, household)
+    recipe = _recipe(profile, silver.provenance, household)
     with GoldStore(profile) as gold:
         current = gold.current()
         if (
