@@ -42,11 +42,11 @@ class Recipe:
     late_booking_days: int
     python_version: str = field(compare=False)
     sqlite_version: str = field(compare=False)
-    silver_fingerprint_scheme: str | None = None
-    silver_result_fingerprint: str | None = None
-    silver_code_version: str | None = None
-    silver_decision_log_position: int | None = None
-    silver_decision_log_prefix_sha256: str | None = None
-    silver_bronze_parser_provenance: str | None = None
-    silver_currencies: frozenset[tuple[str, str]] = frozenset()
-    silver_decisions: tuple[SilverDecision, ...] = ()
+    silver_fingerprint_scheme: str | None
+    silver_result_fingerprint: str | None
+    silver_code_version: str | None
+    silver_decision_log_position: int | None
+    silver_decision_log_prefix_sha256: str | None
+    silver_bronze_parser_provenance: str | None
+    silver_currencies: frozenset[tuple[str, str]]
+    silver_decisions: tuple[SilverDecision, ...]

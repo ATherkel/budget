@@ -76,6 +76,14 @@ class FirstPublicationTests(unittest.TestCase):
                     late_booking_days=7,
                     python_version="",
                     sqlite_version="",
+                    silver_fingerprint_scheme=None,
+                    silver_result_fingerprint=None,
+                    silver_code_version=None,
+                    silver_decision_log_position=None,
+                    silver_decision_log_prefix_sha256=None,
+                    silver_bronze_parser_provenance=None,
+                    silver_currencies=frozenset(),
+                    silver_decisions=(),
                 )
                 transactions = gold.open(1).transactions(
                     start_date=date(2026, 3, 1), end_date=date(2026, 3, 31)

@@ -31,6 +31,14 @@ RECIPE = Recipe(
     late_booking_days=7,
     python_version="3.12.14",
     sqlite_version="3.53.1",
+    silver_fingerprint_scheme=None,
+    silver_result_fingerprint=None,
+    silver_code_version=None,
+    silver_decision_log_position=None,
+    silver_decision_log_prefix_sha256=None,
+    silver_bronze_parser_provenance=None,
+    silver_currencies=frozenset(),
+    silver_decisions=(),
 )
 
 

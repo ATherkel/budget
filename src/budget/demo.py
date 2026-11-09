@@ -121,6 +121,14 @@ def _publish(profile: Profile, accounts: tuple[Account, ...]) -> None:
         late_booking_days=7,
         python_version=sys.version.split()[0],
         sqlite_version=sqlite3.sqlite_version,
+        silver_fingerprint_scheme=None,
+        silver_result_fingerprint=None,
+        silver_code_version=None,
+        silver_decision_log_position=None,
+        silver_decision_log_prefix_sha256=None,
+        silver_bronze_parser_provenance=None,
+        silver_currencies=frozenset(),
+        silver_decisions=(),
     )
     publication = GoldPublication(
         publication_id=1,
