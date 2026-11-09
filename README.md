@@ -200,6 +200,26 @@ that kind's items and no runs. A filter that matches nothing exits 0 and prints
 nothing. Review only reads the persisted Silver result: it takes no writer lock
 and needs neither a Bronze store nor `accounts.toml`.
 
+`budget find <text> [--month YYYY-MM] [--account <id>]` searches every
+transaction in the current publication, whether classified or not. The text
+match ignores case, and the optional month and account filters apply together.
+Each target line uses review's format and ends with the published category, or
+`category unclassified`. The handle is at least eight characters long and is
+lengthened when another Silver transaction shares its prefix.
+
+To correct any transaction, first find it, then classify it. If an earlier
+decision applies, name that decision with `--supersedes`:
+
+```powershell
+uv run budget find MENY
+uv run budget decide classify <handle> groceries --reason "Correct merchant"
+uv run budget decide classify <handle> eating-out --reason "Wrong category" --supersedes d-0001
+```
+
+`find` is read-only. It leaves the stores and current publication unchanged,
+and every handle it prints resolves through `decide` to the same Silver
+transaction.
+
 `migrate_bronze` refuses the production profile: production is migrated only
 by `budget migrate`, which backs the store up first (see below).
 `BronzeStore(profile, parsers=...)` accepts an optional mapping for

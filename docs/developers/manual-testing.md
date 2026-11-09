@@ -131,16 +131,29 @@ handle first:
   target b6a05be4  joint-current  2026-03-02  -120.00 DKK  "MENY HOVEDGADE"  bank category Mad
 ```
 
-Pick one, such as a MENY purchase, and put its handle in `$handle`:
+To find or correct a transaction that is already classified, search the
+current publication instead. Filters are optional and can be combined:
+
+```powershell
+uv run budget find MENY
+uv run budget find MENY --month 2026-03 --account joint-current
+```
+
+Each match prints the same target fields and its published category, or
+`category unclassified`. The handle is usually eight characters; `find`
+lengthens it when another transaction shares that prefix. Pick a match, such
+as a MENY purchase, and put its printed handle in `$handle`:
 
 ```powershell
 $handle = "b6a05be4"
 ```
 
-Classify it as eating out:
+Classify it as eating out. When correcting an earlier decision, identify that
+decision with `--supersedes`:
 
 ```powershell
 uv run budget decide classify $handle eating-out --reason "dev test"
+uv run budget decide classify $handle groceries --reason "dev test: correction" --supersedes d-0001
 ```
 
 Expect exit 0, then the completeness output after lines like these, with your
