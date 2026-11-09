@@ -208,7 +208,7 @@ def _undo_after_catch_up(
 
 @dataclass(frozen=True)
 class Restored:
-    """What `restore` did: the set, the newer sets passed over, the inputs put back.
+    """What `restore` did: the set, newer complete sets passed over, inputs put back.
 
     `put_back` names each household input the profile had lost, by its path
     in the set, which was copied from the set. `replayed` counts the import
@@ -304,7 +304,7 @@ def _named(profile: Profile, sets: tuple[BackupSet, ...], name: str) -> BackupSe
 def newest_readable(
     profile: Profile, sets: tuple[BackupSet, ...]
 ) -> tuple[BackupSet, tuple[str, ...]]:
-    """Return the newest set this code can read, and the newer ones passed over."""
+    """Return the newest complete set this code can read, and newer ones passed over."""
     skipped: list[str] = []
     for found in sets:
         try:
@@ -644,7 +644,8 @@ def restore(lock: WriterLock, name: str | None = None, *, now: datetime) -> Rest
     """Restore every store of one complete set; report what was restored.
 
     `name` selects the set; without it, the newest complete set this code
-    can read is taken, and every newer set is passed over.
+    can read is taken, and every newer complete set is passed over and named.
+    Incomplete sets were dropped before this, unnamed.
     """
     profile = lock.profile
     sets = complete_backup_sets(profile)
