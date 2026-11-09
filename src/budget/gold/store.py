@@ -661,6 +661,8 @@ class GoldStore:
             raise ConfigurationMismatchError(
                 recipe.configuration_fingerprint, configuration.fingerprint
             )
+        if not _has_silver_provenance(recipe):
+            raise SilverRecipeUnavailableError
         publication = result.publication()
         if publication.kind != "pipeline":
             raise PublicationKindError(publication.kind)
@@ -1100,6 +1102,23 @@ def _write_recipe(
             (publication_id, ordinal, *_recipe_decision_row(decision))
             for ordinal, decision in enumerate(recipe.silver_decisions, start=1)
         ),
+    )
+
+
+def _has_silver_provenance(recipe: Recipe) -> bool:
+    """Whether a new recipe names every required part of Silver's provenance.
+
+    Silver's code version may be None, as for any development build.
+    """
+    return all(
+        field is not None
+        for field in (
+            recipe.silver_fingerprint_scheme,
+            recipe.silver_result_fingerprint,
+            recipe.silver_decision_log_position,
+            recipe.silver_decision_log_prefix_sha256,
+            recipe.silver_bronze_parser_provenance,
+        )
     )
 
 
