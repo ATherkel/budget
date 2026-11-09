@@ -10,6 +10,7 @@ import re
 import sqlite3
 import unittest
 from contextlib import closing
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -27,6 +28,7 @@ from budget.silver import (
     SilverResult,
     SilverStore,
     VoidImportRun,
+    result_fingerprint,
 )
 from budget.silver.currencies import UnknownCurrencyError
 from tests.cli.commands import rebuild
@@ -396,6 +398,42 @@ class RecipeNamesSilversRunsTests(unittest.TestCase):
 
 
 class SilverChangeTests(unittest.TestCase):
+    def test_changed_silver_under_the_same_runs_publishes_a_new_gold_result(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            with SilverStore(built.profile) as silver:
+                original = silver.read_build()
+                assert original.provenance is not None
+                changed_result = replace(
+                    original.result,
+                    transactions=tuple(
+                        replace(transaction, description="CHANGED")
+                        for transaction in original.result.transactions
+                    ),
+                )
+                silver.replace(
+                    changed_result,
+                    currencies=original.currencies,
+                    provenance=replace(
+                        original.provenance,
+                        result_fingerprint=result_fingerprint(
+                            changed_result, currencies=original.provenance.currencies
+                        ),
+                    ),
+                )
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 2" in stdout
+            with GoldStore(built.profile) as gold:
+                first, second = gold.recipe(1), gold.recipe(2)
+            assert first.import_runs == second.import_runs
+            assert first.silver_result_fingerprint != second.silver_result_fingerprint
+
     def test_changing_a_consumed_account_currency_refuses_gold(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
