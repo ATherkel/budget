@@ -3,8 +3,15 @@ name: Code Quality
 # Hard gate for Python code: ruff (lint and format), ty (types) and complexipy
 # (cognitive complexity <= 15, mirroring SonarQube rule python:S3776). Every
 # job must pass; make each one a required status check on `main`. The jobs
-# always run, so docs-only PRs report the checks too and never wait on a check
-# that cannot start.
+# always run, so every PR reports the checks and never waits on a check that
+# cannot start.
+#
+# On a docs-only pull request (every changed path under docs/ or ending in
+# .md) each job passes after its "Detect docs-only change" step and skips the
+# rest, since no Python changed. Pushes to main always run the full gate. The
+# detection lives in .github/actions/docs-only, and each job runs it itself
+# rather than through a shared `needs:` job: a failed shared job would skip
+# these jobs, and a skipped required check would let the PR merge unchecked.
 
 on:
   pull_request:
@@ -24,13 +31,24 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Detect docs-only change
+        id: changes
+        uses: ./.github/actions/docs-only
+        with:
+          tool: skipping ruff
       - name: Setup uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        if: steps.changes.outputs.docs_only != 'true'
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - name: Sync dependencies
+        if: steps.changes.outputs.docs_only != 'true'
         run: uv sync --locked
       - name: Lint
+        if: steps.changes.outputs.docs_only != 'true'
         run: uv run ruff check --output-format=github .
       - name: Format
+        if: steps.changes.outputs.docs_only != 'true'
         run: uv run ruff format --check .
 
   ty:
@@ -38,11 +56,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Detect docs-only change
+        id: changes
+        uses: ./.github/actions/docs-only
+        with:
+          tool: skipping ty
       - name: Setup uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        if: steps.changes.outputs.docs_only != 'true'
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - name: Sync dependencies
+        if: steps.changes.outputs.docs_only != 'true'
         run: uv sync --locked
       - name: Type check
+        if: steps.changes.outputs.docs_only != 'true'
         run: uv run ty check --output-format=github
 
   complexity:
@@ -50,9 +78,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Detect docs-only change
+        id: changes
+        uses: ./.github/actions/docs-only
+        with:
+          tool: skipping complexipy
       - name: Setup uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        if: steps.changes.outputs.docs_only != 'true'
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - name: Sync dependencies
+        if: steps.changes.outputs.docs_only != 'true'
         run: uv sync --locked
       - name: Cognitive complexity
+        if: steps.changes.outputs.docs_only != 'true'
         run: uv run complexipy

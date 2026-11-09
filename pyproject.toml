@@ -8,10 +8,10 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.142.2",
+    "fastapi>=0.162.0",
     "jinja2>=3.1.6",
     "python-multipart>=0.0.32",
-    "tzdata>=2026.5",
+    "tzdata>=2026.6",
     "uvicorn>=0.54.0",
 ]
 
@@ -69,6 +69,11 @@ max-complexity = 15
 
 [tool.ruff.format]
 docstring-code-format = true
+
+[tool.pytest.ini_options]
+markers = [
+    "docs: reads docs/ or README.md; tests/conftest.py adds it by module",
+]
 
 [tool.ty.rules]
 # Promote every ty warning to an error so the gate cannot pass with warnings.
