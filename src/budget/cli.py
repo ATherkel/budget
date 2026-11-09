@@ -45,7 +45,12 @@ from budget.decision_log import (
     SILVER_DECISION_KINDS,
 )
 from budget.demo import DEFAULT_DEMO_PORT, DemoDirectoryExistsError, create_demo_profile
-from budget.finding import FindInputError, InvalidMonthError, find_transactions
+from budget.finding import (
+    FindInputError,
+    InvalidMonthError,
+    PublicationSilverMismatchError,
+    find_transactions,
+)
 from budget.gold.models import ReportingMonth
 from budget.gold.storage import GOLD_STAGE
 from budget.gold.store import GoldStore, UndoUnavailableError
@@ -1132,6 +1137,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         RestoreWriteError,
         NotRefreshableError,
         NotProductionsSetError,
+        PublicationSilverMismatchError,
         InputsNotReplacedError,
         RefreshWriteError,
         RefreshUndoError,

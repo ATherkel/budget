@@ -37,6 +37,18 @@ class UnknownAccountError(FindInputError):
         super().__init__(f'--account "{account}" is not declared in accounts.toml')
 
 
+class PublicationSilverMismatchError(RuntimeError):
+    """A Gold match cannot be resolved against the current Silver result."""
+
+    def __init__(self) -> None:
+        """Explain the state and name the command that realigns Gold."""
+        super().__init__(
+            "the current Gold publication has matching transactions that are "
+            "not in current Silver; run `budget rebuild` to publish Gold from "
+            "current Silver before using `budget find`"
+        )
+
+
 @dataclass(frozen=True)
 class FoundTransaction:
     """One matching published transaction and its current category."""
@@ -103,10 +115,21 @@ def find_transactions(
         silver_ids = tuple(
             transaction.transaction_id for transaction in silver.read().transactions
         )
+    search = text.casefold()
+    matching_transactions = tuple(
+        transaction
+        for transaction in transactions
+        if search in transaction.description.casefold()
+    )
+    silver_id_set = set(silver_ids)
+    if any(
+        transaction.transaction_id not in silver_id_set
+        for transaction in matching_transactions
+    ):
+        raise PublicationSilverMismatchError
     category_ids = {
         allocation.transaction_id: allocation.category_id for allocation in allocations
     }
-    category_id = text.casefold()
     matches = tuple(
         FoundTransaction(
             transaction_id=transaction.transaction_id,
@@ -118,8 +141,7 @@ def find_transactions(
             description=transaction.description,
             category_id=category_ids.get(transaction.transaction_id),
         )
-        for transaction in transactions
-        if category_id in transaction.description.casefold()
+        for transaction in matching_transactions
     )
     return FindResult(
         publication.publication_id,
