@@ -128,6 +128,17 @@ class ConfigurationMismatchError(ValueError):
         )
 
 
+class SilverRecipeUnavailableError(ValueError):
+    """A publication was offered without complete Silver provenance."""
+
+    def __init__(self) -> None:
+        """Say which input is missing and how to supply it."""
+        super().__init__(
+            "the Gold recipe has no complete Silver provenance; run "
+            "`budget rebuild --from silver` before publishing; nothing was published"
+        )
+
+
 @dataclass(frozen=True)
 class PointerMove:
     """One move of the current pointer (`publications.md`, *Pointer history*).

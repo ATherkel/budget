@@ -41,6 +41,7 @@ from budget.gold.store import (
     PointerMove,
     PublicationIdError,
     PublicationKindError,
+    SilverRecipeUnavailableError,
     StaleResultsWarning,
 )
 from budget.profiles import Profile
@@ -426,6 +427,27 @@ def test_a_recipe_round_trips_every_consumed_run_with_its_account(
     assert RecipeImportRun("run-current", "a" * 64, CURRENT) != RecipeImportRun(
         "run-current", "a" * 64, SAVINGS
     )
+
+
+@pytest.mark.parametrize(
+    "missing",
+    [
+        "silver_fingerprint_scheme",
+        "silver_result_fingerprint",
+        "silver_decision_log_position",
+        "silver_decision_log_prefix_sha256",
+        "silver_bronze_parser_provenance",
+    ],
+)
+def test_a_recipe_without_complete_silver_provenance_is_refused(
+    store: GoldStore, missing: str
+) -> None:
+    incomplete = replace(RECIPE, **{missing: None})
+
+    with pytest.raises(SilverRecipeUnavailableError):
+        store.publish(GoldResult(publication(1), RECORDS), incomplete, CONFIGURATION)
+
+    assert store.current() is None
 
 
 def test_a_configuration_other_than_the_recipes_is_refused(store: GoldStore) -> None:
