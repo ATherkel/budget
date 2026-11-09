@@ -478,6 +478,68 @@ class FindCommandTests(unittest.TestCase):
                 "budget: nothing is published: Gold has no current publication\n",
             )
 
+    def test_find_leaves_every_store_and_the_current_publication_unchanged(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = _profile_with_transactions(
+                folder,
+                (
+                    _silver_transaction(
+                        CURRENT_ID,
+                        CURRENT,
+                        date(2026, 3, 1),
+                        "-45.00",
+                        "MENY GROCERY",
+                    ),
+                    _silver_transaction(
+                        SAVINGS_ID,
+                        SAVINGS,
+                        date(2026, 3, 2),
+                        "-20.00",
+                        "MENY SAVINGS",
+                    ),
+                    _silver_transaction(
+                        OTHER_ID,
+                        CURRENT,
+                        date(2026, 3, 3),
+                        "-5.00",
+                        "CAFE",
+                    ),
+                ),
+            )
+            profile = development_profile(folder)
+            before = {
+                str(path.relative_to(profile.stores)): path.read_bytes()
+                for path in profile.stores.rglob("*")
+                if path.is_file() and not path.name.endswith(("-wal", "-shm"))
+            }
+            with GoldStore(profile, read_only=True) as store:
+                current_before = store.current()
+                assert current_before is not None
+
+            status, stdout, stderr = find_transaction(
+                profile_file,
+                "meny",
+                "--month",
+                "2026-03",
+                "--account",
+                CURRENT,
+            )
+
+            after = {
+                str(path.relative_to(profile.stores)): path.read_bytes()
+                for path in profile.stores.rglob("*")
+                if path.is_file() and not path.name.endswith(("-wal", "-shm"))
+            }
+            with GoldStore(profile, read_only=True) as store:
+                current_after = store.current()
+            assert (status, stderr) == (EXIT_OK, "")
+            assert CURRENT in stdout
+            assert after == before
+            assert current_after == current_before
+
 
 if __name__ == "__main__":
     unittest.main()
