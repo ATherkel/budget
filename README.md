@@ -220,6 +220,12 @@ uv run budget decide classify <handle> eating-out --reason "Wrong category" --su
 and every handle it prints resolves through `decide` to the same Silver
 transaction.
 
+If any matching transaction in the current Gold publication is absent from
+current Silver, `find` refuses the whole search before printing targets. This
+can follow `undo` after a decision removed transactions from Silver. Run
+`budget rebuild` to publish Gold from current Silver; the decision log and
+Silver decisions are retained.
+
 `migrate_bronze` refuses the production profile: production is migrated only
 by `budget migrate`, which backs the store up first (see below).
 `BronzeStore(profile, parsers=...)` accepts an optional mapping for

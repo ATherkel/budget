@@ -202,6 +202,12 @@ into `$inbox\<account_id>\`, then import it with a corrected range in
 `covers_from` in `imports.jsonl`. Decisions on its transactions apply again,
 because the transactions keep their IDs.
 
+If you run `budget undo` after voiding the run, the prior Gold publication is
+current again while Silver still applies the void decision. `budget find` for
+one of that publication's transactions exits 4 and prints no targets because
+Silver cannot resolve those handles. Run `budget rebuild` to publish Gold from
+current Silver. The decision log and void decision stay in place.
+
 The other kinds take their own options (`pair <handle> <handle>`,
 `one-sided-transfer <handle> --counterpart <account_id>`,
 `same-transaction <handle> --record <payload_id>:<ordinal>`); see
