@@ -754,7 +754,14 @@ class SilverChangeTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_OK, "")
             assert "published publication 2" in stdout
             with GoldStore(built.profile) as gold:
-                assert gold.recipe(2).import_runs == frozenset()
+                # Silver consumed the voided run, so the recipe names it.
+                assert gold.recipe(2).import_runs == frozenset(
+                    {
+                        RecipeImportRun(
+                            built.import_run_id, sha256(EXPORT).hexdigest(), None
+                        )
+                    }
+                )
                 transactions = gold.open(2).transactions(
                     start_date=date(2026, 3, 1), end_date=date(2026, 3, 31)
                 )
