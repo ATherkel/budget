@@ -132,10 +132,10 @@ class SilverRecipeUnavailableError(ValueError):
     """A publication was offered without complete Silver provenance."""
 
     def __init__(self) -> None:
-        """Say which input is missing and how to supply it."""
+        """Name the defect: no caller should build such a recipe."""
         super().__init__(
-            "the Gold recipe has no complete Silver provenance; run "
-            "`budget rebuild --from silver` before publishing; nothing was published"
+            "a Gold recipe was built without complete Silver provenance; "
+            "this is a defect; nothing was published"
         )
 
 
