@@ -434,6 +434,7 @@ def test_a_recipe_round_trips_every_consumed_run_with_its_account(
     [
         "silver_fingerprint_scheme",
         "silver_result_fingerprint",
+        "silver_identity_version",
         "silver_decision_log_position",
         "silver_decision_log_prefix_sha256",
         "silver_bronze_parser_provenance",
@@ -831,6 +832,9 @@ def test_a_store_at_schema_version_3_migrates_and_keeps_its_publications(
         assert recipe.silver_currencies == frozenset()
         assert recipe.silver_decisions == ()
         assert store.next_publication_id() == 2
+        # The "1" stored before version 6 was the Gold build's own constant,
+        # not what built Silver, so the Silver identity version is unknown.
+        assert recipe.silver_identity_version is None
 
 
 def test_schema_6_recipe_runs_migrate_with_unknown_legacy_accounts(
