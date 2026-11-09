@@ -282,6 +282,53 @@ class FindCommandTests(unittest.TestCase):
                 )
             ]
 
+    def test_month_and_account_filters_apply_together(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _profile_with_transactions(
+                Path(directory),
+                (
+                    _silver_transaction(
+                        CURRENT_ID,
+                        CURRENT,
+                        date(2026, 3, 1),
+                        "-45.00",
+                        "MENY CURRENT MARCH",
+                    ),
+                    _silver_transaction(
+                        SAVINGS_ID,
+                        SAVINGS,
+                        date(2026, 4, 1),
+                        "-20.00",
+                        "MENY SAVINGS APRIL",
+                    ),
+                    _silver_transaction(
+                        OTHER_ID,
+                        SAVINGS,
+                        date(2026, 3, 2),
+                        "-5.00",
+                        "MENY SAVINGS MARCH",
+                    ),
+                ),
+            )
+
+            status, stdout, stderr = find_transaction(
+                profile_file,
+                "meny",
+                "--month",
+                "2026-03",
+                "--account",
+                SAVINGS,
+            )
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout.splitlines() == [
+                (
+                    f"{TARGET_PREFIX}{OTHER_ID[:8]}  {SAVINGS}"
+                    '  2026-03-02  -5.00 DKK  "MENY SAVINGS MARCH"'
+                    "  category unclassified"
+                )
+            ]
+
 
 if __name__ == "__main__":
     unittest.main()
