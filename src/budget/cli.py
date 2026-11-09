@@ -44,6 +44,7 @@ from budget.decision_log import (
 )
 from budget.demo import DEFAULT_DEMO_PORT, DemoDirectoryExistsError, create_demo_profile
 from budget.finding import find_transactions
+from budget.gold.models import ReportingMonth
 from budget.gold.storage import GOLD_STAGE
 from budget.gold.store import GoldStore, UndoUnavailableError
 from budget.importing import (
@@ -731,8 +732,12 @@ def _find(
     account: str | None,
 ) -> None:
     """Find transactions in the current publication."""
-    del month, account
-    found = find_transactions(profile, text)
+    selected_month = None
+    if month is not None:
+        year, calendar_month = month.split("-")
+        selected_month = ReportingMonth(int(year), int(calendar_month))
+    del account
+    found = find_transactions(profile, text, month=selected_month)
     sys.stdout.write(summaries.find_summary(found))
 
 

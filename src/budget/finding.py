@@ -1,6 +1,7 @@
 # Copyright 2026 Therkel
 """Find transaction handles in the current Gold publication, without writing."""
 
+from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -41,15 +42,23 @@ def find_transactions(
     account: str | None = None,
 ) -> FindResult:
     """Search current published descriptions without changing either store."""
-    del month, account
+    del account
+    start_date, end_date = date.min, date.max
+    if month is not None:
+        start_date = date(month.year, month.month, 1)
+        end_date = date(
+            month.year,
+            month.month,
+            monthrange(month.year, month.month)[1],
+        )
     with GoldStore(profile, read_only=True) as store:
         publication = store.current()
         if publication is None:
             return FindResult(0, ())
         gold = store.open(publication.publication_id)
         transactions = gold.transactions(
-            start_date=date.min,
-            end_date=date.max,
+            start_date=start_date,
+            end_date=end_date,
         )
         allocations = gold.category_allocations(
             start_date=date.min,
