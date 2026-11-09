@@ -491,10 +491,13 @@ def _bank_category(target: GoldReviewTarget) -> str:
     return f"bank category {category}"
 
 
-def gold_target_line(target: _TargetContext, detail: str) -> str:
+def gold_target_line(
+    target: _TargetContext, detail: str, *, handle: str | None = None
+) -> str:
     """One target's account, date, money, description, and contextual detail."""
+    shown_handle = target.transaction_id[:8] if handle is None else handle
     return (
-        f"  target {target.transaction_id[:8]}  {target.account_id}"
+        f"  target {shown_handle}  {target.account_id}"
         f"  {target.transaction_date.isoformat()}"
         f"  {target.amount} {target.currency}"
         f"  {_quoted_terminal_text(target.description)}"
@@ -507,7 +510,9 @@ def find_summary(found: FindResult) -> str:
     lines: list[str] = []
     for match in found.matches:
         category = match.category_id or "unclassified"
-        lines.append(f"{gold_target_line(match, f'category {category}')}\n")
+        lines.append(
+            f"{gold_target_line(match, f'category {category}', handle=match.handle)}\n"
+        )
     return "".join(lines)
 
 
