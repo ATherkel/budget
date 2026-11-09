@@ -241,6 +241,47 @@ class FindCommandTests(unittest.TestCase):
                 )
             ]
 
+    def test_account_narrows_matching_transactions_to_that_account(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _profile_with_transactions(
+                Path(directory),
+                (
+                    _silver_transaction(
+                        CURRENT_ID,
+                        CURRENT,
+                        date(2026, 3, 1),
+                        "-45.00",
+                        "MENY CURRENT",
+                    ),
+                    _silver_transaction(
+                        SAVINGS_ID,
+                        SAVINGS,
+                        date(2026, 3, 2),
+                        "-20.00",
+                        "MENY SAVINGS",
+                    ),
+                    _silver_transaction(
+                        OTHER_ID,
+                        CURRENT,
+                        date(2026, 3, 3),
+                        "-5.00",
+                        "CAFE",
+                    ),
+                ),
+            )
+
+            status, stdout, stderr = find_transaction(
+                profile_file, "meny", "--account", SAVINGS
+            )
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout.splitlines() == [
+                (
+                    f"{TARGET_PREFIX}{SAVINGS_ID[:8]}  {SAVINGS}"
+                    '  2026-03-02  -20.00 DKK  "MENY SAVINGS"  category unclassified'
+                )
+            ]
+
 
 if __name__ == "__main__":
     unittest.main()
