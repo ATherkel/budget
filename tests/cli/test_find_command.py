@@ -464,6 +464,20 @@ class FindCommandTests(unittest.TestCase):
                 ),
             )
 
+    def test_no_publication_is_refused_instead_of_reported_as_no_match(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            migrate_gold(development_profile(folder))
+
+            result = find_transaction(profile_file, "meny")
+
+            assert result == (
+                4,
+                "",
+                "budget: nothing is published: Gold has no current publication\n",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
