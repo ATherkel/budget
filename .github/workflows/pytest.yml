@@ -5,8 +5,13 @@ name: Pytest
 # gate in quality.yml because later jobs here (a package build, for example)
 # will depend on the tests passing through `needs: pytest`, and `needs:` only
 # reaches jobs in the same workflow. Make `pytest` a required status check on
-# `main`. The job always runs, so docs-only PRs report the check too and never
-# wait on a check that cannot start.
+# `main`. The job always runs, so every PR reports the check and never waits
+# on a check that cannot start.
+#
+# A docs-only pull request (every changed path under docs/ or ending in .md)
+# runs only `pytest -m docs`: the tests that read docs/ or README.md, which
+# tests/conftest.py marks by module. Every other PR, and every push to main,
+# runs the full suite. The detection lives in .github/actions/docs-only.
 
 on:
   pull_request:
@@ -26,6 +31,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Detect docs-only change
+        id: changes
+        uses: ./.github/actions/docs-only
+        with:
+          tool: running only the docs-marked tests
       - name: Setup uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - name: Sync dependencies
@@ -34,9 +46,15 @@ jobs:
         # pytest exits 5 when it collects no tests. Accept that only while the
         # repository has no tests/ directory; once tests exist, collecting
         # none is a failure.
+        env:
+          DOCS_ONLY: ${{ steps.changes.outputs.docs_only }}
         run: |
           status=0
-          uv run pytest || status=$?
+          if [ "$DOCS_ONLY" = true ]; then
+            uv run pytest -m docs || status=$?
+          else
+            uv run pytest || status=$?
+          fi
           if [ "$status" -eq 5 ] && [ ! -d tests ]; then
             echo "::notice::No tests/ directory yet; nothing to run."
             exit 0
