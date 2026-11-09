@@ -42,7 +42,6 @@ def find_transactions(
     account: str | None = None,
 ) -> FindResult:
     """Search current published descriptions without changing either store."""
-    del account
     start_date, end_date = date.min, date.max
     if month is not None:
         start_date = date(month.year, month.month, 1)
@@ -51,6 +50,7 @@ def find_transactions(
             month.month,
             monthrange(month.year, month.month)[1],
         )
+    account_ids = None if account is None else {account}
     with GoldStore(profile, read_only=True) as store:
         publication = store.current()
         if publication is None:
@@ -59,10 +59,12 @@ def find_transactions(
         transactions = gold.transactions(
             start_date=start_date,
             end_date=end_date,
+            account_ids=account_ids,
         )
         allocations = gold.category_allocations(
             start_date=date.min,
             end_date=date.max,
+            account_ids=account_ids,
         )
         currencies = {
             account_record.account_id: account_record.currency

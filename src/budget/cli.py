@@ -736,8 +736,7 @@ def _find(
     if month is not None:
         year, calendar_month = month.split("-")
         selected_month = ReportingMonth(int(year), int(calendar_month))
-    del account
-    found = find_transactions(profile, text, month=selected_month)
+    found = find_transactions(profile, text, month=selected_month, account=account)
     sys.stdout.write(summaries.find_summary(found))
 
 
