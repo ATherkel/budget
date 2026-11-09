@@ -114,28 +114,87 @@ line comparing it with the previous publication. Then:
 Change `"NETTO"` to `"netto"` in `rules.toml`, or add a comment, then
 `uv run budget rebuild`. Expect unchanged: the meaning is the same.
 
-The decisions below assume an empty log. Pick the latest MENY purchase in the
-current publication (the highest `publication_id` while there is no undo):
+Decisions are recorded with `budget decide`, which checks each one, appends
+it to `decisions.jsonl` and rebuilds. Never edit the log by hand. The
+decisions below assume an empty log, so the first is `d-0001`.
+
+List what is waiting to be classified:
 
 ```powershell
-$id = uv run python -c "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); p=c.execute('select max(publication_id) from publications').fetchone()[0]; print(c.execute(""select transaction_id from transactions where publication_id=? and description like 'MENY%' order by transaction_date desc limit 1"",(p,)).fetchone()[0])" "$stores\gold.db"
+uv run budget review --kind unclassified
 ```
 
-Classify it as eating out. Expect a new publication, with the amount under
-Eating out:
+Each item shows its transaction on a `target` line, with its 8-character
+handle first:
+
+```text
+  target b6a05be4  joint-current  2026-03-02  -120.00 DKK  "MENY HOVEDGADE"  bank category Mad
+```
+
+Pick one, such as a MENY purchase, and put its handle in `$handle`:
 
 ```powershell
-Add-Content "$inputs\decisions.jsonl" "{`"format`": 1, `"entry`": 1, `"decision_id`": `"d-0001`", `"recorded_at`": `"2026-10-27T18:00:00Z`", `"kind`": `"classify`", `"targets`": [`"$id`"], `"category`": `"eating-out`", `"reason`": `"dev test`", `"supersedes`": []}"
-uv run budget rebuild
+$handle = "b6a05be4"
 ```
 
-Retract it. Expect a new publication whose figures match the one before the
-decision:
+Classify it as eating out:
 
 ```powershell
-Add-Content "$inputs\decisions.jsonl" '{"format": 1, "entry": 2, "decision_id": "d-0002", "recorded_at": "2026-10-27T18:05:00Z", "kind": "retract", "targets": [], "reason": "dev test", "supersedes": ["d-0001"]}'
-uv run budget rebuild
+uv run budget decide classify $handle eating-out --reason "dev test"
 ```
+
+Expect exit 0, then the completeness output after lines like these, with your
+own amount, month and publication number:
+
+```text
+Recorded d-0001.
+Gold     published publication 2 (cause build)
+Changes  2026-03 joint-current: expenses +120.00 DKK; category eating-out +120.00 DKK; group food +120.00 DKK; unclassified out +120.00 DKK; unclassified count -1
+Review  1 unclassified closed
+```
+
+Each rejection exits 3, starts with
+`budget: the decision was rejected; nothing was recorded:` and leaves the log
+as it was:
+
+| Do | Expect |
+| --- | --- |
+| `uv run budget decide classify $handle groceries --reason "dev test"` | Rejected: `<transaction_id> is already decided by d-0001, which supersedes does not list` |
+| The same with `--supersedes d-0001` | Exit 0, `Recorded d-0002.`; `Changes` moves the amount from eating-out to groceries |
+| `uv run budget decide classify $handle no-such-category --supersedes d-0002 --reason "dev test"` | Rejected: `category "no-such-category" is not in the taxonomy` |
+| `uv run budget decide classify zzzzzzzz groceries --reason "dev test"` | Rejected: `no transaction in Silver has the handle "zzzzzzzz"` |
+
+Retract it. Expect exit 0, `Recorded d-0003.`, and a publication whose figures
+match the one before d-0001: `Changes` reverses the first decision's line, and
+`Review  1 unclassified opened`.
+
+```powershell
+uv run budget decide retract --supersedes d-0002 --reason "dev test"
+```
+
+### Voiding an import run
+
+A run declared with the wrong range is voided, then its export is imported
+again with the right one. Take the newest run from the import log, and void
+it:
+
+```powershell
+$run = (Get-Content "$inputs\imports.jsonl" | Select-Object -Last 1 | ConvertFrom-Json).import_run_id
+uv run budget decide void-import-run $run --reason "dev test: wrong range"
+```
+
+Expect `Recorded d-0004.`, then the Silver lines, because a Silver decision
+rebuilds from Silver. The run is shown as `unrecorded`, and `Changes` takes
+its transactions out. Copy its export from `$exports\<account_id>\` back
+into `$inbox\<account_id>\`, then import it with a corrected range in
+`$ranges`. Expect `[1] <account>  stored` as a new run with the new
+`covers_from` in `imports.jsonl`. Decisions on its transactions apply again,
+because the transactions keep their IDs.
+
+The other kinds take their own options (`pair <handle> <handle>`,
+`one-sided-transfer <handle> --counterpart <account_id>`,
+`same-transaction <handle> --record <payload_id>:<ordinal>`); see
+`operations.md`, *Commands*.
 
 ## Refusals
 
@@ -285,7 +344,30 @@ quarantined runs. Then:
 `import` and `rebuild` print the block to the terminal only. It never changes
 their exit codes and never reaches `commands.jsonl`.
 
-`check` is added by #303.
+`check` validates every input file and the decision log, and compares the log
+with the prefix every Gold recipe recorded. It builds nothing, writes nothing
+and takes no lock, so it too is safe at any point. Reading `gold.db` may leave
+`gold.db-wal` and `gold.db-shm` beside it. SQLite keeps these for every
+reader in WAL mode, and they are harmless (see
+[WAL sidecar files left by read-only reads](../../.out-of-scope/wal-sidecars-on-read-only-reads.md)).
+
+```powershell
+uv run budget check; $LASTEXITCODE
+```
+
+On valid inputs it prints `No problems found.` and `0`. Then break one thing
+at a time, run the same command, and put the file back before the next row:
+
+| Break | Expect | Put back |
+| --- | --- | --- |
+| Add `[category.broken]` with `name = "Broken"` and `group = "nowhere"` to `taxonomy.toml` | `taxonomy.toml: category "broken": group "nowhere" is not declared`, then `1 problem. Nothing was built.` and `3` | `Copy-Item "$backup\taxonomy.toml" $inputs` |
+| The same, and a second error in `rules.toml` | Both problems, then `2 problems. Nothing was built.` and `3`: a refused file does not hide the other | Copy both back from `$backup` |
+| `Add-Content "$inputs\decisions.jsonl" '{"format": 1' -NoNewline` | `decisions.jsonl: entry N: the final line has no line feed, so it was cut off while being written; delete it` and `3`; `Get-FileHash` on the log is the same before and after `check` | `Copy-Item "$backup\decisions.jsonl" $inputs` |
+| With a publication built after at least one decision, change one letter inside the log's first entry | `decisions.jsonl: publication N was built from the log through entry M, which no longer matches; restore the log from the newest backup set`, once per publication, and `5` | `Copy-Item "$backup\decisions.jsonl" $inputs`, then `check` prints `No problems found.` |
+| Move `gold.db` aside | Inputs checked as usual, no prefix check, and nothing created in `$stores` | Move it back |
+
+Exit `5` wins over `3`: with both kinds of problem, every line is listed and
+the command exits `5`.
 
 ## Clean up
 

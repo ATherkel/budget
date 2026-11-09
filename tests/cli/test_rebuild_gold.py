@@ -7,7 +7,9 @@ back through `GoldStore`, so a test sees what a dashboard would.
 
 import json
 import re
+import sqlite3
 import unittest
+from contextlib import closing
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -19,7 +21,13 @@ from budget.gold.store import GoldStore
 from budget.inputs import load_configuration
 from budget.locking import WriterLock, writer_lock
 from budget.rebuilding import GoldRebuild, HouseholdInputs, rebuild_from_gold
-from budget.silver import SilverStore, VoidImportRun
+from budget.silver import (
+    SameTransaction,
+    SilverResult,
+    SilverStore,
+    VoidImportRun,
+)
+from budget.silver.currencies import UnknownCurrencyError
 from tests.cli.commands import rebuild
 from tests.cli.pipelines import (
     EXPORT,
@@ -29,6 +37,7 @@ from tests.cli.pipelines import (
 )
 
 EXIT_OK = 0
+EXIT_REFUSED_INPUT = 3
 EXIT_REFUSED_ENVIRONMENT = 4
 
 
@@ -75,6 +84,86 @@ class FirstPublicationTests(unittest.TestCase):
 
 
 class UnchangedRecipeTests(unittest.TestCase):
+    def test_rebuild_records_the_decision_log_context_it_consumed(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "void-import-run",
+                "targets": [built.import_run_id],
+                "reason": "synthetic void",
+                "supersedes": [],
+            }
+            encoded = (json.dumps(decision) + "\n").encode()
+            built.profile.input_file("decisions.jsonl").write_bytes(encoded)
+
+            status, _, stderr = rebuild(built.profile_file, "--from", "silver")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            with SilverStore(built.profile) as silver:
+                provenance = silver.read_build().provenance
+            assert provenance is not None
+            assert provenance.decisions == (
+                VoidImportRun("d-0001", built.import_run_id),
+            )
+            assert provenance.decision_log_position == 1
+            assert provenance.decision_log_prefix_sha256 == sha256(encoded).hexdigest()
+            assert provenance.code_version is None
+
+    def test_an_unchanged_silver_rebuild_does_not_replace_its_store(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            with SilverStore(built.profile) as silver:
+                before = silver.read_build()
+            with closing(sqlite3.connect(built.profile.silver_store)) as connection:
+                connection.execute(
+                    "CREATE TRIGGER ignore_build_insert BEFORE INSERT"
+                    " ON silver_builds BEGIN SELECT RAISE(IGNORE); END"
+                )
+                connection.commit()
+
+            status, stdout, stderr = rebuild(built.profile_file, "--from", "silver")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "nothing was published" in stdout
+            with SilverStore(built.profile) as silver:
+                assert silver.read_build() == before
+
+    def test_a_gold_only_decision_rewrites_silver_provenance(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            with SilverStore(built.profile) as silver:
+                before = silver.read_build()
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "classify",
+                "targets": [before.result.transactions[0].transaction_id],
+                "category": "groceries",
+                "reason": "synthetic classification",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n",
+                encoding="utf-8",
+            )
+
+            status, _, stderr = rebuild(built.profile_file, "--from", "silver")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            with SilverStore(built.profile) as silver:
+                after = silver.read_build()
+            assert after.result == before.result
+            assert after.provenance != before.provenance
+            assert after.provenance is not None
+            assert after.provenance.decision_log_position == 1
+
     def test_a_second_rebuild_with_nothing_changed_publishes_nothing(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
@@ -209,12 +298,394 @@ class RecipeNamesSilversRunsTests(unittest.TestCase):
 
 
 class SilverChangeTests(unittest.TestCase):
+    def test_changing_a_consumed_account_currency_refuses_gold(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            accounts = built.profile.accounts_file.read_text(encoding="utf-8")
+            built.profile.accounts_file.write_text(
+                accounts.replace('currency = "DKK"', 'currency = "EUR"', 1),
+                encoding="utf-8",
+            )
+
+            try:
+                result = rebuild(built.profile_file)
+            except UnknownCurrencyError:
+                result = None
+
+            assert result is not None
+            status, stdout, stderr = result
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert stdout == ""
+            assert "consumed currency" in stderr
+            assert "rebuild --from silver" in stderr
+            with GoldStore(built.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
+                assert gold.next_publication_id() == 2
+
+    def test_voided_only_input_still_requires_its_consumed_currency(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "void-import-run",
+                "targets": [built.import_run_id],
+                "reason": "synthetic mistaken run",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n",
+                encoding="utf-8",
+            )
+            assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+            accounts = built.profile.accounts_file.read_text(encoding="utf-8")
+            built.profile.accounts_file.write_text(
+                accounts.replace('currency = "DKK"', 'currency = "EUR"', 1),
+                encoding="utf-8",
+            )
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert stdout == ""
+            assert "consumed currency" in stderr
+            assert "rebuild --from silver" in stderr
+            with GoldStore(built.profile) as gold:
+                history = gold.pointer_history()
+                assert [move.to_publication_id for move in history] == [1]
+
+    def test_removed_voided_only_account_is_refused_as_undeclared(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "void-import-run",
+                "targets": [built.import_run_id],
+                "reason": "synthetic mistaken run",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n",
+                encoding="utf-8",
+            )
+            assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+            accounts = built.profile.accounts_file.read_text(encoding="utf-8")
+            savings = accounts.index("[account.joint-savings]")
+            built.profile.accounts_file.write_text(
+                "format = 1\n\n" + accounts[savings:],
+                encoding="utf-8",
+            )
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert status == EXIT_REFUSED_INPUT
+            assert stdout == ""
+            assert 'account "joint-current" is not declared' in stderr
+            assert "nothing was published" in stderr
+            with GoldStore(built.profile) as gold:
+                history = gold.pointer_history()
+                assert [move.to_publication_id for move in history] == [1]
+
+    def test_a_retracted_silver_decision_requires_rebuild_then_publishes(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            with SilverStore(built.profile) as silver_store:
+                transaction_id = silver_store.read().transactions[0].transaction_id
+            withdrawal = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "withdrawn",
+                "targets": [transaction_id],
+                "reason": "synthetic withdrawal",
+                "supersedes": [],
+            }
+            log = built.profile.input_file("decisions.jsonl")
+            log.write_text(json.dumps(withdrawal) + "\n", encoding="utf-8")
+            assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+            with GoldStore(built.profile) as gold:
+                before = gold.pointer_history()
+
+            retraction = {
+                "format": 1,
+                "entry": 2,
+                "decision_id": "d-0002",
+                "recorded_at": "2026-04-10T17:02:12Z",
+                "kind": "retract",
+                "targets": [],
+                "reason": "synthetic correction",
+                "supersedes": ["d-0001"],
+            }
+            with log.open("a", encoding="utf-8") as decision_log:
+                decision_log.write(json.dumps(retraction) + "\n")
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert stdout == ""
+            assert "current effective Silver decisions" in stderr
+            assert "budget rebuild --from silver" in stderr
+            with GoldStore(built.profile) as gold:
+                assert gold.pointer_history() == before
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
+                assert gold.next_publication_id() == 2
+
+            status, stdout, stderr = rebuild(built.profile_file, "--from", "silver")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 2" in stdout
+            with SilverStore(built.profile) as silver_store:
+                provenance = silver_store.read_build().provenance
+            assert provenance is not None
+            assert provenance.decisions == ()
+
+    def test_a_superseding_silver_decision_requires_rebuild_then_publishes(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            with SilverStore(built.profile) as silver_store:
+                result = silver_store.read()
+            transaction_id = result.transactions[0].transaction_id
+            evidence = next(
+                item
+                for item in result.transaction_evidence
+                if item.transaction_id == transaction_id
+            )
+            withdrawal = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "withdrawn",
+                "targets": [transaction_id],
+                "reason": "synthetic withdrawal",
+                "supersedes": [],
+            }
+            log = built.profile.input_file("decisions.jsonl")
+            log.write_text(json.dumps(withdrawal) + "\n", encoding="utf-8")
+            assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+            with GoldStore(built.profile) as gold:
+                before = gold.pointer_history()
+
+            same_transaction = {
+                "format": 1,
+                "entry": 2,
+                "decision_id": "d-0002",
+                "recorded_at": "2026-04-10T17:02:12Z",
+                "kind": "same-transaction",
+                "targets": [transaction_id],
+                "reason": "synthetic re-presentation",
+                "supersedes": ["d-0001"],
+                "record": {
+                    "payload_id": evidence.payload_id,
+                    "record_ordinal": evidence.record_ordinal,
+                },
+            }
+            with log.open("a", encoding="utf-8") as decision_log:
+                decision_log.write(json.dumps(same_transaction) + "\n")
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert stdout == ""
+            assert "current effective Silver decisions" in stderr
+            assert "budget rebuild --from silver" in stderr
+            with GoldStore(built.profile) as gold:
+                assert gold.pointer_history() == before
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
+                assert gold.next_publication_id() == 2
+
+            status, stdout, stderr = rebuild(built.profile_file, "--from", "silver")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 2" in stdout
+            with SilverStore(built.profile) as silver_store:
+                provenance = silver_store.read_build().provenance
+            assert provenance is not None
+            assert provenance.decisions == (
+                SameTransaction(
+                    "d-0002",
+                    transaction_id,
+                    evidence.payload_id,
+                    evidence.record_ordinal,
+                ),
+            )
+
+    def test_an_lf_delimited_prefix_allows_gold_only_decisions_to_extend(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            with SilverStore(built.profile) as silver_store:
+                transaction_id = silver_store.read().transactions[0].transaction_id
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "classify",
+                "targets": [transaction_id],
+                "category": "groceries",
+                "reason": "synthetic classification",
+                "supersedes": [],
+            }
+            log = built.profile.input_file("decisions.jsonl")
+            log.write_text("\r" + json.dumps(decision) + "\n", encoding="utf-8")
+            assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "nothing was published" in stdout
+
+            retraction = {
+                "format": 1,
+                "entry": 2,
+                "decision_id": "d-0002",
+                "recorded_at": "2026-04-10T17:02:12Z",
+                "kind": "retract",
+                "targets": [],
+                "reason": "synthetic correction",
+                "supersedes": ["d-0001"],
+            }
+            with log.open("a", encoding="utf-8") as decision_log:
+                decision_log.write(json.dumps(retraction) + "\n")
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 2" in stdout
+            with GoldStore(built.profile) as gold:
+                assert gold.recipe(2).decision_log_position == 2
+                assert (
+                    gold.recipe(2).decision_log_prefix_sha256
+                    == sha256(log.read_bytes()).hexdigest()
+                )
+
+    def test_a_changed_or_truncated_consumed_prefix_refuses_gold(self) -> None:
+        cases = ("changed", "truncated")
+        for case in cases:
+            with self.subTest(case), TemporaryDirectory() as directory:
+                built = household(Path(directory))
+                with SilverStore(built.profile) as silver_store:
+                    transaction_id = silver_store.read().transactions[0].transaction_id
+                decision = {
+                    "format": 1,
+                    "entry": 1,
+                    "decision_id": "d-0001",
+                    "recorded_at": "2026-04-10T17:02:11Z",
+                    "kind": "classify",
+                    "targets": [transaction_id],
+                    "category": "groceries",
+                    "reason": "synthetic classification",
+                    "supersedes": [],
+                }
+                log = built.profile.input_file("decisions.jsonl")
+                original = json.dumps(decision) + "\n"
+                log.write_text(original, encoding="utf-8")
+                assert rebuild(built.profile_file, "--from", "silver")[0] == EXIT_OK
+                with GoldStore(built.profile) as gold:
+                    before = gold.pointer_history()
+
+                if case == "changed":
+                    log.write_text(
+                        json.dumps(decision | {"recorded_at": "2026-04-10T17:02:12Z"})
+                        + "\n",
+                        encoding="utf-8",
+                    )
+                else:
+                    log.write_bytes(original.encode()[:20])
+
+                status, stdout, stderr = rebuild(built.profile_file)
+
+                assert status == EXIT_REFUSED_ENVIRONMENT
+                assert stdout == ""
+                assert "decision-log prefix" in stderr
+                assert "budget rebuild --from silver" in stderr
+                with GoldStore(built.profile) as gold:
+                    assert gold.pointer_history() == before
+                    current = gold.current()
+                    assert current is not None
+                    assert current.publication_id == 1
+                    assert gold.next_publication_id() == 2
+
+    def test_an_unapplied_silver_decision_refuses_gold_then_rebuild_restores_it(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "void-import-run",
+                "targets": [built.import_run_id],
+                "reason": "synthetic void",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n",
+                encoding="utf-8",
+            )
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert stdout == ""
+            assert "current effective Silver decisions" in stderr
+            assert "budget rebuild --from silver" in stderr
+            with GoldStore(built.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
+                assert gold.next_publication_id() == 2
+
+            status, stdout, stderr = rebuild(built.profile_file, "--from", "silver")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 2" in stdout
+            with SilverStore(built.profile) as silver_store:
+                stored = silver_store.read_build()
+            assert stored.result.transactions == ()
+            assert stored.provenance is not None
+            assert stored.provenance.decisions == (
+                VoidImportRun("d-0001", built.import_run_id),
+            )
+
     def test_a_voided_run_changes_silver_and_publishes_a_new_publication(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
             assert rebuild(built.profile_file)[0] == EXIT_OK
             rebuild_silver_with(
                 built.profile, VoidImportRun("d-0001", built.import_run_id)
+            )
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "void-import-run",
+                "targets": [built.import_run_id],
+                "reason": "synthetic void",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n",
+                encoding="utf-8",
             )
 
             status, stdout, stderr = rebuild(built.profile_file)
@@ -230,6 +701,51 @@ class SilverChangeTests(unittest.TestCase):
 
 
 class NeverBuiltSilverTests(unittest.TestCase):
+    def test_unknown_silver_provenance_refuses_gold(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            with SilverStore(built.profile) as store:
+                store.replace(
+                    SilverResult((), (), (), (), (), (), (), ()),
+                    currencies={"joint-current": "DKK"},
+                )
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert stdout == ""
+            assert "no trustworthy build provenance" in stderr
+            assert "rebuild --from silver" in stderr
+            with GoldStore(built.profile) as gold:
+                assert gold.current() is None
+                assert gold.next_publication_id() == 1
+
+    def test_future_silver_provenance_is_refused_by_this_gold_consumer(
+        self,
+    ) -> None:
+        cases = {
+            "fingerprint scheme": (
+                "UPDATE silver_builds SET fingerprint_scheme = '999'",
+            ),
+            "identity contract": ("UPDATE silver_builds SET identity_version = '999'",),
+        }
+        for name, (statement,) in cases.items():
+            with self.subTest(name), TemporaryDirectory() as directory:
+                built = household(Path(directory))
+                with closing(sqlite3.connect(built.profile.silver_store)) as store:
+                    store.execute(statement)
+                    store.commit()
+
+                status, stdout, stderr = rebuild(built.profile_file)
+
+                assert status == EXIT_REFUSED_ENVIRONMENT
+                assert stdout == ""
+                assert "Silver provenance" in stderr
+                assert "rebuild --from silver" in stderr
+                with GoldStore(built.profile) as gold:
+                    assert gold.current() is None
+                    assert gold.pointer_history() == ()
+
     def test_a_gold_rebuild_over_a_silver_never_built_refuses(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory), silver=False)
@@ -260,6 +776,38 @@ class LateBookingWindowTests(unittest.TestCase):
             with GoldStore(built.profile) as gold:
                 assert gold.recipe(1).late_booking_days == 7
                 assert gold.recipe(2).late_booking_days == 14
+
+
+class EmptyAccountTests(unittest.TestCase):
+    def test_adding_an_empty_account_publishes_without_a_silver_rebuild(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            accounts = built.profile.accounts_file.read_text(encoding="utf-8")
+            built.profile.accounts_file.write_text(
+                accounts
+                + """
+
+[account.joint-empty]
+display_name = "Joint empty"
+account_type = "savings"
+ownership_scope = "household"
+currency = "DKK"
+source_format = "danske-csv-v1"
+""",
+                encoding="utf-8",
+            )
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 2" in stdout
+            with GoldStore(built.profile) as gold:
+                accounts = gold.open(2).accounts()
+                assert {account.account_id for account in accounts} >= {
+                    "joint-current",
+                    "joint-empty",
+                }
 
 
 class RoutineLogTests(unittest.TestCase):

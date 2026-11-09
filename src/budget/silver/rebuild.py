@@ -7,11 +7,15 @@ persisted rebuild takes its one profile authority and that one value rather
 than a long list of positional arguments.
 """
 
+from collections.abc import Mapping, Sequence
+
+from budget.bronze.models import ImportRun
 from budget.locking import WriterLock, writer_lock
 from budget.profiles import Profile
 from budget.silver.build import derive
+from budget.silver.fingerprint import SILVER_FINGERPRINT_SCHEME, result_fingerprint
 from budget.silver.inputs import SilverBuildInputs
-from budget.silver.models import SilverResult
+from budget.silver.models import SilverImportRun, SilverProvenance, SilverResult
 from budget.silver.store import SilverStore
 
 
@@ -46,8 +50,28 @@ def store_silver(
 ) -> None:
     """Replace the stored Silver with `result`, which `inputs` derived."""
     held = profile.profile if isinstance(profile, WriterLock) else profile
+    provenance = silver_provenance(inputs, result)
     with SilverStore(held) as store:
-        store.replace(result, currencies=inputs.currencies)
+        store.replace(result, currencies=inputs.currencies, provenance=provenance)
+
+
+def silver_provenance(
+    inputs: SilverBuildInputs, result: SilverResult
+) -> SilverProvenance:
+    """Name what `inputs` gave the build of `result`, as Silver stores it."""
+    import_runs = _consumed_runs(inputs.runs)
+    consumed_currencies = _consumed_currencies(import_runs, inputs.currencies)
+    return SilverProvenance(
+        fingerprint_scheme=SILVER_FINGERPRINT_SCHEME,
+        result_fingerprint=result_fingerprint(result, currencies=consumed_currencies),
+        import_runs=import_runs,
+        currencies=consumed_currencies,
+        decisions=tuple(inputs.decisions),
+        decision_log_position=inputs.decision_log_position,
+        decision_log_prefix_sha256=inputs.decision_log_prefix_sha256,
+        code_version=inputs.code_version,
+        identity_version=inputs.identity_version,
+    )
 
 
 def _replace(profile: Profile, inputs: SilverBuildInputs) -> SilverResult:
@@ -55,3 +79,22 @@ def _replace(profile: Profile, inputs: SilverBuildInputs) -> SilverResult:
     result = derive_silver(inputs)
     store_silver(profile, inputs, result)
     return result
+
+
+def _consumed_runs(runs: Sequence[ImportRun]) -> frozenset[SilverImportRun]:
+    """Return every stored or repeated run Silver actually interpreted."""
+    return frozenset(
+        SilverImportRun(run.import_run_id, run.payload_id, run.declared_account_id)
+        for run in runs
+        if run.outcome in {"stored", "repeat"}
+    )
+
+
+def _consumed_currencies(
+    runs: frozenset[SilverImportRun], currencies: Mapping[str, str]
+) -> dict[str, str]:
+    """Return the currency projection for exactly the consumed run accounts."""
+    return {
+        account_id: currencies[account_id]
+        for account_id in sorted({run.account_id for run in runs})
+    }

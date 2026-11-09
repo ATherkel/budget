@@ -5,22 +5,21 @@ type: architecture
 
 Status: accepted ([ADR-014](../decisions/ADR-014-gold-publications-and-history.md)),
 with legacy publications added by
-[ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md).
+[ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md), and
+stage-specific producer identity added by
+[ADR-020](../decisions/ADR-020-stage-specific-build-provenance.md).
 Command names and file formats are in [`operations.md`](operations.md).
 
 ## Purpose
 
-A Gold build reads much more than Silver. It reads the account registry, the
-category taxonomy, the classification rules, the manual decisions, the
-transfer matching policy, and the code that implements them. Any of these can
-change, and every change restates history. This document defines what one
-build of Gold is, which build a report reads, what is kept of past builds,
-and what "reproducible" promises.
+This document defines what one Gold publication is, what report reads it,
+what history is kept, and what a reproducible build promises.
 
 The principle behind it is that **a report is a function of recorded inputs**.
-The build never reads the clock or anything else that was not recorded, so a
-past report can always be explained, and it can be shown again exactly
-whenever its code still runs.
+The build never reads the clock or anything else that was not recorded. A
+stored result can always be read, and an unavailable historical result can be
+replayed only when its exact recorded inputs and producer are available, as
+[What Reproducible Promises](#what-reproducible-promises) defines.
 
 ## Terms
 
@@ -48,7 +47,7 @@ answer is a point in time.
 | View | Data | Interpretation | How it is produced |
 | --- | --- | --- | --- |
 | Current | every import run so far | today's | the current publication |
-| As-was at D | import runs started by D | the one in force at D, including its code | the publication current at D, from its retained result or by replaying its recipe |
+| As-was at D | import runs started by D | the one in force at D, including its code | the publication current at D, from its retained result or the [replay prerequisites](#what-reproducible-promises) |
 | As-known-at D | import runs started by D | today's | a new publication of kind `as_known_at` |
 
 The data axis is cut at the import run's recorded `started_at`: the moment the
@@ -74,16 +73,47 @@ A recipe names each input exactly and never by "latest":
 
 | Part | Content |
 | --- | --- |
-| Data | The set of import runs Silver was built from, each with its `import_run_id` and payload hash: the stored runs, admitted or quarantined, and the `repeat` runs of an admitted payload. Silver derives admission and quarantine from these; admission is not an input. A refused run is no input to Silver, so it is not named, and presenting a refused file again publishes nothing. The recipe is read from Silver, never from Bronze, so Gold does not read Bronze. |
+| Silver build | An immutable copy of the provenance consumed from Silver. The exact stored fields are defined under [Silver build provenance](silver-layer.md#build-provenance); Gold reads that stored value and never reads Bronze. |
 | Configuration snapshot | The parsed, canonical content of the account registry, category taxonomy, and classification rules. It is stored once per distinct content and referenced by its fingerprint. |
 | Late-booking window | The profile's `[gold] late_booking_days` at the build, in whole days ([`operations.md`](operations.md#selecting-a-profile)). `late_bookings_settled` depends on it, so changing it requires a new publication, and an earlier publication keeps the window its recipe records. |
-| Decision log position | The last decision-log entry included. The effective decisions are derived from the log up to that entry. |
-| Code version | The commit of the application code, with its locked dependencies, and the Gold contract version and Silver identity version it implements. It also determines the transfer matching policy, which is a constant of the code ([`classification.md`](classification.md#inputs)). |
+| Decision context | The position and prefix hash of the shared Decision log consumed. Effective Gold decisions are derived from the complete entries through that position. |
+| Gold code version | The commit of the application code that built Gold, with its locked dependencies and Gold contract version. It also determines the transfer matching policy, which is a constant of the code ([`classification.md`](classification.md#inputs)). |
 
 A recipe holds inputs only, so two recipes can be compared before anything is
 built. The recipe also records the Python and SQLite versions that ran the
 build.
 They are diagnostic only and not part of the recipe's identity.
+
+### Gold Acceptance
+
+The recipe stores the consumed Silver provenance without rereading current
+Silver or Bronze. Historical Gold recipes that lack Silver provenance remain
+readable and are never backfilled. Before writing a new publication, Gold
+applies this acceptance contract:
+
+| Stored Silver state | Check that decides whether Gold may publish |
+| --- | --- |
+| Unbuilt | No completion marker: refuse with exit 4. |
+| Unknown | A completed result lacks usable provenance: refuse with exit 4. |
+| Incompatible | The fingerprint scheme or Silver identity contract is unsupported: refuse with exit 4. |
+| Stale decision-log prefix | The recorded prefix is no longer a prefix: refuse with exit 4 and name `budget rebuild --from silver`. |
+| Stale effective decisions | Current effective Silver decisions differ from those recorded in provenance: refuse with exit 4 and name `budget rebuild --from silver`. |
+| Stale consumed currencies | A consumed account currency differs: refuse with exit 4 and name `budget rebuild --from silver`. |
+| Fresh | Every required scheme and freshness check passes: continue the Gold build. |
+| Undeclared consumed account | The account is absent from `accounts.toml`: refuse with exit 3, name the account, and require its declaration. |
+
+Unknown, stale, and incompatible provenance remain readable wherever the
+stored shape permits, but none of them can authorize a new publication.
+Gold-only decisions, Gold configuration, and an added empty account leave
+Silver fresh. A Silver rebuild cannot repair a missing account declaration.
+Recovery actions are summarized in
+[Provenance recovery](operations.md#provenance-recovery).
+
+A changed Silver result with the same import-run IDs changes the Gold recipe
+and is not a no-op. Parser provenance and its non-substitution limit are
+defined in [Silver build provenance](silver-layer.md#build-provenance).
+
+### Gold Result Fingerprint
 
 The result belongs to the publication. Its **result fingerprint** is a
 SHA-256 hash over a canonical serialization of every record the publication
@@ -102,28 +132,40 @@ of it; they change with the recipe's code version.
 
 ## What Reproducible Promises
 
-1. **The same recipe yields the same result.** Rebuilding a recipe with the
-   code version it names gives a result with the same fingerprint: the same
-   records, identifiers, and amounts.
+1. **A stored Silver build and its Gold recipe yield the same Gold result.**
+   A retained publication result is read directly. If the result is no longer
+   retained, reproduction requires both the exact consumed Silver result and
+   the recipe's Gold inputs and producer identity; replaying them gives the
+   same Gold fingerprint. A recipe alone cannot reconstruct unavailable
+   historical Silver. Missing prerequisites make replay unavailable; they are
+   not a fingerprint mismatch. The historical applications below use this
+   rule.
 2. **Timestamps never enter the result.** `built_at` is publication metadata
    outside the fingerprint. The build never reads the clock, file modification
    times, environment variables, or import order beyond the order Silver
    derives from recorded fields (ADR-009). Anything that depends on today's
    date, such as the provisional label, is computed when the report is read.
-3. **A code change is attributable.** Different code may give a different
-   result. The recipe names the code, so the difference is explained, and the
-   diff printed on every build shows it. A behavior-neutral code change that
-   keeps the fingerprint scheme yields a new publication with an unchanged
-   result fingerprint.
+3. **Each code change is attributable to its stage.** Silver and Gold record
+   their own producer code. Different code may give a different result, and
+   the diff printed on every build shows it. A behavior-neutral Gold code
+   change that keeps the fingerprint scheme yields a new publication with an
+   unchanged Gold result fingerprint without pretending the Silver producer
+   changed.
 4. **Production only builds from named code.** A production build refuses to
    run when it cannot name its code version exactly, for example from
    uncommitted changes. A development store makes no reproducibility promise:
    a development build may run from uncommitted code, and nothing records
    which code that was. Each profile keeps its own stores
-   ([`operations.md`](operations.md#profiles)).
+   ([`operations.md`](operations.md#profiles)). A producer commit is never
+   backfilled from the checkout that happens to read the store later.
 
 Not promised:
 
+- Replaying through a parser whose identity was not recorded. Silver says its
+  Bronze parser provenance is unknown, and a rebuild may produce a new result
+  when the installed parser changes. `rebuild --from bronze` remains supported,
+  but replaying historical parser output is not promised without a recorded
+  parser identity.
 - Replaying a recipe whose code can no longer run. A publication that must
   outlive its code keeps its result by being labeled, and across a Gold
   migration that cannot convert it, in the pre-migration backup
@@ -159,15 +201,19 @@ An import, a configuration change, a new manual decision, or a new code version
 starts a pipeline build:
 
 1. Bronze has already committed the import run's payload on import.
-2. The build assembles the recipe from the current inputs. If the recipe
-   equals the current publication's recipe, nothing is built or published.
-3. Silver and Gold are derived and checked. A configuration error fails the
-   build (ADR-011).
-4. On success, in one write transaction, the new publication's result is
+2. Silver derives and commits one complete result with one provenance value.
+3. Gold reads that complete stored value and the household inputs, then checks
+   that the Silver provenance is complete, supported, and fresh for the
+   values it would consume ([Gold Acceptance](#gold-acceptance)).
+4. The stage-aware recipe is assembled from those values. If it equals the
+   current publication's recipe, nothing is built or published.
+5. Gold is derived and checked. A configuration, freshness, or compatibility
+   error fails the build before publication (ADR-011, ADR-020).
+6. On success, in one write transaction, the new publication's result is
    stored, the pointer moves to it, and the pointer history records the move.
    A failed build leaves everything as it was, and readers never see a partial
    publication.
-5. The CLI prints a **diff against the previous current publication**: per
+7. The CLI prints a **diff against the previous current publication**: per
    month and account, the measures that changed (income, expenses, each
    category and group, unclassified money, and coverage), and the review items
    opened and closed. The diff contains financial values, so it goes to the
@@ -232,13 +278,11 @@ read-only.
 
 - `view --as-was D --label L` finds the publication that was current at the
   end of D in the pointer history. If its result is retained, it is labeled.
-  Otherwise its recipe is replayed under the same `publication_id`, in a
-  scratch store, and the replay must match the recorded fingerprint. Replay
-  needs the code version the recipe names; the CLI refuses to replay with any
-  other code and names the version to use. A replay keeps the publication's
-  original `built_at` and `known_at`, and records when it happened in
-  `replayed_at`, so the banner and the provisional label stay dated to the
-  original build.
+  Otherwise it uses the exact-input replay in
+  [What Reproducible Promises](#what-reproducible-promises). If an input is
+  unavailable, the result is unavailable; today's code is not a substitute.
+  A successful replay keeps the original `built_at` and `known_at`, records
+  `replayed_at`, and must match the recorded fingerprint.
 - `view --known-at D --label L` builds a new publication of kind
   `as_known_at` from the import runs started by D, with today's
   configuration, decisions, and code. A decision whose target was not yet
@@ -248,21 +292,16 @@ A view can never become current.
 
 ### Verify
 
-`verify` replays the current publication's recipe from Bronze in a scratch
-store and compares the result fingerprint with the recorded one. It publishes
-nothing and changes nothing. It refuses to run when the running code is not
-the code version the recipe names.
-
-- **Match:** reproducibility is shown, and `verify` says so.
-- **Mismatch:** a platform defect, not a data problem, so it never becomes a
-  review item. `verify` fails with a non-zero exit status, prints both
-  fingerprints and the first differing records by key, and leaves the current
-  publication in place. The defect is fixed in code, and the fixed code's
-  next build becomes current as usual.
+Recipe replay by `verify` is deferred with the wider history work
+([#259](https://github.com/ATherkel/budget/issues/259)). When supported, it
+uses the
+[exact-input replay](#what-reproducible-promises) and compares
+the Gold fingerprint without publishing. A mismatch after the prerequisites
+are established is a platform defect.
 
 ### Scratch stores
 
-Views, replays, and `verify` derive Silver and Gold away from the current
+Views, supported replays, and recipe verification work away from the current
 state, in a **scratch store**: a temporary SQLite file in a location the
 profile configures ([`operations.md`](operations.md#stores)). The migrate
 runner creates it from the same migration files, so ADR-013's rule that only the migrate command creates a
@@ -291,13 +330,15 @@ A **result** (the publication's tables) is kept only for:
 - the previous current publication, so `undo` is instant;
 - every labeled publication, until its label is removed.
 
-Any other result is deleted when it stops qualifying. It can be re-created by
-replaying its recipe with the code it names.
+Any other result is deleted when it stops qualifying. Re-creation requires
+the [replay prerequisites](#what-reproducible-promises); retaining a recipe
+alone does not guarantee that its consumed Silver result can be reconstructed.
 
 A Gold schema migration converts the retained results where it can. A result
 it cannot convert survives only in the backup that production takes before
 migrating (ADR-013), which the code version that built it can open. Its recipe
-also remains, and can be replayed with that code version into a separate store.
+also remains; replay into a separate store requires the recorded Gold producer
+and exact consumed Silver, as described above.
 A labeled result is also extracted to its own file and recorded as a legacy
 publication, and retention keeps its backup
 ([ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md),
@@ -445,7 +486,7 @@ Import run-1 starts on 2026-03-03, from an export covering through
 | 5 | 04-12 | `undo` | P3 current again | as step 3 | 3,349.00 | 0.00 |
 | 6 | 04-12 | Delete `r-net` from the rules file | Nothing published: the recipe equals P3's | as step 3 | 3,349.00 | 0.00 |
 | 7 | 05-02 | **Dimension change.** Rename `streaming` to "Subscriptions" and move it from `leisure` to `housing`; logged in `category-changes.md` | P5 current | as step 3 | 3,349.00 | 0.00 |
-| 8 | 05-03 | **Full rebuild.** `verify` rebuilds Silver and Gold from Bronze into a scratch store | Nothing published: the fingerprint equals P5's | as step 3 | 3,349.00 | 0.00 |
+| 8 | 05-03 | **Gold recipe verification (deferred)** | Nothing published when the exact-input replay matches | as step 3 | 3,349.00 | 0.00 |
 | 9 | 06-01 | New code version, with no change in behavior | P6 current, same result fingerprint as P5 | as step 3 | 3,349.00 | 0.00 |
 
 Notes:
@@ -467,8 +508,6 @@ Notes:
 - **Step 7.** No fact or allocation changes. The `GoldCategory` row changes,
   so the result fingerprint changes too. Group rollups restate for every
   month: `leisure` −129.00, `housing` +129.00 in February.
-- **Step 8.** The same recipe and code give the same result. This is the
-  routine proof of reproducibility.
 - **Step 9.** P6's recipe differs from P5's only in its code version. Both
   use the same fingerprint scheme, and the result fingerprint is unchanged.
   That shows the code change was behavior-neutral.
@@ -478,9 +517,12 @@ Pointer history after step 9: P1, P2, P3, P4, P3, P5, P6. Results kept: P6
 
 ### Views, on 2026-06-15
 
+The deferred V1 scenario follows [Verify](#verify); an unretained P1 is
+available only when its exact replay inputs are available.
+
 | # | Request | Publication read | February: groceries / household-goods / gifts / streaming (name, group) | Expenses |
 | --- | --- | --- | --- | --- |
-| V1 | `view --as-was 2026-03-05 --label "March review"` | P1, replayed from its recipe with P1's code; fingerprint verified | 520.00 / 2,400.00 / 0.00 / 129.00 ("Streaming", `leisure`) | 3,049.00 |
+| V1 | `view --as-was 2026-03-05 --label "March review"` | P1, using the deferred exact-input replay | 520.00 / 2,400.00 / 0.00 / 129.00 ("Streaming", `leisure`) | 3,049.00 |
 | V2 | `view --known-at 2026-03-05 --label "Known 5 March"` | P7, kind `as_known_at`: run-1 only, today's interpretation | 520.00 / 0.00 / 2,400.00 / 129.00 ("Subscriptions", `housing`) | 3,049.00 |
 | V3 | the dashboard, default | P6 | 820.00 / 0.00 / 2,400.00 / 129.00 ("Subscriptions", `housing`) | 3,349.00 |
 
@@ -511,8 +553,8 @@ Pointer history after step 9: P1, P2, P3, P4, P3, P5, P6. Results kept: P6
    stored.
 3. Every Gold record belongs to exactly one publication, and every consumer
    read is confined to one.
-4. A build reads only what its recipe names. Rebuilding a recipe with the
-   code version it names yields the same result fingerprint.
+4. A Gold build uses the exact-input reproducibility rule in
+   [What Reproducible Promises](#what-reproducible-promises).
 5. The pointer history and the decision log are append-only.
 6. An `as_known_at` publication is never current.
 7. Every recipe is retained. The results of the current publication, the

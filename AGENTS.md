@@ -11,11 +11,14 @@ or `gh pr merge --body`.
   - Claude Code: `Co-Authored-By: Claude <model> <noreply@anthropic.com>`
   - Codex: `Co-Authored-By: Codex <model> <noreply@openai.com>`
   - GitHub Copilot: `Co-Authored-By: GitHub Copilot <model> <noreply@github.com>`
+  - DeepSeek (via Claude Code harness): `Co-Authored-By: DeepSeek <model> <noreply@deepseek.com>`
 
   Commit under the agent's own identity, never as the owner.
 - **GitHub text** (PR descriptions, issue bodies, comments, reviews): end with
   a footer line `🤖 Generated with <agent> (<model>)`. Claude Code's default
-  `🤖 Generated with [Claude Code](...)` footer satisfies this.
+  `🤖 Generated with [Claude Code](...)` footer satisfies this. A DeepSeek
+  model run through the Claude Code harness is not Claude, so it uses
+  `🤖 Generated with DeepSeek (<model>) via Claude Code` instead.
 - **Edits to existing human text**: leave the owner's words unmarked and tag
   only the part you wrote with `🤖 Added by <agent> (<model>)`.
 - **Relaying the owner's exact words** at their request: end with

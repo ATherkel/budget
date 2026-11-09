@@ -123,6 +123,15 @@ def review(profile_file: Path, *options: str) -> tuple[int, str, str]:
     return status, stdout.getvalue(), stderr.getvalue()
 
 
+def check(profile_file: Path) -> tuple[int, str, str]:
+    """Run `budget check` with one profile file; return status and output."""
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        code = main(["--profile", str(profile_file), "check"], environ={})
+    return code, stdout.getvalue(), stderr.getvalue()
+
+
 def status(profile_file: Path, *, now: datetime | None = None) -> tuple[int, str, str]:
     """Run `budget status` with one profile file; return status and output.
 
@@ -139,6 +148,17 @@ def status(profile_file: Path, *, now: datetime | None = None) -> tuple[int, str
     ):
         code = main(["--profile", str(profile_file), "status"], environ={})
     return code, stdout.getvalue(), stderr.getvalue()
+
+
+def decide(profile_file: Path, *arguments: str) -> tuple[int, str, str]:
+    """Run `budget decide` with one profile file; return status and output."""
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        status = main(
+            ["--profile", str(profile_file), "decide", *arguments], environ={}
+        )
+    return status, stdout.getvalue(), stderr.getvalue()
 
 
 def undo(profile_file: Path) -> tuple[int, str, str]:

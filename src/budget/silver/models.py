@@ -1,11 +1,14 @@
 # Copyright 2026 Therkel
 """Public Silver contracts, as `docs/architecture/silver-layer.md` defines them."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from types import MappingProxyType
 from typing import Literal
+
+from budget.silver.decisions import SilverDecision
 
 type BookingStatus = Literal["booked", "pending", "cancelled"]
 
@@ -140,3 +143,46 @@ class SilverResult:
     evidence_exports: Sequence[EvidenceExport]
     import_run_results: Sequence[ImportRunResult]
     review_items: Sequence[ReviewItem]
+
+
+@dataclass(frozen=True)
+class SilverImportRun:
+    """One import run, payload and declared account consumed by a build."""
+
+    import_run_id: str
+    payload_id: str
+    account_id: str
+
+
+@dataclass(frozen=True)
+class SilverProvenance:
+    """The exact inputs and producer identity recorded with one result."""
+
+    fingerprint_scheme: str
+    result_fingerprint: str
+    import_runs: frozenset[SilverImportRun]
+    currencies: Mapping[str, str]
+    decisions: Sequence[SilverDecision]
+    decision_log_position: int
+    decision_log_prefix_sha256: str
+    code_version: str | None
+    identity_version: str
+    bronze_parser_provenance: Literal["unknown"] = "unknown"
+
+    def __post_init__(self) -> None:
+        """Freeze the nested collections this value owns."""
+        object.__setattr__(self, "currencies", MappingProxyType(dict(self.currencies)))
+        object.__setattr__(self, "decisions", tuple(self.decisions))
+
+
+@dataclass(frozen=True)
+class SilverBuild:
+    """One completed Silver result and the provenance committed beside it."""
+
+    result: SilverResult
+    currencies: Mapping[str, str]
+    provenance: SilverProvenance | None
+
+    def __post_init__(self) -> None:
+        """Freeze the currency mapping this value owns."""
+        object.__setattr__(self, "currencies", MappingProxyType(dict(self.currencies)))

@@ -70,6 +70,11 @@ max-complexity = 15
 [tool.ruff.format]
 docstring-code-format = true
 
+[tool.pytest.ini_options]
+markers = [
+    "docs: reads docs/ or README.md; tests/conftest.py adds it by module",
+]
+
 [tool.ty.rules]
 # Promote every ty warning to an error so the gate cannot pass with warnings.
 all = "error"
