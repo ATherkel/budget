@@ -94,6 +94,30 @@ class FirstPublicationTests(unittest.TestCase):
                 (AcceptDiscrepancy("d-0001", built.import_run_id),),
             )
 
+    def test_the_recipe_names_silvers_producer_not_golds(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            with SilverStore(built.profile) as silver:
+                stored = silver.read_build()
+                assert stored.provenance is not None
+                silver.replace(
+                    stored.result,
+                    currencies=stored.currencies,
+                    provenance=replace(
+                        stored.provenance, code_version="v0.3.0-12-gabc1234"
+                    ),
+                )
+
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+
+            with GoldStore(built.profile) as gold:
+                recipe = gold.recipe(1)
+            # A development build records no code version of its own.
+            assert (recipe.code_version, recipe.silver_code_version) == (
+                None,
+                "v0.3.0-12-gabc1234",
+            )
+
     def test_rebuild_publishes_the_first_publication_from_silver(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
