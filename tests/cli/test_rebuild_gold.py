@@ -398,6 +398,56 @@ class RecipeNamesSilversRunsTests(unittest.TestCase):
 
 
 class SilverChangeTests(unittest.TestCase):
+    def test_a_gold_retry_after_silver_committed_publishes_from_that_silver(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            with SilverStore(built.profile) as silver:
+                transaction_id = silver.read().transactions[0].transaction_id
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "withdrawn",
+                "targets": [transaction_id],
+                "reason": "synthetic withdrawal",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n", encoding="utf-8"
+            )
+            with closing(sqlite3.connect(built.profile.gold_store)) as connection:
+                connection.execute(
+                    "CREATE TRIGGER refuse_result BEFORE INSERT ON results"
+                    " BEGIN SELECT RAISE(ABORT, 'synthetic Gold failure'); END"
+                )
+                connection.commit()
+            # Silver commits before Gold's publication fails.
+            with self.assertRaises(sqlite3.IntegrityError):
+                rebuild(built.profile_file, "--from", "silver")
+            with closing(sqlite3.connect(built.profile.gold_store)) as connection:
+                connection.execute("DROP TRIGGER refuse_result")
+                connection.commit()
+            with GoldStore(built.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 2" in stdout
+            with SilverStore(built.profile) as silver:
+                provenance = silver.read_build().provenance
+            assert provenance is not None
+            with GoldStore(built.profile) as gold:
+                recipe = gold.recipe(2)
+            assert recipe.silver_result_fingerprint == provenance.result_fingerprint
+            assert recipe.silver_decisions == provenance.decisions
+
     def test_changed_silver_under_the_same_runs_publishes_a_new_gold_result(
         self,
     ) -> None:
