@@ -774,5 +774,17 @@ def test_a_store_at_schema_version_3_migrates_and_keeps_its_publications(
         current = store.current()
         assert current is not None
         assert current.publication_id == 1
-        assert store.recipe(1).late_booking_days == 7
+        recipe = store.recipe(1)
+        assert recipe.late_booking_days == 7
+        # Nothing is inferred for a recipe that predates Silver provenance.
+        assert (
+            recipe.silver_fingerprint_scheme,
+            recipe.silver_result_fingerprint,
+            recipe.silver_code_version,
+            recipe.silver_decision_log_position,
+            recipe.silver_decision_log_prefix_sha256,
+            recipe.silver_bronze_parser_provenance,
+        ) == (None, None, None, None, None, None)
+        assert recipe.silver_currencies == frozenset()
+        assert recipe.silver_decisions == ()
         assert store.next_publication_id() == 2
