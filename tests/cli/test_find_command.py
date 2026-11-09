@@ -28,7 +28,7 @@ from budget.silver import (
     result_fingerprint,
 )
 from budget.silver.identity import IDENTITY_VERSION
-from tests.cli.commands import find_transaction
+from tests.cli.commands import decide, find_transaction
 from tests.cli.pipelines import TAXONOMY, write_inputs
 from tests.cli.profile_files import development_profile, write_profile
 from tests.gold.publishing import CONFIGURATION, RECIPE, publication
@@ -87,6 +87,8 @@ def _gold_transaction(
 def _profile_with_transactions(
     folder: Path,
     transactions: tuple[Transaction, ...],
+    *,
+    category_id: str = "groceries",
 ) -> Path:
     """Store matching public Silver and Gold results in one synthetic profile."""
     profile_file = write_profile(folder)
@@ -131,11 +133,11 @@ def _profile_with_transactions(
         _gold_transaction(transactions[2], classified=False, sequence=3),
     )
     allocation = GoldCategoryAllocation(
-        allocation_id=f"{CURRENT_ID}/groceries",
-        transaction_id=CURRENT_ID,
+        allocation_id=f"{transactions[0].transaction_id}/{category_id}",
+        transaction_id=transactions[0].transaction_id,
         account_id=CURRENT,
         transaction_date=transactions[0].transaction_date,
-        category_id="groceries",
+        category_id=category_id,
         amount=transactions[0].amount,
     )
     migrate_gold(profile)
@@ -328,6 +330,72 @@ class FindCommandTests(unittest.TestCase):
                     "  category unclassified"
                 )
             ]
+
+    def test_find_lengthens_colliding_handles_and_decide_resolves_them(self) -> None:
+        first_id = "deadbeef1" + "1" * 55
+        collision_id = "deadbeef2" + "2" * 55
+        other_id = "f0e1d2c3" + "3" * 56
+        with TemporaryDirectory() as directory:
+            profile_file = _profile_with_transactions(
+                Path(directory),
+                (
+                    _silver_transaction(
+                        first_id,
+                        CURRENT,
+                        date(2026, 3, 1),
+                        "-45.00",
+                        "MENY PRIMARY",
+                    ),
+                    _silver_transaction(
+                        collision_id,
+                        SAVINGS,
+                        date(2026, 3, 2),
+                        "-20.00",
+                        "OTHER MATCH",
+                    ),
+                    _silver_transaction(
+                        other_id,
+                        CURRENT,
+                        date(2026, 3, 3),
+                        "-5.00",
+                        "CAFE",
+                    ),
+                ),
+                category_id="rent",
+            )
+
+            status, stdout, stderr = find_transaction(profile_file, "meny")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            (line,) = stdout.splitlines()
+            fields = line.split()
+            assert fields[:3] == ["target", first_id[:9], CURRENT]
+            assert first_id[:8] not in fields
+
+            status, _, stderr = decide(
+                profile_file,
+                "classify",
+                fields[1],
+                "groceries",
+                "--reason",
+                "Roundtrip",
+            )
+
+            assert (status, stderr) == (EXIT_OK, "")
+            profile = development_profile(Path(directory))
+            with GoldStore(profile, read_only=True) as store:
+                current = store.current()
+                assert current is not None
+                gold = store.open(current.publication_id)
+                (allocation,) = (
+                    each
+                    for each in gold.category_allocations(
+                        start_date=date(2026, 3, 1),
+                        end_date=date(2026, 3, 1),
+                    )
+                    if each.transaction_id == first_id
+                )
+            assert allocation.category_id == "groceries"
 
 
 if __name__ == "__main__":
