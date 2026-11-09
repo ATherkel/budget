@@ -45,6 +45,12 @@ from budget.gold.store import (
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 from budget.silver import MoneyPrecisionError
+from budget.silver.decisions import (
+    AcceptDiscrepancy,
+    SameTransaction,
+    VoidImportRun,
+    Withdrawn,
+)
 from budget.sqlstore import StoreBusyError
 from tests.bronze.migration_resources import GOLD_MIGRATIONS, added_migration
 from tests.gold.contract import GoldRepositoryContract
@@ -358,6 +364,47 @@ def test_a_recipe_is_kept_after_its_result_is_deleted(store: GoldStore) -> None:
     assert kept == RECIPE
     # Equality leaves the diagnostic versions out, so they are compared alone.
     assert (kept.python_version, kept.sqlite_version) == ("3.12.14", "3.53.1")
+
+
+def test_a_recipe_keeps_the_silver_provenance_it_was_published_with(
+    store: GoldStore,
+) -> None:
+    published = replace(
+        RECIPE,
+        silver_fingerprint_scheme="1",
+        silver_result_fingerprint="d" * 64,
+        silver_code_version="v0.3.0-12-gabc1234",
+        silver_decision_log_position=4,
+        silver_decision_log_prefix_sha256="e" * 64,
+        silver_bronze_parser_provenance="unknown",
+        silver_currencies=frozenset({(CURRENT, "DKK"), (SAVINGS, "EUR")}),
+        silver_decisions=(
+            AcceptDiscrepancy("decision-1", "run-current"),
+            SameTransaction("decision-2", "transaction-7", "a" * 64, 3),
+            VoidImportRun("decision-3", "run-savings"),
+            Withdrawn("decision-4", "transaction-9"),
+        ),
+    )
+    store.publish(GoldResult(publication(1), RECORDS), published, CONFIGURATION)
+
+    kept = store.recipe(1)
+
+    assert (
+        kept.silver_fingerprint_scheme,
+        kept.silver_result_fingerprint,
+        kept.silver_code_version,
+        kept.silver_decision_log_position,
+        kept.silver_decision_log_prefix_sha256,
+        kept.silver_bronze_parser_provenance,
+    ) == ("1", "d" * 64, "v0.3.0-12-gabc1234", 4, "e" * 64, "unknown")
+    assert kept.silver_currencies == frozenset({(CURRENT, "DKK"), (SAVINGS, "EUR")})
+    # Order is the order Silver applied them in, so it is kept exactly.
+    assert kept.silver_decisions == (
+        AcceptDiscrepancy("decision-1", "run-current"),
+        SameTransaction("decision-2", "transaction-7", "a" * 64, 3),
+        VoidImportRun("decision-3", "run-savings"),
+        Withdrawn("decision-4", "transaction-9"),
+    )
 
 
 def test_a_configuration_other_than_the_recipes_is_refused(store: GoldStore) -> None:
