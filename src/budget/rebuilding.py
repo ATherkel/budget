@@ -51,6 +51,7 @@ from budget.silver import (
     SilverBuild,
     SilverBuildInputs,
     SilverDecision,
+    SilverProvenance,
     SilverResult,
     SilverStore,
     VoidImportRun,
@@ -361,9 +362,15 @@ class PipelineRebuild:
 
 
 def _recipe(
-    profile: Profile, silver: SilverResult, household: HouseholdInputs
+    profile: Profile,
+    silver: SilverResult,
+    provenance: SilverProvenance,
+    household: HouseholdInputs,
 ) -> Recipe:
-    """Name every input a build from `silver` and the household's files reads."""
+    """Name every input a build from `silver` and the household's files reads.
+
+    Silver's part is its `provenance`: what built the Silver result Gold reads.
+    """
     log = household.log
     return Recipe(
         import_runs=frozenset(
@@ -375,18 +382,18 @@ def _recipe(
         decision_log_prefix_sha256=log.prefix_sha256,
         code_version=committed_code_version(profile),
         contract_version=CONTRACT_VERSION,
-        silver_identity_version=IDENTITY_VERSION,
+        silver_identity_version=provenance.identity_version,
         late_booking_days=profile.late_booking_window.days,
         python_version=platform.python_version(),
         sqlite_version=sqlite3.sqlite_version,
-        silver_fingerprint_scheme=None,
-        silver_result_fingerprint=None,
-        silver_code_version=None,
-        silver_decision_log_position=None,
-        silver_decision_log_prefix_sha256=None,
-        silver_bronze_parser_provenance=None,
-        silver_currencies=frozenset(),
-        silver_decisions=(),
+        silver_fingerprint_scheme=provenance.fingerprint_scheme,
+        silver_result_fingerprint=provenance.result_fingerprint,
+        silver_code_version=provenance.code_version,
+        silver_decision_log_position=provenance.decision_log_position,
+        silver_decision_log_prefix_sha256=provenance.decision_log_prefix_sha256,
+        silver_bronze_parser_provenance=provenance.bronze_parser_provenance,
+        silver_currencies=frozenset(provenance.currencies.items()),
+        silver_decisions=tuple(provenance.decisions),
     )
 
 
@@ -412,7 +419,7 @@ def _plan_gold(
         silver.provenance.currencies,
         household.configuration.accounts,
     )
-    recipe = _recipe(profile, silver.result, household)
+    recipe = _recipe(profile, silver.result, silver.provenance, household)
     with GoldStore(profile) as gold:
         current = gold.current()
         if (
