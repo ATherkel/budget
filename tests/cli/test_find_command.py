@@ -39,6 +39,11 @@ CURRENT_ID = "a1b2c3d4" + "1" * 56
 SAVINGS_ID = "b2c3d4e5" + "2" * 56
 OTHER_ID = "c3d4e5f6" + "3" * 56
 TARGET_PREFIX = "  target "
+MISMATCH_REFUSAL = (
+    "budget: the current Gold publication has matching transactions that are "
+    "not in current Silver; run `budget rebuild` to publish Gold from current "
+    "Silver before using `budget find`\n"
+)
 
 
 def _silver_transaction(
@@ -89,6 +94,7 @@ def _profile_with_transactions(
     transactions: tuple[Transaction, ...],
     *,
     category_id: str = "groceries",
+    gold_transactions: tuple[Transaction, ...] | None = None,
 ) -> Path:
     """Store matching public Silver and Gold results in one synthetic profile."""
     profile_file = write_profile(folder)
@@ -127,18 +133,19 @@ def _profile_with_transactions(
     with SilverStore(profile) as store:
         store.replace(silver, currencies=currencies, provenance=provenance)
 
-    gold_transactions = (
-        _gold_transaction(transactions[0], classified=True, sequence=1),
-        _gold_transaction(transactions[1], classified=False, sequence=2),
-        _gold_transaction(transactions[2], classified=False, sequence=3),
+    gold_source = transactions if gold_transactions is None else gold_transactions
+    published_transactions = (
+        _gold_transaction(gold_source[0], classified=True, sequence=1),
+        _gold_transaction(gold_source[1], classified=False, sequence=2),
+        _gold_transaction(gold_source[2], classified=False, sequence=3),
     )
     allocation = GoldCategoryAllocation(
-        allocation_id=f"{transactions[0].transaction_id}/{category_id}",
-        transaction_id=transactions[0].transaction_id,
+        allocation_id=f"{gold_source[0].transaction_id}/{category_id}",
+        transaction_id=gold_source[0].transaction_id,
         account_id=CURRENT,
-        transaction_date=transactions[0].transaction_date,
+        transaction_date=gold_source[0].transaction_date,
         category_id=category_id,
-        amount=transactions[0].amount,
+        amount=gold_source[0].amount,
     )
     migrate_gold(profile)
     with GoldStore(profile) as store:
@@ -148,7 +155,7 @@ def _profile_with_transactions(
                 GoldRecords(
                     accounts=ACCOUNTS,
                     categories=CATEGORIES,
-                    transactions=gold_transactions,
+                    transactions=published_transactions,
                     category_allocations=(allocation,),
                 ),
             ),
@@ -500,13 +507,60 @@ class FindCommandTests(unittest.TestCase):
             assert result == (
                 4,
                 "",
-                (
-                    "budget: the current Gold publication has matching "
-                    "transactions that are not in current Silver; run "
-                    "`budget rebuild` to publish Gold from current Silver "
-                    "before using `budget find`\n"
-                ),
+                MISMATCH_REFUSAL,
             )
+
+    def test_colliding_surviving_transaction_cannot_cause_partial_find_output(
+        self,
+    ) -> None:
+        stale_id = "deadbeef1" + "1" * 55
+        surviving_id = "deadbeef2" + "2" * 55
+        valid_id = "f0e1d2c3" + "3" * 56
+        silver_transactions = (
+            _silver_transaction(
+                surviving_id,
+                SAVINGS,
+                date(2026, 3, 3),
+                "-20.00",
+                "OTHER MATCH",
+            ),
+            _silver_transaction(
+                valid_id,
+                CURRENT,
+                date(2026, 3, 2),
+                "-45.00",
+                "MENY VALID",
+            ),
+            _silver_transaction(
+                "a1b2c3d4" + "4" * 56,
+                CURRENT,
+                date(2026, 3, 4),
+                "-5.00",
+                "CAFE",
+            ),
+        )
+        gold_transactions = (
+            _silver_transaction(
+                stale_id,
+                CURRENT,
+                date(2026, 3, 1),
+                "-45.00",
+                "MENY STALE",
+            ),
+            silver_transactions[1],
+            silver_transactions[0],
+        )
+        with TemporaryDirectory() as directory:
+            profile_file = _profile_with_transactions(
+                Path(directory),
+                silver_transactions,
+                category_id="rent",
+                gold_transactions=gold_transactions,
+            )
+
+            result = find_transaction(profile_file, "meny")
+
+            assert result == (4, "", MISMATCH_REFUSAL)
 
     def test_find_leaves_every_store_and_the_current_publication_unchanged(
         self,
