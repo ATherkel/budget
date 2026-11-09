@@ -33,6 +33,7 @@ from budget.gold import (
     PublicationUnavailableError,
 )
 from budget.gold.models import ReportingMonth
+from budget.gold.recipe import RecipeImportRun
 from budget.gold.storage import migrate_gold, open_gold_connection
 from budget.gold.store import (
     ConfigurationMismatchError,
@@ -404,6 +405,26 @@ def test_a_recipe_keeps_the_silver_provenance_it_was_published_with(
         SameTransaction("decision-2", "transaction-7", "a" * 64, 3),
         VoidImportRun("decision-3", "run-savings"),
         Withdrawn("decision-4", "transaction-9"),
+    )
+
+
+def test_a_recipe_round_trips_every_consumed_run_with_its_account(
+    store: GoldStore,
+) -> None:
+    runs = frozenset(
+        {
+            RecipeImportRun("run-current", "a" * 64, CURRENT),
+            RecipeImportRun("run-savings", "b" * 64, SAVINGS),
+            RecipeImportRun("run-current-repeat", "a" * 64, CURRENT),
+        }
+    )
+    published = replace(RECIPE, import_runs=runs)
+
+    store.publish(GoldResult(publication(1), RECORDS), published, CONFIGURATION)
+
+    assert store.recipe(1) == published
+    assert RecipeImportRun("run-current", "a" * 64, CURRENT) != RecipeImportRun(
+        "run-current", "a" * 64, SAVINGS
     )
 
 
@@ -788,3 +809,91 @@ def test_a_store_at_schema_version_3_migrates_and_keeps_its_publications(
         assert recipe.silver_currencies == frozenset()
         assert recipe.silver_decisions == ()
         assert store.next_publication_id() == 2
+
+
+def test_schema_6_recipe_runs_migrate_with_unknown_legacy_accounts(
+    tmp_path: Path,
+) -> None:
+    profile = make_test_profile(tmp_path)
+    profile.gold_store.parent.mkdir(parents=True)
+    versions = (
+        "0001_create_gold_store.sql",
+        "0002_persist_classification_reviews.sql",
+        "0003_persist_review_target_provenance.sql",
+        "0004_record_late_booking_window.sql",
+        "0005_record_recovery_boundaries.sql",
+        "0006_retain_silver_provenance.sql",
+    )
+    with closing(sqlite3.connect(profile.gold_store)) as connection:
+        connection.execute("PRAGMA journal_mode = WAL")
+        for name in versions:
+            connection.executescript((GOLD_MIGRATIONS / name).read_text("utf-8"))
+        connection.execute("PRAGMA user_version = 6")
+        connection.execute(
+            "INSERT INTO store_identity VALUES (1, ?, 'gold')", (profile.name,)
+        )
+        connection.execute(
+            "INSERT INTO publications VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                1,
+                "pipeline",
+                None,
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:00+00:00",
+                None,
+                "0.2",
+                "synthetic",
+                "0" * 64,
+            ),
+        )
+        connection.execute("INSERT INTO results VALUES (1)")
+        connection.execute(
+            "INSERT INTO pointer_moves VALUES (?, ?, ?, ?, ?)",
+            (1, "2026-01-01T00:00:00+00:00", None, 1, "build"),
+        )
+        connection.execute(
+            "INSERT INTO configuration_snapshots VALUES (?, ?)", ("f" * 64, "{}")
+        )
+        connection.execute(
+            "INSERT INTO recipes (publication_id, configuration_fingerprint,"
+            " decision_log_position, decision_log_prefix_sha256, code_version,"
+            " contract_version, silver_identity_version, late_booking_days,"
+            " python_version, sqlite_version, silver_fingerprint_scheme,"
+            " silver_result_fingerprint, silver_code_version,"
+            " silver_decision_log_position, silver_decision_log_prefix_sha256,"
+            " silver_bronze_parser_provenance)"
+            " VALUES (1,"
+            " 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',"
+            " 0, 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',"
+            " NULL, '0.2', '1', 7, '3.12.0', '3.45.0', '1',"
+            " 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',"
+            " 'silver-old', 0,"
+            " 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',"
+            " 'unknown')"
+        )
+        connection.execute(
+            "INSERT INTO recipe_import_runs"
+            " (publication_id, import_run_id, payload_id)"
+            " VALUES (1, 'run-legacy', 'payload-legacy')"
+        )
+        connection.commit()
+
+    migrate_gold(profile)
+
+    with closing(sqlite3.connect(profile.gold_store)) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone() == (7,)
+        columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(recipe_import_runs)")
+        }
+        assert "account_id" in columns
+    with GoldStore(profile) as store:
+        recipe = store.recipe(1)
+    assert recipe.import_runs == frozenset(
+        {RecipeImportRun("run-legacy", "payload-legacy", None)}
+    )
+    assert (
+        recipe.silver_fingerprint_scheme,
+        recipe.silver_result_fingerprint,
+        recipe.silver_code_version,
+    ) == ("1", "d" * 64, "silver-old")

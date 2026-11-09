@@ -61,7 +61,9 @@ class FirstPublicationTests(unittest.TestCase):
                     import_runs=frozenset(
                         {
                             RecipeImportRun(
-                                built.import_run_id, sha256(EXPORT).hexdigest()
+                                built.import_run_id,
+                                sha256(EXPORT).hexdigest(),
+                                None,
                             )
                         }
                     ),
@@ -300,8 +302,8 @@ class RecipeNamesSilversRunsTests(unittest.TestCase):
             payload = sha256(EXPORT).hexdigest()
             with GoldStore(built.profile) as gold:
                 assert gold.recipe(2).import_runs == {
-                    RecipeImportRun(built.import_run_id, payload),
-                    RecipeImportRun(repeat, payload),
+                    RecipeImportRun(built.import_run_id, payload, None),
+                    RecipeImportRun(repeat, payload, None),
                 }
 
 

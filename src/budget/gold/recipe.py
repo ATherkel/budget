@@ -14,10 +14,16 @@ from budget.silver.decisions import SilverDecision
 
 @dataclass(frozen=True)
 class RecipeImportRun:
-    """One import run a build read, with its payload's SHA-256 (`payload_id`)."""
+    """One import run a build read, with its payload and declared account.
+
+    `payload_id` is the payload's SHA-256. A recipe written before Gold schema
+    7 has no recorded account, represented explicitly as `None`; readers never
+    infer that account from Bronze or a later Silver result.
+    """
 
     import_run_id: str
     payload_id: str
+    account_id: str | None
 
 
 @dataclass(frozen=True)

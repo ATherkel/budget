@@ -111,7 +111,9 @@ def _publish(profile: Profile, accounts: tuple[Account, ...]) -> None:
     now = datetime.now(UTC)
     configuration = _configuration(accounts)
     recipe = Recipe(
-        import_runs=frozenset({RecipeImportRun("synthetic-dashboard-demo", "a" * 64)}),
+        import_runs=frozenset(
+            {RecipeImportRun("synthetic-dashboard-demo", "a" * 64, None)}
+        ),
         configuration_fingerprint=configuration.fingerprint,
         decision_log_position=0,
         decision_log_prefix_sha256="b" * 64,

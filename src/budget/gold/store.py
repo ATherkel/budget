@@ -250,8 +250,9 @@ _INSERT_RECIPE: Final = (
     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 _INSERT_RECIPE_RUNS: Final = (
-    "INSERT INTO recipe_import_runs (publication_id, import_run_id, payload_id)"
-    " VALUES (?, ?, ?)"
+    "INSERT INTO recipe_import_runs"
+    " (publication_id, import_run_id, payload_id, account_id)"
+    " VALUES (?, ?, ?, ?)"
 )
 _INSERT_RECIPE_CURRENCY: Final = (
     "INSERT INTO recipe_silver_currencies"
@@ -271,7 +272,8 @@ _SELECT_RECIPE_DECISIONS: Final = (
 _SELECT_RECIPE: Final = "SELECT * FROM recipes WHERE publication_id = ?"
 _SELECT_RECIPE_IDS: Final = "SELECT publication_id FROM recipes ORDER BY publication_id"
 _SELECT_RECIPE_RUNS: Final = (
-    "SELECT import_run_id, payload_id FROM recipe_import_runs WHERE publication_id = ?"
+    "SELECT import_run_id, payload_id, account_id"
+    " FROM recipe_import_runs WHERE publication_id = ?"
 )
 
 # The result records of one publication.
@@ -1065,7 +1067,12 @@ def _write_recipe(
     connection.executemany(
         _INSERT_RECIPE_RUNS,
         sorted(
-            (publication_id, run.import_run_id, run.payload_id)
+            (
+                publication_id,
+                run.import_run_id,
+                run.payload_id,
+                run.account_id,
+            )
             for run in recipe.import_runs
         ),
     )
@@ -1094,7 +1101,8 @@ def _recipe(
     """Read one `recipes` row, its import runs and its Silver provenance back."""
     return Recipe(
         import_runs=frozenset(
-            RecipeImportRun(run["import_run_id"], run["payload_id"]) for run in runs
+            RecipeImportRun(run["import_run_id"], run["payload_id"], run["account_id"])
+            for run in runs
         ),
         configuration_fingerprint=row["configuration_fingerprint"],
         decision_log_position=row["decision_log_position"],

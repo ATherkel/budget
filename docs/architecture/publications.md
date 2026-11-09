@@ -73,7 +73,7 @@ A recipe names each input exactly and never by "latest":
 
 | Part | Content |
 | --- | --- |
-| Silver build | An immutable copy of the provenance consumed from Silver. The exact stored fields are defined under [Silver build provenance](silver-layer.md#build-provenance); Gold reads that stored value and never reads Bronze. |
+| Silver build | An immutable copy of the provenance consumed from Silver. The exact stored fields are defined under [Silver build provenance](silver-layer.md#build-provenance); Gold reads that stored value and never reads Bronze. The recipe keeps every consumed import run with its payload and declared account. Recipes migrated from schema 6 retain their runs with an unknown account; nothing infers that account from Bronze or later Silver. |
 | Configuration snapshot | The parsed, canonical content of the account registry, category taxonomy, and classification rules. It is stored once per distinct content and referenced by its fingerprint. |
 | Late-booking window | The profile's `[gold] late_booking_days` at the build, in whole days ([`operations.md`](operations.md#selecting-a-profile)). `late_bookings_settled` depends on it, so changing it requires a new publication, and an earlier publication keeps the window its recipe records. |
 | Decision context | The position and prefix hash of the shared Decision log consumed. Effective Gold decisions are derived from the complete entries through that position. |

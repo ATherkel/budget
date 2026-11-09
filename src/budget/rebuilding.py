@@ -367,7 +367,7 @@ def _recipe(
     log = household.log
     return Recipe(
         import_runs=frozenset(
-            RecipeImportRun(run.import_run_id, run.payload_id)
+            RecipeImportRun(run.import_run_id, run.payload_id, None)
             for run in (*silver.import_run_results, *silver.evidence_exports)
         ),
         configuration_fingerprint=household.configuration.fingerprint,

@@ -18,8 +18,8 @@ CONFIGURATION = ConfigurationSnapshot(accounts=REGISTRY, taxonomy=TAXONOMY, rule
 RECIPE = Recipe(
     import_runs=frozenset(
         {
-            RecipeImportRun("run-current", "a" * 64),
-            RecipeImportRun("run-savings", "b" * 64),
+            RecipeImportRun("run-current", "a" * 64, None),
+            RecipeImportRun("run-savings", "b" * 64, None),
         }
     ),
     configuration_fingerprint=CONFIGURATION.fingerprint,
