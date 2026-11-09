@@ -46,6 +46,21 @@ EXIT_REFUSED_INPUT = 3
 EXIT_REFUSED_ENVIRONMENT = 4
 
 
+def _forget_silver_provenance(gold_store: Path) -> None:
+    """Leave every recipe as migration 0006 carries one over from a v5 store."""
+    with closing(sqlite3.connect(gold_store)) as connection:
+        connection.execute(
+            "UPDATE recipes SET silver_fingerprint_scheme = NULL,"
+            " silver_result_fingerprint = NULL, silver_code_version = NULL,"
+            " silver_decision_log_position = NULL,"
+            " silver_decision_log_prefix_sha256 = NULL,"
+            " silver_bronze_parser_provenance = NULL"
+        )
+        connection.execute("DELETE FROM recipe_silver_currencies")
+        connection.execute("DELETE FROM recipe_silver_decisions")
+        connection.commit()
+
+
 class FirstPublicationTests(unittest.TestCase):
     def test_the_gold_recipe_copies_the_exact_silver_provenance(self) -> None:
         with TemporaryDirectory() as directory:
@@ -310,6 +325,25 @@ class UnchangedRecipeTests(unittest.TestCase):
                 assert current is not None
                 assert current.publication_id == 1
                 assert gold.next_publication_id() == 2
+
+    def test_the_first_rebuild_after_an_upgrade_publishes_once_to_record_silver(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            _forget_silver_provenance(built.profile.gold_store)
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "Gold     published publication 2 (cause build)" in stdout
+            assert "Changes  no measure or review item changed." in stdout
+            with GoldStore(built.profile) as gold:
+                assert gold.recipe(2).silver_result_fingerprint is not None
+            status, stdout, stderr = rebuild(built.profile_file)
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "nothing was published" in stdout
 
 
 class ClockTests(unittest.TestCase):
