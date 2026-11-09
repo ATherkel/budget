@@ -152,7 +152,7 @@ def _replace_inputs(profile: Profile, backup: BackupSet) -> None:
 
 @dataclass(frozen=True)
 class Refreshed:
-    """What `refresh` did: the set used and the newer sets passed over."""
+    """What `refresh` did: the set used and the newer complete sets passed over."""
 
     backup: BackupSet
     skipped: tuple[str, ...]

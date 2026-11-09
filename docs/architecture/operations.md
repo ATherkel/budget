@@ -248,9 +248,9 @@ OneDrive\Budget\                       closed files only: safe to synchronise
 
 ### Development diverges from a stage
 
-`dev refresh` restores production's newest backup set into development's
-`upstream/` folder, and marks it read-only. `rebuild --from <stage>` rebuilds
-that stage and every later one into development's own stores. The stages
+`dev refresh` restores production's newest complete backup set this code can
+use into development's `upstream/` folder, and marks it read-only.
+`rebuild --from <stage>` rebuilds that stage and every later one into development's own stores. The stages
 before it are opened from `upstream/`, read-only, and never recomputed.
 Because a restored set never changes, those stores are opened with SQLite's
 `immutable` flag, so SQLite never tries to create files beside them.
@@ -595,10 +595,10 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | `view --as-was <date> \| --known-at <date> --label <text>` | Builds or finds a past view (ADR-014). Without options, lists retained and legacy publications. | `gold.db`, through a scratch store | Never current |
 | `label <publication_id> <text>` / `unlabel …` | Keeps a result beyond the retention rule, or stops keeping it. | `gold.db` | No |
 | `backup` | Writes a backup set of production and names it. Also runs automatically; see below. | The backups folder | No |
-| `restore [<backup set>]` | Restores the newest complete set, or the one named, into an empty profile, catches up with the import log, and rebuilds Silver and Gold, publishing when the recipe changed; records a recovery boundary. | Every store | Yes, if it caught up |
+| `restore [<backup set>]` | Restores the newest complete set this code can use, or the one named, into an empty profile, naming each newer complete set it passes over as unreadable or damaged, catches up with the import log, and rebuilds Silver and Gold, publishing when the recipe changed; records a recovery boundary. | Every store | Yes, if it caught up |
 | `restore --from-archive` | Last resort: rebuilds Bronze from the archive and the import log, then Silver and Gold. | Every store | Yes |
 | `verify` | Checks integrity. Recipe replay remains deferred ([#259](https://github.com/ATherkel/budget/issues/259)). | `scratch/` only | No |
-| `dev refresh [--inputs] [--writable]` | Development only: restores production's newest complete backup set into `upstream/`, or with `--writable` into development's own stores. | Development only | No |
+| `dev refresh [--inputs] [--writable]` | Development only: restores production's newest complete backup set this code can use into `upstream/`, or with `--writable` into development's own stores, naming each newer complete set it passes over as unreadable or damaged. | Development only | No |
 | `serve` | Starts the read-only dashboard. | Nothing | No |
 | `set-passphrase` | Sets the dashboard passphrase, which logs out every device. | The passphrase file | No |
 
@@ -903,10 +903,10 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   manifest, and only then is it renamed to its name. A set under its name
   never replaces another. A set without a manifest, or whose files do not
   match its checksums, is incomplete: it is never selected, and `restore` and
-  `dev refresh` take the next newest. A failure removes what it staged; what
-  a crash leaves in `backup-staging\`, or as a `.partial` folder, the next
-  backup deletes. A folder under a set's own name is never deleted that way,
-  even without a manifest.
+  `dev refresh` take the next newest without naming it. A failure removes
+  what it staged; what a crash leaves in `backup-staging\`, or as a
+  `.partial` folder, the next backup deletes. A folder under a set's own
+  name is never deleted that way, even without a manifest.
 - **Kept**, by the `[backups]` keys in the production profile: every set from
   the last `keep_all_days` (14) days, then the newest set of each day for
   `keep_daily_days` (365) days, then the newest set of each month for
@@ -934,8 +934,11 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
 - **`restore`** writes only into a profile with no stores. It takes the newest
   complete set unless one is named, checks every SHA-256 against the
   manifest, runs `PRAGMA integrity_check`, and migrates stores older than the
-  code. It restores every store in the set together, never one beside
-  surviving stores: to recover a damaged profile, first move its `.db` files
+  code. Without a named set it passes over each newer complete set this code
+  cannot read, or finds damaged, naming it; when no complete set can be used
+  it restores nothing and names every complete set it passed over.
+  Incomplete sets are dropped before this and are never named. It restores
+  every store in the set together, never one beside surviving stores: to recover a damaged profile, first move its `.db` files
   and `gold\legacy\` out of the profile folder. It then catches up: it uses the
   live inputs, or the set's copy of any that are missing, replays the import
   log under [its rules](#importsjsonl-the-import-log), taking each file from
@@ -943,7 +946,9 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   surviving decision log must extend the set's copy, or `restore` stops.
   Publications made after the set are lost
   ([Publication recovery](publications.md#publication-recovery)). It does not
-  run `verify`, whose recipe replay is deferred.
+  run `verify`, whose recipe replay is deferred. `dev refresh` first refuses
+  if any complete set is another profile's; after that it picks a set, and
+  names the sets it passes over, the same way as `restore` without a name.
 - **`verify`** runs `PRAGMA integrity_check` on every store and checks that the
   import log agrees with Bronze and that the decision-log prefix hashes match.
   Recipe replay remains deferred; its prerequisites and failure rule are in
