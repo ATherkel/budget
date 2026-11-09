@@ -8,6 +8,7 @@ passes the environment in, so a test never inherits the operator's shell.
 
 import argparse
 import os
+import re
 import sys
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
@@ -146,6 +147,7 @@ EXIT_REFUSED_ENVIRONMENT: Final = 4
 EXIT_VERIFICATION_FAILED: Final = 5
 # The port in operations.md's example profile, for a profile that names none.
 DEFAULT_DASHBOARD_PORT: Final = 8750
+_REPORTING_MONTH: Final = re.compile(r"^[1-9][0-9]{3}-(?:0[1-9]|1[0-2])$")
 # The store errors operations.md lists as a refused environment, for every
 # stage. Any other store error, such as a broken packaged migration, is a
 # defect: exit 1.
@@ -734,11 +736,10 @@ def _find(
     """Find transactions in the current publication."""
     selected_month = None
     if month is not None:
-        try:
-            year, calendar_month = month.split("-")
-            selected_month = ReportingMonth(int(year), int(calendar_month))
-        except ValueError:
+        if _REPORTING_MONTH.fullmatch(month) is None:
             raise InvalidMonthError(month) from None
+        year, calendar_month = month.split("-")
+        selected_month = ReportingMonth(int(year), int(calendar_month))
     found = find_transactions(profile, text, month=selected_month, account=account)
     sys.stdout.write(summaries.find_summary(found))
 

@@ -21,7 +21,10 @@ class InvalidMonthError(FindInputError):
 
     def __init__(self, month: str) -> None:
         """Name the invalid option value."""
-        super().__init__(f'invalid --month "{month}"')
+        super().__init__(
+            f'--month "{month}" is not YYYY-MM; expected a calendar month '
+            "such as 2026-03"
+        )
 
 
 @dataclass(frozen=True)
