@@ -16,6 +16,7 @@ from unittest import mock
 
 from budget.bronze import BronzeStore
 from budget.bronze.parsers.registry import source_parser
+from budget.gold.store import GoldStore
 from budget.profiles import Profile, load_profile_file
 from budget.routine_logging import LOG_FILE, LOG_FOLDER
 from budget.silver import SilverImportRun, SilverStore
@@ -155,6 +156,9 @@ class ImportCommandTests(unittest.TestCase):
                 provenance.code_version,
                 provenance.bronze_parser_provenance,
             ) == ((), 0, None, "unknown")
+            with GoldStore(profile) as gold:
+                recipe = gold.recipe(1)
+            assert recipe.silver_result_fingerprint == provenance.result_fingerprint
             assert "[1] joint-current  stored\n" in stdout
             assert "Silver   1 admitted, 0 quarantined, 0 dropped\n" in stdout
 
