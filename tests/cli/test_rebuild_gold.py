@@ -22,6 +22,7 @@ from budget.inputs import load_configuration
 from budget.locking import WriterLock, writer_lock
 from budget.rebuilding import GoldRebuild, HouseholdInputs, rebuild_from_gold
 from budget.silver import (
+    AcceptDiscrepancy,
     SameTransaction,
     SilverResult,
     SilverStore,
@@ -42,6 +43,53 @@ EXIT_REFUSED_ENVIRONMENT = 4
 
 
 class FirstPublicationTests(unittest.TestCase):
+    def test_the_gold_recipe_copies_the_exact_silver_provenance(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "accept-discrepancy",
+                "targets": [built.import_run_id],
+                "reason": "synthetic acceptance",
+                "supersedes": [],
+            }
+            encoded = (json.dumps(decision) + "\n").encode()
+            built.profile.input_file("decisions.jsonl").write_bytes(encoded)
+
+            status, _, stderr = rebuild(built.profile_file, "--from", "silver")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            with SilverStore(built.profile) as silver:
+                provenance = silver.read_build().provenance
+            assert provenance is not None
+            with GoldStore(built.profile) as gold:
+                recipe = gold.recipe(1)
+            silver_part = (
+                recipe.silver_fingerprint_scheme,
+                recipe.silver_result_fingerprint,
+                recipe.silver_identity_version,
+                recipe.silver_code_version,
+                recipe.silver_decision_log_position,
+                recipe.silver_decision_log_prefix_sha256,
+                recipe.silver_bronze_parser_provenance,
+                recipe.silver_currencies,
+                recipe.silver_decisions,
+            )
+            assert silver_part == (
+                provenance.fingerprint_scheme,
+                provenance.result_fingerprint,
+                "1",
+                None,
+                1,
+                sha256(encoded).hexdigest(),
+                "unknown",
+                frozenset({("joint-current", "DKK")}),
+                (AcceptDiscrepancy("d-0001", built.import_run_id),),
+            )
+
     def test_rebuild_publishes_the_first_publication_from_silver(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
@@ -53,6 +101,9 @@ class FirstPublicationTests(unittest.TestCase):
             assert (
                 "Changes  no previous publication to compare; publication 1 is current."
             ) in stdout
+            with SilverStore(built.profile) as silver:
+                provenance = silver.read_build().provenance
+            assert provenance is not None
             with GoldStore(built.profile) as gold:
                 current = gold.current()
                 assert current is not None
@@ -78,13 +129,13 @@ class FirstPublicationTests(unittest.TestCase):
                     late_booking_days=7,
                     python_version="",
                     sqlite_version="",
-                    silver_fingerprint_scheme=None,
-                    silver_result_fingerprint=None,
+                    silver_fingerprint_scheme=provenance.fingerprint_scheme,
+                    silver_result_fingerprint=provenance.result_fingerprint,
                     silver_code_version=None,
-                    silver_decision_log_position=None,
-                    silver_decision_log_prefix_sha256=None,
-                    silver_bronze_parser_provenance=None,
-                    silver_currencies=frozenset(),
+                    silver_decision_log_position=0,
+                    silver_decision_log_prefix_sha256=sha256(b"").hexdigest(),
+                    silver_bronze_parser_provenance="unknown",
+                    silver_currencies=frozenset({("joint-current", "DKK")}),
                     silver_decisions=(),
                 )
                 transactions = gold.open(1).transactions(
