@@ -14,7 +14,7 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 - **Cite a repository file** in an issue, PR or comment: link its lines at the commit that holds them, `https://github.com/ATherkel/budget/blob/<sha>/<path>?plain=1#L<from>-L<to>`, and quote the text. Take `<sha>` from `git rev-parse origin/main` after `git fetch origin`, or from the pushed PR head for lines a PR adds or changes. Keep `?plain=1` for Markdown files: GitHub renders them without line numbers, so the anchor alone neither scrolls to nor highlights the lines. The link keeps pointing at those lines however the file changes later; a bare `path:line` drifts with every edit.
-- **Milestone**: a new issue goes in `Polish` when it passes the Polish test and in `Later` otherwise; see [Milestone groups](#milestone-groups).
+- **Milestone**: a new issue goes in `Polish` when it passes the Polish test and in `Later` otherwise; see [Milestone groups](#milestone-groups) and [Release milestone gate](#release-milestone-gate).
 
 The repository is `ATherkel/budget`. Pass `--repo ATherkel/budget` to `gh issue` and `gh pr` commands, so the command does not depend on which remote or worktree it runs from.
 
@@ -40,6 +40,43 @@ milestone the owner assigned unless the owner authorizes it.
 Treat `Polish` as an opt-in queue for requested cleanup sessions. Its issues
 should not delay a PR or release; new evidence of material impact calls for
 reclassification into substantive work.
+
+### Release milestone gate
+
+Each numbered release milestone has a definition of done: a short list of
+user-visible outcomes at the top of the release's acceptance issue. A new issue
+goes into a release milestone only when one of these holds, and its
+body names which one:
+
+- Without it, an outcome in the release's definition of done fails.
+- It breaks a Gold contract invariant, or risks losing or corrupting household
+  data.
+
+Every definition of done ends with these two mandatory outcomes, worded for the
+release:
+
+- **Prove it with the household.** Both household readers do the release's
+  tasks, and the findings are recorded on the acceptance issue.
+- **Cut cleanly.** Each store whose schema changed in the release is bumped
+  once, with one migration per store.
+
+Link the acceptance issue from the milestone description with a final line
+`Definition of done: #<number>`.
+
+The gate applies to any numbered release milestone, not only the current one.
+An issue that would fail an outcome in a later release's definition of done
+goes into that release's milestone, provided that definition of done already
+exists. Otherwise, note the suspected release in the body (for example
+"Suspected gate for 0.5") and file it in `Later`. Everything else goes to
+`Polish` or `Later` by the rules above, even when it was found while working on
+a pull request for the release. Only the owner moves an issue into a release
+milestone after it has been filed. Review findings follow the same gate: a
+finding classed required in a review means "fix it in this pull request", not
+"add an issue to the release".
+
+Before work on a release starts, write its definition of done, then search
+`Later` for issues that fail one of its outcomes or meet the second condition
+above, and propose moving them in.
 
 ## Pull requests as a triage surface
 

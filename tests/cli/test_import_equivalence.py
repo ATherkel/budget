@@ -27,8 +27,9 @@ from budget.bronze import BronzeStore
 from budget.profiles import Profile
 from budget.silver import ReviewItem, SilverResult, SilverStore
 from tests.cli.commands import import_, migrate
+from tests.cli.pipelines import write_inputs
 from tests.cli.profile_files import development_profile, write_profile
-from tests.importing.households import ACCOUNTS, drop
+from tests.importing.households import drop
 
 EXIT_OK = 0
 _HEADER = '"Dato","Kategori","Underkategori","Tekst","Beløb","Saldo","Status","Afstemt"'
@@ -204,7 +205,7 @@ def _household(folder: Path) -> tuple[Path, Profile]:
     assert migrate(profile_file)[0] == EXIT_OK
     profile = development_profile(folder)
     profile.inputs.mkdir(parents=True, exist_ok=True)
-    profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+    write_inputs(profile)
     return profile_file, profile
 
 

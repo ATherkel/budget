@@ -39,6 +39,7 @@ from budget.gold.repository import (
     PublicationUnavailableError,
 )
 from budget.gold.result import GoldLineageRecords, GoldRecords, GoldResult
+from budget.gold.store import UndoUnavailableError
 
 __all__ = [
     "AccountType",
@@ -72,5 +73,6 @@ __all__ = [
     "TransactionType",
     "TransferBasis",
     "TransferEvidence",
+    "UndoUnavailableError",
     "build",
 ]

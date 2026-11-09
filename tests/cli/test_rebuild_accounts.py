@@ -21,8 +21,9 @@ from budget.profiles import Profile
 from budget.routine_logging import LOG_FOLDER
 from budget.silver import SilverStore
 from tests.cli.commands import migrate, rebuild
+from tests.cli.pipelines import write_inputs
 from tests.cli.profile_files import development_profile, write_profile
-from tests.importing.households import ACCOUNTS, drop, payload
+from tests.importing.households import drop, payload
 
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
@@ -72,7 +73,7 @@ def _built(folder: Path, profile_file: Path) -> Profile:
     assert migrate(profile_file)[0] == EXIT_OK
     profile = development_profile(folder)
     profile.inputs.mkdir(parents=True, exist_ok=True)
-    profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+    write_inputs(profile)
     source = drop(profile, "joint-current", EXPORT_FILE, payload("01.03.2026"))
     with writer_lock(profile) as lock:
         import_inbox_file(

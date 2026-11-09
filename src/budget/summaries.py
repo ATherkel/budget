@@ -12,14 +12,24 @@ transaction id or arbitrary validation message appears.
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from types import MappingProxyType
 from typing import Final
 
 from budget.bronze.models import ImportRun
+from budget.completeness import (
+    AccountEvidenceStatus,
+    AccountMonthCompleteness,
+    Completeness,
+)
 from budget.gold import ClassificationReviewKind
+from budget.gold.diff import compare_publications, review_line
 from budget.gold.models import GoldReviewTarget
+from budget.gold.repository import PublicationUnavailableError
+from budget.gold.store import GoldStore, PointerMove
 from budget.inbox import LEFT_IN_INBOX, FileOutcome, ImportedInbox
-from budget.rebuilding import SilverRebuild
+from budget.profiles import Profile
+from budget.rebuilding import GoldRebuild, SilverRebuild, SilverReviews
 from budget.reviewing import OpenGoldReview, OpenReview, OpenReviews
 from budget.silver import ImportRunResult, ReviewItem, SilverResult
 
@@ -61,6 +71,162 @@ def rebuild_summary(rebuild: SilverRebuild) -> str:
     lines = [_bronze_line(rebuild.runs), *_account_lines(rows, rebuild.result)]
     lines.extend(_run_line(row) for row in rows)
     return "\n".join(lines) + "\n"
+
+
+def completeness_summary(found: Completeness) -> str:
+    """Report what `status` found, saying plainly what could not be shown."""
+    published = found.published
+    if published is None:
+        lines = ["Published figures: unavailable, nothing is published"]
+    else:
+        lines = [f"Published figures: publication {published.publication_id} (current)"]
+        lines.extend(_month_line(each) for each in published.months)
+        lines.append("Unclassified money, by account and month")
+        lines.extend(_unclassified_line(each) for each in published.months)
+    lines.extend(_review_lines(found))
+    lines.append("Import evidence (operational, apart from published figures)")
+    accounts = () if found.evidence is None else found.evidence.accounts
+    if found.evidence is not None and found.evidence.unreadable is not None:
+        lines.append(f"  unavailable: could not be read: {found.evidence.unreadable}")
+    elif not accounts:
+        lines.append("  none recorded")
+    for each in accounts:
+        lines.extend(_evidence_lines(each))
+    return "\n".join(lines) + "\n"
+
+
+def _review_lines(found: Completeness) -> list[str]:
+    """Say the open review items per kind, Silver's and Gold's on their own lines."""
+    lines: list[str] = []
+    if found.evidence is not None:
+        silver = (
+            "unavailable"
+            if found.evidence.unreadable is not None
+            else _kinds(found.evidence.review_kinds)
+        )
+        lines.append(f"  Silver (operational): {silver}")
+    if found.published is not None:
+        lines.append(
+            f"  Gold (publication {found.published.publication_id}): "
+            f"{_kinds(found.published.review_kinds)}"
+        )
+    return ["Open review items", *lines] if lines else []
+
+
+def _kinds(counts: tuple[tuple[str, int], ...]) -> str:
+    """Say review item counts as `kind n`, or `none` when there are none."""
+    return ", ".join(f"{kind} {count}" for kind, count in counts) or "none"
+
+
+def _date_or_none(day: date | None) -> str:
+    """Say a date, or `none` when no evidence supplies one."""
+    return "none" if day is None else day.isoformat()
+
+
+def _evidence_lines(each: AccountEvidenceStatus) -> list[str]:
+    """Say one account's latest export, Evidence through, and quarantined runs."""
+    lines = [
+        (
+            f"{each.account_id}  latest export {_date_or_none(each.latest_export)}"
+            f"  evidence through {_date_or_none(each.evidence_through)}"
+        )
+    ]
+    if not each.quarantined:
+        return [*lines, "  quarantined  none"]
+    for run in each.quarantined:
+        codes = ", ".join(sorted({error.code for error in run.errors}))
+        lines.append(
+            f"  quarantined  {run.import_run_id}  {run.covered_from}..{run.covered_to}"
+            + (f"  {codes}" if codes else "")
+        )
+    return lines
+
+
+def _unclassified_line(each: AccountMonthCompleteness) -> str:
+    """Say one account-month's unclassified money in and out, and how many."""
+    money = each.unclassified
+    prefix = f"  {each.account_id}  {each.month.year:04d}-{each.month.month:02d}  "
+    if money is None:
+        return f"{prefix}unavailable: no data"
+    return (
+        f"{prefix}in {money.money_in} {each.currency}, "
+        f"out {money.money_out} {each.currency}, "
+        f"{money.count} {'transaction' if money.count == 1 else 'transactions'}"
+    )
+
+
+def _month_line(each: AccountMonthCompleteness) -> str:
+    """Say one account-month's coverage, and why its figures may still change."""
+    line = (
+        f"{each.account_id}  {each.month.year:04d}-{each.month.month:02d}  "
+        f"{each.coverage.replace('_', ' ')}"
+    )
+    if not each.provisional:
+        return line
+    reasons = ", ".join(reason.replace("_", " ") for reason in each.provisional)
+    return f"{line}  provisional: {reasons}"
+
+
+def gold_line(rebuilt: GoldRebuild) -> str:
+    """Say whether a Gold rebuild published, and which publication is current."""
+    number = rebuilt.publication.publication_id
+    if rebuilt.published:
+        return f"Gold     published publication {number} (cause build)"
+    return (
+        "Gold     the recipe is unchanged; nothing was published "
+        f"(publication {number} stays current)"
+    )
+
+
+def undo_line(move: PointerMove) -> str:
+    """Report the publication restored by an undo, and what it replaced."""
+    return (
+        f"Gold     publication {move.to_publication_id} is current "
+        f"(was {move.from_publication_id}; cause {move.cause})"
+    )
+
+
+def _notice(line: str, silver_reviews: SilverReviews) -> str:
+    """Add Silver's review changes to a line that compares no publications."""
+    reviews = review_line(silver_reviews.before, silver_reviews.after)
+    return f"{line}\n" if reviews is None else f"{line}\n{reviews}\n"
+
+
+def publication_changes(
+    profile: Profile, rebuilt: GoldRebuild, silver_reviews: SilverReviews
+) -> str:
+    """Describe the terminal-only publication change after a successful build."""
+    number = rebuilt.publication.publication_id
+    if not rebuilt.published:
+        return _notice(
+            f"Changes  no publication was built; publication {number} remains current.",
+            silver_reviews,
+        )
+    with GoldStore(profile, read_only=True) as gold:
+        moves = gold.pointer_history()
+        if not moves or moves[-1].from_publication_id is None:
+            return _notice(
+                "Changes  no previous publication to compare; "
+                f"publication {number} is current.",
+                silver_reviews,
+            )
+        previous_id = moves[-1].from_publication_id
+        current_id = moves[-1].to_publication_id
+        try:
+            previous = gold.open(previous_id)
+        except PublicationUnavailableError:
+            return _notice(
+                f"Changes  publication {previous_id} is no longer retained, so "
+                f"nothing can be compared; publication {number} is current.",
+                silver_reviews,
+            )
+        lines = compare_publications(
+            previous,
+            gold.open(current_id),
+            previous_reviews=(*silver_reviews.before, *gold.reviews(previous_id).items),
+            current_reviews=(*silver_reviews.after, *gold.reviews(current_id).items),
+        )
+    return "\n".join(lines or ("Changes  no measure or review item changed.",)) + "\n"
 
 
 def _row(run: ImportRun, rebuild: SilverRebuild) -> _Row:
@@ -159,12 +325,18 @@ def _run_line(row: _Row) -> str:
     return f"Run  {row.import_run_id}  {row.account_id}  {row.status}{reasons}"
 
 
-def import_summary(imported: ImportedInbox) -> str:
+def import_summary(imported: ImportedInbox, *, diff_text: str = "") -> str:
     """Report each inbox file by its number, then Silver's counts.
 
     A file is named by its number in the listing the prompt showed, never by
     its filename, which can carry a bank account number.
     """
+    if imported.held_back is not None:
+        lines = [_file_line(each, {}) for each in imported.files]
+        lines.append("Silver and Gold were not rebuilt.")
+        if imported.backup is not None:
+            lines.append(f"Backup   backup set {imported.backup.name} written")
+        return "\n".join(lines) + "\n"
     if imported.rebuilt is None:
         lines = [_file_line(each, {}) for each in imported.files]
         lines.append("Nothing was imported.")
@@ -176,6 +348,9 @@ def import_summary(imported: ImportedInbox) -> str:
         f"Silver   {counts['admitted']} admitted, {counts['quarantined']}"
         f" quarantined, {counts['dropped']} dropped"
     )
+    if imported.published is not None:
+        lines.append(gold_line(imported.published))
+        lines.extend(diff_text.rstrip().splitlines())
     if imported.backup is not None:
         lines.append(f"Backup   backup set {imported.backup.name} written")
     return "\n".join(lines) + "\n"

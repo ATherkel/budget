@@ -229,10 +229,10 @@ def _settled(
 
 def test_an_export_produced_under_7_days_after_a_month_does_not_settle_it() -> None:
     six_days_after = EvidenceExport(
-        "run-6", CURRENT, date(2026, 5, 6), COVERS_FROM, date(2026, 5, 6)
+        "run-6", "payload", CURRENT, date(2026, 5, 6), COVERS_FROM, date(2026, 5, 6)
     )
     seven_days_after = EvidenceExport(
-        "run-7", CURRENT, date(2026, 5, 7), COVERS_FROM, date(2026, 5, 7)
+        "run-7", "payload", CURRENT, date(2026, 5, 7), COVERS_FROM, date(2026, 5, 7)
     )
 
     assert _settled(six_days_after)[APRIL] is False
@@ -241,10 +241,10 @@ def test_an_export_produced_under_7_days_after_a_month_does_not_settle_it() -> N
 
 def test_a_longer_late_booking_window_needs_a_later_export() -> None:
     seven_days_after = EvidenceExport(
-        "run-7", CURRENT, date(2026, 5, 7), COVERS_FROM, date(2026, 5, 7)
+        "run-7", "payload", CURRENT, date(2026, 5, 7), COVERS_FROM, date(2026, 5, 7)
     )
     ten_days_after = EvidenceExport(
-        "run-10", CURRENT, date(2026, 5, 10), COVERS_FROM, date(2026, 5, 10)
+        "run-10", "payload", CURRENT, date(2026, 5, 10), COVERS_FROM, date(2026, 5, 10)
     )
 
     assert _settled(seven_days_after, window=timedelta(days=10))[APRIL] is False
@@ -253,10 +253,10 @@ def test_a_longer_late_booking_window_needs_a_later_export() -> None:
 
 def test_a_zero_day_window_is_settled_by_an_export_on_the_months_last_day() -> None:
     last_day = EvidenceExport(
-        "run-0", CURRENT, date(2026, 4, 30), COVERS_FROM, date(2026, 4, 30)
+        "run-0", "payload", CURRENT, date(2026, 4, 30), COVERS_FROM, date(2026, 4, 30)
     )
     day_before = EvidenceExport(
-        "run-1", CURRENT, date(2026, 4, 29), COVERS_FROM, date(2026, 4, 29)
+        "run-1", "payload", CURRENT, date(2026, 4, 29), COVERS_FROM, date(2026, 4, 29)
     )
 
     assert _settled(last_day, window=timedelta(0))[APRIL] is True
@@ -284,7 +284,7 @@ def test_a_window_that_is_not_whole_days_from_0_to_366_refuses_the_build(
 
 def test_a_366_day_window_is_the_longest_the_build_accepts() -> None:
     a_year_after = EvidenceExport(
-        "run-366", CURRENT, date(2027, 5, 1), COVERS_FROM, date(2027, 5, 1)
+        "run-366", "payload", CURRENT, date(2027, 5, 1), COVERS_FROM, date(2027, 5, 1)
     )
 
     assert _settled(a_year_after, window=timedelta(days=366))[APRIL] is True
@@ -292,10 +292,20 @@ def test_a_366_day_window_is_the_longest_the_build_accepts() -> None:
 
 def test_an_export_whose_range_misses_the_months_last_day_never_settles_it() -> None:
     starts_after = EvidenceExport(
-        "run-may", CURRENT, date(2026, 6, 30), date(2026, 5, 1), date(2026, 6, 30)
+        "run-may",
+        "payload",
+        CURRENT,
+        date(2026, 6, 30),
+        date(2026, 5, 1),
+        date(2026, 6, 30),
     )
     ends_before = EvidenceExport(
-        "run-april", CURRENT, date(2026, 6, 30), COVERS_FROM, date(2026, 4, 29)
+        "run-april",
+        "payload",
+        CURRENT,
+        date(2026, 6, 30),
+        COVERS_FROM,
+        date(2026, 4, 29),
     )
 
     # Each was produced long after April ended, but cannot show its late bookings.
@@ -333,10 +343,20 @@ def test_an_account_whose_exports_lag_still_has_a_row_for_each_later_month() -> 
         ),
         evidence_exports=(
             EvidenceExport(
-                "run-c", CURRENT, date(2026, 5, 8), COVERS_FROM, date(2026, 5, 8)
+                "run-c",
+                "payload",
+                CURRENT,
+                date(2026, 5, 8),
+                COVERS_FROM,
+                date(2026, 5, 8),
             ),
             EvidenceExport(
-                "run-s", SAVINGS, date(2026, 3, 15), COVERS_FROM, date(2026, 3, 15)
+                "run-s",
+                "payload",
+                SAVINGS,
+                date(2026, 3, 15),
+                COVERS_FROM,
+                date(2026, 3, 15),
             ),
         ),
     )
@@ -487,7 +507,7 @@ def _joint_current_only(
         transactions=transactions,
         account_evidence=(AccountEvidence(CURRENT, covers_from, through),),
         evidence_exports=(
-            EvidenceExport("run-1", CURRENT, through, covers_from, through),
+            EvidenceExport("run-1", "payload", CURRENT, through, covers_from, through),
         ),
     )
 

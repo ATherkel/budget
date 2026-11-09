@@ -60,7 +60,7 @@ class ConfigurationSnapshot:
         return hashlib.sha256(self.canonical_text.encode("utf-8")).hexdigest()
 
 
-def _canonical_amount(amount: Decimal) -> str:
+def canonical_amount(amount: Decimal) -> str:
     """Write an amount exactly, without trailing zeros or a negative zero.
 
     Formatting a `Decimal` without a precision is exact, so no amount is
@@ -76,7 +76,7 @@ def _canonical_amount(amount: Decimal) -> str:
 def _json_value(value: object) -> str:
     """Write a value JSON has no type for: a decimal amount or a date."""
     if isinstance(value, Decimal):
-        return _canonical_amount(value)
+        return canonical_amount(value)
     if isinstance(value, date):
         return value.isoformat()
     message = f"no canonical form for {type(value).__name__}"
@@ -182,12 +182,25 @@ def _attempt[T](load: Callable[[], T], problems: list[str]) -> T | None:
         return None
 
 
-def load_configuration(profile: Profile) -> ConfigurationSnapshot:
-    """Load and cross-check the profile's accounts, taxonomy and rules.
+@dataclass(frozen=True)
+class ConfigurationRead:
+    """Each configuration file that loaded, and every problem the three hold.
 
-    Every file is judged even when an earlier one is refused, so one error
-    lists every problem. A refused file declares nothing a rule can be checked
-    against, so no reference into it is judged.
+    `snapshot` is `None` when any file was refused; `known` still gives the
+    IDs the files that loaded declare.
+    """
+
+    snapshot: ConfigurationSnapshot | None
+    known: KnownIds
+    problems: tuple[str, ...]
+
+
+def read_configuration(profile: Profile) -> ConfigurationRead:
+    """Load and cross-check the accounts, taxonomy and rules, refusing nothing.
+
+    Every file is judged even when an earlier one is refused, so every problem
+    is listed. A refused file declares nothing a rule can be checked against,
+    so no reference into it is judged.
     """
     problems: list[str] = []
     accounts = _attempt(lambda: load_accounts(profile), problems)
@@ -197,6 +210,20 @@ def load_configuration(profile: Profile) -> ConfigurationSnapshot:
         categories=None if taxonomy is None else taxonomy.categories.keys(),
     )
     rules = _attempt(lambda: load_rules(profile, known), problems)
-    if accounts is None or taxonomy is None or rules is None:
-        raise ConfigurationError(tuple(problems))
-    return ConfigurationSnapshot(accounts=accounts, taxonomy=taxonomy, rules=rules)
+    snapshot = (
+        None
+        if accounts is None or taxonomy is None or rules is None
+        else ConfigurationSnapshot(accounts=accounts, taxonomy=taxonomy, rules=rules)
+    )
+    return ConfigurationRead(snapshot, known, tuple(problems))
+
+
+def load_configuration(profile: Profile) -> ConfigurationSnapshot:
+    """Load and cross-check the profile's accounts, taxonomy and rules.
+
+    One `ConfigurationError` lists every problem in all three files.
+    """
+    read = read_configuration(profile)
+    if read.snapshot is None:
+        raise ConfigurationError(read.problems)
+    return read.snapshot

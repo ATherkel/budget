@@ -20,7 +20,8 @@ from budget.routine_logging import LOG_FILE, LOG_FOLDER
 from budget.silver import SilverStore
 from tests.backups.sets import manifest, run_ids
 from tests.cli.commands import import_, migrate
-from tests.cli.imports import clean_git, write_ranges
+from tests.cli.imports import clean_checkout, clean_git, write_ranges
+from tests.cli.pipelines import write_inputs
 from tests.cli.profile_files import development_profile, write_profile
 from tests.importing.households import (
     ACCOUNTS,
@@ -51,7 +52,7 @@ def _household(profile_file: Path, folder: Path) -> Profile:
     assert migrate(profile_file)[0] == EXIT_OK
     profile = development_profile(folder)
     profile.inputs.mkdir(parents=True, exist_ok=True)
-    profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+    write_inputs(profile)
     return profile
 
 
@@ -74,6 +75,41 @@ def _silver_build_state(profile: Profile) -> tuple[bytes, int]:
 
 
 class ImportCommandTests(unittest.TestCase):
+    def test_an_unreadable_decision_log_refuses_before_importing(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            source = drop(profile, "joint-current", "danske-20260305.csv", content)
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
+            decision_log = profile.input_file("decisions.jsonl")
+            private = "PRIVATE-DECISION-CONTENT"
+            original_read_bytes = Path.read_bytes
+
+            def read_bytes(path: Path) -> bytes:
+                if path == decision_log:
+                    raise PermissionError(private)
+                return original_read_bytes(path)
+
+            with mock.patch.object(
+                Path, "read_bytes", autospec=True, side_effect=read_bytes
+            ):
+                try:
+                    result = import_(profile_file, "--ranges", str(ranges))
+                except PermissionError:
+                    result = None
+
+                assert result is not None
+                assert result == (
+                    EXIT_REFUSED_INPUT,
+                    "",
+                    "budget: decisions.jsonl: cannot be read: PermissionError\n",
+                )
+                assert private not in result[1] + result[2]
+                assert source.read_bytes() == content
+                assert run_ids(profile.bronze_store) == []
+
     def test_an_inbox_export_is_imported_then_silver_is_rebuilt(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
@@ -347,6 +383,7 @@ class ImportCommandTests(unittest.TestCase):
                 "admitted": 1,
                 "quarantined": 0,
                 "dropped": 0,
+                "published": 1,
             }
             # The fixture's amounts, balance, texts, filenames and numbers.
             fixture = (
@@ -473,6 +510,10 @@ class ImportCommandTests(unittest.TestCase):
                 ),
                 '[account.joint-curent]: "joint-curent" is not in accounts.toml',
             ),
+            "from after through": (
+                "format = 1\n[default]\nfrom = 2026-03-04\nthrough = 2026-03-01\n",
+                "[default]: from falls after through",
+            ),
         }
         for case, (text, problem) in cases.items():
             with self.subTest(case), TemporaryDirectory() as directory:
@@ -533,6 +574,35 @@ class InteractiveImportTests(unittest.TestCase):
                 "2026-03-04",
             )
 
+    def test_the_prompt_asks_again_when_from_falls_after_through(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            source = drop(
+                profile, "joint-current", "danske-20260305.csv", payload("01.03.2026")
+            )
+            typed = "2026-03-04\n2026-03-01\n2026-03-01\n2026-03-04\ny\n"
+
+            status, stdout, stderr = import_(profile_file, typed=typed)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "    from: "
+                "    through: "
+                "    the range starts after it ends: from must fall on or "
+                "before through\n"
+                "    from: "
+                "    through: "
+                "Import 1 file? [y/N] "
+            ) in stdout
+            assert not source.exists()
+            [entry] = log_entries(profile)
+            assert (entry["covers_from"], entry["covers_through"]) == (
+                "2026-03-01",
+                "2026-03-04",
+            )
+
     def test_enter_repeats_the_range_typed_for_the_file_before(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
@@ -548,6 +618,36 @@ class InteractiveImportTests(unittest.TestCase):
 
             assert (status, stderr) == (EXIT_OK, "")
             assert (
+                "    from [2026-03-01]: "
+                "    through [2026-03-04]: "
+                "Import 2 files? [y/N] "
+            ) in stdout
+            ranges = {
+                entry["account_id"]: (entry["covers_from"], entry["covers_through"])
+                for entry in log_entries(profile)
+            }
+            assert ranges == {
+                "joint-current": ("2026-03-01", "2026-03-04"),
+                "joint-savings": ("2026-03-01", "2026-03-04"),
+            }
+
+    def test_enter_after_an_inverted_range_offers_the_file_before(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            drop(profile, "joint-current", "danske-20260305.csv", payload("01.03.2026"))
+            drop(profile, "joint-savings", "danske-20260305.csv", payload("02.03.2026"))
+            # The second file's inverted pair is refused; Enter twice then
+            # takes the first file's range, not the pair just typed.
+            typed = "2026-03-01\n2026-03-04\n2026-03-04\n2026-03-02\n\n\ny\n"
+
+            status, stdout, stderr = import_(profile_file, typed=typed)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "    the range starts after it ends: from must fall on or "
+                "before through\n"
                 "    from [2026-03-01]: "
                 "    through [2026-03-04]: "
                 "Import 2 files? [y/N] "
@@ -902,7 +1002,7 @@ class DuplicateIncidentCoverageTests(unittest.TestCase):
             folder = Path(directory)
             profile_file = write_profile(folder)
             profile = _household(profile_file, folder)
-            profile.accounts_file.write_text(ACCOUNTS + THIRD_ACCOUNT, encoding="utf-8")
+            write_inputs(profile, ACCOUNTS + THIRD_ACCOUNT)
             content = payload("01.03.2026")
             members = [
                 drop(profile, account_id, "danske-20260305.csv", content)
@@ -1025,6 +1125,7 @@ class DuplicateIncidentLogTests(unittest.TestCase):
                 "admitted": 0,
                 "quarantined": 0,
                 "dropped": 0,
+                "published": 0,
             }
             assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
             # The diagnostic is counts, so the log names no file, no account
@@ -1049,19 +1150,19 @@ class ProductionImportTests(unittest.TestCase):
             assert migrate(profile_file, "--new-store") == (EXIT_OK, "")
             profile = load_profile_file(profile_file)
             profile.inputs.mkdir(parents=True, exist_ok=True)
-            profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+            write_inputs(profile)
             sets_before = _set_names(profile)
             drop(profile, "joint-current", "danske-20260305.csv", payload("01.03.2026"))
             ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
             # Production builds only from committed code; Git is the boundary.
-            with mock.patch("subprocess.run", return_value=clean_git()):
+            with mock.patch("subprocess.run", side_effect=clean_checkout):
                 status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
             assert (status, stderr) == (EXIT_OK, "")
             [entry] = log_entries(profile)
             [written] = sorted(set(_set_names(profile)) - set(sets_before))
-            assert stdout.endswith(f"Backup   backup set {written} written\n")
+            assert f"Backup   backup set {written} written\n" in stdout
             backup_set = profile.backup_path(written)
             stores = manifest(backup_set)["stores"]
             assert isinstance(stores, dict)
@@ -1077,7 +1178,7 @@ class ProductionImportTests(unittest.TestCase):
             assert migrate(profile_file, "--new-store") == (EXIT_OK, "")
             profile = load_profile_file(profile_file)
             profile.inputs.mkdir(parents=True, exist_ok=True)
-            profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+            write_inputs(profile)
             source = drop(
                 profile, "joint-current", "danske-20260305.csv", payload("01.03.2026")
             )
@@ -1089,7 +1190,7 @@ class ProductionImportTests(unittest.TestCase):
             clock.now.return_value = NOW
 
             with (
-                mock.patch("subprocess.run", return_value=clean_git()),
+                mock.patch("subprocess.run", side_effect=clean_checkout),
                 mock.patch("budget.inbox.datetime", clock),
             ):
                 status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
@@ -1099,8 +1200,8 @@ class ProductionImportTests(unittest.TestCase):
             assert "Silver   1 admitted, 0 quarantined, 0 dropped\n" in stdout
             assert "Backup" not in stdout
             assert stderr.startswith(
-                "budget: the exports were imported and Silver rebuilt, but no "
-                "backup set could be written after them: "
+                "budget: the exports were imported, Silver rebuilt and Gold "
+                "published, but no backup set could be written after them: "
             )
             assert stderr.endswith("Put that right, then run `budget backup`\n")
             assert not source.exists()
@@ -1115,7 +1216,7 @@ class ProductionImportTests(unittest.TestCase):
                 assert migrate(profile_file, "--new-store") == (EXIT_OK, "")
                 profile = load_profile_file(profile_file)
                 profile.inputs.mkdir(parents=True, exist_ok=True)
-                profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+                write_inputs(profile)
                 (profile.inbox / "joint-current").mkdir(parents=True)
                 write_ranges(folder, default=("2026-03-01", "2026-03-04"))
                 sets_before = _set_names(profile)
@@ -1124,11 +1225,13 @@ class ProductionImportTests(unittest.TestCase):
                     for option in mode
                 ]
 
-                with mock.patch("subprocess.run", return_value=clean_git()):
+                with mock.patch("subprocess.run", side_effect=clean_checkout):
                     status, stdout, stderr = import_(profile_file, *options)
 
                 assert (status, stderr) == (EXIT_OK, "")
-                assert stdout == "The inbox holds no exports; nothing was imported.\n"
+                assert stdout.startswith(
+                    "The inbox holds no exports; nothing was imported.\n"
+                )
                 assert _set_names(profile) == sets_before
 
     def test_when_no_file_reaches_bronze_nothing_is_rebuilt_or_backed_up(
@@ -1140,19 +1243,19 @@ class ProductionImportTests(unittest.TestCase):
             assert migrate(profile_file, "--new-store") == (EXIT_OK, "")
             profile = load_profile_file(profile_file)
             profile.inputs.mkdir(parents=True, exist_ok=True)
-            profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+            write_inputs(profile)
             sets_before = _set_names(profile)
             content = payload("01.03.2026")
             drop(profile, "lost-folder", "danske-20260305.csv", content)
             ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
-            with mock.patch("subprocess.run", return_value=clean_git()):
+            with mock.patch("subprocess.run", side_effect=clean_checkout):
                 status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
             assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
             lines = stdout.splitlines()
             assert lines[0].startswith("[1] (no account)  misfiled: ")
-            assert lines[1:] == ["Nothing was imported."]
+            assert lines[1] == "Nothing was imported."
             assert _set_names(profile) == sets_before
 
     def test_an_account_silver_cannot_build_refuses_before_storing(self) -> None:
@@ -1163,16 +1266,15 @@ class ProductionImportTests(unittest.TestCase):
             profile = load_profile_file(profile_file)
             profile.inputs.mkdir(parents=True, exist_ok=True)
             # accounts.toml takes any currency text; Silver's build does not.
-            profile.accounts_file.write_text(
-                ACCOUNTS.replace('currency = "DKK"', 'currency = "ZZZ"', 1),
-                encoding="utf-8",
+            write_inputs(
+                profile, ACCOUNTS.replace('currency = "DKK"', 'currency = "ZZZ"', 1)
             )
             sets_before = _set_names(profile)
             content = payload("01.03.2026")
             source = drop(profile, "joint-current", "danske-20260305.csv", content)
             ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
 
-            with mock.patch("subprocess.run", return_value=clean_git()):
+            with mock.patch("subprocess.run", side_effect=clean_checkout):
                 status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
 
             assert status == EXIT_REFUSED_INPUT
@@ -1202,7 +1304,7 @@ class ProductionImportTests(unittest.TestCase):
                 assert migrate(profile_file, "--new-store") == (EXIT_OK, "")
                 profile = load_profile_file(profile_file)
                 profile.inputs.mkdir(parents=True, exist_ok=True)
-                profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+                write_inputs(profile)
                 sets_before = _set_names(profile)
                 content = payload("01.03.2026")
                 source = drop(profile, "joint-current", "danske-20260305.csv", content)

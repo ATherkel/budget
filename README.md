@@ -5,7 +5,8 @@ an immutable Bronze → Silver → Gold data pipeline so reports remain independ
 of bank and import format.
 
 Start with the [documentation map](docs/README.md) and the
-[delivery roadmap](docs/03-roadmap.md).
+[delivery roadmap](docs/03-roadmap.md). To try each feature by hand on your
+development profile, follow [testing by hand](docs/developers/manual-testing.md).
 
 ## Install and test
 
@@ -164,15 +165,26 @@ of the `Profile`, so one command keeps one lock instead of acquiring a second.
 
 `budget rebuild --from silver` is that command. It holds the profile's writer
 lock for its whole run — the guard, the Bronze read, the replacement, the
-summary and the routine log — so a competing command exits 4 at once. Only
-`silver` is built so far: `--from bronze` and `--from gold` refuse with exit 4,
-and Gold publishing, `dev refresh` and restore are later slices. A rebuild always reads the profile's own local stores, so production
-data reaches development only through a restored backup set, which is not built
-yet.
+summary and the routine log — so a competing command exits 4 at once.
+`--from silver` rebuilds Silver and then publishes Gold, `--from gold` publishes
+Gold from the Silver as it stands (default), and `--from bronze` parses every
+retained payload again with the parser of its declared format, then does what
+`--from silver` does. It never creates an import run or an import-log entry,
+and a payload declared as more than one format, or in a format this code has no
+parser for, refuses with exit 3. Each derives its stages in memory and checks
+every household file first, so a refusal changes no store; a production
+rebuild that wrote stores then writes a backup set. Gold publishes only when its recipe
+changed: it names the import runs Silver was built from, the configuration,
+the decision log, the late-booking window and the code. `dev refresh` and
+restore are later slices. A rebuild always reads the profile's own local
+stores, so production data reaches development only through a restored backup
+set, which is not built yet.
 
-When `inputs/decisions.jsonl` holds any decision, the rebuild refuses with exit
-3 and says so: the decision-log reader is a later slice, and a build must not
-silently ignore a household decision. A missing log, or one holding only a
+A rebuild reads `inputs/decisions.jsonl` and applies every Silver decision in
+force (`void-import-run`, `accept-discrepancy`, `withdrawn`,
+`same-transaction`); the Gold decisions are applied when Gold is built. A log
+with an invalid entry refuses the rebuild with exit 3, naming the entry and
+never repeating the decision's text. A missing log, or one holding only a
 byte-order mark and whitespace, means no decisions and is allowed.
 
 `budget review [--kind <kind>] [--account <id>]` lists the open Silver review
@@ -224,6 +236,11 @@ result that is neither current, previous nor labeled; recipes and publication
 metadata are kept forever. Every Gold table is keyed by `publication_id` first
 and every repository read filters on one, so a hand-written query against
 `gold.db` must do the same or it adds retained publications together.
+
+`budget undo` restores the previous current publication, appends an `undo`
+move to the same pointer history, and leaves household inputs and publication
+results unchanged. Undo is itself undoable. In production it follows the
+pointer write with a backup set.
 
 ## Importing the inbox: `budget import`
 
@@ -285,9 +302,9 @@ log records counts only.
 
 | Exit | `import` |
 | --- | --- |
-| 0 | Every file was stored or a repeat; or the inbox is empty; or you did not answer `y` |
-| 3 | A file was refused, misfiled, unreadable or a format failure, and stays in the inbox. Also, with nothing stored: a ranges file or `accounts.toml` that breaks its rules, a decision log holding a decision (its reader is not built yet), or an account Silver cannot build |
-| 4 | Nothing stored: another command is running, or production's code is uncommitted, or its stores folder holds a store no backup set covers. After the imports: production's backup set could not be written; run `budget backup` once the message's problem is put right |
+| 0 | Every file was stored or a repeat; or the inbox is empty and nothing was left outstanding; or you did not answer `y` |
+| 3 | A file was refused, misfiled, unreadable or a format failure, and stays in the inbox. Also, with nothing stored: a ranges file or `accounts.toml` that breaks its rules, an invalid decision log, a household file Gold cannot load, a decision naming a category the taxonomy dropped, an account closed before an incoming transaction, or an account Silver cannot build |
+| 4 | Nothing stored: another command is running, or production's code is uncommitted, or its stores folder holds a store no backup set covers. After the imports: Silver and Gold could not be rebuilt, so the files are in Bronze but not in the figures (run `budget import` again once the message's problem is put right: it finishes the rebuild, the publication and the backup), or production's backup set could not be written (run `budget backup`) |
 | 5 | Nothing stored: `imports.jsonl` disagrees with Bronze |
 
 The range is the one you set on the bank's slider. It is never inferred from
@@ -314,13 +331,13 @@ from = 2026-01-01
 through = 2026-03-30
 ```
 
-Dates are TOML dates, without quotes. Every `[account.<id>]` must name an
-account in `accounts.toml`, so a misspelt one is refused rather than
-silently given the default. An account with a file in the inbox and no range
-of its own, when there is no `[default]`, refuses the whole run. A file that
-breaks a rule lists every problem and imports nothing, with exit 3. Keep it
-outside `inputs\`, which holds only the household's input files, and
-outside the inbox.
+Dates are TOML dates, without quotes, and `from` falls on or before
+`through`. Every `[account.<id>]` must name an account in `accounts.toml`,
+so a misspelt one is refused rather than silently given the default. An
+account with a file in the inbox and no range of its own, when there is no
+`[default]`, refuses the whole run. A file that breaks a rule lists every
+problem and imports nothing, with exit 3. Keep it outside `inputs\`, which
+holds only the household's input files, and outside the inbox.
 
 ### A rerun
 
@@ -374,17 +391,54 @@ budget migrate -> 0
 budget import --ranges ranges-march.toml -> 0
   [1] joint-current  stored
   Silver   1 admitted, 0 quarantined, 0 dropped
+  Gold     published publication 1 (cause build)
+  Changes  no previous publication to compare; publication 1 is current.
+  Published figures: publication 1 (current)
+  joint-current  2026-03  partial  provisional: late bookings unsettled
+  joint-current  2026-04  no data  provisional: current month, late bookings unsettled
+  Unclassified money, by account and month
+    joint-current  2026-03  in 0.00 DKK, out -45.00 DKK, 1 transaction
+    joint-current  2026-04  unavailable: no data
+  Open review items
+    Silver (operational): none
+    Gold (publication 1): unclassified 1
+  Import evidence (operational, apart from published figures)
+  joint-current  latest export 2026-03-06  evidence through 2026-03-05
+    quarantined  none
 budget review -> 0
-# (no output: no open review items)
+  <id>  unclassified  gold  publication 1  targets 641b439a
+    target 641b439a  joint-current  2026-03-01  -45.00 DKK  "NETTO"  bank category Mad
+    settle  choose a rule or classify a target as a category or adjustment
 budget import --ranges ranges-april.toml -> 0
   [1] joint-current  stored; Silver quarantined it: balance-break, balance-chain-break
   Silver   1 admitted, 1 quarantined, 0 dropped
+  Gold     published publication 2 (cause build)
+  Review  1 balance-break opened
+  Published figures: publication 2 (current)
+  joint-current  2026-03  partial  provisional: late bookings unsettled
+  joint-current  2026-04  no data  provisional: current month, late bookings unsettled
+  Unclassified money, by account and month
+    joint-current  2026-03  in 0.00 DKK, out -45.00 DKK, 1 transaction
+    joint-current  2026-04  unavailable: no data
+  Open review items
+    Silver (operational): balance-break 1
+    Gold (publication 2): unclassified 1
+  Import evidence (operational, apart from published figures)
+  joint-current  latest export 2026-03-06  evidence through 2026-03-05
+    quarantined  <id>  2026-04-01..2026-04-02  balance-chain-break
 budget review -> 0
   <id>  balance-break  joint-current  2026-04-02..2026-04-02  run <id>  payload <id>
+  <id>  unclassified  gold  publication 2  targets 641b439a
+    target 641b439a  joint-current  2026-03-01  -45.00 DKK  "NETTO"  bank category Mad
+    settle  choose a rule or classify a target as a category or adjustment
 ```
 
-Each import rebuilds Silver from everything Bronze holds, so the walkthrough
-runs no `budget rebuild --from silver` of its own. The profile is a
+Each import rebuilds Silver from everything Bronze holds and publishes Gold
+from it, so the walkthrough runs no `budget rebuild` of its own. It writes a
+small `taxonomy.toml` and an empty `rules.toml` beside `accounts.toml`,
+because Gold needs both. With no rules the
+transaction stays unclassified, so `budget review` lists Gold's `unclassified`
+item beside Silver's. The profile is a
 development one, so no backup set follows; in production the summary would
 end `Backup   backup set <name> written`. The April import exits 0 even though
 Silver quarantines its run: a quarantine is a result, not a failure, and the
@@ -398,8 +452,8 @@ It logs in, pins one Gold publication and reference date, lets the reader pick
 accounts and a month, and says plainly when there is nothing published, a
 newer build exists, or a selection cannot be shown. The dashboard shell is
 responsive on phones and desktop browsers, supports keyboard use, and exposes
-loading, empty, unavailable and request-failure states. Numerical financial
-reports remain in #104.
+loading, empty, unavailable and request-failure states. The monthly overview
+shows income, expenses, money left, and uncategorized inflows and outflows.
 
 Gold migration and publication storage are implemented. A profile's dashboard
 still shows the shell until a publication exists; `budget serve` never creates
@@ -440,8 +494,9 @@ sets a demo-only login, and starts the real `budget serve` path on
 `http://127.0.0.1:8765`. It never reads or changes a profile outside that
 folder and refuses to reuse an existing target. Open the address, sign in with
 `budget-demo`, and expect two checked demo accounts (`Demo current` and
-`Demo savings`), the current month, and the report shell. The shell deliberately
-shows no financial figures; those belong to #104.
+`Demo savings`), the current month, and the monthly overview. The demo publishes
+balances without transactions, so its transaction-based summary figures are
+known zeros, including `0,00 kr.` for both Ind and Ud under Ukategoriseret.
 
 Stop the foreground command with `Ctrl+C`, then remove only the isolated demo
 folder:

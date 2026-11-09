@@ -3,6 +3,7 @@
 
 import io
 from contextlib import redirect_stderr, redirect_stdout
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import override
 from unittest import mock
@@ -24,6 +25,25 @@ def backup(profile_file: Path) -> tuple[int, str, str]:
     stderr = io.StringIO()
     with redirect_stdout(stdout), redirect_stderr(stderr):
         status = main(["--profile", str(profile_file), "backup"], environ={})
+    return status, stdout.getvalue(), stderr.getvalue()
+
+
+def restore(profile_file: Path, *options: str) -> tuple[int, str, str]:
+    """Run `budget restore` with one profile file; return status and output."""
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        status = main(["--profile", str(profile_file), "restore", *options], environ={})
+    return status, stdout.getvalue(), stderr.getvalue()
+
+
+def dev_refresh(profile_file: Path, *options: str) -> tuple[int, str, str]:
+    """Run `budget dev refresh` with one profile file; return status and output."""
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    argv = ["--profile", str(profile_file), "dev", "refresh", *options]
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        status = main(argv, environ={})
     return status, stdout.getvalue(), stderr.getvalue()
 
 
@@ -100,4 +120,51 @@ def review(profile_file: Path, *options: str) -> tuple[int, str, str]:
     stderr = io.StringIO()
     with redirect_stdout(stdout), redirect_stderr(stderr):
         status = main(["--profile", str(profile_file), "review", *options], environ={})
+    return status, stdout.getvalue(), stderr.getvalue()
+
+
+def check(profile_file: Path) -> tuple[int, str, str]:
+    """Run `budget check` with one profile file; return status and output."""
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        code = main(["--profile", str(profile_file), "check"], environ={})
+    return code, stdout.getvalue(), stderr.getvalue()
+
+
+def status(profile_file: Path, *, now: datetime | None = None) -> tuple[int, str, str]:
+    """Run `budget status` with one profile file; return status and output.
+
+    `now` is the moment the command reads as the present, when a test needs one.
+    """
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    clock = mock.Mock(wraps=datetime)
+    clock.now.return_value = datetime.now(UTC) if now is None else now
+    with (
+        redirect_stdout(stdout),
+        redirect_stderr(stderr),
+        mock.patch("budget.cli.datetime", clock),
+    ):
+        code = main(["--profile", str(profile_file), "status"], environ={})
+    return code, stdout.getvalue(), stderr.getvalue()
+
+
+def decide(profile_file: Path, *arguments: str) -> tuple[int, str, str]:
+    """Run `budget decide` with one profile file; return status and output."""
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        status = main(
+            ["--profile", str(profile_file), "decide", *arguments], environ={}
+        )
+    return status, stdout.getvalue(), stderr.getvalue()
+
+
+def undo(profile_file: Path) -> tuple[int, str, str]:
+    """Run `budget undo` with one profile file; return status and output."""
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        status = main(["--profile", str(profile_file), "undo"], environ={})
     return status, stdout.getvalue(), stderr.getvalue()

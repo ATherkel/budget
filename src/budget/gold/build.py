@@ -18,6 +18,7 @@ from budget.gold.snapshots import monthly_balances
 from budget.gold.transactions import gold_transactions
 from budget.inputs.accounts import Account
 from budget.inputs.document import ConfigurationError
+from budget.inputs.rule_checks import KnownIds
 from budget.inputs.snapshot import ConfigurationSnapshot
 from budget.inputs.taxonomy import Taxonomy
 from budget.profiles import (
@@ -54,7 +55,7 @@ def build(
     transactions = gold_transactions(silver.transactions)
     problems = (
         *_closing_problems(configuration.accounts, transactions),
-        *_decision_problems(decisions, configuration),
+        *decision_problems(decisions, configuration),
     )
     if problems:
         raise ConfigurationError(problems)
@@ -140,7 +141,7 @@ def _closing_problems(
         )
 
     return tuple(
-        _closed_too_early(account_id, closed_on, latest)
+        closed_too_early(account_id, closed_on, latest)
         for account_id in sorted(accounts)
         if (closed_on := accounts[account_id].closed_on) is not None
         and (latest := latest_transaction.get(account_id)) is not None
@@ -148,7 +149,7 @@ def _closing_problems(
     )
 
 
-def _decision_problems(
+def decision_problems(
     decisions: Sequence[GoldDecision], configuration: ConfigurationSnapshot
 ) -> tuple[str, ...]:
     """Name every decision the configuration alone shows cannot hold.
@@ -158,12 +159,14 @@ def _decision_problems(
     counterpart must be in the account registry; and no two decisions may
     share an identifier or a target.
     """
+    known = KnownIds(
+        accounts=configuration.accounts.keys(),
+        categories=configuration.taxonomy.categories.keys(),
+    )
     return (
         *(
-            f'{DECISION_LOG_FILE_NAME}: decision "{decision.decision_id}": '
-            f"{problem}; record a decision that supersedes it; nothing was published"
-            for decision in decisions
-            if (problem := _decision_problem(decision, configuration)) is not None
+            f"{problem}; nothing was published"
+            for problem in refuted_decisions(decisions, known)
         ),
         *_overlap_problems(decisions),
         *(
@@ -193,24 +196,43 @@ def _overlap_problems(decisions: Sequence[GoldDecision]) -> tuple[str, ...]:
     )
 
 
-def _decision_problem(
-    decision: GoldDecision, configuration: ConfigurationSnapshot
-) -> str | None:
-    """Say what the configuration shows wrong with one decision, if anything."""
+def refuted_decisions(
+    decisions: Sequence[GoldDecision], known: KnownIds
+) -> tuple[str, ...]:
+    """Name every decision whose category or counterpart account is not declared.
+
+    `classification.md`, *Configuration errors*. A file `known` gives as
+    `None` was itself refused, so no decision is judged against it. The Gold
+    build and `check` both call this, so both name a decision the same way.
+    """
+    return tuple(
+        f'{DECISION_LOG_FILE_NAME}: decision "{decision.decision_id}": '
+        f"{problem}; record a decision that supersedes it"
+        for decision in decisions
+        if (problem := decision_problem(decision, known)) is not None
+    )
+
+
+def decision_problem(decision: GoldDecision, known: KnownIds) -> str | None:
+    """Say what the declared IDs show wrong with one decision, if anything.
+
+    The decision boundary calls this too, so a proposal is refused for the
+    same reasons a build would refuse it.
+    """
     match decision:
         case Classify(category_id=category_id) if (
-            category_id not in configuration.taxonomy.categories
+            known.categories is not None and category_id not in known.categories
         ):
             return f'category "{category_id}" is not in the taxonomy'
         case OneSidedTransfer(counterpart_account_id=account_id) if (
-            account_id not in configuration.accounts
+            known.accounts is not None and account_id not in known.accounts
         ):
             return f'counterpart account "{account_id}" is not in {ACCOUNTS_FILE_NAME}'
         case _:
             return None
 
 
-def _closed_too_early(account_id: str, closed_on: date, latest: date) -> str:
+def closed_too_early(account_id: str, closed_on: date, latest: date) -> str:
     """Name the account and both dates, and say how to fix it."""
     return (
         f'{ACCOUNTS_FILE_NAME}: account "{account_id}": closed_on '

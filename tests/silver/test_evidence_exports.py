@@ -36,6 +36,7 @@ def test_exactly_the_runs_behind_the_evidence_ranges_are_passed_on() -> None:
     assert result.evidence_exports == (
         EvidenceExport(
             import_run_id="run-a",
+            payload_id=admitted.run.payload_id,
             account_id=ACCOUNT,
             exported_on=date(2026, 3, 5),
             covers_from=date(2026, 3, 2),
@@ -43,6 +44,7 @@ def test_exactly_the_runs_behind_the_evidence_ranges_are_passed_on() -> None:
         ),
         EvidenceExport(
             import_run_id="run-a2",
+            payload_id=admitted.run.payload_id,
             account_id=ACCOUNT,
             exported_on=date(2026, 4, 10),
             covers_from=date(2026, 3, 2),

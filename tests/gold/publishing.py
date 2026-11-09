@@ -28,6 +28,7 @@ RECIPE = Recipe(
     code_version=None,
     contract_version="0.2",
     silver_identity_version="1",
+    late_booking_days=7,
     python_version="3.12.14",
     sqlite_version="3.53.1",
 )

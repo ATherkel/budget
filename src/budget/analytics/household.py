@@ -43,6 +43,8 @@ class PublicationUnavailableError(GoldPublicationUnavailableError):
             self.add_note(f"current publication: {current_publication_id}")
 
 
+# Analytics may import only the standard library and the Gold seam
+# (tests/analytics/test_boundary.py), so it keeps its own copy of this zone.
 _COPENHAGEN: Final = ZoneInfo("Europe/Copenhagen")
 
 

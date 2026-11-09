@@ -18,6 +18,11 @@ first, and Enkel shows every row; and Enkel notes Unclassified money quietly,
 without its amounts. It also states that Income can be negative. Nothing else
 changes, and no implementation had been built against `0.1`.
 
+Issue #380 amends the presentation of Unclassified money only: Enkel shows its
+money in and money out in a fourth summary figure, Ukategoriseret, beside the
+quiet note. The report types do not change, and the count still belongs to
+Kontrol.
+
 It covers what the monthly overview needs: the report context, the monthly
 overview report, and the failures a report read can raise. Category detail,
 account activity, Kontrol checks, budget comparison, trends and history views
@@ -199,9 +204,13 @@ Unclassified money is a trust condition of its own, distinct from coverage and
 provisional figures: money left leaves it out, so money left may be off by up
 to that amount. When `unclassified.count` is greater than zero, Enkel says so
 in quiet wording that links to the
-[explanation](#navigation-and-selection-transitions), and shows neither the
-amounts nor the count, which belong to Kontrol (issue #106). Adjustments carry
-no such note.
+[explanation](#navigation-and-selection-transitions). Enkel always shows the
+two amounts in a fourth summary figure, Ukategoriseret (issue #380): `money_in`
+labelled Ind with an explicit plus sign when positive, and `money_out` labelled
+Ud with its minus sign, never netted. A known zero reads 0,00 kr. and a null
+`unclassified` reads as unknown, like every other figure. The count belongs to
+Kontrol (issue #106), and the explanation shows neither the amounts nor the
+count. Adjustments carry no such note.
 
 ### Coverage
 
@@ -393,7 +402,8 @@ the same month changes neither.
 | `provisional` | null |
 
 The Unclassified count is 1, so Enkel shows its quiet Unclassified note beside
-money left of −1,000.00, without the 450.00 or the count. Were the 450.00 an
+money left of −1,000.00, and its Ukategoriseret figure shows `money_in` 0.00
+and `money_out` −450.00, without the count. Were the 450.00 an
 expense, money left would be 450.00 lower; were it a Transfer, it would stand.
 
 **May: current month, no activity yet.** Income, Expenses and net cash flow

@@ -46,6 +46,7 @@ do not add behavior without first returning to a red test. Run the relevant
 test suite and the [code quality gate](code-quality.md) after refactoring.
 CI runs the whole suite with `uv run pytest` in `.github/workflows/pytest.yml`
 and blocks the merge when it fails.
+Review the PR and fix its findings as [pr-review.md](pr-review.md) describes.
 
 Tests should assert known behavior through public interfaces and use
 independent expected values. Avoid tests that mirror implementation, assert

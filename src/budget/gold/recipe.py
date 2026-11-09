@@ -25,7 +25,8 @@ class Recipe:
     `configuration_fingerprint` names the configuration snapshot, which the
     store keeps once per distinct content. `decision_log_position` counts the
     decision-log entries read, and `decision_log_prefix_sha256` is the SHA-256
-    of the log through them. `code_version` is None where the profile records
+    of the log through them. `late_booking_days` is the profile's window at the
+    build, in whole days. `code_version` is None where the profile records
     none, as a development build does.
     """
 
@@ -36,5 +37,6 @@ class Recipe:
     code_version: str | None
     contract_version: str
     silver_identity_version: str
+    late_booking_days: int
     python_version: str = field(compare=False)
     sqlite_version: str = field(compare=False)

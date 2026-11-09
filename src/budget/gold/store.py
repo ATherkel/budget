@@ -101,6 +101,16 @@ class PublicationKindError(ValueError):
         )
 
 
+class UndoUnavailableError(RuntimeError):
+    """The store has no previous current publication to restore."""
+
+    def __init__(self) -> None:
+        """Say why undo changed nothing."""
+        super().__init__(
+            "there is no previous publication to undo to; nothing was changed"
+        )
+
+
 class ConfigurationMismatchError(ValueError):
     """The configuration given is not the snapshot the recipe names."""
 
@@ -126,6 +136,25 @@ class PointerMove:
 
 
 @dataclass(frozen=True)
+class RecoveryBoundary:
+    """Where a restore's recovered publication history ends (#121).
+
+    `restore` brings back publications as they stood in `backup_set`, taken
+    at `backup_created_at`; any made after it, before the failure, are lost.
+    `restored_current_id` is the publication current in the set, or None.
+    Every publication from `first_publication_id` on was built after the
+    restore at `restored_at`. That id is the next multiple of 1,000,000 above
+    the set's highest, so no new publication shares a lost one's id (#376).
+    """
+
+    backup_set: str
+    backup_created_at: datetime
+    restored_at: datetime
+    restored_current_id: int | None
+    first_publication_id: int
+
+
+@dataclass(frozen=True)
 class PublishedClassificationReviews:
     """The classification questions of one current, retained publication."""
 
@@ -144,7 +173,9 @@ _SELECT_RETAINED_ONE: Final = (
     " JOIN results USING (publication_id) WHERE publication_id = ?"
 )
 _SELECT_RESULT: Final = "SELECT 1 FROM results WHERE publication_id = ?"
-_SELECT_NEXT_ID: Final = "SELECT coalesce(max(publication_id), 0) + 1 FROM publications"
+_SELECT_HIGHEST_ID: Final = "SELECT coalesce(max(publication_id), 0) FROM publications"
+# After a restore, new ids start at the next multiple of this (#376).
+_RECOVERY_ID_STEP: Final = 1_000_000
 _INSERT_PUBLICATION: Final = (
     "INSERT INTO publications (publication_id, kind, label, known_at, built_at,"
     " replayed_at, contract_version, fingerprint_scheme, result_fingerprint)"
@@ -185,7 +216,17 @@ _INSERT_MOVE: Final = (
     " (moved_at, from_publication_id, to_publication_id, cause)"
     " VALUES (?, ?, ?, ?)"
 )
+_SELECT_LAST_MOVE: Final = "SELECT * FROM pointer_moves ORDER BY move DESC LIMIT 1"
 _SELECT_MOVES: Final = "SELECT * FROM pointer_moves ORDER BY move"
+_SELECT_BOUNDARIES: Final = "SELECT * FROM recovery_boundaries ORDER BY boundary"
+_SELECT_LATEST_BOUNDARY_ID: Final = (
+    "SELECT first_publication_id FROM recovery_boundaries"
+    " ORDER BY boundary DESC LIMIT 1"
+)
+_INSERT_BOUNDARY: Final = (
+    "INSERT INTO recovery_boundaries (backup_set, backup_created_at, restored_at,"
+    " restored_current_id, first_publication_id) VALUES (?, ?, ?, ?, ?)"
+)
 
 # Recipes, kept forever, and each distinct configuration they name.
 _INSERT_SNAPSHOT: Final = (
@@ -194,14 +235,15 @@ _INSERT_SNAPSHOT: Final = (
 _INSERT_RECIPE: Final = (
     "INSERT INTO recipes (publication_id, configuration_fingerprint,"
     " decision_log_position, decision_log_prefix_sha256, code_version,"
-    " contract_version, silver_identity_version, python_version,"
-    " sqlite_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    " contract_version, silver_identity_version, late_booking_days,"
+    " python_version, sqlite_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 _INSERT_RECIPE_RUNS: Final = (
     "INSERT INTO recipe_import_runs (publication_id, import_run_id, payload_id)"
     " VALUES (?, ?, ?)"
 )
 _SELECT_RECIPE: Final = "SELECT * FROM recipes WHERE publication_id = ?"
+_SELECT_RECIPE_IDS: Final = "SELECT publication_id FROM recipes ORDER BY publication_id"
 _SELECT_RECIPE_RUNS: Final = (
     "SELECT import_run_id, payload_id FROM recipe_import_runs WHERE publication_id = ?"
 )
@@ -433,6 +475,17 @@ class GoldStore:
             lambda connection: _stored_recipe(connection, publication_id),
         )
 
+    def recipes(self) -> Sequence[tuple[int, Recipe]]:
+        """Return every stored recipe with its publication id, retained or not."""
+
+        def read(connection: sqlite3.Connection) -> tuple[tuple[int, Recipe], ...]:
+            ids: list[int] = [
+                row["publication_id"] for row in connection.execute(_SELECT_RECIPE_IDS)
+            ]
+            return tuple((id_, _stored_recipe(connection, id_)) for id_ in ids)
+
+        return self._owner.read(read)
+
     def pointer_history(self) -> Sequence[PointerMove]:
         """Return every move of the current pointer, oldest first."""
         return self._owner.read(
@@ -440,6 +493,71 @@ class GoldStore:
                 _move(row) for row in connection.execute(_SELECT_MOVES)
             )
         )
+
+    def undo(self) -> PointerMove:
+        """Move the pointer to the previous current publication."""
+        connection = self._owner.connection(write=True)
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            last_move = connection.execute(_SELECT_LAST_MOVE).fetchone()
+            if last_move is None or last_move["from_publication_id"] is None:
+                raise UndoUnavailableError
+            if (
+                connection.execute(
+                    _SELECT_RESULT, (last_move["to_publication_id"],)
+                ).fetchone()
+                is None
+                or connection.execute(
+                    _SELECT_RESULT, (last_move["from_publication_id"],)
+                ).fetchone()
+                is None
+            ):
+                raise UndoUnavailableError
+            move = _move_pointer(connection, last_move["from_publication_id"], "undo")
+        _cleanup_after_move(connection, move.to_publication_id)
+        return move
+
+    def recovery_boundaries(self) -> Sequence[RecoveryBoundary]:
+        """Return every recorded recovery boundary, oldest first."""
+        return self._owner.read(
+            lambda connection: tuple(
+                _boundary(row) for row in connection.execute(_SELECT_BOUNDARIES)
+            )
+        )
+
+    def record_recovery_boundary(
+        self, backup_set: str, backup_created_at: datetime, restored_at: datetime
+    ) -> RecoveryBoundary:
+        """Record that this store's history was restored from `backup_set`.
+
+        The publication current now is the set's. New ids start at the next
+        multiple of 1,000,000 above the highest id the store holds, and every
+        id from there on belongs to a publication built after the restore.
+        """
+        connection = self._owner.connection(write=True)
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            pointer = connection.execute(_SELECT_CURRENT_ID).fetchone()
+            highest = int(connection.execute(_SELECT_HIGHEST_ID).fetchone()[0])
+            boundary = RecoveryBoundary(
+                backup_set=backup_set,
+                backup_created_at=backup_created_at,
+                restored_at=restored_at,
+                restored_current_id=None if pointer is None else int(pointer[0]),
+                first_publication_id=(highest // _RECOVERY_ID_STEP + 1)
+                * _RECOVERY_ID_STEP,
+            )
+            connection.execute(
+                _INSERT_BOUNDARY,
+                (
+                    boundary.backup_set,
+                    boundary.backup_created_at.isoformat(),
+                    boundary.restored_at.isoformat(),
+                    boundary.restored_current_id,
+                    boundary.first_publication_id,
+                ),
+            )
+        return boundary
 
     def classification_reviews(
         self,
@@ -466,6 +584,15 @@ class GoldStore:
                 kind,
                 account,
             )
+
+        return self._owner.read(read)
+
+    def reviews(self, publication_id: int) -> PublishedClassificationReviews:
+        """Read one retained publication's review items in one snapshot."""
+
+        def read(connection: sqlite3.Connection) -> PublishedClassificationReviews:
+            _retained(connection, publication_id)
+            return _classification_reviews(connection, publication_id, None, None)
 
         return self._owner.read(read)
 
@@ -513,20 +640,7 @@ class GoldStore:
             _write_recipe(connection, publication.publication_id, recipe, configuration)
             _write(connection, encoded)
             _move_pointer(connection, publication.publication_id, "build")
-        try:
-            _delete_stale_results(connection)
-        except sqlite3.Error as error:
-            # The publish has committed, so a failure here never undoes it.
-            code = getattr(error, "sqlite_errorcode", None)
-            if code is None or code & 0xFF not in _PASSING_CLEANUP_FAILURES:
-                error.add_note(
-                    f"publication {publication.publication_id} is current; "
-                    "only deleting the results no longer retained failed"
-                )
-                raise
-            warnings.warn(
-                f"{_STALE_RESULTS_KEPT}: {error}", StaleResultsWarning, stacklevel=2
-            )
+        _cleanup_after_move(connection, publication.publication_id)
 
 
 class StoredPublication:
@@ -808,18 +922,44 @@ def _delete_stale_results(connection: sqlite3.Connection) -> None:
             connection.executemany(statement, stale)
 
 
-def _next_publication_id(connection: sqlite3.Connection) -> int:
-    """Return one more than the highest id the store has ever published.
+def _cleanup_after_move(connection: sqlite3.Connection, current_id: int) -> None:
+    """Delete unreferenced results after a committed pointer move."""
+    try:
+        _delete_stale_results(connection)
+    except sqlite3.Error as error:
+        code = getattr(error, "sqlite_errorcode", None)
+        if code is None or code & 0xFF not in _PASSING_CLEANUP_FAILURES:
+            error.add_note(
+                f"publication {current_id} is current; "
+                "only deleting the results no longer retained failed"
+            )
+            raise
+        warnings.warn(
+            f"{_STALE_RESULTS_KEPT}: {error}",
+            StaleResultsWarning,
+            stacklevel=2,
+        )
 
-    A publication's metadata is never deleted, so no id is handed out twice.
+
+def _next_publication_id(connection: sqlite3.Connection) -> int:
+    """Return the id the next publication must carry.
+
+    That is one more than the highest id the store has ever published, or the
+    latest recovery boundary's first id when that is larger. A publication's
+    metadata is never deleted, so within one history no id is handed out
+    twice, and a restore jumps past every id lost after its set (#376). Only
+    a second restore of the same or an older set can reuse a range (#414).
     """
-    row = connection.execute(_SELECT_NEXT_ID).fetchone()
-    return int(row[0])
+    following = int(connection.execute(_SELECT_HIGHEST_ID).fetchone()[0]) + 1
+    boundary = connection.execute(_SELECT_LATEST_BOUNDARY_ID).fetchone()
+    if boundary is None:
+        return following
+    return max(following, int(boundary[0]))
 
 
 def _move_pointer(
     connection: sqlite3.Connection, to_publication_id: int, cause: PointerCause
-) -> None:
+) -> PointerMove:
     """Append one move from the current publication to `to_publication_id`.
 
     The move is the last statement of its transaction, so `moved_at` is read
@@ -830,6 +970,23 @@ def _move_pointer(
     moved_at = datetime.now(UTC).isoformat()
     connection.execute(
         _INSERT_MOVE, (moved_at, from_publication_id, to_publication_id, cause)
+    )
+    return PointerMove(
+        moved_at=datetime.fromisoformat(moved_at),
+        from_publication_id=from_publication_id,
+        to_publication_id=to_publication_id,
+        cause=cause,
+    )
+
+
+def _boundary(row: sqlite3.Row) -> RecoveryBoundary:
+    """Read one `recovery_boundaries` row."""
+    return RecoveryBoundary(
+        backup_set=row["backup_set"],
+        backup_created_at=datetime.fromisoformat(row["backup_created_at"]),
+        restored_at=datetime.fromisoformat(row["restored_at"]),
+        restored_current_id=row["restored_current_id"],
+        first_publication_id=row["first_publication_id"],
     )
 
 
@@ -863,6 +1020,7 @@ def _write_recipe(
             recipe.code_version,
             recipe.contract_version,
             recipe.silver_identity_version,
+            recipe.late_booking_days,
             recipe.python_version,
             recipe.sqlite_version,
         ),
@@ -888,6 +1046,7 @@ def _recipe(row: sqlite3.Row, runs: Iterable[sqlite3.Row]) -> Recipe:
         code_version=row["code_version"],
         contract_version=row["contract_version"],
         silver_identity_version=row["silver_identity_version"],
+        late_booking_days=row["late_booking_days"],
         python_version=row["python_version"],
         sqlite_version=row["sqlite_version"],
     )

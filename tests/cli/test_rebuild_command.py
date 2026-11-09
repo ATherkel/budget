@@ -17,8 +17,9 @@ from budget.locking import writer_lock
 from budget.profiles import Profile
 from budget.silver import SilverStore
 from tests.cli.commands import migrate, rebuild
+from tests.cli.pipelines import write_inputs
 from tests.cli.profile_files import development_profile, write_profile
-from tests.importing.households import ACCOUNTS, drop, payload
+from tests.importing.households import drop, payload
 from tests.silver.exports import identity
 
 EXIT_OK = 0
@@ -41,7 +42,7 @@ def _migrated_profile_with_accounts(profile_file: Path, folder: Path) -> Profile
     assert migrate(profile_file)[0] == EXIT_OK
     profile = development_profile(folder)
     profile.inputs.mkdir(parents=True, exist_ok=True)
-    profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+    write_inputs(profile)
     return profile
 
 
@@ -149,7 +150,7 @@ class RebuildSummaryTests(unittest.TestCase):
 
             assert status == EXIT_OK
             assert stderr == ""
-            assert stdout.splitlines() == [
+            summary = [
                 "Bronze   5 import runs: 3 stored, 1 repeat, 1 refused",
                 (
                     "Account  joint-current: 1 admitted, 2 quarantined,"
@@ -165,7 +166,15 @@ class RebuildSummaryTests(unittest.TestCase):
                 # repeats, rather than assuming that run was admitted.
                 f"Run  {repeated}  joint-current  repeat accepted",
                 f"Run  {dropped}  joint-current  quarantined  dropped-transaction",
+                "Gold     published publication 1 (cause build)",
+                (
+                    "Changes  no previous publication to compare; "
+                    "publication 1 is current."
+                ),
+                "Review  1 balance-break opened; 1 dropped-transaction opened",
             ]
+            # The completeness output follows the summary.
+            assert stdout.splitlines()[: len(summary)] == summary
             # Only identifiers and existing codes reach the terminal: no
             # amount, description, original filename, transaction id, or
             # validation message.

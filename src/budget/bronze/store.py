@@ -10,7 +10,8 @@ declared `source_format`.
 
 import json
 import sqlite3
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -57,6 +58,17 @@ class ParserFormatMismatchError(ValueError):
         )
 
 
+class ConflictingDeclaredFormatsError(ValueError):
+    """A retained payload was declared as more than one source format."""
+
+    def __init__(self, payload_id: str) -> None:
+        """Name the payload; which declared format is right is not ours to guess."""
+        super().__init__(
+            f"payload {payload_id} was declared as more than one source format; "
+            "nothing was rebuilt"
+        )
+
+
 def _parsers_for(
     parsers: Mapping[str, SourceParser] | None,
 ) -> Mapping[str, SourceParser]:
@@ -94,36 +106,45 @@ def _decide_outcome(
     payload_id: str,
     declared_account_id: str,
     declaration_refused: bool,
+    voided: Collection[str],
 ) -> tuple[bool, str | None]:
-    """Decide whether this presentation repeats, is refused, or is a new store."""
-    original_run = connection.execute(
+    """Decide whether this presentation repeats, is refused, or is a new store.
+
+    A voided run no longer stands for its bytes, so it is nobody's original.
+    """
+    stored_here = connection.execute(
         """
         SELECT import_run_id FROM import_runs
         WHERE payload_id = ? AND declared_account_id = ? AND outcome = 'stored'
         ORDER BY started_at, import_run_id
-        LIMIT 1
         """,
         (payload_id, declared_account_id),
-    ).fetchone()
-    repeat_of: str | None = None
-    if original_run is not None:
-        repeat_of = str(original_run["import_run_id"])
+    ).fetchall()
+    repeat_of = next(
+        (
+            str(row["import_run_id"])
+            for row in stored_here
+            if row["import_run_id"] not in voided
+        ),
+        None,
+    )
 
     # Bytes already stored for another account are refused: the payload has one
-    # owner, and only a manual decision may move it.
-    account_conflict = None
+    # owner, and only a manual decision, a void of that run, may move it.
+    account_conflict = False
     if repeat_of is None:
-        account_conflict = connection.execute(
+        stored_elsewhere = connection.execute(
             """
             SELECT import_run_id FROM import_runs
             WHERE payload_id = ? AND outcome = 'stored'
                 AND declared_account_id <> ?
-            ORDER BY started_at, import_run_id
-            LIMIT 1
             """,
             (payload_id, declared_account_id),
-        ).fetchone()
-    refused = declaration_refused or account_conflict is not None
+        ).fetchall()
+        account_conflict = any(
+            row["import_run_id"] not in voided for row in stored_elsewhere
+        )
+    refused = declaration_refused or account_conflict
     if refused:
         # A refused run is nobody's original: it is never the run a later
         # presentation of these bytes repeats.
@@ -277,8 +298,14 @@ class BronzeStore:
         self,
         path: str | Path,
         declaration: ImportDeclaration,
+        *,
+        voided: Collection[str] = frozenset(),
     ) -> ImportRun:
-        """Retain a file's bytes, provenance, and decoded source records."""
+        """Retain a file's bytes, provenance, and decoded source records.
+
+        `voided` are the import runs a manual decision has voided. Bronze does
+        not read the decision log, so its caller names them.
+        """
         started_at = datetime.now(UTC)
         source_format = declaration.source_format
         parser = self._parser_for(source_format)
@@ -314,6 +341,7 @@ class BronzeStore:
                 payload_id=payload_id,
                 declared_account_id=declaration.declared_account_id,
                 declaration_refused=declaration_refused,
+                voided=voided,
             )
 
             _record_run(
@@ -419,4 +447,93 @@ class BronzeStore:
                 reason=row["reason"],
             )
             for row in rows
+        )
+
+    def derive_records(self) -> "DerivedRecords":
+        """Parse every retained payload again, storing nothing.
+
+        Each payload is parsed from its stored bytes by the parser of the
+        format its import runs declared, exactly as an import parses it. A
+        payload declared as more than one format is refused rather than
+        guessed, and a format no parser is registered for is refused by name.
+        """
+        conflicting = self._connection.execute(
+            "SELECT payload_id FROM import_runs GROUP BY payload_id"
+            " HAVING COUNT(DISTINCT source_format) > 1 ORDER BY payload_id LIMIT 1"
+        ).fetchone()
+        if conflicting is not None:
+            raise ConflictingDeclaredFormatsError(conflicting["payload_id"])
+        declared = self._connection.execute(
+            "SELECT DISTINCT payload_id, source_format FROM import_runs"
+            " ORDER BY payload_id"
+        ).fetchall()
+        return DerivedRecords(
+            tuple(
+                (
+                    row["payload_id"],
+                    row["source_format"],
+                    self._parser_for(row["source_format"]).parse(
+                        self.get_payload(row["payload_id"]).content
+                    ),
+                )
+                for row in declared
+            )
+        )
+
+    def replace_derived_records(self, derived: "DerivedRecords") -> None:
+        """Replace every derived record with what `derived` parsed, atomically.
+
+        All payloads are replaced in one transaction, so a record the store
+        cannot hold leaves the earlier derived state as it was. The bytes and
+        every import run are untouched: a rebuild is not an import.
+        """
+        with self._connection:
+            self._connection.execute("BEGIN IMMEDIATE")
+            for payload_id, source_format, result in derived.parsed:
+                _rebuild_derived_cache(
+                    self._connection,
+                    payload_id=payload_id,
+                    source_format=source_format,
+                    result=result,
+                )
+
+    def rebuild_derived_records(self) -> None:
+        """Regenerate every payload's source records and format failures."""
+        self.replace_derived_records(self.derive_records())
+
+
+@dataclass(frozen=True)
+class DerivedRecords:
+    """What parsing every retained payload gave, before any of it is stored.
+
+    Each entry is a payload, the format its runs declared, and the parser's
+    verdict. The records and format failures a Silver build reads come straight
+    from here, so a build can be checked before the store is replaced.
+    """
+
+    parsed: tuple[tuple[str, str, ParserResult], ...]
+
+    def source_records(self, payload_id: str) -> tuple[SourceRecord, ...]:
+        """Return the source records the parser derived for a payload, in order."""
+        return tuple(
+            SourceRecord(
+                payload_id=payload_id,
+                record_ordinal=ordinal,
+                fields=MappingProxyType(dict(fields)),
+            )
+            for found, _, result in self.parsed
+            if found == payload_id and result.failure_reason is None
+            for ordinal, fields in enumerate(result.records, start=1)
+        )
+
+    def format_failures(self, payload_id: str) -> tuple[FormatFailure, ...]:
+        """Return the format verdict the parser gave a payload, if it rejected it."""
+        return tuple(
+            FormatFailure(
+                payload_id=payload_id,
+                source_format=source_format,
+                reason=result.failure_reason,
+            )
+            for found, source_format, result in self.parsed
+            if found == payload_id and result.failure_reason is not None
         )

@@ -28,3 +28,14 @@ def write_ranges(
     path = folder / "ranges.toml"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
+
+
+COMMIT = "0123456789abcdef0123456789abcdef01234567\n"
+
+
+def clean_checkout(arguments: list[str], **_: object) -> mock.Mock:
+    """Answer Git as a clean, tracked checkout at one commit does."""
+    completed = clean_git()
+    if "rev-parse" in arguments:
+        completed.stdout = COMMIT
+    return completed
