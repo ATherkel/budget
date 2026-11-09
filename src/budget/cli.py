@@ -364,6 +364,12 @@ def _parser() -> argparse.ArgumentParser:
         "--kind", choices=REVIEW_KINDS, help="list one kind of item only, no runs"
     )
     review.add_argument("--account", help="list one account's items and runs only")
+    find = commands.add_parser(
+        "find", help="find transactions in the current publication"
+    )
+    find.add_argument("text", help="case-insensitive text in the description")
+    find.add_argument("--month", help="find transactions in YYYY-MM only")
+    find.add_argument("--account", help="find transactions in one account only")
     decide = commands.add_parser(
         "decide", help="record a manual decision, then rebuild from what it affects"
     )
@@ -717,6 +723,16 @@ def _review(profile: Profile, kind: str | None, account: str | None) -> None:
     )
 
 
+def _find(
+    profile: Profile,
+    text: str,
+    month: str | None,
+    account: str | None,
+) -> None:
+    """Find transactions in the current publication."""
+    del profile, text, month, account
+
+
 def _transaction(profile: Profile, handle: str) -> str:
     """Return the one Silver transaction whose ID starts with `handle`.
 
@@ -1028,6 +1044,12 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         return _status(profile)
     if arguments.command == "check":
         return _check(profile)
+    _dispatch(profile, arguments)
+    return EXIT_OK
+
+
+def _dispatch(profile: Profile, arguments: argparse.Namespace) -> None:
+    """Run one store-backed command after profile and restore checks."""
     if arguments.command in _PROFILE_ONLY_COMMANDS:
         _PROFILE_ONLY_COMMANDS[arguments.command](profile)
     elif arguments.command == "dev":
@@ -1036,11 +1058,12 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         _rebuild(profile, arguments.from_stage)
     elif arguments.command == "review":
         _review(profile, arguments.kind, arguments.account)
+    elif arguments.command == "find":
+        _find(profile, arguments.text, arguments.month, arguments.account)
     elif arguments.command == "decide":
         _decide(profile, arguments)
     else:
         _migrate(profile, arguments.stage, new_store=arguments.new_store)
-    return EXIT_OK
 
 
 def _refuse(error: Exception, status: int) -> int:
