@@ -16,6 +16,7 @@ import sqlite3
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
+from typing import Self
 
 from budget import sqlstore
 from budget.bronze import BronzeStore
@@ -34,6 +35,7 @@ from budget.gold.recipe import Recipe, RecipeImportRun
 from budget.gold.storage import gold_stage
 from budget.gold.store import GoldStore
 from budget.inputs import (
+    Account,
     ConfigurationError,
     ConfigurationSnapshot,
     load_accounts,
@@ -42,16 +44,23 @@ from budget.inputs import (
 from budget.locking import WriterLock
 from budget.profiles import ACCOUNTS_FILE_NAME, Profile
 from budget.silver import (
+    SILVER_FINGERPRINT_SCHEME,
+    AcceptDiscrepancy,
     ReviewItem,
+    SameTransaction,
+    SilverBuild,
     SilverBuildInputs,
+    SilverDecision,
     SilverResult,
     SilverStore,
+    VoidImportRun,
+    Withdrawn,
     derive_silver,
     rebuild_silver,
+    silver_provenance,
     store_silver,
 )
 from budget.silver.currencies import UnknownCurrencyError, minor_unit_places
-from budget.silver.decisions import SilverDecision
 from budget.silver.formats import SourceFormat
 from budget.silver.identity import IDENTITY_VERSION
 from budget.silver.storage import silver_stage
@@ -78,6 +87,76 @@ class SilverNotBuiltError(RuntimeError):
         super().__init__(
             "Silver has never been built, so there is nothing to publish; run "
             "`budget rebuild --from silver` first; nothing was published"
+        )
+
+
+class SilverProvenanceUnavailableError(RuntimeError):
+    """Gold cannot publish a completed Silver result of unknown origin."""
+
+    def __init__(self) -> None:
+        """Name the one recovery command."""
+        super().__init__(
+            "the stored Silver result has no trustworthy build provenance; "
+            "run `budget rebuild --from silver` before publishing Gold; "
+            "nothing was published"
+        )
+
+
+class SilverDecisionFreshnessError(RuntimeError):
+    """Gold was asked to consume Silver before its effective decisions."""
+
+    def __init__(self) -> None:
+        """Name the earliest rebuild that applies the changed decisions."""
+        super().__init__(
+            "the current effective Silver decisions have not been applied to "
+            "the stored Silver result; run `budget rebuild --from silver` "
+            "before publishing Gold; nothing was published"
+        )
+
+
+class SilverDecisionLogPrefixError(RuntimeError):
+    """The stored Silver log prefix is no longer in the current decision log."""
+
+    def __init__(self) -> None:
+        """Name the exact recovery command."""
+        super().__init__(
+            "the stored Silver decision-log prefix no longer matches decisions.jsonl; "
+            "run `budget rebuild --from silver` before publishing Gold; "
+            "nothing was published"
+        )
+
+
+class IncompatibleSilverProvenanceError(RuntimeError):
+    """Stored Silver provenance is newer than this Gold consumer supports."""
+
+    def __init__(self, field: str) -> None:
+        """Name the incompatible contract and the required rebuild."""
+        super().__init__(
+            f"the stored Silver provenance has an unsupported {field}; "
+            "run `budget rebuild --from silver` before publishing Gold; "
+            "nothing was published"
+        )
+
+    @classmethod
+    def fingerprint_scheme(cls) -> Self:
+        """Refuse a fingerprint scheme this consumer cannot compare."""
+        return cls("fingerprint scheme")
+
+    @classmethod
+    def identity_version(cls) -> Self:
+        """Refuse an identity contract this consumer cannot interpret."""
+        return cls("identity contract")
+
+
+class SilverCurrencyFreshnessError(RuntimeError):
+    """A consumed account's currency changed after the Silver build."""
+
+    def __init__(self) -> None:
+        """Refuse to reinterpret stored money under another currency."""
+        super().__init__(
+            "a consumed currency differs from the currency used by the stored "
+            "Silver result; run `budget rebuild --from silver` before "
+            "publishing Gold; nothing was published"
         )
 
 
@@ -133,16 +212,20 @@ def bronze_inputs(
     profile: Profile,
     decisions: Sequence[SilverDecision] | None = None,
     derived: DerivedRecords | None = None,
+    *,
+    log: DecisionLogRead | None = None,
 ) -> SilverBuildInputs:
     """Read every Bronze input one Silver build needs, and the currencies.
 
     The profile's import runs, each run's payload's source records or format
     failures, and each declared account's currency are read as they stand now.
     `decisions` are the Silver decisions in force; without them the profile's
-    decision log is read. `derived` are source records and format failures
-    freshly parsed from the retained payloads, which stand in for the stored
-    ones when a rebuild starts from Bronze.
+    decision log is read. `log` is that same log when the caller already read
+    it. `derived` are source records and format failures freshly parsed from
+    the retained payloads, which stand in for the stored ones when a rebuild
+    starts from Bronze.
     """
+    decision_log = read_decision_log(profile) if log is None else log
     currencies = {
         account_id: account.currency
         for account_id, account in load_accounts(profile).items()
@@ -163,7 +246,10 @@ def bronze_inputs(
         source_records=source_records,
         format_failures=format_failures,
         currencies=currencies,
-        decisions=read_decision_log(profile).silver if decisions is None else decisions,
+        decisions=decision_log.silver if decisions is None else decisions,
+        decision_log_position=decision_log.position,
+        decision_log_prefix_sha256=decision_log.prefix_sha256,
+        code_version=committed_code_version(profile),
     )
 
 
@@ -298,20 +384,34 @@ def _recipe(
 
 def _plan_gold(
     profile: Profile,
-    silver: SilverResult,
+    silver: SilverBuild,
     household: HouseholdInputs,
     now: datetime,
+    *,
+    silver_changed: bool = False,
 ) -> _GoldPlan | GoldRebuild:
     """Derive Gold from `silver`, writing nothing, or find it already current.
 
     A recipe equal to the current publication's builds nothing and comes back
-    as the rebuild that publishes nothing. A configuration error is raised
-    here, before any store is replaced.
+    as the rebuild that publishes nothing, unless `silver_changed`: the recipe
+    names Silver's inputs, not its result, so a Silver that changed under the
+    same recipe still needs a new publication. A configuration error is
+    raised here, before any store is replaced.
     """
-    recipe = _recipe(profile, silver, household)
+    if silver.provenance is None:
+        raise SilverProvenanceUnavailableError
+    _require_current_currencies(
+        silver.provenance.currencies,
+        household.configuration.accounts,
+    )
+    recipe = _recipe(profile, silver.result, household)
     with GoldStore(profile) as gold:
         current = gold.current()
-        if current is not None and gold.recipe(current.publication_id) == recipe:
+        if (
+            current is not None
+            and not silver_changed
+            and gold.recipe(current.publication_id) == recipe
+        ):
             return GoldRebuild(publication=current, published=False)
         draft = GoldPublication(
             publication_id=gold.next_publication_id(),
@@ -325,7 +425,7 @@ def _plan_gold(
             result_fingerprint="",
         )
     built = build(
-        silver=silver,
+        silver=silver.result,
         configuration=household.configuration,
         decisions=household.log.gold,
         publication=draft,
@@ -334,6 +434,33 @@ def _plan_gold(
     publication = replace(draft, result_fingerprint=result_fingerprint(built))
     result = GoldResult(publication, built.records, built.lineage)
     return _GoldPlan(recipe, household.configuration, result)
+
+
+def _require_current_currencies(
+    consumed: Mapping[str, str],
+    accounts: Mapping[str, Account],
+) -> None:
+    """Refuse changes for exactly the accounts named by consumed runs.
+
+    An account the registry no longer declares is refused input naming it,
+    since only declaring it again helps; a changed currency needs Silver
+    rebuilt under the new one.
+    """
+    undeclared = [account_id for account_id in consumed if account_id not in accounts]
+    if undeclared:
+        raise ConfigurationError(tuple(map(_undeclared_consumed_account, undeclared)))
+    for account_id, consumed_currency in consumed.items():
+        if accounts[account_id].currency != consumed_currency:
+            raise SilverCurrencyFreshnessError
+
+
+def _undeclared_consumed_account(account_id: str) -> str:
+    """Name an account Silver was built from that the registry no longer declares."""
+    return (
+        f'{ACCOUNTS_FILE_NAME}: account "{account_id}" is not declared, but '
+        "Silver was built from an import run for it; restore it, with closed_on "
+        "set if the account has closed, before rebuilding; nothing was published"
+    )
 
 
 def _publish(profile: Profile, plan: _GoldPlan | GoldRebuild) -> GoldRebuild:
@@ -362,8 +489,50 @@ def rebuild_from_gold(
     with SilverStore(profile) as silver_store:
         if not silver_store.is_built():
             raise SilverNotBuiltError
-        silver = silver_store.read()
+        silver = silver_store.read_build()
+    if silver.provenance is None:
+        raise SilverProvenanceUnavailableError
+    if silver.provenance.fingerprint_scheme != SILVER_FINGERPRINT_SCHEME:
+        raise IncompatibleSilverProvenanceError.fingerprint_scheme()
+    if silver.provenance.identity_version != IDENTITY_VERSION:
+        raise IncompatibleSilverProvenanceError.identity_version()
+    _require_current_silver_decisions(silver.provenance.decisions, household.log.silver)
+    if (
+        household.log.prefix_sha256_at(silver.provenance.decision_log_position)
+        != silver.provenance.decision_log_prefix_sha256
+    ):
+        raise SilverDecisionLogPrefixError
     return _publish(profile, _plan_gold(profile, silver, household, now))
+
+
+def _require_current_silver_decisions(
+    consumed: Sequence[SilverDecision],
+    current: Sequence[SilverDecision],
+) -> None:
+    """Refuse if any effective Silver decision differs from the build."""
+    if sorted(consumed, key=_silver_decision_key) != sorted(
+        current, key=_silver_decision_key
+    ):
+        raise SilverDecisionFreshnessError
+
+
+def _silver_decision_key(decision: SilverDecision) -> tuple[object, ...]:
+    """Return every typed field in one deterministic decision key."""
+    match decision:
+        case AcceptDiscrepancy():
+            return ("accept-discrepancy", decision.decision_id, decision.import_run_id)
+        case VoidImportRun():
+            return ("void-import-run", decision.decision_id, decision.import_run_id)
+        case Withdrawn():
+            return ("withdrawn", decision.decision_id, decision.transaction_id)
+        case SameTransaction():
+            return (
+                "same-transaction",
+                decision.decision_id,
+                decision.transaction_id,
+                decision.payload_id,
+                decision.record_ordinal,
+            )
 
 
 def rebuild_through_gold(
@@ -392,21 +561,44 @@ def rebuild_through_gold(
         with BronzeStore(profile) as bronze:
             reparsed = bronze.derive_records()
     silver_inputs = replace(
-        bronze_inputs(profile, household.log.silver, reparsed), formats=formats
+        bronze_inputs(
+            profile,
+            household.log.silver,
+            reparsed,
+            log=household.log,
+        ),
+        formats=formats,
     )
     derived = derive_silver(silver_inputs)
-    plan = _plan_gold(profile, derived, household, now)
+    prospective_provenance = silver_provenance(silver_inputs, derived)
+    silver = SilverBuild(
+        result=derived,
+        currencies=silver_inputs.currencies,
+        provenance=prospective_provenance,
+    )
     with SilverStore(profile) as silver_store:
-        stored = silver_store.read()
+        built = silver_store.is_built()
+        stored = silver_store.read_build()
+    changed = stored.result != derived or stored.provenance != prospective_provenance
+    plan = _plan_gold(
+        profile,
+        silver,
+        household,
+        now,
+        silver_changed=changed,
+    )
     if reparsed is not None:
         with BronzeStore(profile) as bronze:
             bronze.replace_derived_records(reparsed)
-    store_silver(lock, silver_inputs, derived)
+    if changed or not built:
+        store_silver(lock, silver_inputs, derived)
     return PipelineRebuild(
         silver=SilverRebuild(runs=silver_inputs.runs, result=derived),
-        silver_changed=stored != derived,
+        silver_changed=changed,
         gold=_publish(profile, plan),
-        silver_reviews=SilverReviews(_open_reviews(stored), _open_reviews(derived)),
+        silver_reviews=SilverReviews(
+            _open_reviews(stored.result), _open_reviews(derived)
+        ),
     )
 
 
@@ -423,7 +615,8 @@ def rebuild_from_silver(
     log is read here.
     """
     profile = lock.profile
-    decisions = None if inputs is None else inputs.log.silver
-    silver_inputs = bronze_inputs(profile, decisions)
+    decision_log = None if inputs is None else inputs.log
+    decisions = None if decision_log is None else decision_log.silver
+    silver_inputs = bronze_inputs(profile, decisions, log=decision_log)
     result = rebuild_silver(lock, inputs=silver_inputs)
     return SilverRebuild(runs=silver_inputs.runs, result=result)

@@ -20,6 +20,9 @@ from budget.silver.models import (
     EvidenceExport,
     ImportRunResult,
     ReviewItem,
+    SilverBuild,
+    SilverImportRun,
+    SilverProvenance,
     SilverResult,
     Transaction,
     TransactionEvidence,
@@ -30,6 +33,7 @@ from budget.silver.rebuild import (
     SilverBuildInputs,
     derive_silver,
     rebuild_silver,
+    silver_provenance,
     store_silver,
 )
 from budget.silver.storage import (
@@ -57,8 +61,11 @@ __all__ = [
     "NonFiniteMoneyError",
     "ReviewItem",
     "SameTransaction",
+    "SilverBuild",
     "SilverBuildInputs",
     "SilverDecision",
+    "SilverImportRun",
+    "SilverProvenance",
     "SilverResult",
     "SilverStore",
     "Transaction",
@@ -73,5 +80,6 @@ __all__ = [
     "migrate_silver",
     "rebuild_silver",
     "result_fingerprint",
+    "silver_provenance",
     "store_silver",
 ]

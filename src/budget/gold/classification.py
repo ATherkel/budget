@@ -217,7 +217,7 @@ def _decided(decisions: Sequence[GoldDecision], inputs: _Inputs) -> _Decided:
     outcomes: dict[str, _Outcome] = {}
     not_applicable: list[ClassificationReviewItem] = []
     for decision in decisions:
-        reason = _inapplicable(decision, inputs)
+        reason = inapplicable(decision, inputs.transactions, inputs.configuration)
         if reason is None:
             outcomes.update(_applied(decision, inputs))
         else:
@@ -225,23 +225,34 @@ def _decided(decisions: Sequence[GoldDecision], inputs: _Inputs) -> _Decided:
     return _Decided(outcomes, tuple(not_applicable))
 
 
-def _inapplicable(decision: GoldDecision, inputs: _Inputs) -> str | None:
-    """Say why a decision does not apply, or `None` when it does."""
-    if any(tid not in inputs.transactions for tid in targets(decision)):
+def inapplicable(
+    decision: GoldDecision,
+    transactions: Mapping[str, GoldTransaction],
+    configuration: ConfigurationSnapshot,
+) -> str | None:
+    """Say why a decision does not apply, or `None` when it does.
+
+    The reason is the `decision-not-applicable` item's, such as
+    `amounts-do-not-cancel`.
+    """
+    if any(tid not in transactions for tid in targets(decision)):
         return "target-missing"
     match decision:
         case Classify(transaction_id=tid):
-            if _sign(inputs.transactions[tid].amount) is None:
+            if _sign(transactions[tid].amount) is None:
                 return "zero-amount"
         case Pair(transaction_ids=(first, second)):
-            out, into = inputs.transactions[first], inputs.transactions[second]
+            out, into = transactions[first], transactions[second]
             if out.amount + into.amount != 0:
                 return "amounts-do-not-cancel"
             if out.account_id == into.account_id:
                 return "same-account"
         case OneSidedTransfer(transaction_id=tid, counterpart_account_id=account_id):
             if _managed_in(
-                account_id, inputs.transactions[tid].transaction_date, inputs
+                account_id,
+                transactions[tid].transaction_date,
+                transactions,
+                configuration,
             ):
                 return "inside-managed-period"
         case _:
@@ -249,7 +260,12 @@ def _inapplicable(decision: GoldDecision, inputs: _Inputs) -> str | None:
     return None
 
 
-def _managed_in(account_id: str, day: date, inputs: _Inputs) -> bool:
+def _managed_in(
+    account_id: str,
+    day: date,
+    transactions: Mapping[str, GoldTransaction],
+    configuration: ConfigurationSnapshot,
+) -> bool:
     """Say whether the day's month is in the account's managed period.
 
     The period runs from the month of the account's first booked transaction
@@ -258,14 +274,12 @@ def _managed_in(account_id: str, day: date, inputs: _Inputs) -> bool:
     at the latest published month never binds: no transaction falls after it.
     """
     booked = [
-        t.transaction_date
-        for t in inputs.transactions.values()
-        if t.account_id == account_id
+        t.transaction_date for t in transactions.values() if t.account_id == account_id
     ]
     if not booked:
         return False
     month = ReportingMonth.of(day)
-    closed_on = inputs.configuration.accounts[account_id].closed_on
+    closed_on = configuration.accounts[account_id].closed_on
     return ReportingMonth.of(min(booked)) <= month and (
         closed_on is None or month <= ReportingMonth.of(closed_on)
     )

@@ -36,6 +36,10 @@ from tests.bronze.migration_resources import SILVER_MIGRATIONS
 # children point at.
 STORE_TABLES = {
     "account_currencies",
+    "silver_builds",
+    "silver_build_runs",
+    "silver_build_currencies",
+    "silver_build_decisions",
     "transactions",
     "transaction_evidence",
     "unbooked_records",
@@ -80,7 +84,7 @@ class SilverStorageTests(unittest.TestCase):
                 assert set(definitions) == STORE_TABLES
                 for definition in definitions.values():
                     assert "STRICT" in definition
-                assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
                 assert connection.execute(
                     "SELECT profile, stage FROM store_identity"
                 ).fetchall() == [("test", "silver")]
@@ -94,7 +98,7 @@ class SilverStorageTests(unittest.TestCase):
             migrate_silver(profile)
 
             with _connected(profile.silver_store) as connection:
-                assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
                 assert connection.execute(
                     "SELECT profile, stage FROM store_identity"
                 ).fetchall() == [("test", "silver")]

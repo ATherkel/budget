@@ -52,6 +52,17 @@ body names which one:
 - It breaks a Gold contract invariant, or risks losing or corrupting household
   data.
 
+Every definition of done ends with these two mandatory outcomes, worded for the
+release:
+
+- **Prove it with the household.** Both household readers do the release's
+  tasks, and the findings are recorded on the acceptance issue.
+- **Cut cleanly.** Each store whose schema changed in the release is bumped
+  once, with one migration per store.
+
+Link the acceptance issue from the milestone description with a final line
+`Definition of done: #<number>`.
+
 The gate applies to any numbered release milestone, not only the current one.
 An issue that would fail an outcome in a later release's definition of done
 goes into that release's milestone, provided that definition of done already
