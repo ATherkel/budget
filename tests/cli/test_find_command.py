@@ -445,6 +445,25 @@ class FindCommandTests(unittest.TestCase):
                 ),
             )
 
+    def test_unknown_account_is_refused_before_store_reads(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            write_inputs(development_profile(folder))
+
+            result = find_transaction(
+                profile_file, "meny", "--account", "no-such-account"
+            )
+
+            assert result == (
+                3,
+                "",
+                (
+                    'budget: --account "no-such-account" is not declared in '
+                    "accounts.toml\n"
+                ),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
