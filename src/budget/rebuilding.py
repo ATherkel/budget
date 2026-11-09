@@ -45,18 +45,22 @@ from budget.locking import WriterLock
 from budget.profiles import ACCOUNTS_FILE_NAME, Profile
 from budget.silver import (
     SILVER_FINGERPRINT_SCHEME,
+    AcceptDiscrepancy,
     ReviewItem,
+    SameTransaction,
     SilverBuild,
     SilverBuildInputs,
+    SilverDecision,
     SilverResult,
     SilverStore,
+    VoidImportRun,
+    Withdrawn,
     derive_silver,
     rebuild_silver,
     silver_provenance,
     store_silver,
 )
 from budget.silver.currencies import UnknownCurrencyError, minor_unit_places
-from budget.silver.decisions import SilverDecision
 from budget.silver.formats import SourceFormat
 from budget.silver.identity import IDENTITY_VERSION
 from budget.silver.storage import silver_stage
@@ -93,6 +97,30 @@ class SilverProvenanceUnavailableError(RuntimeError):
         """Name the one recovery command."""
         super().__init__(
             "the stored Silver result has no trustworthy build provenance; "
+            "run `budget rebuild --from silver` before publishing Gold; "
+            "nothing was published"
+        )
+
+
+class SilverDecisionFreshnessError(RuntimeError):
+    """Gold was asked to consume Silver before its effective decisions."""
+
+    def __init__(self) -> None:
+        """Name the earliest rebuild that applies the changed decisions."""
+        super().__init__(
+            "the current effective Silver decisions have not been applied to "
+            "the stored Silver result; run `budget rebuild --from silver` "
+            "before publishing Gold; nothing was published"
+        )
+
+
+class SilverDecisionLogPrefixError(RuntimeError):
+    """The stored Silver log prefix is no longer in the current decision log."""
+
+    def __init__(self) -> None:
+        """Name the exact recovery command."""
+        super().__init__(
+            "the stored Silver decision-log prefix no longer matches decisions.jsonl; "
             "run `budget rebuild --from silver` before publishing Gold; "
             "nothing was published"
         )
@@ -468,7 +496,43 @@ def rebuild_from_gold(
         raise IncompatibleSilverProvenanceError.fingerprint_scheme()
     if silver.provenance.identity_version != IDENTITY_VERSION:
         raise IncompatibleSilverProvenanceError.identity_version()
+    _require_current_silver_decisions(silver.provenance.decisions, household.log.silver)
+    if (
+        household.log.prefix_sha256_at(silver.provenance.decision_log_position)
+        != silver.provenance.decision_log_prefix_sha256
+    ):
+        raise SilverDecisionLogPrefixError
     return _publish(profile, _plan_gold(profile, silver, household, now))
+
+
+def _require_current_silver_decisions(
+    consumed: Sequence[SilverDecision],
+    current: Sequence[SilverDecision],
+) -> None:
+    """Refuse if any effective Silver decision differs from the build."""
+    if sorted(consumed, key=_silver_decision_key) != sorted(
+        current, key=_silver_decision_key
+    ):
+        raise SilverDecisionFreshnessError
+
+
+def _silver_decision_key(decision: SilverDecision) -> tuple[object, ...]:
+    """Return every typed field in one deterministic decision key."""
+    match decision:
+        case AcceptDiscrepancy():
+            return ("accept-discrepancy", decision.decision_id, decision.import_run_id)
+        case VoidImportRun():
+            return ("void-import-run", decision.decision_id, decision.import_run_id)
+        case Withdrawn():
+            return ("withdrawn", decision.decision_id, decision.transaction_id)
+        case SameTransaction():
+            return (
+                "same-transaction",
+                decision.decision_id,
+                decision.transaction_id,
+                decision.payload_id,
+                decision.record_ordinal,
+            )
 
 
 def rebuild_through_gold(

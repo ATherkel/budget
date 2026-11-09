@@ -62,6 +62,13 @@ class DecisionLogRead:
     gold: tuple[GoldDecision, ...]
     position: int
     prefix_sha256: str
+    _prefix_hashes: tuple[str, ...] = field(default=(), repr=False, compare=False)
+
+    def prefix_sha256_at(self, position: int) -> str | None:
+        """Return the hash through one recorded position, or None if absent."""
+        if not 0 <= position < len(self._prefix_hashes):
+            return None
+        return self._prefix_hashes[position]
 
 
 def _is_id(value: object) -> bool:
@@ -493,6 +500,11 @@ def decision_log_bytes(profile: Profile) -> bytes:
         return profile.input_file(DECISION_LOG_FILE_NAME).read_bytes()
     except FileNotFoundError:
         return b""
+    except OSError as error:
+        reason = error.strerror or type(error).__name__
+        raise ConfigurationError(
+            (f"{DECISION_LOG_FILE_NAME}: cannot be read: {reason}",)
+        ) from None
 
 
 def cut_off_problem(content: bytes) -> str | None:
@@ -595,6 +607,7 @@ def replay_decision_log(content: bytes) -> DecisionLogReplay:
         return DecisionLogReplay(nothing, (problem,))
     replay = _replay_lines(lines)
     in_force = replay.in_force.values()
+    prefix_hashes = _prefix_hashes(prefix)
     read = DecisionLogRead(
         silver=tuple(
             _SILVER_KINDS[e["kind"]](e) for e in in_force if e["kind"] in _SILVER_KINDS
@@ -604,8 +617,21 @@ def replay_decision_log(content: bytes) -> DecisionLogReplay:
         ),
         position=len(lines),
         prefix_sha256=hashlib.sha256(prefix).hexdigest(),
+        _prefix_hashes=prefix_hashes,
     )
     return DecisionLogReplay(read, tuple(replay.problems))
+
+
+def _prefix_hashes(prefix: bytes) -> tuple[str, ...]:
+    """Hash the empty prefix and each LF-delimited entry incrementally."""
+    digest = hashlib.sha256()
+    hashes = [digest.hexdigest()]
+    start = 0
+    while (end := prefix.find(b"\n", start)) >= 0:
+        digest.update(prefix[start : end + 1])
+        hashes.append(digest.hexdigest())
+        start = end + 1
+    return tuple(hashes)
 
 
 @dataclass(frozen=True)
