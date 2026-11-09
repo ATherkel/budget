@@ -17,6 +17,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+import pytest
+
 from budget.gold.recipe import Recipe, RecipeImportRun
 from budget.gold.store import GoldStore
 from budget.inputs import load_configuration
@@ -426,7 +428,7 @@ class SilverChangeTests(unittest.TestCase):
                 )
                 connection.commit()
             # Silver commits before Gold's publication fails.
-            with self.assertRaises(sqlite3.IntegrityError):
+            with pytest.raises(sqlite3.IntegrityError):
                 rebuild(built.profile_file, "--from", "silver")
             with closing(sqlite3.connect(built.profile.gold_store)) as connection:
                 connection.execute("DROP TRIGGER refuse_result")
