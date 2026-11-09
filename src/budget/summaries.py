@@ -507,6 +507,8 @@ def gold_target_line(
 
 def find_summary(found: FindResult) -> str:
     """Render each found transaction through the review target formatter."""
+    if not found.matches:
+        return "No transactions matched.\n"
     lines: list[str] = []
     for match in found.matches:
         category = match.category_id or "unclassified"
