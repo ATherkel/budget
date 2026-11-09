@@ -13,8 +13,9 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from types import MappingProxyType
-from typing import Final
+from typing import Final, Protocol
 
 from budget.bronze.models import ImportRun
 from budget.completeness import (
@@ -22,6 +23,7 @@ from budget.completeness import (
     AccountMonthCompleteness,
     Completeness,
 )
+from budget.finding import FindResult
 from budget.gold import ClassificationReviewKind
 from budget.gold.diff import compare_publications, review_line
 from budget.gold.models import GoldReviewTarget
@@ -412,7 +414,10 @@ def _gold_review_line(entry: OpenGoldReview) -> str:
     if item.decision_id is not None:
         parts.append(f"decision {item.decision_id}")
     header = "  ".join(parts)
-    targets = "".join(f"\n{_gold_target_line(target)}" for target in entry.targets)
+    targets = "".join(
+        f"\n{gold_target_line(target, _bank_category(target))}"
+        for target in entry.targets
+    )
     return f"{header}{targets}\n{_gold_settlement_line(entry)}\n"
 
 
@@ -442,20 +447,75 @@ def _classification_choice(targets: Sequence[GoldReviewTarget]) -> str:
     return "classify a target as a category or adjustment"
 
 
-def _gold_target_line(target: GoldReviewTarget) -> str:
-    """One target's account, date, money, description and bank category."""
-    bank_category = (
+class _TargetContext(Protocol):
+    """The shared fields of a transaction-shaped target line."""
+
+    @property
+    def transaction_id(self) -> str:
+        """Return the full transaction identifier."""
+        ...
+
+    @property
+    def account_id(self) -> str:
+        """Return the account identifier."""
+        ...
+
+    @property
+    def transaction_date(self) -> date:
+        """Return the transaction date."""
+        ...
+
+    @property
+    def amount(self) -> Decimal:
+        """Return the signed amount."""
+        ...
+
+    @property
+    def currency(self) -> str:
+        """Return the account currency."""
+        ...
+
+    @property
+    def description(self) -> str:
+        """Return the transaction description."""
+        ...
+
+
+def _bank_category(target: GoldReviewTarget) -> str:
+    """Render the review target's bank category as its target-line detail."""
+    category = (
         "unavailable"
         if target.bank_category is None
         else _terminal_text(target.bank_category)
     )
+    return f"bank category {category}"
+
+
+def gold_target_line(
+    target: _TargetContext, detail: str, *, handle: str | None = None
+) -> str:
+    """One target's account, date, money, description, and contextual detail."""
+    shown_handle = target.transaction_id[:8] if handle is None else handle
     return (
-        f"  target {target.transaction_id[:8]}  {target.account_id}"
+        f"  target {shown_handle}  {target.account_id}"
         f"  {target.transaction_date.isoformat()}"
         f"  {target.amount} {target.currency}"
         f"  {_quoted_terminal_text(target.description)}"
-        f"  bank category {bank_category}"
+        f"  {detail}"
     )
+
+
+def find_summary(found: FindResult) -> str:
+    """Render each found transaction through the review target formatter."""
+    if not found.matches:
+        return "No transactions matched.\n"
+    lines: list[str] = []
+    for match in found.matches:
+        category = match.category_id or "unclassified"
+        lines.append(
+            f"{gold_target_line(match, f'category {category}', handle=match.handle)}\n"
+        )
+    return "".join(lines)
 
 
 def _quoted_terminal_text(text: str) -> str:

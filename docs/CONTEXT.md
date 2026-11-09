@@ -254,6 +254,14 @@ match. Every decision that settles a quarantine is raised by one, so none has
 to be known about in advance.
 _Avoid_: error, warning, conflict
 
+**Handle**:
+A short prefix of a transaction's durable ID that names one current Silver
+transaction. Review prints eight characters; Find prints the shortest prefix of
+at least eight characters that remains unique across Silver and lengthens it
+when transactions collide. A Manual decision accepts a Handle and resolves it
+to the full transaction ID.
+_Avoid_: transaction ID (the full identity), truncated ID without uniqueness
+
 **Manual decision**:
 A recorded human ruling: it classifies a transaction, settles a Review item,
 or voids an import run. It targets transactions by their identity and never
