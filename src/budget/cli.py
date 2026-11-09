@@ -20,6 +20,7 @@ from typing import Final, NoReturn
 import uvicorn
 
 from budget import checking, routine_logging, sqlstore, summaries
+from budget.analytics import NothingPublishedError
 from budget.backups import (
     BACKUP_FAILURES,
     BackupSet,
@@ -1138,6 +1139,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         UnknownStageError,
         UnfinishedRestoreError,
         MigratedWithoutBackupError,
+        NothingPublishedError,
         ImportedWithoutBackupError,
         ImportedWithoutPublicationError,
         RebuiltWithoutBackupError,

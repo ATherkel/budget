@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from budget.analytics import NothingPublishedError
 from budget.gold.models import ReportingMonth
 from budget.gold.store import GoldStore
 from budget.inputs import load_accounts
@@ -77,10 +78,12 @@ def find_transactions(
             monthrange(month.year, month.month)[1],
         )
     account_ids = None if account is None else {account}
+    if not profile.gold_store.exists():
+        raise NothingPublishedError
     with GoldStore(profile, read_only=True) as store:
         publication = store.current()
         if publication is None:
-            return FindResult(0, ())
+            raise NothingPublishedError
         gold = store.open(publication.publication_id)
         transactions = gold.transactions(
             start_date=start_date,
