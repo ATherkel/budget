@@ -134,9 +134,9 @@ def _profile_with_transactions(
         allocation_id=f"{CURRENT_ID}/groceries",
         transaction_id=CURRENT_ID,
         account_id=CURRENT,
-        transaction_date=date(2026, 3, 1),
+        transaction_date=transactions[0].transaction_date,
         category_id="groceries",
-        amount=Decimal("-45.00"),
+        amount=transactions[0].amount,
     )
     migrate_gold(profile)
     with GoldStore(profile) as store:
@@ -198,6 +198,47 @@ class FindCommandTests(unittest.TestCase):
                     f"{TARGET_PREFIX}{SAVINGS_ID[:8]}  {SAVINGS}"
                     '  2026-03-02  -20.00 DKK  "weekly meny"  category unclassified'
                 ),
+            ]
+
+    def test_month_narrows_matching_transactions_to_that_calendar_month(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _profile_with_transactions(
+                Path(directory),
+                (
+                    _silver_transaction(
+                        CURRENT_ID,
+                        CURRENT,
+                        date(2026, 3, 31),
+                        "-45.00",
+                        "MENY MARCH",
+                    ),
+                    _silver_transaction(
+                        SAVINGS_ID,
+                        SAVINGS,
+                        date(2026, 4, 1),
+                        "-20.00",
+                        "MENY APRIL",
+                    ),
+                    _silver_transaction(
+                        OTHER_ID,
+                        CURRENT,
+                        date(2026, 4, 2),
+                        "-5.00",
+                        "CAFE",
+                    ),
+                ),
+            )
+
+            status, stdout, stderr = find_transaction(
+                profile_file, "meny", "--month", "2026-03"
+            )
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout.splitlines() == [
+                (
+                    f"{TARGET_PREFIX}{CURRENT_ID[:8]}  {CURRENT}"
+                    '  2026-03-31  -45.00 DKK  "MENY MARCH"  category groceries'
+                )
             ]
 
 
