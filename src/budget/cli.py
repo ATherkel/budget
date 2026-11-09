@@ -43,7 +43,7 @@ from budget.decision_log import (
     SILVER_DECISION_KINDS,
 )
 from budget.demo import DEFAULT_DEMO_PORT, DemoDirectoryExistsError, create_demo_profile
-from budget.finding import find_transactions
+from budget.finding import FindInputError, InvalidMonthError, find_transactions
 from budget.gold.models import ReportingMonth
 from budget.gold.storage import GOLD_STAGE
 from budget.gold.store import GoldStore, UndoUnavailableError
@@ -734,8 +734,11 @@ def _find(
     """Find transactions in the current publication."""
     selected_month = None
     if month is not None:
-        year, calendar_month = month.split("-")
-        selected_month = ReportingMonth(int(year), int(calendar_month))
+        try:
+            year, calendar_month = month.split("-")
+            selected_month = ReportingMonth(int(year), int(calendar_month))
+        except ValueError:
+            raise InvalidMonthError(month) from None
     found = find_transactions(profile, text, month=selected_month, account=account)
     sys.stdout.write(summaries.find_summary(found))
 
@@ -1096,6 +1099,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
     except (
         ProfileFileError,
         ConfigurationError,
+        FindInputError,
         DecisionRejectedError,
         RecordedWithoutPublicationError,
         ConflictingDeclaredFormatsError,

@@ -430,6 +430,21 @@ class FindCommandTests(unittest.TestCase):
 
             assert result == (EXIT_OK, "No transactions matched.\n", "")
 
+    def test_invalid_month_is_refused_before_store_reads(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = write_profile(Path(directory))
+
+            result = find_transaction(profile_file, "meny", "--month", "2026-13")
+
+            assert result == (
+                3,
+                "",
+                (
+                    'budget: --month "2026-13" is not YYYY-MM; expected a '
+                    "calendar month such as 2026-03\n"
+                ),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

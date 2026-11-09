@@ -12,6 +12,18 @@ from budget.profiles import Profile
 from budget.silver import SilverStore
 
 
+class FindInputError(ValueError):
+    """The find command received an invalid option value."""
+
+
+class InvalidMonthError(FindInputError):
+    """A requested reporting month is invalid."""
+
+    def __init__(self, month: str) -> None:
+        """Name the invalid option value."""
+        super().__init__(f'invalid --month "{month}"')
+
+
 @dataclass(frozen=True)
 class FoundTransaction:
     """One matching published transaction and its current category."""
