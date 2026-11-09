@@ -400,16 +400,14 @@ def _plan_gold(
     silver: SilverBuild,
     household: HouseholdInputs,
     now: datetime,
-    *,
-    silver_changed: bool = False,
 ) -> _GoldPlan | GoldRebuild:
     """Derive Gold from `silver`, writing nothing, or find it already current.
 
     A recipe equal to the current publication's builds nothing and comes back
-    as the rebuild that publishes nothing, unless `silver_changed`: the recipe
-    names Silver's inputs, not its result, so a Silver that changed under the
-    same recipe still needs a new publication. A configuration error is
-    raised here, before any store is replaced.
+    as the rebuild that publishes nothing. The recipe names Silver's result
+    fingerprint, so a Silver that changed under the same import runs makes a
+    different recipe. A configuration error is raised here, before any store
+    is replaced.
     """
     if silver.provenance is None:
         raise SilverProvenanceUnavailableError
@@ -420,11 +418,7 @@ def _plan_gold(
     recipe = _recipe(profile, silver.provenance, household)
     with GoldStore(profile) as gold:
         current = gold.current()
-        if (
-            current is not None
-            and not silver_changed
-            and gold.recipe(current.publication_id) == recipe
-        ):
+        if current is not None and gold.recipe(current.publication_id) == recipe:
             return GoldRebuild(publication=current, published=False)
         draft = GoldPublication(
             publication_id=gold.next_publication_id(),
@@ -593,13 +587,7 @@ def rebuild_through_gold(
         built = silver_store.is_built()
         stored = silver_store.read_build()
     changed = stored.result != derived or stored.provenance != prospective_provenance
-    plan = _plan_gold(
-        profile,
-        silver,
-        household,
-        now,
-        silver_changed=changed,
-    )
+    plan = _plan_gold(profile, silver, household, now)
     if reparsed is not None:
         with BronzeStore(profile) as bronze:
             bronze.replace_derived_records(reparsed)
