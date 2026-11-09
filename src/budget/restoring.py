@@ -304,7 +304,10 @@ def _named(profile: Profile, sets: tuple[BackupSet, ...], name: str) -> BackupSe
 def newest_readable(
     profile: Profile, sets: tuple[BackupSet, ...]
 ) -> tuple[BackupSet, tuple[str, ...]]:
-    """Return the newest complete set this code can read, and newer ones passed over."""
+    """Return the newest complete set this code can use, and newer ones passed over.
+
+    A set is passed over when this code cannot read it or finds it damaged.
+    """
     skipped: list[str] = []
     for found in sets:
         try:
@@ -643,9 +646,10 @@ def _lost_inputs(profile: Profile, backup: BackupSet) -> dict[str, Path]:
 def restore(lock: WriterLock, name: str | None = None, *, now: datetime) -> Restored:
     """Restore every store of one complete set; report what was restored.
 
-    `name` selects the set; without it, the newest complete set this code
-    can read is taken, and every newer complete set is passed over and named.
-    Incomplete sets were dropped before this, unnamed.
+    `name` selects the set, and an incomplete one is refused. Without it,
+    incomplete sets are dropped unnamed, the newest complete set this code
+    can use is taken, and every newer complete set it cannot read or finds
+    damaged is passed over and named.
     """
     profile = lock.profile
     sets = complete_backup_sets(profile)
