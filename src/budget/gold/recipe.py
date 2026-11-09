@@ -44,7 +44,7 @@ class Recipe:
     decision_log_prefix_sha256: str
     code_version: str | None
     contract_version: str
-    silver_identity_version: str
+    silver_identity_version: str | None
     late_booking_days: int
     python_version: str = field(compare=False)
     sqlite_version: str = field(compare=False)

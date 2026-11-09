@@ -1115,6 +1115,7 @@ def _has_silver_provenance(recipe: Recipe) -> bool:
         for field in (
             recipe.silver_fingerprint_scheme,
             recipe.silver_result_fingerprint,
+            recipe.silver_identity_version,
             recipe.silver_decision_log_position,
             recipe.silver_decision_log_prefix_sha256,
             recipe.silver_bronze_parser_provenance,
@@ -1128,7 +1129,12 @@ def _recipe(
     currencies: Iterable[sqlite3.Row],
     decisions: Iterable[sqlite3.Row],
 ) -> Recipe:
-    """Read one `recipes` row, its import runs and its Silver provenance back."""
+    """Read one `recipes` row, its import runs and its Silver provenance back.
+
+    A recipe from before Gold schema 6 has no fingerprint scheme; the identity
+    version it stored was Gold's own constant, so it reads back as unknown.
+    """
+    scheme = row["silver_fingerprint_scheme"]
     return Recipe(
         import_runs=frozenset(
             RecipeImportRun(run["import_run_id"], run["payload_id"], run["account_id"])
@@ -1139,11 +1145,13 @@ def _recipe(
         decision_log_prefix_sha256=row["decision_log_prefix_sha256"],
         code_version=row["code_version"],
         contract_version=row["contract_version"],
-        silver_identity_version=row["silver_identity_version"],
+        silver_identity_version=(
+            None if scheme is None else row["silver_identity_version"]
+        ),
         late_booking_days=row["late_booking_days"],
         python_version=row["python_version"],
         sqlite_version=row["sqlite_version"],
-        silver_fingerprint_scheme=row["silver_fingerprint_scheme"],
+        silver_fingerprint_scheme=scheme,
         silver_result_fingerprint=row["silver_result_fingerprint"],
         silver_code_version=row["silver_code_version"],
         silver_decision_log_position=row["silver_decision_log_position"],
