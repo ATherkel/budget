@@ -145,6 +145,43 @@ class FirstPublicationTests(unittest.TestCase):
 
 
 class UnchangedRecipeTests(unittest.TestCase):
+    def test_a_silver_rebuild_past_a_gold_only_decision_publishes_nothing(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            with SilverStore(built.profile) as silver:
+                transaction_id = silver.read().transactions[0].transaction_id
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "classify",
+                "targets": [transaction_id],
+                "category": "groceries",
+                "reason": "synthetic classification",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n", encoding="utf-8"
+            )
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            with GoldStore(built.profile) as gold:
+                before = gold.pointer_history()
+
+            status, stdout, stderr = rebuild(built.profile_file, "--from", "silver")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "nothing was published" in stdout
+            with GoldStore(built.profile) as gold:
+                assert gold.pointer_history() == before
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
+                # The recipe keeps the position Silver read when it was built.
+                assert gold.recipe(1).silver_decision_log_position == 0
+
     def test_rebuild_records_the_decision_log_context_it_consumed(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
