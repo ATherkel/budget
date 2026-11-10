@@ -1,28 +1,23 @@
-# Proposed analytics interface for the monthly dashboard
+# Historical prototype report-shape proposal
 
-**29 September 2026:** retained as prototype design evidence. The newer
-[implementation specification #100](https://github.com/ATherkel/budget/issues/100)
-and contract tasks [#101](https://github.com/ATherkel/budget/issues/101) /
-[#102](https://github.com/ATherkel/budget/issues/102) supersede this document's
-scope and open preference questions. In particular, read-only monthly budget
-comparison is now first-release scope and is available in Enkel. This historical
-DTO proposal is still not an accepted production contract.
+> **Archived design evidence.** The current normative report definition is
+> [report-contract.md](../../docs/architecture/report-contract.md). Production
+> scope, dependencies, and release assignments are maintained on
+> [issue #100](https://github.com/ATherkel/budget/issues/100) and its child
+> issues. Release 0.3 is the authenticated monthly actuals workflow; budgets,
+> category investigation, full diagnostics, trends, history, fixed/other
+> expenses, and reserves remain outside that release. This September 2026
+> proposal does not override those current contracts.
+>
+> 🤖 Added by Codex (DeepSeek V4.1 Flash)
 
-🤖 Added by Codex (GPT-6 Astra)
+**Historical status: superseded proposal.** This document recorded the
+API-neutral shape the throwaway prototype needed before the production report
+contract was accepted. It is retained for design provenance only.
 
-**Status: proposal for the maintainer. Nothing here is accepted, and no ADR is
-changed by it.** It uses the vocabulary of [CONTEXT.md](../../docs/CONTEXT.md) and
-the accepted rules in [gold-contract.md](../../docs/architecture/gold-contract.md)
-(0.2), [analytics-layer.md](../../docs/architecture/analytics-layer.md),
-[publications.md](../../docs/architecture/publications.md),
-[classification.md](../../docs/architecture/classification.md) and
-[operations.md](../../docs/architecture/operations.md). It was written from what
-the screen in this folder needs, then reconciled with those documents; where
-they disagree, they win and this file is wrong.
-
-The screen in `prototypes/dashboard-11/` receives finished reports and renders
-them. It reads no bank data, computes no financial figure, and makes no
-classification decision. The one-time preparation that produced
+The screen in `prototypes/dashboard-11/` receives finished synthetic reports and
+renders them. It reads no bank data, computes no production financial figure,
+and makes no classification decision. The one-time preparation that produced
 `example.json` is a throwaway fixture builder (`build_example.py`), not an
 import engine and not proposed for production.
 
@@ -94,8 +89,8 @@ positive. The browser calculates no financial figure.
 `savingsRate` **has a unit that must be stated**, because the two layers do not
 agree today: `analytics-layer.md` defines Savings rate as the ratio
 `savings / income`, while the prototype carries percentage points (58.03). A
-production field should be named for its unit — a ratio
-(`savingsRateRatio`), or a percentage-point field whose name says so — and the
+production field should be named for its unit - a ratio
+(`savingsRateRatio`), or a percentage-point field whose name says so - and the
 screen must not guess. `savings` stays what the analytics layer defines:
 income − expenses, equal to net cash flow in this release.
 
@@ -112,7 +107,7 @@ double-count a split, so the drill-down row carries the allocation's own
 **Refund direction.** A refund reverses the direction of the category it is
 allocated to (Gold contract invariant 3). For an expense category it is a
 positive amount that nets into that category, so a category total can be
-negative — a net refund. It is never clamped to zero and never moved to the
+negative - a net refund. It is never clamped to zero and never moved to the
 purchase's month. Expenses fall by the same amount, because Expenses is
 −(Σ expenses + Σ refunds with direction expense).
 
@@ -135,7 +130,7 @@ legs of a paired transfer share a `transfer_group_id`, derived from their
 transaction identifiers, and their amounts cancel. A one-sided transfer comes
 only from a manual `one-sided-transfer` decision and has no group; Gold
 invariant 17 requires its counterpart account's managed period to exclude the
-transaction date. A transfer — paired or one-sided — is excluded from income,
+transaction date. A transfer - paired or one-sided - is excluded from income,
 expenses, savings-rate and category spending, and stays visible in account
 activity. That exclusion does not depend on which accounts a page selects: a
 transfer leg keeps its meaning even when the other account is not selected,
@@ -146,14 +141,14 @@ counterpart: the counterpart is transfer evidence, and a claim that found no
 counterpart exposes its review item only through the privileged lineage
 interface. The prototype names the counterpart account because its fixture
 states it (see the prototype-only list below). The simplest honest production
-copy is therefore generic — *Enkeltsidet overførsel, afgjort manuelt, uden det
-andet ben i de valgte kontoudtog* — and needs no new or privileged contract
+copy is therefore generic - *Enkeltsidet overførsel, afgjort manuelt, uden det
+andet ben i de valgte kontoudtog* - and needs no new or privileged contract
 field.
 
 **An unmatched claim is only unclassified money.** A transfer claim that finds
 no counterpart is `unknown` (ADR-011/ADR-012). It reaches the report through
-the unclassified group, and its review item — `unmatched-transfer`, with a
-reason such as `no-candidate` or `counterpart-may-not-be-imported` — stays in
+the unclassified group, and its review item - `unmatched-transfer`, with a
+reason such as `no-candidate` or `counterpart-may-not-be-imported` - stays in
 Gold's privileged lineage interface, which analytics and presentation may not
 read. The report carries no review reason, no rule identifier and no decision
 identifier. Missing categories are settled outside the screen with
@@ -170,7 +165,7 @@ household-level flag.
 **Balances and evidence.** A balance is the account's latest bank-stated
 closing balance with the date it was stated; an unknown balance is null, never
 zero, and it may not suggest that a partial month is complete. Each account
-carries `evidence_through` — the last date its admitted exports cover — so the
+carries `evidence_through` - the last date its admitted exports cover - so the
 screen can say how far the data reaches.
 
 **Provisional is a separate question.** Three different conditions are shown
@@ -211,15 +206,15 @@ proposed as part of the production contract:
 - `accounts.openingBalance` and `accounts.quietConfirmed` (the second is likely
   worth keeping in production: "no movements, and the statements confirm it").
 
-## Gaps this round found
+## Historical gaps found during the prototype
 
 1. **A month outside the managed period cannot be told from a month with no
    admitted evidence.** The public DTO has `complete` / `partial` / `no_data`,
-   and `no_data` now covers both "the household has no evidence for this month"
-   and "the account's history does not include this month at all". The
-   prototype labels both `no_data` and names the reason in prose
-   (`Kontoudtoget begynder først i maj 2026`). A production report either adds
-   a reason code or keeps reporting the reason as text.
+   and `no_data` covered both "the household has no evidence for this month" and
+   "the account's history does not include this month at all". The prototype
+   labels both `no_data` and names the reason in prose
+   (`Kontoudtoget begynder først i maj 2026`). The production contract was asked
+   to preserve that distinction.
 2. **A one-sided transfer needs its counterpart in the public DTO** to be
    explained. Today the screen can name it only because the fixture states it.
    Either `transfer_evidence` gains a public, non-privileged projection, or the
@@ -228,18 +223,19 @@ proposed as part of the production contract:
    second, different figure ("contribution to ordinary savings after
    earmarking"). It must not quietly replace the analytics measure; the naming
    decision belongs to the budget scope, not to this prototype.
-4. **Whether the mode choice is remembered** is still undecided. The prototype
-   keeps it in memory only and stores nothing in the browser.
+4. **Whether the mode choice is remembered** was still undecided in the
+   prototype. It keeps the choice in memory only and stores nothing in the
+   browser.
 
-## Open questions for the maintainer
+## Historical questions kept with the evidence
 
 - Do both participants understand the three figures, the short category list,
   and the difference between "no evidence" and "confirmed quiet"?
 - Is "Tilbage efter udgifter" (income − expenses) the best headline figure, and
   is the separate "contribution to ordinary savings" worth a second headline?
 - Is income − expenses the right measure at all? Money moved to an account
-  *outside the reporting boundary* is the open question (Gold contract and
-  issue #12); a transfer *inside* it is settled by the analytics layer and is
-  excluded from income and expenses however the account selection is made.
-- Which fields of this proposal should become the accepted analytics
+  outside the reporting boundary is the open question; a transfer inside it is
+  settled by the analytics layer and is excluded from income and expenses
+  however the account selection is made.
+- Which fields of this proposal should become part of a future report
   interface, and which belong to a later scope decision?
