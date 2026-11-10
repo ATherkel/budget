@@ -9,15 +9,18 @@ is synthetic.
 import json
 import unittest
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
 from budget.bronze import BronzeStore
 from budget.bronze.parsers.registry import source_parser
+from budget.gold.recipe import RecipeImportRun
+from budget.gold.store import GoldStore
 from budget.profiles import Profile, load_profile_file
 from budget.routine_logging import LOG_FILE, LOG_FOLDER
-from budget.silver import SilverStore
+from budget.silver import SilverImportRun, SilverStore
 from tests.backups.sets import manifest, run_ids
 from tests.cli.commands import import_, migrate
 from tests.cli.imports import clean_checkout, clean_git, write_ranges
@@ -132,9 +135,40 @@ class ImportCommandTests(unittest.TestCase):
                 "2026-03-04",
             )
             with SilverStore(profile) as store:
-                [result] = store.read().import_run_results
+                stored = store.read_build()
+            [result] = stored.result.import_run_results
             assert result.import_run_id == entry["import_run_id"]
             assert result.status == "accepted"
+            provenance = stored.provenance
+            assert provenance is not None
+            assert provenance.import_runs == frozenset(
+                {
+                    SilverImportRun(
+                        result.import_run_id,
+                        sha256(content).hexdigest(),
+                        "joint-current",
+                    )
+                }
+            )
+            assert dict(provenance.currencies) == {"joint-current": "DKK"}
+            assert (
+                provenance.decisions,
+                provenance.decision_log_position,
+                provenance.code_version,
+                provenance.bronze_parser_provenance,
+            ) == ((), 0, None, "unknown")
+            with GoldStore(profile) as gold:
+                recipe = gold.recipe(1)
+            assert recipe.silver_result_fingerprint == provenance.result_fingerprint
+            assert recipe.import_runs == frozenset(
+                {
+                    RecipeImportRun(
+                        result.import_run_id,
+                        sha256(content).hexdigest(),
+                        "joint-current",
+                    )
+                }
+            )
             assert "[1] joint-current  stored\n" in stdout
             assert "Silver   1 admitted, 0 quarantined, 0 dropped\n" in stdout
 

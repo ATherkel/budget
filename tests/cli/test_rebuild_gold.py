@@ -10,11 +10,14 @@ import re
 import sqlite3
 import unittest
 from contextlib import closing
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
+
+import pytest
 
 from budget.gold.recipe import Recipe, RecipeImportRun
 from budget.gold.store import GoldStore
@@ -22,10 +25,12 @@ from budget.inputs import load_configuration
 from budget.locking import WriterLock, writer_lock
 from budget.rebuilding import GoldRebuild, HouseholdInputs, rebuild_from_gold
 from budget.silver import (
+    AcceptDiscrepancy,
     SameTransaction,
     SilverResult,
     SilverStore,
     VoidImportRun,
+    result_fingerprint,
 )
 from budget.silver.currencies import UnknownCurrencyError
 from tests.cli.commands import rebuild
@@ -41,7 +46,100 @@ EXIT_REFUSED_INPUT = 3
 EXIT_REFUSED_ENVIRONMENT = 4
 
 
+def _forget_silver_provenance(gold_store: Path) -> None:
+    """Leave every recipe as migration 0006 carries one over from a v5 store."""
+    with closing(sqlite3.connect(gold_store)) as connection:
+        connection.execute(
+            "UPDATE recipes SET silver_fingerprint_scheme = NULL,"
+            " silver_result_fingerprint = NULL, silver_code_version = NULL,"
+            " silver_decision_log_position = NULL,"
+            " silver_decision_log_prefix_sha256 = NULL,"
+            " silver_bronze_parser_provenance = NULL"
+        )
+        connection.execute("DELETE FROM recipe_silver_currencies")
+        connection.execute("DELETE FROM recipe_silver_decisions")
+        connection.commit()
+
+
+def _forget_import_run_accounts(gold_store: Path) -> None:
+    """Leave every recipe as migration 0007 carries one over from schema 6."""
+    with closing(sqlite3.connect(gold_store)) as connection:
+        connection.execute("UPDATE recipe_import_runs SET account_id = NULL")
+        connection.commit()
+
+
 class FirstPublicationTests(unittest.TestCase):
+    def test_the_gold_recipe_copies_the_exact_silver_provenance(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "accept-discrepancy",
+                "targets": [built.import_run_id],
+                "reason": "synthetic acceptance",
+                "supersedes": [],
+            }
+            encoded = (json.dumps(decision) + "\n").encode()
+            built.profile.input_file("decisions.jsonl").write_bytes(encoded)
+
+            status, _, stderr = rebuild(built.profile_file, "--from", "silver")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            with SilverStore(built.profile) as silver:
+                provenance = silver.read_build().provenance
+            assert provenance is not None
+            with GoldStore(built.profile) as gold:
+                recipe = gold.recipe(1)
+            silver_part = (
+                recipe.silver_fingerprint_scheme,
+                recipe.silver_result_fingerprint,
+                recipe.silver_identity_version,
+                recipe.silver_code_version,
+                recipe.silver_decision_log_position,
+                recipe.silver_decision_log_prefix_sha256,
+                recipe.silver_bronze_parser_provenance,
+                recipe.silver_currencies,
+                recipe.silver_decisions,
+            )
+            assert silver_part == (
+                provenance.fingerprint_scheme,
+                provenance.result_fingerprint,
+                "1",
+                None,
+                1,
+                sha256(encoded).hexdigest(),
+                "unknown",
+                frozenset({("joint-current", "DKK")}),
+                (AcceptDiscrepancy("d-0001", built.import_run_id),),
+            )
+
+    def test_the_recipe_names_silvers_producer_not_golds(self) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            with SilverStore(built.profile) as silver:
+                stored = silver.read_build()
+                assert stored.provenance is not None
+                silver.replace(
+                    stored.result,
+                    currencies=stored.currencies,
+                    provenance=replace(
+                        stored.provenance, code_version="v0.3.0-12-gabc1234"
+                    ),
+                )
+
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+
+            with GoldStore(built.profile) as gold:
+                recipe = gold.recipe(1)
+            # A development build records no code version of its own.
+            assert (recipe.code_version, recipe.silver_code_version) == (
+                None,
+                "v0.3.0-12-gabc1234",
+            )
+
     def test_rebuild_publishes_the_first_publication_from_silver(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
@@ -53,6 +151,9 @@ class FirstPublicationTests(unittest.TestCase):
             assert (
                 "Changes  no previous publication to compare; publication 1 is current."
             ) in stdout
+            with SilverStore(built.profile) as silver:
+                provenance = silver.read_build().provenance
+            assert provenance is not None
             with GoldStore(built.profile) as gold:
                 current = gold.current()
                 assert current is not None
@@ -61,7 +162,9 @@ class FirstPublicationTests(unittest.TestCase):
                     import_runs=frozenset(
                         {
                             RecipeImportRun(
-                                built.import_run_id, sha256(EXPORT).hexdigest()
+                                built.import_run_id,
+                                sha256(EXPORT).hexdigest(),
+                                "joint-current",
                             )
                         }
                     ),
@@ -76,6 +179,14 @@ class FirstPublicationTests(unittest.TestCase):
                     late_booking_days=7,
                     python_version="",
                     sqlite_version="",
+                    silver_fingerprint_scheme=provenance.fingerprint_scheme,
+                    silver_result_fingerprint=provenance.result_fingerprint,
+                    silver_code_version=None,
+                    silver_decision_log_position=0,
+                    silver_decision_log_prefix_sha256=sha256(b"").hexdigest(),
+                    silver_bronze_parser_provenance="unknown",
+                    silver_currencies=frozenset({("joint-current", "DKK")}),
+                    silver_decisions=(),
                 )
                 transactions = gold.open(1).transactions(
                     start_date=date(2026, 3, 1), end_date=date(2026, 3, 31)
@@ -84,6 +195,43 @@ class FirstPublicationTests(unittest.TestCase):
 
 
 class UnchangedRecipeTests(unittest.TestCase):
+    def test_a_silver_rebuild_past_a_gold_only_decision_publishes_nothing(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            with SilverStore(built.profile) as silver:
+                transaction_id = silver.read().transactions[0].transaction_id
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "classify",
+                "targets": [transaction_id],
+                "category": "groceries",
+                "reason": "synthetic classification",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n", encoding="utf-8"
+            )
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            with GoldStore(built.profile) as gold:
+                before = gold.pointer_history()
+
+            status, stdout, stderr = rebuild(built.profile_file, "--from", "silver")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "nothing was published" in stdout
+            with GoldStore(built.profile) as gold:
+                assert gold.pointer_history() == before
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
+                # The recipe keeps the position Silver read when it was built.
+                assert gold.recipe(1).silver_decision_log_position == 0
+
     def test_rebuild_records_the_decision_log_context_it_consumed(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
@@ -184,6 +332,60 @@ class UnchangedRecipeTests(unittest.TestCase):
                 assert current is not None
                 assert current.publication_id == 1
                 assert gold.next_publication_id() == 2
+
+    def test_the_first_rebuild_after_an_upgrade_publishes_once_to_record_silver(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            _forget_silver_provenance(built.profile.gold_store)
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "Gold     published publication 2 (cause build)" in stdout
+            assert "Changes  no measure or review item changed." in stdout
+            with GoldStore(built.profile) as gold:
+                assert gold.recipe(2).silver_result_fingerprint is not None
+            status, stdout, stderr = rebuild(built.profile_file)
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "nothing was published" in stdout
+
+    def test_the_first_rebuild_after_schema_6_publishes_once_to_record_accounts(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            _forget_import_run_accounts(built.profile.gold_store)
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "Gold     published publication 2 (cause build)" in stdout
+            with GoldStore(built.profile) as gold:
+                assert gold.recipe(2).import_runs == frozenset(
+                    {
+                        RecipeImportRun(
+                            built.import_run_id,
+                            sha256(EXPORT).hexdigest(),
+                            "joint-current",
+                        )
+                    }
+                )
+                assert gold.recipe(1).import_runs == frozenset(
+                    {
+                        RecipeImportRun(
+                            built.import_run_id,
+                            sha256(EXPORT).hexdigest(),
+                            None,
+                        )
+                    }
+                )
+            status, stdout, stderr = rebuild(built.profile_file)
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "nothing was published" in stdout
 
 
 class ClockTests(unittest.TestCase):
@@ -292,12 +494,106 @@ class RecipeNamesSilversRunsTests(unittest.TestCase):
             payload = sha256(EXPORT).hexdigest()
             with GoldStore(built.profile) as gold:
                 assert gold.recipe(2).import_runs == {
-                    RecipeImportRun(built.import_run_id, payload),
-                    RecipeImportRun(repeat, payload),
+                    RecipeImportRun(built.import_run_id, payload, "joint-current"),
+                    RecipeImportRun(repeat, payload, "joint-current"),
                 }
 
 
 class SilverChangeTests(unittest.TestCase):
+    def test_a_gold_retry_after_silver_committed_publishes_from_that_silver(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            with SilverStore(built.profile) as silver:
+                transaction_id = silver.read().transactions[0].transaction_id
+            decision = {
+                "format": 1,
+                "entry": 1,
+                "decision_id": "d-0001",
+                "recorded_at": "2026-04-10T17:02:11Z",
+                "kind": "withdrawn",
+                "targets": [transaction_id],
+                "reason": "synthetic withdrawal",
+                "supersedes": [],
+            }
+            built.profile.input_file("decisions.jsonl").write_text(
+                json.dumps(decision) + "\n", encoding="utf-8"
+            )
+            with closing(sqlite3.connect(built.profile.gold_store)) as connection:
+                connection.execute(
+                    "CREATE TRIGGER refuse_result BEFORE INSERT ON results"
+                    " BEGIN SELECT RAISE(ABORT, 'synthetic Gold failure'); END"
+                )
+                connection.commit()
+            # Silver commits before Gold's publication fails.
+            with pytest.raises(sqlite3.IntegrityError):
+                rebuild(built.profile_file, "--from", "silver")
+            with closing(sqlite3.connect(built.profile.gold_store)) as connection:
+                connection.execute("DROP TRIGGER refuse_result")
+                connection.commit()
+            with GoldStore(built.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 2" in stdout
+            with SilverStore(built.profile) as silver:
+                provenance = silver.read_build().provenance
+            assert provenance is not None
+            with GoldStore(built.profile) as gold:
+                recipe = gold.recipe(2)
+            assert recipe.silver_result_fingerprint == provenance.result_fingerprint
+            assert recipe.silver_decisions == provenance.decisions
+
+    def test_changed_silver_under_the_same_runs_publishes_a_new_gold_result(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+            assert rebuild(built.profile_file)[0] == EXIT_OK
+            with GoldStore(built.profile) as gold:
+                original_recipe = gold.recipe(1)
+            with SilverStore(built.profile) as silver:
+                original = silver.read_build()
+                assert original.provenance is not None
+                changed_result = replace(
+                    original.result,
+                    transactions=tuple(
+                        replace(transaction, description="CHANGED")
+                        for transaction in original.result.transactions
+                    ),
+                )
+                silver.replace(
+                    changed_result,
+                    currencies=original.currencies,
+                    provenance=replace(
+                        original.provenance,
+                        result_fingerprint=result_fingerprint(
+                            changed_result, currencies=original.provenance.currencies
+                        ),
+                    ),
+                )
+
+            status, stdout, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 2" in stdout
+            with GoldStore(built.profile) as gold:
+                first, second = gold.recipe(1), gold.recipe(2)
+            # Publication 1's recipe still names the Silver it was built from.
+            assert first == original_recipe
+            assert (
+                first.silver_result_fingerprint
+                == original.provenance.result_fingerprint
+            )
+            assert first.import_runs == second.import_runs
+            assert first.silver_result_fingerprint != second.silver_result_fingerprint
+
     def test_changing_a_consumed_account_currency_refuses_gold(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
@@ -693,7 +989,16 @@ class SilverChangeTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_OK, "")
             assert "published publication 2" in stdout
             with GoldStore(built.profile) as gold:
-                assert gold.recipe(2).import_runs == frozenset()
+                # Silver consumed the voided run, so the recipe names it.
+                assert gold.recipe(2).import_runs == frozenset(
+                    {
+                        RecipeImportRun(
+                            built.import_run_id,
+                            sha256(EXPORT).hexdigest(),
+                            "joint-current",
+                        )
+                    }
+                )
                 transactions = gold.open(2).transactions(
                     start_date=date(2026, 3, 1), end_date=date(2026, 3, 31)
                 )
