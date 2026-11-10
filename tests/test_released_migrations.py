@@ -11,6 +11,7 @@ manifest and the working tree: CI checks out without tags.
 import hashlib
 import tomllib
 from pathlib import Path
+from typing import Any
 
 
 def released_migration_drift(manifest: Path, root: Path) -> list[str]:
@@ -30,22 +31,30 @@ def release_manifest_gaps(manifest: Path, root: Path, tag: str) -> list[str]:
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
     if tag not in releases:
         return [f"{tag} has no table in released.toml"]
-    listed = {name for files in releases.values() for name in files}
     return [
-        f"not in any table: {name}"
-        for name in _migration_names(root)
-        if name not in listed
+        f"not in any table: {name}" for name in _unlisted_migrations(releases, root)
     ]
 
 
 def release_manifest_addition(manifest: Path, root: Path, tag: str) -> str:
     """The released.toml lines that would list every unlisted migration under `tag`."""
-    del manifest, root, tag  # red stub: green replaces this body
-    return ""
+    releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    lines = [f'["{tag}"]']
+    lines.extend(
+        f'"{name}" = "{_sha256((root / name).read_bytes())}"'
+        for name in _unlisted_migrations(releases, root)
+    )
+    return "\n".join(lines) + "\n"
 
 
-def _migration_names(root: Path) -> list[str]:
-    return sorted(path.relative_to(root).as_posix() for path in root.rglob("*.sql"))
+def _unlisted_migrations(releases: dict[str, Any], root: Path) -> list[str]:
+    """The migration files under `root` that no release table lists, sorted."""
+    listed = {name for files in releases.values() for name in files}
+    return sorted(
+        name
+        for path in root.rglob("*.sql")
+        if (name := path.relative_to(root).as_posix()) not in listed
+    )
 
 
 def _sha256(text: bytes) -> str:
