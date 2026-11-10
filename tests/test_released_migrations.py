@@ -25,6 +25,12 @@ def released_migration_drift(manifest: Path, root: Path) -> list[str]:
     ]
 
 
+def release_manifest_gaps(manifest: Path, root: Path, tag: str) -> list[str]:
+    """Why `tag`'s table in the manifest doesn't freeze every migration in `root`."""
+    del manifest, root, tag  # red stub: green replaces this body
+    return []
+
+
 def _sha256(text: bytes) -> str:
     return hashlib.sha256(text).hexdigest()
 
@@ -96,6 +102,16 @@ def test_a_changed_migration_checked_out_with_crlf_endings_is_still_reported(
     (tmp_path / BRONZE).write_bytes(changed.replace(b"\n", b"\r\n"))
 
     assert released_migration_drift(manifest, tmp_path) == [BRONZE]
+
+
+def test_a_release_tag_with_no_table_in_the_manifest_is_reported(
+    tmp_path: Path,
+) -> None:
+    manifest = _released_tree(tmp_path)
+
+    assert release_manifest_gaps(manifest, tmp_path, "v0.3.0") == [
+        "v0.3.0 has no table in released.toml"
+    ]
 
 
 MIGRATIONS = Path(__file__).resolve().parent.parent / "src" / "budget" / "migrations"
