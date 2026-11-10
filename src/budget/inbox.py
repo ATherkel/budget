@@ -555,7 +555,8 @@ def _held_back(error: Exception, *, nothing_new: bool) -> bool:
     configuration errors during an empty retry remain visible.
     """
     if isinstance(error, sqlite3.OperationalError):
-        return error.sqlite_errorcode & 0xFF in _PASSING_STORE_FAILURES
+        code = getattr(error, "sqlite_errorcode", None)
+        return code is not None and code & 0xFF in _PASSING_STORE_FAILURES
     if isinstance(error, (StoreError, OSError)):
         return True
     return not nothing_new
