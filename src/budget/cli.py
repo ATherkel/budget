@@ -226,8 +226,8 @@ class ImportedWithoutPublicationError(Exception):
             else str(held_back)
         )
         message = (
-            "the exports were imported into Bronze, but Silver and Gold were not "
-            f"rebuilt: {reason}. Put that right, then run "
+            "the exports were imported into Bronze, but the rebuild stopped "
+            f"before Gold was published: {reason}. Put that right, then run "
             "`budget import` again: it finishes the rebuild, the publication and "
             "the backup, whether or not the inbox holds files"
         )
