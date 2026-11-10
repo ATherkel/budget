@@ -407,7 +407,11 @@ def _report_to_github_actions(manifest: Path, tag: str) -> None:
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with Path(summary).open("a", encoding="utf-8") as job_summary:
-            job_summary.write(release_manifest_summary(manifest, MIGRATIONS, tag))
+            # The Release workflow's version step sets this when the tag exists.
+            released = os.environ.get("RELEASE_TAG_RELEASED") == "true"
+            job_summary.write(
+                release_manifest_summary(manifest, MIGRATIONS, tag, released=released)
+            )
 
 
 @pytest.mark.release
