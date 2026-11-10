@@ -10,23 +10,31 @@ explicit environment, and every account, date and amount is synthetic.
 """
 
 import json
+import sqlite3
 import unittest
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
+from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import cast
 from unittest import mock
 
-from budget.backups import complete_backup_sets
+import pytest
+
+from budget import sqlstore
+from budget.backups import complete_backup_sets, complete_sets_in
 from budget.gold.store import GoldStore
+from budget.importing import Coverage, import_inbox_file
 from budget.inputs import ConfigurationError
+from budget.locking import writer_lock
 from budget.profiles import Profile
 from tests.backups.sets import run_ids
 from tests.cli.commands import import_, migrate
 from tests.cli.imports import clean_checkout, write_ranges
 from tests.cli.pipelines import EXPORT, Prepared, prepared, write_inputs
 from tests.cli.profile_files import development_profile, write_profile
-from tests.importing.households import ACCOUNTS, drop, payload
+from tests.importing.households import ACCOUNTS, chained_payload, drop, payload
 
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
@@ -92,6 +100,36 @@ def _log_records(profile: Profile) -> list[dict[str, object]]:
     return [json.loads(line) for line in text.splitlines()]
 
 
+def _sqlite_error(message: str, code: int) -> sqlite3.OperationalError:
+    """Make the same SQLite exception the database driver raises."""
+    error = sqlite3.OperationalError(message)
+    error.sqlite_errorcode = code
+    return error
+
+
+@contextmanager
+def _fail_first_gold_open_after(source: Path, failure: Exception) -> Iterator[None]:
+    """Fail the rebuild at SQLite's connection boundary after Bronze consumes a file."""
+    real_connect = cast("Callable[..., sqlite3.Connection]", sqlite3.connect)
+    injected = False
+
+    def injected_connect(
+        database: object, *args: object, **options: object
+    ) -> sqlite3.Connection:
+        nonlocal injected
+        if (
+            str(database).endswith("gold.db?mode=rw")
+            and not source.exists()
+            and not injected
+        ):
+            injected = True
+            raise failure
+        return real_connect(database, *args, **options)
+
+    with mock.patch("budget.sqlstore.sqlite3.connect", side_effect=injected_connect):
+        yield
+
+
 class ForeseeableRefusalTests(unittest.TestCase):
     def _refused_before_storing(
         self,
@@ -142,6 +180,102 @@ class ForeseeableRefusalTests(unittest.TestCase):
         self,
     ) -> None:
         self._refused_before_storing(_close_early, EXIT_REFUSED_INPUT, "closed_on")
+
+    def test_an_account_closed_before_a_stored_transaction_stores_nothing(
+        self,
+    ) -> None:
+        # The incoming file ends before closed_on; the stored one does not.
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            drop(base.profile, "joint-current", EXPORT_NAME, payload("04.03.2026"))
+            assert _run_import(base)[0] == EXIT_OK
+            write_inputs(
+                base.profile,
+                ACCOUNTS.replace(
+                    'bank_account_number = "0012345678"\n',
+                    'bank_account_number = "0012345678"\nclosed_on = 2026-03-02\n',
+                ),
+            )
+            source = drop(base.profile, "joint-current", "danske-20260306.csv", EXPORT)
+            silver_before = base.profile.silver_store.read_bytes()
+
+            status, stdout, stderr = _run_import(base)
+
+            assert (status, stdout) == (EXIT_REFUSED_INPUT, "")
+            assert "closed_on 2026-03-02" in stderr
+            assert source.read_bytes() == EXPORT
+            assert len(run_ids(base.profile.bronze_store)) == 1
+            assert base.profile.silver_store.read_bytes() == silver_before
+
+    def test_closing_date_preflight_reads_bronze_not_stale_silver(self) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            assert _run_import(base)[0] == EXIT_OK
+
+            later = drop(
+                base.profile,
+                "joint-current",
+                "danske-20260306.csv",
+                chained_payload("01.03.2026", "04.03.2026"),
+            )
+            with writer_lock(base.profile) as lock:
+                import_inbox_file(
+                    lock,
+                    later,
+                    Coverage(date(2026, 3, 1), date(2026, 3, 4)),
+                )
+            write_inputs(
+                base.profile,
+                ACCOUNTS.replace(
+                    'bank_account_number = "0012345678"\n',
+                    'bank_account_number = "0012345678"\nclosed_on = 2026-03-02\n',
+                ),
+            )
+            source = drop(
+                base.profile,
+                "joint-current",
+                "danske-20260307.csv",
+                EXPORT,
+            )
+            silver_before = base.profile.silver_store.read_bytes()
+
+            status, stdout, stderr = _run_import(base)
+
+            assert (status, stdout) == (EXIT_REFUSED_INPUT, "")
+            assert "closed_on 2026-03-02" in stderr
+            assert source.read_bytes() == EXPORT
+            assert len(run_ids(base.profile.bronze_store)) == 2
+            assert base.profile.silver_store.read_bytes() == silver_before
+
+    def test_a_profile_with_no_closing_dates_skips_preflight_silver_derivation(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            source = drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            real_connect = cast("Callable[..., sqlite3.Connection]", sqlite3.connect)
+            bronze_opens = 0
+
+            def injected_connect(
+                database: object, *args: object, **options: object
+            ) -> sqlite3.Connection:
+                nonlocal bronze_opens
+                if str(database).endswith("bronze.db?mode=rw") and source.exists():
+                    bronze_opens += 1
+                    if bronze_opens == 3:
+                        problem = (
+                            "the closing-date preflight derived Silver unnecessarily"
+                        )
+                        raise _sqlite_error(problem, sqlite3.SQLITE_ERROR)
+                return real_connect(database, *args, **options)
+
+            with mock.patch(
+                "budget.sqlstore.sqlite3.connect", side_effect=injected_connect
+            ):
+                status, _, stderr = _run_import(base)
+
+            assert (status, stderr) == (EXIT_OK, "")
 
     def test_a_commit_git_cannot_name_stores_nothing(self) -> None:
         with TemporaryDirectory() as directory:
@@ -280,6 +414,201 @@ class FailureAndRetryTests(unittest.TestCase):
             assert len(complete_backup_sets(base.profile)) == sets_before
             with GoldStore(base.profile) as gold:
                 assert [m.to_publication_id for m in gold.pointer_history()] == [1]
+
+    def test_a_gold_store_held_after_the_commit_still_reports_and_backs_up(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory), name="production")
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            sets_before = len(complete_backup_sets(base.profile))
+
+            # Such as DB Browser for SQLite, left open in a write transaction.
+            with (
+                mock.patch.object(sqlstore, "BUSY_TIMEOUT_MS", 100),
+                closing(
+                    sqlite3.connect(base.profile.gold_store, isolation_level=None)
+                ) as holder,
+            ):
+                holder.execute("BEGIN IMMEDIATE")
+                try:
+                    status, stdout, stderr = _run_import(base)
+                except sqlite3.OperationalError as error:
+                    self.fail(
+                        "import let a busy Gold store escape after committing "
+                        "Bronze; expected exit 4 with recovery reporting: "
+                        f"{error}"
+                    )
+                holder.execute("ROLLBACK")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "[1] joint-current  stored" in stdout
+            assert "imported into Bronze" in stderr
+            assert "budget import" in stderr
+            assert len(run_ids(base.profile.bronze_store)) == 1
+            assert len(complete_backup_sets(base.profile)) == sets_before + 1
+            assert _log_records(base.profile)[-1]["command"] == "import"
+
+    def test_a_gold_store_held_after_silver_is_stored_is_reported_as_such(
+        self,
+    ) -> None:
+        # Silver is stored before Gold publishes, so a held Gold store stops
+        # the import after Silver changed: neither stream may say otherwise.
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            silver_before = base.profile.silver_store.read_bytes()
+
+            with (
+                mock.patch.object(sqlstore, "BUSY_TIMEOUT_MS", 100),
+                closing(
+                    sqlite3.connect(base.profile.gold_store, isolation_level=None)
+                ) as holder,
+            ):
+                holder.execute("BEGIN IMMEDIATE")
+                status, stdout, stderr = _run_import(base)
+                holder.execute("ROLLBACK")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert base.profile.silver_store.read_bytes() != silver_before
+            assert "Silver and Gold were not rebuilt" not in stdout
+            assert "Silver and Gold were not rebuilt" not in stderr
+            assert "before Gold was published" in stdout
+            assert "before Gold was published" in stderr
+
+    def test_an_empty_inbox_retry_against_a_held_gold_store_refuses_cleanly(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            with _gold_refuses_after_the_files_are_stored():
+                assert _run_import(base)[0] == EXIT_REFUSED_ENVIRONMENT
+
+            with (
+                mock.patch.object(sqlstore, "BUSY_TIMEOUT_MS", 100),
+                closing(
+                    sqlite3.connect(base.profile.gold_store, isolation_level=None)
+                ) as holder,
+            ):
+                holder.execute("BEGIN IMMEDIATE")
+                status, _, stderr = _run_import(base)
+                holder.execute("ROLLBACK")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "budget import" in stderr
+
+    def test_an_empty_inbox_retry_after_gold_is_released_finishes_the_import(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory), name="production")
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            sets_before = len(complete_backup_sets(base.profile))
+
+            with (
+                mock.patch.object(sqlstore, "BUSY_TIMEOUT_MS", 100),
+                closing(
+                    sqlite3.connect(base.profile.gold_store, isolation_level=None)
+                ) as holder,
+            ):
+                holder.execute("BEGIN IMMEDIATE")
+                assert _run_import(base)[0] == EXIT_REFUSED_ENVIRONMENT
+                holder.execute("ROLLBACK")
+
+            status, stdout, stderr = _run_import(base)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 1" in stdout
+            assert "Backup" in stdout
+            assert len(run_ids(base.profile.bronze_store)) == 1
+            assert len(complete_backup_sets(base.profile)) == sets_before + 2
+
+    def test_a_failed_backup_is_reported_beside_the_held_downstream_import(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory), name="production")
+            source = drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            sets_before = len(complete_backup_sets(base.profile))
+            backups = base.profile.backups
+            assert backups is not None
+            preserved = backups.with_name("backups-before-failed-import")
+            backups.rename(preserved)
+            backups.write_text("not a folder", encoding="ascii")
+            failure = _sqlite_error("database is locked", sqlite3.SQLITE_BUSY)
+
+            with _fail_first_gold_open_after(source, failure):
+                status, stdout, stderr = _run_import(base)
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "The rebuild stopped before Gold was published." in stdout
+            assert "database is locked" in stderr
+            assert "No backup set could be written either" in stderr
+            assert "budget backup" in stderr
+            assert len(run_ids(base.profile.bronze_store)) == 1
+            assert len(complete_sets_in(preserved)) == sets_before
+            assert _log_records(base.profile)[-1]["command"] == "import"
+
+    def test_full_and_io_failures_after_commit_are_held_back(self) -> None:
+        failures = (
+            ("full", _sqlite_error("database or disk is full", sqlite3.SQLITE_FULL)),
+            (
+                "SQLite I/O",
+                _sqlite_error("disk I/O error", sqlite3.SQLITE_IOERR_READ),
+            ),
+            ("i/o", OSError(5, "Input/output error")),
+        )
+        for kind, failure in failures:
+            with self.subTest(kind), TemporaryDirectory() as directory:
+                base = prepared(Path(directory), name="production")
+                source = drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+                sets_before = len(complete_backup_sets(base.profile))
+
+                with _fail_first_gold_open_after(source, failure):
+                    status, _, stderr = _run_import(base)
+
+                assert status == EXIT_REFUSED_ENVIRONMENT
+                assert str(failure) in stderr
+                assert "budget import" in stderr
+                assert len(run_ids(base.profile.bronze_store)) == 1
+                assert len(complete_backup_sets(base.profile)) == sets_before + 1
+
+    def test_an_unexpected_database_error_after_commit_stays_visible(self) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            source = drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            failure = _sqlite_error(
+                "no such table: missing_table", sqlite3.SQLITE_ERROR
+            )
+
+            with (
+                _fail_first_gold_open_after(source, failure),
+                pytest.raises(
+                    sqlite3.OperationalError, match="no such table"
+                ) as caught,
+            ):
+                _run_import(base)
+
+            assert caught.value is failure
+            assert len(run_ids(base.profile.bronze_store)) == 1
+
+    def test_an_uncoded_sqlite_error_after_commit_stays_visible(self) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            source = drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            failure = sqlite3.OperationalError("unclassified SQLite failure")
+
+            with (
+                _fail_first_gold_open_after(source, failure),
+                pytest.raises(
+                    sqlite3.OperationalError, match="unclassified SQLite failure"
+                ) as caught,
+            ):
+                _run_import(base)
+
+            assert caught.value is failure
+            assert len(run_ids(base.profile.bronze_store)) == 1
 
 
 class RefusedFileTests(unittest.TestCase):
