@@ -550,9 +550,9 @@ def _held_back(error: Exception, *, nothing_new: bool) -> bool:
     """Whether a rebuild failure after writing Bronze is reported, not raised.
 
     A busy, full or failing store can clear without changing the inputs, so it
-    is reported even during an empty-inbox retry. Other storage failures are
-    held back only when this import stored something; database defects and
-    configuration errors during an empty retry remain visible.
+    is reported even during an empty-inbox retry. Store and operating-system
+    failures use the same path. Configuration errors are held back only after a
+    new import, and unknown database defects always remain visible.
     """
     if isinstance(error, sqlite3.OperationalError):
         code = getattr(error, "sqlite_errorcode", None)
