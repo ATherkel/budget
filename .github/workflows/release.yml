@@ -1,5 +1,11 @@
 name: Release
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Run the checks and report what would be released, without tagging
+        type: boolean
+        default: false
 permissions:
   contents: write
 jobs:
@@ -9,8 +15,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - name: Check the release manifest freezes every migration
-        run: RELEASE_TAG="v$(uv version --short)" uv run pytest -m release
+        run: RELEASE_TAG="v$(uv version --short)" uv run pytest -m release --tb=short
+      # Only main creates tags; any other branch, or dry_run, is a rehearsal.
       - name: Tag and release the pyproject version
+        if: github.ref == 'refs/heads/main' && !inputs.dry_run
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "v$(uv version --short)" --target "$GITHUB_SHA" --generate-notes
+      - name: Report what a release would create
+        if: github.ref != 'refs/heads/main' || inputs.dry_run
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          REF: ${{ github.ref_name }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            why="dry_run was chosen"
+          else
+            why="the run is from $REF, not main"
+          fi
+          echo "Dry run: would create release v$(uv version --short) at $GITHUB_SHA from $REF ($why)." >> "$GITHUB_STEP_SUMMARY"
