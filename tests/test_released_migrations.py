@@ -86,3 +86,15 @@ def test_a_released_migration_checked_out_with_crlf_endings_is_not_reported(
     (tmp_path / BRONZE).write_bytes(BRONZE_RELEASED.replace(b"\n", b"\r\n"))
 
     assert released_migration_drift(manifest, tmp_path) == []
+
+
+MIGRATIONS = Path(__file__).resolve().parent.parent / "src" / "budget" / "migrations"
+
+
+def test_no_migration_a_release_shipped_has_changed() -> None:
+    manifest = MIGRATIONS / "released.toml"
+    releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
+
+    # v0.2.0 shipped Bronze 0001 and Silver 0001; an empty manifest guards nothing.
+    assert set(releases["v0.2.0"]) == {BRONZE, SILVER}
+    assert released_migration_drift(manifest, MIGRATIONS) == []
