@@ -197,6 +197,21 @@ class ForeseeableRefusalTests(unittest.TestCase):
             assert len(run_ids(base.profile.bronze_store)) == 1
             assert base.profile.silver_store.read_bytes() == silver_before
 
+    def test_a_profile_with_no_closing_dates_skips_preflight_silver_derivation(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            problem = "the closing-date preflight derived Silver unnecessarily"
+
+            with mock.patch(
+                "budget.inbox.derive_silver", side_effect=AssertionError(problem)
+            ):
+                status, _, stderr = _run_import(base)
+
+            assert (status, stderr) == (EXIT_OK, "")
+
     def test_a_commit_git_cannot_name_stores_nothing(self) -> None:
         with TemporaryDirectory() as directory:
             base = prepared(Path(directory), name="production")
