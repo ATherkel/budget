@@ -68,3 +68,10 @@ def test_a_released_migration_whose_text_changed_is_reported(tmp_path: Path) -> 
     )
 
     assert released_migration_drift(manifest, tmp_path) == [SILVER]
+
+
+def test_a_released_migration_that_was_deleted_is_reported(tmp_path: Path) -> None:
+    manifest = _released_tree(tmp_path)
+    (tmp_path / BRONZE).unlink()
+
+    assert released_migration_drift(manifest, tmp_path) == [BRONZE]
