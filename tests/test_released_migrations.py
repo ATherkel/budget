@@ -68,6 +68,12 @@ def release_manifest_summary(manifest: Path, root: Path, tag: str) -> str:
     )
 
 
+def release_manifest_annotations(manifest: Path, root: Path, tag: str) -> list[str]:
+    """One GitHub Actions error annotation per reason `tag` can't be cut."""
+    del manifest, root, tag  # red stub: green replaces this body
+    return []
+
+
 def _unlisted_migrations(releases: dict[str, Any], root: Path) -> list[str]:
     """The migration files under `root` that no release table lists, sorted."""
     listed = {name for files in releases.values() for name in files}
@@ -314,6 +320,22 @@ def test_the_job_summary_for_a_tag_with_a_table_warns_a_released_one_is_frozen(
         "If v0.2.0 is already released, its table is frozen: bump the version in "
         "`pyproject.toml` instead.\n"
     )
+
+
+def test_each_problem_becomes_an_error_annotation_on_released_toml(
+    tmp_path: Path,
+) -> None:
+    manifest = _released_tree(tmp_path)
+    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
+        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
+    )
+
+    error = "::error file=src/budget/migrations/released.toml,"
+    error += "title=Release manifest incomplete::"
+    assert release_manifest_annotations(manifest, tmp_path, "v0.3.0") == [
+        f"{error}v0.3.0 has no table in released.toml",
+        f"{error}not in any table: silver/0002_add_note.sql",
+    ]
 
 
 MIGRATIONS = Path(__file__).resolve().parent.parent / "src" / "budget" / "migrations"
