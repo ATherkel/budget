@@ -2,10 +2,13 @@
 """Released migrations are frozen (#364).
 
 `src/budget/migrations/released.toml` holds, for each release tag, the
-SHA-256 of every migration file that release shipped. A store records only the
+SHA-256 of each migration file that release added: a tag's table lists only
+the files no earlier table lists, and it may be empty. A store records only the
 number of the last migration it ran, so a released file that changes or
 disappears never reaches the stores already past it. These tests read only the
-manifest and the working tree: CI checks out without tags.
+manifest and the working tree: CI checks out without tags. The Release workflow
+also checks, with `-m release`, that the tag it cuts has a table and that every
+migration file is in some table (#492).
 """
 
 import hashlib
@@ -247,6 +250,9 @@ def test_a_tag_with_no_table_also_names_each_migration_in_no_table(
 MIGRATIONS = Path(__file__).resolve().parent.parent / "src" / "budget" / "migrations"
 
 
+# Marked release as well: the Release workflow runs only `-m release`, and it
+# can tag a branch that the full test suite never ran on.
+@pytest.mark.release
 def test_no_migration_a_release_shipped_has_changed() -> None:
     manifest = MIGRATIONS / "released.toml"
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
