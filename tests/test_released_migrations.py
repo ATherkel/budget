@@ -9,12 +9,19 @@ manifest and the working tree: CI checks out without tags.
 """
 
 import hashlib
+import tomllib
 from pathlib import Path
 
 
 def released_migration_drift(manifest: Path, root: Path) -> list[str]:
     """The manifest's paths under `root` that are missing or no longer match."""
-    return []
+    releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    return [
+        name
+        for files in releases.values()
+        for name, digest in files.items()
+        if _sha256((root / name).read_bytes()) != digest
+    ]
 
 
 def _sha256(text: bytes) -> str:
