@@ -18,6 +18,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+import pytest
+
 from budget import sqlstore
 from budget.backups import BackupWriteError, complete_backup_sets
 from budget.gold.store import GoldStore
@@ -104,6 +106,17 @@ def _full_store_error() -> sqlite3.OperationalError:
         except sqlite3.OperationalError as error:
             return error
     problem = "the synthetic SQLite database did not fill"
+    raise AssertionError(problem)
+
+
+def _database_defect() -> sqlite3.OperationalError:
+    """Return SQLite's own statement error, which is not a recovery path."""
+    with closing(sqlite3.connect(":memory:")) as connection:
+        try:
+            connection.execute("SELECT * FROM missing_table")
+        except sqlite3.OperationalError as error:
+            return error
+    problem = "the synthetic SQLite statement unexpectedly succeeded"
     raise AssertionError(problem)
 
 
@@ -459,6 +472,22 @@ class FailureAndRetryTests(unittest.TestCase):
                 assert str(failure) in stderr
                 assert "budget import" in stderr
                 assert len(run_ids(base.profile.bronze_store)) == 1
+
+    def test_an_unexpected_database_error_after_commit_stays_visible(self) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+
+            with (
+                mock.patch(
+                    "budget.inbox.rebuild_through_gold",
+                    side_effect=_database_defect(),
+                ),
+                pytest.raises(sqlite3.OperationalError, match="no such table"),
+            ):
+                _run_import(base)
+
+            assert len(run_ids(base.profile.bronze_store)) == 1
 
 
 class RefusedFileTests(unittest.TestCase):
