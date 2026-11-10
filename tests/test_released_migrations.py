@@ -38,7 +38,7 @@ def release_manifest_gaps(manifest: Path, root: Path, tag: str) -> list[str]:
 def release_manifest_addition(manifest: Path, root: Path, tag: str) -> str:
     """The released.toml lines that would list every unlisted migration under `tag`."""
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
-    lines = [f'["{tag}"]']
+    lines = [] if tag in releases else [f'["{tag}"]']
     lines.extend(
         f'"{name}" = "{_released_hash(root / name)}"'
         for name in _unlisted_migrations(releases, root)
