@@ -433,6 +433,12 @@ class SilverProvenanceMigrationTests(unittest.TestCase):
             status, stderr = migrate(built.profile_file)
 
             assert (status, stderr) == (EXIT_OK, "")
+            assert _user_version(built.profile.silver_store) == 2
+            with closing(sqlite3.connect(built.profile.silver_store)) as connection:
+                assert (
+                    connection.execute("SELECT * FROM account_currencies").fetchall()
+                    == []
+                )
             with SilverStore(built.profile) as store:
                 assert not store.is_built()
                 assert store.read().transactions == ()
