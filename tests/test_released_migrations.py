@@ -9,9 +9,12 @@ manifest and the working tree: CI checks out without tags.
 """
 
 import hashlib
+import os
 import tomllib
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 
 def released_migration_drift(manifest: Path, root: Path) -> list[str]:
@@ -232,3 +235,23 @@ def test_no_migration_a_release_shipped_has_changed() -> None:
     # v0.2.0 shipped Bronze 0001 and Silver 0001; an empty manifest guards nothing.
     assert set(releases["v0.2.0"]) == {BRONZE, SILVER}
     assert released_migration_drift(manifest, MIGRATIONS) == []
+
+
+@pytest.mark.release
+def test_the_release_tag_has_a_table_and_every_migration_is_in_one() -> None:
+    # Main keeps the last release's version while unreleased migrations pile
+    # up, so only the Release workflow, which sets RELEASE_TAG, can check this.
+    tag = os.environ.get("RELEASE_TAG")
+    if not tag:
+        pytest.skip("RELEASE_TAG is not set; the Release workflow sets it")
+    manifest = MIGRATIONS / "released.toml"
+
+    gaps = release_manifest_gaps(manifest, MIGRATIONS, tag)
+
+    assert not gaps, "\n".join(
+        [
+            *gaps,
+            "Add these lines to src/budget/migrations/released.toml:",
+            release_manifest_addition(manifest, MIGRATIONS, tag),
+        ]
+    )

@@ -73,6 +73,7 @@ docstring-code-format = true
 [tool.pytest.ini_options]
 markers = [
     "docs: reads docs/ or README.md; tests/conftest.py adds it by module",
+    "release: checks the RELEASE_TAG being cut; the Release workflow runs it with `-m release`",
 ]
 
 [tool.ty.rules]
