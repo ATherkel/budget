@@ -1054,13 +1054,18 @@ Before tagging a release:
    table may be empty. `tests/test_released_migrations.py` fails when a file
    any table names is changed or deleted. It reads only the manifest and the
    working tree, because CI checks out without tags.
-3. Tag by running the Release workflow, which tags the `pyproject.toml`
-   version. Its first step, `RELEASE_TAG="v$(uv version --short)" uv run
-   pytest -m release`, refuses the tag when `released.toml` has no table for
-   it or a migration file appears in no table. The failure names each such
-   file and prints the lines to paste into the tag's table. To get those
-   lines before running the workflow, run the same check locally, in
-   PowerShell `$env:RELEASE_TAG = "v0.3.0"; uv run pytest -m release`.
+3. Bump the version in `pyproject.toml` to the new release. The check takes
+   the tag from it, and run against a version already released it would
+   suggest adding files to that release's table, which is frozen.
+4. Tag by running the Release workflow, which tags the `pyproject.toml`
+   version. A step before the tag runs
+   `RELEASE_TAG="v$(uv version --short)" uv run pytest -m release`. It
+   refuses the tag when `released.toml` has no table for it, when a
+   migration file appears in no table, or when a released migration has
+   changed. The failure names each such file and prints the lines to paste
+   into the tag's table. To get those lines before running the workflow, run
+   the same check locally, in PowerShell
+   `$env:RELEASE_TAG = "v0.3.0"; uv run pytest -m release`.
 
 `migrate` keeps refusing a store whose schema is newer than the code
 (exit 4). A development store that ran migrations which were later merged
