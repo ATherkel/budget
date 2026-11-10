@@ -197,6 +197,31 @@ def test_the_hash_to_paste_for_a_crlf_checkout_is_the_hash_of_its_lf_text(
     )
 
 
+def test_the_lines_to_paste_into_an_existing_table_repeat_no_header(
+    tmp_path: Path,
+) -> None:
+    # TOML rejects a second ["v0.3.0"] header, so the lines go under the first.
+    manifest = _released_tree(tmp_path)
+    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
+        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
+    )
+    _write_manifest(
+        manifest,
+        {
+            "v0.2.0": {
+                BRONZE: _sha256(BRONZE_RELEASED),
+                SILVER: _sha256(SILVER_RELEASED),
+            },
+            "v0.3.0": {},
+        },
+    )
+
+    assert release_manifest_addition(manifest, tmp_path, "v0.3.0") == (
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+    )
+
+
 MIGRATIONS = Path(__file__).resolve().parent.parent / "src" / "budget" / "migrations"
 
 
