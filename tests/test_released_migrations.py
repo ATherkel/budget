@@ -56,10 +56,15 @@ def release_manifest_summary(manifest: Path, root: Path, tag: str) -> str:
     problems = "".join(
         f"- {gap}\n" for gap in release_manifest_gaps(manifest, root, tag)
     )
+    lines = f"```toml\n{release_manifest_addition(manifest, root, tag)}```\n"
+    path = "`src/budget/migrations/released.toml`"
+    heading = f"## Release manifest incomplete for {tag}\n\n{problems}\n"
+    if tag not in tomllib.loads(manifest.read_text(encoding="utf-8")):
+        return f"{heading}Add these lines to the end of {path}:\n\n{lines}"
     return (
-        f"## Release manifest incomplete for {tag}\n\n{problems}\n"
-        "Add these lines to the end of `src/budget/migrations/released.toml`:\n\n"
-        f"```toml\n{release_manifest_addition(manifest, root, tag)}```\n"
+        f'{heading}Add these lines under `["{tag}"]` in {path}:\n\n{lines}\n'
+        f"If {tag} is already released, its table is frozen: bump the version in "
+        "`pyproject.toml` instead.\n"
     )
 
 
