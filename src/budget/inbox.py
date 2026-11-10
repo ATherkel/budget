@@ -12,6 +12,7 @@ before anyone is asked for its range, and never reaches Bronze: it waits
 in the inbox for a fresh download or a reader fix.
 """
 
+import sqlite3
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -31,6 +32,7 @@ from budget.bronze.models import ImportRun
 from budget.bronze.parsers.registry import source_parser
 from budget.codeversion import committed_code_version, require_committed_code
 from budget.gold.build import closed_too_early, decision_problems
+from budget.gold.transactions import gold_transactions
 from budget.importing import (
     Coverage,
     NotAnInboxFileError,
@@ -46,10 +48,13 @@ from budget.rebuilding import (
     HouseholdInputs,
     SilverRebuild,
     SilverReviews,
+    bronze_inputs,
     read_household_inputs,
     rebuild_through_gold,
 )
+from budget.silver import derive_silver
 from budget.silver.decisions import VoidImportRun
+from budget.sqlstore import StoreError
 
 # The outcomes that leave a file in the inbox and make `import` exit 3.
 LEFT_IN_INBOX: Final = frozenset(
@@ -62,6 +67,9 @@ INCIDENT_REASON: Final = "the same bytes are in the inbox under another account"
 # How a file in a folder that names no account is shown: the folder's name is
 # typed by hand, so it may carry a bank account number.
 NO_ACCOUNT: Final = "(no account)"
+_PASSING_STORE_FAILURES: Final = frozenset(
+    {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_FULL, sqlite3.SQLITE_IOERR}
+)
 _NO_EXPORT_DATE: Final = (
     "the filename carries no export date; keep the name the bank gave it"
 )
@@ -132,8 +140,8 @@ class ImportedInbox:
     `rebuilt` is `None` when nothing was outstanding: no file reached Bronze
     and Silver and Gold were already current, so no backup follows either.
     `published` is what the Gold rebuild after the Silver one left current.
-    `held_back` is the configuration error that stopped Silver and Gold after
-    Bronze was written; the next `import` finishes them. `backup` is the set
+    `held_back` is the error that stopped the rebuild after Bronze was written;
+    the next `import` finishes it. `backup` is the set
     written after the rebuilds; only production writes one.
     `backup_failure` is why production's set could not be written, if so.
     `incidents` are the cross-account duplicates the preflight found, so the
@@ -145,7 +153,7 @@ class ImportedInbox:
     rebuilt: SilverRebuild | None
     incidents: tuple[DuplicateIncident, ...] = ()
     published: GoldRebuild | None = None
-    held_back: ConfigurationError | None = None
+    held_back: Exception | None = None
     backup: BackupSet | None = None
     backup_failure: Exception | None = None
     silver_reviews: SilverReviews = field(default_factory=SilverReviews)
@@ -203,28 +211,48 @@ def require_import_allowed(profile: Profile) -> HouseholdInputs:
 
 
 def require_importable(
-    inputs: HouseholdInputs, previews: Sequence[ExportPreview]
+    profile: Profile, inputs: HouseholdInputs, previews: Sequence[ExportPreview]
 ) -> None:
     """Refuse now the Gold refusals the files about to be stored would cause.
 
     A decision naming a category the taxonomy dropped refuses every Gold build,
-    and an account closed before a transaction the previews show refuses the
-    build that follows the import. Both are known before any file is consumed.
+    and an account closed before a transaction refuses the build that follows
+    the import, whether the transaction is in a preview or in the Silver that
+    Bronze builds now. Both are known before any file is consumed.
     """
     problems = list(decision_problems(inputs.log.gold, inputs.configuration))
+    latest = _latest_stored_transactions(profile, inputs)
     for each in previews:
-        account = inputs.configuration.accounts.get(each.account_id)
         last = each.last_transaction
-        if (
-            not each.skipped
-            and account is not None
-            and account.closed_on is not None
-            and last is not None
-            and account.closed_on < last
-        ):
-            problems.append(closed_too_early(each.account_id, account.closed_on, last))
+        if not each.skipped and last is not None:
+            latest[each.account_id] = max(latest.get(each.account_id, last), last)
+    for account_id, last in sorted(latest.items()):
+        account = inputs.configuration.accounts.get(account_id)
+        closed_on = None if account is None else account.closed_on
+        if closed_on is not None and closed_on < last:
+            problems.append(closed_too_early(account_id, closed_on, last))
     if problems:
         raise ConfigurationError(tuple(problems))
+
+
+def _latest_stored_transactions(
+    profile: Profile, inputs: HouseholdInputs
+) -> dict[str, date]:
+    """Each account's latest booked transaction in the Bronze-derived Silver.
+
+    The rebuild after the import reads Bronze, so its stored Silver may be
+    stale. With no account closed there is nothing to check.
+    """
+    if all(
+        account.closed_on is None for account in inputs.configuration.accounts.values()
+    ):
+        return {}
+    silver = derive_silver(bronze_inputs(profile, inputs.log.silver))
+    latest: dict[str, date] = {}
+    for each in gold_transactions(silver.transactions):
+        day = each.transaction_date
+        latest[each.account_id] = max(latest.get(each.account_id, day), day)
+    return latest
 
 
 def inbox_exports(profile: Profile) -> tuple[Path, ...]:
@@ -492,8 +520,13 @@ def import_inbox(
         return ImportedInbox(files=files, incidents=found, rebuilt=None)
     try:
         rebuilt = rebuild_through_gold(lock, now=datetime.now(UTC), inputs=inputs)
-    except ConfigurationError as error:
-        if nothing_new:
+    except (
+        ConfigurationError,
+        StoreError,
+        OSError,
+        sqlite3.OperationalError,
+    ) as error:
+        if not _held_back(error, nothing_new=nothing_new):
             raise
         return _backed_up(
             lock,
@@ -511,6 +544,22 @@ def import_inbox(
             silver_reviews=rebuilt.silver_reviews,
         ),
     )
+
+
+def _held_back(error: Exception, *, nothing_new: bool) -> bool:
+    """Whether a rebuild failure after writing Bronze is reported, not raised.
+
+    A busy, full or failing store can clear without changing the inputs, so it
+    is reported even during an empty-inbox retry. Store and operating-system
+    failures use the same path. Configuration errors are held back only after a
+    new import, and unknown database defects always remain visible.
+    """
+    if isinstance(error, sqlite3.OperationalError):
+        code = getattr(error, "sqlite_errorcode", None)
+        return code is not None and code & 0xFF in _PASSING_STORE_FAILURES
+    if isinstance(error, (StoreError, OSError)):
+        return True
+    return not nothing_new
 
 
 def _bronze_holds_runs(profile: Profile) -> bool:
