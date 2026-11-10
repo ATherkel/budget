@@ -1054,9 +1054,9 @@ Before tagging a release:
    table may be empty. `tests/test_released_migrations.py` fails when a file
    any table names is changed or deleted. It reads only the manifest and the
    working tree, because CI checks out without tags.
-3. Bump the version in `pyproject.toml` to the new release. The check takes
-   the tag from it, and run against a version already released it would
-   suggest adding files to that release's table, which is frozen.
+3. Bump the version in `pyproject.toml` to the new release. The Release
+   workflow takes the tag from it and refuses a version whose tag already
+   exists, because that release's table is frozen.
 4. Tag by running the Release workflow from `main`, which tags the
    `pyproject.toml` version. A step before the tag runs
    `RELEASE_TAG="v$(uv version --short)" uv run pytest -m release`. It
@@ -1071,7 +1071,8 @@ Before tagging a release:
 
 Only a run from `main` creates a tag. A run from any other branch, or with
 the `dry_run` input ticked, is a rehearsal: it runs the same checks, skips
-the tag, and its summary says which release it would have created.
+the tag, and its summary says which release it would have created, or that
+the release would be refused and by which check.
 
 `migrate` keeps refusing a store whose schema is newer than the code
 (exit 4). A development store that ran migrations which were later merged
