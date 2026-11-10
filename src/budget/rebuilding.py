@@ -51,6 +51,7 @@ from budget.silver import (
     SilverBuild,
     SilverBuildInputs,
     SilverDecision,
+    SilverProvenance,
     SilverResult,
     SilverStore,
     VoidImportRun,
@@ -361,24 +362,36 @@ class PipelineRebuild:
 
 
 def _recipe(
-    profile: Profile, silver: SilverResult, household: HouseholdInputs
+    profile: Profile, provenance: SilverProvenance, household: HouseholdInputs
 ) -> Recipe:
-    """Name every input a build from `silver` and the household's files reads."""
+    """Name every input a build from Silver and the household's files reads.
+
+    Silver's part is its `provenance`: what built the Silver result Gold reads,
+    including the import runs it consumed, voided ones too.
+    """
     log = household.log
     return Recipe(
         import_runs=frozenset(
-            RecipeImportRun(run.import_run_id, run.payload_id)
-            for run in (*silver.import_run_results, *silver.evidence_exports)
+            RecipeImportRun(run.import_run_id, run.payload_id, run.account_id)
+            for run in provenance.import_runs
         ),
         configuration_fingerprint=household.configuration.fingerprint,
         decision_log_position=log.position,
         decision_log_prefix_sha256=log.prefix_sha256,
         code_version=committed_code_version(profile),
         contract_version=CONTRACT_VERSION,
-        silver_identity_version=IDENTITY_VERSION,
+        silver_identity_version=provenance.identity_version,
         late_booking_days=profile.late_booking_window.days,
         python_version=platform.python_version(),
         sqlite_version=sqlite3.sqlite_version,
+        silver_fingerprint_scheme=provenance.fingerprint_scheme,
+        silver_result_fingerprint=provenance.result_fingerprint,
+        silver_code_version=provenance.code_version,
+        silver_decision_log_position=provenance.decision_log_position,
+        silver_decision_log_prefix_sha256=provenance.decision_log_prefix_sha256,
+        silver_bronze_parser_provenance=provenance.bronze_parser_provenance,
+        silver_currencies=frozenset(provenance.currencies.items()),
+        silver_decisions=tuple(provenance.decisions),
     )
 
 
@@ -387,16 +400,14 @@ def _plan_gold(
     silver: SilverBuild,
     household: HouseholdInputs,
     now: datetime,
-    *,
-    silver_changed: bool = False,
 ) -> _GoldPlan | GoldRebuild:
     """Derive Gold from `silver`, writing nothing, or find it already current.
 
     A recipe equal to the current publication's builds nothing and comes back
-    as the rebuild that publishes nothing, unless `silver_changed`: the recipe
-    names Silver's inputs, not its result, so a Silver that changed under the
-    same recipe still needs a new publication. A configuration error is
-    raised here, before any store is replaced.
+    as the rebuild that publishes nothing. The recipe names Silver's result
+    fingerprint, so a Silver that changed under the same import runs makes a
+    different recipe. A configuration error is raised here, before any store
+    is replaced.
     """
     if silver.provenance is None:
         raise SilverProvenanceUnavailableError
@@ -404,14 +415,10 @@ def _plan_gold(
         silver.provenance.currencies,
         household.configuration.accounts,
     )
-    recipe = _recipe(profile, silver.result, household)
+    recipe = _recipe(profile, silver.provenance, household)
     with GoldStore(profile) as gold:
         current = gold.current()
-        if (
-            current is not None
-            and not silver_changed
-            and gold.recipe(current.publication_id) == recipe
-        ):
+        if current is not None and gold.recipe(current.publication_id) == recipe:
             return GoldRebuild(publication=current, published=False)
         draft = GoldPublication(
             publication_id=gold.next_publication_id(),
@@ -580,13 +587,7 @@ def rebuild_through_gold(
         built = silver_store.is_built()
         stored = silver_store.read_build()
     changed = stored.result != derived or stored.provenance != prospective_provenance
-    plan = _plan_gold(
-        profile,
-        silver,
-        household,
-        now,
-        silver_changed=changed,
-    )
+    plan = _plan_gold(profile, silver, household, now)
     if reparsed is not None:
         with BronzeStore(profile) as bronze:
             bronze.replace_derived_records(reparsed)

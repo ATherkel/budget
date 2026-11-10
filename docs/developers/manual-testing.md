@@ -131,7 +131,18 @@ handle first:
   target b6a05be4  joint-current  2026-03-02  -120.00 DKK  "MENY HOVEDGADE"  bank category Mad
 ```
 
-Pick one, such as a MENY purchase, and put its handle in `$handle`:
+To find or correct a transaction that is already classified, search the
+current publication instead. Filters are optional and can be combined:
+
+```powershell
+uv run budget find MENY
+uv run budget find MENY --month 2026-03 --account joint-current
+```
+
+Each match prints the same target fields and its published category, or
+`category unclassified`. The handle is usually eight characters; `find`
+lengthens it when another transaction shares that prefix. Pick a match, such
+as a MENY purchase, and put its printed handle in `$handle`:
 
 ```powershell
 $handle = "b6a05be4"
@@ -160,7 +171,7 @@ as it was:
 | Do | Expect |
 | --- | --- |
 | `uv run budget decide classify $handle groceries --reason "dev test"` | Rejected: `<transaction_id> is already decided by d-0001, which supersedes does not list` |
-| The same with `--supersedes d-0001` | Exit 0, `Recorded d-0002.`; `Changes` moves the amount from eating-out to groceries |
+| `uv run budget decide classify $handle groceries --supersedes d-0001 --reason "dev test"` | Exit 0, `Recorded d-0002.`; `Changes` moves the amount from eating-out to groceries |
 | `uv run budget decide classify $handle no-such-category --supersedes d-0002 --reason "dev test"` | Rejected: `category "no-such-category" is not in the taxonomy` |
 | `uv run budget decide classify zzzzzzzz groceries --reason "dev test"` | Rejected: `no transaction in Silver has the handle "zzzzzzzz"` |
 
@@ -190,6 +201,12 @@ into `$inbox\<account_id>\`, then import it with a corrected range in
 `$ranges`. Expect `[1] <account>  stored` as a new run with the new
 `covers_from` in `imports.jsonl`. Decisions on its transactions apply again,
 because the transactions keep their IDs.
+
+If you run `budget undo` after voiding the run, the prior Gold publication is
+current again while Silver still applies the void decision. `budget find` for
+one of that publication's transactions exits 4 and prints no targets because
+Silver cannot resolve those handles. Run `budget rebuild` to publish Gold from
+current Silver. The decision log and void decision stay in place.
 
 The other kinds take their own options (`pair <handle> <handle>`,
 `one-sided-transfer <handle> --counterpart <account_id>`,

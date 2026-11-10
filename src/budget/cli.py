@@ -8,6 +8,7 @@ passes the environment in, so a test never inherits the operator's shell.
 
 import argparse
 import os
+import re
 import sys
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
@@ -19,6 +20,7 @@ from typing import Final, NoReturn
 import uvicorn
 
 from budget import checking, routine_logging, sqlstore, summaries
+from budget.analytics import NothingPublishedError
 from budget.backups import (
     BACKUP_FAILURES,
     BackupSet,
@@ -43,6 +45,13 @@ from budget.decision_log import (
     SILVER_DECISION_KINDS,
 )
 from budget.demo import DEFAULT_DEMO_PORT, DemoDirectoryExistsError, create_demo_profile
+from budget.finding import (
+    FindInputError,
+    InvalidMonthError,
+    PublicationSilverMismatchError,
+    find_transactions,
+)
+from budget.gold.models import ReportingMonth
 from budget.gold.storage import GOLD_STAGE
 from budget.gold.store import GoldStore, UndoUnavailableError
 from budget.importing import (
@@ -144,6 +153,7 @@ EXIT_REFUSED_ENVIRONMENT: Final = 4
 EXIT_VERIFICATION_FAILED: Final = 5
 # The port in operations.md's example profile, for a profile that names none.
 DEFAULT_DASHBOARD_PORT: Final = 8750
+_REPORTING_MONTH: Final = re.compile(r"^[1-9][0-9]{3}-(?:0[1-9]|1[0-2])$")
 # The store errors operations.md lists as a refused environment, for every
 # stage. Any other store error, such as a broken packaged migration, is a
 # defect: exit 1.
@@ -364,6 +374,12 @@ def _parser() -> argparse.ArgumentParser:
         "--kind", choices=REVIEW_KINDS, help="list one kind of item only, no runs"
     )
     review.add_argument("--account", help="list one account's items and runs only")
+    find = commands.add_parser(
+        "find", help="find transactions in the current publication"
+    )
+    find.add_argument("text", help="case-insensitive text in the description")
+    find.add_argument("--month", help="find transactions in YYYY-MM only")
+    find.add_argument("--account", help="find transactions in one account only")
     decide = commands.add_parser(
         "decide", help="record a manual decision, then rebuild from what it affects"
     )
@@ -717,6 +733,23 @@ def _review(profile: Profile, kind: str | None, account: str | None) -> None:
     )
 
 
+def _find(
+    profile: Profile,
+    text: str,
+    month: str | None,
+    account: str | None,
+) -> None:
+    """Find transactions in the current publication."""
+    selected_month = None
+    if month is not None:
+        if _REPORTING_MONTH.fullmatch(month) is None:
+            raise InvalidMonthError(month) from None
+        year, calendar_month = month.split("-")
+        selected_month = ReportingMonth(int(year), int(calendar_month))
+    found = find_transactions(profile, text, month=selected_month, account=account)
+    sys.stdout.write(summaries.find_summary(found))
+
+
 def _transaction(profile: Profile, handle: str) -> str:
     """Return the one Silver transaction whose ID starts with `handle`.
 
@@ -1028,6 +1061,12 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         return _status(profile)
     if arguments.command == "check":
         return _check(profile)
+    _dispatch(profile, arguments)
+    return EXIT_OK
+
+
+def _dispatch(profile: Profile, arguments: argparse.Namespace) -> None:
+    """Run one store-backed command after profile and restore checks."""
     if arguments.command in _PROFILE_ONLY_COMMANDS:
         _PROFILE_ONLY_COMMANDS[arguments.command](profile)
     elif arguments.command == "dev":
@@ -1036,11 +1075,12 @@ def _run(arguments: argparse.Namespace, environ: Mapping[str, str]) -> int:
         _rebuild(profile, arguments.from_stage)
     elif arguments.command == "review":
         _review(profile, arguments.kind, arguments.account)
+    elif arguments.command == "find":
+        _find(profile, arguments.text, arguments.month, arguments.account)
     elif arguments.command == "decide":
         _decide(profile, arguments)
     else:
         _migrate(profile, arguments.stage, new_store=arguments.new_store)
-    return EXIT_OK
 
 
 def _refuse(error: Exception, status: int) -> int:
@@ -1066,6 +1106,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
     except (
         ProfileFileError,
         ConfigurationError,
+        FindInputError,
         DecisionRejectedError,
         RecordedWithoutPublicationError,
         ConflictingDeclaredFormatsError,
@@ -1096,6 +1137,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         RestoreWriteError,
         NotRefreshableError,
         NotProductionsSetError,
+        PublicationSilverMismatchError,
         InputsNotReplacedError,
         RefreshWriteError,
         RefreshUndoError,
@@ -1103,6 +1145,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         UnknownStageError,
         UnfinishedRestoreError,
         MigratedWithoutBackupError,
+        NothingPublishedError,
         ImportedWithoutBackupError,
         ImportedWithoutPublicationError,
         RebuiltWithoutBackupError,

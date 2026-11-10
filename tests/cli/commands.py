@@ -123,6 +123,19 @@ def review(profile_file: Path, *options: str) -> tuple[int, str, str]:
     return status, stdout.getvalue(), stderr.getvalue()
 
 
+def find_transaction(
+    profile_file: Path, text: str, *options: str
+) -> tuple[int, str, str]:
+    """Run `budget find <text>` with one profile file; return status and output."""
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        status = main(
+            ["--profile", str(profile_file), "find", text, *options], environ={}
+        )
+    return status, stdout.getvalue(), stderr.getvalue()
+
+
 def check(profile_file: Path) -> tuple[int, str, str]:
     """Run `budget check` with one profile file; return status and output."""
     stdout = io.StringIO()

@@ -453,6 +453,12 @@ class SilverProvenanceMigrationTests(unittest.TestCase):
                 current = gold.current()
                 assert current is not None
                 assert current.publication_id == 1
+                recipe = gold.recipe(1)
+            # The recipe names the rebuilt Silver, not the version 2 rows.
+            assert recipe.silver_fingerprint_scheme == "1"
+            assert [run.import_run_id for run in recipe.import_runs] == [
+                built.import_run_id
+            ]
 
 
 if __name__ == "__main__":
