@@ -3,7 +3,7 @@ type: decisions
 ---
 # ADR-021: Give Every Account an Owner and Track Outlays as Outstanding Transfers
 
-**Status:** Proposed. Amends [ADR-011](ADR-011-classification-precedence.md):
+**Status:** Accepted. Amends [ADR-011](ADR-011-classification-precedence.md):
 a rule or a decision can also say which account bears a transaction's cost.
 Replaces the first-release statement in `domains/account.md` that there is no
 person dimension.
