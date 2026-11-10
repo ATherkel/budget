@@ -13,6 +13,7 @@ migration file is in some table (#492).
 
 import hashlib
 import os
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -354,6 +355,20 @@ def test_no_migration_a_release_shipped_has_changed() -> None:
     assert released_migration_drift(manifest, MIGRATIONS) == []
 
 
+def _report_to_github_actions(manifest: Path, tag: str) -> None:
+    """On GitHub Actions, annotate the run and write the paste lines to its summary."""
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return
+    # pytest replays a failing test's stdout line by line, so GitHub still
+    # reads each annotation as a workflow command.
+    for annotation in release_manifest_annotations(manifest, MIGRATIONS, tag):
+        sys.stdout.write(f"{annotation}\n")
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with Path(summary).open("a", encoding="utf-8") as job_summary:
+            job_summary.write(release_manifest_summary(manifest, MIGRATIONS, tag))
+
+
 @pytest.mark.release
 def test_the_release_tag_has_a_table_and_every_migration_is_in_one() -> None:
     # Main keeps the last release's version while unreleased migrations pile
@@ -365,6 +380,8 @@ def test_the_release_tag_has_a_table_and_every_migration_is_in_one() -> None:
 
     gaps = release_manifest_gaps(manifest, MIGRATIONS, tag)
 
+    if gaps:
+        _report_to_github_actions(manifest, tag)
     assert not gaps, "\n".join(
         [
             *gaps,
