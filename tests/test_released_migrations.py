@@ -176,6 +176,23 @@ def test_the_lines_to_paste_list_each_unlisted_migration_with_its_hash(
     )
 
 
+def test_the_hash_to_paste_for_a_crlf_checkout_is_the_hash_of_its_lf_text(
+    tmp_path: Path,
+) -> None:
+    # A Windows checkout with core.autocrlf writes CRLF; CI and the drift test
+    # hash the LF text, so a pasted CRLF hash would fail on the next CI run.
+    manifest = _released_tree(tmp_path)
+    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
+        b"ALTER TABLE evidence ADD COLUMN note TEXT;\r\n"
+    )
+
+    assert release_manifest_addition(manifest, tmp_path, "v0.3.0") == (
+        '["v0.3.0"]\n'
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+    )
+
+
 MIGRATIONS = Path(__file__).resolve().parent.parent / "src" / "budget" / "migrations"
 
 
