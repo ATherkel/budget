@@ -494,7 +494,7 @@ def import_inbox(
     try:
         rebuilt = rebuild_through_gold(lock, now=datetime.now(UTC), inputs=inputs)
     except (ConfigurationError, sqlite3.OperationalError) as error:
-        if nothing_new:
+        if not _held_back(error, nothing_new=nothing_new):
             raise
         return _backed_up(
             lock,
@@ -512,6 +512,13 @@ def import_inbox(
             silver_reviews=rebuilt.silver_reviews,
         ),
     )
+
+
+def _held_back(error: Exception, *, nothing_new: bool) -> bool:
+    """Whether a rebuild failure after writing Bronze is reported, not raised."""
+    if isinstance(error, sqlite3.OperationalError):
+        return error.sqlite_errorcode & 0xFF == sqlite3.SQLITE_BUSY
+    return not nothing_new
 
 
 def _bronze_holds_runs(profile: Profile) -> bool:
