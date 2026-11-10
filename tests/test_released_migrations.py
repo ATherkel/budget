@@ -44,7 +44,7 @@ SILVER_RELEASED = b"CREATE TABLE evidence (id INTEGER PRIMARY KEY) STRICT;\n"
 
 
 def _released_tree(root: Path) -> Path:
-    """A migrations folder exactly as v0.2.0 shipped it, with its manifest."""
+    """A migrations folder with a manifest naming its two released files."""
     (root / "bronze").mkdir()
     (root / "silver").mkdir()
     (root / BRONZE).write_bytes(BRONZE_RELEASED)
@@ -86,6 +86,16 @@ def test_a_released_migration_checked_out_with_crlf_endings_is_not_reported(
     (tmp_path / BRONZE).write_bytes(BRONZE_RELEASED.replace(b"\n", b"\r\n"))
 
     assert released_migration_drift(manifest, tmp_path) == []
+
+
+def test_a_changed_migration_checked_out_with_crlf_endings_is_still_reported(
+    tmp_path: Path,
+) -> None:
+    manifest = _released_tree(tmp_path)
+    changed = b"CREATE TABLE ledger (id INTEGER PRIMARY KEY, note TEXT) STRICT;\n"
+    (tmp_path / BRONZE).write_bytes(changed.replace(b"\n", b"\r\n"))
+
+    assert released_migration_drift(manifest, tmp_path) == [BRONZE]
 
 
 MIGRATIONS = Path(__file__).resolve().parent.parent / "src" / "budget" / "migrations"
