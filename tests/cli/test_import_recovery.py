@@ -530,6 +530,26 @@ class FailureAndRetryTests(unittest.TestCase):
 
             assert len(run_ids(base.profile.bronze_store)) == 1
 
+    def test_an_uncoded_sqlite_error_after_commit_stays_visible(self) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            failure = sqlite3.OperationalError("unclassified SQLite failure")
+
+            with (
+                mock.patch(
+                    "budget.inbox.rebuild_through_gold",
+                    side_effect=failure,
+                ),
+                pytest.raises(
+                    sqlite3.OperationalError, match="unclassified SQLite failure"
+                ) as caught,
+            ):
+                _run_import(base)
+
+            assert caught.value is failure
+            assert len(run_ids(base.profile.bronze_store)) == 1
+
 
 class RefusedFileTests(unittest.TestCase):
     def test_a_refused_file_retried_publishes_nothing(self) -> None:
