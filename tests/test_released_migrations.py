@@ -38,6 +38,12 @@ def release_manifest_gaps(manifest: Path, root: Path, tag: str) -> list[str]:
     ]
 
 
+def release_manifest_addition(manifest: Path, root: Path, tag: str) -> str:
+    """The released.toml lines that would list every unlisted migration under `tag`."""
+    del manifest, root, tag  # red stub: green replaces this body
+    return ""
+
+
 def _migration_names(root: Path) -> list[str]:
     return sorted(path.relative_to(root).as_posix() for path in root.rglob("*.sql"))
 
@@ -144,6 +150,21 @@ def test_a_migration_in_no_table_is_reported(tmp_path: Path) -> None:
     assert release_manifest_gaps(manifest, tmp_path, "v0.3.0") == [
         "not in any table: silver/0002_add_note.sql"
     ]
+
+
+def test_the_lines_to_paste_list_each_unlisted_migration_with_its_hash(
+    tmp_path: Path,
+) -> None:
+    manifest = _released_tree(tmp_path)
+    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
+        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
+    )
+
+    assert release_manifest_addition(manifest, tmp_path, "v0.3.0") == (
+        '["v0.3.0"]\n'
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+    )
 
 
 MIGRATIONS = Path(__file__).resolve().parent.parent / "src" / "budget" / "migrations"
