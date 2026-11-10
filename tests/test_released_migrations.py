@@ -31,9 +31,8 @@ def released_migration_drift(manifest: Path, root: Path) -> list[str]:
 def release_manifest_gaps(manifest: Path, root: Path, tag: str) -> list[str]:
     """Why `tag`'s table in the manifest doesn't freeze every migration in `root`."""
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
-    if tag not in releases:
-        return [f"{tag} has no table in released.toml"]
-    return [
+    no_table = [] if tag in releases else [f"{tag} has no table in released.toml"]
+    return no_table + [
         f"not in any table: {name}" for name in _unlisted_migrations(releases, root)
     ]
 
