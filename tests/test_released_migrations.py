@@ -75,3 +75,13 @@ def test_a_released_migration_that_was_deleted_is_reported(tmp_path: Path) -> No
     (tmp_path / BRONZE).unlink()
 
     assert released_migration_drift(manifest, tmp_path) == [BRONZE]
+
+
+def test_a_released_migration_checked_out_with_crlf_endings_is_not_reported(
+    tmp_path: Path,
+) -> None:
+    # A Windows checkout with core.autocrlf writes CRLF; CI checks out LF.
+    manifest = _released_tree(tmp_path)
+    (tmp_path / BRONZE).write_bytes(BRONZE_RELEASED.replace(b"\n", b"\r\n"))
+
+    assert released_migration_drift(manifest, tmp_path) == []
