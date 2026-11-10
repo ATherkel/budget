@@ -232,7 +232,10 @@ class ImportedWithoutPublicationError(Exception):
             "the backup, whether or not the inbox holds files"
         )
         if backup_failure is not None:
-            message += f". No backup set could be written either: {backup_failure}"
+            message += (
+                f". No backup set could be written either: {backup_failure}. "
+                "Put that right, then run `budget backup`"
+            )
         super().__init__(message)
 
 
