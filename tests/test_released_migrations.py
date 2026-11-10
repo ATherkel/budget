@@ -283,6 +283,34 @@ def test_the_job_summary_lists_the_problems_and_the_lines_to_paste(
     )
 
 
+def test_the_job_summary_for_a_tag_with_a_table_warns_a_released_one_is_frozen(
+    tmp_path: Path,
+) -> None:
+    # Dispatching Release without bumping pyproject's version checks the last
+    # release's tag, whose table must not grow.
+    manifest = _released_tree(tmp_path)
+    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
+        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
+    )
+
+    assert release_manifest_summary(manifest, tmp_path, "v0.2.0") == (
+        "## Release manifest incomplete for v0.2.0\n"
+        "\n"
+        "- not in any table: silver/0002_add_note.sql\n"
+        "\n"
+        'Add these lines under `["v0.2.0"]` in '
+        "`src/budget/migrations/released.toml`:\n"
+        "\n"
+        "```toml\n"
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+        "```\n"
+        "\n"
+        "If v0.2.0 is already released, its table is frozen: bump the version in "
+        "`pyproject.toml` instead.\n"
+    )
+
+
 MIGRATIONS = Path(__file__).resolve().parent.parent / "src" / "budget" / "migrations"
 
 
