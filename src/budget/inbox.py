@@ -12,6 +12,7 @@ before anyone is asked for its range, and never reaches Bronze: it waits
 in the inbox for a fresh download or a reader fix.
 """
 
+import sqlite3
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -132,8 +133,8 @@ class ImportedInbox:
     `rebuilt` is `None` when nothing was outstanding: no file reached Bronze
     and Silver and Gold were already current, so no backup follows either.
     `published` is what the Gold rebuild after the Silver one left current.
-    `held_back` is the configuration error that stopped Silver and Gold after
-    Bronze was written; the next `import` finishes them. `backup` is the set
+    `held_back` is the error that stopped the rebuild after Bronze was written;
+    the next `import` finishes it. `backup` is the set
     written after the rebuilds; only production writes one.
     `backup_failure` is why production's set could not be written, if so.
     `incidents` are the cross-account duplicates the preflight found, so the
@@ -145,7 +146,7 @@ class ImportedInbox:
     rebuilt: SilverRebuild | None
     incidents: tuple[DuplicateIncident, ...] = ()
     published: GoldRebuild | None = None
-    held_back: ConfigurationError | None = None
+    held_back: Exception | None = None
     backup: BackupSet | None = None
     backup_failure: Exception | None = None
     silver_reviews: SilverReviews = field(default_factory=SilverReviews)
@@ -492,7 +493,7 @@ def import_inbox(
         return ImportedInbox(files=files, incidents=found, rebuilt=None)
     try:
         rebuilt = rebuild_through_gold(lock, now=datetime.now(UTC), inputs=inputs)
-    except ConfigurationError as error:
+    except (ConfigurationError, sqlite3.OperationalError) as error:
         if nothing_new:
             raise
         return _backed_up(
