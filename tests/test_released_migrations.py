@@ -59,7 +59,6 @@ def release_manifest_summary(
 
     `released` says `tag` already exists; only the workflow can know that.
     """
-    del released  # red stub: green reads it
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
     no_table = [] if tag in releases else [f"`{tag}` has no table in `released.toml`"]
     problems = "".join(
@@ -70,9 +69,17 @@ def release_manifest_summary(
             for name in _unlisted_migrations(releases, root)
         ]
     )
-    lines = f"```toml\n{release_manifest_addition(manifest, root, tag)}```\n"
+    addition = release_manifest_addition(manifest, root, tag)
     path = "`src/budget/migrations/released.toml`"
     heading = f"## Release manifest incomplete for `{tag}`\n\n{problems}\n"
+    if released:
+        # The addition has no header: the frozen tag already has a table.
+        return (
+            f"{heading}`{tag}` is already released, and its table is frozen. Bump "
+            "the version in `pyproject.toml`, then add these lines as its new "
+            f'table:\n\n```toml\n["v<new version>"]\n{addition}```\n'
+        )
+    lines = f"```toml\n{addition}```\n"
     if tag not in releases:
         return f"{heading}Add these lines to the end of {path}:\n\n{lines}"
     return f'{heading}Add these lines under `["{tag}"]` in {path}:\n\n{lines}'
