@@ -366,6 +366,32 @@ class FailureAndRetryTests(unittest.TestCase):
             assert status == EXIT_REFUSED_ENVIRONMENT
             assert "budget import" in stderr
 
+    def test_an_empty_inbox_retry_after_gold_is_released_finishes_the_import(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory), name="production")
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            sets_before = len(complete_backup_sets(base.profile))
+
+            with (
+                mock.patch.object(sqlstore, "BUSY_TIMEOUT_MS", 100),
+                closing(
+                    sqlite3.connect(base.profile.gold_store, isolation_level=None)
+                ) as holder,
+            ):
+                holder.execute("BEGIN IMMEDIATE")
+                assert _run_import(base)[0] == EXIT_REFUSED_ENVIRONMENT
+                holder.execute("ROLLBACK")
+
+            status, stdout, stderr = _run_import(base)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 1" in stdout
+            assert "Backup" in stdout
+            assert len(run_ids(base.profile.bronze_store)) == 1
+            assert len(complete_backup_sets(base.profile)) == sets_before + 2
+
 
 class RefusedFileTests(unittest.TestCase):
     def test_a_refused_file_retried_publishes_nothing(self) -> None:
