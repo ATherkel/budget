@@ -117,6 +117,27 @@ def test_a_release_tag_with_no_table_in_the_manifest_is_reported(
     ]
 
 
+def test_a_migration_in_no_table_is_reported(tmp_path: Path) -> None:
+    manifest = _released_tree(tmp_path)
+    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
+        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
+    )
+    _write_manifest(
+        manifest,
+        {
+            "v0.2.0": {
+                BRONZE: _sha256(BRONZE_RELEASED),
+                SILVER: _sha256(SILVER_RELEASED),
+            },
+            "v0.3.0": {},
+        },
+    )
+
+    assert release_manifest_gaps(manifest, tmp_path, "v0.3.0") == [
+        "not in any table: silver/0002_add_note.sql"
+    ]
+
+
 MIGRATIONS = Path(__file__).resolve().parent.parent / "src" / "budget" / "migrations"
 
 
