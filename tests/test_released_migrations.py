@@ -69,11 +69,7 @@ def release_manifest_summary(manifest: Path, root: Path, tag: str) -> str:
     heading = f"## Release manifest incomplete for `{tag}`\n\n{problems}\n"
     if tag not in releases:
         return f"{heading}Add these lines to the end of {path}:\n\n{lines}"
-    return (
-        f'{heading}Add these lines under `["{tag}"]` in {path}:\n\n{lines}\n'
-        f"If `{tag}` is already released, its table is frozen: bump the version in "
-        "`pyproject.toml` instead.\n"
-    )
+    return f'{heading}Add these lines under `["{tag}"]` in {path}:\n\n{lines}'
 
 
 def release_manifest_annotations(manifest: Path, root: Path, tag: str) -> list[str]:
