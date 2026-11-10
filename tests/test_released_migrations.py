@@ -52,8 +52,14 @@ def release_manifest_addition(manifest: Path, root: Path, tag: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def release_manifest_summary(manifest: Path, root: Path, tag: str) -> str:
-    """The Markdown a GitHub Actions job summary shows when `tag` can't be cut."""
+def release_manifest_summary(
+    manifest: Path, root: Path, tag: str, *, released: bool = False
+) -> str:
+    """The Markdown a GitHub Actions job summary shows when `tag` can't be cut.
+
+    `released` says `tag` already exists; only the workflow can know that.
+    """
+    del released  # red stub: green reads it
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
     no_table = [] if tag in releases else [f"`{tag}` has no table in `released.toml`"]
     problems = "".join(
@@ -318,6 +324,34 @@ def test_the_job_summary_for_a_tag_with_a_table_says_to_add_the_lines_under_it(
         "`src/budget/migrations/released.toml`:\n"
         "\n"
         "```toml\n"
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+        "```\n"
+    )
+
+
+def test_the_job_summary_for_a_released_tag_says_to_bump_and_start_a_new_table(
+    tmp_path: Path,
+) -> None:
+    # A rehearsal before the version bump checks the last release's tag. Its
+    # table is frozen, so the lines belong in the next version's new table.
+    manifest = _released_tree(tmp_path)
+    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
+        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
+    )
+
+    summary = release_manifest_summary(manifest, tmp_path, "v0.2.0", released=True)
+
+    assert summary == (
+        "## Release manifest incomplete for `v0.2.0`\n"
+        "\n"
+        "- not in any table: `silver/0002_add_note.sql`\n"
+        "\n"
+        "`v0.2.0` is already released, and its table is frozen. Bump the version "
+        "in `pyproject.toml`, then add these lines as its new table:\n"
+        "\n"
+        "```toml\n"
+        '["v<new version>"]\n'
         '"silver/0002_add_note.sql" = '
         '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
         "```\n"
