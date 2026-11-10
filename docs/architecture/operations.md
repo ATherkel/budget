@@ -84,6 +84,24 @@ Rules for every store:
   "another command is running". Commands that only read (`status`, `review`,
   `check`, `serve`) take no lock.
 
+### Stores made before the 0.3 migration merge
+
+The 0.3 migrations were merged into one file per store (#365): Silver
+`0002` and Gold `0001` now hold what used to be Silver `0002` to `0003` and
+Gold `0001` to `0007`. Recreate every Silver and Gold store created before
+that change, in development and in production. In development, use the
+reset in [Cutting a Release](#cutting-a-release). In production, recreate
+them from Bronze: delete `silver.db` and `gold.db`, run
+`budget migrate --new-store`, then `budget rebuild --from silver`. Bronze is
+unchanged and keeps its store, and a Silver store still at version 1, as
+v0.2.0 made it, upgrades normally.
+
+`migrate` cannot detect such a store. A store left at the old Silver
+version 2 or the old Gold version 1 carries the same number as the new
+schema, so it would be read as the new schema without a refusal. A store
+at the old Silver version 3 or a Gold version from 2 to 7 is refused as
+newer than the code.
+
 ### Publishing a Gold build
 
 As [`publications.md`](publications.md#pipeline-builds) defines: in one write

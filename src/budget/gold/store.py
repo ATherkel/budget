@@ -1136,8 +1136,8 @@ def _recipe(
 ) -> Recipe:
     """Read one `recipes` row, its import runs and its Silver provenance back.
 
-    A recipe from before Gold schema 6 has no fingerprint scheme; the identity
-    version it stored was Gold's own constant, so it reads back as unknown.
+    A recipe with no Silver fingerprint scheme names no known Silver build, so
+    its Silver identity version reads back as unknown.
     """
     scheme = row["silver_fingerprint_scheme"]
     return Recipe(
