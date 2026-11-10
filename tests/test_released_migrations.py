@@ -20,7 +20,7 @@ def released_migration_drift(manifest: Path, root: Path) -> list[str]:
         name
         for files in releases.values()
         for name, digest in files.items()
-        if _sha256((root / name).read_bytes()) != digest
+        if not (root / name).is_file() or _sha256((root / name).read_bytes()) != digest
     ]
 
 
