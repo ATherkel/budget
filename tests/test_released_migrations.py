@@ -174,9 +174,15 @@ def test_the_lines_to_paste_list_each_unlisted_migration_with_its_hash(
     (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
         b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
     )
+    (tmp_path / "gold").mkdir()
+    (tmp_path / "gold" / "0001_create_gold_store.sql").write_bytes(
+        b"CREATE TABLE actuals (id INTEGER PRIMARY KEY) STRICT;\n"
+    )
 
     assert release_manifest_addition(manifest, tmp_path, "v0.3.0") == (
         '["v0.3.0"]\n'
+        '"gold/0001_create_gold_store.sql" = '
+        '"50d4df93f40b47538839919d46816eb0eb276898283f565d826ab18a6c7b7f7e"\n'
         '"silver/0002_add_note.sql" = '
         '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
     )
