@@ -49,6 +49,13 @@ from budget.gold.result import (
 from budget.gold.storage import open_gold_connection
 from budget.inputs.snapshot import ConfigurationSnapshot
 from budget.profiles import Profile
+from budget.silver.decisions import (
+    AcceptDiscrepancy,
+    SameTransaction,
+    SilverDecision,
+    VoidImportRun,
+    Withdrawn,
+)
 from budget.silver.storage import (
     UnknownAccountCurrencyError,
     from_minor_units,
@@ -118,6 +125,18 @@ class ConfigurationMismatchError(ValueError):
         """Name both fingerprints."""
         super().__init__(
             f"the recipe names configuration {named}, but {given} was given"
+        )
+
+
+class SilverRecipeUnavailableError(ValueError):
+    """A publication was offered without complete, attributed Silver provenance."""
+
+    def __init__(self) -> None:
+        """Name the defect: no caller should build such a recipe."""
+        super().__init__(
+            "a Gold recipe was built without complete Silver provenance or "
+            "an account for every consumed import run; "
+            "this is a defect; nothing was published"
         )
 
 
@@ -236,16 +255,37 @@ _INSERT_RECIPE: Final = (
     "INSERT INTO recipes (publication_id, configuration_fingerprint,"
     " decision_log_position, decision_log_prefix_sha256, code_version,"
     " contract_version, silver_identity_version, late_booking_days,"
-    " python_version, sqlite_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    " python_version, sqlite_version, silver_fingerprint_scheme,"
+    " silver_result_fingerprint, silver_code_version,"
+    " silver_decision_log_position, silver_decision_log_prefix_sha256,"
+    " silver_bronze_parser_provenance)"
+    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 _INSERT_RECIPE_RUNS: Final = (
-    "INSERT INTO recipe_import_runs (publication_id, import_run_id, payload_id)"
-    " VALUES (?, ?, ?)"
+    "INSERT INTO recipe_import_runs"
+    " (publication_id, import_run_id, payload_id, account_id)"
+    " VALUES (?, ?, ?, ?)"
+)
+_INSERT_RECIPE_CURRENCY: Final = (
+    "INSERT INTO recipe_silver_currencies"
+    " (publication_id, account_id, currency) VALUES (?, ?, ?)"
+)
+_INSERT_RECIPE_DECISION: Final = (
+    "INSERT INTO recipe_silver_decisions"
+    " (publication_id, ordinal, kind, decision_id, target, payload_id,"
+    " record_ordinal) VALUES (?, ?, ?, ?, ?, ?, ?)"
+)
+_SELECT_RECIPE_CURRENCIES: Final = (
+    "SELECT account_id, currency FROM recipe_silver_currencies WHERE publication_id = ?"
+)
+_SELECT_RECIPE_DECISIONS: Final = (
+    "SELECT * FROM recipe_silver_decisions WHERE publication_id = ? ORDER BY ordinal"
 )
 _SELECT_RECIPE: Final = "SELECT * FROM recipes WHERE publication_id = ?"
 _SELECT_RECIPE_IDS: Final = "SELECT publication_id FROM recipes ORDER BY publication_id"
 _SELECT_RECIPE_RUNS: Final = (
-    "SELECT import_run_id, payload_id FROM recipe_import_runs WHERE publication_id = ?"
+    "SELECT import_run_id, payload_id, account_id"
+    " FROM recipe_import_runs WHERE publication_id = ?"
 )
 
 # The result records of one publication.
@@ -622,6 +662,8 @@ class GoldStore:
             raise ConfigurationMismatchError(
                 recipe.configuration_fingerprint, configuration.fingerprint
             )
+        if not _has_silver_provenance(recipe):
+            raise SilverRecipeUnavailableError
         publication = result.publication()
         if publication.kind != "pipeline":
             raise PublicationKindError(publication.kind)
@@ -788,7 +830,12 @@ def _stored_recipe(connection: sqlite3.Connection, publication_id: int) -> Recip
     row = connection.execute(_SELECT_RECIPE, (publication_id,)).fetchone()
     if row is None:
         raise PublicationUnavailableError(publication_id)
-    return _recipe(row, connection.execute(_SELECT_RECIPE_RUNS, (publication_id,)))
+    return _recipe(
+        row,
+        connection.execute(_SELECT_RECIPE_RUNS, (publication_id,)),
+        connection.execute(_SELECT_RECIPE_CURRENCIES, (publication_id,)),
+        connection.execute(_SELECT_RECIPE_DECISIONS, (publication_id,)),
+    )
 
 
 def _classification_reviews(
@@ -1023,33 +1070,151 @@ def _write_recipe(
             recipe.late_booking_days,
             recipe.python_version,
             recipe.sqlite_version,
+            recipe.silver_fingerprint_scheme,
+            recipe.silver_result_fingerprint,
+            recipe.silver_code_version,
+            recipe.silver_decision_log_position,
+            recipe.silver_decision_log_prefix_sha256,
+            recipe.silver_bronze_parser_provenance,
         ),
     )
     connection.executemany(
         _INSERT_RECIPE_RUNS,
         sorted(
-            (publication_id, run.import_run_id, run.payload_id)
+            (
+                publication_id,
+                run.import_run_id,
+                run.payload_id,
+                run.account_id,
+            )
             for run in recipe.import_runs
+        ),
+    )
+    connection.executemany(
+        _INSERT_RECIPE_CURRENCY,
+        sorted(
+            (publication_id, account_id, currency)
+            for account_id, currency in recipe.silver_currencies
+        ),
+    )
+    connection.executemany(
+        _INSERT_RECIPE_DECISION,
+        (
+            (publication_id, ordinal, *_recipe_decision_row(decision))
+            for ordinal, decision in enumerate(recipe.silver_decisions, start=1)
         ),
     )
 
 
-def _recipe(row: sqlite3.Row, runs: Iterable[sqlite3.Row]) -> Recipe:
-    """Read one `recipes` row and its import runs back as the recipe."""
+def _has_silver_provenance(recipe: Recipe) -> bool:
+    """Whether a new recipe names every required Silver input and account.
+
+    Silver's code version may be None, as for any development build. An empty
+    import-run set is valid; each run present must carry its declared account.
+    """
+    fields_are_known = all(
+        field is not None
+        for field in (
+            recipe.silver_fingerprint_scheme,
+            recipe.silver_result_fingerprint,
+            recipe.silver_identity_version,
+            recipe.silver_decision_log_position,
+            recipe.silver_decision_log_prefix_sha256,
+            recipe.silver_bronze_parser_provenance,
+        )
+    )
+    return fields_are_known and all(
+        run.account_id is not None for run in recipe.import_runs
+    )
+
+
+def _recipe(
+    row: sqlite3.Row,
+    runs: Iterable[sqlite3.Row],
+    currencies: Iterable[sqlite3.Row],
+    decisions: Iterable[sqlite3.Row],
+) -> Recipe:
+    """Read one `recipes` row, its import runs and its Silver provenance back.
+
+    A recipe from before Gold schema 6 has no fingerprint scheme; the identity
+    version it stored was Gold's own constant, so it reads back as unknown.
+    """
+    scheme = row["silver_fingerprint_scheme"]
     return Recipe(
         import_runs=frozenset(
-            RecipeImportRun(run["import_run_id"], run["payload_id"]) for run in runs
+            RecipeImportRun(run["import_run_id"], run["payload_id"], run["account_id"])
+            for run in runs
         ),
         configuration_fingerprint=row["configuration_fingerprint"],
         decision_log_position=row["decision_log_position"],
         decision_log_prefix_sha256=row["decision_log_prefix_sha256"],
         code_version=row["code_version"],
         contract_version=row["contract_version"],
-        silver_identity_version=row["silver_identity_version"],
+        silver_identity_version=(
+            None if scheme is None else row["silver_identity_version"]
+        ),
         late_booking_days=row["late_booking_days"],
         python_version=row["python_version"],
         sqlite_version=row["sqlite_version"],
+        silver_fingerprint_scheme=scheme,
+        silver_result_fingerprint=row["silver_result_fingerprint"],
+        silver_code_version=row["silver_code_version"],
+        silver_decision_log_position=row["silver_decision_log_position"],
+        silver_decision_log_prefix_sha256=row["silver_decision_log_prefix_sha256"],
+        silver_bronze_parser_provenance=row["silver_bronze_parser_provenance"],
+        silver_currencies=frozenset(
+            (found["account_id"], found["currency"]) for found in currencies
+        ),
+        silver_decisions=tuple(_recipe_decision(found) for found in decisions),
     )
+
+
+def _recipe_decision_row(decision: SilverDecision) -> tuple[object, ...]:
+    """Spell one Silver decision as its `recipe_silver_decisions` columns.
+
+    The columns after the ordinal are kind, decision id, target, payload id
+    and record ordinal; only a same-transaction decision has the last two.
+    """
+    match decision:
+        case AcceptDiscrepancy():
+            target, kind = decision.import_run_id, "accept-discrepancy"
+        case VoidImportRun():
+            target, kind = decision.import_run_id, "void-import-run"
+        case Withdrawn():
+            target, kind = decision.transaction_id, "withdrawn"
+        case SameTransaction():
+            return (
+                "same-transaction",
+                decision.decision_id,
+                decision.transaction_id,
+                decision.payload_id,
+                decision.record_ordinal,
+            )
+    return (kind, decision.decision_id, target, None, None)
+
+
+def _recipe_decision(row: sqlite3.Row) -> SilverDecision:
+    """Read one retained Silver decision back in its typed form.
+
+    The schema admits only the four kinds, so any other is a defect.
+    """
+    match row["kind"]:
+        case "accept-discrepancy":
+            return AcceptDiscrepancy(row["decision_id"], row["target"])
+        case "void-import-run":
+            return VoidImportRun(row["decision_id"], row["target"])
+        case "withdrawn":
+            return Withdrawn(row["decision_id"], row["target"])
+        case "same-transaction":
+            return SameTransaction(
+                row["decision_id"],
+                row["target"],
+                row["payload_id"],
+                row["record_ordinal"],
+            )
+        case kind:
+            msg = f"unknown retained Silver decision kind {kind!r}"
+            raise AssertionError(msg)
 
 
 def _write(connection: sqlite3.Connection, encoded: _Encoded) -> None:

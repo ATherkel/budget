@@ -73,7 +73,7 @@ A recipe names each input exactly and never by "latest":
 
 | Part | Content |
 | --- | --- |
-| Silver build | An immutable copy of the provenance consumed from Silver. The exact stored fields are defined under [Silver build provenance](silver-layer.md#build-provenance); Gold reads that stored value and never reads Bronze. |
+| Silver build | An immutable copy of the provenance consumed from Silver. The exact stored fields are defined under [Silver build provenance](silver-layer.md#build-provenance); Gold reads that stored value and never reads Bronze. The recipe keeps every consumed import run with its payload and declared account. Recipes migrated from schema 6 retain their runs with an unknown account; nothing infers that account from Bronze or later Silver. |
 | Configuration snapshot | The parsed, canonical content of the account registry, category taxonomy, and classification rules. It is stored once per distinct content and referenced by its fingerprint. |
 | Late-booking window | The profile's `[gold] late_booking_days` at the build, in whole days ([`operations.md`](operations.md#selecting-a-profile)). `late_bookings_settled` depends on it, so changing it requires a new publication, and an earlier publication keeps the window its recipe records. |
 | Decision context | The position and prefix hash of the shared Decision log consumed. Effective Gold decisions are derived from the complete entries through that position. |
@@ -83,6 +83,16 @@ A recipe holds inputs only, so two recipes can be compared before anything is
 built. The recipe also records the Python and SQLite versions that ran the
 build.
 They are diagnostic only and not part of the recipe's identity.
+Silver's decision-log position and prefix hash are also left out of the
+recipe's identity: they record where Silver read the log, for audit. The log
+can move while Silver's result stays the same, as a Gold-only decision does,
+and Silver's result fingerprint decides whether Gold republishes.
+
+A schema 6 recipe with consumed runs lacks their account IDs. Its first successful pipeline
+build after the Gold schema 7 upgrade records every consumed run's account,
+including voided and repeated runs. That build publishes once even when its
+result fingerprint is unchanged; a subsequent unchanged build is a no-op. A
+new recipe with any unknown run account is refused before anything is written.
 
 ### Gold Acceptance
 
