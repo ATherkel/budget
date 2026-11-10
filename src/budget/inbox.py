@@ -51,6 +51,7 @@ from budget.rebuilding import (
     rebuild_through_gold,
 )
 from budget.silver.decisions import VoidImportRun
+from budget.sqlstore import StoreError
 
 # The outcomes that leave a file in the inbox and make `import` exit 3.
 LEFT_IN_INBOX: Final = frozenset(
@@ -63,6 +64,9 @@ INCIDENT_REASON: Final = "the same bytes are in the inbox under another account"
 # How a file in a folder that names no account is shown: the folder's name is
 # typed by hand, so it may carry a bank account number.
 NO_ACCOUNT: Final = "(no account)"
+_PASSING_STORE_FAILURES: Final = frozenset(
+    {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_FULL, sqlite3.SQLITE_IOERR}
+)
 _NO_EXPORT_DATE: Final = (
     "the filename carries no export date; keep the name the bank gave it"
 )
@@ -493,7 +497,12 @@ def import_inbox(
         return ImportedInbox(files=files, incidents=found, rebuilt=None)
     try:
         rebuilt = rebuild_through_gold(lock, now=datetime.now(UTC), inputs=inputs)
-    except (ConfigurationError, sqlite3.OperationalError) as error:
+    except (
+        ConfigurationError,
+        StoreError,
+        OSError,
+        sqlite3.OperationalError,
+    ) as error:
         if not _held_back(error, nothing_new=nothing_new):
             raise
         return _backed_up(
@@ -515,9 +524,17 @@ def import_inbox(
 
 
 def _held_back(error: Exception, *, nothing_new: bool) -> bool:
-    """Whether a rebuild failure after writing Bronze is reported, not raised."""
+    """Whether a rebuild failure after writing Bronze is reported, not raised.
+
+    A busy, full or failing store can clear without changing the inputs, so it
+    is reported even during an empty-inbox retry. Other storage failures are
+    held back only when this import stored something; database defects and
+    configuration errors during an empty retry remain visible.
+    """
     if isinstance(error, sqlite3.OperationalError):
-        return error.sqlite_errorcode & 0xFF == sqlite3.SQLITE_BUSY
+        return error.sqlite_errorcode & 0xFF in _PASSING_STORE_FAILURES
+    if isinstance(error, (StoreError, OSError)):
+        return True
     return not nothing_new
 
 
