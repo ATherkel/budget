@@ -1032,6 +1032,36 @@ and run at least once in development against a restored production backup.
 | Profile guards | Every refusal: no profile, wrong profile, a production store outside `upstream/`, test path outside the temporary directory, a second writing command | — |
 | Decision log | A hand-added line that breaks a rule; an edited prefix; a cut-off last line | — |
 
+## Cutting a Release
+
+A store records only the number of the last migration it ran
+(`PRAGMA user_version`). A migration file that a release shipped is therefore
+frozen: a store already past its number never sees a change to it. Migrations
+added since the last release tag stay editable, and work in progress keeps
+adding numbered files as it does today.
+
+Before tagging a release:
+
+1. Merge each store's unreleased migrations into one migration file for that
+   store. This is a file merge, not a git squash: if `gold/0001` to
+   `gold/0005` are all unreleased, they become one
+   `gold/0001_create_gold_store.sql`. Each store's schema then moves at most
+   one number per release.
+2. Add a table for the new tag to `src/budget/migrations/released.toml`,
+   mapping each migration file the release ships to its SHA-256, taken after
+   converting CRLF line endings to LF. `tests/test_released_migrations.py`
+   fails when a file the manifest names is changed or deleted. It reads only
+   the manifest and the working tree, because CI checks out without tags.
+3. Tag.
+
+`migrate` keeps refusing a store whose schema is newer than the code
+(exit 4). A development store that ran migrations which were later merged
+away is reset rather than upgraded: delete development's stores, run
+`budget migrate`, which starts missing stores outside production without
+`--new-store`, then `budget dev refresh` if real data is wanted (it lands
+read-only in `upstream/`).
+Production is prerelease, so a merge needs no upgrade path for it.
+
 ## Tooling
 
 - `uv` with a uv-managed Python 3.12 or newer, whose SQLite meets ADR-013's
