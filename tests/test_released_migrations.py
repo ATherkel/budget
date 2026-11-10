@@ -21,8 +21,7 @@ def released_migration_drift(manifest: Path, root: Path) -> list[str]:
         name
         for files in releases.values()
         for name, digest in files.items()
-        if not (root / name).is_file()
-        or _sha256((root / name).read_bytes().replace(b"\r\n", b"\n")) != digest
+        if not (root / name).is_file() or _released_hash(root / name) != digest
     ]
 
 
@@ -41,7 +40,7 @@ def release_manifest_addition(manifest: Path, root: Path, tag: str) -> str:
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
     lines = [f'["{tag}"]']
     lines.extend(
-        f'"{name}" = "{_sha256((root / name).read_bytes())}"'
+        f'"{name}" = "{_released_hash(root / name)}"'
         for name in _unlisted_migrations(releases, root)
     )
     return "\n".join(lines) + "\n"
@@ -55,6 +54,11 @@ def _unlisted_migrations(releases: dict[str, Any], root: Path) -> list[str]:
         for path in root.rglob("*.sql")
         if (name := path.relative_to(root).as_posix()) not in listed
     )
+
+
+def _released_hash(path: Path) -> str:
+    """The SHA-256 the manifest records for `path`: CRLF converted to LF first."""
+    return _sha256(path.read_bytes().replace(b"\r\n", b"\n"))
 
 
 def _sha256(text: bytes) -> str:
