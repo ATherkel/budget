@@ -16,14 +16,17 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Setup uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-      # A released tag's table is frozen, so its version can't be released again.
-      - name: Refuse a version that is already released
+      # A released tag's table is frozen, so its version can't be released
+      # again. This only records the answer, so the manifest check still runs
+      # and a rehearsal shows every problem; the last step fails the run.
+      - name: Check whether the version is already released
         id: version
         run: |
           tag="v$(uv version --short)"
           status=0
           git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null || status=$?
           if [ "$status" -eq 0 ]; then
+            echo "released=true" >> "$GITHUB_OUTPUT"
             echo "::error file=pyproject.toml,title=Version already released::$tag is already released. Bump the version in pyproject.toml."
             {
               echo "## \`$tag\` is already released"
@@ -31,17 +34,20 @@ jobs:
               echo "Bump the version in \`pyproject.toml\`, then run Release again."
               echo
             } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          elif [ "$status" -ne 2 ]; then
+          elif [ "$status" -eq 2 ]; then
+            echo "released=false" >> "$GITHUB_OUTPUT"
+          else
             echo "::error title=Could not read tags::git ls-remote exited with $status"
             exit 1
           fi
       - name: Check the release manifest freezes every migration
         id: check
+        env:
+          RELEASE_TAG_RELEASED: ${{ steps.version.outputs.released }}
         run: RELEASE_TAG="v$(uv version --short)" uv run pytest -m release --tb=short --color=yes
       # Only main creates tags; any other branch, or dry_run, is a rehearsal.
       - name: Tag and release the pyproject version
-        if: github.ref == 'refs/heads/main' && !inputs.dry_run
+        if: github.ref == 'refs/heads/main' && !inputs.dry_run && steps.version.outputs.released == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "v$(uv version --short)" --target "$GITHUB_SHA" --generate-notes
@@ -50,6 +56,7 @@ jobs:
         env:
           DRY_RUN: ${{ inputs.dry_run }}
           REF: ${{ github.ref_name }}
+          RELEASED: ${{ steps.version.outputs.released }}
           VERSION_OUTCOME: ${{ steps.version.outcome }}
           CHECK_OUTCOME: ${{ steps.check.outcome }}
         run: |
@@ -62,11 +69,23 @@ jobs:
             not_main="the run is from \`$REF\`, not \`main\`"
             why="${why:+$why and }$not_main"
           fi
+          refusals=""
           if [ "$VERSION_OUTCOME" != "success" ]; then
-            result="release \`$tag\` would be refused by the version check (see above)"
-          elif [ "$CHECK_OUTCOME" != "success" ]; then
-            result="release \`$tag\` would be refused: the manifest check failed (see above)"
+            refusals="the tags could not be read"
+          elif [ "$RELEASED" = "true" ]; then
+            refusals="\`$tag\` is already released"
+          fi
+          if [ "$CHECK_OUTCOME" = "failure" ]; then
+            refusals="${refusals:+$refusals and }the manifest check failed"
+          fi
+          if [ -n "$refusals" ]; then
+            result="release \`$tag\` would be refused: $refusals (see above)"
           else
             result="would create release \`$tag\` at \`$GITHUB_SHA\` from \`$REF\`"
           fi
           echo "**Dry run:** $result. No tag was created because $why." >> "$GITHUB_STEP_SUMMARY"
+      - name: Refuse a version that is already released
+        if: ${{ !cancelled() && steps.version.outputs.released == 'true' }}
+        run: |
+          echo "v$(uv version --short) is already released; see the summary."
+          exit 1
