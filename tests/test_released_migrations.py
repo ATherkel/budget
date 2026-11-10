@@ -70,8 +70,9 @@ def release_manifest_summary(manifest: Path, root: Path, tag: str) -> str:
 
 def release_manifest_annotations(manifest: Path, root: Path, tag: str) -> list[str]:
     """One GitHub Actions error annotation per reason `tag` can't be cut."""
-    del manifest, root, tag  # red stub: green replaces this body
-    return []
+    error = "::error file=src/budget/migrations/released.toml,"
+    error += "title=Release manifest incomplete::"
+    return [f"{error}{gap}" for gap in release_manifest_gaps(manifest, root, tag)]
 
 
 def _unlisted_migrations(releases: dict[str, Any], root: Path) -> list[str]:
