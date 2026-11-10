@@ -225,6 +225,20 @@ def test_the_lines_to_paste_into_an_existing_table_repeat_no_header(
     )
 
 
+def test_a_tag_with_no_table_also_names_each_migration_in_no_table(
+    tmp_path: Path,
+) -> None:
+    manifest = _released_tree(tmp_path)
+    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
+        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
+    )
+
+    assert release_manifest_gaps(manifest, tmp_path, "v0.3.0") == [
+        "v0.3.0 has no table in released.toml",
+        "not in any table: silver/0002_add_note.sql",
+    ]
+
+
 MIGRATIONS = Path(__file__).resolve().parent.parent / "src" / "budget" / "migrations"
 
 
