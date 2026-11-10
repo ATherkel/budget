@@ -94,6 +94,19 @@ def _log_records(profile: Profile) -> list[dict[str, object]]:
     return [json.loads(line) for line in text.splitlines()]
 
 
+def _full_store_error() -> sqlite3.OperationalError:
+    """Return SQLite's own out-of-space error after filling a tiny database."""
+    with closing(sqlite3.connect(":memory:")) as connection:
+        connection.execute("PRAGMA max_page_count = 1")
+        try:
+            connection.execute("CREATE TABLE data (value BLOB)")
+            connection.execute("INSERT INTO data VALUES (zeroblob(10000))")
+        except sqlite3.OperationalError as error:
+            return error
+    problem = "the synthetic SQLite database did not fill"
+    raise AssertionError(problem)
+
+
 class ForeseeableRefusalTests(unittest.TestCase):
     def _refused_before_storing(
         self,
@@ -420,6 +433,32 @@ class FailureAndRetryTests(unittest.TestCase):
             assert len(run_ids(base.profile.bronze_store)) == 1
             assert len(complete_backup_sets(base.profile)) == sets_before
             assert _log_records(base.profile)[-1]["command"] == "import"
+
+    def test_full_and_io_failures_after_commit_are_held_back(self) -> None:
+        failures = (
+            ("full", _full_store_error()),
+            ("i/o", OSError(5, "Input/output error")),
+        )
+        for kind, failure in failures:
+            with self.subTest(kind), TemporaryDirectory() as directory:
+                base = prepared(Path(directory))
+                drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+
+                try:
+                    with mock.patch(
+                        "budget.inbox.rebuild_through_gold", side_effect=failure
+                    ):
+                        status, _, stderr = _run_import(base)
+                except (OSError, sqlite3.OperationalError) as error:
+                    self.fail(
+                        f"{kind} storage failure after Bronze committed escaped: "
+                        f"{error}"
+                    )
+
+                assert status == EXIT_REFUSED_ENVIRONMENT
+                assert str(failure) in stderr
+                assert "budget import" in stderr
+                assert len(run_ids(base.profile.bronze_store)) == 1
 
 
 class RefusedFileTests(unittest.TestCase):
