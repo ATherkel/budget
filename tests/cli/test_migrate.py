@@ -396,7 +396,9 @@ class MigrateDefectTests(unittest.TestCase):
 
 
 class SilverProvenanceMigrationTests(unittest.TestCase):
-    def test_populated_version_2_silver_recovers_through_cli_rebuild(self) -> None:
+    def test_populated_v0_2_0_silver_recovers_through_cli_rebuild(self) -> None:
+        # Silver as v0.2.0 shipped it (version 1), holding a derived result
+        # built without run payloads or build provenance.
         with TemporaryDirectory() as directory:
             folder = Path(directory)
             built = household(folder, silver=False)
@@ -404,12 +406,8 @@ class SilverProvenanceMigrationTests(unittest.TestCase):
             schema_1 = (SILVER_MIGRATIONS / "0001_create_silver_store.sql").read_text(
                 "utf-8"
             )
-            schema_2 = (SILVER_MIGRATIONS / "0002_record_run_payloads.sql").read_text(
-                "utf-8"
-            )
             with closing(sqlite3.connect(built.profile.silver_store)) as connection:
                 connection.executescript(schema_1)
-                connection.executescript(schema_2)
                 connection.execute(
                     "INSERT INTO store_identity VALUES (1, 'development', 'silver')"
                 )
@@ -425,21 +423,22 @@ class SilverProvenanceMigrationTests(unittest.TestCase):
                     " 'SYNTHETIC', 'csv', 'BOOKED', 'booked', 1, 1, '1')"
                 )
                 connection.execute(
-                    "INSERT INTO evidence_exports VALUES"
-                    " (1, 'run-old', 'joint-current', '2026-03-05',"
-                    " '2026-03-01', '2026-03-04', 'payload-old')"
-                )
-                connection.execute(
                     "INSERT INTO import_run_results VALUES"
                     " (1, 'run-old', 'joint-current', 'accepted',"
-                    " '2026-03-01', '2026-03-04', 'payload-old')"
+                    " '2026-03-01', '2026-03-04')"
                 )
-                connection.execute("PRAGMA user_version = 2")
+                connection.execute("PRAGMA user_version = 1")
                 connection.commit()
 
             status, stderr = migrate(built.profile_file)
 
             assert (status, stderr) == (EXIT_OK, "")
+            assert _user_version(built.profile.silver_store) == 2
+            with closing(sqlite3.connect(built.profile.silver_store)) as connection:
+                assert (
+                    connection.execute("SELECT * FROM account_currencies").fetchall()
+                    == []
+                )
             with SilverStore(built.profile) as store:
                 assert not store.is_built()
                 assert store.read().transactions == ()
@@ -454,7 +453,7 @@ class SilverProvenanceMigrationTests(unittest.TestCase):
                 assert current is not None
                 assert current.publication_id == 1
                 recipe = gold.recipe(1)
-            # The recipe names the rebuilt Silver, not the version 2 rows.
+            # The recipe names the rebuilt Silver, not the version 1 rows.
             assert recipe.silver_fingerprint_scheme == "1"
             assert [run.import_run_id for run in recipe.import_runs] == [
                 built.import_run_id
