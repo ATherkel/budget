@@ -1,23 +1,41 @@
 -- Copyright 2026 Therkel
--- Silver schema version 3: complete results commit with the inputs and producer
--- identity that made them.
+-- Silver schema version 2: a complete result commits with the inputs and
+-- producer identity that made it. Each import run result and each evidence
+-- export records the payload it was built from, so Gold's recipe can name the
+-- runs Silver consumed without reading Bronze.
 --
--- Earlier builds did not record which runs, currencies, decisions or code they
--- consumed. Silver's result is derived, so those rows are cleared rather than
--- assigned today's context. A later rebuild fills an explicit completion row.
+-- Version 1, as v0.2.0 shipped it, recorded neither the payloads nor which
+-- runs, currencies, decisions or code a build consumed. Silver is derived from
+-- Bronze, so what version 1 derived is cleared (children first) rather than
+-- assigned today's context, and the store reads as never built until
+-- `budget rebuild --from silver` fills it again.
 
 DELETE FROM review_item_payloads;
 DELETE FROM review_items;
 DELETE FROM import_run_result_review_items;
 DELETE FROM validation_errors;
 DELETE FROM import_run_results;
-DELETE FROM evidence_exports;
 DELETE FROM account_evidence;
 DELETE FROM balance_observations;
 DELETE FROM unbooked_records;
 DELETE FROM transaction_evidence;
 DELETE FROM transactions;
 DELETE FROM account_currencies;
+
+-- Each import run counted in an account's evidence, with its export date and
+-- declared range, so Gold can settle late bookings without reading Bronze.
+-- Version 1 had no evidence exports, so the table starts here.
+CREATE TABLE evidence_exports (
+    ordinal INTEGER PRIMARY KEY,
+    import_run_id TEXT NOT NULL UNIQUE,
+    account_id TEXT NOT NULL,
+    exported_on TEXT NOT NULL,
+    covers_from TEXT NOT NULL,
+    covers_through TEXT NOT NULL,
+    payload_id TEXT NOT NULL DEFAULT ''
+) STRICT;
+
+ALTER TABLE import_run_results ADD COLUMN payload_id TEXT NOT NULL DEFAULT '';
 
 -- Present after every replacement, including a successful empty or an
 -- explicitly unknown direct replacement. Its absence means never built.
