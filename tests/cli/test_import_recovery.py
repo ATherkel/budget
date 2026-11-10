@@ -344,6 +344,28 @@ class FailureAndRetryTests(unittest.TestCase):
             assert "before Gold was published" in stdout
             assert "before Gold was published" in stderr
 
+    def test_an_empty_inbox_retry_against_a_held_gold_store_refuses_cleanly(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            with _gold_refuses_after_the_files_are_stored():
+                assert _run_import(base)[0] == EXIT_REFUSED_ENVIRONMENT
+
+            with (
+                mock.patch.object(sqlstore, "BUSY_TIMEOUT_MS", 100),
+                closing(
+                    sqlite3.connect(base.profile.gold_store, isolation_level=None)
+                ) as holder,
+            ):
+                holder.execute("BEGIN IMMEDIATE")
+                status, _, stderr = _run_import(base)
+                holder.execute("ROLLBACK")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "budget import" in stderr
+
 
 class RefusedFileTests(unittest.TestCase):
     def test_a_refused_file_retried_publishes_nothing(self) -> None:
