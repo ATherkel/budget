@@ -31,7 +31,8 @@ jobs:
             {
               echo "## \`$tag\` is already released"
               echo
-              echo "Bump the version in \`pyproject.toml\`, then run Release again."
+              # Built from the run's own repository, so a fork links to its own.
+              echo "Bump the version in \`pyproject.toml\`, then run the [Release workflow]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/release.yml) again."
               echo
             } >> "$GITHUB_STEP_SUMMARY"
           elif [ "$status" -eq 2 ]; then
