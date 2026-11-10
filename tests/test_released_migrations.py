@@ -27,11 +27,19 @@ def released_migration_drift(manifest: Path, root: Path) -> list[str]:
 
 def release_manifest_gaps(manifest: Path, root: Path, tag: str) -> list[str]:
     """Why `tag`'s table in the manifest doesn't freeze every migration in `root`."""
-    del root  # not yet read: no slice checks the files on disk so far
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
     if tag not in releases:
         return [f"{tag} has no table in released.toml"]
-    return []
+    listed = {name for files in releases.values() for name in files}
+    return [
+        f"not in any table: {name}"
+        for name in _migration_names(root)
+        if name not in listed
+    ]
+
+
+def _migration_names(root: Path) -> list[str]:
+    return sorted(path.relative_to(root).as_posix() for path in root.rglob("*.sql"))
 
 
 def _sha256(text: bytes) -> str:
