@@ -66,6 +66,14 @@ to see, per person, per account and for the whole household:
   ([ADR-014](ADR-014-gold-publications-and-history.md)) still shows April before
   the mark.
 - **Marks are made in the CLI.** The dashboard stays read-only for now.
+- **Everyone sees every account.** Both adults can select any account or
+  owner, including the other adult's personal accounts. There is no per-person
+  access control.
+- **Trip coverage comes from outlays.** A trip paid from personal accounts is
+  covered when its purchases are marked as borne by the vacation account and
+  the outstanding transfers are settled. The trip-tag versus transfer comparison
+  in #159 is dropped; trip tags still give the trip's cost by category and keep
+  it out of everyday budget comparisons.
 
 ## Considered Options
 
