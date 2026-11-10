@@ -1048,11 +1048,19 @@ Before tagging a release:
    `gold/0001_create_gold_store.sql`. Each store's schema then moves at most
    one number per release.
 2. Add a table for the new tag to `src/budget/migrations/released.toml`,
-   mapping each migration file the release ships to its SHA-256, taken after
-   converting CRLF line endings to LF. `tests/test_released_migrations.py`
-   fails when a file the manifest names is changed or deleted. It reads only
-   the manifest and the working tree, because CI checks out without tags.
-3. Tag.
+   mapping each migration file the release adds to its SHA-256, taken after
+   converting CRLF line endings to LF. A table lists only the files that no
+   earlier table lists, so a store that didn't change adds nothing and the
+   table may be empty. `tests/test_released_migrations.py` fails when a file
+   any table names is changed or deleted. It reads only the manifest and the
+   working tree, because CI checks out without tags.
+3. Tag by running the Release workflow, which tags the `pyproject.toml`
+   version. Its first step, `RELEASE_TAG="v$(uv version --short)" uv run
+   pytest -m release`, refuses the tag when `released.toml` has no table for
+   it or a migration file appears in no table. The failure names each such
+   file and prints the lines to paste into the tag's table. To get those
+   lines before running the workflow, run the same check locally, in
+   PowerShell `$env:RELEASE_TAG = "v0.3.0"; uv run pytest -m release`.
 
 `migrate` keeps refusing a store whose schema is newer than the code
 (exit 4). A development store that ran migrations which were later merged
