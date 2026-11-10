@@ -54,17 +54,24 @@ def release_manifest_addition(manifest: Path, root: Path, tag: str) -> str:
 
 def release_manifest_summary(manifest: Path, root: Path, tag: str) -> str:
     """The Markdown a GitHub Actions job summary shows when `tag` can't be cut."""
+    releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    no_table = [] if tag in releases else [f"`{tag}` has no table in `released.toml`"]
     problems = "".join(
-        f"- {gap}\n" for gap in release_manifest_gaps(manifest, root, tag)
+        f"- {problem}\n"
+        for problem in no_table
+        + [
+            f"not in any table: `{name}`"
+            for name in _unlisted_migrations(releases, root)
+        ]
     )
     lines = f"```toml\n{release_manifest_addition(manifest, root, tag)}```\n"
     path = "`src/budget/migrations/released.toml`"
-    heading = f"## Release manifest incomplete for {tag}\n\n{problems}\n"
-    if tag not in tomllib.loads(manifest.read_text(encoding="utf-8")):
+    heading = f"## Release manifest incomplete for `{tag}`\n\n{problems}\n"
+    if tag not in releases:
         return f"{heading}Add these lines to the end of {path}:\n\n{lines}"
     return (
         f'{heading}Add these lines under `["{tag}"]` in {path}:\n\n{lines}\n'
-        f"If {tag} is already released, its table is frozen: bump the version in "
+        f"If `{tag}` is already released, its table is frozen: bump the version in "
         "`pyproject.toml` instead.\n"
     )
 
