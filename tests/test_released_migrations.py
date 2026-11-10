@@ -51,6 +51,12 @@ def release_manifest_addition(manifest: Path, root: Path, tag: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def release_manifest_summary(manifest: Path, root: Path, tag: str) -> str:
+    """The Markdown a GitHub Actions job summary shows when `tag` can't be cut."""
+    del manifest, root, tag  # red stub: green replaces this body
+    return ""
+
+
 def _unlisted_migrations(releases: dict[str, Any], root: Path) -> list[str]:
     """The migration files under `root` that no release table lists, sorted."""
     listed = {name for files in releases.values() for name in files}
@@ -245,6 +251,30 @@ def test_a_tag_with_no_table_also_names_each_migration_in_no_table(
         "v0.3.0 has no table in released.toml",
         "not in any table: silver/0002_add_note.sql",
     ]
+
+
+def test_the_job_summary_lists_the_problems_and_the_lines_to_paste(
+    tmp_path: Path,
+) -> None:
+    manifest = _released_tree(tmp_path)
+    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
+        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
+    )
+
+    assert release_manifest_summary(manifest, tmp_path, "v0.3.0") == (
+        "## Release manifest incomplete for v0.3.0\n"
+        "\n"
+        "- v0.3.0 has no table in released.toml\n"
+        "- not in any table: silver/0002_add_note.sql\n"
+        "\n"
+        "Add these lines to the end of `src/budget/migrations/released.toml`:\n"
+        "\n"
+        "```toml\n"
+        '["v0.3.0"]\n'
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+        "```\n"
+    )
 
 
 MIGRATIONS = Path(__file__).resolve().parent.parent / "src" / "budget" / "migrations"
