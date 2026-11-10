@@ -1058,7 +1058,8 @@ Before tagging a release:
 (exit 4). A development store that ran migrations which were later merged
 away is reset rather than upgraded: delete development's stores, run
 `budget migrate`, which starts missing stores outside production without
-`--new-store`, then `budget dev refresh` if real data is wanted.
+`--new-store`, then `budget dev refresh` if real data is wanted (it lands
+read-only in `upstream/`).
 Production is prerelease, so a merge needs no upgrade path for it.
 
 ## Tooling
