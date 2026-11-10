@@ -303,11 +303,11 @@ def test_the_job_summary_marks_tags_and_paths_as_code(
     )
 
 
-def test_the_job_summary_for_a_tag_with_a_table_warns_a_released_one_is_frozen(
+def test_the_job_summary_for_a_tag_with_a_table_says_to_add_the_lines_under_it(
     tmp_path: Path,
 ) -> None:
-    # Dispatching Release without bumping pyproject's version checks the last
-    # release's tag, whose table must not grow.
+    # Whether the tag is already released is for the Release workflow to say:
+    # these tests read no tags, so the summary makes no guess about it.
     manifest = _released_tree(tmp_path)
     (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
         b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
@@ -325,9 +325,6 @@ def test_the_job_summary_for_a_tag_with_a_table_warns_a_released_one_is_frozen(
         '"silver/0002_add_note.sql" = '
         '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
         "```\n"
-        "\n"
-        "If `v0.2.0` is already released, its table is frozen: bump the version in "
-        "`pyproject.toml` instead.\n"
     )
 
 
