@@ -1057,15 +1057,21 @@ Before tagging a release:
 3. Bump the version in `pyproject.toml` to the new release. The check takes
    the tag from it, and run against a version already released it would
    suggest adding files to that release's table, which is frozen.
-4. Tag by running the Release workflow, which tags the `pyproject.toml`
-   version. A step before the tag runs
+4. Tag by running the Release workflow from `main`, which tags the
+   `pyproject.toml` version. A step before the tag runs
    `RELEASE_TAG="v$(uv version --short)" uv run pytest -m release`. It
    refuses the tag when `released.toml` has no table for it, when a
    migration file appears in no table, or when a released migration has
-   changed. The failure names each such file and prints the lines to paste
-   into the tag's table. To get those lines before running the workflow, run
-   the same check locally, in PowerShell
-   `$env:RELEASE_TAG = "v0.3.0"; uv run pytest -m release`.
+   changed. The run's summary page then lists each problem and shows the
+   lines to paste into `released.toml`, and each problem is also an error
+   annotation on the run. To get those lines before running the workflow,
+   run the same check locally. In PowerShell, clear the variable afterwards,
+   or a later `uv run pytest` in that shell runs the release check too:
+   `$env:RELEASE_TAG = "v$(uv version --short)"; uv run pytest -m release; Remove-Item Env:RELEASE_TAG`.
+
+Only a run from `main` creates a tag. A run from any other branch, or with
+the `dry_run` input ticked, is a rehearsal: it runs the same checks, skips
+the tag, and its summary says which release it would have created.
 
 `migrate` keeps refusing a store whose schema is newer than the code
 (exit 4). A development store that ran migrations which were later merged
