@@ -1136,8 +1136,9 @@ def _recipe(
 ) -> Recipe:
     """Read one `recipes` row, its import runs and its Silver provenance back.
 
-    A recipe with no Silver fingerprint scheme names no known Silver build, so
-    its Silver identity version reads back as unknown.
+    `publish` refuses a recipe without Silver provenance, so every stored
+    recipe has a fingerprint scheme. The branch that reads a missing scheme
+    as an unknown Silver identity version is unreachable (#493).
     """
     scheme = row["silver_fingerprint_scheme"]
     return Recipe(

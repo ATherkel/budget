@@ -89,12 +89,29 @@ Rules for every store:
 The 0.3 migrations were merged into one file per store (#365): Silver
 `0002` and Gold `0001` now hold what used to be Silver `0002` to `0003` and
 Gold `0001` to `0007`. Recreate every Silver and Gold store created before
-that change, in development and in production. In development, use the
-reset in [Cutting a Release](#cutting-a-release). In production, recreate
-them from Bronze: delete `silver.db` and `gold.db`, run
-`budget migrate --new-store`, then `budget rebuild --from silver`. Bronze is
-unchanged and keeps its store, and a Silver store still at version 1, as
-v0.2.0 made it, upgrades normally.
+that change, in development and in production. A Silver store still at
+version 1, as v0.2.0 made it, upgrades normally.
+
+In development, use the reset in [Cutting a Release](#cutting-a-release).
+
+Production is prerelease, so recreate the whole profile rather than one
+stage at a time:
+
+1. Move the stores folder aside whole, with every `-wal` and `-shm` file
+   beside the stores. Move the backups folder's sets and `imports.jsonl`
+   aside too. `decisions.jsonl` and the other inputs stay.
+2. Copy each account's archived exports, except those under `refused\`,
+   back into `inbox\<account_id>\`.
+3. Run `budget migrate --new-store`. With no stores and no backup sets left,
+   it starts all three.
+4. Run `budget import`, with `--ranges` to avoid one prompt per file. It
+   finds each export already in the archive and logs its run again.
+
+Recipes, past publications and labels are lost, as in
+[W7](#w7-every-backup-set-is-lost). Treat every backup set taken before the
+change as pre-merge and never put it back in the backups folder. `restore`
+would reinstall its Silver and Gold stores without a refusal, and so would
+`dev refresh`, which restores development from production's sets.
 
 `migrate` cannot detect such a store. A store left at the old Silver
 version 2 or the old Gold version 1 carries the same number as the new
