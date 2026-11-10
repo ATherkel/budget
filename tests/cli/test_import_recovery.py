@@ -14,23 +14,27 @@ import sqlite3
 import unittest
 from collections.abc import Callable, Iterator
 from contextlib import closing, contextmanager
+from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import cast
 from unittest import mock
 
 import pytest
 
 from budget import sqlstore
-from budget.backups import BackupWriteError, complete_backup_sets
+from budget.backups import complete_backup_sets, complete_sets_in
 from budget.gold.store import GoldStore
+from budget.importing import Coverage, import_inbox_file
 from budget.inputs import ConfigurationError
+from budget.locking import writer_lock
 from budget.profiles import Profile
 from tests.backups.sets import run_ids
 from tests.cli.commands import import_, migrate
 from tests.cli.imports import clean_checkout, write_ranges
 from tests.cli.pipelines import EXPORT, Prepared, prepared, write_inputs
 from tests.cli.profile_files import development_profile, write_profile
-from tests.importing.households import ACCOUNTS, drop, payload
+from tests.importing.households import ACCOUNTS, chained_payload, drop, payload
 
 EXIT_OK = 0
 EXIT_REFUSED_INPUT = 3
@@ -96,28 +100,34 @@ def _log_records(profile: Profile) -> list[dict[str, object]]:
     return [json.loads(line) for line in text.splitlines()]
 
 
-def _full_store_error() -> sqlite3.OperationalError:
-    """Return SQLite's own out-of-space error after filling a tiny database."""
-    with closing(sqlite3.connect(":memory:")) as connection:
-        connection.execute("PRAGMA max_page_count = 1")
-        try:
-            connection.execute("CREATE TABLE data (value BLOB)")
-            connection.execute("INSERT INTO data VALUES (zeroblob(10000))")
-        except sqlite3.OperationalError as error:
-            return error
-    problem = "the synthetic SQLite database did not fill"
-    raise AssertionError(problem)
+def _sqlite_error(message: str, code: int) -> sqlite3.OperationalError:
+    """Make the same SQLite exception the database driver raises."""
+    error = sqlite3.OperationalError(message)
+    error.sqlite_errorcode = code
+    return error
 
 
-def _database_defect() -> sqlite3.OperationalError:
-    """Return SQLite's own statement error, which is not a recovery path."""
-    with closing(sqlite3.connect(":memory:")) as connection:
-        try:
-            connection.execute("SELECT * FROM missing_table")
-        except sqlite3.OperationalError as error:
-            return error
-    problem = "the synthetic SQLite statement unexpectedly succeeded"
-    raise AssertionError(problem)
+@contextmanager
+def _fail_first_gold_open_after(source: Path, failure: Exception) -> Iterator[None]:
+    """Fail the rebuild at SQLite's connection boundary after Bronze consumes a file."""
+    real_connect = cast("Callable[..., sqlite3.Connection]", sqlite3.connect)
+    injected = False
+
+    def injected_connect(
+        database: object, *args: object, **options: object
+    ) -> sqlite3.Connection:
+        nonlocal injected
+        if (
+            str(database).endswith("gold.db?mode=rw")
+            and not source.exists()
+            and not injected
+        ):
+            injected = True
+            raise failure
+        return real_connect(database, *args, **options)
+
+    with mock.patch("budget.sqlstore.sqlite3.connect", side_effect=injected_connect):
+        yield
 
 
 class ForeseeableRefusalTests(unittest.TestCase):
@@ -197,16 +207,71 @@ class ForeseeableRefusalTests(unittest.TestCase):
             assert len(run_ids(base.profile.bronze_store)) == 1
             assert base.profile.silver_store.read_bytes() == silver_before
 
+    def test_closing_date_preflight_reads_bronze_not_stale_silver(self) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory))
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            assert _run_import(base)[0] == EXIT_OK
+
+            later = drop(
+                base.profile,
+                "joint-current",
+                "danske-20260306.csv",
+                chained_payload("01.03.2026", "04.03.2026"),
+            )
+            with writer_lock(base.profile) as lock:
+                import_inbox_file(
+                    lock,
+                    later,
+                    Coverage(date(2026, 3, 1), date(2026, 3, 4)),
+                )
+            write_inputs(
+                base.profile,
+                ACCOUNTS.replace(
+                    'bank_account_number = "0012345678"\n',
+                    'bank_account_number = "0012345678"\nclosed_on = 2026-03-02\n',
+                ),
+            )
+            source = drop(
+                base.profile,
+                "joint-current",
+                "danske-20260307.csv",
+                EXPORT,
+            )
+            silver_before = base.profile.silver_store.read_bytes()
+
+            status, stdout, stderr = _run_import(base)
+
+            assert (status, stdout) == (EXIT_REFUSED_INPUT, "")
+            assert "closed_on 2026-03-02" in stderr
+            assert source.read_bytes() == EXPORT
+            assert len(run_ids(base.profile.bronze_store)) == 2
+            assert base.profile.silver_store.read_bytes() == silver_before
+
     def test_a_profile_with_no_closing_dates_skips_preflight_silver_derivation(
         self,
     ) -> None:
         with TemporaryDirectory() as directory:
             base = prepared(Path(directory))
-            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
-            problem = "the closing-date preflight derived Silver unnecessarily"
+            source = drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            real_connect = cast("Callable[..., sqlite3.Connection]", sqlite3.connect)
+            bronze_opens = 0
+
+            def injected_connect(
+                database: object, *args: object, **options: object
+            ) -> sqlite3.Connection:
+                nonlocal bronze_opens
+                if str(database).endswith("bronze.db?mode=rw") and source.exists():
+                    bronze_opens += 1
+                    if bronze_opens == 3:
+                        problem = (
+                            "the closing-date preflight derived Silver unnecessarily"
+                        )
+                        raise _sqlite_error(problem, sqlite3.SQLITE_ERROR)
+                return real_connect(database, *args, **options)
 
             with mock.patch(
-                "budget.inbox.derive_silver", side_effect=AssertionError(problem)
+                "budget.sqlstore.sqlite3.connect", side_effect=injected_connect
             ):
                 status, _, stderr = _run_import(base)
 
@@ -464,20 +529,17 @@ class FailureAndRetryTests(unittest.TestCase):
     ) -> None:
         with TemporaryDirectory() as directory:
             base = prepared(Path(directory), name="production")
-            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            source = drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
             sets_before = len(complete_backup_sets(base.profile))
-            failure = BackupWriteError("the backups folder is unavailable")
+            backups = base.profile.backups
+            assert backups is not None
+            preserved = backups.with_name("backups-before-failed-import")
+            backups.rename(preserved)
+            backups.write_text("not a folder", encoding="ascii")
+            failure = _sqlite_error("database is locked", sqlite3.SQLITE_BUSY)
 
-            with (
-                mock.patch.object(sqlstore, "BUSY_TIMEOUT_MS", 100),
-                mock.patch("budget.inbox.back_up", side_effect=failure),
-                closing(
-                    sqlite3.connect(base.profile.gold_store, isolation_level=None)
-                ) as holder,
-            ):
-                holder.execute("BEGIN IMMEDIATE")
+            with _fail_first_gold_open_after(source, failure):
                 status, stdout, stderr = _run_import(base)
-                holder.execute("ROLLBACK")
 
             assert status == EXIT_REFUSED_ENVIRONMENT
             assert "The rebuild stopped before Gold was published." in stdout
@@ -485,62 +547,60 @@ class FailureAndRetryTests(unittest.TestCase):
             assert "No backup set could be written either" in stderr
             assert "budget backup" in stderr
             assert len(run_ids(base.profile.bronze_store)) == 1
-            assert len(complete_backup_sets(base.profile)) == sets_before
+            assert len(complete_sets_in(preserved)) == sets_before
             assert _log_records(base.profile)[-1]["command"] == "import"
 
     def test_full_and_io_failures_after_commit_are_held_back(self) -> None:
         failures = (
-            ("full", _full_store_error()),
+            ("full", _sqlite_error("database or disk is full", sqlite3.SQLITE_FULL)),
+            (
+                "SQLite I/O",
+                _sqlite_error("disk I/O error", sqlite3.SQLITE_IOERR_READ),
+            ),
             ("i/o", OSError(5, "Input/output error")),
         )
         for kind, failure in failures:
             with self.subTest(kind), TemporaryDirectory() as directory:
-                base = prepared(Path(directory))
-                drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+                base = prepared(Path(directory), name="production")
+                source = drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+                sets_before = len(complete_backup_sets(base.profile))
 
-                try:
-                    with mock.patch(
-                        "budget.inbox.rebuild_through_gold", side_effect=failure
-                    ):
-                        status, _, stderr = _run_import(base)
-                except (OSError, sqlite3.OperationalError) as error:
-                    self.fail(
-                        f"{kind} storage failure after Bronze committed escaped: "
-                        f"{error}"
-                    )
+                with _fail_first_gold_open_after(source, failure):
+                    status, _, stderr = _run_import(base)
 
                 assert status == EXIT_REFUSED_ENVIRONMENT
                 assert str(failure) in stderr
                 assert "budget import" in stderr
                 assert len(run_ids(base.profile.bronze_store)) == 1
+                assert len(complete_backup_sets(base.profile)) == sets_before + 1
 
     def test_an_unexpected_database_error_after_commit_stays_visible(self) -> None:
         with TemporaryDirectory() as directory:
             base = prepared(Path(directory))
-            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            source = drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            failure = _sqlite_error(
+                "no such table: missing_table", sqlite3.SQLITE_ERROR
+            )
 
             with (
-                mock.patch(
-                    "budget.inbox.rebuild_through_gold",
-                    side_effect=_database_defect(),
-                ),
-                pytest.raises(sqlite3.OperationalError, match="no such table"),
+                _fail_first_gold_open_after(source, failure),
+                pytest.raises(
+                    sqlite3.OperationalError, match="no such table"
+                ) as caught,
             ):
                 _run_import(base)
 
+            assert caught.value is failure
             assert len(run_ids(base.profile.bronze_store)) == 1
 
     def test_an_uncoded_sqlite_error_after_commit_stays_visible(self) -> None:
         with TemporaryDirectory() as directory:
             base = prepared(Path(directory))
-            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            source = drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
             failure = sqlite3.OperationalError("unclassified SQLite failure")
 
             with (
-                mock.patch(
-                    "budget.inbox.rebuild_through_gold",
-                    side_effect=failure,
-                ),
+                _fail_first_gold_open_after(source, failure),
                 pytest.raises(
                     sqlite3.OperationalError, match="unclassified SQLite failure"
                 ) as caught,
