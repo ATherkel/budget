@@ -53,8 +53,14 @@ def release_manifest_addition(manifest: Path, root: Path, tag: str) -> str:
 
 def release_manifest_summary(manifest: Path, root: Path, tag: str) -> str:
     """The Markdown a GitHub Actions job summary shows when `tag` can't be cut."""
-    del manifest, root, tag  # red stub: green replaces this body
-    return ""
+    problems = "".join(
+        f"- {gap}\n" for gap in release_manifest_gaps(manifest, root, tag)
+    )
+    return (
+        f"## Release manifest incomplete for {tag}\n\n{problems}\n"
+        "Add these lines to the end of `src/budget/migrations/released.toml`:\n\n"
+        f"```toml\n{release_manifest_addition(manifest, root, tag)}```\n"
+    )
 
 
 def _unlisted_migrations(releases: dict[str, Any], root: Path) -> list[str]:
