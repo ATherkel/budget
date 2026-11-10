@@ -19,7 +19,7 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 from budget import sqlstore
-from budget.backups import complete_backup_sets
+from budget.backups import BackupWriteError, complete_backup_sets
 from budget.gold.store import GoldStore
 from budget.inputs import ConfigurationError
 from budget.profiles import Profile
@@ -391,6 +391,35 @@ class FailureAndRetryTests(unittest.TestCase):
             assert "Backup" in stdout
             assert len(run_ids(base.profile.bronze_store)) == 1
             assert len(complete_backup_sets(base.profile)) == sets_before + 2
+
+    def test_a_failed_backup_is_reported_beside_the_held_downstream_import(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            base = prepared(Path(directory), name="production")
+            drop(base.profile, "joint-current", EXPORT_NAME, EXPORT)
+            sets_before = len(complete_backup_sets(base.profile))
+            failure = BackupWriteError("the backups folder is unavailable")
+
+            with (
+                mock.patch.object(sqlstore, "BUSY_TIMEOUT_MS", 100),
+                mock.patch("budget.inbox.back_up", side_effect=failure),
+                closing(
+                    sqlite3.connect(base.profile.gold_store, isolation_level=None)
+                ) as holder,
+            ):
+                holder.execute("BEGIN IMMEDIATE")
+                status, stdout, stderr = _run_import(base)
+                holder.execute("ROLLBACK")
+
+            assert status == EXIT_REFUSED_ENVIRONMENT
+            assert "The rebuild stopped before Gold was published." in stdout
+            assert "database is locked" in stderr
+            assert "No backup set could be written either" in stderr
+            assert "budget backup" in stderr
+            assert len(run_ids(base.profile.bronze_store)) == 1
+            assert len(complete_backup_sets(base.profile)) == sets_before
+            assert _log_records(base.profile)[-1]["command"] == "import"
 
 
 class RefusedFileTests(unittest.TestCase):
