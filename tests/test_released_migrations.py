@@ -33,10 +33,14 @@ def released_migration_drift(manifest: Path, root: Path) -> list[str]:
 
 
 def release_manifest_gaps(manifest: Path, root: Path, tag: str) -> list[str]:
-    """Why `tag`'s table in the manifest doesn't freeze every migration in `root`."""
+    """Why the manifest doesn't freeze every migration in `root` for `tag`.
+
+    Only unlisted files count: a tag with no table of its own is fine when an
+    earlier table already lists every file.
+    """
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
-    no_table = [] if tag in releases else [f"{tag} has no table in released.toml"]
-    return no_table + [
+    del tag  # the tag no longer affects the gaps; kept for one call shape
+    return [
         f"not in any table: {name}" for name in _unlisted_migrations(releases, root)
     ]
 
@@ -60,14 +64,9 @@ def release_manifest_summary(
     `released` says `tag` already exists; only the workflow can know that.
     """
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
-    no_table = [] if tag in releases else [f"`{tag}` has no table in `released.toml`"]
     problems = "".join(
-        f"- {problem}\n"
-        for problem in no_table
-        + [
-            f"not in any table: `{name}`"
-            for name in _unlisted_migrations(releases, root)
-        ]
+        f"- not in any table: `{name}`\n"
+        for name in _unlisted_migrations(releases, root)
     )
     addition = release_manifest_addition(manifest, root, tag)
     path = "`src/budget/migrations/released.toml`"
