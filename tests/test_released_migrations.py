@@ -471,34 +471,37 @@ def test_each_problem_becomes_an_error_annotation_on_released_toml(
 MIGRATIONS = Path(__file__).resolve().parent.parent / "src" / "budget" / "migrations"
 
 
+def _report_to_github_actions(annotations: list[str], summary: str) -> None:
+    """On GitHub Actions, annotate the run and append `summary` to its summary."""
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return
+    # pytest replays a failing test's stdout line by line, so GitHub still
+    # reads each annotation as a workflow command.
+    for annotation in annotations:
+        sys.stdout.write(f"{annotation}\n")
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        with Path(summary_path).open("a", encoding="utf-8") as job_summary:
+            job_summary.write(summary)
+
+
 # Marked release as well: the Release workflow runs only `-m release`, and it
-# can tag a branch that the full test suite never ran on.
+# tags main's commit without waiting for that commit's own test run.
 @pytest.mark.release
 def test_no_migration_a_release_shipped_has_changed() -> None:
     manifest = MIGRATIONS / "released.toml"
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
 
+    drift = released_migration_drift(manifest, MIGRATIONS)
+
+    if drift:
+        _report_to_github_actions(
+            released_drift_annotations(manifest, MIGRATIONS),
+            released_drift_summary(manifest, MIGRATIONS),
+        )
     # v0.2.0 shipped Bronze 0001 and Silver 0001; an empty manifest guards nothing.
     assert set(releases["v0.2.0"]) == {BRONZE, SILVER}
-    assert released_migration_drift(manifest, MIGRATIONS) == []
-
-
-def _report_to_github_actions(manifest: Path, tag: str) -> None:
-    """On GitHub Actions, annotate the run and write the paste lines to its summary."""
-    if os.environ.get("GITHUB_ACTIONS") != "true":
-        return
-    # pytest replays a failing test's stdout line by line, so GitHub still
-    # reads each annotation as a workflow command.
-    for annotation in release_manifest_annotations(manifest, MIGRATIONS):
-        sys.stdout.write(f"{annotation}\n")
-    summary = os.environ.get("GITHUB_STEP_SUMMARY")
-    if summary:
-        with Path(summary).open("a", encoding="utf-8") as job_summary:
-            # The Release workflow's version step sets this when the tag exists.
-            released = os.environ.get("RELEASE_TAG_RELEASED") == "true"
-            job_summary.write(
-                release_manifest_summary(manifest, MIGRATIONS, tag, released=released)
-            )
+    assert drift == []
 
 
 @pytest.mark.release
@@ -513,7 +516,12 @@ def test_every_migration_is_in_a_table_before_a_release() -> None:
     gaps = release_manifest_gaps(manifest, MIGRATIONS)
 
     if gaps:
-        _report_to_github_actions(manifest, tag)
+        # The Release workflow's version step sets this when the tag exists.
+        released = os.environ.get("RELEASE_TAG_RELEASED") == "true"
+        _report_to_github_actions(
+            release_manifest_annotations(manifest, MIGRATIONS),
+            release_manifest_summary(manifest, MIGRATIONS, tag, released=released),
+        )
     assert not gaps, "\n".join(
         [
             *gaps,
