@@ -84,6 +84,12 @@ def release_manifest_addition(
     return "\n".join(lines) + "\n"
 
 
+UV_VERSION_BUMP = (
+    "[`uv version --bump <major|minor|patch>`]"
+    "(https://docs.astral.sh/uv/guides/package/#updating-your-version)"
+)
+
+
 def release_manifest_summary(
     manifest: Path, root: Path, tag: str, *, released: bool = False
 ) -> str:
@@ -102,9 +108,10 @@ def release_manifest_summary(
     heading = f"## Release manifest incomplete for `{tag}`\n\n{problems}\n"
     if released:
         return (
-            f"{heading}`{tag}` is already released, and its table is frozen. Bump "
-            "the version in `pyproject.toml`, then add these lines as its new "
-            f'table:\n\n```toml\n["v<new version>"]\n{addition}```\n'
+            f"{heading}`{tag}` is already released, and its table is frozen. Run "
+            f"{UV_VERSION_BUMP} to bump the version in `pyproject.toml`, then add "
+            f'these lines as its new table:\n\n```toml\n["v<new version>"]\n'
+            f"{addition}```\n"
         )
     lines = f"```toml\n{addition}```\n"
     if tag not in releases:
