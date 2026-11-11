@@ -45,6 +45,12 @@ def released_drift_summary(manifest: Path, root: Path) -> str:
     )
 
 
+def released_drift_annotations(manifest: Path, root: Path) -> list[str]:
+    """One GitHub Actions error annotation per released migration that changed."""
+    del manifest, root  # red stub: green replaces this body
+    return []
+
+
 def release_manifest_gaps(manifest: Path, root: Path) -> list[str]:
     """Why the manifest doesn't freeze every migration in `root`.
 
@@ -216,6 +222,23 @@ def test_the_job_summary_for_changed_released_migrations_says_to_restore_them(
         "change. Restore each file as `released.toml` records it, and put the "
         "change in a new migration.\n"
     )
+
+
+def test_each_changed_released_migration_becomes_an_error_annotation_on_its_file(
+    tmp_path: Path,
+) -> None:
+    manifest = _released_tree(tmp_path)
+    (tmp_path / BRONZE).unlink()
+    (tmp_path / SILVER).write_bytes(
+        b"CREATE TABLE evidence (id INTEGER PRIMARY KEY, note TEXT) STRICT;\n"
+    )
+
+    title = "title=Released migration changed::"
+    message = "changed or deleted since released.toml froze it"
+    assert released_drift_annotations(manifest, tmp_path) == [
+        f"::error file=src/budget/migrations/{BRONZE},{title}{BRONZE} {message}",
+        f"::error file=src/budget/migrations/{SILVER},{title}{SILVER} {message}",
+    ]
 
 
 def test_a_release_that_adds_no_migration_needs_no_table(tmp_path: Path) -> None:
