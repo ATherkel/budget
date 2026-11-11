@@ -100,6 +100,7 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Install the locked dependencies
+        id: install
         run: uv sync --locked
       - name: Check the release manifest freezes every migration
         id: check
@@ -115,6 +116,7 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           STATE: ${{ steps.version.outputs.state }}
           VERSION_OUTCOME: ${{ steps.version.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
           CHECK_OUTCOME: ${{ steps.check.outcome }}
         run: |
           # Off main the branch alone stops the tag, so dry_run is only a note.
@@ -140,8 +142,11 @@ jobs:
             on_tag=" on the existing tag"
           fi
           # Skipped counts too: a failed install skips the check, and an
-          # unchecked release would be refused.
-          if [ "$CHECK_OUTCOME" != "success" ]; then
+          # unchecked release would be refused. The install failure is only in
+          # that step's log, so the check is not blamed for it.
+          if [ "$INSTALL_OUTCOME" != "success" ]; then
+            reasons+=("The locked dependencies could not be installed, so the manifest was not checked (see the log of that step)")
+          elif [ "$CHECK_OUTCOME" != "success" ]; then
             reasons+=("The manifest check did not pass (see above)")
           fi
           {
