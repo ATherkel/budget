@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vores måned · Prototype</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <section id="login" class="login" aria-labelledby="login-title">
+    <form id="login-form" class="login-card">
+      <p class="eyebrow">PROTOTYPE · DEMONSTRATION AF LOGIN</p>
+      <h1 id="login-title">Vores måned</h1>
+      <p class="login-intro">Log ind for at se månedsoversigten for husstanden.</p>
+      <label for="passphrase">Adgangskode til husstanden</label>
+      <input id="passphrase" name="passphrase" type="password" autocomplete="off" spellcheck="false">
+      <button id="login-submit" type="submit">Log ind</button>
+      <p class="demo-note"><strong>Kun en demonstration.</strong> Der er ingen rigtig
+        adgangskode, ingen serverkontrol, intet gemmes, og ingen data forlader denne
+        computer. Enhver indtastning lukker ind. Den opdigtede kode er
+        <code>fisk-i-haven</code>.</p>
+    </form>
+  </section>
+  <div id="app" hidden>
+    <div class="prototype">
+      <div><strong>Prototype til afprøvning</strong> <span id="source-label">Henter det opdigtede eksempel…</span></div>
+      <button id="logout" type="button" class="strip-button">Log ud</button>
+    </div>
+    <main>
+      <header class="page-header">
+        <div>
+          <div class="eyebrow" id="scope-label">KONTI I OVERBLIKKET</div>
+          <h1>Vores måned</h1>
+          <p id="page-intro">Et overblik over, hvor pengene blev af.</p>
+        </div>
+        <div class="month-control"><label for="month">Vælg måned</label><select id="month"></select></div>
+      </header>
+      <div id="publication-bar" class="publication-bar" hidden></div>
+      <div class="mode-bar">
+        <div class="mode-switch" role="group" aria-label="Detaljegrad">
+          <button id="mode-simple" type="button" data-mode="simple" aria-pressed="true">Enkel</button>
+          <button id="mode-advanced" type="button" data-mode="advanced" aria-pressed="false">Avanceret</button>
+        </div>
+        <div class="publication-picker" id="publication-picker" hidden>
+          <label for="publication">Visning</label>
+          <select id="publication"></select>
+        </div>
+      </div>
+      <fieldset class="account-picker">
+        <legend>Konti i visningen</legend>
+        <div id="account-options"></div>
+        <button id="select-all" type="button" class="text-button">Vælg alle</button>
+        <p id="selection-note" class="footnote" aria-live="polite"></p>
+      </fieldset>
+      <nav id="advanced-nav" class="tabs" hidden aria-label="Avanceret visning">
+        <button type="button" data-tab="overview" aria-current="page">Overblik</button>
+        <button type="button" data-tab="details">Detaljer</button>
+        <button type="button" data-tab="checks">Kontrol</button>
+      </nav>
+      <div id="content" aria-live="polite" aria-atomic="false"><p>Henter overblikket…</p></div>
+      <footer id="footer"></footer>
+    </main>
+    <dialog id="detail" aria-labelledby="detail-title">
+      <div class="dialog-top"><span class="eyebrow">SE NÆRMERE</span><button id="close-detail" class="close" aria-label="Luk detaljer">Luk ×</button></div>
+      <div id="detail-content"></div>
+    </dialog>
+  </div>
+</body>
+</html>
