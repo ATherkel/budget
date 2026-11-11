@@ -397,8 +397,11 @@ def test_the_job_summary_for_a_released_tag_says_to_bump_and_start_a_new_table(
         "\n"
         "- Not in any table: `silver/0002_add_note.sql`\n"
         "\n"
-        "`v0.2.0` is already released, and its table is frozen. Bump the version "
-        "in `pyproject.toml`, then add these lines as its new table:\n"
+        "`v0.2.0` is already released, and its table is frozen. Run "
+        "[`uv version --bump <major|minor|patch>`]"
+        "(https://docs.astral.sh/uv/guides/package/#updating-your-version) "
+        "to bump the version in `pyproject.toml`, then add these lines as its "
+        "new table:\n"
         "\n"
         "```toml\n"
         '["v<new version>"]\n'
