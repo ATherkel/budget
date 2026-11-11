@@ -6,26 +6,36 @@ on:
         description: Run the checks without tagging. Only has an effect on main; runs from any other branch never tag.
         type: boolean
         default: false
-permissions:
-  contents: write
+# Each job asks for only what it needs: the check job runs the branch's code
+# with a read-only token, and only the tag job, which runs none, can write.
+permissions: {}
 jobs:
-  release:
+  check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      released: ${{ steps.version.outputs.released }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Setup uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       # A released tag's table is frozen, so its version can't be released
       # again. This only records the answer, so the manifest check still runs
-      # and a rehearsal shows every problem; the last step fails the run.
+      # and a rehearsal shows every problem; the last step fails the job.
       - name: Check whether the version is already released
         id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           tag="v$(uv version --short)"
-          status=0
-          git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null || status=$?
-          if [ "$status" -eq 0 ]; then
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          count=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" --jq "map(select(.ref == \"refs/tags/$tag\")) | length")
+          if [ "$count" -gt 0 ]; then
             echo "released=true" >> "$GITHUB_OUTPUT"
             echo "::error file=pyproject.toml,title=Version already released::$tag is already released. Bump the version in pyproject.toml."
             {
@@ -35,38 +45,32 @@ jobs:
               echo "Bump the version in \`pyproject.toml\`, then run the [Release workflow]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/release.yml) again."
               echo
             } >> "$GITHUB_STEP_SUMMARY"
-          elif [ "$status" -eq 2 ]; then
-            echo "released=false" >> "$GITHUB_OUTPUT"
           else
-            echo "::error title=Could not read tags::git ls-remote exited with $status"
-            exit 1
+            echo "released=false" >> "$GITHUB_OUTPUT"
           fi
+      - name: Install the locked dependencies
+        run: uv sync --locked
       - name: Check the release manifest freezes every migration
         id: check
         env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
           RELEASE_TAG_RELEASED: ${{ steps.version.outputs.released }}
-        run: RELEASE_TAG="v$(uv version --short)" uv run pytest -m release --tb=short --color=yes
-      # Only main creates tags; any other branch, or dry_run, is a rehearsal.
-      - name: Tag and release the pyproject version
-        if: github.ref == 'refs/heads/main' && !inputs.dry_run && steps.version.outputs.released == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "v$(uv version --short)" --target "$GITHUB_SHA" --generate-notes
+        run: uv run --locked pytest -m release --tb=short --color=yes
       - name: Report what a release would create
         if: ${{ !cancelled() && (github.ref != 'refs/heads/main' || inputs.dry_run) }}
         env:
           DRY_RUN: ${{ inputs.dry_run }}
           REF: ${{ github.ref_name }}
+          TAG: ${{ steps.version.outputs.tag }}
           RELEASED: ${{ steps.version.outputs.released }}
           VERSION_OUTCOME: ${{ steps.version.outcome }}
           CHECK_OUTCOME: ${{ steps.check.outcome }}
         run: |
-          tag="v$(uv version --short)"
           # Off main the branch alone stops the tag, so dry_run is only a note.
           if [ "$GITHUB_REF" = "refs/heads/main" ]; then
-            why="dry_run was chosen"
+            why="\`dry_run\` was chosen"
           elif [ "$DRY_RUN" = "true" ]; then
-            why="the run is from branch \`$REF\`, not \`main\` (dry_run has no effect off main)"
+            why="the run is from branch \`$REF\`, not \`main\` (\`dry_run\` was ticked on this workflow dispatch but has no effect off main)"
           else
             why="the run is from branch \`$REF\`, not \`main\`"
           fi
@@ -74,19 +78,37 @@ jobs:
           if [ "$VERSION_OUTCOME" != "success" ]; then
             refusals="the tags could not be read"
           elif [ "$RELEASED" = "true" ]; then
-            refusals="\`$tag\` is already released"
+            refusals="\`$TAG\` is already released"
           fi
-          if [ "$CHECK_OUTCOME" = "failure" ]; then
-            refusals="${refusals:+$refusals and }the manifest check failed"
+          # Skipped counts too: a failed install skips the check, and an
+          # unchecked release would be refused.
+          if [ "$CHECK_OUTCOME" != "success" ]; then
+            refusals="${refusals:+$refusals and }the manifest check did not pass"
           fi
           if [ -n "$refusals" ]; then
-            result="release \`$tag\` would be refused: $refusals (see above)"
+            result="release \`$TAG\` would be refused: $refusals (see above)"
           else
-            result="would create release \`$tag\` at $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA from branch \`$REF\`"
+            result="would create release \`$TAG\` at $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA from branch \`$REF\`"
           fi
           echo "**Dry run:** $result. No tag was created because $why." >> "$GITHUB_STEP_SUMMARY"
       - name: Refuse a version that is already released
         if: ${{ !cancelled() && steps.version.outputs.released == 'true' }}
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          echo "v$(uv version --short) is already released; see the summary."
+          echo "$TAG is already released; see the summary."
           exit 1
+  # Only main creates tags; any other branch, or dry_run, is a rehearsal. This
+  # job checks nothing out, so no repository code runs with a write token.
+  tag:
+    needs: check
+    if: github.ref == 'refs/heads/main' && !inputs.dry_run && needs.check.outputs.released == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Tag and release the checked version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.tag }}
+        run: gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes
