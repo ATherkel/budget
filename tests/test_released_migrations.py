@@ -63,7 +63,7 @@ def release_manifest_gaps(manifest: Path, root: Path) -> list[str]:
     """
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
     return [
-        f"not in any table: {name}" for name in _unlisted_migrations(releases, root)
+        f"Not in any table: {name}" for name in _unlisted_migrations(releases, root)
     ]
 
 
@@ -93,7 +93,7 @@ def release_manifest_summary(
     """
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
     problems = "".join(
-        f"- not in any table: `{name}`\n"
+        f"- Not in any table: `{name}`\n"
         for name in _unlisted_migrations(releases, root)
     )
     # A released tag's lines go under the next version's header, never its own.
