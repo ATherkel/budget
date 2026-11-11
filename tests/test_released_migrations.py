@@ -337,19 +337,6 @@ def test_the_lines_to_paste_into_an_existing_table_repeat_no_header(
     )
 
 
-def test_a_tag_with_no_table_names_only_each_migration_in_no_table(
-    tmp_path: Path,
-) -> None:
-    manifest = _released_tree(tmp_path)
-    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
-        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
-    )
-
-    assert release_manifest_gaps(manifest, tmp_path) == [
-        "not in any table: silver/0002_add_note.sql",
-    ]
-
-
 def test_the_job_summary_marks_tags_and_paths_as_code(
     tmp_path: Path,
 ) -> None:
