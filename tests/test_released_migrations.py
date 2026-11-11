@@ -99,19 +99,23 @@ def release_manifest_summary(
     or "tagged_elsewhere" when the version is taken, anything else when it is
     free. Only the workflow can know it.
     """
-    released = state == "released"  # red stub: "tagged" not handled yet
+    taken = {
+        "released": "is already released, and its table is frozen",
+        "tagged": "is already tagged",
+        "tagged_elsewhere": "is already tagged",
+    }.get(state)
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
     problems = "".join(
         f"- Not in any table: `{name}`\n"
         for name in _unlisted_migrations(releases, root)
     )
-    # A released tag's lines go under the next version's header, never its own.
-    addition = release_manifest_addition(manifest, root, tag, header=not released)
+    # A taken tag's lines go under the next version's header, never its own.
+    addition = release_manifest_addition(manifest, root, tag, header=not taken)
     path = "`src/budget/migrations/released.toml`"
     heading = f"## Release manifest incomplete for `{tag}`\n\n{problems}\n"
-    if released:
+    if taken:
         return (
-            f"{heading}`{tag}` is already released, and its table is frozen. Run "
+            f"{heading}`{tag}` {taken}. Run "
             f"{UV_VERSION_BUMP} to bump the version in `pyproject.toml`, then add "
             f'these lines as its new table:\n\n```toml\n["v<new version>"]\n'
             f"{addition}```\n"
