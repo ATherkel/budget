@@ -1059,7 +1059,10 @@ Before tagging a release:
    [`uv version --bump <major|minor|patch>`](https://docs.astral.sh/uv/guides/package/#updating-your-version),
    which updates `uv.lock` too. The Release
    workflow takes the tag from it and refuses a version whose tag already
-   exists, because that release's table is frozen. It still runs the
+   exists, because that release's table is frozen and a new release would
+   attach to the existing tag's commit. The one exception is a tag with no
+   GitHub release that points at the commit being released: tick the
+   `adopt_existing_tag` input and the release uses that tag. It still runs the
    manifest check, so a rehearsal before the bump shows both problems: the
    version to bump and the lines the new version's table needs.
 4. Tag by running the Release workflow from `main`, which tags the
