@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from packaging.version import Version
 
 
 def released_migration_drift(manifest: Path, root: Path) -> list[str]:
@@ -61,13 +62,27 @@ def release_manifest_gaps(
     """Why the manifest doesn't freeze every migration in `root`.
 
     Only unlisted files count, whatever tag is being cut: a release that adds
-    no migration needs no table, because earlier tables list every file.
+    no migration needs no table, because earlier tables list every file. A
+    table after the version `tag` releases names a release that hasn't
+    shipped, so it is reported and lists nothing.
     """
-    del tag  # Red stub: the next commit makes `tag` count.
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    after = _tables_after(releases, tag)
+    shipped = {name: files for name, files in releases.items() if name not in after}
     return [
-        f"Not in any table: {name}" for name in _unlisted_migrations(releases, root)
-    ]
+        f"Table `{name}` is after the release being cut, `{tag}`" for name in after
+    ] + [f"Not in any table: {name}" for name in _unlisted_migrations(shipped, root)]
+
+
+def _tables_after(releases: dict[str, Any], tag: str | None) -> list[str]:
+    """The tables whose version is past the one `tag` releases, in file order.
+
+    `v0.3.0.dev1` releases 0.3.0, so a `v0.3.0` table is its own, not later.
+    """
+    if tag is None:
+        return []
+    cut = Version(Version(tag.removeprefix("v")).base_version)
+    return [name for name in releases if Version(name.removeprefix("v")) > cut]
 
 
 def release_manifest_addition(
@@ -129,11 +144,13 @@ def release_manifest_summary(
     return f'{heading}Add these lines under `["{tag}"]` in {path}:\n\n{lines}'
 
 
-def release_manifest_annotations(manifest: Path, root: Path) -> list[str]:
+def release_manifest_annotations(
+    manifest: Path, root: Path, tag: str | None = None
+) -> list[str]:
     """One GitHub Actions error annotation per reason `tag` can't be cut."""
     error = "::error file=src/budget/migrations/released.toml,"
     error += "title=Release manifest incomplete::"
-    return [f"{error}{gap}" for gap in release_manifest_gaps(manifest, root)]
+    return [f"{error}{gap}" for gap in release_manifest_gaps(manifest, root, tag)]
 
 
 def _unlisted_migrations(releases: dict[str, Any], root: Path) -> list[str]:
@@ -559,13 +576,13 @@ def test_every_migration_is_in_a_table_before_a_release() -> None:
         pytest.skip("RELEASE_TAG is not set; the Release workflow sets it")
     manifest = MIGRATIONS / "released.toml"
 
-    gaps = release_manifest_gaps(manifest, MIGRATIONS)
+    gaps = release_manifest_gaps(manifest, MIGRATIONS, tag)
 
     if gaps:
         # The Release workflow's version step says whether the tag is taken.
         state = os.environ.get("RELEASE_TAG_STATE", "new")
         _report_to_github_actions(
-            release_manifest_annotations(manifest, MIGRATIONS),
+            release_manifest_annotations(manifest, MIGRATIONS, tag),
             release_manifest_summary(manifest, MIGRATIONS, tag, state=state),
         )
     assert not gaps, "\n".join(
