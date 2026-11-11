@@ -1055,7 +1055,9 @@ Before tagging a release:
    `tests/test_released_migrations.py` fails when a file
    any table names is changed or deleted. It reads only the manifest and the
    working tree, because CI checks out without tags.
-3. Bump the version in `pyproject.toml` to the new release. The Release
+3. Bump the version in `pyproject.toml` to the new release with
+   [`uv version --bump <major|minor|patch>`](https://docs.astral.sh/uv/guides/package/#updating-your-version),
+   which updates `uv.lock` too. The Release
    workflow takes the tag from it and refuses a version whose tag already
    exists, because that release's table is frozen. It still runs the
    manifest check, so a rehearsal before the bump shows both problems: the
