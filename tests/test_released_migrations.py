@@ -44,10 +44,16 @@ def release_manifest_gaps(manifest: Path, root: Path) -> list[str]:
     ]
 
 
-def release_manifest_addition(manifest: Path, root: Path, tag: str) -> str:
-    """The released.toml lines that would list every unlisted migration under `tag`."""
+def release_manifest_addition(
+    manifest: Path, root: Path, tag: str, *, header: bool = True
+) -> str:
+    """The released.toml lines that would list every unlisted migration under `tag`.
+
+    The `["tag"]` header comes first when `tag` has no table yet, unless
+    `header` is False.
+    """
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
-    lines = [] if tag in releases else [f'["{tag}"]']
+    lines: list[str] = [f'["{tag}"]'] if header and tag not in releases else []
     lines.extend(
         f'"{name}" = "{_released_hash(root / name)}"'
         for name in _unlisted_migrations(releases, root)
@@ -67,11 +73,11 @@ def release_manifest_summary(
         f"- not in any table: `{name}`\n"
         for name in _unlisted_migrations(releases, root)
     )
-    addition = release_manifest_addition(manifest, root, tag)
+    # A released tag's lines go under the next version's header, never its own.
+    addition = release_manifest_addition(manifest, root, tag, header=not released)
     path = "`src/budget/migrations/released.toml`"
     heading = f"## Release manifest incomplete for `{tag}`\n\n{problems}\n"
     if released:
-        # The addition has no header: the frozen tag already has a table.
         return (
             f"{heading}`{tag}` is already released, and its table is frozen. Bump "
             "the version in `pyproject.toml`, then add these lines as its new "
