@@ -82,7 +82,7 @@ jobs:
           if [ -n "$refusals" ]; then
             result="release \`$tag\` would be refused: $refusals (see above)"
           else
-            result="would create release \`$tag\` at \`$GITHUB_SHA\` from \`$REF\`"
+            result="would create release \`$tag\` at $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA from \`$REF\`"
           fi
           echo "**Dry run:** $result. No tag was created because $why." >> "$GITHUB_STEP_SUMMARY"
       - name: Refuse a version that is already released
