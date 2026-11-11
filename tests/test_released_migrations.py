@@ -47,8 +47,12 @@ def released_drift_summary(manifest: Path, root: Path) -> str:
 
 def released_drift_annotations(manifest: Path, root: Path) -> list[str]:
     """One GitHub Actions error annotation per released migration that changed."""
-    del manifest, root  # red stub: green replaces this body
-    return []
+    title = "title=Released migration changed::"
+    message = "changed or deleted since released.toml froze it"
+    return [
+        f"::error file=src/budget/migrations/{name},{title}{name} {message}"
+        for name in released_migration_drift(manifest, root)
+    ]
 
 
 def release_manifest_gaps(manifest: Path, root: Path) -> list[str]:
