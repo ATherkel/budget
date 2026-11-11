@@ -32,6 +32,12 @@ def released_migration_drift(manifest: Path, root: Path) -> list[str]:
     ]
 
 
+def released_drift_summary(manifest: Path, root: Path) -> str:
+    """The Markdown a job summary shows when released migrations changed."""
+    del manifest, root  # red stub: green replaces this body
+    return ""
+
+
 def release_manifest_gaps(manifest: Path, root: Path) -> list[str]:
     """Why the manifest doesn't freeze every migration in `root`.
 
@@ -182,6 +188,27 @@ def test_a_changed_migration_checked_out_with_crlf_endings_is_still_reported(
     (tmp_path / BRONZE).write_bytes(changed.replace(b"\n", b"\r\n"))
 
     assert released_migration_drift(manifest, tmp_path) == [BRONZE]
+
+
+def test_the_job_summary_for_changed_released_migrations_says_to_restore_them(
+    tmp_path: Path,
+) -> None:
+    manifest = _released_tree(tmp_path)
+    (tmp_path / BRONZE).unlink()
+    (tmp_path / SILVER).write_bytes(
+        b"CREATE TABLE evidence (id INTEGER PRIMARY KEY, note TEXT) STRICT;\n"
+    )
+
+    assert released_drift_summary(manifest, tmp_path) == (
+        "## Released migrations changed\n"
+        "\n"
+        "- `bronze/0001_create_bronze_store.sql`\n"
+        "- `silver/0001_create_silver_store.sql`\n"
+        "\n"
+        "A released migration is frozen: stores already past it never see a "
+        "change. Restore each file as `released.toml` records it, and put the "
+        "change in a new migration.\n"
+    )
 
 
 def test_a_release_that_adds_no_migration_needs_no_table(tmp_path: Path) -> None:
