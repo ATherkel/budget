@@ -71,3 +71,18 @@ def test_a_failed_install_is_named_rather_than_blamed_on_the_manifest_check(
 
     assert "1. The locked dependencies could not be installed" in summary
     assert "see above" not in summary
+
+
+def test_a_failed_version_step_is_the_only_reason_given(tmp_path: Path) -> None:
+    # The steps after it are skipped because of it, so they are not reasons.
+    summary = _dry_run_summary(
+        tmp_path,
+        VERSION_OUTCOME="failure",
+        INSTALL_OUTCOME="skipped",
+        CHECK_OUTCOME="skipped",
+    )
+
+    assert "1. The tags or releases could not be read (see the log of that step)" in (
+        summary
+    )
+    assert "2. " not in summary
