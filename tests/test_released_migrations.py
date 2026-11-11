@@ -180,14 +180,14 @@ def test_a_changed_migration_checked_out_with_crlf_endings_is_still_reported(
     assert released_migration_drift(manifest, tmp_path) == [BRONZE]
 
 
-def test_a_release_tag_with_no_table_in_the_manifest_is_reported(
+def test_a_release_tag_with_no_table_passes_when_every_migration_is_in_one(
     tmp_path: Path,
 ) -> None:
+    # A release that adds no migration needs no table: every file is already
+    # frozen by the table of the release that first shipped it.
     manifest = _released_tree(tmp_path)
 
-    assert release_manifest_gaps(manifest, tmp_path, "v0.3.0") == [
-        "v0.3.0 has no table in released.toml"
-    ]
+    assert release_manifest_gaps(manifest, tmp_path, "v0.3.0") == []
 
 
 def test_a_migration_in_no_table_is_reported(tmp_path: Path) -> None:
@@ -274,7 +274,7 @@ def test_the_lines_to_paste_into_an_existing_table_repeat_no_header(
     )
 
 
-def test_a_tag_with_no_table_also_names_each_migration_in_no_table(
+def test_a_tag_with_no_table_names_only_each_migration_in_no_table(
     tmp_path: Path,
 ) -> None:
     manifest = _released_tree(tmp_path)
@@ -283,7 +283,6 @@ def test_a_tag_with_no_table_also_names_each_migration_in_no_table(
     )
 
     assert release_manifest_gaps(manifest, tmp_path, "v0.3.0") == [
-        "v0.3.0 has no table in released.toml",
         "not in any table: silver/0002_add_note.sql",
     ]
 
@@ -299,7 +298,6 @@ def test_the_job_summary_marks_tags_and_paths_as_code(
     assert release_manifest_summary(manifest, tmp_path, "v0.3.0") == (
         "## Release manifest incomplete for `v0.3.0`\n"
         "\n"
-        "- `v0.3.0` has no table in `released.toml`\n"
         "- not in any table: `silver/0002_add_note.sql`\n"
         "\n"
         "Add these lines to the end of `src/budget/migrations/released.toml`:\n"
@@ -373,10 +371,15 @@ def test_each_problem_becomes_an_error_annotation_on_released_toml(
         b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
     )
 
+    (tmp_path / "gold").mkdir()
+    (tmp_path / "gold" / "0001_create_gold_store.sql").write_bytes(
+        b"CREATE TABLE actuals (id INTEGER PRIMARY KEY) STRICT;\n"
+    )
+
     error = "::error file=src/budget/migrations/released.toml,"
     error += "title=Release manifest incomplete::"
     assert release_manifest_annotations(manifest, tmp_path, "v0.3.0") == [
-        f"{error}v0.3.0 has no table in released.toml",
+        f"{error}not in any table: gold/0001_create_gold_store.sql",
         f"{error}not in any table: silver/0002_add_note.sql",
     ]
 
