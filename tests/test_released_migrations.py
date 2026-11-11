@@ -171,6 +171,13 @@ def _released_tree(root: Path) -> Path:
     return manifest
 
 
+def _add_unreleased_silver_migration(root: Path) -> None:
+    """Add `silver/0002_add_note.sql`, which no release table lists yet."""
+    (root / "silver" / "0002_add_note.sql").write_bytes(
+        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
+    )
+
+
 def test_a_released_migration_whose_text_changed_is_reported(tmp_path: Path) -> None:
     manifest = _released_tree(tmp_path)
     (tmp_path / SILVER).write_bytes(
@@ -255,9 +262,7 @@ def test_a_release_that_adds_no_migration_needs_no_table(tmp_path: Path) -> None
 
 def test_a_migration_in_no_table_is_reported(tmp_path: Path) -> None:
     manifest = _released_tree(tmp_path)
-    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
-        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
-    )
+    _add_unreleased_silver_migration(tmp_path)
     _write_manifest(
         manifest,
         {
@@ -278,9 +283,7 @@ def test_the_lines_to_paste_list_each_unlisted_migration_with_its_hash(
     tmp_path: Path,
 ) -> None:
     manifest = _released_tree(tmp_path)
-    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
-        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
-    )
+    _add_unreleased_silver_migration(tmp_path)
     (tmp_path / "gold").mkdir()
     (tmp_path / "gold" / "0001_create_gold_store.sql").write_bytes(
         b"CREATE TABLE actuals (id INTEGER PRIMARY KEY) STRICT;\n"
@@ -317,9 +320,7 @@ def test_the_lines_to_paste_into_an_existing_table_repeat_no_header(
 ) -> None:
     # TOML rejects a second ["v0.3.0"] header, so the lines go under the first.
     manifest = _released_tree(tmp_path)
-    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
-        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
-    )
+    _add_unreleased_silver_migration(tmp_path)
     _write_manifest(
         manifest,
         {
@@ -341,9 +342,7 @@ def test_the_job_summary_marks_tags_and_paths_as_code(
     tmp_path: Path,
 ) -> None:
     manifest = _released_tree(tmp_path)
-    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
-        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
-    )
+    _add_unreleased_silver_migration(tmp_path)
 
     assert release_manifest_summary(manifest, tmp_path, "v0.3.0") == (
         "## Release manifest incomplete for `v0.3.0`\n"
@@ -366,9 +365,7 @@ def test_the_job_summary_for_a_tag_with_a_table_says_to_add_the_lines_under_it(
     # Whether the tag is already released is for the Release workflow to say:
     # these tests read no tags, so the summary makes no guess about it.
     manifest = _released_tree(tmp_path)
-    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
-        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
-    )
+    _add_unreleased_silver_migration(tmp_path)
 
     assert release_manifest_summary(manifest, tmp_path, "v0.2.0") == (
         "## Release manifest incomplete for `v0.2.0`\n"
@@ -391,9 +388,7 @@ def test_the_job_summary_for_a_released_tag_says_to_bump_and_start_a_new_table(
     # A rehearsal before the version bump checks the last release's tag. Its
     # table is frozen, so the lines belong in the next version's new table.
     manifest = _released_tree(tmp_path)
-    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
-        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
-    )
+    _add_unreleased_silver_migration(tmp_path)
 
     summary = release_manifest_summary(manifest, tmp_path, "v0.2.0", released=True)
 
@@ -419,9 +414,7 @@ def test_the_job_summary_for_a_released_tag_with_no_table_has_only_the_new_heade
     # v0.3.0 was released without adding a migration, so it has no table. Its
     # own header in the paste block would put the new files under a released tag.
     manifest = _released_tree(tmp_path)
-    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
-        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
-    )
+    _add_unreleased_silver_migration(tmp_path)
 
     summary = release_manifest_summary(manifest, tmp_path, "v0.3.0", released=True)
 
@@ -438,9 +431,7 @@ def test_each_problem_becomes_an_error_annotation_on_released_toml(
     tmp_path: Path,
 ) -> None:
     manifest = _released_tree(tmp_path)
-    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
-        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
-    )
+    _add_unreleased_silver_migration(tmp_path)
 
     (tmp_path / "gold").mkdir()
     (tmp_path / "gold" / "0001_create_gold_store.sql").write_bytes(
