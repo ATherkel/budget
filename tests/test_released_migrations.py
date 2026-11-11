@@ -67,11 +67,22 @@ def release_manifest_gaps(
     shipped, so it is reported and lists nothing.
     """
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
-    after = _tables_after(releases, tag)
-    shipped = {name: files for name, files in releases.items() if name not in after}
     return [
-        f"Table `{name}` is after the release being cut, `{tag}`" for name in after
-    ] + [f"Not in any table: {name}" for name in _unlisted_migrations(shipped, root)]
+        _table_after_message(name, tag) for name in _tables_after(releases, tag)
+    ] + [
+        f"Not in any table: {name}"
+        for name in _unlisted_migrations(_shipped_tables(releases, tag), root)
+    ]
+
+
+def _table_after_message(table: str, tag: str | None) -> str:
+    return f"Table `{table}` is after the release being cut, `{tag}`"
+
+
+def _shipped_tables(releases: dict[str, Any], tag: str | None) -> dict[str, Any]:
+    """`releases` without the tables after `tag`, which list no shipped file."""
+    after = _tables_after(releases, tag)
+    return {name: files for name, files in releases.items() if name not in after}
 
 
 def _tables_after(releases: dict[str, Any], tag: str | None) -> list[str]:
@@ -97,7 +108,7 @@ def release_manifest_addition(
     lines: list[str] = [f'["{tag}"]'] if header and tag not in releases else []
     lines.extend(
         f'"{name}" = "{_released_hash(root / name)}"'
-        for name in _unlisted_migrations(releases, root)
+        for name in _unlisted_migrations(_shipped_tables(releases, tag), root)
     )
     return "\n".join(lines) + "\n"
 
@@ -124,8 +135,11 @@ def release_manifest_summary(
     }.get(state)
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
     problems = "".join(
+        f"- {_table_after_message(name, tag)}\n"
+        for name in _tables_after(releases, tag)
+    ) + "".join(
         f"- Not in any table: `{name}`\n"
-        for name in _unlisted_migrations(releases, root)
+        for name in _unlisted_migrations(_shipped_tables(releases, tag), root)
     )
     # A taken tag's lines go under the next version's header, never its own.
     addition = release_manifest_addition(manifest, root, tag, header=not taken)
