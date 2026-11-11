@@ -146,8 +146,9 @@ class LostStoreError(RuntimeError):
         """Name the lost store, and what to do instead."""
         super().__init__(
             f"the stores folder has no {label} store, but backup sets of this "
-            f"profile hold one: the {label} store must be restored from the "
-            "newest that holds one; nothing was published"
+            f"profile hold one: the {label} store must be restored with the "
+            "rest of the profile: move every store out of the stores folder, "
+            "then run `budget restore`; nothing was published"
         )
 
 
@@ -505,7 +506,14 @@ def complete_backup_sets(profile: Profile) -> tuple[BackupSet, ...]:
     A folder whose name is not a set's time, a set without a manifest, and a
     set whose files do not match their checksums are left out.
     """
-    folder = profile.backup_path(".")
+    return complete_sets_in(profile.backup_path("."))
+
+
+def complete_sets_in(folder: Path) -> tuple[BackupSet, ...]:
+    """Return the complete backup sets in one backups folder, newest first.
+
+    Development reads production's folder this way, never writing it.
+    """
     if not folder.is_dir():
         return ()
     found = []
@@ -516,6 +524,26 @@ def complete_backup_sets(profile: Profile) -> tuple[BackupSet, ...]:
     return tuple(
         sorted(found, key=lambda found_set: found_set.created_at, reverse=True)
     )
+
+
+def set_profile(backup: BackupSet) -> str | None:
+    """Return the profile a set's manifest says it was taken of, if it reads."""
+    manifest = _read_manifest(backup.path)
+    profile = manifest.get("profile") if manifest is not None else None
+    return profile if isinstance(profile, str) else None
+
+
+def set_store_files(backup: BackupSet) -> dict[str, str]:
+    """Map each stage a complete set's manifest lists to its store's file."""
+    manifest = _read_manifest(backup.path)
+    stores = manifest.get("stores") if manifest is not None else None
+    if not isinstance(stores, dict):
+        return {}
+    return {
+        str(stage): str(store["path"])
+        for stage, store in stores.items()
+        if isinstance(store, dict)
+    }
 
 
 def _lists_store(manifest: dict[str, object], stage: str) -> bool:

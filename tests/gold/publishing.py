@@ -6,20 +6,21 @@ fingerprint it records; neither is any real household's.
 """
 
 from dataclasses import replace
+from hashlib import sha256
 
 from budget.gold import GoldPublication, GoldResult
 from budget.gold.recipe import Recipe, RecipeImportRun
 from budget.gold.store import GoldStore
 from budget.inputs import ConfigurationSnapshot
-from tests.gold.worked_example import PUBLICATION, RECORDS
+from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
 from tests.gold.worked_silver import REGISTRY, TAXONOMY
 
 CONFIGURATION = ConfigurationSnapshot(accounts=REGISTRY, taxonomy=TAXONOMY, rules={})
 RECIPE = Recipe(
     import_runs=frozenset(
         {
-            RecipeImportRun("run-current", "a" * 64),
-            RecipeImportRun("run-savings", "b" * 64),
+            RecipeImportRun("run-current", "a" * 64, CURRENT),
+            RecipeImportRun("run-savings", "b" * 64, SAVINGS),
         }
     ),
     configuration_fingerprint=CONFIGURATION.fingerprint,
@@ -31,6 +32,17 @@ RECIPE = Recipe(
     late_booking_days=7,
     python_version="3.12.14",
     sqlite_version="3.53.1",
+    silver_fingerprint_scheme="1",
+    silver_result_fingerprint="d" * 64,
+    silver_code_version=None,
+    silver_decision_log_position=0,
+    silver_decision_log_prefix_sha256=sha256(b"").hexdigest(),
+    silver_bronze_parser_provenance="unknown",
+    silver_currencies=frozenset(
+        (account_id, account.currency)
+        for account_id, account in CONFIGURATION.accounts.items()
+    ),
+    silver_decisions=(),
 )
 
 

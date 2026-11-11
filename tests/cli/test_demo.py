@@ -3,12 +3,14 @@
 
 import io
 import os
+import re
 import socket
 import subprocess
 import sys
 import time
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from unittest import mock
 from zoneinfo import ZoneInfo
@@ -19,6 +21,7 @@ from fastapi.testclient import TestClient
 
 from budget.cli import main
 from budget.dashboard import create_app
+from budget.gold.recipe import RecipeImportRun
 from budget.gold.store import GoldStore
 from budget.profiles import load_profile_file
 
@@ -82,6 +85,47 @@ def test_demo_creates_a_development_profile_and_starts_the_dashboard(
         serve.call_args.kwargs["port"],
         "http://127.0.0.1:8877" in stdout.getvalue(),
     ) == (0, "", "development", False, 303, "127.0.0.1", 8877, True)
+
+
+def test_the_demo_recipe_names_complete_silver_provenance(tmp_path: Path) -> None:
+    target = tmp_path / "synthetic-dashboard"
+
+    with (
+        redirect_stdout(io.StringIO()),
+        redirect_stderr(io.StringIO()),
+        mock.patch("budget.cli.uvicorn.run"),
+    ):
+        status = main(
+            ["demo", "--directory", str(target), "--port", "8877"],
+            environ={},
+        )
+
+    assert status == 0
+    profile = load_profile_file(target / "profile.toml")
+    with GoldStore(profile, read_only=True) as store:
+        recipe = store.recipe(1)
+    assert recipe.silver_fingerprint_scheme == "1"
+    assert re.fullmatch("[0-9a-f]{64}", recipe.silver_result_fingerprint or "")
+    assert recipe.import_runs == frozenset(
+        {RecipeImportRun("synthetic-dashboard-demo", "a" * 64, "demo-current")}
+    )
+    assert (
+        recipe.silver_identity_version,
+        recipe.silver_code_version,
+        recipe.silver_decision_log_position,
+        recipe.silver_decision_log_prefix_sha256,
+        recipe.silver_bronze_parser_provenance,
+        recipe.silver_currencies,
+        recipe.silver_decisions,
+    ) == (
+        "1",
+        None,
+        0,
+        sha256(b"").hexdigest(),
+        "unknown",
+        frozenset({("demo-current", "DKK"), ("demo-savings", "DKK")}),
+        (),
+    )
 
 
 def test_demo_refuses_and_does_not_change_an_existing_directory(

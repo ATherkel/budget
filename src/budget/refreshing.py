@@ -1,0 +1,295 @@
+# Copyright 2026 Therkel
+"""The `dev refresh` application operation: production's data for development.
+
+Development reads production only through a backup set (ADR-015). Plain
+`dev refresh` restores production's newest complete set into development's
+`upstream` folder, read-only, and leaves development's own stores and
+inputs alone (`operations.md`, *Development diverges from a stage*).
+"""
+
+import shutil
+import sqlite3
+import stat
+from collections.abc import Iterable
+from contextlib import closing
+from dataclasses import dataclass, replace
+from pathlib import Path
+from typing import Final
+
+from budget.backups import (
+    BackupSet,
+    complete_sets_in,
+    set_profile,
+    set_store_files,
+)
+from budget.locking import WriterLock
+from budget.profiles import (
+    DEVELOPMENT_PROFILE_NAME,
+    INPUTS_FOLDER,
+    PRODUCTION_PROFILE_NAME,
+    Profile,
+)
+from budget.restoring import newest_readable
+
+# Development's folder of production's restored stores.
+UPSTREAM_FOLDER: Final = "upstream"
+# Where a refresh copies a set before it replaces `upstream`.
+UPSTREAM_STAGING: Final = "upstream-staging"
+# The suffix of development's inputs folder while `--inputs` replaces it.
+INPUTS_REPLACING_SUFFIX: Final = ".replacing"
+# The suffix of the old inputs folder, set aside until the new one is in place.
+INPUTS_REPLACED_SUFFIX: Final = ".replaced"
+# Where `--writable` relabels a set's stores before moving them in.
+WRITABLE_STAGING: Final = "writable-staging"
+# Where `--writable` keeps development's old stores until the new are in.
+WRITABLE_REPLACED: Final = "writable-replaced"
+# A store file and the files SQLite keeps beside it.
+_STORE_FILE_SUFFIXES: Final = ("", "-wal", "-shm", "-journal")
+
+
+class NotRefreshableError(RuntimeError):
+    """The profile reads no production backup sets: nothing was refreshed."""
+
+    def __init__(self, name: str) -> None:
+        """Name the profile, and what dev refresh needs."""
+        super().__init__(
+            "dev refresh needs a development profile whose `upstream_backups` "
+            f"names production's backups folder; the {name} profile is not "
+            "one; nothing was refreshed"
+        )
+
+
+class RefreshWriteError(RuntimeError):
+    """A writable refresh could not move its stores in: none was changed."""
+
+    def __init__(self, reason: str) -> None:
+        """Say why, and that development's stores were kept."""
+        super().__init__(
+            f"the backup set could not be refreshed into development's stores: "
+            f"{reason}; development's stores are as they were"
+        )
+
+
+class RefreshUndoError(RuntimeError):
+    """A writable refresh failed and could not put every old store back."""
+
+    def __init__(self, stuck: list[str], aside: Path) -> None:
+        """Name the stores to check, and where the old ones were kept."""
+        super().__init__(
+            f"the backup set could not be refreshed into development's stores, "
+            f"and these could not be put back: {', '.join(stuck)}; "
+            f"development's old stores that remain are in {aside}"
+        )
+
+
+class NotProductionsStoreError(RefreshWriteError):
+    """A store copied for a writable refresh is not production's."""
+
+    def __init__(self, store: str) -> None:
+        """Name the store; it was not relabelled."""
+        super().__init__(f"{store} is not production's store")
+
+
+class NotProductionsSetError(RuntimeError):
+    """The newest set in `upstream_backups` is another profile's."""
+
+    def __init__(self, name: str, profile: str | None) -> None:
+        """Name the set and whose it is."""
+        super().__init__(
+            f"backup set {name} is the {profile or 'unnamed'} profile's, not "
+            "production's: check `upstream_backups`; nothing was refreshed"
+        )
+
+
+class InputsNotReplacedError(RuntimeError):
+    """`--inputs` could not swap in the set's inputs: nothing was refreshed."""
+
+    def __init__(self, cause: OSError) -> None:
+        """Say what failed; the inputs and upstream are as they were."""
+        super().__init__(
+            f"could not replace development's inputs ({cause.strerror or cause}); "
+            "they are unchanged; nothing was refreshed"
+        )
+
+
+def require_refreshable(profile: Profile) -> None:
+    """Refuse, touching nothing, a profile that has no upstream sets to read."""
+    if profile.name != DEVELOPMENT_PROFILE_NAME or profile.upstream_backups is None:
+        raise NotRefreshableError(profile.name)
+
+
+def _remove_read_only(folder: Path) -> None:
+    """Delete a folder of read-only copies, making each writable first."""
+    if not folder.is_dir():
+        return
+    for copy in folder.iterdir():
+        copy.chmod(stat.S_IREAD | stat.S_IWRITE)
+    shutil.rmtree(folder)
+
+
+def _replace_inputs(profile: Profile, backup: BackupSet) -> None:
+    """Make development's inputs folder the set's copy of production's.
+
+    The copy is made beside the folder and replaces it only once whole. The
+    old folder is moved aside first and deleted last, so a folder that cannot
+    be moved (a file in it is open) leaves it exactly as it was.
+    """
+    inputs = Path(profile.inputs)
+    replacing = inputs.with_name(inputs.name + INPUTS_REPLACING_SUFFIX)
+    replaced = inputs.with_name(inputs.name + INPUTS_REPLACED_SUFFIX)
+    shutil.rmtree(replacing, ignore_errors=True)
+    shutil.rmtree(replaced, ignore_errors=True)
+    try:
+        shutil.copytree(backup.path / INPUTS_FOLDER, replacing)
+        if inputs.exists():
+            inputs.rename(replaced)
+    except OSError as error:
+        shutil.rmtree(replacing, ignore_errors=True)
+        raise InputsNotReplacedError(error) from error
+    replacing.rename(inputs)
+    shutil.rmtree(replaced, ignore_errors=True)
+
+
+@dataclass(frozen=True)
+class Refreshed:
+    """What `refresh` did: the set used and the newer complete sets passed over."""
+
+    backup: BackupSet
+    skipped: tuple[str, ...]
+
+
+def _relabel(copy: Path, profile: Profile) -> None:
+    """Make a copy of production's store development's, changing nothing else.
+
+    Only the one-row `store_identity` changes, so Bronze's runs and payloads,
+    its evidence, come over exactly as production recorded them. A copy that
+    is not production's is refused: the set was checked before it was copied.
+    """
+    with closing(sqlite3.connect(copy)) as connection, connection:
+        relabelled = connection.execute(
+            "UPDATE store_identity SET profile = ? WHERE profile = ?",
+            (profile.name, PRODUCTION_PROFILE_NAME),
+        )
+    if relabelled.rowcount != 1:
+        raise NotProductionsStoreError(copy.name)
+
+
+def _own_store_files(profile: Profile) -> list[Path]:
+    """Name development's stage store files that exist, with SQLite's own."""
+    stores = (profile.bronze_store, profile.silver_store, profile.gold_store)
+    return [
+        found
+        for store in stores
+        for suffix in _STORE_FILE_SUFFIXES
+        if (found := store.with_name(store.name + suffix)).exists()
+    ]
+
+
+def _swap_in(profile: Profile, staging: Path, stores: Iterable[str]) -> None:
+    """Replace development's stores with the staged ones, as one group.
+
+    Every store there, a set's or not, is moved aside first, so no old store
+    stays beside new ones. If any move fails, moving one aside or one in,
+    the new stores moved in are taken out and the old ones put back.
+    """
+    aside = profile.stores / WRITABLE_REPLACED
+    shutil.rmtree(aside, ignore_errors=True)
+    aside.mkdir()
+    moved_in: list[Path] = []
+    try:
+        for found in _own_store_files(profile):
+            found.replace(aside / found.name)
+        # Each move is recorded as it is made, so a failure keeps those before.
+        moved_in.extend(
+            (staging / store).replace(profile.stores / store) for store in stores
+        )
+    except OSError as error:
+        stuck = _undo_swap(profile, aside, moved_in)
+        if stuck:
+            raise RefreshUndoError(stuck, aside) from error
+        raise
+    shutil.rmtree(aside, ignore_errors=True)
+
+
+def _undo_swap(profile: Profile, aside: Path, moved_in: list[Path]) -> list[str]:
+    """Take the new stores out and put the old back; name each that stays stuck.
+
+    Every step is tried even if one fails, so the old stores that can be put
+    back are, and the folder `aside` is kept for those that cannot.
+    """
+    stuck: list[str] = []
+    for new in moved_in:
+        try:
+            new.unlink()
+        except OSError:
+            stuck.append(new.name)
+    for kept in list(aside.iterdir()):
+        try:
+            kept.replace(profile.stores / kept.name)
+        except OSError:
+            stuck.append(kept.name)
+    return sorted(set(stuck))
+
+
+def _restore_writable(profile: Profile, backup: BackupSet) -> None:
+    """Restore the set into development's own stores, relabelled as its own.
+
+    Development's stores make no promise to keep (`operations.md`), so the
+    ones there are replaced; each copy is relabelled before it is moved in.
+    """
+    staging = profile.stores / WRITABLE_STAGING
+    try:
+        shutil.rmtree(staging, ignore_errors=True)
+        staging.mkdir(parents=True)
+        stores = set_store_files(backup).values()
+        for store in stores:
+            shutil.copyfile(backup.path / store, staging / store)
+            _relabel(staging / store, profile)
+        _swap_in(profile, staging, stores)
+    except OSError as error:
+        raise RefreshWriteError(error.strerror or type(error).__name__) from None
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+def refresh(
+    lock: WriterLock, *, inputs: bool = False, writable: bool = False
+) -> Refreshed:
+    """Restore production's newest complete set for development.
+
+    By default it goes into `upstream`, read-only. The copies are made in a
+    staging folder beside it and replace the old `upstream` folder only once
+    they are all made. With `inputs`,
+    development's inputs are replaced by the set's too. With `writable`, the
+    set is restored into development's own stores instead of `upstream`.
+    """
+    profile = lock.profile
+    require_refreshable(profile)
+    # Production's stores, checked as production's: each must open under
+    # its own identity, at a schema version this code knows, and intact.
+    as_production = replace(profile, name=PRODUCTION_PROFILE_NAME)
+    sets = complete_sets_in(Path(str(profile.upstream_backups)))
+    # Before vetting: a set of another profile fails the identity check and
+    # would be passed over as unreadable instead of refused.
+    for found in sets:
+        taken_of = set_profile(found)
+        if taken_of != PRODUCTION_PROFILE_NAME:
+            raise NotProductionsSetError(found.name, taken_of)
+    newest, skipped = newest_readable(as_production, sets)
+    # Inputs first: if they cannot be swapped, upstream is left as it was.
+    if inputs:
+        _replace_inputs(profile, newest)
+    if writable:
+        _restore_writable(profile, newest)
+        return Refreshed(newest, skipped)
+    upstream = profile.stores / UPSTREAM_FOLDER
+    staging = profile.stores / UPSTREAM_STAGING
+    _remove_read_only(staging)
+    staging.mkdir(parents=True)
+    for store in set_store_files(newest).values():
+        copy = staging / store
+        shutil.copyfile(newest.path / store, copy)
+        copy.chmod(stat.S_IREAD)
+    _remove_read_only(upstream)
+    staging.rename(upstream)
+    return Refreshed(newest, skipped)

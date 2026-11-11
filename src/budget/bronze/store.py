@@ -10,7 +10,7 @@ declared `source_format`.
 
 import json
 import sqlite3
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from hashlib import sha256
@@ -106,36 +106,45 @@ def _decide_outcome(
     payload_id: str,
     declared_account_id: str,
     declaration_refused: bool,
+    voided: Collection[str],
 ) -> tuple[bool, str | None]:
-    """Decide whether this presentation repeats, is refused, or is a new store."""
-    original_run = connection.execute(
+    """Decide whether this presentation repeats, is refused, or is a new store.
+
+    A voided run no longer stands for its bytes, so it is nobody's original.
+    """
+    stored_here = connection.execute(
         """
         SELECT import_run_id FROM import_runs
         WHERE payload_id = ? AND declared_account_id = ? AND outcome = 'stored'
         ORDER BY started_at, import_run_id
-        LIMIT 1
         """,
         (payload_id, declared_account_id),
-    ).fetchone()
-    repeat_of: str | None = None
-    if original_run is not None:
-        repeat_of = str(original_run["import_run_id"])
+    ).fetchall()
+    repeat_of = next(
+        (
+            str(row["import_run_id"])
+            for row in stored_here
+            if row["import_run_id"] not in voided
+        ),
+        None,
+    )
 
     # Bytes already stored for another account are refused: the payload has one
-    # owner, and only a manual decision may move it.
-    account_conflict = None
+    # owner, and only a manual decision, a void of that run, may move it.
+    account_conflict = False
     if repeat_of is None:
-        account_conflict = connection.execute(
+        stored_elsewhere = connection.execute(
             """
             SELECT import_run_id FROM import_runs
             WHERE payload_id = ? AND outcome = 'stored'
                 AND declared_account_id <> ?
-            ORDER BY started_at, import_run_id
-            LIMIT 1
             """,
             (payload_id, declared_account_id),
-        ).fetchone()
-    refused = declaration_refused or account_conflict is not None
+        ).fetchall()
+        account_conflict = any(
+            row["import_run_id"] not in voided for row in stored_elsewhere
+        )
+    refused = declaration_refused or account_conflict
     if refused:
         # A refused run is nobody's original: it is never the run a later
         # presentation of these bytes repeats.
@@ -289,8 +298,14 @@ class BronzeStore:
         self,
         path: str | Path,
         declaration: ImportDeclaration,
+        *,
+        voided: Collection[str] = frozenset(),
     ) -> ImportRun:
-        """Retain a file's bytes, provenance, and decoded source records."""
+        """Retain a file's bytes, provenance, and decoded source records.
+
+        `voided` are the import runs a manual decision has voided. Bronze does
+        not read the decision log, so its caller names them.
+        """
         started_at = datetime.now(UTC)
         source_format = declaration.source_format
         parser = self._parser_for(source_format)
@@ -326,6 +341,7 @@ class BronzeStore:
                 payload_id=payload_id,
                 declared_account_id=declaration.declared_account_id,
                 declaration_refused=declaration_refused,
+                voided=voided,
             )
 
             _record_run(

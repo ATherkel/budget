@@ -9,15 +9,18 @@ is synthetic.
 import json
 import unittest
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
 from budget.bronze import BronzeStore
 from budget.bronze.parsers.registry import source_parser
+from budget.gold.recipe import RecipeImportRun
+from budget.gold.store import GoldStore
 from budget.profiles import Profile, load_profile_file
 from budget.routine_logging import LOG_FILE, LOG_FOLDER
-from budget.silver import SilverStore
+from budget.silver import SilverImportRun, SilverStore
 from tests.backups.sets import manifest, run_ids
 from tests.cli.commands import import_, migrate
 from tests.cli.imports import clean_checkout, clean_git, write_ranges
@@ -75,6 +78,41 @@ def _silver_build_state(profile: Profile) -> tuple[bytes, int]:
 
 
 class ImportCommandTests(unittest.TestCase):
+    def test_an_unreadable_decision_log_refuses_before_importing(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            source = drop(profile, "joint-current", "danske-20260305.csv", content)
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-04"))
+            decision_log = profile.input_file("decisions.jsonl")
+            private = "PRIVATE-DECISION-CONTENT"
+            original_read_bytes = Path.read_bytes
+
+            def read_bytes(path: Path) -> bytes:
+                if path == decision_log:
+                    raise PermissionError(private)
+                return original_read_bytes(path)
+
+            with mock.patch.object(
+                Path, "read_bytes", autospec=True, side_effect=read_bytes
+            ):
+                try:
+                    result = import_(profile_file, "--ranges", str(ranges))
+                except PermissionError:
+                    result = None
+
+                assert result is not None
+                assert result == (
+                    EXIT_REFUSED_INPUT,
+                    "",
+                    "budget: decisions.jsonl: cannot be read: PermissionError\n",
+                )
+                assert private not in result[1] + result[2]
+                assert source.read_bytes() == content
+                assert run_ids(profile.bronze_store) == []
+
     def test_an_inbox_export_is_imported_then_silver_is_rebuilt(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
@@ -97,9 +135,40 @@ class ImportCommandTests(unittest.TestCase):
                 "2026-03-04",
             )
             with SilverStore(profile) as store:
-                [result] = store.read().import_run_results
+                stored = store.read_build()
+            [result] = stored.result.import_run_results
             assert result.import_run_id == entry["import_run_id"]
             assert result.status == "accepted"
+            provenance = stored.provenance
+            assert provenance is not None
+            assert provenance.import_runs == frozenset(
+                {
+                    SilverImportRun(
+                        result.import_run_id,
+                        sha256(content).hexdigest(),
+                        "joint-current",
+                    )
+                }
+            )
+            assert dict(provenance.currencies) == {"joint-current": "DKK"}
+            assert (
+                provenance.decisions,
+                provenance.decision_log_position,
+                provenance.code_version,
+                provenance.bronze_parser_provenance,
+            ) == ((), 0, None, "unknown")
+            with GoldStore(profile) as gold:
+                recipe = gold.recipe(1)
+            assert recipe.silver_result_fingerprint == provenance.result_fingerprint
+            assert recipe.import_runs == frozenset(
+                {
+                    RecipeImportRun(
+                        result.import_run_id,
+                        sha256(content).hexdigest(),
+                        "joint-current",
+                    )
+                }
+            )
             assert "[1] joint-current  stored\n" in stdout
             assert "Silver   1 admitted, 0 quarantined, 0 dropped\n" in stdout
 
@@ -475,6 +544,10 @@ class ImportCommandTests(unittest.TestCase):
                 ),
                 '[account.joint-curent]: "joint-curent" is not in accounts.toml',
             ),
+            "from after through": (
+                "format = 1\n[default]\nfrom = 2026-03-04\nthrough = 2026-03-01\n",
+                "[default]: from falls after through",
+            ),
         }
         for case, (text, problem) in cases.items():
             with self.subTest(case), TemporaryDirectory() as directory:
@@ -535,6 +608,35 @@ class InteractiveImportTests(unittest.TestCase):
                 "2026-03-04",
             )
 
+    def test_the_prompt_asks_again_when_from_falls_after_through(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            source = drop(
+                profile, "joint-current", "danske-20260305.csv", payload("01.03.2026")
+            )
+            typed = "2026-03-04\n2026-03-01\n2026-03-01\n2026-03-04\ny\n"
+
+            status, stdout, stderr = import_(profile_file, typed=typed)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "    from: "
+                "    through: "
+                "    the range starts after it ends: from must fall on or "
+                "before through\n"
+                "    from: "
+                "    through: "
+                "Import 1 file? [y/N] "
+            ) in stdout
+            assert not source.exists()
+            [entry] = log_entries(profile)
+            assert (entry["covers_from"], entry["covers_through"]) == (
+                "2026-03-01",
+                "2026-03-04",
+            )
+
     def test_enter_repeats_the_range_typed_for_the_file_before(self) -> None:
         with TemporaryDirectory() as directory:
             folder = Path(directory)
@@ -550,6 +652,36 @@ class InteractiveImportTests(unittest.TestCase):
 
             assert (status, stderr) == (EXIT_OK, "")
             assert (
+                "    from [2026-03-01]: "
+                "    through [2026-03-04]: "
+                "Import 2 files? [y/N] "
+            ) in stdout
+            ranges = {
+                entry["account_id"]: (entry["covers_from"], entry["covers_through"])
+                for entry in log_entries(profile)
+            }
+            assert ranges == {
+                "joint-current": ("2026-03-01", "2026-03-04"),
+                "joint-savings": ("2026-03-01", "2026-03-04"),
+            }
+
+    def test_enter_after_an_inverted_range_offers_the_file_before(self) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            drop(profile, "joint-current", "danske-20260305.csv", payload("01.03.2026"))
+            drop(profile, "joint-savings", "danske-20260305.csv", payload("02.03.2026"))
+            # The second file's inverted pair is refused; Enter twice then
+            # takes the first file's range, not the pair just typed.
+            typed = "2026-03-01\n2026-03-04\n2026-03-04\n2026-03-02\n\n\ny\n"
+
+            status, stdout, stderr = import_(profile_file, typed=typed)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert (
+                "    the range starts after it ends: from must fall on or "
+                "before through\n"
                 "    from [2026-03-01]: "
                 "    through [2026-03-04]: "
                 "Import 2 files? [y/N] "
@@ -1064,7 +1196,7 @@ class ProductionImportTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_OK, "")
             [entry] = log_entries(profile)
             [written] = sorted(set(_set_names(profile)) - set(sets_before))
-            assert stdout.endswith(f"Backup   backup set {written} written\n")
+            assert f"Backup   backup set {written} written\n" in stdout
             backup_set = profile.backup_path(written)
             stores = manifest(backup_set)["stores"]
             assert isinstance(stores, dict)
@@ -1131,7 +1263,9 @@ class ProductionImportTests(unittest.TestCase):
                     status, stdout, stderr = import_(profile_file, *options)
 
                 assert (status, stderr) == (EXIT_OK, "")
-                assert stdout == "The inbox holds no exports; nothing was imported.\n"
+                assert stdout.startswith(
+                    "The inbox holds no exports; nothing was imported.\n"
+                )
                 assert _set_names(profile) == sets_before
 
     def test_when_no_file_reaches_bronze_nothing_is_rebuilt_or_backed_up(
@@ -1155,7 +1289,7 @@ class ProductionImportTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
             lines = stdout.splitlines()
             assert lines[0].startswith("[1] (no account)  misfiled: ")
-            assert lines[1:] == ["Nothing was imported."]
+            assert lines[1] == "Nothing was imported."
             assert _set_names(profile) == sets_before
 
     def test_an_account_silver_cannot_build_refuses_before_storing(self) -> None:

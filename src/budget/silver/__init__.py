@@ -13,12 +13,16 @@ from budget.silver.decisions import (
     VoidImportRun,
     Withdrawn,
 )
+from budget.silver.fingerprint import SILVER_FINGERPRINT_SCHEME, result_fingerprint
 from budget.silver.models import (
     AccountEvidence,
     BalanceObservation,
     EvidenceExport,
     ImportRunResult,
     ReviewItem,
+    SilverBuild,
+    SilverImportRun,
+    SilverProvenance,
     SilverResult,
     Transaction,
     TransactionEvidence,
@@ -29,6 +33,7 @@ from budget.silver.rebuild import (
     SilverBuildInputs,
     derive_silver,
     rebuild_silver,
+    silver_provenance,
     store_silver,
 )
 from budget.silver.storage import (
@@ -43,6 +48,7 @@ from budget.silver.storage import (
 from budget.silver.store import SilverStore
 
 __all__ = [
+    "SILVER_FINGERPRINT_SCHEME",
     "AcceptDiscrepancy",
     "AccountEvidence",
     "BalanceObservation",
@@ -55,8 +61,11 @@ __all__ = [
     "NonFiniteMoneyError",
     "ReviewItem",
     "SameTransaction",
+    "SilverBuild",
     "SilverBuildInputs",
     "SilverDecision",
+    "SilverImportRun",
+    "SilverProvenance",
     "SilverResult",
     "SilverStore",
     "Transaction",
@@ -70,5 +79,7 @@ __all__ = [
     "derive_silver",
     "migrate_silver",
     "rebuild_silver",
+    "result_fingerprint",
+    "silver_provenance",
     "store_silver",
 ]

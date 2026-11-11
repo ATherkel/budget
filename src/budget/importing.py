@@ -13,7 +13,7 @@ import json
 import os
 import re
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import date
 from hashlib import sha256
@@ -564,16 +564,23 @@ def _clear_from_inbox(source: Path, run: ImportRun) -> bool:
     return False
 
 
-def _earlier_run(store: BronzeStore, account_id: str, source: Path) -> ImportRun | None:
+def _earlier_run(
+    store: BronzeStore, account_id: str, source: Path, voided: Collection[str]
+) -> ImportRun | None:
     """Return the accepted run an interrupted import of this file left behind.
 
     The retry identity is the account, the original filename and the payload
-    hash. A refused run never matches: presenting the file again is new.
+    hash. A refused or voided run never matches: presenting the file again is
+    new.
     """
     identity = (account_id, source.name, _payload_id(source))
     for run in store.import_runs():
         found = (run.declared_account_id, run.original_filename, run.payload_id)
-        if found == identity and run.outcome in RETRIED_OUTCOMES:
+        if (
+            found == identity
+            and run.outcome in RETRIED_OUTCOMES
+            and run.import_run_id not in voided
+        ):
             return run
     return None
 
@@ -582,11 +589,15 @@ def import_inbox_file(
     lock: WriterLock,
     source: Path,
     coverage: Coverage,
+    *,
+    voided: Collection[str] = frozenset(),
 ) -> InboxImport:
     """Import one inbox file under the held writer lock.
 
-    In production, the caller writes a backup set after its Bronze writes, as
-    `budget import` does.
+    `voided` are the import runs the decision log's `void-import-run`
+    decisions void; such a run is neither retried nor repeated. In production,
+    the caller writes a backup set after its Bronze writes, as `budget import`
+    does.
     """
     profile = lock.profile
     account = _inbox_account(profile, source)
@@ -601,9 +612,9 @@ def import_inbox_file(
         # Earlier runs are finished first, so one that cannot be stops this
         # import before it records anything of its own.
         logged = _bring_log_up_to_date(profile, store, _recover_log(profile, store))
-        run = _earlier_run(store, account.account_id, source)
+        run = _earlier_run(store, account.account_id, source, voided)
         if run is None:
-            run = store.import_file(source, declaration)
+            run = store.import_file(source, declaration, voided=voided)
         content = store.get_payload(run.payload_id).content
         # An earlier run is logged by now, so its log entry names its place.
         archive_path = logged.get(run.import_run_id)

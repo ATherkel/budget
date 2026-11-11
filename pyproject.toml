@@ -8,10 +8,10 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.142.2",
+    "fastapi>=0.162.0",
     "jinja2>=3.1.6",
     "python-multipart>=0.0.32",
-    "tzdata>=2026.5",
+    "tzdata>=2026.6",
     "uvicorn>=0.54.0",
 ]
 
@@ -19,13 +19,13 @@ dependencies = [
 budget = "budget.cli:run"
 
 [build-system]
-requires = ["uv_build>=0.13.1,<0.14.0"]
+requires = ["uv_build>=0.13.7,<0.14.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
     "complexipy>=4",
-    "coverage>=7.16.2",
+    "coverage>=7.17.2",
     "httpx2>=2.13.1",
     "playwright==1.64.1",
     "pytest>=8",
@@ -75,6 +75,11 @@ max-complexity = 15
 
 [tool.ruff.format]
 docstring-code-format = true
+
+[tool.pytest.ini_options]
+markers = [
+    "docs: reads docs/ or README.md; tests/conftest.py adds it by module",
+]
 
 [tool.ty.rules]
 # Promote every ty warning to an error so the gate cannot pass with warnings.

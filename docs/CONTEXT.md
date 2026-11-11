@@ -3,6 +3,9 @@ type: glossary
 ---
 # Household Finance
 
+This glossary defines the project's household-finance vocabulary and links
+each term to its governing rules.
+
 A platform that turns imported bank exports into trustworthy household financial
 reporting: reproducible Bronze → Silver → Gold transformation feeding read-only
 analytics and a dashboard.
@@ -251,6 +254,14 @@ match. Every decision that settles a quarantine is raised by one, so none has
 to be known about in advance.
 _Avoid_: error, warning, conflict
 
+**Handle**:
+A short prefix of a transaction's durable ID that names one current Silver
+transaction. Review prints eight characters; Find prints the shortest prefix of
+at least eight characters that remains unique across Silver and lengthens it
+when transactions collide. A Manual decision accepts a Handle and resolves it
+to the full transaction ID.
+_Avoid_: transaction ID (the full identity), truncated ID without uniqueness
+
 **Manual decision**:
 A recorded human ruling: it classifies a transaction, settles a Review item,
 or voids an import run. It targets transactions by their identity and never
@@ -279,10 +290,40 @@ consumer reads exactly one at a time. The rules are in
 _Avoid_: Version, snapshot (a Monthly balance snapshot is a fact), release
 
 **Recipe**:
-The record of every input a Publication was built from: its import runs,
-configuration snapshot, Decision log position, and code version. Rebuilding a
-Recipe with the code version it names yields the same result.
+The immutable record of the inputs a Publication consumed. Its fields are in
+[`publications.md`](architecture/publications.md#the-recipe).
 _Avoid_: Manifest, lineage (lineage explains one fact, not a build)
+
+**Silver build provenance**:
+The immutable record Silver commits with a completed result to identify its
+inputs, output and producer. Its fields are in
+[`silver-layer.md`](architecture/silver-layer.md#build-provenance).
+_Avoid_: Silver metadata (hides the atomicity and identity contract), current
+context
+
+**Fresh Silver provenance**:
+Silver build provenance that matches the inputs and contracts Gold will use.
+The acceptance conditions are in
+[`publications.md`](architecture/publications.md#gold-acceptance).
+_Avoid_: Current Silver (does not say what was consumed)
+
+**Stale Silver provenance**:
+Silver build provenance that no longer matches the relevant inputs Gold would
+use. The response is in
+[`operations.md`](architecture/operations.md#provenance-recovery).
+_Avoid_: Old publication, latest Silver
+
+**Unknown Silver provenance**:
+A completed Silver result whose inputs or producer cannot be established.
+The acceptance consequence is in
+[`publications.md`](architecture/publications.md#gold-acceptance).
+_Avoid_: Missing Silver, current context
+
+**Undeclared consumed account**:
+An account named by a consumed Silver run that `accounts.toml` no longer
+declares. The recovery action is in
+[`operations.md`](architecture/operations.md#provenance-recovery).
+_Avoid_: Stale account, stale Silver
 
 **Current publication**:
 The Publication reports show by default. A successful build becomes current at

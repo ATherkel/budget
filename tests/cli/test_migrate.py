@@ -30,7 +30,8 @@ from tests.bronze.migration_resources import (
     added_migration,
     patched_resources,
 )
-from tests.cli.commands import migrate
+from tests.cli.commands import migrate, rebuild
+from tests.cli.pipelines import household
 from tests.cli.profile_files import development_profile, write_profile
 
 EXIT_OK = 0
@@ -392,6 +393,71 @@ class MigrateDefectTests(unittest.TestCase):
                 assert (
                     connection.execute("SELECT * FROM sqlite_master").fetchall() == []
                 )
+
+
+class SilverProvenanceMigrationTests(unittest.TestCase):
+    def test_populated_v0_2_0_silver_recovers_through_cli_rebuild(self) -> None:
+        # Silver as v0.2.0 shipped it (version 1), holding a derived result
+        # built without run payloads or build provenance.
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            built = household(folder, silver=False)
+            built.profile.silver_store.unlink()
+            schema_1 = (SILVER_MIGRATIONS / "0001_create_silver_store.sql").read_text(
+                "utf-8"
+            )
+            with closing(sqlite3.connect(built.profile.silver_store)) as connection:
+                connection.executescript(schema_1)
+                connection.execute(
+                    "INSERT INTO store_identity VALUES (1, 'development', 'silver')"
+                )
+                connection.execute(
+                    "INSERT INTO account_currencies VALUES ('joint-current', 'DKK')"
+                )
+                connection.execute(
+                    "INSERT INTO transactions"
+                    " (ordinal, transaction_id, account_id, transaction_date, amount,"
+                    " currency, description, source_system, source_status,"
+                    " booking_status, occurrence, day_sequence, identity_version)"
+                    " VALUES (1, 't1', 'joint-current', '2026-03-01', -4500, 'DKK',"
+                    " 'SYNTHETIC', 'csv', 'BOOKED', 'booked', 1, 1, '1')"
+                )
+                connection.execute(
+                    "INSERT INTO import_run_results VALUES"
+                    " (1, 'run-old', 'joint-current', 'accepted',"
+                    " '2026-03-01', '2026-03-04')"
+                )
+                connection.execute("PRAGMA user_version = 1")
+                connection.commit()
+
+            status, stderr = migrate(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert _user_version(built.profile.silver_store) == 2
+            with closing(sqlite3.connect(built.profile.silver_store)) as connection:
+                assert (
+                    connection.execute("SELECT * FROM account_currencies").fetchall()
+                    == []
+                )
+            with SilverStore(built.profile) as store:
+                assert not store.is_built()
+                assert store.read().transactions == ()
+                assert store.read().import_run_results == ()
+
+            status, stdout, stderr = rebuild(built.profile_file, "--from", "silver")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert "published publication 1" in stdout
+            with GoldStore(built.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.publication_id == 1
+                recipe = gold.recipe(1)
+            # The recipe names the rebuilt Silver, not the version 1 rows.
+            assert recipe.silver_fingerprint_scheme == "1"
+            assert [run.import_run_id for run in recipe.import_runs] == [
+                built.import_run_id
+            ]
 
 
 if __name__ == "__main__":

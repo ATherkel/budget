@@ -36,6 +36,10 @@ from tests.bronze.migration_resources import SILVER_MIGRATIONS
 # children point at.
 STORE_TABLES = {
     "account_currencies",
+    "silver_builds",
+    "silver_build_runs",
+    "silver_build_currencies",
+    "silver_build_decisions",
     "transactions",
     "transaction_evidence",
     "unbooked_records",
@@ -362,6 +366,40 @@ def test_a_store_at_schema_version_1_migrates_and_must_be_rebuilt() -> None:
             # so what version 1 derived is cleared and Silver is rebuilt.
             assert not store.is_built()
             assert store.read().import_run_results == ()
+
+
+def test_a_store_v0_2_0_created_gains_the_evidence_exports_table() -> None:
+    # v0.2.0 shipped Silver 0001 without evidence exports (#364): the table
+    # arrives with a later migration, in the column order the store reads.
+    with TemporaryDirectory() as directory:
+        profile = make_test_profile(directory)
+        profile.silver_store.parent.mkdir(parents=True)
+        schema = (SILVER_MIGRATIONS / "0001_create_silver_store.sql").read_text("utf-8")
+        with closing(sqlite3.connect(profile.silver_store)) as connection:
+            connection.execute("PRAGMA journal_mode = WAL")
+            connection.executescript(schema)
+            connection.execute("PRAGMA user_version = 1")
+            connection.execute(
+                "INSERT INTO store_identity VALUES (1, ?, 'silver')", (profile.name,)
+            )
+            connection.commit()
+
+        migrate_silver(profile)
+
+        with closing(sqlite3.connect(profile.silver_store)) as connection:
+            columns = [
+                row[1]
+                for row in connection.execute("PRAGMA table_info(evidence_exports)")
+            ]
+        assert columns == [
+            "ordinal",
+            "import_run_id",
+            "account_id",
+            "exported_on",
+            "covers_from",
+            "covers_through",
+            "payload_id",
+        ]
 
 
 if __name__ == "__main__":

@@ -5,7 +5,8 @@ an immutable Bronze → Silver → Gold data pipeline so reports remain independ
 of bank and import format.
 
 Start with the [documentation map](docs/README.md) and the
-[delivery roadmap](docs/03-roadmap.md).
+[delivery roadmap](docs/03-roadmap.md). To try each feature by hand on your
+development profile, follow [testing by hand](docs/developers/manual-testing.md).
 
 ## Install and test
 
@@ -199,6 +200,32 @@ that kind's items and no runs. A filter that matches nothing exits 0 and prints
 nothing. Review only reads the persisted Silver result: it takes no writer lock
 and needs neither a Bronze store nor `accounts.toml`.
 
+`budget find <text> [--month YYYY-MM] [--account <id>]` searches every
+transaction in the current publication, whether classified or not. The text
+match ignores case, and the optional month and account filters apply together.
+Each target line uses review's format and ends with the published category, or
+`category unclassified`. The handle is at least eight characters long and is
+lengthened when another Silver transaction shares its prefix.
+
+To correct any transaction, first find it, then classify it. If an earlier
+decision applies, name that decision with `--supersedes`:
+
+```powershell
+uv run budget find MENY
+uv run budget decide classify <handle> groceries --reason "Correct merchant"
+uv run budget decide classify <handle> eating-out --reason "Wrong category" --supersedes d-0001
+```
+
+`find` is read-only. It leaves the stores and current publication unchanged,
+and every handle it prints resolves through `decide` to the same Silver
+transaction.
+
+If any matching transaction in the current Gold publication is absent from
+current Silver, `find` refuses the whole search before printing targets. This
+can follow `undo` after a decision removed transactions from Silver. Run
+`budget rebuild` to publish Gold from current Silver; the decision log and
+Silver decisions are retained.
+
 `migrate_bronze` refuses the production profile: production is migrated only
 by `budget migrate`, which backs the store up first (see below).
 `BronzeStore(profile, parsers=...)` accepts an optional mapping for
@@ -235,6 +262,11 @@ result that is neither current, previous nor labeled; recipes and publication
 metadata are kept forever. Every Gold table is keyed by `publication_id` first
 and every repository read filters on one, so a hand-written query against
 `gold.db` must do the same or it adds retained publications together.
+
+`budget undo` restores the previous current publication, appends an `undo`
+move to the same pointer history, and leaves household inputs and publication
+results unchanged. Undo is itself undoable. In production it follows the
+pointer write with a backup set.
 
 ## Importing the inbox: `budget import`
 
@@ -325,13 +357,13 @@ from = 2026-01-01
 through = 2026-03-30
 ```
 
-Dates are TOML dates, without quotes. Every `[account.<id>]` must name an
-account in `accounts.toml`, so a misspelt one is refused rather than
-silently given the default. An account with a file in the inbox and no range
-of its own, when there is no `[default]`, refuses the whole run. A file that
-breaks a rule lists every problem and imports nothing, with exit 3. Keep it
-outside `inputs\`, which holds only the household's input files, and
-outside the inbox.
+Dates are TOML dates, without quotes, and `from` falls on or before
+`through`. Every `[account.<id>]` must name an account in `accounts.toml`,
+so a misspelt one is refused rather than silently given the default. An
+account with a file in the inbox and no range of its own, when there is no
+`[default]`, refuses the whole run. A file that breaks a rule lists every
+problem and imports nothing, with exit 3. Keep it outside `inputs\`, which
+holds only the household's input files, and outside the inbox.
 
 ### A rerun
 
@@ -385,7 +417,20 @@ budget migrate -> 0
 budget import --ranges ranges-march.toml -> 0
   [1] joint-current  stored
   Silver   1 admitted, 0 quarantined, 0 dropped
-  Gold     published publication 1
+  Gold     published publication 1 (cause build)
+  Changes  no previous publication to compare; publication 1 is current.
+  Published figures: publication 1 (current)
+  joint-current  2026-03  partial  provisional: late bookings unsettled
+  joint-current  2026-04  no data  provisional: current month, late bookings unsettled
+  Unclassified money, by account and month
+    joint-current  2026-03  in 0.00 DKK, out -45.00 DKK, 1 transaction
+    joint-current  2026-04  unavailable: no data
+  Open review items
+    Silver (operational): none
+    Gold (publication 1): unclassified 1
+  Import evidence (operational, apart from published figures)
+  joint-current  latest export 2026-03-06  evidence through 2026-03-05
+    quarantined  none
 budget review -> 0
   <id>  unclassified  gold  publication 1  targets 641b439a
     target 641b439a  joint-current  2026-03-01  -45.00 DKK  "NETTO"  bank category Mad
@@ -393,7 +438,20 @@ budget review -> 0
 budget import --ranges ranges-april.toml -> 0
   [1] joint-current  stored; Silver quarantined it: balance-break, balance-chain-break
   Silver   1 admitted, 1 quarantined, 0 dropped
-  Gold     published publication 2
+  Gold     published publication 2 (cause build)
+  Review  1 balance-break opened
+  Published figures: publication 2 (current)
+  joint-current  2026-03  partial  provisional: late bookings unsettled
+  joint-current  2026-04  no data  provisional: current month, late bookings unsettled
+  Unclassified money, by account and month
+    joint-current  2026-03  in 0.00 DKK, out -45.00 DKK, 1 transaction
+    joint-current  2026-04  unavailable: no data
+  Open review items
+    Silver (operational): balance-break 1
+    Gold (publication 2): unclassified 1
+  Import evidence (operational, apart from published figures)
+  joint-current  latest export 2026-03-06  evidence through 2026-03-05
+    quarantined  <id>  2026-04-01..2026-04-02  balance-chain-break
 budget review -> 0
   <id>  balance-break  joint-current  2026-04-02..2026-04-02  run <id>  payload <id>
   <id>  unclassified  gold  publication 2  targets 641b439a
@@ -420,8 +478,8 @@ It logs in, pins one Gold publication and reference date, lets the reader pick
 accounts and a month, and says plainly when there is nothing published, a
 newer build exists, or a selection cannot be shown. The dashboard shell is
 responsive on phones and desktop browsers, supports keyboard use, and exposes
-loading, empty, unavailable and request-failure states. Numerical financial
-reports remain in #104.
+loading, empty, unavailable and request-failure states. The monthly overview
+shows income, expenses, money left, and uncategorized inflows and outflows.
 
 Gold migration and publication storage are implemented. A profile's dashboard
 still shows the shell until a publication exists; `budget serve` never creates
@@ -462,8 +520,9 @@ sets a demo-only login, and starts the real `budget serve` path on
 `http://127.0.0.1:8765`. It never reads or changes a profile outside that
 folder and refuses to reuse an existing target. Open the address, sign in with
 `budget-demo`, and expect two checked demo accounts (`Demo current` and
-`Demo savings`), the current month, and the report shell. The shell deliberately
-shows no financial figures; those belong to #104.
+`Demo savings`), the current month, and the monthly overview. The demo publishes
+balances without transactions, so its transaction-based summary figures are
+known zeros, including `0,00 kr.` for both Ind and Ud under Ukategoriseret.
 
 Stop the foreground command with `Ctrl+C`, then remove only the isolated demo
 folder:

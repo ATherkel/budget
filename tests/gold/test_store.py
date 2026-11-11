@@ -33,6 +33,7 @@ from budget.gold import (
     PublicationUnavailableError,
 )
 from budget.gold.models import ReportingMonth
+from budget.gold.recipe import RecipeImportRun
 from budget.gold.storage import migrate_gold, open_gold_connection
 from budget.gold.store import (
     ConfigurationMismatchError,
@@ -40,11 +41,18 @@ from budget.gold.store import (
     PointerMove,
     PublicationIdError,
     PublicationKindError,
+    SilverRecipeUnavailableError,
     StaleResultsWarning,
 )
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
 from budget.silver import MoneyPrecisionError
+from budget.silver.decisions import (
+    AcceptDiscrepancy,
+    SameTransaction,
+    VoidImportRun,
+    Withdrawn,
+)
 from budget.sqlstore import StoreBusyError
 from tests.bronze.migration_resources import GOLD_MIGRATIONS, added_migration
 from tests.gold.contract import GoldRepositoryContract
@@ -114,6 +122,8 @@ def test_a_read_only_store_refuses_publish_without_writing(profile: Profile) -> 
         assert reader.current() == first
         assert reader.open(first.publication_id).accounts()
         with pytest.raises(GoldStoreReadOnlyError):
+            reader.undo()
+        with pytest.raises(GoldStoreReadOnlyError):
             reader.publish(GoldResult(publication(2), RECORDS), RECIPE, CONFIGURATION)
 
     with GoldStore(profile) as writer:
@@ -130,6 +140,8 @@ CLOSED_ACTIONS: dict[str, Callable[[GoldStore, GoldRepository], object]] = {
     "recipe": lambda store, _repository: store.recipe(1),
     "pointer history": lambda store, _repository: store.pointer_history(),
     "classification reviews": lambda store, _repository: store.classification_reviews(),
+    "reviews": lambda store, _repository: store.reviews(1),
+    "undo": lambda store, _repository: store.undo(),
     "publish": lambda store, _repository: store.publish(
         GoldResult(publication(2), RECORDS), RECIPE, CONFIGURATION
     ),
@@ -228,6 +240,35 @@ def test_a_first_publish_becomes_current(store: GoldStore) -> None:
     assert before <= move.moved_at <= after
 
 
+def test_undo_moves_to_the_previous_current_and_keeps_both_results(
+    store: GoldStore,
+) -> None:
+    first, second, third = (
+        publish(store, publication_id) for publication_id in (1, 2, 3)
+    )
+    second_accounts = store.open(second.publication_id).accounts()
+    third_accounts = store.open(third.publication_id).accounts()
+    before = datetime.now(UTC)
+
+    move = store.undo()
+
+    after = datetime.now(UTC)
+    assert store.current() == second
+    assert move == PointerMove(
+        moved_at=move.moved_at,
+        from_publication_id=third.publication_id,
+        to_publication_id=second.publication_id,
+        cause="undo",
+    )
+    assert before <= move.moved_at <= after
+    assert [each.to_publication_id for each in store.pointer_history()] == [1, 2, 3, 2]
+    assert store.open(second.publication_id).accounts() == second_accounts
+    assert store.open(third.publication_id).accounts() == third_accounts
+    assert first.publication_id not in {
+        publication.publication_id for publication in store.available()
+    }
+
+
 def test_the_store_hands_out_increasing_publication_ids(store: GoldStore) -> None:
     first = store.next_publication_id()
     publish(store, first)
@@ -245,6 +286,22 @@ def test_a_publish_under_another_id_is_refused(store: GoldStore, given: int) -> 
     assert store.current() == first
     assert list(store.available()) == [first]
     assert len(store.pointer_history()) == 1
+
+
+def test_a_publish_after_a_recovery_boundary_must_carry_the_jump(
+    store: GoldStore,
+) -> None:
+    # The id a restore hands out and the id publish accepts follow one rule,
+    # so the id after the restored set's highest is refused (#376).
+    first = publish(store, 1)
+    restored_at = datetime(2026, 3, 10, tzinfo=UTC)
+    store.record_recovery_boundary("set", datetime(2026, 3, 9, tzinfo=UTC), restored_at)
+
+    with pytest.raises(PublicationIdError):
+        publish(store, 2)
+
+    assert store.current() == first
+    assert publish(store, 1_000_000).publication_id == 1_000_000
 
 
 def test_only_the_current_and_previous_results_are_retained(store: GoldStore) -> None:
@@ -309,6 +366,117 @@ def test_a_recipe_is_kept_after_its_result_is_deleted(store: GoldStore) -> None:
     assert kept == RECIPE
     # Equality leaves the diagnostic versions out, so they are compared alone.
     assert (kept.python_version, kept.sqlite_version) == ("3.12.14", "3.53.1")
+
+
+def test_a_recipe_keeps_the_silver_provenance_it_was_published_with(
+    store: GoldStore,
+) -> None:
+    published = replace(
+        RECIPE,
+        silver_fingerprint_scheme="1",
+        silver_result_fingerprint="d" * 64,
+        silver_code_version="v0.3.0-12-gabc1234",
+        silver_decision_log_position=4,
+        silver_decision_log_prefix_sha256="e" * 64,
+        silver_bronze_parser_provenance="unknown",
+        silver_currencies=frozenset({(CURRENT, "DKK"), (SAVINGS, "EUR")}),
+        silver_decisions=(
+            AcceptDiscrepancy("decision-1", "run-current"),
+            SameTransaction("decision-2", "transaction-7", "a" * 64, 3),
+            VoidImportRun("decision-3", "run-savings"),
+            Withdrawn("decision-4", "transaction-9"),
+        ),
+    )
+    store.publish(GoldResult(publication(1), RECORDS), published, CONFIGURATION)
+
+    kept = store.recipe(1)
+
+    assert (
+        kept.silver_fingerprint_scheme,
+        kept.silver_result_fingerprint,
+        kept.silver_code_version,
+        kept.silver_decision_log_position,
+        kept.silver_decision_log_prefix_sha256,
+        kept.silver_bronze_parser_provenance,
+    ) == ("1", "d" * 64, "v0.3.0-12-gabc1234", 4, "e" * 64, "unknown")
+    assert kept.silver_currencies == frozenset({(CURRENT, "DKK"), (SAVINGS, "EUR")})
+    # Order is the order Silver applied them in, so it is kept exactly.
+    assert kept.silver_decisions == (
+        AcceptDiscrepancy("decision-1", "run-current"),
+        SameTransaction("decision-2", "transaction-7", "a" * 64, 3),
+        VoidImportRun("decision-3", "run-savings"),
+        Withdrawn("decision-4", "transaction-9"),
+    )
+
+
+def test_a_recipe_round_trips_every_consumed_run_with_its_account(
+    store: GoldStore,
+) -> None:
+    runs = frozenset(
+        {
+            RecipeImportRun("run-current", "a" * 64, CURRENT),
+            RecipeImportRun("run-savings", "b" * 64, SAVINGS),
+            RecipeImportRun("run-current-repeat", "a" * 64, CURRENT),
+        }
+    )
+    published = replace(RECIPE, import_runs=runs)
+
+    store.publish(GoldResult(publication(1), RECORDS), published, CONFIGURATION)
+
+    assert store.recipe(1) == published
+    assert RecipeImportRun("run-current", "a" * 64, CURRENT) != RecipeImportRun(
+        "run-current", "a" * 64, SAVINGS
+    )
+
+
+@pytest.mark.parametrize(
+    "missing",
+    [
+        "silver_fingerprint_scheme",
+        "silver_result_fingerprint",
+        "silver_identity_version",
+        "silver_decision_log_position",
+        "silver_decision_log_prefix_sha256",
+        "silver_bronze_parser_provenance",
+    ],
+)
+def test_a_recipe_without_complete_silver_provenance_is_refused(
+    store: GoldStore, missing: str
+) -> None:
+    incomplete = replace(RECIPE, **{missing: None})
+
+    with pytest.raises(SilverRecipeUnavailableError):
+        store.publish(GoldResult(publication(1), RECORDS), incomplete, CONFIGURATION)
+
+    assert store.current() is None
+
+
+def test_a_recipe_with_an_unknown_import_run_account_writes_nothing(
+    store: GoldStore,
+) -> None:
+    first = publish(store, 1)
+    unknown = replace(
+        RECIPE,
+        import_runs=frozenset({RecipeImportRun("run-unknown", "c" * 64, None)}),
+    )
+
+    with pytest.raises(SilverRecipeUnavailableError):
+        store.publish(GoldResult(publication(2), RECORDS), unknown, CONFIGURATION)
+
+    assert store.current() == first
+    assert store.next_publication_id() == 2
+    assert store.recipe(1) == RECIPE
+    assert len(store.recipes()) == 1
+    assert [move.to_publication_id for move in store.pointer_history()] == [1]
+
+
+def test_a_recipe_with_no_import_runs_may_publish(store: GoldStore) -> None:
+    no_runs = replace(RECIPE, import_runs=frozenset())
+
+    store.publish(GoldResult(publication(1), RECORDS), no_runs, CONFIGURATION)
+
+    assert store.current() == publication(1)
+    assert store.recipe(1) == no_runs
 
 
 def test_a_configuration_other_than_the_recipes_is_refused(store: GoldStore) -> None:
@@ -444,102 +612,6 @@ def test_a_busy_cleanup_after_a_publish_still_publishes(
         assert store.current() == first
 
 
-def test_migration_3_keeps_a_historic_bank_label_unavailable(
-    tmp_path: Path,
-) -> None:
-    profile = make_test_profile(tmp_path)
-    profile.gold_store.parent.mkdir(parents=True)
-    schema_1 = (GOLD_MIGRATIONS / "0001_create_gold_store.sql").read_text(
-        encoding="utf-8"
-    )
-    schema_2 = (GOLD_MIGRATIONS / "0002_persist_classification_reviews.sql").read_text(
-        encoding="utf-8"
-    )
-    with closing(sqlite3.connect(profile.gold_store)) as connection:
-        connection.execute("PRAGMA journal_mode = WAL")
-        connection.executescript(schema_1)
-        connection.executescript(schema_2)
-        connection.execute("PRAGMA user_version = 2")
-        connection.execute(
-            "INSERT INTO store_identity VALUES (1, ?, 'gold')",
-            (profile.name,),
-        )
-        connection.execute(
-            "INSERT INTO publications VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                1,
-                "pipeline",
-                None,
-                "2026-01-01T00:00:00+00:00",
-                "2026-01-01T00:00:00+00:00",
-                None,
-                "0.2",
-                "synthetic",
-                "0" * 64,
-            ),
-        )
-        connection.execute("INSERT INTO results VALUES (1)")
-        connection.execute(
-            "INSERT INTO pointer_moves VALUES (?, ?, ?, ?, ?)",
-            (1, "2026-01-01T00:00:00+00:00", None, 1, "build"),
-        )
-        connection.execute(
-            "INSERT INTO accounts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                1,
-                CURRENT,
-                "Joint current",
-                "current",
-                "household",
-                "DKK",
-                None,
-                "2026-01-01",
-                "2026-01-31",
-            ),
-        )
-        connection.execute(
-            "INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                1,
-                "legacy-target",
-                CURRENT,
-                "2026-01-12",
-                1,
-                -1000,
-                "LEGACY SHOP",
-                "unknown",
-                None,
-                -1000,
-                "opening",
-            ),
-        )
-        connection.execute(
-            "INSERT INTO classification_review_items VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                1,
-                0,
-                "a" * 64,
-                "sign-mismatch",
-                None,
-                None,
-            ),
-        )
-        connection.execute(
-            "INSERT INTO classification_review_targets VALUES (?, ?, ?, ?)",
-            (1, "a" * 64, 0, "legacy-target"),
-        )
-        connection.commit()
-
-    migrate_gold(profile)
-    with GoldStore(profile) as store:
-        published = store.classification_reviews()
-
-    assert published is not None
-    [target] = published.targets
-    assert target.bank_category is None
-    assert target.account_id == CURRENT
-
-
 def test_a_cleanup_defect_after_a_publish_propagates(
     store: GoldStore, profile: Profile
 ) -> None:
@@ -624,59 +696,3 @@ def test_an_amount_its_currency_cannot_hold_writes_nothing(store: GoldStore) -> 
 
     assert store.current() == first
     assert store.next_publication_id() == 2
-
-
-def test_a_store_at_schema_version_3_migrates_and_keeps_its_publications(
-    tmp_path: Path,
-) -> None:
-    profile = make_test_profile(tmp_path)
-    profile.gold_store.parent.mkdir(parents=True)
-    versions = (
-        "0001_create_gold_store.sql",
-        "0002_persist_classification_reviews.sql",
-        "0003_persist_review_target_provenance.sql",
-    )
-    with closing(sqlite3.connect(profile.gold_store)) as connection:
-        connection.execute("PRAGMA journal_mode = WAL")
-        for name in versions:
-            connection.executescript((GOLD_MIGRATIONS / name).read_text("utf-8"))
-        connection.execute("PRAGMA user_version = 3")
-        connection.execute(
-            "INSERT INTO store_identity VALUES (1, ?, 'gold')", (profile.name,)
-        )
-        connection.execute(
-            "INSERT INTO publications VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                1,
-                "pipeline",
-                None,
-                "2026-01-01T00:00:00+00:00",
-                "2026-01-01T00:00:00+00:00",
-                None,
-                "0.2",
-                "synthetic",
-                "0" * 64,
-            ),
-        )
-        connection.execute("INSERT INTO results VALUES (1)")
-        connection.execute(
-            "INSERT INTO pointer_moves VALUES (?, ?, ?, ?, ?)",
-            (1, "2026-01-01T00:00:00+00:00", None, 1, "build"),
-        )
-        connection.execute(
-            "INSERT INTO configuration_snapshots VALUES (?, ?)", ("f" * 64, "{}")
-        )
-        connection.execute(
-            "INSERT INTO recipes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (1, "f" * 64, 0, "e" * 64, None, "0.2", "1", "3.12.0", "3.45.0"),
-        )
-        connection.commit()
-
-    migrate_gold(profile)
-
-    with GoldStore(profile) as store:
-        current = store.current()
-        assert current is not None
-        assert current.publication_id == 1
-        assert store.recipe(1).late_booking_days == 7
-        assert store.next_publication_id() == 2

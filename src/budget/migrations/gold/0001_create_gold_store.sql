@@ -44,14 +44,70 @@ CREATE TABLE recipes (
     contract_version TEXT NOT NULL,
     silver_identity_version TEXT NOT NULL,
     python_version TEXT NOT NULL,
-    sqlite_version TEXT NOT NULL
+    sqlite_version TEXT NOT NULL,
+    -- The late-booking window the build used: `[gold] late_booking_days`,
+    -- whose default is 7 days.
+    late_booking_days INTEGER NOT NULL DEFAULT 7
+        CHECK (late_booking_days >= 0),
+    -- The exact Silver build the recipe consumed (#373).
+    silver_fingerprint_scheme TEXT,
+    silver_result_fingerprint TEXT,
+    silver_code_version TEXT,
+    silver_decision_log_position INTEGER
+        CHECK (
+            silver_decision_log_position IS NULL
+            OR silver_decision_log_position >= 0
+        ),
+    silver_decision_log_prefix_sha256 TEXT,
+    silver_bronze_parser_provenance TEXT
 ) STRICT;
 
+-- Each import run the recipe consumed, with the account the run declared
+-- (#476).
 CREATE TABLE recipe_import_runs (
     publication_id INTEGER NOT NULL REFERENCES recipes (publication_id),
     import_run_id TEXT NOT NULL,
     payload_id TEXT NOT NULL,
+    account_id TEXT,
     PRIMARY KEY (publication_id, import_run_id)
+) STRICT;
+
+CREATE TABLE recipe_silver_currencies (
+    publication_id INTEGER NOT NULL REFERENCES recipes (publication_id),
+    account_id TEXT NOT NULL,
+    currency TEXT NOT NULL,
+    PRIMARY KEY (publication_id, account_id)
+) STRICT;
+
+CREATE TABLE recipe_silver_decisions (
+    publication_id INTEGER NOT NULL REFERENCES recipes (publication_id),
+    ordinal INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK (
+        kind IN (
+            'accept-discrepancy',
+            'same-transaction',
+            'void-import-run',
+            'withdrawn'
+        )
+    ),
+    decision_id TEXT NOT NULL,
+    target TEXT NOT NULL,
+    payload_id TEXT,
+    record_ordinal INTEGER,
+    PRIMARY KEY (publication_id, ordinal),
+    CHECK (
+        (
+            kind IN ('accept-discrepancy', 'void-import-run', 'withdrawn')
+            AND payload_id IS NULL
+            AND record_ordinal IS NULL
+        )
+        OR
+        (
+            kind = 'same-transaction'
+            AND payload_id IS NOT NULL
+            AND record_ordinal >= 0
+        )
+    )
 ) STRICT;
 
 -- One row per publication whose result the store still holds.
@@ -65,6 +121,19 @@ CREATE TABLE pointer_moves (
     from_publication_id INTEGER REFERENCES publications (publication_id),
     to_publication_id INTEGER NOT NULL REFERENCES publications (publication_id),
     cause TEXT NOT NULL CHECK (cause IN ('build', 'undo', 'migration'))
+) STRICT;
+
+-- Where a restore's recovered publication history ends (`publications.md`,
+-- *Publication recovery*; #121). `restore` brings back the publications a
+-- backup set holds; any made after the set are lost. Each restore records one
+-- row. Publications from `first_publication_id` on were built after it.
+CREATE TABLE recovery_boundaries (
+    boundary INTEGER PRIMARY KEY,
+    backup_set TEXT NOT NULL,
+    backup_created_at TEXT NOT NULL,
+    restored_at TEXT NOT NULL,
+    restored_current_id INTEGER REFERENCES publications (publication_id),
+    first_publication_id INTEGER NOT NULL CHECK (first_publication_id >= 1)
 ) STRICT;
 
 -- The result tables. Money is INTEGER minor units of the account's currency
@@ -151,4 +220,55 @@ CREATE TABLE monthly_balances (
     PRIMARY KEY (publication_id, account_id, month),
     FOREIGN KEY (publication_id, account_id)
         REFERENCES accounts (publication_id, account_id)
+) STRICT;
+
+-- Classification questions published with their build. A review item and
+-- both identifier lists belong to one retained result. Child ordinals
+-- preserve the order Gold derived, including transaction targets that are
+-- absent from the publication.
+
+CREATE TABLE classification_review_items (
+    publication_id INTEGER NOT NULL REFERENCES results (publication_id),
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    review_item_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (
+        kind IN (
+            'unclassified',
+            'rule-conflict',
+            'sign-mismatch',
+            'ambiguous-transfer',
+            'unmatched-transfer',
+            'decision-not-applicable'
+        )
+    ),
+    decision_id TEXT,
+    reason TEXT,
+    PRIMARY KEY (publication_id, review_item_id),
+    UNIQUE (publication_id, ordinal)
+) STRICT;
+
+-- A target's account, date, amount and description belong to the published
+-- transaction. The bank's label exists only in Silver lineage, so it is kept
+-- beside the review target that needs it.
+CREATE TABLE classification_review_targets (
+    publication_id INTEGER NOT NULL,
+    review_item_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    transaction_id TEXT NOT NULL,
+    bank_category TEXT,
+    PRIMARY KEY (publication_id, review_item_id, ordinal),
+    UNIQUE (publication_id, review_item_id, transaction_id),
+    FOREIGN KEY (publication_id, review_item_id)
+        REFERENCES classification_review_items (publication_id, review_item_id)
+) STRICT;
+
+CREATE TABLE classification_review_rules (
+    publication_id INTEGER NOT NULL,
+    review_item_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    rule_id TEXT NOT NULL,
+    PRIMARY KEY (publication_id, review_item_id, ordinal),
+    UNIQUE (publication_id, review_item_id, rule_id),
+    FOREIGN KEY (publication_id, review_item_id)
+        REFERENCES classification_review_items (publication_id, review_item_id)
 ) STRICT;

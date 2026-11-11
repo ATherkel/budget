@@ -48,6 +48,7 @@ _TEMPLATES = Environment(
     autoescape=select_autoescape(),
 )
 _TEMPLATES.filters["amount"] = display.amount
+_TEMPLATES.filters["signed_amount"] = display.signed_amount
 
 
 def _send_to_login(request: Request) -> Response:
