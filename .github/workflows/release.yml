@@ -1,14 +1,186 @@
 name: Release
-on: workflow_dispatch
-permissions:
-  contents: write
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Run the checks without tagging. Only has an effect on main; runs from any other branch never tag.
+        type: boolean
+        default: false
+      adopt_existing_tag:
+        description: Release an existing tag that has no GitHub release, if it points at the commit this run checks.
+        type: boolean
+        default: false
+# Each job asks for only what it needs: the check job runs the branch's code
+# with a read-only token, and only the tag job, which runs none, can write.
+permissions: {}
 jobs:
-  release:
+  check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      released: ${{ steps.version.outputs.released }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-      - name: Tag and release the pyproject version
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      # A released tag's table is frozen, so its version can't be released
+      # again. This only records the answer, so the manifest check still runs
+      # and a rehearsal shows every problem; the last step fails the job.
+      - name: Check whether the version is already released
+        id: version
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "v$(uv version --short)" --target "$GITHUB_SHA" --generate-notes
+          ADOPT: ${{ inputs.adopt_existing_tag }}
+        run: |
+          tag="v$(uv version --short)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          count=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" --jq "map(select(.ref == \"refs/tags/$tag\")) | length")
+          if [ "$count" -eq 0 ]; then
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "state=new" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The tag exists, so the version is taken unless it is adopted
+          # below: a release attaches to the tag's commit, not --target.
+          # Built from the run's own repository, so a fork links to its own.
+          workflow="[Release workflow]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/release.yml)"
+          bump="[\`uv version --bump <major|minor|patch>\`](https://docs.astral.sh/uv/guides/package/#updating-your-version)"
+          if lookup=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --silent 2>&1); then
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "state=released" >> "$GITHUB_OUTPUT"
+            echo "::error file=pyproject.toml,title=Version already released::$tag is already released. Run uv version --bump <major|minor|patch> to bump the version in pyproject.toml."
+            {
+              echo "## \`$tag\` is already released"
+              echo
+              echo "Run $bump to bump the version in \`pyproject.toml\`, then run the $workflow again."
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          elif ! printf '%s' "$lookup" | grep -q 'HTTP 404'; then
+            echo "::error title=Could not read releases::$lookup"
+            exit 1
+          fi
+          # A tag without a release: adoptable only if it points at this run's
+          # commit, which is the commit the manifest check is about to check.
+          # The commits endpoint peels an annotated tag to its commit.
+          tagged=$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$tag" --jq .sha)
+          if [ "$tagged" = "$GITHUB_SHA" ] && [ "$ADOPT" = "true" ]; then
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "state=adopted" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Using the existing tag \`$tag\`"
+              echo
+              echo "It has no GitHub release and points at this run's commit, so the release attaches to it."
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$tagged" = "$GITHUB_SHA" ]; then
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "state=tagged" >> "$GITHUB_OUTPUT"
+            echo "::error file=pyproject.toml,title=Version already tagged::$tag is tagged at this run's commit, but has no GitHub release. To release it, run the Release workflow again with adopt_existing_tag ticked. Otherwise delete it with git push origin --delete $tag, or run uv version --bump <major|minor|patch> to bump the version."
+            {
+              echo "## \`$tag\` is tagged, but has no GitHub release"
+              echo
+              echo "The tag points at this run's commit. To release it, run the $workflow again with \`adopt_existing_tag\` ticked. If the tag was pushed by mistake, delete it with \`git push origin --delete $tag\` and run the $workflow again. Otherwise run $bump to bump the version."
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "state=tagged_elsewhere" >> "$GITHUB_OUTPUT"
+            echo "::error file=pyproject.toml,title=Version tagged at another commit::$tag points at $tagged, not this run's commit $GITHUB_SHA, and has no GitHub release. If the tag was pushed by mistake, delete it with git push origin --delete $tag. Otherwise run uv version --bump <major|minor|patch> to bump the version."
+            {
+              echo "## \`$tag\` is tagged at another commit"
+              echo
+              echo "It points at $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$tagged, not this run's commit, and has no GitHub release, so it can't be adopted. If the tag was pushed by mistake, delete it with \`git push origin --delete $tag\` and run the $workflow again. Otherwise run $bump to bump the version."
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Install the locked dependencies
+        id: install
+        run: uv sync --locked
+      - name: Check the release manifest freezes every migration
+        id: check
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_TAG_STATE: ${{ steps.version.outputs.state }}
+        run: uv run --locked pytest -m release --tb=short --color=yes
+      - name: Report what a release would create
+        if: ${{ !cancelled() && (github.ref != 'refs/heads/main' || inputs.dry_run) }}
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          REF: ${{ github.ref_name }}
+          TAG: ${{ steps.version.outputs.tag }}
+          STATE: ${{ steps.version.outputs.state }}
+          VERSION_OUTCOME: ${{ steps.version.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+        run: |
+          # Off main the branch alone stops the tag, so dry_run is only a note.
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            why="\`dry_run\` was chosen"
+          elif [ "$DRY_RUN" = "true" ]; then
+            why="the run is from branch \`$REF\`, not \`main\` (\`dry_run\` was ticked on this workflow dispatch but has no effect off main)"
+          else
+            why="the run is from branch \`$REF\`, not \`main\`"
+          fi
+          reasons=()
+          if [ "$VERSION_OUTCOME" != "success" ]; then
+            reasons+=("The tags or releases could not be read (see the log of that step)")
+          elif [ "$STATE" = "released" ]; then
+            reasons+=("\`$TAG\` is already released (see above)")
+          elif [ "$STATE" = "tagged" ]; then
+            reasons+=("\`$TAG\` is already tagged, and \`adopt_existing_tag\` was not ticked (see above)")
+          elif [ "$STATE" = "tagged_elsewhere" ]; then
+            reasons+=("\`$TAG\` is tagged at another commit (see above)")
+          fi
+          on_tag=""
+          if [ "$STATE" = "adopted" ]; then
+            on_tag=" on the existing tag"
+          fi
+          # Skipped counts too: a failed install skips the check, and an
+          # unchecked release would be refused. The install failure is only in
+          # that step's log, so the check is not blamed for it. When the
+          # version step failed, it is why both were skipped: no extra reasons.
+          if [ "$VERSION_OUTCOME" != "success" ]; then
+            :
+          elif [ "$INSTALL_OUTCOME" != "success" ]; then
+            reasons+=("The locked dependencies could not be installed, so the manifest was not checked (see the log of that step)")
+          elif [ "$CHECK_OUTCOME" != "success" ]; then
+            reasons+=("The manifest check did not pass (see above)")
+          fi
+          {
+            if [ "${#reasons[@]}" -eq 0 ]; then
+              echo "**Dry run:** would create release \`$TAG\`$on_tag at $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA from branch \`$REF\`. No release or tag was created because $why."
+            else
+              echo "**Dry run:** release \`$TAG\` would be refused for the reasons below. No release or tag was created because $why."
+              echo
+              for i in "${!reasons[@]}"; do
+                echo "$((i + 1)). ${reasons[$i]}"
+              done
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Refuse a version that is already tagged
+        if: ${{ !cancelled() && steps.version.outputs.released == 'true' }}
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          echo "$TAG is already tagged; see the summary."
+          exit 1
+  # Only main creates tags; any other branch, or dry_run, is a rehearsal. This
+  # job checks nothing out, so no repository code runs with a write token.
+  tag:
+    needs: check
+    if: github.ref == 'refs/heads/main' && !inputs.dry_run && needs.check.outputs.released == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Tag and release the checked version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.tag }}
+        run: gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes

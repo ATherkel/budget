@@ -1,16 +1,25 @@
 # Copyright 2026 Therkel
 """Released migrations are frozen (#364).
 
-`src/budget/migrations/released.toml` holds, for each release tag, the
-SHA-256 of every migration file that release shipped. A store records only the
-number of the last migration it ran, so a released file that changes or
-disappears never reaches the stores already past it. These tests read only the
-manifest and the working tree: CI checks out without tags.
+`src/budget/migrations/released.toml` holds a table per release that added
+migrations, with the SHA-256 of each file it added: a table lists only the files
+no earlier table lists, and a release that adds none has no table. A store
+records only the number of the last migration it ran, so a released file that
+changes or disappears never reaches the stores already past it. These tests read
+only the manifest and the working tree: CI checks out without tags. The Release
+workflow also checks, with `-m release`, that every migration file is in some
+table (#492).
 """
 
 import hashlib
+import os
+import sys
 import tomllib
 from pathlib import Path
+from typing import Any
+
+import pytest
+from packaging.version import Version
 
 
 def released_migration_drift(manifest: Path, root: Path) -> list[str]:
@@ -20,9 +29,157 @@ def released_migration_drift(manifest: Path, root: Path) -> list[str]:
         name
         for files in releases.values()
         for name, digest in files.items()
-        if not (root / name).is_file()
-        or _sha256((root / name).read_bytes().replace(b"\r\n", b"\n")) != digest
+        if not (root / name).is_file() or _released_hash(root / name) != digest
     ]
+
+
+def released_drift_summary(manifest: Path, root: Path) -> str:
+    """The Markdown a job summary shows when released migrations changed."""
+    files = "".join(
+        f"- `{name}`\n" for name in released_migration_drift(manifest, root)
+    )
+    return (
+        f"## Released migrations changed\n\n{files}\n"
+        "A released migration is frozen: stores already past it never see a "
+        "change. Restore each file as `released.toml` records it, and put the "
+        "change in a new migration.\n"
+    )
+
+
+def released_drift_annotations(manifest: Path, root: Path) -> list[str]:
+    """One GitHub Actions error annotation per released migration that changed."""
+    title = "title=Released migration changed::"
+    message = "changed or deleted since released.toml froze it"
+    return [
+        f"::error file=src/budget/migrations/{name},{title}{name} {message}"
+        for name in released_migration_drift(manifest, root)
+    ]
+
+
+def release_manifest_gaps(
+    manifest: Path, root: Path, tag: str | None = None
+) -> list[str]:
+    """Why the manifest doesn't freeze every migration in `root`.
+
+    Only unlisted files count, whatever tag is being cut: a release that adds
+    no migration needs no table, because earlier tables list every file. A
+    table after the version `tag` releases names a release that hasn't
+    shipped, so it is reported and lists nothing.
+    """
+    releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    return [
+        _table_after_message(name, tag) for name in _tables_after(releases, tag)
+    ] + [
+        f"Not in any table: {name}"
+        for name in _unlisted_migrations(_shipped_tables(releases, tag), root)
+    ]
+
+
+def _table_after_message(table: str, tag: str | None) -> str:
+    return f"Table `{table}` is after the release being cut, `{tag}`"
+
+
+def _shipped_tables(releases: dict[str, Any], tag: str | None) -> dict[str, Any]:
+    """`releases` without the tables after `tag`, which list no shipped file."""
+    after = _tables_after(releases, tag)
+    return {name: files for name, files in releases.items() if name not in after}
+
+
+def _tables_after(releases: dict[str, Any], tag: str | None) -> list[str]:
+    """The tables whose version is past the one `tag` releases, in file order.
+
+    `v0.3.0.dev1` releases 0.3.0, so a `v0.3.0` table is its own, not later.
+    """
+    if tag is None:
+        return []
+    cut = Version(Version(tag.removeprefix("v")).base_version)
+    return [name for name in releases if Version(name.removeprefix("v")) > cut]
+
+
+def release_manifest_addition(
+    manifest: Path, root: Path, tag: str, *, header: bool = True
+) -> str:
+    """The released.toml lines that would list every unlisted migration under `tag`.
+
+    The `["tag"]` header comes first when `tag` has no table yet, unless
+    `header` is False.
+    """
+    releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    lines: list[str] = [f'["{tag}"]'] if header and tag not in releases else []
+    lines.extend(
+        f'"{name}" = "{_released_hash(root / name)}"'
+        for name in _unlisted_migrations(_shipped_tables(releases, tag), root)
+    )
+    return "\n".join(lines) + "\n"
+
+
+UV_VERSION_BUMP = (
+    "[`uv version --bump <major|minor|patch>`]"
+    "(https://docs.astral.sh/uv/guides/package/#updating-your-version)"
+)
+
+
+def release_manifest_summary(
+    manifest: Path, root: Path, tag: str, *, state: str = "new"
+) -> str:
+    """The Markdown a GitHub Actions job summary shows when `tag` can't be cut.
+
+    `state` is the Release workflow's answer for `tag`: "released", "tagged"
+    or "tagged_elsewhere" when the version is taken, anything else when it is
+    free. Only the workflow can know it.
+    """
+    taken = {
+        "released": "is already released, and its table is frozen",
+        "tagged": "is already tagged",
+        "tagged_elsewhere": "is already tagged",
+    }.get(state)
+    releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    problems = "".join(
+        f"- {_table_after_message(name, tag)}\n"
+        for name in _tables_after(releases, tag)
+    ) + "".join(
+        f"- Not in any table: `{name}`\n"
+        for name in _unlisted_migrations(_shipped_tables(releases, tag), root)
+    )
+    # A taken tag's lines go under the next version's header, never its own.
+    addition = release_manifest_addition(manifest, root, tag, header=not taken)
+    path = "`src/budget/migrations/released.toml`"
+    heading = f"## Release manifest incomplete for `{tag}`\n\n{problems}\n"
+    if taken:
+        return (
+            f"{heading}`{tag}` {taken}. Run "
+            f"{UV_VERSION_BUMP} to bump the version in `pyproject.toml`, then add "
+            f'these lines as its new table:\n\n```toml\n["v<new version>"]\n'
+            f"{addition}```\n"
+        )
+    lines = f"```toml\n{addition}```\n"
+    if tag not in releases:
+        return f"{heading}Add these lines to the end of {path}:\n\n{lines}"
+    return f'{heading}Add these lines under `["{tag}"]` in {path}:\n\n{lines}'
+
+
+def release_manifest_annotations(
+    manifest: Path, root: Path, tag: str | None = None
+) -> list[str]:
+    """One GitHub Actions error annotation per reason `tag` can't be cut."""
+    error = "::error file=src/budget/migrations/released.toml,"
+    error += "title=Release manifest incomplete::"
+    return [f"{error}{gap}" for gap in release_manifest_gaps(manifest, root, tag)]
+
+
+def _unlisted_migrations(releases: dict[str, Any], root: Path) -> list[str]:
+    """The migration files under `root` that no release table lists, sorted."""
+    listed = {name for files in releases.values() for name in files}
+    return sorted(
+        name
+        for path in root.rglob("*.sql")
+        if (name := path.relative_to(root).as_posix()) not in listed
+    )
+
+
+def _released_hash(path: Path) -> str:
+    """The SHA-256 the manifest records for `path`: CRLF converted to LF first."""
+    return _sha256(path.read_bytes().replace(b"\r\n", b"\n"))
 
 
 def _sha256(text: bytes) -> str:
@@ -62,6 +219,13 @@ def _released_tree(root: Path) -> Path:
     return manifest
 
 
+def _add_unreleased_silver_migration(root: Path) -> None:
+    """Add `silver/0002_add_note.sql`, which no release table lists yet."""
+    (root / "silver" / "0002_add_note.sql").write_bytes(
+        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
+    )
+
+
 def test_a_released_migration_whose_text_changed_is_reported(tmp_path: Path) -> None:
     manifest = _released_tree(tmp_path)
     (tmp_path / SILVER).write_bytes(
@@ -98,13 +262,374 @@ def test_a_changed_migration_checked_out_with_crlf_endings_is_still_reported(
     assert released_migration_drift(manifest, tmp_path) == [BRONZE]
 
 
+def test_the_job_summary_for_changed_released_migrations_says_to_restore_them(
+    tmp_path: Path,
+) -> None:
+    manifest = _released_tree(tmp_path)
+    (tmp_path / BRONZE).unlink()
+    (tmp_path / SILVER).write_bytes(
+        b"CREATE TABLE evidence (id INTEGER PRIMARY KEY, note TEXT) STRICT;\n"
+    )
+
+    assert released_drift_summary(manifest, tmp_path) == (
+        "## Released migrations changed\n"
+        "\n"
+        "- `bronze/0001_create_bronze_store.sql`\n"
+        "- `silver/0001_create_silver_store.sql`\n"
+        "\n"
+        "A released migration is frozen: stores already past it never see a "
+        "change. Restore each file as `released.toml` records it, and put the "
+        "change in a new migration.\n"
+    )
+
+
+def test_each_changed_released_migration_becomes_an_error_annotation_on_its_file(
+    tmp_path: Path,
+) -> None:
+    manifest = _released_tree(tmp_path)
+    (tmp_path / BRONZE).unlink()
+    (tmp_path / SILVER).write_bytes(
+        b"CREATE TABLE evidence (id INTEGER PRIMARY KEY, note TEXT) STRICT;\n"
+    )
+
+    title = "title=Released migration changed::"
+    message = "changed or deleted since released.toml froze it"
+    assert released_drift_annotations(manifest, tmp_path) == [
+        f"::error file=src/budget/migrations/{BRONZE},{title}{BRONZE} {message}",
+        f"::error file=src/budget/migrations/{SILVER},{title}{SILVER} {message}",
+    ]
+
+
+def test_a_release_that_adds_no_migration_needs_no_table(tmp_path: Path) -> None:
+    # Every file is already frozen by the table of the release that first
+    # shipped it, so cutting v0.3.0 with no ["v0.3.0"] table finds no gaps.
+    manifest = _released_tree(tmp_path)
+
+    assert release_manifest_gaps(manifest, tmp_path) == []
+
+
+def test_a_migration_in_no_table_is_reported(tmp_path: Path) -> None:
+    manifest = _released_tree(tmp_path)
+    _add_unreleased_silver_migration(tmp_path)
+    _write_manifest(
+        manifest,
+        {
+            "v0.2.0": {
+                BRONZE: _sha256(BRONZE_RELEASED),
+                SILVER: _sha256(SILVER_RELEASED),
+            },
+            "v0.3.0": {},
+        },
+    )
+
+    assert release_manifest_gaps(manifest, tmp_path) == [
+        "Not in any table: silver/0002_add_note.sql"
+    ]
+
+
+def test_the_lines_to_paste_list_each_unlisted_migration_with_its_hash(
+    tmp_path: Path,
+) -> None:
+    manifest = _released_tree(tmp_path)
+    _add_unreleased_silver_migration(tmp_path)
+    (tmp_path / "gold").mkdir()
+    (tmp_path / "gold" / "0001_create_gold_store.sql").write_bytes(
+        b"CREATE TABLE actuals (id INTEGER PRIMARY KEY) STRICT;\n"
+    )
+
+    assert release_manifest_addition(manifest, tmp_path, "v0.3.0") == (
+        '["v0.3.0"]\n'
+        '"gold/0001_create_gold_store.sql" = '
+        '"50d4df93f40b47538839919d46816eb0eb276898283f565d826ab18a6c7b7f7e"\n'
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+    )
+
+
+def test_the_hash_to_paste_for_a_crlf_checkout_is_the_hash_of_its_lf_text(
+    tmp_path: Path,
+) -> None:
+    # A Windows checkout with core.autocrlf writes CRLF; CI and the drift test
+    # hash the LF text, so a pasted CRLF hash would fail on the next CI run.
+    manifest = _released_tree(tmp_path)
+    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
+        b"ALTER TABLE evidence ADD COLUMN note TEXT;\r\n"
+    )
+
+    assert release_manifest_addition(manifest, tmp_path, "v0.3.0") == (
+        '["v0.3.0"]\n'
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+    )
+
+
+def test_the_lines_to_paste_into_an_existing_table_repeat_no_header(
+    tmp_path: Path,
+) -> None:
+    # TOML rejects a second ["v0.3.0"] header, so the lines go under the first.
+    manifest = _released_tree(tmp_path)
+    _add_unreleased_silver_migration(tmp_path)
+    _write_manifest(
+        manifest,
+        {
+            "v0.2.0": {
+                BRONZE: _sha256(BRONZE_RELEASED),
+                SILVER: _sha256(SILVER_RELEASED),
+            },
+            "v0.3.0": {},
+        },
+    )
+
+    assert release_manifest_addition(manifest, tmp_path, "v0.3.0") == (
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+    )
+
+
+def test_the_job_summary_marks_tags_and_paths_as_code(
+    tmp_path: Path,
+) -> None:
+    manifest = _released_tree(tmp_path)
+    _add_unreleased_silver_migration(tmp_path)
+
+    assert release_manifest_summary(manifest, tmp_path, "v0.3.0") == (
+        "## Release manifest incomplete for `v0.3.0`\n"
+        "\n"
+        "- Not in any table: `silver/0002_add_note.sql`\n"
+        "\n"
+        "Add these lines to the end of `src/budget/migrations/released.toml`:\n"
+        "\n"
+        "```toml\n"
+        '["v0.3.0"]\n'
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+        "```\n"
+    )
+
+
+def test_the_job_summary_reports_a_table_after_the_release_and_the_files_it_hid(
+    tmp_path: Path,
+) -> None:
+    # Pytest fails on both, so the summary has to show both.
+    manifest = _released_tree(tmp_path)
+    _add_unreleased_silver_migration(tmp_path)
+    silver_note = tmp_path / "silver" / "0002_add_note.sql"
+    releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    releases["v0.3.1"] = {"silver/0002_add_note.sql": _released_hash(silver_note)}
+    _write_manifest(manifest, releases)
+
+    assert release_manifest_summary(manifest, tmp_path, "v0.3.0") == (
+        "## Release manifest incomplete for `v0.3.0`\n"
+        "\n"
+        "- Table `v0.3.1` is after the release being cut, `v0.3.0`\n"
+        "- Not in any table: `silver/0002_add_note.sql`\n"
+        "\n"
+        "Add these lines to the end of `src/budget/migrations/released.toml`:\n"
+        "\n"
+        "```toml\n"
+        '["v0.3.0"]\n'
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+        "```\n"
+    )
+
+
+def test_the_job_summary_for_a_tag_with_a_table_says_to_add_the_lines_under_it(
+    tmp_path: Path,
+) -> None:
+    # Whether the tag is already released is for the Release workflow to say:
+    # these tests read no tags, so the summary makes no guess about it.
+    manifest = _released_tree(tmp_path)
+    _add_unreleased_silver_migration(tmp_path)
+
+    assert release_manifest_summary(manifest, tmp_path, "v0.2.0") == (
+        "## Release manifest incomplete for `v0.2.0`\n"
+        "\n"
+        "- Not in any table: `silver/0002_add_note.sql`\n"
+        "\n"
+        'Add these lines under `["v0.2.0"]` in '
+        "`src/budget/migrations/released.toml`:\n"
+        "\n"
+        "```toml\n"
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+        "```\n"
+    )
+
+
+def test_the_job_summary_for_a_released_tag_says_to_bump_and_start_a_new_table(
+    tmp_path: Path,
+) -> None:
+    # A rehearsal before the version bump checks the last release's tag. Its
+    # table is frozen, so the lines belong in the next version's new table.
+    manifest = _released_tree(tmp_path)
+    _add_unreleased_silver_migration(tmp_path)
+
+    summary = release_manifest_summary(manifest, tmp_path, "v0.2.0", state="released")
+
+    assert summary == (
+        "## Release manifest incomplete for `v0.2.0`\n"
+        "\n"
+        "- Not in any table: `silver/0002_add_note.sql`\n"
+        "\n"
+        "`v0.2.0` is already released, and its table is frozen. Run "
+        "[`uv version --bump <major|minor|patch>`]"
+        "(https://docs.astral.sh/uv/guides/package/#updating-your-version) "
+        "to bump the version in `pyproject.toml`, then add these lines as its "
+        "new table:\n"
+        "\n"
+        "```toml\n"
+        '["v<new version>"]\n'
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+        "```\n"
+    )
+
+
+def test_the_job_summary_for_a_released_tag_with_no_table_has_only_the_new_header(
+    tmp_path: Path,
+) -> None:
+    # v0.3.0 was released without adding a migration, so it has no table. Its
+    # own header in the paste block would put the new files under a released tag.
+    manifest = _released_tree(tmp_path)
+    _add_unreleased_silver_migration(tmp_path)
+
+    summary = release_manifest_summary(manifest, tmp_path, "v0.3.0", state="released")
+
+    assert summary.endswith(
+        "```toml\n"
+        '["v<new version>"]\n'
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+        "```\n"
+    )
+
+
+def test_the_job_summary_for_a_tag_without_a_release_says_already_tagged(
+    tmp_path: Path,
+) -> None:
+    # A tag pushed by hand, with no GitHub release, still takes the version,
+    # but nothing was released, so "already released" would be wrong.
+    manifest = _released_tree(tmp_path)
+    _add_unreleased_silver_migration(tmp_path)
+
+    summary = release_manifest_summary(manifest, tmp_path, "v0.3.0", state="tagged")
+
+    assert summary == (
+        "## Release manifest incomplete for `v0.3.0`\n"
+        "\n"
+        "- Not in any table: `silver/0002_add_note.sql`\n"
+        "\n"
+        "`v0.3.0` is already tagged. Run "
+        "[`uv version --bump <major|minor|patch>`]"
+        "(https://docs.astral.sh/uv/guides/package/#updating-your-version) "
+        "to bump the version in `pyproject.toml`, then add these lines as its "
+        "new table:\n"
+        "\n"
+        "```toml\n"
+        '["v<new version>"]\n'
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+        "```\n"
+    )
+
+
+def test_a_table_for_a_version_after_the_release_does_not_freeze_its_files(
+    tmp_path: Path,
+) -> None:
+    # A table names a release that shipped its files. One past the version
+    # being cut (here 0.3.0, the base of 0.3.0.dev1) is a typo or a leftover,
+    # so it is reported and its files stay unlisted.
+    manifest = _released_tree(tmp_path)
+    _add_unreleased_silver_migration(tmp_path)
+    silver_note = tmp_path / "silver" / "0002_add_note.sql"
+    releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    releases["v0.3.1"] = {"silver/0002_add_note.sql": _released_hash(silver_note)}
+    _write_manifest(manifest, releases)
+
+    assert release_manifest_gaps(manifest, tmp_path, "v0.3.0.dev1") == [
+        "Table `v0.3.1` is after the release being cut, `v0.3.0.dev1`",
+        "Not in any table: silver/0002_add_note.sql",
+    ]
+
+
+def test_each_problem_becomes_an_error_annotation_on_released_toml(
+    tmp_path: Path,
+) -> None:
+    manifest = _released_tree(tmp_path)
+    _add_unreleased_silver_migration(tmp_path)
+
+    (tmp_path / "gold").mkdir()
+    (tmp_path / "gold" / "0001_create_gold_store.sql").write_bytes(
+        b"CREATE TABLE actuals (id INTEGER PRIMARY KEY) STRICT;\n"
+    )
+
+    error = "::error file=src/budget/migrations/released.toml,"
+    error += "title=Release manifest incomplete::"
+    assert release_manifest_annotations(manifest, tmp_path) == [
+        f"{error}Not in any table: gold/0001_create_gold_store.sql",
+        f"{error}Not in any table: silver/0002_add_note.sql",
+    ]
+
+
 MIGRATIONS = Path(__file__).resolve().parent.parent / "src" / "budget" / "migrations"
 
 
+def _report_to_github_actions(annotations: list[str], summary: str) -> None:
+    """On GitHub Actions, annotate the run and append `summary` to its summary."""
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return
+    # pytest replays a failing test's stdout line by line, so GitHub still
+    # reads each annotation as a workflow command.
+    for annotation in annotations:
+        sys.stdout.write(f"{annotation}\n")
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        with Path(summary_path).open("a", encoding="utf-8") as job_summary:
+            job_summary.write(summary)
+
+
+# Marked release as well: the Release workflow runs only `-m release`, and it
+# tags main's commit without waiting for that commit's own test run.
+@pytest.mark.release
 def test_no_migration_a_release_shipped_has_changed() -> None:
     manifest = MIGRATIONS / "released.toml"
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
 
+    drift = released_migration_drift(manifest, MIGRATIONS)
+
+    if drift:
+        _report_to_github_actions(
+            released_drift_annotations(manifest, MIGRATIONS),
+            released_drift_summary(manifest, MIGRATIONS),
+        )
     # v0.2.0 shipped Bronze 0001 and Silver 0001; an empty manifest guards nothing.
     assert set(releases["v0.2.0"]) == {BRONZE, SILVER}
-    assert released_migration_drift(manifest, MIGRATIONS) == []
+    assert drift == []
+
+
+@pytest.mark.release
+def test_every_migration_is_in_a_table_before_a_release() -> None:
+    # Main keeps the last release's version while unreleased migrations pile
+    # up, so only the Release workflow, which sets RELEASE_TAG, can check this.
+    tag = os.environ.get("RELEASE_TAG")
+    if not tag:
+        pytest.skip("RELEASE_TAG is not set; the Release workflow sets it")
+    manifest = MIGRATIONS / "released.toml"
+
+    gaps = release_manifest_gaps(manifest, MIGRATIONS, tag)
+
+    if gaps:
+        # The Release workflow's version step says whether the tag is taken.
+        state = os.environ.get("RELEASE_TAG_STATE", "new")
+        _report_to_github_actions(
+            release_manifest_annotations(manifest, MIGRATIONS, tag),
+            release_manifest_summary(manifest, MIGRATIONS, tag, state=state),
+        )
+    assert not gaps, "\n".join(
+        [
+            *gaps,
+            "Add these lines to src/budget/migrations/released.toml:",
+            release_manifest_addition(manifest, MIGRATIONS, tag),
+        ]
+    )
