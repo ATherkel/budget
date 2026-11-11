@@ -91,12 +91,15 @@ UV_VERSION_BUMP = (
 
 
 def release_manifest_summary(
-    manifest: Path, root: Path, tag: str, *, released: bool = False
+    manifest: Path, root: Path, tag: str, *, state: str = "new"
 ) -> str:
     """The Markdown a GitHub Actions job summary shows when `tag` can't be cut.
 
-    `released` says `tag` already exists; only the workflow can know that.
+    `state` is the Release workflow's answer for `tag`: "released", "tagged"
+    or "tagged_elsewhere" when the version is taken, anything else when it is
+    free. Only the workflow can know it.
     """
+    released = state == "released"  # red stub: "tagged" not handled yet
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
     problems = "".join(
         f"- Not in any table: `{name}`\n"
@@ -397,7 +400,7 @@ def test_the_job_summary_for_a_released_tag_says_to_bump_and_start_a_new_table(
     manifest = _released_tree(tmp_path)
     _add_unreleased_silver_migration(tmp_path)
 
-    summary = release_manifest_summary(manifest, tmp_path, "v0.2.0", released=True)
+    summary = release_manifest_summary(manifest, tmp_path, "v0.2.0", state="released")
 
     assert summary == (
         "## Release manifest incomplete for `v0.2.0`\n"
@@ -426,9 +429,38 @@ def test_the_job_summary_for_a_released_tag_with_no_table_has_only_the_new_heade
     manifest = _released_tree(tmp_path)
     _add_unreleased_silver_migration(tmp_path)
 
-    summary = release_manifest_summary(manifest, tmp_path, "v0.3.0", released=True)
+    summary = release_manifest_summary(manifest, tmp_path, "v0.3.0", state="released")
 
     assert summary.endswith(
+        "```toml\n"
+        '["v<new version>"]\n'
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+        "```\n"
+    )
+
+
+def test_the_job_summary_for_a_tag_without_a_release_says_already_tagged(
+    tmp_path: Path,
+) -> None:
+    # A tag pushed by hand, with no GitHub release, still takes the version,
+    # but nothing was released, so "already released" would be wrong.
+    manifest = _released_tree(tmp_path)
+    _add_unreleased_silver_migration(tmp_path)
+
+    summary = release_manifest_summary(manifest, tmp_path, "v0.3.0", state="tagged")
+
+    assert summary == (
+        "## Release manifest incomplete for `v0.3.0`\n"
+        "\n"
+        "- Not in any table: `silver/0002_add_note.sql`\n"
+        "\n"
+        "`v0.3.0` is already tagged. Run "
+        "[`uv version --bump <major|minor|patch>`]"
+        "(https://docs.astral.sh/uv/guides/package/#updating-your-version) "
+        "to bump the version in `pyproject.toml`, then add these lines as its "
+        "new table:\n"
+        "\n"
         "```toml\n"
         '["v<new version>"]\n'
         '"silver/0002_add_note.sql" = '
@@ -504,11 +536,11 @@ def test_every_migration_is_in_a_table_before_a_release() -> None:
     gaps = release_manifest_gaps(manifest, MIGRATIONS)
 
     if gaps:
-        # The Release workflow's version step sets this when the tag exists.
-        released = os.environ.get("RELEASE_TAG_RELEASED") == "true"
+        # The Release workflow's version step says whether the tag is taken.
+        state = os.environ.get("RELEASE_TAG_STATE", "new")
         _report_to_github_actions(
             release_manifest_annotations(manifest, MIGRATIONS),
-            release_manifest_summary(manifest, MIGRATIONS, tag, released=released),
+            release_manifest_summary(manifest, MIGRATIONS, tag, state=state),
         )
     assert not gaps, "\n".join(
         [
