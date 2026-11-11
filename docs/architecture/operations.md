@@ -1061,12 +1061,14 @@ Before tagging a release:
    manifest check, so a rehearsal before the bump shows both problems: the
    version to bump and the lines the new version's table needs.
 4. Tag by running the Release workflow from `main`, which tags the
-   `pyproject.toml` version. A step before the tag runs
-   `RELEASE_TAG="v$(uv version --short)" uv run pytest -m release`. It
+   `pyproject.toml` version. Its check job runs
+   `RELEASE_TAG="v$(uv version --short)" uv run pytest -m release` with a
+   read-only token, and a separate tag job runs no repository code. The check
    refuses the tag when a migration file appears in no table, or when a
-   released migration has changed. The run's summary page then lists each problem and shows the
-   lines to paste into `released.toml`, and each problem is also an error
-   annotation on the run. To get those lines before running the workflow,
+   released migration has changed. The run's summary page then lists each
+   problem: the lines to paste into `released.toml` for unlisted files, or the
+   released files to restore. Each problem is also an error annotation on the
+   run. To get the lines to paste before running the workflow,
    run the same check locally. In PowerShell, clear the variable afterwards,
    or a later `uv run pytest` in that shell runs the release check too:
    `$env:RELEASE_TAG = "v$(uv version --short)"; uv run pytest -m release; Remove-Item Env:RELEASE_TAG`.
