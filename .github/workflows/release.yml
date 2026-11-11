@@ -129,7 +129,7 @@ jobs:
           fi
           reasons=()
           if [ "$VERSION_OUTCOME" != "success" ]; then
-            reasons+=("The tags or releases could not be read (see above)")
+            reasons+=("The tags or releases could not be read (see the log of that step)")
           elif [ "$STATE" = "released" ]; then
             reasons+=("\`$TAG\` is already released (see above)")
           elif [ "$STATE" = "tagged" ]; then
@@ -143,8 +143,11 @@ jobs:
           fi
           # Skipped counts too: a failed install skips the check, and an
           # unchecked release would be refused. The install failure is only in
-          # that step's log, so the check is not blamed for it.
-          if [ "$INSTALL_OUTCOME" != "success" ]; then
+          # that step's log, so the check is not blamed for it. When the
+          # version step failed, it is why both were skipped: no extra reasons.
+          if [ "$VERSION_OUTCOME" != "success" ]; then
+            :
+          elif [ "$INSTALL_OUTCOME" != "success" ]; then
             reasons+=("The locked dependencies could not be installed, so the manifest was not checked (see the log of that step)")
           elif [ "$CHECK_OUTCOME" != "success" ]; then
             reasons+=("The manifest check did not pass (see above)")
