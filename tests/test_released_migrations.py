@@ -393,6 +393,33 @@ def test_the_job_summary_marks_tags_and_paths_as_code(
     )
 
 
+def test_the_job_summary_reports_a_table_after_the_release_and_the_files_it_hid(
+    tmp_path: Path,
+) -> None:
+    # Pytest fails on both, so the summary has to show both.
+    manifest = _released_tree(tmp_path)
+    _add_unreleased_silver_migration(tmp_path)
+    silver_note = tmp_path / "silver" / "0002_add_note.sql"
+    releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    releases["v0.3.1"] = {"silver/0002_add_note.sql": _released_hash(silver_note)}
+    _write_manifest(manifest, releases)
+
+    assert release_manifest_summary(manifest, tmp_path, "v0.3.0") == (
+        "## Release manifest incomplete for `v0.3.0`\n"
+        "\n"
+        "- Table `v0.3.1` is after the release being cut, `v0.3.0`\n"
+        "- Not in any table: `silver/0002_add_note.sql`\n"
+        "\n"
+        "Add these lines to the end of `src/budget/migrations/released.toml`:\n"
+        "\n"
+        "```toml\n"
+        '["v0.3.0"]\n'
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+        "```\n"
+    )
+
+
 def test_the_job_summary_for_a_tag_with_a_table_says_to_add_the_lines_under_it(
     tmp_path: Path,
 ) -> None:
