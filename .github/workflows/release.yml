@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Run the checks and report what would be released, without tagging
+        description: Run the checks without tagging. Only has an effect on main; runs from any other branch never tag.
         type: boolean
         default: false
 permissions:
@@ -62,13 +62,13 @@ jobs:
           CHECK_OUTCOME: ${{ steps.check.outcome }}
         run: |
           tag="v$(uv version --short)"
-          why=""
-          if [ "$DRY_RUN" = "true" ]; then
+          # Off main the branch alone stops the tag, so dry_run is only a note.
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
             why="dry_run was chosen"
-          fi
-          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            not_main="the run is from \`$REF\`, not \`main\`"
-            why="${why:+$why and }$not_main"
+          elif [ "$DRY_RUN" = "true" ]; then
+            why="the run is from branch \`$REF\`, not \`main\` (dry_run has no effect off main)"
+          else
+            why="the run is from branch \`$REF\`, not \`main\`"
           fi
           refusals=""
           if [ "$VERSION_OUTCOME" != "success" ]; then
@@ -82,7 +82,7 @@ jobs:
           if [ -n "$refusals" ]; then
             result="release \`$tag\` would be refused: $refusals (see above)"
           else
-            result="would create release \`$tag\` at $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA from \`$REF\`"
+            result="would create release \`$tag\` at $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA from branch \`$REF\`"
           fi
           echo "**Dry run:** $result. No tag was created because $why." >> "$GITHUB_STEP_SUMMARY"
       - name: Refuse a version that is already released
