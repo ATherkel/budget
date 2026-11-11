@@ -359,6 +359,27 @@ def test_the_job_summary_for_a_released_tag_says_to_bump_and_start_a_new_table(
     )
 
 
+def test_the_job_summary_for_a_released_tag_with_no_table_has_only_the_new_header(
+    tmp_path: Path,
+) -> None:
+    # v0.3.0 was released without adding a migration, so it has no table. Its
+    # own header in the paste block would put the new files under a released tag.
+    manifest = _released_tree(tmp_path)
+    (tmp_path / "silver" / "0002_add_note.sql").write_bytes(
+        b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
+    )
+
+    summary = release_manifest_summary(manifest, tmp_path, "v0.3.0", released=True)
+
+    assert summary.endswith(
+        "```toml\n"
+        '["v<new version>"]\n'
+        '"silver/0002_add_note.sql" = '
+        '"5de046400308f01755df18cb8c5d6e5aa3aecf176d6cfd14b9d822bfb6ce5fe2"\n'
+        "```\n"
+    )
+
+
 def test_each_problem_becomes_an_error_annotation_on_released_toml(
     tmp_path: Path,
 ) -> None:
