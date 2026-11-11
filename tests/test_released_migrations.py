@@ -1,14 +1,14 @@
 # Copyright 2026 Therkel
 """Released migrations are frozen (#364).
 
-`src/budget/migrations/released.toml` holds, for each release tag, the
-SHA-256 of each migration file that release added: a tag's table lists only
-the files no earlier table lists, and it may be empty. A store records only the
-number of the last migration it ran, so a released file that changes or
-disappears never reaches the stores already past it. These tests read only the
-manifest and the working tree: CI checks out without tags. The Release workflow
-also checks, with `-m release`, that the tag it cuts has a table and that every
-migration file is in some table (#492).
+`src/budget/migrations/released.toml` holds a table per release that added
+migrations, with the SHA-256 of each file it added: a table lists only the files
+no earlier table lists, and a release that adds none has no table. A store
+records only the number of the last migration it ran, so a released file that
+changes or disappears never reaches the stores already past it. These tests read
+only the manifest and the working tree: CI checks out without tags. The Release
+workflow also checks, with `-m release`, that every migration file is in some
+table (#492).
 """
 
 import hashlib
@@ -32,14 +32,13 @@ def released_migration_drift(manifest: Path, root: Path) -> list[str]:
     ]
 
 
-def release_manifest_gaps(manifest: Path, root: Path, tag: str) -> list[str]:
-    """Why the manifest doesn't freeze every migration in `root` for `tag`.
+def release_manifest_gaps(manifest: Path, root: Path) -> list[str]:
+    """Why the manifest doesn't freeze every migration in `root`.
 
-    Only unlisted files count: a tag with no table of its own is fine when an
-    earlier table already lists every file.
+    Only unlisted files count, whatever tag is being cut: a release that adds
+    no migration needs no table, because earlier tables list every file.
     """
     releases = tomllib.loads(manifest.read_text(encoding="utf-8"))
-    del tag  # the tag no longer affects the gaps; kept for one call shape
     return [
         f"not in any table: {name}" for name in _unlisted_migrations(releases, root)
     ]
@@ -84,11 +83,11 @@ def release_manifest_summary(
     return f'{heading}Add these lines under `["{tag}"]` in {path}:\n\n{lines}'
 
 
-def release_manifest_annotations(manifest: Path, root: Path, tag: str) -> list[str]:
+def release_manifest_annotations(manifest: Path, root: Path) -> list[str]:
     """One GitHub Actions error annotation per reason `tag` can't be cut."""
     error = "::error file=src/budget/migrations/released.toml,"
     error += "title=Release manifest incomplete::"
-    return [f"{error}{gap}" for gap in release_manifest_gaps(manifest, root, tag)]
+    return [f"{error}{gap}" for gap in release_manifest_gaps(manifest, root)]
 
 
 def _unlisted_migrations(releases: dict[str, Any], root: Path) -> list[str]:
@@ -179,14 +178,12 @@ def test_a_changed_migration_checked_out_with_crlf_endings_is_still_reported(
     assert released_migration_drift(manifest, tmp_path) == [BRONZE]
 
 
-def test_a_release_tag_with_no_table_passes_when_every_migration_is_in_one(
-    tmp_path: Path,
-) -> None:
-    # A release that adds no migration needs no table: every file is already
-    # frozen by the table of the release that first shipped it.
+def test_a_release_that_adds_no_migration_needs_no_table(tmp_path: Path) -> None:
+    # Every file is already frozen by the table of the release that first
+    # shipped it, so cutting v0.3.0 with no ["v0.3.0"] table finds no gaps.
     manifest = _released_tree(tmp_path)
 
-    assert release_manifest_gaps(manifest, tmp_path, "v0.3.0") == []
+    assert release_manifest_gaps(manifest, tmp_path) == []
 
 
 def test_a_migration_in_no_table_is_reported(tmp_path: Path) -> None:
@@ -205,7 +202,7 @@ def test_a_migration_in_no_table_is_reported(tmp_path: Path) -> None:
         },
     )
 
-    assert release_manifest_gaps(manifest, tmp_path, "v0.3.0") == [
+    assert release_manifest_gaps(manifest, tmp_path) == [
         "not in any table: silver/0002_add_note.sql"
     ]
 
@@ -281,7 +278,7 @@ def test_a_tag_with_no_table_names_only_each_migration_in_no_table(
         b"ALTER TABLE evidence ADD COLUMN note TEXT;\n"
     )
 
-    assert release_manifest_gaps(manifest, tmp_path, "v0.3.0") == [
+    assert release_manifest_gaps(manifest, tmp_path) == [
         "not in any table: silver/0002_add_note.sql",
     ]
 
@@ -377,7 +374,7 @@ def test_each_problem_becomes_an_error_annotation_on_released_toml(
 
     error = "::error file=src/budget/migrations/released.toml,"
     error += "title=Release manifest incomplete::"
-    assert release_manifest_annotations(manifest, tmp_path, "v0.3.0") == [
+    assert release_manifest_annotations(manifest, tmp_path) == [
         f"{error}not in any table: gold/0001_create_gold_store.sql",
         f"{error}not in any table: silver/0002_add_note.sql",
     ]
@@ -404,7 +401,7 @@ def _report_to_github_actions(manifest: Path, tag: str) -> None:
         return
     # pytest replays a failing test's stdout line by line, so GitHub still
     # reads each annotation as a workflow command.
-    for annotation in release_manifest_annotations(manifest, MIGRATIONS, tag):
+    for annotation in release_manifest_annotations(manifest, MIGRATIONS):
         sys.stdout.write(f"{annotation}\n")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
@@ -417,7 +414,7 @@ def _report_to_github_actions(manifest: Path, tag: str) -> None:
 
 
 @pytest.mark.release
-def test_the_release_tag_has_a_table_and_every_migration_is_in_one() -> None:
+def test_every_migration_is_in_a_table_before_a_release() -> None:
     # Main keeps the last release's version while unreleased migrations pile
     # up, so only the Release workflow, which sets RELEASE_TAG, can check this.
     tag = os.environ.get("RELEASE_TAG")
@@ -425,7 +422,7 @@ def test_the_release_tag_has_a_table_and_every_migration_is_in_one() -> None:
         pytest.skip("RELEASE_TAG is not set; the Release workflow sets it")
     manifest = MIGRATIONS / "released.toml"
 
-    gaps = release_manifest_gaps(manifest, MIGRATIONS, tag)
+    gaps = release_manifest_gaps(manifest, MIGRATIONS)
 
     if gaps:
         _report_to_github_actions(manifest, tag)
