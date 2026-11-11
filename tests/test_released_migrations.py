@@ -34,8 +34,15 @@ def released_migration_drift(manifest: Path, root: Path) -> list[str]:
 
 def released_drift_summary(manifest: Path, root: Path) -> str:
     """The Markdown a job summary shows when released migrations changed."""
-    del manifest, root  # red stub: green replaces this body
-    return ""
+    files = "".join(
+        f"- `{name}`\n" for name in released_migration_drift(manifest, root)
+    )
+    return (
+        f"## Released migrations changed\n\n{files}\n"
+        "A released migration is frozen: stores already past it never see a "
+        "change. Restore each file as `released.toml` records it, and put the "
+        "change in a new migration.\n"
+    )
 
 
 def release_manifest_gaps(manifest: Path, root: Path) -> list[str]:
