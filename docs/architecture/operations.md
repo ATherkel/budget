@@ -1047,11 +1047,12 @@ Before tagging a release:
    `gold/0005` are all unreleased, they become one
    `gold/0001_create_gold_store.sql`. Each store's schema then moves at most
    one number per release.
-2. Add a table for the new tag to `src/budget/migrations/released.toml`,
-   mapping each migration file the release adds to its SHA-256, taken after
-   converting CRLF line endings to LF. A table lists only the files that no
-   earlier table lists, so a store that didn't change adds nothing and the
-   table may be empty. `tests/test_released_migrations.py` fails when a file
+2. If the release adds migration files, add a table for the new tag to
+   `src/budget/migrations/released.toml`, mapping each of them to its
+   SHA-256, taken after converting CRLF line endings to LF. A table lists only
+   the files that no earlier table lists, so a store that didn't change adds
+   nothing, and a release that adds no migration needs no table.
+   `tests/test_released_migrations.py` fails when a file
    any table names is changed or deleted. It reads only the manifest and the
    working tree, because CI checks out without tags.
 3. Bump the version in `pyproject.toml` to the new release. The Release
@@ -1062,9 +1063,8 @@ Before tagging a release:
 4. Tag by running the Release workflow from `main`, which tags the
    `pyproject.toml` version. A step before the tag runs
    `RELEASE_TAG="v$(uv version --short)" uv run pytest -m release`. It
-   refuses the tag when `released.toml` has no table for it, when a
-   migration file appears in no table, or when a released migration has
-   changed. The run's summary page then lists each problem and shows the
+   refuses the tag when a migration file appears in no table, or when a
+   released migration has changed. The run's summary page then lists each problem and shows the
    lines to paste into `released.toml`, and each problem is also an error
    annotation on the run. To get those lines before running the workflow,
    run the same check locally. In PowerShell, clear the variable afterwards,
