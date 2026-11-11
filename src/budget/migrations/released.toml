@@ -9,3 +9,7 @@
 ["v0.2.0"]
 "bronze/0001_create_bronze_store.sql" = "f2d6395283b02910d605d16f1879b9add14ca241f68dbee5d405c2d780da5089"
 "silver/0001_create_silver_store.sql" = "4eb688f512d2a7734d6a8cee2992c26c57e285d43a9d57f3a55e7328f27a7b12"
+
+["v0.3.0.dev1"]
+"gold/0001_create_gold_store.sql" = "26dd289e28ab903e30f5f120d3cc29bd05d12d6d38563b674342eff2c699f03e"
+"silver/0002_record_build_provenance.sql" = "788b5b1872f960453915c254bd393b8ef0a7c86f62804c2f8195376c2fc0ff0e"
