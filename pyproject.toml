@@ -26,7 +26,7 @@ build-backend = "uv_build"
 dev = [
     "complexipy>=4",
     "coverage>=7.17.2",
-    "httpx2>=2.13.1",
+    "httpx2>=2.16.0",
     "playwright==1.64.1",
     "pytest>=8",
     "ruff>=0.17.1",
