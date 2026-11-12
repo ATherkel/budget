@@ -24,7 +24,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "complexipy>=4",
+    "complexipy>=8.3.0",
     "coverage>=7.17.2",
     "httpx2>=2.13.1",
     "playwright==1.64.1",
