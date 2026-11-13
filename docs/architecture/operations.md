@@ -82,7 +82,7 @@ Rules for every store:
   `budget.lock` in the profile's stores folder for its whole run, including
   the backup set it writes. A second writing command exits 4 at once with
   "another command is running". Commands that only read (`status`, `review`,
-  `check`, `serve`) take no lock.
+  `check`, `serve`, `suggest-rules`) take no lock.
 
 ### Publishing a Gold build
 
@@ -589,6 +589,7 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | `import [--ranges <file>]` | Imports each file in the inbox on its own, then rebuilds and publishes what was stored. A refused file stays in the inbox. A payload the inbox holds under more than one account is a cross-account duplicate: every file it holds is refused before anything is written, and the files it does not hold are imported only if the person answers `y` or `yes` at the prompt. It asks each file's declared range, or reads them from a ranges file: a `[default]` range and `[account.<id>]` ranges, each a TOML `from` and `through` date. | Bronze, the import log, Silver, Gold | Yes, if the build succeeds |
 | `rebuild [--from bronze\|silver\|gold]` | Rebuilds from a stage; `gold` by default. | Stages from `--from` on | Yes, if the recipe changed |
 | `review [--kind <kind>] [--account <id>]` | Lists open review items, Silver's and Gold's, with what a person needs to settle each one. | Nothing | No |
+| `suggest-rules` | Lists each `bank_category` / `bank_subcategory` pair in Silver with its transaction count and signed sum per currency, then one line for the transactions with no bank category. A pair that a `rules.toml` rule testing only those labels already matches names that rule. Reads no transaction text; a missing `rules.toml` flags nothing, and an invalid one is refused. | Nothing | No |
 | `decide <kind> <targets…> [options] --reason <text>` | Proposes a manual decision to the boundary, then rebuilds from the stage the decision affects. | The decision log, then stores | Yes |
 | `status` | Shows balance and classification completeness (below). | Nothing | No |
 | `undo` | Moves the pointer back (ADR-014). | `gold.db` | Pointer only |
