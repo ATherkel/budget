@@ -28,10 +28,19 @@ class BankLabelPair:
     sums: Mapping[str, Decimal]
 
 
-def bank_label_pairs(profile: Profile) -> tuple[BankLabelPair, ...]:
+@dataclass(frozen=True)
+class BankLabels:
+    """Every bank label pair in Silver, and the transactions with no category."""
+
+    pairs: tuple[BankLabelPair, ...]
+    uncategorized: int
+
+
+def bank_labels(profile: Profile) -> BankLabels:
     """Return every labelled pair in Silver, by category then subcategory.
 
     A missing subcategory is a pair of its own, after the category's named ones.
+    A transaction with no bank category is in no pair, only in the count.
     """
     with SilverStore(profile, read_only=True) as store:
         result = store.read()
@@ -60,4 +69,5 @@ def bank_label_pairs(profile: Profile) -> tuple[BankLabelPair, ...]:
             pair.subcategory or "",
         )
     )
-    return tuple(pairs)
+    uncategorized = sum(n for (category, _), n in counts.items() if category is None)
+    return BankLabels(pairs=tuple(pairs), uncategorized=uncategorized)

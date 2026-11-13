@@ -34,7 +34,7 @@ from budget.profiles import Profile
 from budget.rebuilding import GoldRebuild, SilverRebuild, SilverReviews
 from budget.reviewing import OpenGoldReview, OpenReview, OpenReviews
 from budget.silver import ImportRunResult, ReviewItem, SilverResult
-from budget.suggesting import BankLabelPair
+from budget.suggesting import BankLabels
 
 _MAX_BYTE_CODE_POINT: Final = 0xFF
 _SETTLEMENT_GUIDANCE: Final[Mapping[ClassificationReviewKind, str]] = MappingProxyType(
@@ -519,19 +519,25 @@ def find_summary(found: FindResult) -> str:
     return "".join(lines)
 
 
-def suggest_rules_summary(pairs: Sequence[BankLabelPair]) -> str:
-    """One line per bank label pair, with the transactions it covers."""
+def suggest_rules_summary(labels: BankLabels) -> str:
+    """One line per bank label pair, then one for the transactions with none."""
     lines: list[str] = []
-    for pair in pairs:
-        noun = "transaction" if pair.transactions == 1 else "transactions"
+    for pair in labels.pairs:
         sums = ", ".join(
             f"{total} {currency}" for currency, total in sorted(pair.sums.items())
         )
         lines.append(
             f"{pair.category} / {pair.subcategory or '(none)'}"
-            f"  {pair.transactions} {noun}  {sums}\n"
+            f"  {_transactions(pair.transactions)}  {sums}\n"
         )
+    if labels.uncategorized:
+        lines.append(f"No bank category  {_transactions(labels.uncategorized)}\n")
     return "".join(lines)
+
+
+def _transactions(count: int) -> str:
+    """`count` with the noun `transaction`, singular for exactly one."""
+    return f"{count} {'transaction' if count == 1 else 'transactions'}"
 
 
 def _quoted_terminal_text(text: str) -> str:
