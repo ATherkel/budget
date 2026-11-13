@@ -144,6 +144,7 @@ from budget.reviewing import (
 )
 from budget.silver.storage import SILVER_STAGE
 from budget.silver.store import SilverStore
+from budget.suggesting import bank_label_pairs
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
 EXIT_OK: Final = 0
@@ -762,6 +763,7 @@ def _find(
 
 def _suggest_rules(profile: Profile) -> None:
     """Summarize the bank's category labels in Silver, with no lock."""
+    sys.stdout.write(summaries.suggest_rules_summary(bank_label_pairs(profile)))
 
 
 def _transaction(profile: Profile, handle: str) -> str:
