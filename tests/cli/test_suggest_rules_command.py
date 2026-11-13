@@ -76,6 +76,13 @@ def _seeded_profile_file(folder: Path, transactions: Sequence[Transaction]) -> P
     return profile_file
 
 
+def _write_rules(folder: Path, text: str) -> None:
+    """Write the profile's `rules.toml`, the only input file the command reads."""
+    inputs = folder / "inputs"
+    inputs.mkdir(exist_ok=True)
+    (inputs / "rules.toml").write_text(text, encoding="utf-8")
+
+
 def _columns(stdout: str, count: int) -> list[list[str]]:
     """The first `count` two-space-separated columns of each output line."""
     return [line.split("  ")[:count] for line in stdout.splitlines()]
@@ -162,6 +169,57 @@ class SuggestRulesSummaryTests(unittest.TestCase):
         assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
         assert stderr.startswith("budget: Silver has not been built")
         assert "run `budget rebuild --from silver`" in stderr
+
+    def test_a_pair_a_bank_category_rule_already_matches_names_that_rule(
+        self,
+    ) -> None:
+        # Only a rule that tests nothing but the bank's labels covers a pair.
+        # A category-only rule covers each of its subcategories, in any case,
+        # as Gold matches it; a rule with any further condition covers none.
+        transactions = (
+            _transaction(1, ("Bolig", "Husleje")),
+            _transaction(2, ("Bolig", None)),
+            _transaction(3, ("Mad", "Dagligvarer")),
+            _transaction(4, ("Rejser", "Hotel")),
+            _transaction(5, ("Rejser", None)),
+        )
+        rules = """format = 1
+
+[[rule]]
+id = "r-rent"
+priority = -10
+when.bank_category = "Bolig"
+when.bank_subcategory = "Husleje"
+then.category = "rent"
+
+[[rule]]
+id = "r-groceries-current"
+priority = -10
+when.bank_category = "Mad"
+when.account = "joint-current"
+then.category = "groceries"
+
+[[rule]]
+id = "r-travel"
+priority = -20
+when.bank_category = "rejser"
+then.category = "travel"
+"""
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = _seeded_profile_file(folder, transactions)
+            _write_rules(folder, rules)
+
+            status, stdout, stderr = suggest_rules(profile_file)
+
+        assert (status, stderr) == (EXIT_OK, "")
+        assert stdout.splitlines() == [
+            "Bolig / Husleje  1 transaction  -100.00 DKK  covered by r-rent",
+            "Bolig / (none)  1 transaction  -100.00 DKK",
+            "Mad / Dagligvarer  1 transaction  -100.00 DKK",
+            "Rejser / Hotel  1 transaction  -100.00 DKK  covered by r-travel",
+            "Rejser / (none)  1 transaction  -100.00 DKK  covered by r-travel",
+        ]
 
 
 if __name__ == "__main__":
