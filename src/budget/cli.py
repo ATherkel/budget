@@ -144,7 +144,7 @@ from budget.reviewing import (
 )
 from budget.silver.storage import SILVER_STAGE
 from budget.silver.store import SilverStore
-from budget.suggesting import bank_labels
+from budget.suggesting import SilverNotBuiltForSuggestionsError, bank_labels
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
 EXIT_OK: Final = 0
@@ -1147,6 +1147,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         SilverNotBuiltError,
         SilverProvenanceUnavailableError,
         SilverReviewUnavailableError,
+        SilverNotBuiltForSuggestionsError,
         WriterLockHeldError,
         StoresFolderUnavailableError,
         RestoreInsteadError,

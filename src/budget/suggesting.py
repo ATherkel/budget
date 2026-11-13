@@ -28,6 +28,17 @@ class BankLabelPair:
     sums: Mapping[str, Decimal]
 
 
+class SilverNotBuiltForSuggestionsError(RuntimeError):
+    """Silver was never built, so it holds no bank labels to summarize."""
+
+    def __init__(self) -> None:
+        """Say which command builds Silver first."""
+        super().__init__(
+            "Silver has not been built, so there are no bank labels to "
+            "summarize; run `budget rebuild --from silver` first"
+        )
+
+
 @dataclass(frozen=True)
 class BankLabels:
     """Every bank label pair in Silver, and the transactions with no category."""
@@ -43,6 +54,8 @@ def bank_labels(profile: Profile) -> BankLabels:
     A transaction with no bank category is in no pair, only in the count.
     """
     with SilverStore(profile, read_only=True) as store:
+        if not store.is_built():
+            raise SilverNotBuiltForSuggestionsError
         result = store.read()
     counts: Counter[_Labels] = Counter()
     sums: defaultdict[_Labels, defaultdict[str, Decimal]] = defaultdict(
