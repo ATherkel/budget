@@ -125,6 +125,28 @@ class SuggestRulesSummaryTests(unittest.TestCase):
             ["Rejser / Hotel", "2 transactions", "-450.50 DKK"],
         ]
 
+    def test_transactions_without_a_bank_category_are_one_line_after_the_pairs(
+        self,
+    ) -> None:
+        # An export with no category column, and a stray subcategory with no
+        # category, both leave nothing a bank-category rule could match.
+        transactions = (
+            _transaction(1, (None, None)),
+            _transaction(2, ("Bolig", "Husleje")),
+            _transaction(3, (None, "Husleje"), account_id=SAVINGS),
+            _transaction(4, (None, None), account_id=SAVINGS),
+        )
+        with TemporaryDirectory() as directory:
+            profile_file = _seeded_profile_file(Path(directory), transactions)
+
+            status, stdout, stderr = suggest_rules(profile_file)
+
+        assert (status, stderr) == (EXIT_OK, "")
+        assert stdout.splitlines() == [
+            "Bolig / Husleje  1 transaction  -100.00 DKK",
+            "No bank category  3 transactions",
+        ]
+
 
 if __name__ == "__main__":
     unittest.main()
