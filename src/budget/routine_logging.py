@@ -8,6 +8,12 @@ identifiers an import run, publication or decision is named by. Never an
 amount, balance, description, bank category, original filename, bank account
 number, account id, payload id, review id or transaction id.
 
+Never log `str(error)` of an `OSError`, nor its `filename` or `filename2`: OS
+error text carries paths, and an inbox path names the account folder and a
+filename holding the bank account number. A failure event carries only the
+exception class name and, where known, the `import_run_id`. The terminal may
+still show the full message.
+
 The write is best effort. A log that cannot be written never changes the
 command's outcome: a fixed warning is reported and the command still finishes,
 so a build that has already replaced its store is not reported as failed. Every
