@@ -8,7 +8,7 @@ identifiers an import run, publication or decision is named by. Never an
 amount, balance, description, bank category, original filename, bank account
 number, account id, payload id, review id or transaction id.
 
-Never log `str(error)` of an `OSError`, nor its `filename`: operating-system
+Never log `str(error)` of an `OSError`, nor its `filename` or `filename2`: OS
 error text carries paths, and an inbox path names the account folder and a
 filename holding the bank account number. A failure event carries only the
 exception class name and, where known, the `import_run_id`. The terminal may
