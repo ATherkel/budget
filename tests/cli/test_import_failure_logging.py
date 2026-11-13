@@ -41,6 +41,16 @@ def _gone(path: Path) -> OSError:
     return FileNotFoundError(errno.ENOENT, "No such file or directory", str(path))
 
 
+def _locked(path: Path) -> OSError:
+    """The error Windows raises for a file another program holds."""
+    return PermissionError(
+        errno.EACCES,
+        "The process cannot access the file because it is being used by "
+        "another process",
+        str(path),
+    )
+
+
 def _routine_log_text(profile: Profile) -> str:
     """Every routine-log record, current and rotated, as one text."""
     logs = profile.stores / LOG_FOLDER
@@ -105,6 +115,9 @@ class ImportFailureLoggingTests(unittest.TestCase):
         self,
     ) -> None:
         self._import_fails_with(_gone)
+
+    def test_a_file_locked_mid_import_leaves_no_path_in_the_log(self) -> None:
+        self._import_fails_with(_locked)
 
 
 if __name__ == "__main__":
