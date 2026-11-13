@@ -19,6 +19,7 @@ from tests.cli.commands import suggest_rules
 from tests.cli.profile_files import development_profile, write_profile
 
 EXIT_OK = 0
+EXIT_REFUSED_ENVIRONMENT = 4
 CURRENT = "joint-current"
 SAVINGS = "joint-savings"
 
@@ -146,6 +147,21 @@ class SuggestRulesSummaryTests(unittest.TestCase):
             "Bolig / Husleje  1 transaction  -100.00 DKK",
             "No bank category  3 transactions",
         ]
+
+    def test_silver_that_was_never_built_is_refused_with_how_to_build_it(
+        self,
+    ) -> None:
+        # An empty summary would read as "the bank labels nothing".
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            migrate_silver(development_profile(folder))
+
+            status, stdout, stderr = suggest_rules(profile_file)
+
+        assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+        assert stderr.startswith("budget: Silver has not been built")
+        assert "run `budget rebuild --from silver`" in stderr
 
 
 if __name__ == "__main__":
