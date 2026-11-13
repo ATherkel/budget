@@ -2,7 +2,8 @@
 """`budget import` stopped by an operating-system error logs no path.
 
 An inbox file can vanish or be locked by another program after the preview has
-read it and before Bronze reads it. The OS error then propagates as an
+read it and before the import reads it again, first to check for an
+interrupted run of the same file. The OS error then propagates as an
 unexpected error, and its text names the file's full path: the account folder
 and a filename that carries the bank account number. The routine log may never
 hold any of them, whatever event a later change adds for such a failure. Every
@@ -32,8 +33,8 @@ ACCOUNT_ID = "joint-current"
 # The synthetic household's bank account number for `joint-current`.
 ACCOUNT_NUMBER = "0012345678"
 FAILING_NAME = f"Konto-{ACCOUNT_NUMBER}-20260306.csv"
-# The preview reads an inbox file first; the next read of it is Bronze's.
-BRONZE_READ = 2
+# The preview reads an inbox file once; every later read is the import's.
+PREVIEW_READS = 1
 
 
 def _gone(path: Path) -> OSError:
@@ -63,7 +64,7 @@ def _routine_log_text(profile: Profile) -> str:
 
 class ImportFailureLoggingTests(unittest.TestCase):
     def _import_fails_with(self, fault: Callable[[Path], OSError]) -> None:
-        """Import once, then fail Bronze's read of a second file with `fault`."""
+        """Import once, then fail the import's reads of a second file."""
         with TemporaryDirectory() as directory:
             folder = Path(directory)
             profile_file = write_profile(folder)
@@ -80,16 +81,16 @@ class ImportFailureLoggingTests(unittest.TestCase):
             read_bytes = Path.read_bytes
             reads: list[Path] = []
 
-            def faulty_second_read(path: Path) -> bytes:
+            def faulty_later_read(path: Path) -> bytes:
                 reads.append(path)
-                if path == failing and reads.count(path) == BRONZE_READ:
+                if path == failing and reads.count(path) > PREVIEW_READS:
                     raise fault(path)
                 return read_bytes(path)
 
             raised = fault(failing)
             with (
                 mock.patch.object(
-                    Path, "read_bytes", autospec=True, side_effect=faulty_second_read
+                    Path, "read_bytes", autospec=True, side_effect=faulty_later_read
                 ),
                 pytest.raises(type(raised)) as caught,
             ):
