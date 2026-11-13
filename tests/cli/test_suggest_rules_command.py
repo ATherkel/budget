@@ -31,7 +31,6 @@ def _transaction(
     amount: str = "-100.00",
     *,
     account_id: str = CURRENT,
-    currency: str = "DKK",
 ) -> Transaction:
     """One booked synthetic transaction carrying the given bank labels."""
     category, subcategory = labels
@@ -40,7 +39,7 @@ def _transaction(
         account_id=account_id,
         transaction_date=date(2026, 3, number),
         amount=Decimal(amount),
-        currency=currency,
+        currency="DKK",
         description=f"SYNTHETIC {number}",
         source_system="danske-csv-v1",
         balance=None,
@@ -54,11 +53,7 @@ def _transaction(
     )
 
 
-def _seeded_profile_file(
-    folder: Path,
-    transactions: Sequence[Transaction],
-    currencies: dict[str, str] | None = None,
-) -> Path:
+def _seeded_profile_file(folder: Path, transactions: Sequence[Transaction]) -> Path:
     """Write a profile whose Silver store holds exactly `transactions`."""
     profile_file = write_profile(folder)
     profile = development_profile(folder)
@@ -75,7 +70,7 @@ def _seeded_profile_file(
                 import_run_results=(),
                 review_items=(),
             ),
-            currencies=currencies or {CURRENT: "DKK", SAVINGS: "DKK"},
+            currencies={CURRENT: "DKK", SAVINGS: "DKK"},
         )
     return profile_file
 
@@ -107,6 +102,27 @@ class SuggestRulesSummaryTests(unittest.TestCase):
             ["Bolig / Husleje", "2 transactions"],
             ["Bolig / (none)", "1 transaction"],
             ["Indkomst / Løn", "1 transaction"],
+        ]
+
+    def test_each_pair_shows_the_signed_sum_of_its_amounts(self) -> None:
+        # A refund inside the hotel pair nets against its purchases, so a sum
+        # of absolute amounts or of the expenses alone would read differently.
+        # DKK is the only currency Silver accepts today (ADR-013).
+        transactions = (
+            _transaction(1, ("Bolig", "Husleje"), "-1200.00"),
+            _transaction(2, ("Bolig", "Husleje"), "-100.00"),
+            _transaction(3, ("Rejser", "Hotel"), "-500.50", account_id=SAVINGS),
+            _transaction(4, ("Rejser", "Hotel"), "50.00"),
+        )
+        with TemporaryDirectory() as directory:
+            profile_file = _seeded_profile_file(Path(directory), transactions)
+
+            status, stdout, stderr = suggest_rules(profile_file)
+
+        assert (status, stderr) == (EXIT_OK, "")
+        assert _columns(stdout, 3) == [
+            ["Bolig / Husleje", "2 transactions", "-1300.00 DKK"],
+            ["Rejser / Hotel", "2 transactions", "-450.50 DKK"],
         ]
 
 
