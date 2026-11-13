@@ -100,7 +100,9 @@ class ImportFailureLoggingTests(unittest.TestCase):
             assert str(caught.value) == str(raised)
             logged = _routine_log_text(profile)
             assert logged.startswith(logged_before)
-            assert all(json.loads(line) for line in logged.splitlines())
+            # Every line is a whole JSON record: a cut-off line would hide text.
+            for line in logged.splitlines():
+                json.loads(line)
             for leaked in (
                 str(failing),
                 str(failing.parent),
