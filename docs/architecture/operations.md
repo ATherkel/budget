@@ -1011,6 +1011,9 @@ size.
   `publication_id`, `decision_id`, and review item kinds.
 - **Never:** amounts, balances, descriptions, bank category labels, original
   filenames, or `transaction_id`s, which are hashes of transaction content.
+- **Never an OS error's text:** a failure event carries only the exception
+  class name and `import_run_id` where known, never `str(error)` of an
+  `OSError`, because OS error text carries paths. The terminal may show it.
 
 A test runs every walkthrough on synthetic data and asserts that no fixture
 amount, description or filename appears in the log.
