@@ -524,9 +524,12 @@ def suggest_rules_summary(pairs: Sequence[BankLabelPair]) -> str:
     lines: list[str] = []
     for pair in pairs:
         noun = "transaction" if pair.transactions == 1 else "transactions"
+        sums = ", ".join(
+            f"{total} {currency}" for currency, total in sorted(pair.sums.items())
+        )
         lines.append(
             f"{pair.category} / {pair.subcategory or '(none)'}"
-            f"  {pair.transactions} {noun}\n"
+            f"  {pair.transactions} {noun}  {sums}\n"
         )
     return "".join(lines)
 

@@ -2,14 +2,18 @@
 """The `suggest-rules` application operation: the bank's own category labels.
 
 It reads the persisted Silver result only: no Bronze store, no writer lock,
-and never transaction text, only counts of each bank label pair.
+and never transaction text, only counts and sums of each bank label pair.
 """
 
-from collections import Counter
+from collections import Counter, defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass
+from decimal import Decimal
 
 from budget.profiles import Profile
 from budget.silver import SilverStore
+
+type _Labels = tuple[str | None, str | None]
 
 
 @dataclass(frozen=True)
@@ -19,6 +23,9 @@ class BankLabelPair:
     category: str
     subcategory: str | None
     transactions: int
+    # The signed sum of the pair's amounts in each currency, never added
+    # across currencies.
+    sums: Mapping[str, Decimal]
 
 
 def bank_label_pairs(profile: Profile) -> tuple[BankLabelPair, ...]:
@@ -28,12 +35,21 @@ def bank_label_pairs(profile: Profile) -> tuple[BankLabelPair, ...]:
     """
     with SilverStore(profile, read_only=True) as store:
         result = store.read()
-    counts = Counter(
-        (transaction.bank_category, transaction.bank_subcategory)
-        for transaction in result.transactions
+    counts: Counter[_Labels] = Counter()
+    sums: defaultdict[_Labels, defaultdict[str, Decimal]] = defaultdict(
+        lambda: defaultdict(Decimal)
     )
+    for transaction in result.transactions:
+        labels = (transaction.bank_category, transaction.bank_subcategory)
+        counts[labels] += 1
+        sums[labels][transaction.currency] += transaction.amount
     pairs = [
-        BankLabelPair(category=category, subcategory=subcategory, transactions=n)
+        BankLabelPair(
+            category=category,
+            subcategory=subcategory,
+            transactions=n,
+            sums=dict(sums[category, subcategory]),
+        )
         for (category, subcategory), n in counts.items()
         if category is not None
     ]
