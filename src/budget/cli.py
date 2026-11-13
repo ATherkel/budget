@@ -386,6 +386,10 @@ def _parser() -> argparse.ArgumentParser:
     find.add_argument("text", help="case-insensitive text in the description")
     find.add_argument("--month", help="find transactions in YYYY-MM only")
     find.add_argument("--account", help="find transactions in one account only")
+    commands.add_parser(
+        "suggest-rules",
+        help="summarize the bank's category labels and the transactions each covers",
+    )
     decide = commands.add_parser(
         "decide", help="record a manual decision, then rebuild from what it affects"
     )
@@ -756,6 +760,10 @@ def _find(
     sys.stdout.write(summaries.find_summary(found))
 
 
+def _suggest_rules(profile: Profile) -> None:
+    """Summarize the bank's category labels in Silver, with no lock."""
+
+
 def _transaction(profile: Profile, handle: str) -> str:
     """Return the one Silver transaction whose ID starts with `handle`.
 
@@ -1046,6 +1054,7 @@ _PROFILE_ONLY_COMMANDS: Final[Mapping[str, Callable[[Profile], None]]] = {
     "undo": _undo,
     "set-passphrase": _set_passphrase,
     "serve": _serve,
+    "suggest-rules": _suggest_rules,
 }
 
 
