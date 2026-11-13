@@ -7,10 +7,12 @@ and never transaction text, only counts and sums of each bank label pair.
 
 from collections import Counter, defaultdict
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
-from budget.profiles import Profile
+from budget.inputs.rule_checks import KnownIds
+from budget.inputs.rules import Rule, RuleConditions, fold, load_rules
+from budget.profiles import RULES_FILE_NAME, Profile
 from budget.silver import SilverStore
 
 type _Labels = tuple[str | None, str | None]
@@ -26,6 +28,8 @@ class BankLabelPair:
     # The signed sum of the pair's amounts in each currency, never added
     # across currencies.
     sums: Mapping[str, Decimal]
+    # The rules that test nothing but the bank's labels and match this pair.
+    covered_by: tuple[str, ...]
 
 
 class SilverNotBuiltForSuggestionsError(RuntimeError):
@@ -57,6 +61,7 @@ def bank_labels(profile: Profile) -> BankLabels:
         if not store.is_built():
             raise SilverNotBuiltForSuggestionsError
         result = store.read()
+    label_rules = _label_rules(profile)
     counts: Counter[_Labels] = Counter()
     sums: defaultdict[_Labels, defaultdict[str, Decimal]] = defaultdict(
         lambda: defaultdict(Decimal)
@@ -71,6 +76,7 @@ def bank_labels(profile: Profile) -> BankLabels:
             subcategory=subcategory,
             transactions=n,
             sums=dict(sums[category, subcategory]),
+            covered_by=_covering(label_rules, category, subcategory),
         )
         for (category, subcategory), n in counts.items()
         if category is not None
@@ -84,3 +90,41 @@ def bank_labels(profile: Profile) -> BankLabels:
     )
     uncategorized = sum(n for (category, _), n in counts.items() if category is None)
     return BankLabels(pairs=tuple(pairs), uncategorized=uncategorized)
+
+
+def _label_rules(profile: Profile) -> tuple[Rule, ...]:
+    """Return the rules in `rules.toml` that test nothing but the bank's labels.
+
+    A missing `rules.toml` holds no rules; an invalid one is refused. It is
+    judged on its own, so another input file's state never matters here.
+    """
+    if not profile.input_file(RULES_FILE_NAME).exists():
+        return ()
+    rules = load_rules(profile, KnownIds(accounts=None, categories=None))
+    return tuple(
+        rule
+        for rule in rules.values()
+        if rule.when.bank_category is not None
+        and replace(rule.when, bank_category=None, bank_subcategory=None)
+        == RuleConditions()
+    )
+
+
+def _covering(
+    rules: tuple[Rule, ...], category: str, subcategory: str | None
+) -> tuple[str, ...]:
+    """Return the IDs of the rules that match the pair, as Gold matches a label."""
+    return tuple(
+        sorted(
+            rule.rule_id
+            for rule in rules
+            if rule.when.folded_bank_category == fold(category)
+            and (
+                rule.when.bank_subcategory is None
+                or (
+                    subcategory is not None
+                    and rule.when.folded_bank_subcategory == fold(subcategory)
+                )
+            )
+        )
+    )

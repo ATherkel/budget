@@ -526,9 +526,12 @@ def suggest_rules_summary(labels: BankLabels) -> str:
         sums = ", ".join(
             f"{total} {currency}" for currency, total in sorted(pair.sums.items())
         )
+        covered = (
+            f"  covered by {', '.join(pair.covered_by)}" if pair.covered_by else ""
+        )
         lines.append(
             f"{pair.category} / {pair.subcategory or '(none)'}"
-            f"  {_transactions(pair.transactions)}  {sums}\n"
+            f"  {_transactions(pair.transactions)}  {sums}{covered}\n"
         )
     if labels.uncategorized:
         lines.append(f"No bank category  {_transactions(labels.uncategorized)}\n")
