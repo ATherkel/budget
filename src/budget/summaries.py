@@ -531,16 +531,21 @@ def suggest_rules_summary(labels: BankLabels) -> str:
         covered = (
             f"  covered by {', '.join(pair.covered_by)}" if pair.covered_by else ""
         )
-        subcategory = (
-            "(none)" if pair.subcategory is None else _terminal_text(pair.subcategory)
-        )
+        others = ", ".join(_pair_label(*labels) for labels in pair.other_spellings)
+        also = f" (also {others})" if others else ""
         lines.append(
-            f"{_terminal_text(pair.category)} / {subcategory}"
+            f"{_pair_label(pair.category, pair.subcategory)}{also}"
             f"  {_transactions(pair.transactions)}  {sums}{covered}\n"
         )
     if labels.uncategorized:
         lines.append(f"No bank category  {_transactions(labels.uncategorized)}\n")
     return "".join(lines)
+
+
+def _pair_label(category: str, subcategory: str | None) -> str:
+    """`category / subcategory` for the terminal, `(none)` for no subcategory."""
+    shown = "(none)" if subcategory is None else _terminal_text(subcategory)
+    return f"{_terminal_text(category)} / {shown}"
 
 
 def _transactions(count: int) -> str:

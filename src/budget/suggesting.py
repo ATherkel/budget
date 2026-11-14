@@ -15,7 +15,7 @@ from budget.inputs.rules import Rule, RuleConditions, fold, load_rules
 from budget.profiles import RULES_FILE_NAME, Profile
 from budget.silver import SilverStore
 
-type _Labels = tuple[str | None, str | None]
+type _Labels = tuple[str, str | None]
 
 
 @dataclass(frozen=True)
@@ -30,6 +30,9 @@ class BankLabelPair:
     sums: Mapping[str, Decimal]
     # The rules that test nothing but the bank's labels and match this pair.
     covered_by: tuple[str, ...]
+    # The pair's other spellings, which differ from it only in case, most-used
+    # first. The pair itself carries the most-used one.
+    other_spellings: tuple[tuple[str, str | None], ...] = ()
 
 
 class SilverNotBuiltForSuggestionsError(RuntimeError):
@@ -62,34 +65,53 @@ def bank_labels(profile: Profile) -> BankLabels:
             raise SilverNotBuiltForSuggestionsError
         result = store.read()
     label_rules = _label_rules(profile)
-    counts: Counter[_Labels] = Counter()
+    spellings: defaultdict[_Labels, Counter[_Labels]] = defaultdict(Counter)
     sums: defaultdict[_Labels, defaultdict[str, Decimal]] = defaultdict(
         lambda: defaultdict(Decimal)
     )
+    uncategorized = 0
     for transaction in result.transactions:
+        if transaction.bank_category is None:
+            uncategorized += 1
+            continue
         labels = (transaction.bank_category, transaction.bank_subcategory)
-        counts[labels] += 1
-        sums[labels][transaction.currency] += transaction.amount
+        folded = _folded(labels)
+        spellings[folded][labels] += 1
+        sums[folded][transaction.currency] += transaction.amount
     pairs = [
-        BankLabelPair(
-            category=category,
-            subcategory=subcategory,
-            transactions=n,
-            sums=dict(sums[category, subcategory]),
-            covered_by=_covering(label_rules, category, subcategory),
+        _pair(spelled, sums[folded], label_rules)
+        for folded, spelled in sorted(
+            spellings.items(),
+            key=lambda item: (item[0][0], item[0][1] is None, item[0][1] or ""),
         )
-        for (category, subcategory), n in counts.items()
-        if category is not None
     ]
-    pairs.sort(
-        key=lambda pair: (
-            pair.category,
-            pair.subcategory is None,
-            pair.subcategory or "",
-        )
-    )
-    uncategorized = sum(n for (category, _), n in counts.items() if category is None)
     return BankLabels(pairs=tuple(pairs), uncategorized=uncategorized)
+
+
+def _folded(labels: _Labels) -> _Labels:
+    """Fold both labels, as Gold matches a label: without its case."""
+    category, subcategory = labels
+    return fold(category), None if subcategory is None else fold(subcategory)
+
+
+def _pair(
+    spelled: Counter[_Labels],
+    sums: Mapping[str, Decimal],
+    label_rules: tuple[Rule, ...],
+) -> BankLabelPair:
+    """Build one pair from its spellings; the most-used, then the first, leads."""
+    ordered = sorted(
+        spelled, key=lambda labels: (-spelled[labels], labels[0], labels[1] or "")
+    )
+    category, subcategory = ordered[0]
+    return BankLabelPair(
+        category=category,
+        subcategory=subcategory,
+        transactions=spelled.total(),
+        sums=dict(sums),
+        covered_by=_covering(label_rules, category, subcategory),
+        other_spellings=tuple(ordered[1:]),
+    )
 
 
 def _label_rules(profile: Profile) -> tuple[Rule, ...]:
