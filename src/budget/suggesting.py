@@ -1,8 +1,8 @@
 # Copyright 2026 Therkel
 """The `suggest-rules` application operation: the bank's own category labels.
 
-It reads the persisted Silver result only: no Bronze store, no writer lock,
-and never transaction text, only counts and sums of each bank label pair.
+It reads the persisted Silver result only: no Bronze store, no writer lock.
+It never returns transaction text, only counts and sums of each bank label pair.
 """
 
 from collections import Counter, defaultdict
