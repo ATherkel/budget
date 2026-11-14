@@ -577,6 +577,22 @@ then.category = "travel"
             assert sorted(path.name for path in out.iterdir()) == ["rules-draft.toml"]
             assert edited.read_text(encoding="utf-8") == "# the household's edits\n"
 
+    def test_an_out_folder_inside_the_inputs_folder_is_refused(self) -> None:
+        # Drafts never go into inputs, where they would sit beside the real
+        # files. The folder is judged once resolved, so `..` cannot reach it.
+        transactions = (_transaction(1, ("Bolig", "Husleje")),)
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = _seeded_profile_file(folder, transactions)
+            (folder / "inputs").mkdir()
+            out = folder / "elsewhere" / ".." / "inputs" / "drafts"
+
+            status, stdout, stderr = suggest_rules(profile_file, "--out", str(out))
+
+            assert (status, stdout) == (EXIT_REFUSED_CONFIGURATION, "")
+            assert stderr.startswith("budget: drafts are never written into ")
+            assert list((folder / "inputs").iterdir()) == []
+
 
 if __name__ == "__main__":
     unittest.main()
