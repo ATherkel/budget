@@ -124,8 +124,19 @@ class DraftsIntoInputsError(ValueError):
         )
 
 
+class DraftsOutNotAFolderError(ValueError):
+    """Something other than a folder is already at the `--out` path."""
+
+    def __init__(self, out: Path) -> None:
+        """Name the path that holds something other than a folder."""
+        super().__init__(
+            f"{out} is not a folder, so nothing was written; choose an --out "
+            "folder, or a path where one can be created"
+        )
+
+
 def refuse_out_folder(profile: Profile, out: Path) -> None:
-    """Refuse an `--out` folder inside `inputs`, or one already holding a draft.
+    """Refuse an `--out` path that is no folder, is inside `inputs`, or has a draft.
 
     The folder is judged once resolved, so no `..` or link reaches `inputs`.
     """
@@ -133,6 +144,8 @@ def refuse_out_folder(profile: Profile, out: Path) -> None:
     resolved = out.resolve()
     if resolved == inputs or inputs in resolved.parents:
         raise DraftsIntoInputsError(inputs)
+    if out.exists() and not out.is_dir():
+        raise DraftsOutNotAFolderError(out)
     existing = tuple(
         path
         for path in (out / TAXONOMY_DRAFT_NAME, out / RULES_DRAFT_NAME)

@@ -149,6 +149,7 @@ from budget.suggesting import (
     TAXONOMY_DRAFT_NAME,
     DraftsExistError,
     DraftsIntoInputsError,
+    DraftsOutNotAFolderError,
     SilverNotBuiltForSuggestionsError,
     bank_labels,
     refuse_out_folder,
@@ -778,9 +779,9 @@ def _find(
 def _suggest_rules(profile: Profile, out: Path | None) -> None:
     """Summarize the bank's category labels in Silver, with no lock.
 
-    With `out`, also write the draft taxonomy and rules there. A folder inside
-    `inputs`, or one that already holds a draft, is refused before anything
-    is printed.
+    With `out`, also write the draft taxonomy and rules there. A path that is
+    no folder, a folder inside `inputs`, or one that already holds a draft is
+    refused before anything is printed.
     """
     if out is not None:
         refuse_out_folder(profile, out)
@@ -1163,6 +1164,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         DemoDirectoryExistsError,
         DraftsExistError,
         DraftsIntoInputsError,
+        DraftsOutNotAFolderError,
         CatchUpInputsRefusedError,
     ) as error:
         return _refuse(error, EXIT_REFUSED_INPUT)
