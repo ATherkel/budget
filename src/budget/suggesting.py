@@ -115,6 +115,7 @@ def write_drafts(labels: BankLabels, out: Path) -> None:
             ]
         category_id = f"{groups[pair.category]}-{_slug(pair.subcategory or 'other')}"
         taxonomy += [
+            _size_comment(pair),
             f"[category.{category_id}]",
             f"name = {_toml_string(pair.subcategory or pair.category)}",
             f"group = {_toml_string(groups[pair.category])}",
@@ -136,6 +137,15 @@ def write_drafts(labels: BankLabels, out: Path) -> None:
     (out / RULES_DRAFT_NAME).write_text(
         "\n".join(rules), encoding="utf-8", newline="\n"
     )
+
+
+def _size_comment(pair: BankLabelPair) -> str:
+    """Say how many transactions a pair holds and their sum in each currency."""
+    noun = "transaction" if pair.transactions == 1 else "transactions"
+    sums = ", ".join(
+        f"{total} {currency}" for currency, total in sorted(pair.sums.items())
+    )
+    return f"# {pair.transactions} {noun}, {sums}"
 
 
 def _slug(text: str) -> str:
