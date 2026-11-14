@@ -170,6 +170,17 @@ class SuggestRulesSummaryTests(unittest.TestCase):
             r"Bolig\x1b[2J / Leje\x07  1 transaction  -100.00 DKK"
         ]
 
+    def test_silver_with_no_transactions_says_so(self) -> None:
+        # Built but empty, as after importing nothing: an empty summary would
+        # read as "the bank labels nothing".
+        with TemporaryDirectory() as directory:
+            profile_file = _seeded_profile_file(Path(directory), ())
+
+            status, stdout, stderr = suggest_rules(profile_file)
+
+        assert (status, stderr) == (EXIT_OK, "")
+        assert stdout == "No transactions in Silver\n"
+
     def test_silver_that_was_never_built_is_refused_with_how_to_build_it(
         self,
     ) -> None:
