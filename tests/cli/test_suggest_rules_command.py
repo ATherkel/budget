@@ -14,6 +14,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import cast
 
 from budget.silver import SilverResult, SilverStore, Transaction, migrate_silver
 from tests.cli.commands import check, suggest_rules
@@ -105,7 +106,7 @@ def _check_with_drafts(folder: Path, drafts: Path) -> tuple[int, str, str]:
 def _draft_rules(drafts: Path) -> list[dict[str, object]]:
     """The rules in `rules-draft.toml`, as TOML reads them."""
     text = (drafts / "rules-draft.toml").read_text(encoding="utf-8")
-    return tomllib.loads(text)["rule"]
+    return cast("list[dict[str, object]]", tomllib.loads(text)["rule"])
 
 
 def _line_above(drafts: Path, line: str) -> str:
