@@ -501,6 +501,59 @@ class SuggestRulesDraftTests(unittest.TestCase):
                 {"bank_category": category, "bank_subcategory": subcategory}
             ]
 
+    def test_a_covered_pair_is_drafted_commented_out_under_the_rule_covering_it(
+        self,
+    ) -> None:
+        # Flagged, not skipped: the household sees the pair, but pasting the
+        # drafts adds nothing live for it. A group whose every pair is
+        # covered is commented out too, so no group is left empty.
+        transactions = (
+            _transaction(1, ("Bolig", "Husleje")),
+            _transaction(2, ("Bolig", None)),
+            _transaction(3, ("Rejser", "Hotel")),
+            _transaction(4, ("Rejser", None)),
+        )
+        rules = """format = 1
+
+[[rule]]
+id = "r-rent"
+when.bank_category = "Bolig"
+when.bank_subcategory = "Husleje"
+then.category = "rent"
+
+[[rule]]
+id = "r-travel"
+when.bank_category = "Rejser"
+then.category = "travel"
+"""
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = _seeded_profile_file(folder, transactions)
+            _write_rules(folder, rules)
+            out = folder / "drafts"
+
+            status, _, stderr = suggest_rules(profile_file, "--out", str(out))
+
+            assert (status, stderr) == (EXIT_OK, "")
+            taxonomy_text = (out / "taxonomy-draft.toml").read_text(encoding="utf-8")
+            rules_text = (out / "rules-draft.toml").read_text(encoding="utf-8")
+            taxonomy = tomllib.loads(taxonomy_text)
+            assert (list(taxonomy["group"]), list(taxonomy["category"])) == (
+                ["bolig"],
+                ["bolig-other"],
+            )
+            assert [rule["id"] for rule in _draft_rules(out)] == ["r-bank-bolig-other"]
+            assert '# covered by r-rent\n# [[rule]]\n# id = "r-bank-bolig-husleje"' in (
+                rules_text
+            )
+            assert "# covered by r-rent\n# [category.bolig-husleje]" in taxonomy_text
+            assert "# covered by r-travel\n# [group.rejser]" in taxonomy_text
+            assert _check_with_drafts(folder / "check", out) == (
+                EXIT_OK,
+                "No problems found.\n",
+                "",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
