@@ -554,6 +554,29 @@ then.category = "travel"
                 "",
             )
 
+    def test_an_existing_draft_file_is_refused_and_nothing_is_written(
+        self,
+    ) -> None:
+        # A rerun must never lose the household's edits to an earlier draft.
+        # Both files are checked first, so the missing one is not written
+        # either. The refusal names only the file that exists.
+        transactions = (_transaction(1, ("Bolig", "Husleje")),)
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = _seeded_profile_file(folder, transactions)
+            out = folder / "drafts"
+            out.mkdir()
+            edited = out / "rules-draft.toml"
+            edited.write_text("# the household's edits\n", encoding="utf-8")
+
+            status, stdout, stderr = suggest_rules(profile_file, "--out", str(out))
+
+            assert (status, stdout) == (EXIT_REFUSED_CONFIGURATION, "")
+            assert stderr.startswith(f"budget: {edited} already exists")
+            assert "taxonomy-draft.toml" not in stderr
+            assert sorted(path.name for path in out.iterdir()) == ["rules-draft.toml"]
+            assert edited.read_text(encoding="utf-8") == "# the household's edits\n"
+
 
 if __name__ == "__main__":
     unittest.main()
