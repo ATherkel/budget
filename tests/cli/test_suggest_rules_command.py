@@ -156,6 +156,28 @@ class SuggestRulesSummaryTests(unittest.TestCase):
             "No bank category  3 transactions",
         ]
 
+    def test_spellings_that_differ_only_in_case_are_one_pair(self) -> None:
+        # Gold matches a label without its case, so these are one pair. It
+        # shows the most-used spelling, a tie going to the one that sorts
+        # first ("MAD" before "Mad"), and names the others after it.
+        transactions = (
+            _transaction(1, ("Bolig", "Husleje")),
+            _transaction(2, ("BOLIG", "husleje")),
+            _transaction(3, ("Bolig", "Husleje"), account_id=SAVINGS),
+            _transaction(4, ("Mad", None)),
+            _transaction(5, ("MAD", None)),
+        )
+        with TemporaryDirectory() as directory:
+            profile_file = _seeded_profile_file(Path(directory), transactions)
+
+            status, stdout, stderr = suggest_rules(profile_file)
+
+        assert (status, stderr) == (EXIT_OK, "")
+        assert stdout.splitlines() == [
+            "Bolig / Husleje (also BOLIG / husleje)  3 transactions  -300.00 DKK",
+            "MAD / (none) (also Mad / (none))  2 transactions  -200.00 DKK",
+        ]
+
     def test_control_characters_in_a_bank_label_are_escaped(self) -> None:
         # The bank wrote the label, so it is shown as `review` shows it:
         # an escape or bell character never reaches the terminal as itself.
