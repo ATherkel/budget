@@ -612,6 +612,22 @@ then.category = "travel"
             assert stderr.startswith("budget: drafts are never written into ")
             assert list((folder / "inputs").iterdir()) == []
 
+    def test_the_inputs_folder_itself_is_refused_as_the_out_folder(self) -> None:
+        # Not only a folder inside inputs: inputs itself is refused too.
+        transactions = (_transaction(1, ("Bolig", "Husleje")),)
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = _seeded_profile_file(folder, transactions)
+            (folder / "inputs").mkdir()
+
+            status, stdout, stderr = suggest_rules(
+                profile_file, "--out", str(folder / "inputs")
+            )
+
+            assert (status, stdout) == (EXIT_REFUSED_CONFIGURATION, "")
+            assert stderr.startswith("budget: drafts are never written into ")
+            assert list((folder / "inputs").iterdir()) == []
+
 
 if __name__ == "__main__":
     unittest.main()
