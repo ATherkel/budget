@@ -115,33 +115,28 @@ def write_drafts(labels: BankLabels, out: Path) -> None:
         if folded not in groups:
             name = _group_name(labels, folded)
             groups[folded] = _unique(_slug(name), set(groups.values()))
-            taxonomy += [
+            group = [
                 f"[group.{groups[folded]}]",
                 f"name = {_toml_string(name)}",
                 f'direction = "{_direction(labels, folded)}"',
-                "",
             ]
+            taxonomy += [*_unless_covered(group, _group_covering(labels, folded)), ""]
         group_id = groups[folded]
         category_id = _unique(
             f"{group_id}-{_slug(pair.subcategory or 'other')}", taken_categories
         )
         taken_categories.add(category_id)
-        taxonomy += [
-            _size_comment(pair),
+        category = [
             f"[category.{category_id}]",
             f"name = {_toml_string(pair.subcategory or pair.category)}",
             f"group = {_toml_string(group_id)}",
+        ]
+        taxonomy += [
+            _size_comment(pair),
+            *_unless_covered(category, pair.covered_by),
             "",
         ]
-        rules += [
-            "[[rule]]",
-            f"id = {_toml_string('r-bank-' + category_id)}",
-            "priority = -10" if pair.subcategory else "priority = -20",
-            f"when.bank_category = {_toml_string(pair.category)}",
-        ]
-        if pair.subcategory is not None:
-            rules.append(f"when.bank_subcategory = {_toml_string(pair.subcategory)}")
-        rules += [f"then.category = {_toml_string(category_id)}", ""]
+        rules += [*_unless_covered(_rule(pair, category_id), pair.covered_by), ""]
     out.mkdir(parents=True, exist_ok=True)
     (out / TAXONOMY_DRAFT_NAME).write_text(
         "\n".join(taxonomy), encoding="utf-8", newline="\n"
@@ -149,6 +144,42 @@ def write_drafts(labels: BankLabels, out: Path) -> None:
     (out / RULES_DRAFT_NAME).write_text(
         "\n".join(rules), encoding="utf-8", newline="\n"
     )
+
+
+def _rule(pair: BankLabelPair, category_id: str) -> list[str]:
+    """Draft the rule assigning the pair's category, below hand-written rules.
+
+    A category-only rule sits below the subcategory rules, so the more
+    specific label wins wherever both match.
+    """
+    lines = [
+        "[[rule]]",
+        f"id = {_toml_string('r-bank-' + category_id)}",
+        "priority = -10" if pair.subcategory else "priority = -20",
+        f"when.bank_category = {_toml_string(pair.category)}",
+    ]
+    if pair.subcategory is not None:
+        lines.append(f"when.bank_subcategory = {_toml_string(pair.subcategory)}")
+    lines.append(f"then.category = {_toml_string(category_id)}")
+    return lines
+
+
+def _unless_covered(lines: list[str], covered_by: tuple[str, ...]) -> list[str]:
+    """Return `lines`, or comment them out under the rules that already cover them.
+
+    The pair stays in the draft, flagged, but pasting it in adds nothing live.
+    """
+    if not covered_by:
+        return lines
+    return [f"# covered by {', '.join(covered_by)}", *(f"# {line}" for line in lines)]
+
+
+def _group_covering(labels: BankLabels, folded: str) -> tuple[str, ...]:
+    """Return the rules covering every pair of a group; none if any is uncovered."""
+    pairs = [pair for pair in labels.pairs if fold(pair.category) == folded]
+    if not all(pair.covered_by for pair in pairs):
+        return ()
+    return tuple(sorted({rule for pair in pairs for rule in pair.covered_by}))
 
 
 def _group_name(labels: BankLabels, folded: str) -> str:
