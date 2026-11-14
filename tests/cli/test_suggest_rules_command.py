@@ -483,6 +483,24 @@ class SuggestRulesDraftTests(unittest.TestCase):
                 for category_id, category in taxonomy["category"].items()
             } == {"bolig-husleje": "bolig", "bolig-other": "bolig"}
 
+    def test_labels_with_quotes_backslashes_and_control_characters_read_back_exact(
+        self,
+    ) -> None:
+        # The bank writes the labels, so the drafts must quote any character
+        # TOML gives a meaning to or refuses raw, DEL included.
+        category, subcategory = 'Mad "&" Drikke\\', "Leje\x1b[2J\x07\x7f"
+        transactions = (_transaction(1, (category, subcategory)),)
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = _seeded_profile_file(folder, transactions)
+
+            status, _, stderr = suggest_rules(profile_file, "--out", str(folder))
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert [rule["when"] for rule in _draft_rules(folder)] == [
+                {"bank_category": category, "bank_subcategory": subcategory}
+            ]
+
 
 if __name__ == "__main__":
     unittest.main()
