@@ -144,6 +144,7 @@ from budget.reviewing import (
 )
 from budget.silver.storage import SILVER_STAGE
 from budget.silver.store import SilverStore
+from budget.suggesting import SilverNotBuiltForSuggestionsError, bank_labels
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
 EXIT_OK: Final = 0
@@ -386,6 +387,10 @@ def _parser() -> argparse.ArgumentParser:
     find.add_argument("text", help="case-insensitive text in the description")
     find.add_argument("--month", help="find transactions in YYYY-MM only")
     find.add_argument("--account", help="find transactions in one account only")
+    commands.add_parser(
+        "suggest-rules",
+        help="summarize the bank's category labels and the transactions each covers",
+    )
     decide = commands.add_parser(
         "decide", help="record a manual decision, then rebuild from what it affects"
     )
@@ -756,6 +761,11 @@ def _find(
     sys.stdout.write(summaries.find_summary(found))
 
 
+def _suggest_rules(profile: Profile) -> None:
+    """Summarize the bank's category labels in Silver, with no lock."""
+    sys.stdout.write(summaries.suggest_rules_summary(bank_labels(profile)))
+
+
 def _transaction(profile: Profile, handle: str) -> str:
     """Return the one Silver transaction whose ID starts with `handle`.
 
@@ -1046,6 +1056,7 @@ _PROFILE_ONLY_COMMANDS: Final[Mapping[str, Callable[[Profile], None]]] = {
     "undo": _undo,
     "set-passphrase": _set_passphrase,
     "serve": _serve,
+    "suggest-rules": _suggest_rules,
 }
 
 
@@ -1136,6 +1147,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         SilverNotBuiltError,
         SilverProvenanceUnavailableError,
         SilverReviewUnavailableError,
+        SilverNotBuiltForSuggestionsError,
         WriterLockHeldError,
         StoresFolderUnavailableError,
         RestoreInsteadError,
