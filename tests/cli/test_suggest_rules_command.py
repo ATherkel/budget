@@ -455,6 +455,34 @@ class SuggestRulesDraftTests(unittest.TestCase):
                 "r-bank-transfer-2-other",
             ]
 
+    def test_pairs_whose_categories_differ_only_in_case_share_one_draft_group(
+        self,
+    ) -> None:
+        # Each pair keeps its own most-used spelling, so the bank category is
+        # "Bolig" in one and "BOLIG" in the other. Gold matches both as one
+        # label, so they are one group, named by its most-used spelling.
+        transactions = (
+            _transaction(1, ("Bolig", "Husleje")),
+            _transaction(2, ("Bolig", "Husleje")),
+            _transaction(3, ("BOLIG", None), "50.00"),
+        )
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = _seeded_profile_file(folder, transactions)
+
+            status, _, stderr = suggest_rules(profile_file, "--out", str(folder))
+
+            assert (status, stderr) == (EXIT_OK, "")
+            text = (folder / "taxonomy-draft.toml").read_text(encoding="utf-8")
+            taxonomy = tomllib.loads(text)
+            assert taxonomy["group"] == {
+                "bolig": {"name": "Bolig", "direction": "expense"}
+            }
+            assert {
+                category_id: category["group"]
+                for category_id, category in taxonomy["category"].items()
+            } == {"bolig-husleje": "bolig", "bolig-other": "bolig"}
+
 
 if __name__ == "__main__":
     unittest.main()
