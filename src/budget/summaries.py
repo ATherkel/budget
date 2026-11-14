@@ -521,6 +521,8 @@ def find_summary(found: FindResult) -> str:
 
 def suggest_rules_summary(labels: BankLabels) -> str:
     """One line per bank label pair, then one for the transactions with none."""
+    if not labels.pairs and not labels.uncategorized:
+        return "No transactions in Silver\n"
     lines: list[str] = []
     for pair in labels.pairs:
         sums = ", ".join(
