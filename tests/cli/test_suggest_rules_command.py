@@ -19,6 +19,7 @@ from tests.cli.commands import suggest_rules
 from tests.cli.profile_files import development_profile, write_profile
 
 EXIT_OK = 0
+EXIT_REFUSED_CONFIGURATION = 3
 EXIT_REFUSED_ENVIRONMENT = 4
 CURRENT = "joint-current"
 SAVINGS = "joint-savings"
@@ -220,6 +221,29 @@ then.category = "travel"
             "Rejser / Hotel  1 transaction  -100.00 DKK  covered by r-travel",
             "Rejser / (none)  1 transaction  -100.00 DKK  covered by r-travel",
         ]
+
+    def test_an_invalid_rules_file_is_refused_before_anything_is_printed(
+        self,
+    ) -> None:
+        # A half-printed summary would flag pairs against rules Gold refuses.
+        rules = """format = 1
+
+[[rule]]
+id = ""
+when.bank_category = "Bolig"
+then.category = "rent"
+"""
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = _seeded_profile_file(
+                folder, (_transaction(1, ("Bolig", "Husleje")),)
+            )
+            _write_rules(folder, rules)
+
+            status, stdout, stderr = suggest_rules(profile_file)
+
+        assert (status, stdout) == (EXIT_REFUSED_CONFIGURATION, "")
+        assert stderr.startswith("budget: rules.toml: rule 1: id must be")
 
 
 if __name__ == "__main__":
