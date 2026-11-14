@@ -156,6 +156,20 @@ class SuggestRulesSummaryTests(unittest.TestCase):
             "No bank category  3 transactions",
         ]
 
+    def test_control_characters_in_a_bank_label_are_escaped(self) -> None:
+        # The bank wrote the label, so it is shown as `review` shows it:
+        # an escape or bell character never reaches the terminal as itself.
+        transactions = (_transaction(1, ("Bolig\x1b[2J", "Leje\x07")),)
+        with TemporaryDirectory() as directory:
+            profile_file = _seeded_profile_file(Path(directory), transactions)
+
+            status, stdout, stderr = suggest_rules(profile_file)
+
+        assert (status, stderr) == (EXIT_OK, "")
+        assert stdout.splitlines() == [
+            r"Bolig\x1b[2J / Leje\x07  1 transaction  -100.00 DKK"
+        ]
+
     def test_silver_that_was_never_built_is_refused_with_how_to_build_it(
         self,
     ) -> None:
