@@ -578,6 +578,24 @@ then.category = "travel"
             assert sorted(path.name for path in out.iterdir()) == ["rules-draft.toml"]
             assert edited.read_text(encoding="utf-8") == "# the household's edits\n"
 
+    def test_an_out_path_naming_a_file_is_refused_and_nothing_is_written(
+        self,
+    ) -> None:
+        # The drafts need a folder; a file at that path is refused before
+        # anything is printed, and the file is left as it was.
+        transactions = (_transaction(1, ("Bolig", "Husleje")),)
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = _seeded_profile_file(folder, transactions)
+            out = folder / "notes.txt"
+            out.write_text("the household's notes\n", encoding="utf-8")
+
+            status, stdout, stderr = suggest_rules(profile_file, "--out", str(out))
+
+            assert (status, stdout) == (EXIT_REFUSED_CONFIGURATION, "")
+            assert stderr.startswith(f"budget: {out} is not a folder")
+            assert out.read_text(encoding="utf-8") == "the household's notes\n"
+
     def test_an_out_folder_inside_the_inputs_folder_is_refused(self) -> None:
         # Drafts never go into inputs, where they would sit beside the real
         # files. The folder is judged once resolved, so `..` cannot reach it.
