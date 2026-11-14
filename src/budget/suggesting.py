@@ -5,10 +5,13 @@ It reads the persisted Silver result only: no Bronze store, no writer lock.
 It never returns transaction text, only counts and sums of each bank label pair.
 """
 
+import json
 from collections import Counter, defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from decimal import Decimal
+from pathlib import Path
+from typing import Final
 
 from budget.inputs.rule_checks import KnownIds
 from budget.inputs.rules import Rule, RuleConditions, fold, load_rules
@@ -86,6 +89,63 @@ def bank_labels(profile: Profile) -> BankLabels:
         )
     ]
     return BankLabels(pairs=tuple(pairs), uncategorized=uncategorized)
+
+
+TAXONOMY_DRAFT_NAME: Final = "taxonomy-draft.toml"
+RULES_DRAFT_NAME: Final = "rules-draft.toml"
+
+
+def write_drafts(labels: BankLabels, out: Path) -> None:
+    """Write a draft taxonomy and draft rules for every pair into `out`.
+
+    One group per bank category and one category and rule per pair. The
+    household edits both before copying them into its inputs.
+    """
+    taxonomy = ["format = 1", ""]
+    rules = ["format = 1", ""]
+    groups: dict[str, str] = {}
+    for pair in labels.pairs:
+        if pair.category not in groups:
+            groups[pair.category] = _slug(pair.category)
+            taxonomy += [
+                f"[group.{groups[pair.category]}]",
+                f"name = {_toml_string(pair.category)}",
+                'direction = "expense"',
+                "",
+            ]
+        category_id = f"{groups[pair.category]}-{_slug(pair.subcategory or 'other')}"
+        taxonomy += [
+            f"[category.{category_id}]",
+            f"name = {_toml_string(pair.subcategory or pair.category)}",
+            f"group = {_toml_string(groups[pair.category])}",
+            "",
+        ]
+        rules += [
+            "[[rule]]",
+            f"id = {_toml_string('r-bank-' + category_id)}",
+            "priority = -10" if pair.subcategory else "priority = -20",
+            f"when.bank_category = {_toml_string(pair.category)}",
+        ]
+        if pair.subcategory is not None:
+            rules.append(f"when.bank_subcategory = {_toml_string(pair.subcategory)}")
+        rules += [f"then.category = {_toml_string(category_id)}", ""]
+    out.mkdir(parents=True, exist_ok=True)
+    (out / TAXONOMY_DRAFT_NAME).write_text(
+        "\n".join(taxonomy), encoding="utf-8", newline="\n"
+    )
+    (out / RULES_DRAFT_NAME).write_text(
+        "\n".join(rules), encoding="utf-8", newline="\n"
+    )
+
+
+def _slug(text: str) -> str:
+    """Make a durable ID from a label."""
+    return text.lower()
+
+
+def _toml_string(text: str) -> str:
+    """`text` as a TOML basic string; a JSON string is one."""
+    return json.dumps(text, ensure_ascii=False)
 
 
 def _folded(labels: _Labels) -> _Labels:

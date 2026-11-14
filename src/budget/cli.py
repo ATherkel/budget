@@ -144,7 +144,13 @@ from budget.reviewing import (
 )
 from budget.silver.storage import SILVER_STAGE
 from budget.silver.store import SilverStore
-from budget.suggesting import SilverNotBuiltForSuggestionsError, bank_labels
+from budget.suggesting import (
+    RULES_DRAFT_NAME,
+    TAXONOMY_DRAFT_NAME,
+    SilverNotBuiltForSuggestionsError,
+    bank_labels,
+    write_drafts,
+)
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
 EXIT_OK: Final = 0
@@ -766,9 +772,18 @@ def _find(
     sys.stdout.write(summaries.find_summary(found))
 
 
-def _suggest_rules(profile: Profile, out: Path | None) -> None:  # noqa: ARG001
-    """Summarize the bank's category labels in Silver, with no lock."""
-    sys.stdout.write(summaries.suggest_rules_summary(bank_labels(profile)))
+def _suggest_rules(profile: Profile, out: Path | None) -> None:
+    """Summarize the bank's category labels in Silver, with no lock.
+
+    With `out`, also write the draft taxonomy and rules there.
+    """
+    labels = bank_labels(profile)
+    sys.stdout.write(summaries.suggest_rules_summary(labels))
+    if out is not None:
+        write_drafts(labels, out)
+        sys.stdout.write(
+            f"Wrote {TAXONOMY_DRAFT_NAME} and {RULES_DRAFT_NAME} to {out}\n"
+        )
 
 
 def _transaction(profile: Profile, handle: str) -> str:
