@@ -7,6 +7,7 @@ store and a synthetic `SilverResult` written through the store's own public
 `replace`; the command only reads that stored result.
 """
 
+import tomllib
 import unittest
 from collections.abc import Sequence
 from datetime import date
@@ -15,7 +16,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from budget.silver import SilverResult, SilverStore, Transaction, migrate_silver
-from tests.cli.commands import suggest_rules
+from tests.cli.commands import check, suggest_rules
+from tests.cli.pipelines import write_inputs
 from tests.cli.profile_files import development_profile, write_profile
 
 EXIT_OK = 0
@@ -82,6 +84,28 @@ def _write_rules(folder: Path, text: str) -> None:
     inputs = folder / "inputs"
     inputs.mkdir(exist_ok=True)
     (inputs / "rules.toml").write_text(text, encoding="utf-8")
+
+
+def _check_with_drafts(folder: Path, drafts: Path) -> tuple[int, str, str]:
+    """Run `budget check` on a fresh profile whose taxonomy and rules are the drafts.
+
+    The household copies the drafts in as they are; only `accounts.toml`
+    comes from elsewhere, since the drafts never declare accounts.
+    """
+    folder.mkdir()
+    profile_file = write_profile(folder)
+    profile = development_profile(folder)
+    write_inputs(profile)
+    for name in ("taxonomy", "rules"):
+        draft = (drafts / f"{name}-draft.toml").read_bytes()
+        profile.input_file(f"{name}.toml").write_bytes(draft)
+    return check(profile_file)
+
+
+def _draft_rules(drafts: Path) -> list[dict[str, object]]:
+    """The rules in `rules-draft.toml`, as TOML reads them."""
+    text = (drafts / "rules-draft.toml").read_text(encoding="utf-8")
+    return tomllib.loads(text)["rule"]
 
 
 def _columns(stdout: str, count: int) -> list[list[str]]:
@@ -291,6 +315,53 @@ then.category = "rent"
 
         assert (status, stdout) == (EXIT_REFUSED_CONFIGURATION, "")
         assert stderr.startswith("budget: rules.toml: rule 1: id must be")
+
+
+class SuggestRulesDraftTests(unittest.TestCase):
+    def test_out_writes_drafts_that_check_accepts_as_written(self) -> None:
+        # The subcategory rules outrank the category-only rule, so the specific
+        # label wins wherever both match; a missing folder is created.
+        transactions = (
+            _transaction(1, ("Housing", "Rent")),
+            _transaction(2, ("Housing", None)),
+            _transaction(3, ("Income", "Salary"), "25000.00"),
+        )
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = _seeded_profile_file(folder, transactions)
+            out = folder / "drafts" / "first"
+
+            status, stdout, stderr = suggest_rules(profile_file, "--out", str(out))
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout.splitlines()[-1] == (
+                f"Wrote taxonomy-draft.toml and rules-draft.toml to {out}"
+            )
+            assert _check_with_drafts(folder / "check", out) == (
+                EXIT_OK,
+                "No problems found.\n",
+                "",
+            )
+            assert _draft_rules(out) == [
+                {
+                    "id": "r-bank-housing-rent",
+                    "priority": -10,
+                    "when": {"bank_category": "Housing", "bank_subcategory": "Rent"},
+                    "then": {"category": "housing-rent"},
+                },
+                {
+                    "id": "r-bank-housing-other",
+                    "priority": -20,
+                    "when": {"bank_category": "Housing"},
+                    "then": {"category": "housing-other"},
+                },
+                {
+                    "id": "r-bank-income-salary",
+                    "priority": -10,
+                    "when": {"bank_category": "Income", "bank_subcategory": "Salary"},
+                    "then": {"category": "income-salary"},
+                },
+            ]
 
 
 if __name__ == "__main__":

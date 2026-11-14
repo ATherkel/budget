@@ -387,9 +387,14 @@ def _parser() -> argparse.ArgumentParser:
     find.add_argument("text", help="case-insensitive text in the description")
     find.add_argument("--month", help="find transactions in YYYY-MM only")
     find.add_argument("--account", help="find transactions in one account only")
-    commands.add_parser(
+    suggest = commands.add_parser(
         "suggest-rules",
         help="summarize the bank's category labels and the transactions each covers",
+    )
+    suggest.add_argument(
+        "--out",
+        type=Path,
+        help="also write taxonomy-draft.toml and rules-draft.toml to this folder",
     )
     decide = commands.add_parser(
         "decide", help="record a manual decision, then rebuild from what it affects"
@@ -761,7 +766,7 @@ def _find(
     sys.stdout.write(summaries.find_summary(found))
 
 
-def _suggest_rules(profile: Profile) -> None:
+def _suggest_rules(profile: Profile, out: Path | None) -> None:  # noqa: ARG001
     """Summarize the bank's category labels in Silver, with no lock."""
     sys.stdout.write(summaries.suggest_rules_summary(bank_labels(profile)))
 
@@ -1056,7 +1061,6 @@ _PROFILE_ONLY_COMMANDS: Final[Mapping[str, Callable[[Profile], None]]] = {
     "undo": _undo,
     "set-passphrase": _set_passphrase,
     "serve": _serve,
-    "suggest-rules": _suggest_rules,
 }
 
 
@@ -1094,6 +1098,8 @@ def _dispatch(profile: Profile, arguments: argparse.Namespace) -> None:
         _review(profile, arguments.kind, arguments.account)
     elif arguments.command == "find":
         _find(profile, arguments.text, arguments.month, arguments.account)
+    elif arguments.command == "suggest-rules":
+        _suggest_rules(profile, arguments.out)
     elif arguments.command == "decide":
         _decide(profile, arguments)
     else:
