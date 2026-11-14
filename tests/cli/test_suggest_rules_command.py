@@ -393,6 +393,33 @@ class SuggestRulesDraftTests(unittest.TestCase):
                 "# 1 transaction, 25000.00 DKK"
             )
 
+    def test_a_draft_group_is_income_only_when_its_sum_is_positive(self) -> None:
+        # The guess is the group's, over all its pairs: Income's negative
+        # pair does not make it an expense. A group that nets to zero is an
+        # expense, the more common kind; the household confirms each.
+        transactions = (
+            _transaction(1, ("Housing", "Rent"), "-100.00"),
+            _transaction(2, ("Housing", "Rent"), "30.00"),
+            _transaction(3, ("Income", "Salary"), "25000.00"),
+            _transaction(4, ("Income", None), "-500.00"),
+            _transaction(5, ("Even", "Odd"), "100.00"),
+            _transaction(6, ("Even", None), "-100.00"),
+        )
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = _seeded_profile_file(folder, transactions)
+
+            status, _, stderr = suggest_rules(profile_file, "--out", str(folder))
+
+            assert (status, stderr) == (EXIT_OK, "")
+            text = (folder / "taxonomy-draft.toml").read_text(encoding="utf-8")
+            groups = tomllib.loads(text)["group"]
+            assert {group: groups[group]["direction"] for group in groups} == {
+                "even": "expense",
+                "housing": "expense",
+                "income": "income",
+            }
+
 
 if __name__ == "__main__":
     unittest.main()
