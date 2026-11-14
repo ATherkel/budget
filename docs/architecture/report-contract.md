@@ -23,9 +23,16 @@ money in and money out in a fourth summary figure, Ukategoriseret, beside the
 quiet note. The report types do not change, and the count still belongs to
 Kontrol.
 
-It covers what the monthly overview needs: the report context, the monthly
-overview report, and the failures a report read can raise. Category detail,
-account activity, Kontrol checks, budget comparison, trends and history views
+Version `0.3` adds [category and group detail](#spendingdetail) for issue #105,
+as the owner decided on 2026-11-14: one report reads a Category or a group for
+the month or the year to date, with rows in the spending sign that add up to
+its figure on the overview. It adds the `unknown_category` selection rule.
+Nothing in the monthly overview changes.
+
+It covers what the monthly overview and its category detail need: the report
+context, the monthly overview report, the spending detail report, and the
+failures a report read can raise. Account activity, Kontrol checks, budget
+comparison, trends and history views
 extend this document in their own tickets; [Deferred Sections and
 Owners](#deferred-sections-and-owners) names each one, and nothing here
 describes them until they land.
@@ -81,13 +88,19 @@ class HouseholdReports(Protocol):
     ) -> SelectionOptions: ...
 
     def monthly_overview(self, context: ReportContext) -> MonthlyOverview: ...
+
+    def spending_detail(
+        self, context: ReportContext, subject: DetailSubject, scope: DetailScope
+    ) -> SpendingDetail: ...
 ```
 
 `current_publication()` raises `NothingPublished` when Gold has no current
-publication. `selection_options()` and `monthly_overview()` raise
-`PublicationUnavailableError` when the named publication's result is not retained,
-and `monthly_overview()` raises `InvalidSelection` for a context that breaks a
-rule under [`ReportContext`](#reportcontext). A failure is never returned as an
+publication. `selection_options()`, `monthly_overview()` and
+`spending_detail()` raise `PublicationUnavailableError` when the named
+publication's result is not retained. `monthly_overview()` and
+`spending_detail()` raise `InvalidSelection` for a context that breaks a rule
+under [`ReportContext`](#reportcontext), and `spending_detail()` also raises it
+for a subject that breaks the rule under [`SpendingDetail`](#spendingdetail). A failure is never returned as an
 empty or zero report. In code each failure carries an `Error` suffix, as the
 lint rules require: `NothingPublishedError`, `PublicationUnavailableError` and
 `InvalidSelectionError`.
@@ -256,6 +269,97 @@ is exempt by the rule, and one imported without a booked transaction is the
 rule's known first-release limitation. An `outside_history` month cannot hold
 it either.
 
+### `SpendingDetail`
+
+The entries behind one Category's or one group's spending, for the selected
+month or the year to date (issue #105). It reads the same allocations as the
+overview's `categories` (ADR-008), so its figure is the overview's figure.
+
+`DetailSubject` names what to investigate: `kind`, which is `category` or
+`group`, and `id`, a `category_id` or `group_id`. A subject is valid when it
+names an expense-direction Category of the publication, or a group that holds
+at least one. Otherwise `spending_detail()` raises `InvalidSelection` with
+`unknown_category`, together with every rule under
+[`ReportContext`](#reportcontext) the context breaks. An income Category or
+group is not a spending subject, so it is refused the same way.
+
+`DetailScope` is `month`, the selected month alone, or `year_to_date`, every
+month from January of the selected month's year through the selected month.
+The scope never runs past the selected month, and its months need not lie
+within `SelectionOptions`: a month before an account's managed period is
+`outside_history` for that account, as under [Coverage](#coverage).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `context` | `ReportContext` | The context the report answers, echoed as on `MonthlyOverview`. |
+| `subject` | `DetailSubject` | The subject the report answers, echoed. |
+| `scope` | `DetailScope` | The scope the report answers, echoed. |
+| `publication` | `ReportPublication` | The publication read. |
+| `currency` | ISO 4217 string | The selected accounts' shared currency. |
+| `name` | string | The Category's or the group's name. |
+| `group_id`, `group_name` | string | The group the subject belongs to; for a group, the group itself. |
+| `first_month`, `last_month` | `ReportingMonth` | The scope's months: for `month` both are the selected month, for `year_to_date` January and the selected month. |
+| `spending` | Money/null | The subject's net spending over the scope, as `CategorySpending.spending` defines it: −(Σ allocations of `expense` transactions + Σ allocations of `refund` transactions). Null exactly when `coverage.status` is `no_data`. |
+| `rows` | list of `SpendingDetailRow` | One row per allocation of the subject in the scope on the selected accounts. Empty when `coverage.status` is `no_data`. |
+| `coverage` | `ReportCoverage` | Coverage over every selected account-month in the scope. |
+| `provisional` | `Provisional`/null | Why the scope's figures may still change; null when they cannot. |
+
+`SpendingDetailRow`: `transaction_date`, `description` (the transaction's
+normalized text, as on `GoldTransaction`), `account_id`,
+`account_display_name`, `category_id`, `category_name`, and `spending`, the
+allocation's amount in the spending sign: −`amount`, so a purchase is positive
+and a Refund negative. Rows are ordered newest first: by `transaction_date`
+descending, then `account_id`, then the account's booking sequence
+descending.
+
+**Reconciliation.** The rows add up to `spending`. For `month`, a Category's
+`spending` equals its `CategorySpending.spending` in the `MonthlyOverview` of
+the same context, and is 0.00 when the overview lists no row for it. A group's
+`spending` equals the sum of its Categories' `spending` there. For `year_to_date`,
+`spending` equals the sum of the scope's months' `month` figures. Presentation
+never sums rows to make a figure: it shows `spending` as the report gives it.
+
+**Allocation grain.** A row is an allocation, not a transaction, and carries
+the allocation's amount. While every classified transaction has exactly one
+allocation (ADR-008), the two amounts are equal. A split transaction, a later
+contract version, would show one row per allocation of the subject, each with
+its own amount, and a whole-transaction amount only where it explains the
+split. A row carries no transaction, allocation or source identifier, no
+lineage, and no account number; `account_id` is the Gold account key the
+selection already names.
+
+**Refunds.** A Refund's allocation carries the Category of the movement it
+reverses (Gold contract invariant 7), so it appears under that Category, in
+the month of its own `transaction_date`, with negative spending. A Refund
+booked in a later month than its purchase lowers that later month's figure
+and the year to date that contains it.
+
+**Excluded money.** Transfers, Adjustments and Unclassified transactions carry
+no allocation, so they never appear in a detail. Unclassified money stays the
+overview's trust condition.
+
+**Coverage over the scope.** `coverage.account_months` lists every selected
+account-month in the scope that is not `complete`, ordered by `account_id` and
+then `month`, each status judged as under [Coverage](#coverage). `status` is
+`complete` when every contributing account-month in the scope is `complete`,
+`no_data` when none has evidence, and `partial` otherwise. For `month` this is
+the overview's coverage. An absent row means no such allocation; `spending` of
+0.00 is a known zero only when `coverage.status` is `complete`.
+
+**Provisional over the scope.** `current_month` holds when the selected month
+is the month of `reference_date`. `late_bookings_unsettled` holds when any
+contributing account-month in the scope, of an account with a managed period,
+is not settled, by the rule under [`Provisional`](#provisional); `unsettled`
+lists each one, ordered as in `ReportCoverage`. This is the rule in
+[`presentation-layer.md`](presentation-layer.md#data-trust-display) that keeps
+a year-to-date total provisional while any of its months can change.
+
+**Navigation.** Opening and leaving a detail is ordinary navigation under
+[Navigation and Selection Transitions](#navigation-and-selection-transitions):
+it keeps the pinned `publication_id`, `reference_date`, account selection and
+month, and adds the subject and scope to the state a history entry carries.
+The overview and its detail read the same context, so their figures agree.
+
 ## Navigation and Selection Transitions
 
 This section fixes the interaction a page owes its reader. It is route-neutral:
@@ -352,7 +456,6 @@ deleted: a section moves to its owner.
 
 | Section | Owner | What the owner adds here |
 | --- | --- | --- |
-| Category and group detail | #105 | Allocation identity and amount against transaction identity and amount, month and year-to-date scope, and Refund and coverage semantics. |
 | Account and Kontrol diagnostics | #106 | Dated bank balances against monthly snapshots, public Transfer evidence including one-sided and unknown restrictions, Evidence through, and reconciliation and count semantics. |
 | Budget input | #102 | Publication and recipe identity, immutable history, and the exact scope, completeness and availability policy. |
 | Budget comparison | #107 | The comparison report that follows #102: targets, variance and ratios, with their availability. |
@@ -440,6 +543,52 @@ future.
 current, and every report it reads then has `is_current` false. After P3 is
 built, P1 is neither current nor previous, and unless it is labeled its result
 is deleted: the page's next read raises `PublicationUnavailableError`.
+
+**Spending detail.** These read P1 with both accounts selected and reference
+date 2026-05-14 unless stated. Each row is named by its `joint-current`
+sequence number in the Gold worked example, and every one is on Joint current.
+
+- *February, `groceries`, `month`: a Refund inside the month.* Rows: seq 6,
+  2026-02-12, −120.00 (the Refund); seq 5, 2026-02-02, 640.00. `spending` is
+  520.00, the overview's `groceries` figure for February. Coverage is
+  `partial` with `joint-current` 2026-02 `partial`, as on the overview, and
+  `provisional` is null.
+- *February, `groceries`, `year_to_date`.* `first_month` 2026-01,
+  `last_month` 2026-02. Rows: seq 6, −120.00; seq 5, 640.00; seq 3,
+  2026-01-28, 842.50. `spending` is 1,362.50: January's 842.50 plus
+  February's 520.00. Coverage is `partial`, listing `joint-current` 2026-01,
+  `joint-current` 2026-02 and `joint-savings` 2026-01, each `partial`.
+  `provisional` is null, because every row in the scope is settled and the
+  reference month is May.
+- *April, group `housing`, `year_to_date`: a group across months.* Rows: seq
+  10, 2026-04-01, `rent`, 8,500.00; seq 9, 2026-03-20, `utilities`,
+  1,000.00; seq 4, 2026-02-02, `rent`, 8,500.00. `spending` is 18,000.00:
+  January 0.00, February 8,500.00, March 1,000.00 and April 8,500.00, each
+  the sum of the group's Categories on that month's overview. Coverage is
+  `partial`, listing `joint-current` 2026-01, 2026-02 and 2026-03 and
+  `joint-savings` 2026-01. The January Transfer T1 and the March Unclassified
+  −450.00 appear in no detail.
+- *May, `groceries`, `year_to_date`: provisional through one open month.*
+  `spending` is 1,362.50 from the same three rows, under coverage `partial`
+  listing `joint-current` 2026-01, 2026-02, 2026-03 and 2026-05 and
+  `joint-savings` 2026-01 and 2026-05. `provisional` has both reasons, with
+  `unsettled` naming both accounts' 2026-05. A May `month` detail of
+  `groceries` has no rows and `spending` 0.00 under the same two reasons,
+  which is what the evidence so far shows, not a confirmed zero.
+- *March, `groceries`, `month`: a zero that is and is not known.* With both
+  accounts, there are no rows and `spending` is 0.00 under coverage `partial`
+  (`joint-current` 2026-03), so it is not a known zero. With `joint-savings`
+  alone, coverage is `complete` and the 0.00 is a known zero.
+- *June, reference date 2026-06-03: no data.* `groceries` for `month` has
+  `spending` null and no rows: both accounts' 2026-06 are `no_data`.
+  `provisional` has both reasons, with `unsettled` naming both accounts'
+  2026-06. For `year_to_date`, the earlier months have evidence, so coverage
+  is `partial`, `spending` is 1,362.50, and `unsettled` names
+  `joint-current` 2026-05 and 2026-06 and `joint-savings` 2026-05 and 2026-06.
+- *Invalid subjects.* `salary` is an income Category, `income` is a group
+  without an expense Category, and `homeware` is not in P1, so each raises
+  `InvalidSelection` with `unknown_category`. With no accounts selected as
+  well, `reasons` holds both `no_accounts` and `unknown_category`.
 
 **Selection transitions.** These run on the same P1 and reference date, in
 February, with `A` meaning the selection `{joint-current}` and `B` meaning
