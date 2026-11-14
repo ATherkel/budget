@@ -420,6 +420,41 @@ class SuggestRulesDraftTests(unittest.TestCase):
                 "income": "income",
             }
 
+    def test_draft_ids_are_ascii_slugs_unique_and_never_a_transaction_type(
+        self,
+    ) -> None:
+        # æ/ø/å spell out as Danish does, other accents drop, and anything
+        # else becomes one hyphen. Two labels with one slug get a suffix, and
+        # a slug naming a type that carries no category is never used.
+        transactions = (
+            _transaction(1, ("Bolig og Ældre", "Fødsel & Børn")),
+            _transaction(2, ("Café", "Mad & Drikke")),
+            _transaction(3, ("Café", "Mad/Drikke")),
+            _transaction(4, ("Transfer", None)),
+        )
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = _seeded_profile_file(folder, transactions)
+
+            status, _, stderr = suggest_rules(profile_file, "--out", str(folder))
+
+            assert (status, stderr) == (EXIT_OK, "")
+            text = (folder / "taxonomy-draft.toml").read_text(encoding="utf-8")
+            taxonomy = tomllib.loads(text)
+            assert list(taxonomy["group"]) == ["bolig-og-aeldre", "cafe", "transfer-2"]
+            assert list(taxonomy["category"]) == [
+                "bolig-og-aeldre-foedsel-boern",
+                "cafe-mad-drikke",
+                "cafe-mad-drikke-2",
+                "transfer-2-other",
+            ]
+            assert [rule["id"] for rule in _draft_rules(folder)] == [
+                "r-bank-bolig-og-aeldre-foedsel-boern",
+                "r-bank-cafe-mad-drikke",
+                "r-bank-cafe-mad-drikke-2",
+                "r-bank-transfer-2-other",
+            ]
+
 
 if __name__ == "__main__":
     unittest.main()
