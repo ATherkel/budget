@@ -108,6 +108,12 @@ def _draft_rules(drafts: Path) -> list[dict[str, object]]:
     return tomllib.loads(text)["rule"]
 
 
+def _line_above(drafts: Path, line: str) -> str:
+    """The line right above `line` in `taxonomy-draft.toml`."""
+    lines = (drafts / "taxonomy-draft.toml").read_text(encoding="utf-8").splitlines()
+    return lines[lines.index(line) - 1]
+
+
 def _columns(stdout: str, count: int) -> list[list[str]]:
     """The first `count` two-space-separated columns of each output line."""
     return [line.split("  ")[:count] for line in stdout.splitlines()]
@@ -362,6 +368,30 @@ class SuggestRulesDraftTests(unittest.TestCase):
                     "then": {"category": "income-salary"},
                 },
             ]
+
+    def test_each_draft_category_says_how_many_transactions_and_how_much(
+        self,
+    ) -> None:
+        # The comment sits right above the category it describes, so the
+        # household can tell a large pair from a stray one while editing.
+        transactions = (
+            _transaction(1, ("Housing", "Rent"), "-1200.00"),
+            _transaction(2, ("Housing", "Rent"), "-100.00"),
+            _transaction(3, ("Income", "Salary"), "25000.00"),
+        )
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = _seeded_profile_file(folder, transactions)
+
+            status, _, stderr = suggest_rules(profile_file, "--out", str(folder))
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert _line_above(folder, "[category.housing-rent]") == (
+                "# 2 transactions, -1300.00 DKK"
+            )
+            assert _line_above(folder, "[category.income-salary]") == (
+                "# 1 transaction, 25000.00 DKK"
+            )
 
 
 if __name__ == "__main__":
