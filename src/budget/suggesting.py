@@ -111,24 +111,26 @@ def write_drafts(labels: BankLabels, out: Path) -> None:
     groups: dict[str, str] = {}
     taken_categories: set[str] = set()
     for pair in labels.pairs:
-        if pair.category not in groups:
-            groups[pair.category] = _unique(_slug(pair.category), set(groups.values()))
+        folded = fold(pair.category)
+        if folded not in groups:
+            name = _group_name(labels, folded)
+            groups[folded] = _unique(_slug(name), set(groups.values()))
             taxonomy += [
-                f"[group.{groups[pair.category]}]",
-                f"name = {_toml_string(pair.category)}",
-                f'direction = "{_direction(labels, pair.category)}"',
+                f"[group.{groups[folded]}]",
+                f"name = {_toml_string(name)}",
+                f'direction = "{_direction(labels, folded)}"',
                 "",
             ]
+        group_id = groups[folded]
         category_id = _unique(
-            f"{groups[pair.category]}-{_slug(pair.subcategory or 'other')}",
-            taken_categories,
+            f"{group_id}-{_slug(pair.subcategory or 'other')}", taken_categories
         )
         taken_categories.add(category_id)
         taxonomy += [
             _size_comment(pair),
             f"[category.{category_id}]",
             f"name = {_toml_string(pair.subcategory or pair.category)}",
-            f"group = {_toml_string(groups[pair.category])}",
+            f"group = {_toml_string(group_id)}",
             "",
         ]
         rules += [
@@ -149,7 +151,19 @@ def write_drafts(labels: BankLabels, out: Path) -> None:
     )
 
 
-def _direction(labels: BankLabels, category: str) -> str:
+def _group_name(labels: BankLabels, folded: str) -> str:
+    """Name a group by its most-used category spelling, a tie going to the first.
+
+    Each pair's own spelling counts for all its transactions.
+    """
+    counts: Counter[str] = Counter()
+    for pair in labels.pairs:
+        if fold(pair.category) == folded:
+            counts[pair.category] += pair.transactions
+    return min(counts, key=lambda spelling: (-counts[spelling], spelling))
+
+
+def _direction(labels: BankLabels, folded: str) -> str:
     """Guess a group's direction: income only if each currency's sum is positive.
 
     Currencies are never added together, so a group with a negative sum in
@@ -157,7 +171,7 @@ def _direction(labels: BankLabels, category: str) -> str:
     """
     sums: defaultdict[str, Decimal] = defaultdict(Decimal)
     for pair in labels.pairs:
-        if pair.category == category:
+        if fold(pair.category) == folded:
             for currency, total in pair.sums.items():
                 sums[currency] += total
     return "income" if all(total > 0 for total in sums.values()) else "expense"
