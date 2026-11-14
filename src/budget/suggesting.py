@@ -6,6 +6,7 @@ It never returns transaction text, only counts and sums of each bank label pair.
 """
 
 import json
+import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
@@ -93,6 +94,10 @@ def bank_labels(profile: Profile) -> BankLabels:
 
 TAXONOMY_DRAFT_NAME: Final = "taxonomy-draft.toml"
 RULES_DRAFT_NAME: Final = "rules-draft.toml"
+_DANISH_LETTERS: Final = (("æ", "ae"), ("ø", "oe"), ("å", "aa"))
+# The transaction types that carry no category; `taxonomy.toml` refuses a
+# category with one of these IDs, so no draft ID takes one.
+_UNCATEGORISED_TYPES: Final = frozenset({"transfer", "adjustment", "unknown"})
 
 
 def write_drafts(labels: BankLabels, out: Path) -> None:
@@ -104,16 +109,21 @@ def write_drafts(labels: BankLabels, out: Path) -> None:
     taxonomy = ["format = 1", ""]
     rules = ["format = 1", ""]
     groups: dict[str, str] = {}
+    taken_categories: set[str] = set()
     for pair in labels.pairs:
         if pair.category not in groups:
-            groups[pair.category] = _slug(pair.category)
+            groups[pair.category] = _unique(_slug(pair.category), set(groups.values()))
             taxonomy += [
                 f"[group.{groups[pair.category]}]",
                 f"name = {_toml_string(pair.category)}",
                 f'direction = "{_direction(labels, pair.category)}"',
                 "",
             ]
-        category_id = f"{groups[pair.category]}-{_slug(pair.subcategory or 'other')}"
+        category_id = _unique(
+            f"{groups[pair.category]}-{_slug(pair.subcategory or 'other')}",
+            taken_categories,
+        )
+        taken_categories.add(category_id)
         taxonomy += [
             _size_comment(pair),
             f"[category.{category_id}]",
@@ -163,8 +173,26 @@ def _size_comment(pair: BankLabelPair) -> str:
 
 
 def _slug(text: str) -> str:
-    """Make a durable ID from a label."""
-    return text.lower()
+    """Make a durable ASCII ID from a label: lower case, words joined by `-`.
+
+    æ, ø and å spell out as Danish does; other letters lose their accents.
+    """
+    text = text.lower()
+    for letter, spelled in _DANISH_LETTERS:
+        text = text.replace(letter, spelled)
+    ascii_text = (
+        unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+    )
+    words = "".join(ch if ch.isalnum() else " " for ch in ascii_text).split()
+    return "-".join(words) or "x"
+
+
+def _unique(wanted: str, taken: set[str]) -> str:
+    """Return `wanted`, suffixed `-2`, `-3`… past any taken or reserved ID."""
+    candidate, n = wanted, 2
+    while candidate in taken or candidate in _UNCATEGORISED_TYPES:
+        candidate, n = f"{wanted}-{n}", n + 1
+    return candidate
 
 
 def _toml_string(text: str) -> str:
