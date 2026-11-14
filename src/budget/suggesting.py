@@ -100,6 +100,30 @@ _DANISH_LETTERS: Final = (("æ", "ae"), ("ø", "oe"), ("å", "aa"))
 _UNCATEGORISED_TYPES: Final = frozenset({"transfer", "adjustment", "unknown"})
 
 
+class DraftsExistError(ValueError):
+    """A draft file is already in the `--out` folder, so nothing is written."""
+
+    def __init__(self, existing: tuple[Path, ...]) -> None:
+        """Name each draft file that is already there."""
+        names = " and ".join(str(path) for path in existing)
+        verb = "exists" if len(existing) == 1 else "exist"
+        super().__init__(
+            f"{names} already {verb}, so nothing was written; choose another "
+            "--out folder or move the old drafts away"
+        )
+
+
+def refuse_existing_drafts(out: Path) -> None:
+    """Refuse an `--out` folder that already holds either draft file."""
+    existing = tuple(
+        path
+        for path in (out / TAXONOMY_DRAFT_NAME, out / RULES_DRAFT_NAME)
+        if path.exists()
+    )
+    if existing:
+        raise DraftsExistError(existing)
+
+
 def write_drafts(labels: BankLabels, out: Path) -> None:
     """Write a draft taxonomy and draft rules for every pair into `out`.
 

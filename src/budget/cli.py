@@ -147,8 +147,10 @@ from budget.silver.store import SilverStore
 from budget.suggesting import (
     RULES_DRAFT_NAME,
     TAXONOMY_DRAFT_NAME,
+    DraftsExistError,
     SilverNotBuiltForSuggestionsError,
     bank_labels,
+    refuse_existing_drafts,
     write_drafts,
 )
 
@@ -775,8 +777,11 @@ def _find(
 def _suggest_rules(profile: Profile, out: Path | None) -> None:
     """Summarize the bank's category labels in Silver, with no lock.
 
-    With `out`, also write the draft taxonomy and rules there.
+    With `out`, also write the draft taxonomy and rules there. A folder that
+    already holds a draft is refused before anything is printed.
     """
+    if out is not None:
+        refuse_existing_drafts(out)
     labels = bank_labels(profile)
     sys.stdout.write(summaries.suggest_rules_summary(labels))
     if out is not None:
@@ -1154,6 +1159,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         EmptyPassphraseError,
         PassphraseMismatchError,
         DemoDirectoryExistsError,
+        DraftsExistError,
         CatchUpInputsRefusedError,
     ) as error:
         return _refuse(error, EXIT_REFUSED_INPUT)
