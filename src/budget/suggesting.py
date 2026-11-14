@@ -110,7 +110,7 @@ def write_drafts(labels: BankLabels, out: Path) -> None:
             taxonomy += [
                 f"[group.{groups[pair.category]}]",
                 f"name = {_toml_string(pair.category)}",
-                'direction = "expense"',
+                f'direction = "{_direction(labels, pair.category)}"',
                 "",
             ]
         category_id = f"{groups[pair.category]}-{_slug(pair.subcategory or 'other')}"
@@ -137,6 +137,20 @@ def write_drafts(labels: BankLabels, out: Path) -> None:
     (out / RULES_DRAFT_NAME).write_text(
         "\n".join(rules), encoding="utf-8", newline="\n"
     )
+
+
+def _direction(labels: BankLabels, category: str) -> str:
+    """Guess a group's direction: income only if each currency's sum is positive.
+
+    Currencies are never added together, so a group with a negative sum in
+    any currency, or a zero one, is an expense.
+    """
+    sums: defaultdict[str, Decimal] = defaultdict(Decimal)
+    for pair in labels.pairs:
+        if pair.category == category:
+            for currency, total in pair.sums.items():
+                sums[currency] += total
+    return "income" if all(total > 0 for total in sums.values()) else "expense"
 
 
 def _size_comment(pair: BankLabelPair) -> str:
