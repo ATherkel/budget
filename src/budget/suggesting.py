@@ -210,8 +210,11 @@ def _unique(wanted: str, taken: set[str]) -> str:
 
 
 def _toml_string(text: str) -> str:
-    """`text` as a TOML basic string; a JSON string is one."""
-    return json.dumps(text, ensure_ascii=False)
+    """Quote `text` as a TOML basic string.
+
+    A JSON string is one, but JSON leaves DEL raw, which TOML refuses.
+    """
+    return json.dumps(text, ensure_ascii=False).replace("\x7f", "\\u007f")
 
 
 def _folded(labels: _Labels) -> _Labels:
