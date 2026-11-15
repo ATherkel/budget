@@ -16,6 +16,7 @@ import pytest
 from budget.analytics import (
     DetailSubject,
     HouseholdReports,
+    InvalidSelectionError,
     ReportContext,
 )
 from budget.gold import (
@@ -197,3 +198,20 @@ def test_a_month_without_data_has_no_spending_and_no_rows(
 
     assert (detail.spending, detail.rows) == (None, ())
     assert detail.coverage.status == "no_data"
+
+
+@pytest.mark.parametrize(
+    "subject",
+    [
+        DetailSubject("category", "salary"),
+        DetailSubject("group", "income"),
+        DetailSubject("group", "homeware"),
+    ],
+)
+def test_a_subject_that_is_not_an_expense_category_or_group_is_unknown(
+    reports: HouseholdReports, subject: DetailSubject
+) -> None:
+    with pytest.raises(InvalidSelectionError) as raised:
+        reports.spending_detail(_context(2), subject, "month")
+
+    assert raised.value.reasons == {"unknown_category"}
