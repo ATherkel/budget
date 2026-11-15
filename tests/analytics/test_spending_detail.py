@@ -137,3 +137,36 @@ def test_april_housing_year_to_date_lists_every_housing_allocation(
         ("RENT", Decimal("8500.00")),
     ]
     assert detail.spending == Decimal("18000.00")
+
+
+def test_february_groceries_year_to_date_adds_the_januarys_purchase(
+    reports: HouseholdReports,
+) -> None:
+    detail = reports.spending_detail(
+        _context(2), _category("groceries"), "year_to_date"
+    )
+
+    assert [row.spending for row in detail.rows] == [
+        Decimal("-120.00"),
+        Decimal("640.00"),
+        Decimal("842.50"),
+    ]
+    assert detail.spending == Decimal("1362.50")
+
+
+def test_coverage_names_every_incomplete_account_month_in_the_scope(
+    reports: HouseholdReports,
+) -> None:
+    detail = reports.spending_detail(
+        _context(2), _category("groceries"), "year_to_date"
+    )
+
+    assert detail.coverage.status == "partial"
+    assert [
+        (c.account_id, c.month, c.status) for c in detail.coverage.account_months
+    ] == [
+        ("joint-current", ReportingMonth(2026, 1), "partial"),
+        ("joint-current", ReportingMonth(2026, 2), "partial"),
+        ("joint-savings", ReportingMonth(2026, 1), "partial"),
+    ]
+    assert detail.provisional is None
