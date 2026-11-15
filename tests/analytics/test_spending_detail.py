@@ -170,3 +170,30 @@ def test_coverage_names_every_incomplete_account_month_in_the_scope(
         ("joint-savings", ReportingMonth(2026, 1), "partial"),
     ]
     assert detail.provisional is None
+
+
+def test_may_year_to_date_is_provisional_for_both_reasons(
+    reports: HouseholdReports,
+) -> None:
+    detail = reports.spending_detail(
+        _context(5), _category("groceries"), "year_to_date"
+    )
+
+    assert detail.provisional is not None
+    assert detail.provisional.reasons == {"current_month", "late_bookings_unsettled"}
+    assert [(m.account_id, m.month) for m in detail.provisional.unsettled] == [
+        ("joint-current", ReportingMonth(2026, 5)),
+        ("joint-savings", ReportingMonth(2026, 5)),
+    ]
+    assert detail.spending == Decimal("1362.50")
+
+
+def test_a_month_without_data_has_no_spending_and_no_rows(
+    reports: HouseholdReports,
+) -> None:
+    detail = reports.spending_detail(
+        _context(6, date(2026, 6, 3)), _category("groceries"), "month"
+    )
+
+    assert (detail.spending, detail.rows) == (None, ())
+    assert detail.coverage.status == "no_data"
