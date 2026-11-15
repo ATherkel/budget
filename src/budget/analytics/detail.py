@@ -56,6 +56,16 @@ def spending_detail(
             account_ids=context.account_ids,
         )
     }
+    # Newest first: by date, then account, then booking sequence, descending.
+    entries = sorted(
+        (a for a in allocations if a.category_id == category.category_id),
+        key=lambda a: (
+            a.transaction_date,
+            a.account_id,
+            transactions[a.transaction_id].account_sequence,
+        ),
+        reverse=True,
+    )
     rows = tuple(
         SpendingDetailRow(
             transaction_date=a.transaction_date,
@@ -66,8 +76,7 @@ def spending_detail(
             category_name=category.name,
             spending=-a.amount,
         )
-        for a in allocations
-        if a.category_id == category.category_id
+        for a in entries
     )
     judged = trust(
         accounts,
@@ -87,7 +96,7 @@ def spending_detail(
         first_month=context.month,
         last_month=context.month,
         spending=sum((row.spending for row in rows), ZERO),
-        rows=tuple(sorted(rows, key=lambda row: row.transaction_date, reverse=True)),
+        rows=rows,
         coverage=judged.coverage,
         provisional=judged.provisional,
     )
