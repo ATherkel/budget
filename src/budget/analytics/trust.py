@@ -20,6 +20,8 @@ from budget.analytics.reports import (
 )
 from budget.gold import Coverage, GoldAccount, MonthlyBalanceSnapshot, ReportingMonth
 
+_MONTHS_IN_A_YEAR = 12
+
 type AccountMonthState = Literal["complete", "partial", "no_data", "outside_history"]
 
 
@@ -79,6 +81,16 @@ class Trust:
     provisional: Provisional | None
 
 
+def _months(first: ReportingMonth, last: ReportingMonth) -> list[ReportingMonth]:
+    """Return every month from `first` through `last`."""
+    start = first.year * _MONTHS_IN_A_YEAR + first.month - 1
+    end = last.year * _MONTHS_IN_A_YEAR + last.month - 1
+    return [
+        ReportingMonth(index // _MONTHS_IN_A_YEAR, index % _MONTHS_IN_A_YEAR + 1)
+        for index in range(start, end + 1)
+    ]
+
+
 def trust(
     accounts: Sequence[GoldAccount],
     rows: Sequence[MonthlyBalanceSnapshot],
@@ -86,29 +98,50 @@ def trust(
     reference_date: date,
 ) -> Trust:
     """Judge `month` for `accounts` from all their rows, on `reference_date`."""
+    return trust_over(accounts, rows, month, month, reference_date)
+
+
+def trust_over(
+    accounts: Sequence[GoldAccount],
+    rows: Sequence[MonthlyBalanceSnapshot],
+    first_month: ReportingMonth,
+    last_month: ReportingMonth,
+    reference_date: date,
+) -> Trust:
+    """Judge every month from `first_month` through `last_month` together.
+
+    The label is `current_month` when `last_month`, the selected month, is the
+    reference month; unsettled account-months are gathered over the whole range.
+    """
     evidence = [
-        _evidence(
-            account, [r for r in rows if r.account_id == account.account_id], month
+        (
+            month,
+            _evidence(
+                account,
+                [r for r in rows if r.account_id == account.account_id],
+                month,
+            ),
         )
         for account in sorted(accounts, key=lambda account: account.account_id)
+        for month in _months(first_month, last_month)
     ]
     coverage = ReportCoverage(
-        status=combined_status([e.state for e in evidence]),
+        status=combined_status([e.state for _, e in evidence]),
         account_months=tuple(
             AccountMonthCoverage(
                 e.account.account_id, e.account.display_name, month, e.state
             )
-            for e in evidence
+            for month, e in evidence
             if e.state != "complete"
         ),
     )
     unsettled = tuple(
         AccountMonth(e.account.account_id, e.account.display_name, month)
-        for e in evidence
+        for month, e in evidence
         if e.unsettled
     )
     reasons: set[ProvisionalReason] = set()
-    if month == ReportingMonth.of(reference_date):
+    if last_month == ReportingMonth.of(reference_date):
         reasons.add("current_month")
     if unsettled:
         reasons.add("late_bookings_unsettled")

@@ -17,7 +17,7 @@ from budget.analytics.reports import (
     SpendingDetail,
     SpendingDetailRow,
 )
-from budget.analytics.trust import trust
+from budget.analytics.trust import trust_over
 from budget.gold import GoldCategory, GoldRepository, ReportingMonth
 
 
@@ -97,10 +97,11 @@ def spending_detail(
         )
         for a in entries
     )
-    judged = trust(
+    judged = trust_over(
         accounts,
         _every_row(gold, context.account_ids),
-        context.month,
+        first_month,
+        last_month,
         context.reference_date,
     )
     anchor = next(iter(categories.values()))
