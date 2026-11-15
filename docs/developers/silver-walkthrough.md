@@ -22,7 +22,7 @@ uv run python examples/silver_walkthrough.py
 ```
 
 Each import declares its range in a ranges file
-([the ranges file](../../README.md#the-ranges-file)) beside the profile, so nothing asks at the
+([the monthly import](../architecture/operations.md#w1-the-monthly-import)) beside the profile, so nothing asks at the
 prompt. March's `ranges-march.toml` is:
 
 ```toml

@@ -235,9 +235,10 @@ uv run budget import --ranges $ranges
 Expect `[1] <account>  stored`, the Silver line, then Gold published, and the
 file gone from the inbox. With no fresh export from the bank, copy an archived
 one from `$exports\<account_id>\`: it is stored again and Gold reports
-unchanged. The README's
-[import outcomes](../../README.md#importing-the-inbox-budget-import) list each
-line and exit status.
+unchanged.
+[The monthly import](../architecture/operations.md#w1-the-monthly-import)
+lists each outcome line, and
+[exit codes](../architecture/operations.md#exit-codes) each exit status.
 
 ## Review
 
