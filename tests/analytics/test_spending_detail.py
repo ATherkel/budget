@@ -122,3 +122,18 @@ def test_same_day_rows_run_by_account_then_booking_sequence_descending(
         ("joint-current", Decimal("-120.00")),
         ("joint-current", Decimal("640.00")),
     ]
+
+
+def test_april_housing_year_to_date_lists_every_housing_allocation(
+    reports: HouseholdReports,
+) -> None:
+    detail = reports.spending_detail(
+        _context(4), DetailSubject("group", "housing"), "year_to_date"
+    )
+
+    assert [(row.description, row.spending) for row in detail.rows] == [
+        ("RENT", Decimal("8500.00")),
+        ("UTILITIES", Decimal("1000.00")),
+        ("RENT", Decimal("8500.00")),
+    ]
+    assert detail.spending == Decimal("18000.00")
