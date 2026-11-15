@@ -65,7 +65,9 @@ Rules for every store:
 
 - **Created only by `migrate`.** Each store has its own numbered migrations,
   in `migrations/bronze/`, `migrations/silver/` and `migrations/gold/`, and its
-  own `PRAGMA user_version`. Opening a store never creates tables and fails
+  own `PRAGMA user_version`. The migration files ship inside the wheel and
+  sdist, so an installation migrates without a source checkout. Opening a
+  store never creates tables and fails
   when the file does not exist (ADR-013). The migrate runner also creates
   scratch stores and legacy extracts, from the same migration files.
 - **It knows its profile and stage.** `migrate` writes `profile` and `stage`
@@ -82,7 +84,7 @@ Rules for every store:
   `budget.lock` in the profile's stores folder for its whole run, including
   the backup set it writes. A second writing command exits 4 at once with
   "another command is running". Commands that only read (`status`, `review`,
-  `check`, `serve`) take no lock.
+  `check`, `serve`, `suggest-rules`) take no lock.
 
 ### Publishing a Gold build
 
@@ -167,9 +169,13 @@ application touches.
   default, because a default would be production, and a test run inherits the
   operator's shell.
 - Profile files live outside the repository, for example in
-  `%APPDATA%\budget\`. They hold paths and settings, no secrets.
+  `%APPDATA%\budget\`. They hold paths and settings, no secrets. A profile
+  file is UTF-8 text, with or without a byte-order mark. The application
+  never expands variables in it, so every path is absolute.
 - **Test profiles are never files.** The test suite builds each profile in a
-  temporary directory and refuses a store path outside it. No test reads
+  temporary directory and refuses a store path outside it. Every path a test
+  profile derives is resolved and checked against that directory on each
+  access, so a folder or file replaced by a symlink is refused. No test reads
   `imports/`, a profile file, or `BUDGET_PROFILE`
   ([`tdd.md`](../agents/tdd.md)). The suite removes `BUDGET_PROFILE` from the
   environment of every test, and a test that runs the CLI as a subprocess
@@ -208,7 +214,8 @@ A development profile has `profile = "development"`, its own `stores`,
 It has no `[backups]` table, because only production writes backup sets. The
 inbox and the export archive are separate folders, neither inside the other:
 otherwise the archive would hold the inbox file itself, and an import would
-remove the only copy.
+remove the only copy. Production's backups folder may not overlap any of the
+four.
 
 Both profiles may set `[gold] late_booking_days`, the late-booking window: how
 many days after a month ends an export must be produced before it settles the
@@ -439,7 +446,9 @@ of the code, not a file, and enters recipes through the code version.
 The append-only log of manual decisions (ADR-014), one JSON object per line.
 Only `budget decide` writes it. It is JSON Lines rather than TOML because the
 application writes it: Python's standard library writes JSON, but only reads
-TOML.
+TOML. A missing log, or one holding only a byte-order mark and whitespace,
+means no decisions. An invalid entry refuses a build with exit 3, naming the
+entry and never repeating the decision's text.
 
 ```json
 {"format": 1, "entry": 1, "decision_id": "d-0001", "recorded_at": "2026-04-10T17:02:11Z", "kind": "classify", "targets": ["7c1e0b9a4d2f…"], "category": "gifts", "reason": "Wedding present", "supersedes": []}
@@ -580,7 +589,8 @@ dashboard stays read-only: it has no route that reaches the boundary.
 ## Commands
 
 `budget [--profile <file>] <command>`. The CLI uses the standard library's
-`argparse`.
+`argparse`, and `python -m budget` runs the same command. Every command except
+`demo` needs a profile.
 
 | Command | Does | Writes | Publishes |
 | --- | --- | --- | --- |
@@ -589,8 +599,10 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | `import [--ranges <file>]` | Imports each file in the inbox on its own, then rebuilds and publishes what was stored. A refused file stays in the inbox. A payload the inbox holds under more than one account is a cross-account duplicate: every file it holds is refused before anything is written, and the files it does not hold are imported only if the person answers `y` or `yes` at the prompt. It asks each file's declared range, or reads them from a ranges file: a `[default]` range and `[account.<id>]` ranges, each a TOML `from` and `through` date. | Bronze, the import log, Silver, Gold | Yes, if the build succeeds |
 | `rebuild [--from bronze\|silver\|gold]` | Rebuilds from a stage; `gold` by default. | Stages from `--from` on | Yes, if the recipe changed |
 | `review [--kind <kind>] [--account <id>]` | Lists open review items, Silver's and Gold's, with what a person needs to settle each one. | Nothing | No |
+| `suggest-rules` | Lists each `bank_category` / `bank_subcategory` pair in Silver with its transaction count and signed sum per currency, then one line for the transactions with no bank category. A pair that a `rules.toml` rule testing only those labels already matches names that rule. Prints no transaction text; a missing `rules.toml` flags nothing, and an invalid one is refused. | Nothing | No |
 | `decide <kind> <targets…> [options] --reason <text>` | Proposes a manual decision to the boundary, then rebuilds from the stage the decision affects. | The decision log, then stores | Yes |
 | `status` | Shows balance and classification completeness (below). | Nothing | No |
+| `find <text> [--month YYYY-MM] [--account <id>]` | Searches every transaction in the current publication, classified or not, ignoring case. Each line carries the transaction's handle and its published category, or `category unclassified`. When a matching transaction is absent from current Silver, as after an `undo` of a decision that removed it, the whole search is refused; `rebuild` puts that right. | Nothing | No |
 | `undo` | Moves the pointer back (ADR-014). | `gold.db` | Pointer only |
 | `view --as-was <date> \| --known-at <date> --label <text>` | Builds or finds a past view (ADR-014). Without options, lists retained and legacy publications. | `gold.db`, through a scratch store | Never current |
 | `label <publication_id> <text>` / `unlabel …` | Keeps a result beyond the retention rule, or stops keeping it. | `gold.db` | No |
@@ -601,13 +613,22 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | `dev refresh [--inputs] [--writable]` | Development only: restores production's newest complete backup set this code can use into `upstream/`, or with `--writable` into development's own stores, naming each newer complete set it passes over as unreadable or damaged. | Development only | No |
 | `serve` | Starts the read-only dashboard. | Nothing | No |
 | `set-passphrase` | Sets the dashboard passphrase, which logs out every device. | The passphrase file | No |
+| `demo [--directory <new folder>] [--port <port>]` | Creates an isolated synthetic development profile in a new folder, publishes demo accounts, sets a demo-only login and runs `serve` on `127.0.0.1`. It reads and changes nothing outside that folder and refuses a folder that exists. | The new folder only | In the demo only |
 
 Review output shows each transaction with a short handle: the first 8
 characters of its `transaction_id`. `decide` accepts a handle; a handle that
-matches more than one transaction is refused.
+matches more than one transaction is refused. `find` lengthens a handle when
+another Silver transaction shares its prefix, so every handle it prints
+resolves through `decide`.
+
+After the open items, `review` lists each quarantined import run that no open
+item already shows, as `Run  <import run id>  <account>  <from>..<to>  <error
+codes>`. `--account` filters items and runs; `--kind` lists that kind's items
+and no runs. A filter that matches nothing prints nothing and exits 0.
 
 `decide` rebuilds from Silver for `void-import-run`, `same-transaction`,
-`withdrawn` and `accept-discrepancy`, and from Gold for the rest.
+`withdrawn` and `accept-discrepancy`, and from Gold for the rest. A `rebuild`
+never creates an import run or an import-log entry.
 
 `decide`'s targets are transaction handles, except for `void-import-run` and
 `accept-discrepancy`, which name an `import_run_id`. A `classify` names its
@@ -713,6 +734,34 @@ refused export stays in the inbox, and a copy of its bytes goes to
 `exports\<account_id>\refused\<first 12 characters of the payload hash>\`
 ([`imports.jsonl`](#importsjsonl-the-import-log)).
 
+Both ends of a declared range are inclusive. After the first file, Enter
+repeats the answer given for the file before. Nothing is stored until the
+answer is `y`, and an import that is not confirmed exits 0. The summary names
+each file by its number in the listing, never by its filename, because a
+bank's filename can carry an account number.
+
+`import --ranges <file>` asks nothing and does not ask for confirmation: the
+ranges file is the declaration. It holds `format = 1`, a `[default]` range and
+an `[account.<id>]` range for each account that differs, since one inbox can
+hold exports downloaded on different days. Every `[account.<id>]` must name an
+account in `accounts.toml`, and an inbox account with no range of its own and
+no `[default]` refuses the whole run. Keep the file outside the inputs folder
+and the inbox.
+
+The summary gives each file one outcome.
+[Failure and Retry](#failure-and-retry) says what to do about each:
+
+| Outcome | What happened |
+| --- | --- |
+| `stored` | In Bronze, archived and logged; the file left the inbox |
+| `repeat` | The same bytes were stored for this account before; logged as a repeat |
+| `stored; Silver quarantined it: <codes>` | Stored, archived and logged, but Silver holds the run back for the reasons the codes name |
+| `refused` | Bronze refused the declared range, or the bytes are stored for another account |
+| `misfiled` | Not imported: a filename carrying another account's number or no export date, a folder `accounts.toml` does not name, or a file in the inbox itself or in a folder inside an account's |
+| `unreadable` | Not imported: another program holds the file without sharing it |
+| `format failure` | Not imported: its format cannot read it, and the reason says where |
+| `stored; it stays in the inbox because another program holds it` | Stored, archived and logged, but the file could not be removed |
+
 ### W2: settling a review item
 
 ```text
@@ -810,7 +859,7 @@ live only in `gold.db`, `gold\legacy\` and their backups.
 | An inbox file is held open by another program | The import is finished; the file stays in the inbox | Close the program, then rerun `import`: the file is removed as a retry |
 | An inbox file is held by another program that does not share it, so it cannot be read | Not imported, before anything is asked for it; the file stays in the inbox; the other files are stored; exit 3 | Close the program, then rerun `import` |
 | Crash during a build | SQLite rolls back the uncommitted publication; the previous publication stays current | Rerun the command |
-| Another writing command is running | Exit 4 at once; nothing is written | Rerun when the other command ends |
+| Another writing command is running | Exit 4 at once; nothing is written | Rerun when the other command ends. On Windows the lock of a command that was killed or crashed is released a moment late, so an immediate rerun can be refused once |
 | A decision-log line cut off by a crash | `check` reports it; `decide` refuses | Delete the partial last line |
 | Crash while writing a backup set | The set stays in `backup-staging\` or as a `.partial` folder, is never used, and is deleted by the next backup | Nothing to do |
 | The backup before a migration cannot be written or verified | The migration does not begin; the schema and its version are unchanged; exit 4, or 5 when a copy or the import log does not verify | Fix what the message names, then rerun `migrate` |
@@ -957,7 +1006,8 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
 ## Dashboard Access
 
 - `serve` binds to the address and port in the profile: the machine's home
-  network address in production, and `127.0.0.1` in development. A Windows
+  network address in production, and `127.0.0.1` in development. `bind`
+  defaults to `127.0.0.1` and `port` to 8750. A Windows
   firewall rule allows the port on private networks only. Nothing is reachable
   from the internet.
 - One household passphrase guards every page. It is stored as a `scrypt` hash
