@@ -251,8 +251,19 @@ Your dev profile needs `[dashboard]` and a passphrase
 it prints and log in. Check the account picker, the month picker and the
 monthly overview against the current publication.
 
-Without your profile, `uv run budget demo` serves synthetic data; see the
-README's [dashboard section](../../README.md#the-dashboard-budget-serve).
+Without your profile, `demo` serves synthetic data from a new folder:
+
+```powershell
+$demo = Join-Path $env:TEMP ("budget-demo-" + [guid]::NewGuid().ToString("N"))
+uv run budget demo --directory $demo --port 8765
+```
+
+Open `http://127.0.0.1:8765` and log in with `budget-demo`. Expect two checked
+accounts, `Demo current` and `Demo savings`, the current month and the monthly
+overview. The demo publishes balances without transactions, so its
+transaction figures are known zeros, including `0,00 kr.` for Ind and Ud under
+Ukategoriseret. Stop it with `Ctrl+C`, then run
+`Remove-Item -LiteralPath $demo -Recurse`.
 
 ## Restore and dev refresh
 
