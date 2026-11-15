@@ -83,9 +83,12 @@ def _figures(
 
 
 def _selected_accounts(
-    gold: GoldRepository, context: ReportContext
+    gold: GoldRepository, context: ReportContext, *, unknown_category: bool = False
 ) -> list[GoldAccount]:
-    """Return the accounts `context` selects, or name every rule it breaks."""
+    """Return the accounts `context` selects, or name every rule it breaks.
+
+    A detail report passes `unknown_category` when its subject names nothing.
+    """
     by_id = {account.account_id: account for account in gold.accounts()}
     unknown = context.account_ids - by_id.keys()
     selected = [by_id[account_id] for account_id in context.account_ids - unknown]
@@ -96,6 +99,7 @@ def _selected_accounts(
         # Gold contract invariant 13: never aggregate across currencies.
         "mixed_currencies": len({account.currency for account in selected}) > 1,
         "month_out_of_range": not first_month <= context.month <= last_month,
+        "unknown_category": unknown_category,
     }
     reasons = [rule for rule, is_broken in broken.items() if is_broken]
     if reasons:

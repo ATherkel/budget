@@ -65,8 +65,8 @@ def spending_detail(
     is_current: bool,
 ) -> SpendingDetail:
     """Return the entries behind `subject`'s figure in `scope`."""
-    accounts = _selected_accounts(gold, context)
     categories = {c.category_id: c for c in _subject_categories(gold, subject)}
+    accounts = _selected_accounts(gold, context, unknown_category=not categories)
     first_month, last_month = _scope_months(context, scope)
     window = {
         "start_date": _first_day(first_month),

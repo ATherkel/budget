@@ -22,7 +22,11 @@ from budget.gold import (
 type AccountMonthStatus = Literal["partial", "no_data", "outside_history"]
 type ProvisionalReason = Literal["current_month", "late_bookings_unsettled"]
 type SelectionRule = Literal[
-    "no_accounts", "unknown_account", "mixed_currencies", "month_out_of_range"
+    "no_accounts",
+    "unknown_account",
+    "mixed_currencies",
+    "month_out_of_range",
+    "unknown_category",
 ]
 
 
