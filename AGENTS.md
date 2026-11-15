@@ -65,6 +65,19 @@ the red/green handoffs, test seam agreement, and permitted exceptions.
 
 Review and fix PRs as `docs/agents/pr-review.md` describes.
 
+### Writing docs
+
+Each concept has one owner doc, the document that defines it. These rules
+bind every change under `docs/`:
+
+- Other docs link to the owner doc's section and don't restate it.
+- A topic's human overview stays at 300 words or fewer and links to the
+  owner sections.
+- Docs carry no issue numbers, status or history. The one exception is
+  behaviour that isn't built yet: label it as pending and link its issue.
+- A docs PR names the owner doc it changed. Any other doc it touches gets a
+  link or a one-line summary.
+
 ## Agent skills
 
 Edit `docs/agents/issue-tracker.md`, `domain.md` and `triage-labels.md`
