@@ -6,6 +6,7 @@ from datetime import date, datetime
 from typing import Final
 from zoneinfo import ZoneInfo
 
+from budget.analytics.detail import spending_detail as build_spending_detail
 from budget.analytics.overview import monthly_overview as build_monthly_overview
 from budget.analytics.overview import selection_options as build_selection_options
 from budget.analytics.reports import (
@@ -145,4 +146,19 @@ class HouseholdReports:
         self, context: ReportContext, subject: DetailSubject, scope: DetailScope
     ) -> SpendingDetail:
         """Return the entries behind `subject`'s figure in `scope`."""
-        raise NotImplementedError
+        try:
+            gold = self._publications.open(context.publication_id)
+            publication = gold.publication()
+            context = replace(
+                context,
+                reference_date=_reference_date(publication, context.reference_date),
+            )
+            return build_spending_detail(
+                gold,
+                context,
+                subject,
+                scope,
+                is_current=_is_current(publication, self._publications.current()),
+            )
+        except GoldPublicationUnavailableError as error:
+            raise self._unavailable(context.publication_id) from error
