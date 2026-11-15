@@ -104,6 +104,7 @@ def spending_detail(
         last_month,
         context.reference_date,
     )
+    no_data = judged.coverage.status == "no_data"
     anchor = next(iter(categories.values()))
     is_group = subject.kind == "group"
     return SpendingDetail(
@@ -117,8 +118,8 @@ def spending_detail(
         group_name=anchor.group_name,
         first_month=first_month,
         last_month=last_month,
-        spending=sum((row.spending for row in rows), ZERO),
-        rows=rows,
+        spending=None if no_data else sum((row.spending for row in rows), ZERO),
+        rows=() if no_data else rows,
         coverage=judged.coverage,
         provisional=judged.provisional,
     )
