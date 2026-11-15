@@ -240,6 +240,10 @@ unchanged.
 lists each outcome line, and
 [exit codes](../architecture/operations.md#exit-codes) each exit status.
 
+| Do | Expect |
+| --- | --- |
+| With an export whose name carries the account number in the inbox: `$f = Get-ChildItem "$inbox\*\*.csv" \| Select-Object -First 1; $lock = [IO.File]::Open($f.FullName,'Open','Read','None'); uv run budget import --ranges $ranges; $lock.Close(); $no = [regex]::Match($f.Name,'\d{10}').Value; Select-String -Path "$stores\logs\commands*.jsonl" -SimpleMatch -Pattern $f.Name, $no, $f.Directory.Name` | `[1] <account>  unreadable`, exit 3, the file still in the inbox; `Select-String` prints nothing |
+
 ## Review
 
 `uv run budget review` lists open review items and quarantined runs, and
