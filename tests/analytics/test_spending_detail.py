@@ -6,6 +6,7 @@ worked example, not from the code.
 """
 
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -17,7 +18,12 @@ from budget.analytics import (
     HouseholdReports,
     ReportContext,
 )
-from budget.gold import GoldResult, ReportingMonth
+from budget.gold import (
+    GoldCategoryAllocation,
+    GoldResult,
+    GoldTransaction,
+    ReportingMonth,
+)
 from budget.gold.storage import migrate_gold
 from budget.gold.store import GoldStore
 from budget.profiles import test_profile as make_test_profile
@@ -60,3 +66,59 @@ def test_february_groceries_lists_the_purchase_and_its_refund(
         Decimal("640.00"),
     ]
     assert detail.spending == Decimal("520.00")
+
+
+def _grocery(account_id: str, seq: int, amount: str) -> GoldTransaction:
+    return GoldTransaction(
+        transaction_id=f"extra-{account_id}-{seq}",
+        account_id=account_id,
+        transaction_date=date(2026, 2, 12),
+        account_sequence=seq,
+        amount=Decimal(amount),
+        description="GROCERIES",
+        transaction_type="expense",
+        transfer_group_id=None,
+        balance_after=None,
+        balance_check="consistent",
+    )
+
+
+def test_same_day_rows_run_by_account_then_booking_sequence_descending(
+    tmp_path: Path,
+) -> None:
+    extra = (
+        _grocery("joint-current", 12, "-11.00"),
+        _grocery("joint-savings", 3, "-22.00"),
+    )
+    records = replace(
+        RECORDS,
+        transactions=(*RECORDS.transactions, *extra),
+        category_allocations=(
+            *RECORDS.category_allocations,
+            *(
+                GoldCategoryAllocation(
+                    allocation_id=f"{t.transaction_id}/groceries",
+                    transaction_id=t.transaction_id,
+                    account_id=t.account_id,
+                    transaction_date=t.transaction_date,
+                    category_id="groceries",
+                    amount=t.amount,
+                )
+                for t in extra
+            ),
+        ),
+    )
+    profile = make_test_profile(tmp_path)
+    migrate_gold(profile)
+    with GoldStore(profile) as store:
+        store.publish(GoldResult(PUBLICATION, records), RECIPE, CONFIGURATION)
+        detail = HouseholdReports(store).spending_detail(
+            _context(2), _category("groceries"), "month"
+        )
+
+    assert [(row.account_id, row.spending) for row in detail.rows] == [
+        ("joint-savings", Decimal("22.00")),
+        ("joint-current", Decimal("11.00")),
+        ("joint-current", Decimal("-120.00")),
+        ("joint-current", Decimal("640.00")),
+    ]
