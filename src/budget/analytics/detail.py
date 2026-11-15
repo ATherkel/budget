@@ -18,7 +18,7 @@ from budget.analytics.reports import (
     SpendingDetailRow,
 )
 from budget.analytics.trust import trust
-from budget.gold import GoldRepository, ReportingMonth
+from budget.gold import GoldCategory, GoldRepository, ReportingMonth
 
 
 def _first_day(month: ReportingMonth) -> date:
@@ -31,6 +31,31 @@ def _last_day(month: ReportingMonth) -> date:
     )
 
 
+def _scope_months(
+    context: ReportContext, scope: DetailScope
+) -> tuple[ReportingMonth, ReportingMonth]:
+    """Return the first and last month of `scope`: January through the month."""
+    first = (
+        ReportingMonth(context.month.year, 1)
+        if scope == "year_to_date"
+        else context.month
+    )
+    return first, context.month
+
+
+def _subject_categories(
+    gold: GoldRepository, subject: DetailSubject
+) -> list[GoldCategory]:
+    """Return the expense categories `subject` names."""
+    return [
+        category
+        for category in gold.categories()
+        if category.direction == "expense"
+        and (category.category_id if subject.kind == "category" else category.group_id)
+        == subject.id
+    ]
+
+
 def spending_detail(
     gold: GoldRepository,
     context: ReportContext,
@@ -41,24 +66,18 @@ def spending_detail(
 ) -> SpendingDetail:
     """Return the entries behind `subject`'s figure in `scope`."""
     accounts = _selected_accounts(gold, context)
-    category = next(c for c in gold.categories() if c.category_id == subject.id)
-    allocations = gold.category_allocations(
-        start_date=_first_day(context.month),
-        end_date=_last_day(context.month),
-        account_ids=context.account_ids,
-    )
-    names = {a.account_id: a.display_name for a in accounts}
-    transactions = {
-        t.transaction_id: t
-        for t in gold.transactions(
-            start_date=_first_day(context.month),
-            end_date=_last_day(context.month),
-            account_ids=context.account_ids,
-        )
+    categories = {c.category_id: c for c in _subject_categories(gold, subject)}
+    first_month, last_month = _scope_months(context, scope)
+    window = {
+        "start_date": _first_day(first_month),
+        "end_date": _last_day(last_month),
+        "account_ids": context.account_ids,
     }
+    names = {a.account_id: a.display_name for a in accounts}
+    transactions = {t.transaction_id: t for t in gold.transactions(**window)}
     # Newest first: by date, then account, then booking sequence, descending.
     entries = sorted(
-        (a for a in allocations if a.category_id == category.category_id),
+        (a for a in gold.category_allocations(**window) if a.category_id in categories),
         key=lambda a: (
             a.transaction_date,
             a.account_id,
@@ -72,8 +91,8 @@ def spending_detail(
             description=transactions[a.transaction_id].description,
             account_id=a.account_id,
             account_display_name=names[a.account_id],
-            category_id=category.category_id,
-            category_name=category.name,
+            category_id=a.category_id,
+            category_name=categories[a.category_id].name,
             spending=-a.amount,
         )
         for a in entries
@@ -84,17 +103,19 @@ def spending_detail(
         context.month,
         context.reference_date,
     )
+    anchor = next(iter(categories.values()))
+    is_group = subject.kind == "group"
     return SpendingDetail(
         context=context,
         subject=subject,
         scope=scope,
         publication=_report_publication(gold, is_current=is_current),
         currency=accounts[0].currency,
-        name=category.name,
-        group_id=category.group_id,
-        group_name=category.group_name,
-        first_month=context.month,
-        last_month=context.month,
+        name=anchor.group_name if is_group else anchor.name,
+        group_id=anchor.group_id,
+        group_name=anchor.group_name,
+        first_month=first_month,
+        last_month=last_month,
         spending=sum((row.spending for row in rows), ZERO),
         rows=rows,
         coverage=judged.coverage,
