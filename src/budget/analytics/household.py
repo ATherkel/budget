@@ -9,10 +9,13 @@ from zoneinfo import ZoneInfo
 from budget.analytics.overview import monthly_overview as build_monthly_overview
 from budget.analytics.overview import selection_options as build_selection_options
 from budget.analytics.reports import (
+    DetailScope,
+    DetailSubject,
     MonthlyOverview,
     ReportContext,
     ReportPublication,
     SelectionOptions,
+    SpendingDetail,
 )
 from budget.gold import (
     GoldPublication,
@@ -137,3 +140,9 @@ class HouseholdReports:
             )
         except GoldPublicationUnavailableError as error:
             raise self._unavailable(context.publication_id) from error
+
+    def spending_detail(
+        self, context: ReportContext, subject: DetailSubject, scope: DetailScope
+    ) -> SpendingDetail:
+        """Return the entries behind `subject`'s figure in `scope`."""
+        raise NotImplementedError
