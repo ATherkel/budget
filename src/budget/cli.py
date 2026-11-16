@@ -787,7 +787,9 @@ def _suggest_rules(profile: Profile, out: Path | None) -> None:
         refuse_out_folder(profile, out)
     labels = bank_labels(profile)
     sys.stdout.write(summaries.suggest_rules_summary(labels))
-    if out is not None:
+    if out is not None and not labels.pairs:
+        sys.stdout.write("No bank categories to draft, so nothing was written\n")
+    elif out is not None:
         write_drafts(labels, out)
         sys.stdout.write(
             f"Wrote {TAXONOMY_DRAFT_NAME} and {RULES_DRAFT_NAME} to {out}\n"
