@@ -6,9 +6,9 @@ from datetime import date
 
 from budget.analytics.measures import ZERO
 from budget.analytics.overview import (
-    _every_row,
-    _report_publication,
-    _selected_accounts,
+    every_row,
+    report_publication,
+    selected_accounts,
 )
 from budget.analytics.reports import (
     DetailScope,
@@ -66,7 +66,7 @@ def spending_detail(
 ) -> SpendingDetail:
     """Return the entries behind `subject`'s figure in `scope`."""
     categories = {c.category_id: c for c in _subject_categories(gold, subject)}
-    accounts = _selected_accounts(gold, context, unknown_category=not categories)
+    accounts = selected_accounts(gold, context, unknown_category=not categories)
     first_month, last_month = _scope_months(context, scope)
     window = {
         "start_date": _first_day(first_month),
@@ -99,7 +99,7 @@ def spending_detail(
     )
     judged = trust_over(
         accounts,
-        _every_row(gold, context.account_ids),
+        every_row(gold, context.account_ids),
         first_month,
         last_month,
         context.reference_date,
@@ -111,7 +111,7 @@ def spending_detail(
         context=context,
         subject=subject,
         scope=scope,
-        publication=_report_publication(gold, is_current=is_current),
+        publication=report_publication(gold, is_current=is_current),
         currency=accounts[0].currency,
         name=anchor.group_name if is_group else anchor.name,
         group_id=anchor.group_id,

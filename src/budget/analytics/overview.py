@@ -28,7 +28,7 @@ from budget.gold import (
 )
 
 
-def _every_row(
+def every_row(
     gold: GoldRepository, account_ids: Collection[str] | None = None
 ) -> Sequence[MonthlyBalanceSnapshot]:
     """Return every snapshot row of `account_ids`, whatever its month.
@@ -52,11 +52,12 @@ def _selectable_months(
     none, through the reference month.
     """
     reference_month = ReportingMonth.of(reference_date)
-    first_month = min((row.month for row in _every_row(gold)), default=reference_month)
+    first_month = min((row.month for row in every_row(gold)), default=reference_month)
     return first_month, reference_month
 
 
-def _report_publication(gold: GoldRepository, *, is_current: bool) -> ReportPublication:
+def report_publication(gold: GoldRepository, *, is_current: bool) -> ReportPublication:
+    """Return the report identity of the publication `gold` reads."""
     publication = gold.publication()
     return ReportPublication(
         publication_id=publication.publication_id,
@@ -82,7 +83,7 @@ def _figures(
     )
 
 
-def _selected_accounts(
+def selected_accounts(
     gold: GoldRepository, context: ReportContext, *, unknown_category: bool = False
 ) -> list[GoldAccount]:
     """Return the accounts `context` selects, or name every rule it breaks.
@@ -123,10 +124,10 @@ def monthly_overview(
             f"but publication {opened} is open"
         )
         raise ValueError(message)
-    accounts = _selected_accounts(gold, context)
+    accounts = selected_accounts(gold, context)
     judged = trust(
         accounts,
-        _every_row(gold, context.account_ids),
+        every_row(gold, context.account_ids),
         context.month,
         context.reference_date,
     )
@@ -137,7 +138,7 @@ def monthly_overview(
     )
     return MonthlyOverview(
         context=context,
-        publication=_report_publication(gold, is_current=is_current),
+        publication=report_publication(gold, is_current=is_current),
         currency=accounts[0].currency,
         income=known.income,
         expenses=known.expenses,
@@ -157,7 +158,7 @@ def selection_options(
     """Return what a page may select in the publication `gold` reads."""
     first_month, last_month = _selectable_months(gold, reference_date)
     return SelectionOptions(
-        publication=_report_publication(gold, is_current=is_current),
+        publication=report_publication(gold, is_current=is_current),
         accounts=tuple(
             SelectableAccount(
                 account_id=account.account_id,
