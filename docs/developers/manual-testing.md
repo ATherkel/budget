@@ -235,9 +235,14 @@ uv run budget import --ranges $ranges
 Expect `[1] <account>  stored`, the Silver line, then Gold published, and the
 file gone from the inbox. With no fresh export from the bank, copy an archived
 one from `$exports\<account_id>\`: it is stored again and Gold reports
-unchanged. The README's
-[import outcomes](../../README.md#importing-the-inbox-budget-import) list each
-line and exit status.
+unchanged.
+[The monthly import](../architecture/operations.md#w1-the-monthly-import)
+lists each outcome line, and
+[exit codes](../architecture/operations.md#exit-codes) each exit status.
+
+| Do | Expect |
+| --- | --- |
+| With an export whose name carries the account number in the inbox: `$f = Get-ChildItem "$inbox\*\*.csv" \| Select-Object -First 1; $lock = [IO.File]::Open($f.FullName,'Open','Read','None'); uv run budget import --ranges $ranges; $lock.Close(); $no = [regex]::Match($f.Name,'\d{10}').Value; Select-String -Path "$stores\logs\commands*.jsonl" -SimpleMatch -Pattern $f.Name, $no, $f.Directory.Name` | `[1] <account>  unreadable`, exit 3, the file still in the inbox; `Select-String` prints nothing |
 
 ## Review
 
@@ -251,8 +256,19 @@ Your dev profile needs `[dashboard]` and a passphrase
 it prints and log in. Check the account picker, the month picker and the
 monthly overview against the current publication.
 
-Without your profile, `uv run budget demo` serves synthetic data; see the
-README's [dashboard section](../../README.md#the-dashboard-budget-serve).
+Without your profile, `demo` serves synthetic data from a new folder:
+
+```powershell
+$demo = Join-Path $env:TEMP ("budget-demo-" + [guid]::NewGuid().ToString("N"))
+uv run budget demo --directory $demo --port 8765
+```
+
+Open `http://127.0.0.1:8765` and log in with `budget-demo`. Expect two checked
+accounts, `Demo current` and `Demo savings`, the current month and the monthly
+overview. The demo publishes balances without transactions, so its
+transaction figures are known zeros, including `0,00 kr.` for Ind and Ud under
+Ukategoriseret. Stop it with `Ctrl+C`, then run
+`Remove-Item -LiteralPath $demo -Recurse`.
 
 ## Restore and dev refresh
 
