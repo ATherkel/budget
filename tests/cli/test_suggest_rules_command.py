@@ -555,6 +555,40 @@ then.category = "travel"
                 "",
             )
 
+    def test_empty_silver_writes_no_drafts_and_says_so(self) -> None:
+        # Drafts holding only `format = 1` would block the next run with
+        # "already exists" and give the household nothing to edit.
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = _seeded_profile_file(folder, ())
+            out = folder / "drafts"
+
+            status, stdout, stderr = suggest_rules(profile_file, "--out", str(out))
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout.splitlines()[-1] == (
+                "No bank categories to draft, so nothing was written"
+            )
+            assert not out.exists()
+
+    def test_only_unlabelled_transactions_write_no_drafts_and_say_so(
+        self,
+    ) -> None:
+        # Transactions with no bank category give no pair a rule could match.
+        transactions = (_transaction(1, (None, None)), _transaction(2, (None, "Leje")))
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = _seeded_profile_file(folder, transactions)
+            out = folder / "drafts"
+
+            status, stdout, stderr = suggest_rules(profile_file, "--out", str(out))
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert stdout.splitlines()[-1] == (
+                "No bank categories to draft, so nothing was written"
+            )
+            assert not out.exists()
+
     def test_an_existing_draft_file_is_refused_and_nothing_is_written(
         self,
     ) -> None:
