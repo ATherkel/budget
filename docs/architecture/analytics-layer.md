@@ -36,8 +36,8 @@ category's `GoldCategory.direction`. Every sum below uses signed `amount`s.
 - **Savings:** Income − Expenses, equal to net cash flow in this release.
   Money moved to a savings, investment, or loan account that is not imported
   is an expense, and the household may give it a Category of its own; importing
-  the account turns it into Transfers (issue #12). Document any later treatment
-  of investments and debt repayment rather than assuming they are savings.
+  the account turns it into Transfers. Investments and debt repayment are not
+  assumed to be savings.
 - **Savings rate:** `savings / income`, null when income is not positive.
 - **Category spending:** summed over category allocations, not transactions:
   for each expense-direction category, −(Σ allocations of `expense`
@@ -45,7 +45,7 @@ category's `GoldCategory.direction`. Every sum below uses signed `amount`s.
   exceed purchases in the period, the category shows negative spending (a net
   refund). It is reported signed:
   never clamped to zero and never moved to the purchase's period. Category
-  spending therefore always adds up to Expenses. Styling belongs to issue #11.
+  spending therefore always adds up to Expenses.
 - **Unclassified:** for `unknown` transactions, money in (Σ positive amounts),
   money out (Σ negative amounts), and a count.
 - **Uncategorized adjustments:** the same three figures for `adjustment`

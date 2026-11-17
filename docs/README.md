@@ -13,9 +13,9 @@ agent authority outside its boundary.
    [architecture](02-architecture.md).
 2. Read [the roadmap](03-roadmap.md) to identify the current phase.
 3. For implementation work, read the relevant layer contract and domain
-   documents, then the matching agent brief. For behavior-changing application
-   work, also follow the [test-driven development workflow](agents/tdd.md).
-   All Python code must pass the [code quality gate](agents/code-quality.md).
+   documents. For behavior-changing application work, also follow the
+   [test-driven development workflow](agents/tdd.md). All Python code must
+   pass the [code quality gate](agents/code-quality.md).
 
 ## Provenance at a Glance
 
@@ -34,17 +34,6 @@ and [The Recipe](architecture/publications.md#the-recipe). If a consumed
 account is missing, declare it again with `closed_on` where appropriate;
 rebuilding Silver cannot repair that declaration. Rebuild Silver for stale
 context, then retry Gold. Gold-only changes need no Silver rebuild.
-
-At reviewed main `8e2bc58d4e0721b4c4c8a3002b9c8ed8c422da4a` (2026-11-08), the Silver fingerprint
-([#369](https://github.com/ATherkel/budget/issues/369)) and unavailable-review
-handling ([#368](https://github.com/ATherkel/budget/issues/368)) are
-implemented. Atomic provenance persistence
-([#370](https://github.com/ATherkel/budget/issues/370)), decision-prefix
-checking ([#371](https://github.com/ATherkel/budget/issues/371)), currency
-freshness ([#372](https://github.com/ATherkel/budget/issues/372)), and Gold
-recipe capture ([#373](https://github.com/ATherkel/budget/issues/373)) are
-pending. Until they land, commands do not perform the complete checks
-described here.
 
 To reproduce history, use the retained result or replay the exact consumed
 Silver with the recipe's Gold inputs and producer. A recipe alone does not
@@ -123,6 +112,17 @@ primer is stale.
   the monthly import, publishing into one Gold store and legacy
   publications, backup and restore, and what is left to check. Opens and
   stores progress like the others.
+
+## Background Documents
+
+Background is optional reading and owns no rule. Where it disagrees with a
+document under `architecture/`, `domains/` or `decisions/`, that document wins
+and the background is stale.
+
+- `research/` holds the research notes behind decisions. The ADR that cites a
+  note records what was decided.
+- `agents/*-agent.md` holds one brief per layer: its mission, inputs, outputs,
+  prohibited work and acceptance criteria, gathered from the layer contracts.
 
 ## Vocabulary
 

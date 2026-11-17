@@ -3,12 +3,10 @@ type: glossary
 ---
 # Household Finance
 
-This glossary defines the project's household-finance vocabulary and links
-each term to its governing rules.
-
-A platform that turns imported bank exports into trustworthy household financial
-reporting: reproducible Bronze → Silver → Gold transformation feeding read-only
-analytics and a dashboard.
+The vocabulary of a platform that turns imported bank exports into
+trustworthy household reporting, through a reproducible Bronze → Silver → Gold
+pipeline feeding read-only analytics. Each term links to the doc that owns its
+rules.
 
 ## Language
 
@@ -43,8 +41,8 @@ _Avoid_: Transaction in Bronze/Silver (too broad)
 A record that a stated amount of one Booked transaction belongs to one
 category. It is the only way a category reaches a transaction, and the
 allocations of a transaction always sum to its amount. A classified
-transaction has exactly one for now; dividing a mixed purchase into several is
-a later release.
+transaction has exactly one
+([ADR-008](decisions/ADR-008-category-allocation-grain.md)).
 _Avoid_: Split (the act, not the record), transaction category
 
 **Classification**:
@@ -57,7 +55,8 @@ _Avoid_: Categorisation (narrower), tagging
 **Classification rule**:
 A household-authored pattern over one transaction's own facts that assigns a
 Category, claims the transaction as a Transfer leg, or marks an Adjustment. A
-rule never looks at other transactions.
+rule never looks at other transactions. The rules are in
+[`classification.md`](architecture/classification.md#classification-rules).
 _Avoid_: Mapping, filter
 
 **Category**:
@@ -235,7 +234,8 @@ _Avoid_: duplicate
 A transaction already admitted that a later export covering its date no longer
 shows, such as one of two Repeated transactions when the export shows one.
 Either the bank removed it, or the bank changed its text so it reads as a new
-transaction. The balances cannot tell which, so a person decides (ADR-017).
+transaction. The balances cannot tell which, so a person decides
+([ADR-017](decisions/ADR-017-dropped-transactions.md)).
 _Avoid_: missing transaction (reads as a Late booking), deleted transaction
 
 ### Review
@@ -246,20 +246,17 @@ nothing downstream, because it failed validation or awaits review.
 _Avoid_: rejected, held, failed import
 
 **Review item**:
-An ambiguity the platform cannot settle by rule and a person must decide, such
-as overlapping exports that disagree, a later export that drops a transaction
-already admitted, a source that keeps stating a broken balance chain,
-Classification rules that conflict, or Transfer legs that compete for the same
-match. Every decision that settles a quarantine is raised by one, so none has
-to be known about in advance.
+An ambiguity the platform cannot settle by rule and a person must decide,
+such as a Dropped transaction or conflicting Classification rules. Every
+decision that settles a quarantine is raised by one, so none has to be known
+about in advance.
 _Avoid_: error, warning, conflict
 
 **Handle**:
 A short prefix of a transaction's durable ID that names one current Silver
-transaction. Review prints eight characters; Find prints the shortest prefix of
-at least eight characters that remains unique across Silver and lengthens it
-when transactions collide. A Manual decision accepts a Handle and resolves it
-to the full transaction ID.
+transaction, at least eight characters long. A Manual decision accepts a
+Handle and resolves it to the full transaction ID. The rules are in
+[`operations.md`](architecture/operations.md#commands).
 _Avoid_: transaction ID (the full identity), truncated ID without uniqueness
 
 **Manual decision**:
