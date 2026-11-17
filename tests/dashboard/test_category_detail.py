@@ -167,14 +167,15 @@ def test_leaving_a_detail_returns_to_the_same_overview_with_the_same_figure(
     client: TestClient,
 ) -> None:
     # The way back keeps the pin, accounts and month, and the overview it
-    # opens shows the figure the detail added up: Groceries 520.00.
-    groceries = detail(client, "2026-02", "category=groceries&scope=year_to_date")
+    # opens shows the month detail's own figure: Groceries 520.00.
+    groceries = detail(client, "2026-02", "category=groceries&scope=month")
     back = groceries.attributes("back-to-overview").get("href")
     overview = client.get(back or "/")
 
     assert (back, overview.status_code) == (f"/?{PINNED}&month=2026-02", 200)
+    assert groceries.text_of("detail-spending") == "520,00 kr."
     assert (read(overview.text).text_of("categories") or "").endswith(
-        "Groceries 520,00 kr."
+        f"Groceries {groceries.text_of('detail-spending')}"
     )
 
 
@@ -215,6 +216,10 @@ def test_a_detail_whose_scope_can_still_change_is_labelled_provisional(
             "Kategorien findes ikke i disse tal.",
         ),
         (
+            f"/category?{PINNED}&month=2026-02&category=salary&scope=month",
+            "Kategorien findes ikke i disse tal.",
+        ),
+        (
             f"/category?{PINNED}&month=2026-06&category=groceries&scope=month",
             "Den valgte måned ligger uden for de måneder, der kan vælges.",
         ),
@@ -236,3 +241,20 @@ def test_a_detail_that_cannot_be_shown_says_why_in_danish(
     assert response.status_code == 200
     assert said in (page.text_of("detail-failure") or "")
     assert page.text_of("detail-spending") is None
+
+
+def test_a_detail_without_data_shows_its_figure_as_unknown_and_no_rows(
+    client: TestClient,
+) -> None:
+    # June on reference date 2026-06-03: both accounts' June is no_data.
+    response = client.get(
+        "/category?publication=1&reference_date=2026-06-03"
+        f"&account={CURRENT}&account={SAVINGS}&month=2026-06"
+        "&category=groceries&scope=month"
+    )
+    june = read(response.text)
+
+    assert (june.text_of("detail-spending"), june.text_of("detail-rows")) == (
+        "Ingen data endnu",
+        "Dato Tekst Konto Beløb",
+    )
