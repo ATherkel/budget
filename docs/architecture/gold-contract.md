@@ -5,17 +5,14 @@ type: architecture
 
 ## Summary
 
-- Gold is what reports are built from: accounts and categories, plus
-  transactions, category allocations and monthly balances.
-- Analytics and forecasting read Gold only through the interface below;
-  presentation and APIs read analytics reports, never Gold.
-- This is the only normative Gold schema, version `0.2`. A breaking change
-  needs a new version.
+- Gold, rebuilt from Silver, the registries and classification inputs, is
+  what reports read: accounts, categories, transactions, allocations, balances.
+- Analytics and forecasting read it only through the interface below, never
+  Bronze or Silver; presentation and APIs read analytics reports.
+- The only normative Gold schema, version `0.2`; a break needs a new version.
 - The numbered [invariants](#invariants) hold in every publication and never
   renumber, because code and tests cite them.
 - Lineage, why a transaction got its classification, is for review tooling.
-- Gold is derived from Silver, the registries and classification inputs, and
-  can be rebuilt; no consumer reads a connector, CSV, Bronze or Silver.
 
 | Topic | Owner |
 | --- | --- |
@@ -115,8 +112,8 @@ slice by account and month without a join.
 
 ### `MonthlyBalanceSnapshot`
 
-Grain: one account for one reporting month of its managed period, quiet months
-included. The managed period runs from the month of the account's first booked
+Grain: one account for one reporting month of its managed period, with exactly
+one row per month, quiet months included. The managed period runs from the month of the account's first booked
 transaction to the **latest published month**, the month of the latest
 `evidence_through` over every `GoldAccount`, or to the month of `closed_on` if
 earlier, so a future closing date adds no row. An account whose exports lag
@@ -145,7 +142,8 @@ across months. `coverage` is non-additive.
 1. Every `account_id` and `category_id` on a fact references a published
    dimension row. Every `GoldAccount` is inside the reporting boundary.
    Dimension keys (`account_id`, `category_id`, `group_id`) are immutable and
-   never reused; a category or account is retired, never repointed. Any other
+   never reused; a category or account is retired by deactivating it, never by
+   repointing its key. Any other
    attribute may change and restates history (Type 1). A Silver transaction on
    an account the registry no longer declares refuses the build
    ([`accounts.toml`](operations.md#accountstoml)).
@@ -358,6 +356,8 @@ too, for the CLI and audit tooling.
 Synthetic fixtures cover every transaction type, allocation rule, balance
 check and coverage case above, a closed account and two categories in one
 group; the worked example in [`gold-layer.md`](gold-layer.md#worked-example-synthetic)
-covers most. Classification and publication fixtures reproduce the scenarios
-in [`classification.md`](classification.md) and
-[`publications.md`](publications.md#synthetic-scenarios) exactly.
+covers most. Classification fixtures reproduce every scenario and taxonomy
+change in [`classification.md`](classification.md) exactly. Publication
+fixtures reproduce the scenarios in
+[`publications.md`](publications.md#synthetic-scenarios), including an
+unchanged result fingerprint after a full rebuild.

@@ -5,18 +5,14 @@ type: architecture
 
 ## Summary
 
-- The only schema, version `0.3`, of the reports analytics builds and
-  presentation shows: the monthly overview and its category and group detail.
+- The only schema, version `0.3`, of the reports [analytics](analytics-layer.md)
+  builds as `HouseholdReports` and [presentation](presentation-layer.md) shows.
+- Analytics owns every figure and judgement; presentation only formats, never
+  summing or opening Gold.
 - A page pins one publication and one reference date, never mixing two.
-- A figure with no evidence is null, never zero; each report says how complete
-  and provisional it is.
-- A failed read raises an error, never an empty report.
-- [Analytics](analytics-layer.md) implements it as `HouseholdReports` and owns
-  every figure, judgement and validation; [presentation](presentation-layer.md)
-  is tested against that same implementation and only formats what it gets,
-  never summing or opening Gold itself.
-- Other reports add their own sections when built.
-  [Open questions](https://github.com/ATherkel/budget/issues?q=is%3Aissue+is%3Aopen+%22report-contract.md%22).
+- A figure with no evidence is null, never zero, and a failure raises an error,
+  never an empty report.
+- [Open questions](https://github.com/ATherkel/budget/issues?q=is%3Aissue+is%3Aopen+%22report-contract.md%22).
 
 ## Value Types
 
@@ -28,7 +24,7 @@ type: architecture
 | `Coverage` | `complete`, `partial`, `no_data` | As in [`gold-contract.md`](gold-contract.md#shared-value-types). |
 | `AccountMonthStatus` | `partial`, `no_data`, `outside_history` | Status of one selected account in one month that is not `complete`; see [Coverage](#coverage). |
 
-Serialized, money is a decimal string with the currency's minor-unit places
+Serialized, money is a decimal string with exactly the currency's minor-unit places
 (`"-450.00"`), a ratio its `Decimal`'s string (`"0.6392"`), a month
 `"YYYY-MM"` and a date ISO 8601; money and ratios are never JSON numbers.
 
@@ -207,9 +203,8 @@ second reason (`account_id`, `display_name`, `month`), ordered as in
   `late_bookings_settled` false, or it has no row because the month is after
   the latest published month.
 
-An account without a managed period never holds the label (for one imported
-without a booked transaction, a known limitation), nor does an
-`outside_history` month.
+An account without a managed period never holds the label, even one imported
+without a booked transaction, and neither does an `outside_history` month.
 
 ### `SpendingDetail`
 
