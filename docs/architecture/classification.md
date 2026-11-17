@@ -184,7 +184,8 @@ An unpaired leg whose rule result is a transfer claim is `unknown`, with an
 - `no-candidate`: otherwise.
 
 A transfer that loses a fee, such as 1,000.00 out and 995.00 in, never pairs,
-because the amounts do not cancel. Each leg is classified on its own.
+because the amounts do not cancel. Each leg is classified on its own
+(pending: [#47](https://github.com/ATherkel/budget/issues/47)).
 
 A **one-sided transfer**, whose other leg can never be in Gold, comes only
 from a manual decision naming the counterpart Gold account. The transaction
@@ -279,7 +280,8 @@ on every build, so an item exists exactly while its cause does. A
 `review_item_id` derives from the kind and the transaction or decision
 identifiers involved, so it is stable across rebuilds. Each build stores its
 review items with its publication
-([`publications.md`](publications.md)).
+([`publications.md`](publications.md)); the stored target and rule identifier
+lists keep their order.
 
 | Kind | Raised when | Transaction is | Settled by |
 | --- | --- | --- | --- |
@@ -300,8 +302,9 @@ selected publication:
 
 - a summary: transactions by classification source; unclassified money in,
   money out, and count per account and month; and open review items by kind;
-- each open review item with its transactions, the rules or candidate legs
-  involved, and the decision kinds that would settle it;
+- each open review item with its transactions (account, transaction date,
+  amount with currency, description and bank category label), the rules or
+  candidate legs involved, and the decision kinds that would settle it;
 - every pair formed on a date gap, and every pair where a leg's own rule
   result is not a transfer claim, so a coincidental match can be spotted and
   undone with a `classify` decision.
