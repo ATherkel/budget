@@ -5,17 +5,13 @@ type: architecture
 
 ## Summary
 
-- Classification gives every Gold transaction a `transaction_type`, one
-  allocation for its whole amount when the type needs a category
-  ([ADR-008](../decisions/ADR-008-category-allocation-grain.md)), and a
-  `transfer_group_id` when it is a paired transfer.
-- Household rules and manual decisions drive it; transfers pair only on
-  evidence from both legs.
-- **A visible unknown beats a silent guess**: weak, conflicting or ambiguous
-  evidence leaves a transaction `unknown`, counted as unclassified money with a
-  review item.
-- **It is a pure function of its inputs**: import order and earlier
-  publications never matter.
+- Gives every Gold transaction a type, one whole-amount allocation when the
+  type needs a category (ADR-008), and a `transfer_group_id` when paired.
+- Rules and manual decisions drive it; transfers pair only on evidence from
+  both legs.
+- **A visible unknown beats a silent guess**: weak or conflicting evidence
+  leaves a transaction `unknown`, with a review item.
+- **A pure function of its inputs**: import order never matters.
 - Fields: the [Gold contract](gold-contract.md). Reasons:
   [ADR-011](../decisions/ADR-011-classification-precedence.md),
   [ADR-012](../decisions/ADR-012-transfer-evidence.md).
@@ -286,7 +282,8 @@ publication:
 - every pair formed on a date gap, or where a leg's own rule is not a transfer
   claim, so a coincidence can be undone with `classify`.
 
-It reads one SQLite snapshot, so a concurrent publish cannot mix results.
+It reads one SQLite snapshot, so a concurrent publish or retention cleanup
+cannot mix results.
 Details come only from that publication: an unstored bank label shows as
 unavailable, and a missing target is never invented. An account filter keeps
 every target of a matching item. Control characters are escaped so a

@@ -65,7 +65,8 @@ Transaction(
   transaction the same text. Bronze keeps the delivered text, reachable through
   `TransactionEvidence`.
 - `bank_category` and `bank_subcategory` are the source's labels with leading
-  and trailing Unicode whitespace (0xA0 included) removed; empty means null.
+  and trailing Unicode whitespace (0xA0 included) removed and internal
+  whitespace kept; empty means null.
 
 For each date, `balance`, `day_sequence` and the labels come from the
 **selected export**: the latest admitted one covering that date that shows
@@ -328,8 +329,10 @@ Gold's use of provenance is [Gold acceptance](publications.md#gold-acceptance).
   replays the same order (ADR-009 records the limits).
 - A run is admitted only if it still shows every admitted transaction on its
   dates, and its end-of-day balances differ from the admitted ones by exactly
-  the amounts it adds (*explained growth*, ADR-009), late bookings included.
-  Balances are compared only on dates both sides state one; a null
+  the amounts it adds (*explained growth*, ADR-009): late bookings on earlier
+  dates and later bookings on the export's final date both count. A date
+  states an end-of-day balance only once it has a booked transaction, so
+  balances are compared only on dates both sides state one; a null
   `end_of_day_balance` states none (ADR-016), and ADR-017 covers a date whose
   transactions the run all drops.
 - A run *drops* a transaction when, on a covered date, it shows fewer booked
