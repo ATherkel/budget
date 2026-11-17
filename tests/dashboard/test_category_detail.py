@@ -123,3 +123,41 @@ def test_the_scope_switch_keeps_the_pin_and_marks_the_scope_shown(
         None,
         "page",
     )
+
+
+def test_a_category_detail_links_its_whole_group_in_the_same_scope(
+    client: TestClient,
+) -> None:
+    rent = detail(client, "2026-04", "category=rent&scope=year_to_date")
+
+    assert (
+        rent.text_of("group-link"),
+        rent.attributes("group-link").get("href"),
+    ) == (
+        "Hele Housing",
+        f"/category?{PINNED}&month=2026-04&group=housing&scope=year_to_date",
+    )
+
+
+def test_a_group_detail_names_each_rows_category_and_adds_up_the_group(
+    client: TestClient,
+) -> None:
+    # April housing year to date: rent, utilities and rent, 18,000.00.
+    housing = detail(client, "2026-04", "group=housing&scope=year_to_date")
+
+    assert (
+        housing.text_of("detail-title"),
+        housing.text_of("detail-spending"),
+        housing.text_of("detail-rows"),
+        housing.text_of("group-link"),
+    ) == (
+        "Housing, april 2026",
+        "18.000,00 kr.",
+        (
+            "Dato Tekst Konto Kategori Beløb"
+            " 01.04.2026 RENT Joint current Rent 8.500,00 kr."
+            " 20.03.2026 UTILITIES Joint current Utilities 1.000,00 kr."
+            " 02.02.2026 RENT Joint current Rent 8.500,00 kr."
+        ),
+        None,
+    )
