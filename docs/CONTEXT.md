@@ -77,7 +77,8 @@ Money returned against a categorized movement, netting against that category.
 _Avoid_: Reversal (ambiguous with Adjustment), chargeback (not distinct yet)
 
 **Adjustment**:
-An uncategorized correction, reported apart from income and expenses.
+An uncategorized correction, reported apart from income and expenses. A Refund
+carries a category and is not an Adjustment.
 
 **Unclassified money**:
 Money on `unknown` transactions, reported as money in, money out and a count,
@@ -237,12 +238,20 @@ What Silver commits with a result to identify its inputs, output and producer
 _Avoid_: Silver metadata (hides the atomicity and identity contract), current
 context
 
-**Fresh**, **Stale** and **Unknown Silver provenance**:
-Whether that provenance matches what Gold would use, no longer matches, or
-cannot be established
-([Gold acceptance](architecture/publications.md#gold-acceptance),
-[recovery](architecture/operations.md#provenance-recovery)).
-_Avoid_: Current Silver, latest Silver, missing Silver, old publication
+**Fresh Silver provenance**:
+Provenance that matches the inputs Gold will use
+([Gold acceptance](architecture/publications.md#gold-acceptance)).
+_Avoid_: Current Silver (does not say what was consumed)
+
+**Stale Silver provenance**:
+Provenance that no longer matches what Gold would use
+([recovery](architecture/operations.md#provenance-recovery)).
+_Avoid_: Old publication, latest Silver
+
+**Unknown Silver provenance**:
+A completed result whose inputs or producer cannot be established
+([Gold acceptance](architecture/publications.md#gold-acceptance)).
+_Avoid_: Missing Silver, current context
 
 **Undeclared consumed account**:
 An account a consumed Silver run names that `accounts.toml` no longer declares
