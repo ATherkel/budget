@@ -5,16 +5,14 @@ type: architecture
 
 ## Summary
 
-- This is the only schema of the reports analytics builds from Gold and
-  presentation lays out, at version `0.3`: the monthly overview and its
-  category and group detail.
-- A page pins one publication and one reference date, so its parts never mix
-  two builds or two days.
-- A figure with no evidence is null, never zero, and each report says how
-  complete and how provisional its figures are.
-- A failed read raises an error; it is never an empty report.
-- Account activity, Kontrol, budgets, trends and history add their own sections
-  when they are built. [Open questions](https://github.com/ATherkel/budget/issues?q=is%3Aissue+is%3Aopen+%22report-contract.md%22).
+- The only schema, version `0.3`, of the reports analytics builds and
+  presentation shows: the monthly overview and its category and group detail.
+- A page pins one publication and one reference date, never mixing two.
+- A figure with no evidence is null, never zero; each report says how complete
+  and provisional it is.
+- A failed read raises an error, never an empty report.
+- Other reports add their own sections when built.
+  [Open questions](https://github.com/ATherkel/budget/issues?q=is%3Aissue+is%3Aopen+%22report-contract.md%22).
 
 ## Purpose
 
