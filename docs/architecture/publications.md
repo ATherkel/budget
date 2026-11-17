@@ -274,7 +274,8 @@ after it. A store that was never restored numbers 1, 2, 3, ….
 
 One gap is accepted: a second restore of the same set, or of an older one,
 jumps from that set's highest id again, and so can reuse ids in a range that
-publications built between the two restores had taken.
+publications built between the two restores had taken (pending:
+[#414](https://github.com/ATherkel/budget/issues/414)).
 
 ### Past views
 

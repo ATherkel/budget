@@ -78,7 +78,8 @@ must preserve the analytics-facing DTO boundary.
   current one carries a visible banner naming it (its label, and whether it is
   an as-was or as-known-at view). A past view takes the provisional label as
   of the publication's `known_at`, not today
-  ([`publications.md`](publications.md)).
+  ([`publications.md`](publications.md)). How the picker and banner look is
+  pending: [#109](https://github.com/ATherkel/budget/issues/109).
 - A page opened on the current publication keeps reading it after a newer
   build becomes current, so its parts never mix two publications. That is a
   superseded page, not a past view: instead of the banner, it says that newer
