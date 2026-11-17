@@ -1,13 +1,17 @@
 {% extends "base.html" %}
 {% block title %}{{ title }} · Budget{% endblock %}
 {% block content %}
-{% set is_group = detail.subject.kind == "group" %}
 <div class="page-heading">
   <div>
     <p class="eyebrow">Husstandsøkonomi</p>
     <h1 id="detail-title">{{ title }}</h1>
   </div>
 </div>
+{% if failure %}
+<div id="detail-failure" role="alert">{{ failure | safe }}</div>
+<p><a id="back-to-overview" href="/">Gå til den nyeste oversigt</a></p>
+{% else %}
+{% set is_group = detail.subject.kind == "group" %}
 <nav class="scope-switch" aria-label="Periode">
   <a id="scope-month" href="{{ scope_urls['month'] }}"{% if detail.scope == "month" %} aria-current="page"{% endif %}>Måned</a>
   <a id="scope-year-to-date" href="{{ scope_urls['year_to_date'] }}"{% if detail.scope == "year_to_date" %} aria-current="page"{% endif %}>År til dato</a>
@@ -37,4 +41,5 @@
 </table>
 </section>
 <p><a id="back-to-overview" href="{{ overview_url }}">Tilbage til oversigten</a></p>
+{% endif %}
 {% endblock %}

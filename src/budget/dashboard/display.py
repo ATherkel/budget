@@ -61,6 +61,8 @@ def selection_problems(error: InvalidSelectionError) -> list[str]:
     ]
     if "month_out_of_range" in error.reasons:
         problems.append("Den valgte måned ligger uden for de måneder, der kan vælges.")
+    if "unknown_category" in error.reasons:
+        problems.append("Kategorien findes ikke i disse tal.")
     return problems
 
 

@@ -27,6 +27,7 @@ from budget.analytics import (
     NothingPublishedError,
     PublicationUnavailableError,
     ReportContext,
+    SpendingDetail,
 )
 from budget.dashboard import display, session
 from budget.dashboard.display import copenhagen_date
@@ -281,22 +282,42 @@ def _detail_url(
     return f"{page}&" + urlencode([(kind, subject_id), ("scope", scope)])
 
 
+def _read_detail(
+    profile: Profile,
+    pin: tuple[int, date],
+    request: DetailRequest,
+) -> SpendingDetail | str:
+    """Return the detail `request` asks for, or a fragment saying why not."""
+    publication_id, reference_date = pin
+    try:
+        context = ReportContext(
+            publication_id=publication_id,
+            account_ids=frozenset(request.accounts),
+            month=display.parse_month(request.month),
+            reference_date=reference_date,
+        )
+        with GoldStore(profile, read_only=True) as store:
+            return HouseholdReports(store).spending_detail(
+                context, request.subject, request.scope
+            )
+    except InvalidSelectionError as error:
+        return _TEMPLATES.get_template("invalid_selection.html").render(
+            problems=display.selection_problems(error)
+        )
+    except PublicationUnavailableError:
+        return _TEMPLATES.get_template("unavailable.html").render()
+
+
 def _render_detail(
     profile: Profile,
     pin: tuple[int, date],
     request: DetailRequest,
 ) -> str:
     """Render the detail page of one subject under one pinned selection."""
-    publication_id, reference_date = pin
-    context = ReportContext(
-        publication_id=publication_id,
-        account_ids=frozenset(request.accounts),
-        month=display.parse_month(request.month),
-        reference_date=reference_date,
-    )
-    with GoldStore(profile, read_only=True) as store:
-        detail_report = HouseholdReports(store).spending_detail(
-            context, request.subject, request.scope
+    detail_report = _read_detail(profile, pin, request)
+    if isinstance(detail_report, str):
+        return _TEMPLATES.get_template("category.html").render(
+            failure=detail_report, title="Udgifter"
         )
     answered = detail_report.context
     subject = detail_report.subject
