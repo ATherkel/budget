@@ -101,3 +101,25 @@ def test_a_category_detail_shows_its_total_and_the_rows_behind_it(
             " 02.02.2026 GROCERIES Joint current 640,00 kr."
         ),
     )
+
+
+def test_the_scope_switch_keeps_the_pin_and_marks_the_scope_shown(
+    client: TestClient,
+) -> None:
+    # Year to date through February adds January's 842.50: 1,362.50.
+    groceries = f"/category?{PINNED}&month=2026-02&category=groceries"
+    year = detail(client, "2026-02", "category=groceries&scope=year_to_date")
+
+    assert (
+        year.text_of("detail-spending"),
+        year.attributes("scope-month").get("href"),
+        year.attributes("scope-year-to-date").get("href"),
+        year.attributes("scope-month").get("aria-current"),
+        year.attributes("scope-year-to-date").get("aria-current"),
+    ) == (
+        "1.362,50 kr.",
+        f"{groceries}&scope=month",
+        f"{groceries}&scope=year_to_date",
+        None,
+        "page",
+    )
