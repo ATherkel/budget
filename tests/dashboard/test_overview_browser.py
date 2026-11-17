@@ -336,3 +336,46 @@ def test_the_unclassified_bucket_stays_readable_at_phone_width(
         assert bucket_box["x"] <= box["x"]
         assert box["x"] + box["width"] <= bucket_box["x"] + bucket_box["width"]
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+
+def test_a_category_detail_opens_and_closes_by_keyboard_and_through_history(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+    page.get_by_label("Måned", exact=True).select_option("2026-04")
+    page.wait_for_function("location.search.includes('month=2026-04')")
+
+    rent = page.get_by_role("link", name="Rent")
+    rent.focus()
+    page.keyboard.press("Enter")
+    expect(page.get_by_role("heading", name="Rent, april 2026")).to_be_visible()
+
+    page.go_back()
+    expect(page.get_by_role("heading", name="Oversigt")).to_be_visible()
+    expect(page.get_by_label("Måned", exact=True)).to_have_value("2026-04")
+    expect(page.get_by_role("link", name="Rent")).to_be_visible()
+
+    page.go_forward()
+    expect(page.get_by_role("heading", name="Rent, april 2026")).to_be_visible()
+    back = page.get_by_role("link", name="Tilbage til oversigten")
+    back.focus()
+    page.keyboard.press("Enter")
+    expect(page.get_by_label("Måned", exact=True)).to_have_value("2026-04")
+
+
+def test_a_category_detail_is_readable_at_phone_width(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(
+        f"{dashboard.url}/category?publication=2&reference_date=2026-05-31"
+        "&account=joint-current&account=joint-savings&month=2026-04"
+        "&group=housing&scope=year_to_date"
+    )
+
+    expect(page.get_by_role("heading", name="Housing, april 2026")).to_be_visible()
+    expect(page.locator("#detail-rows")).to_contain_text("Utilities")
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
