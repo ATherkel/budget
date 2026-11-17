@@ -292,3 +292,17 @@ def test_a_detail_of_a_superseded_publication_offers_the_newer_figures(
         older.attributes("newer-figures").get("href"),
         older.text_of("detail-spending"),
     ) == ("Hent de nyeste tal", "/", "520,00 kr.")
+
+
+@pytest.mark.parametrize(
+    "subject",
+    ["", "&category=groceries&group=food"],
+    ids=["neither", "both"],
+)
+def test_a_detail_address_must_name_exactly_one_category_or_group(
+    client: TestClient, subject: str
+) -> None:
+    response = client.get(f"/category?{PINNED}&month=2026-02{subject}&scope=month")
+
+    assert response.status_code == 400
+    assert read(response.text).text_of("detail-spending") is None
