@@ -3,9 +3,8 @@ type: overview
 ---
 # Documentation Map
 
-This directory is the project contract before implementation begins. Documents
-are deliberately split by concern so work can be delegated without giving an
-agent authority outside its boundary.
+This directory is the project's contract, split by concern so work can be
+delegated without authority outside its boundary.
 
 ## Start Here
 
@@ -19,27 +18,14 @@ agent authority outside its boundary.
 
 ## Provenance at a Glance
 
-Silver build provenance is the immutable account of what produced a stored
-Silver result. Gold must remember the exact result it consumed because a
-rebuild can follow changed or reparsed Silver. Without that record, Gold could
-mistake today's decisions, currencies, or producer for the context behind an
-older publication.
-
-Silver commits its result, decoding currencies, completion marker, and
-provenance in one transaction. The exact fields and fingerprint are in
-[Silver build provenance](architecture/silver-layer.md#build-provenance).
-Gold copies the consumed provenance into each recipe; acceptance and retention
-rules are in [Gold acceptance](architecture/publications.md#gold-acceptance)
-and [The Recipe](architecture/publications.md#the-recipe). If a consumed
-account is missing, declare it again with `closed_on` where appropriate;
-rebuilding Silver cannot repair that declaration. Rebuild Silver for stale
-context, then retry Gold. Gold-only changes need no Silver rebuild.
-
-To reproduce history, use the retained result or replay the exact consumed
-Silver with the recipe's Gold inputs and producer. A recipe alone does not
-reconstruct missing historical Silver, and Bronze parser identity remains
-unknown. Recovery is in [Provenance recovery](architecture/operations.md#provenance-recovery);
-terms are in [the glossary](CONTEXT.md#publications-and-history).
+Silver build provenance records exactly what produced a stored Silver result,
+so Gold never mistakes today's decisions, currencies or producer for those
+behind an older publication. Its fields are in
+[Silver build provenance](architecture/silver-layer.md#build-provenance); when
+Gold may publish, in [Gold acceptance](architecture/publications.md#gold-acceptance);
+what to do when it refuses, in
+[Provenance recovery](architecture/operations.md#provenance-recovery); terms,
+in [the glossary](CONTEXT.md#publications-and-history).
 
 ## Normative Documents
 
@@ -51,67 +37,37 @@ terms are in [the glossary](CONTEXT.md#publications-and-history).
   Presentation never reads Gold.
 - `domains/` defines business meaning. It takes precedence over an individual
   layer document when there is a conflict.
-- `domains/category-changes.md` is an append-only record rather than a
-  definition: because the category dimension carries only the current
-  interpretation, it logs when the taxonomy changed and why, so a decision
-  taken on an older report can still be read.
+- `domains/category-changes.md` is an append-only log of taxonomy changes and
+  why, since the category dimension carries only the current interpretation.
 - `architecture/publications.md` defines what one Gold build is, which one a
   report reads, what is kept of past builds, and what reproducible promises.
 - `architecture/operations.md` says how the household runs the pipeline:
   profiles, stores, input file formats, commands, and backup and restore.
 - `decisions/` records accepted architectural decisions. Changes require a new
   ADR; do not silently revise a decision to fit an implementation.
-- `architecture/data-maps/` holds one logical data map per source format and
-  target layer: for every target column, its source and transformation. A map
-  restates its layer contract column by column and decides what the contract
-  leaves open, marking those rows *Map decision*. It is normative where the
-  contract is silent; on a conflict, the layer contract, `decisions/` and
-  `domains/` win.
+- `architecture/data-maps/` holds one data map per source format and target
+  layer: each target column's source and transformation. Rows marked *Map
+  decision* settle what the contract leaves open; on a conflict, the layer
+  contract, `decisions/` and `domains/` win.
 
 ## Explanatory Documents
 
 `primers/` holds standalone pages that explain a decision cluster to a reader
-who has to live with it, rather than to an implementer. They are **not
-normative**: a primer never decides anything, and where one disagrees with a
-document under `architecture/` or `decisions/`, that document wins and the
-primer is stale.
+who has to live with it. They are **not normative**: where one disagrees with
+`architecture/` or `decisions/`, that document wins and the primer is stale.
+Each opens by double-clicking, needs no server, keeps progress in the browser
+only, and falls back to system fonts offline.
 
-- [`primers/overlapping-exports-primer.html`](primers/overlapping-exports-primer.html)
-  — why overlapping bank exports are hard, in fourteen modules with worked
-  examples: transaction identity, the balance chain, whole-file admission, the
-  manual decisions, coverage, the provisional label, and a worked case of a
-  written-down rule that was wrong until it was run. Open it by
-  double-clicking; it needs no server and stores progress in the browser only.
-  It loads its fonts from Google Fonts and falls back to system fonts offline.
-- [`primers/dimensional-gold-primer.html`](primers/dimensional-gold-primer.html)
-  — what shape Gold hands household facts to a dashboard, in fourteen modules
-  with worked examples: business processes and declared grain, the category
-  allocation fact, the three conformed dimensions and how immutable keys plus
-  a change log keep Type 1 history-safe, monthly balance snapshots,
-  semi-additive balances, the balance chain and coverage, the `refund` type,
-  and the split between the consumer and lineage interfaces. It closes with
-  what the original grilling on issue #6 got wrong or left open, and what the
-  owner decided once they read it. Open it by double-clicking; it needs no
-  server and stores progress in the browser only. It loads its fonts from
-  Google Fonts and falls back to system fonts offline.
-- [`primers/classification-transfers-primer.html`](primers/classification-transfers-primer.html)
-  — how each transaction gets its household meaning, in thirteen modules:
-  the reporting boundary, rules and priority, transfer evidence, manual
-  decisions, and review items. Opens and stores progress like the others.
-- [`primers/publications-history-primer.html`](primers/publications-history-primer.html)
-  — which version of Gold a report shows, in twelve modules following one
-  February through five builds and three views: publications and double
-  counting, the recipe and its fingerprint, undo, the two time axes behind
-  as-was and as-known-at views, retention, the decision log, and which
-  identifiers survive a rebuild. It closes with what the owner chose on
-  issue #8 and what was chosen for them. Opens and stores progress like the
-  others.
-- [`primers/operations-primer.html`](primers/operations-primer.html) — how
-  the household runs the pipeline, in thirteen modules: profiles, one store
-  per ETL step, development from backups, the inputs folder and its formats,
-  the monthly import, publishing into one Gold store and legacy
-  publications, backup and restore, and what is left to check. Opens and
-  stores progress like the others.
+- [Overlapping exports](primers/overlapping-exports-primer.html): identity,
+  the balance chain, whole-file admission, decisions, coverage, provisional.
+- [Dimensional Gold](primers/dimensional-gold-primer.html): grains, the
+  allocation fact, Type 1 dimensions, snapshots, balance chain, lineage.
+- [Classification and transfers](primers/classification-transfers-primer.html):
+  the reporting boundary, rules, transfer evidence, decisions, review items.
+- [Publications and history](primers/publications-history-primer.html): the
+  recipe, undo, the two time axes, retention, the decision log.
+- [Operations](primers/operations-primer.html): profiles, stores, development
+  from backups, inputs, the monthly import, backup and restore.
 
 ## Background Documents
 
