@@ -308,6 +308,9 @@ def _render_detail(
             scope: _detail_url(answered, subject.kind, subject.id, scope)
             for scope in ("month", "year_to_date")
         },
+        group_url=_detail_url(
+            answered, "group", detail_report.group_id, detail_report.scope
+        ),
     )
 
 
