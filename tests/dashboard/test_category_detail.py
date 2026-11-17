@@ -14,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from budget.dashboard import create_app
-from budget.gold import GoldResult
+from budget.gold import GoldRecords, GoldResult
 from budget.gold.store import GoldStore
 from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
 from tests.dashboard.pages import Page, read
@@ -29,13 +29,15 @@ PINNED = (
 )
 
 
-def logged_in(tmp_path: Path, publications: int = 1) -> TestClient:
-    """Publish the worked example `publications` times and log in to it."""
+def logged_in(
+    tmp_path: Path, publications: int = 1, records: GoldRecords = RECORDS
+) -> TestClient:
+    """Publish `records` `publications` times and log in to the dashboard."""
     profile = dashboard_profile(tmp_path)
     with GoldStore(profile) as store:
         for publication_id in range(1, publications + 1):
             published = replace(PUBLICATION, publication_id=publication_id)
-            store.publish(GoldResult(published, RECORDS), RECIPE, CONFIGURATION)
+            store.publish(GoldResult(published, records), RECIPE, CONFIGURATION)
     client = TestClient(
         create_app(profile, clock=lambda: datetime(2026, 5, 14, 10, tzinfo=UTC)),
         follow_redirects=False,
@@ -306,3 +308,26 @@ def test_a_detail_address_must_name_exactly_one_category_or_group(
 
     assert response.status_code == 400
     assert read(response.text).text_of("detail-spending") is None
+
+
+def test_two_accounts_sharing_a_name_keep_their_own_incomplete_months(
+    tmp_path: Path,
+) -> None:
+    # Both accounts are called "Joint current": each still lists its own months.
+    same_name = replace(
+        RECORDS,
+        accounts=tuple(
+            replace(account, display_name="Joint current")
+            for account in RECORDS.accounts
+        ),
+    )
+    year = read(
+        logged_in(tmp_path, records=same_name)
+        .get(f"/category?{PINNED}&month=2026-02&category=groceries&scope=year_to_date")
+        .text
+    )
+
+    assert year.text_of("coverage-note") == (
+        "Tallene mangler noget fra Joint current (januar 2026, februar 2026)"
+        " og Joint current (januar 2026)."
+    )
