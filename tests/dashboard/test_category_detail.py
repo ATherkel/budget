@@ -201,3 +201,38 @@ def test_a_detail_whose_scope_can_still_change_is_labelled_provisional(
     may = detail(client, "2026-05", "category=groceries&scope=year_to_date")
 
     assert may.text_of("provisional-label") == "Foreløbige tal"
+
+
+@pytest.mark.parametrize(
+    ("address", "said"),
+    [
+        (
+            f"/category?{PINNED}&month=2026-02&category=homeware&scope=month",
+            "Kategorien findes ikke i disse tal.",
+        ),
+        (
+            f"/category?{PINNED}&month=2026-02&group=income&scope=month",
+            "Kategorien findes ikke i disse tal.",
+        ),
+        (
+            f"/category?{PINNED}&month=2026-06&category=groceries&scope=month",
+            "Den valgte måned ligger uden for de måneder, der kan vælges.",
+        ),
+        (
+            (
+                "/category?publication=9&reference_date=2026-05-14"
+                f"&account={CURRENT}&month=2026-02&category=groceries&scope=month"
+            ),
+            "Disse tal findes ikke længere.",
+        ),
+    ],
+)
+def test_a_detail_that_cannot_be_shown_says_why_in_danish(
+    client: TestClient, address: str, said: str
+) -> None:
+    response = client.get(address)
+    page = read(response.text)
+
+    assert response.status_code == 200
+    assert said in (page.text_of("detail-failure") or "")
+    assert page.text_of("detail-spending") is None
