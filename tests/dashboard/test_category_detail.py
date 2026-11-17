@@ -161,3 +161,18 @@ def test_a_group_detail_names_each_rows_category_and_adds_up_the_group(
         ),
         None,
     )
+
+
+def test_leaving_a_detail_returns_to_the_same_overview_with_the_same_figure(
+    client: TestClient,
+) -> None:
+    # The way back keeps the pin, accounts and month, and the overview it
+    # opens shows the figure the detail added up: Groceries 520.00.
+    groceries = detail(client, "2026-02", "category=groceries&scope=year_to_date")
+    back = groceries.attributes("back-to-overview").get("href")
+    overview = client.get(back or "/")
+
+    assert (back, overview.status_code) == (f"/?{PINNED}&month=2026-02", 200)
+    assert (read(overview.text).text_of("categories") or "").endswith(
+        "Groceries 520,00 kr."
+    )
