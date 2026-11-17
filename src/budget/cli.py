@@ -144,6 +144,17 @@ from budget.reviewing import (
 )
 from budget.silver.storage import SILVER_STAGE
 from budget.silver.store import SilverStore
+from budget.suggesting import (
+    RULES_DRAFT_NAME,
+    TAXONOMY_DRAFT_NAME,
+    DraftsExistError,
+    DraftsIntoInputsError,
+    DraftsOutNotAFolderError,
+    SilverNotBuiltForSuggestionsError,
+    bank_labels,
+    refuse_out_folder,
+    write_drafts,
+)
 
 PROFILE_VARIABLE: Final = "BUDGET_PROFILE"
 EXIT_OK: Final = 0
@@ -386,6 +397,15 @@ def _parser() -> argparse.ArgumentParser:
     find.add_argument("text", help="case-insensitive text in the description")
     find.add_argument("--month", help="find transactions in YYYY-MM only")
     find.add_argument("--account", help="find transactions in one account only")
+    suggest = commands.add_parser(
+        "suggest-rules",
+        help="summarize the bank's category labels and the transactions each covers",
+    )
+    suggest.add_argument(
+        "--out",
+        type=Path,
+        help="also write taxonomy-draft.toml and rules-draft.toml to this folder",
+    )
     decide = commands.add_parser(
         "decide", help="record a manual decision, then rebuild from what it affects"
     )
@@ -756,6 +776,26 @@ def _find(
     sys.stdout.write(summaries.find_summary(found))
 
 
+def _suggest_rules(profile: Profile, out: Path | None) -> None:
+    """Summarize the bank's category labels in Silver, with no lock.
+
+    With `out`, also write the draft taxonomy and rules there. A path that is
+    no folder, a folder inside `inputs`, or one that already holds a draft is
+    refused before anything is printed.
+    """
+    if out is not None:
+        refuse_out_folder(profile, out)
+    labels = bank_labels(profile)
+    sys.stdout.write(summaries.suggest_rules_summary(labels))
+    if out is not None and not labels.pairs:
+        sys.stdout.write("No bank categories to draft, so nothing was written\n")
+    elif out is not None:
+        write_drafts(labels, out)
+        sys.stdout.write(
+            f"Wrote {TAXONOMY_DRAFT_NAME} and {RULES_DRAFT_NAME} to {out}\n"
+        )
+
+
 def _transaction(profile: Profile, handle: str) -> str:
     """Return the one Silver transaction whose ID starts with `handle`.
 
@@ -1083,6 +1123,8 @@ def _dispatch(profile: Profile, arguments: argparse.Namespace) -> None:
         _review(profile, arguments.kind, arguments.account)
     elif arguments.command == "find":
         _find(profile, arguments.text, arguments.month, arguments.account)
+    elif arguments.command == "suggest-rules":
+        _suggest_rules(profile, arguments.out)
     elif arguments.command == "decide":
         _decide(profile, arguments)
     else:
@@ -1122,6 +1164,9 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         EmptyPassphraseError,
         PassphraseMismatchError,
         DemoDirectoryExistsError,
+        DraftsExistError,
+        DraftsIntoInputsError,
+        DraftsOutNotAFolderError,
         CatchUpInputsRefusedError,
     ) as error:
         return _refuse(error, EXIT_REFUSED_INPUT)
@@ -1136,6 +1181,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str]) -> int:
         SilverNotBuiltError,
         SilverProvenanceUnavailableError,
         SilverReviewUnavailableError,
+        SilverNotBuiltForSuggestionsError,
         WriterLockHeldError,
         StoresFolderUnavailableError,
         RestoreInsteadError,
