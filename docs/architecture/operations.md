@@ -17,14 +17,11 @@ type: architecture
 
 ## Stores
 
-Each ETL stage persists its output in its own SQLite store. Kimball and
-Caserta's *The Data Warehouse ETL Toolkit* names four steps, *extract*,
-*clean*, *conform* and *deliver*, and recommends saving the data after each so
-a failure restarts from the last completed step. Here the saved steps are the
-stores, and clean and conform share Silver's. Kimball's list of ETL subsystems
-groups those two as one, *Cleaning and Conforming*, and Kimball Group leaves
-the number of saved copies to the design. The one copy it insists on, the
-untransformed extract, is Bronze
+The stores follow Kimball and Caserta's four ETL steps (*extract*, *clean*,
+*conform*, *deliver*), and the project is a deliberate test of that theory.
+Saving the data after each step lets a failure restart from the last one
+completed. Clean and conform share Silver's store, as Kimball's subsystems
+group them, and Bronze is the untransformed extract Kimball insists on keeping
 ([research note](../research/kimball-eccd-and-medallion-layers.md)).
 
 | Store | Step | Holds | Rebuildable from | In a backup set |
@@ -34,11 +31,10 @@ untransformed extract, is Bronze
 | `gold.db` | Deliver | Retained publications' Gold tables and lineage, recipes with their Silver provenance, configuration snapshots, the current pointer and its history, labels, legacy entries | Results: each from its recipe, replayed with its code (ADR-014, ADR-020). Recipes and pointer history: no, they are history | Yes |
 | `gold/legacy/publication-<id>.db` | Deliver: legacy | One labeled publication a Gold migration could not convert, in its old schema | Its recipe, replayed with its code | Yes |
 
-Silver's conforming makes the sources agree: it produces source-neutral
-canonical records and resolves duplicates. Building and publishing the
-conformed dimensions (account, category, date) belongs to Kimball's
-*Delivering* group, as the work of its dimension manager. Here Gold builds
-them, because they describe the household, not any source.
+Silver conforms the sources: source-neutral records, duplicates resolved. The
+conformed dimensions (account, category, date) are Kimball's dimension
+manager's work in *Delivering*, so Gold builds them: they describe the
+household, not a source.
 
 Rules for every store:
 
