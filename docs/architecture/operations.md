@@ -17,8 +17,14 @@ type: architecture
 
 ## Stores
 
-Each ETL stage keeps its output in its own SQLite store, so a failure restarts
-from the last completed stage
+Each ETL stage persists its output in its own SQLite store. Kimball and
+Caserta's *The Data Warehouse ETL Toolkit* names four steps, *extract*,
+*clean*, *conform* and *deliver*, and recommends saving the data after each so
+a failure restarts from the last completed step. Here the saved steps are the
+stores, and clean and conform share Silver's. Kimball's list of ETL subsystems
+groups those two as one, *Cleaning and Conforming*, and Kimball Group leaves
+the number of saved copies to the design. The one copy it insists on, the
+untransformed extract, is Bronze
 ([research note](../research/kimball-eccd-and-medallion-layers.md)).
 
 | Store | Step | Holds | Rebuildable from | In a backup set |
@@ -28,8 +34,11 @@ from the last completed stage
 | `gold.db` | Deliver | Retained publications' Gold tables and lineage, recipes with their Silver provenance, configuration snapshots, the current pointer and its history, labels, legacy entries | Results: each from its recipe, replayed with its code (ADR-014, ADR-020). Recipes and pointer history: no, they are history | Yes |
 | `gold/legacy/publication-<id>.db` | Deliver: legacy | One labeled publication a Gold migration could not convert, in its old schema | Its recipe, replayed with its code | Yes |
 
-Gold builds the conformed dimensions (account, category, date), because they
-describe the household, not a source.
+Silver's conforming makes the sources agree: it produces source-neutral
+canonical records and resolves duplicates. Building and publishing the
+conformed dimensions (account, category, date) belongs to Kimball's
+*Delivering* group, as the work of its dimension manager. Here Gold builds
+them, because they describe the household, not any source.
 
 Rules for every store:
 
