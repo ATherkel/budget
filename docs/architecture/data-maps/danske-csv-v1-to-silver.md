@@ -38,9 +38,11 @@ Kimball's columns are adapted to this pipeline:
 | manual decision, from the decision log ([`operations.md`](../operations.md#decisionsjsonl-the-decision-log)) | one recorded ruling | *same transaction*: `TransactionEvidence.transaction_id`, the `Transaction` grain and `ImportRunResult.status`. *withdrawn*: the `Transaction` grain and `ImportRunResult.status`. *accept discrepancy*: `ImportRunResult.status`, `balance` and `end_of_day_balance`. *void import run*: excluded by "not voided" above |
 
 The `danske-csv-v1` fields. `bronze-layer.md` declares the headers; the
-meanings come from it, `domains/transaction.md`, and the sample profile in
-`agents/bronze-agent.md`. An account without bank categories exports no
-`Kategori` or `Underkategori`, so its source records have neither field.
+meanings come from it, `domains/transaction.md`, and the sample files. An
+account without bank categories exports no `Kategori` or `Underkategori`, so
+its source records have neither field. In the samples, `Status` holds only
+`Udført`, `Venter` and `Slettet`, `Afstemt` is always `Nej`, and `Venter` rows
+come last, dated like the last booked row.
 
 | Field | Example | Meaning |
 | --- | --- | --- |
