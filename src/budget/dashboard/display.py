@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from datetime import date, datetime
 from decimal import Decimal
 
-from budget.analytics import InvalidSelectionError
+from budget.analytics import InvalidSelectionError, ReportCoverage
 from budget.gold import ReportingMonth
 from budget.timezone import COPENHAGEN
 
@@ -81,6 +81,26 @@ def parse_month(value: str) -> ReportingMonth:
 def month_label(month: ReportingMonth) -> str:
     """Return a month as a Danish reader reads it, such as `juni 2026`."""
     return f"{_MONTH_NAMES[month.month - 1]} {month.year}"
+
+
+def incomplete_by_account(coverage: ReportCoverage) -> list[str]:
+    """Return each account with incomplete months, as `Konto (januar 2026, …)`.
+
+    Months outside an account's history are never missing anything.
+    """
+    months: dict[str, list[str]] = {}
+    for account_month in coverage.account_months:
+        if account_month.status != "outside_history":
+            months.setdefault(account_month.display_name, []).append(
+                month_label(account_month.month)
+            )
+    return [f"{name} ({', '.join(labels)})" for name, labels in months.items()]
+
+
+def danish_list(items: list[str]) -> str:
+    """Return items as Danish lists them: `A`, `A og B`, `A, B og C`."""
+    *rest, last = items or [""]
+    return f"{', '.join(rest)} og {last}" if rest else last
 
 
 def months_between(

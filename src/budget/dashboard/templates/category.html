@@ -16,6 +16,13 @@
 <p><a id="group-link" href="{{ group_url }}">Hele {{ detail.group_name }}</a></p>
 {% endif %}
 <section class="report-panel" aria-labelledby="detail-title">
+{% if detail.provisional %}
+<p class="trust-note"><span id="provisional-label" class="status-chip status-chip--provisional">Foreløbige tal</span></p>
+{% endif %}
+{% if detail.coverage.status != "complete" %}
+{# Analytics judged each month; the page names them in words. #}
+<p id="coverage-note" class="trust-note">{% if not incomplete %}Ingen af de valgte konti har historik i perioden.{% elif detail.coverage.status == "no_data" %}Der er ingen data endnu fra {{ incomplete }}.{% else %}Tallene mangler noget fra {{ incomplete }}.{% endif %}</p>
+{% endif %}
 <dl class="summary">
   <div class="summary-figure"><dt>Udgifter</dt><dd id="detail-spending">{{ detail.spending | amount(detail.currency) }}</dd></div>
 </dl>

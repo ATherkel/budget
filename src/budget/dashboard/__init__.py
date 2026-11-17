@@ -311,6 +311,9 @@ def _render_detail(
         group_url=_detail_url(
             answered, "group", detail_report.group_id, detail_report.scope
         ),
+        incomplete=display.danish_list(
+            display.incomplete_by_account(detail_report.coverage)
+        ),
         overview_url=_pinned_url(
             answered.publication_id,
             answered.reference_date,
