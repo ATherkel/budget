@@ -160,7 +160,7 @@ application touches.
 | Written by | Pipeline commands only | Pipeline commands; experiments allowed | The test run |
 | Lifetime | Permanent | Until the next `dev refresh` | Created and destroyed by each run |
 | Migrations | Backup first, then migrate | Rehearsed here before production | From empty, every run |
-| Dashboard | Home network, with a passphrase | This PC only | Not served; tested in-process |
+| Dashboard | Home network or a [private tailnet](#away-from-home), with a passphrase | This PC only | Not served; tested in-process |
 
 ### Selecting a profile
 
@@ -599,7 +599,7 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | `import [--ranges <file>]` | Imports each file in the inbox on its own, then rebuilds and publishes what was stored. A refused file stays in the inbox. A payload the inbox holds under more than one account is a cross-account duplicate: every file it holds is refused before anything is written, and the files it does not hold are imported only if the person answers `y` or `yes` at the prompt. It asks each file's declared range, or reads them from a ranges file: a `[default]` range and `[account.<id>]` ranges, each a TOML `from` and `through` date. | Bronze, the import log, Silver, Gold | Yes, if the build succeeds |
 | `rebuild [--from bronze\|silver\|gold]` | Rebuilds from a stage; `gold` by default. | Stages from `--from` on | Yes, if the recipe changed |
 | `review [--kind <kind>] [--account <id>]` | Lists open review items, Silver's and Gold's, with what a person needs to settle each one. | Nothing | No |
-| `suggest-rules` | Lists each `bank_category` / `bank_subcategory` pair in Silver with its transaction count and signed sum per currency, then one line for the transactions with no bank category. A pair that a `rules.toml` rule testing only those labels already matches names that rule. Prints no transaction text; a missing `rules.toml` flags nothing, and an invalid one is refused. | Nothing | No |
+| `suggest-rules [--out <folder>]` | Lists Silver's bank category pairs with count, sum and any rule that already covers it. `--out` also writes `taxonomy-draft.toml` and `rules-draft.toml` to edit and copy into `inputs`. | The two draft files only, none when Silver has no pair | No |
 | `decide <kind> <targets…> [options] --reason <text>` | Proposes a manual decision to the boundary, then rebuilds from the stage the decision affects. | The decision log, then stores | Yes |
 | `status` | Shows balance and classification completeness (below). | Nothing | No |
 | `find <text> [--month YYYY-MM] [--account <id>]` | Searches every transaction in the current publication, classified or not, ignoring case. Each line carries the transaction's handle and its published category, or `category unclassified`. When a matching transaction is absent from current Silver, as after an `undo` of a decision that removed it, the whole search is refused; `rebuild` puts that right. | Nothing | No |
@@ -649,7 +649,7 @@ implementation status is on the
 | 0 | Done. Open review items and quarantined imports are results, not failures. |
 | 1 | Unexpected error: a defect. Python's own exit status for an unhandled exception. |
 | 2 | Usage error. `argparse`'s own exit status. |
-| 3 | Refused input: a configuration error, including a consumed account missing from `accounts.toml`; a rejected decision; a misfiled export; an import run Bronze refused; a retained payload that `rebuild --from bronze` finds declared as more than one source format or in a format this code has no parser for; or an inbox file a cross-account duplicate refused. Every file such a group holds is refused, whether or not the person allowed the import of the rest, and `import` still publishes the files it stored. |
+| 3 | Refused input: a configuration error, including a consumed account missing from `accounts.toml`; a rejected decision; a misfiled export; an import run Bronze refused; a retained payload that `rebuild --from bronze` finds declared as more than one source format or in a format this code has no parser for; an inbox file a cross-account duplicate refused; or a refused `suggest-rules --out` folder. Every file such a group holds is refused, whether or not the person allowed the import of the rest, and `import` still publishes the files it stored. |
 | 4 | Refused environment: no profile, a store from another profile or stage, a missing or newer migration, SQLite below the version floor, uncommitted code in production, running code other than the code version a replayed recipe names (ADR-014), Silver that is unbuilt or has unknown, incompatible, or stale provenance (ADR-020), another writing command running, a store locked past its busy timeout, or `restore` into a profile that has stores. |
 | 5 | Verification failed: a fingerprint mismatch, a failed integrity check, a backup set whose checksums do not match its manifest, or an import log that disagrees with Bronze. |
 
@@ -1051,6 +1051,32 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
 - It runs while `budget serve` runs. Starting it with Windows is an optional
   Task Scheduler entry.
 
+### Away from home
+
+The household's own devices reach the dashboard over a private
+[Tailscale](https://tailscale.com) network, a tailnet. Tailscale gives the PC
+an HTTPS address that only devices signed in to the tailnet can open; the
+passphrase still guards every page.
+
+1. Install Tailscale on the PC and on each phone, and sign in on all of them
+   with the household's Tailscale account.
+2. Run `budget serve`, then `tailscale serve 8750`. Tailscale prints the
+   address, such as `https://<pc>.<tailnet>.ts.net`.
+3. Open that address on the phone and log in.
+
+Tailscale forwards to the port on `127.0.0.1`, the default `bind`. A profile
+that binds another address or port gives Tailscale the same:
+`tailscale serve http://<bind>:<port>`. To try it first, run `budget demo` and
+`tailscale serve 8765`, the demo's port.
+
+- **Never** port-forward the dashboard, tunnel it through a service such as
+  ngrok, or use `tailscale funnel`: each one puts it on the public internet.
+- Only the household's own devices join the tailnet.
+- Tailscale's coordination server, run in the US, learns which devices are in
+  the tailnet but not the dashboard's traffic, which is encrypted between the
+  devices. The household accepts that. Headscale, a self-hosted coordination
+  server, is the alternative if it stops being acceptable.
+
 ## Logging
 
 Routine logs are JSON Lines under the profile's `logs\` folder, rotated by
@@ -1061,6 +1087,10 @@ size.
   `publication_id`, `decision_id`, and review item kinds.
 - **Never:** amounts, balances, descriptions, bank category labels, original
   filenames, or `transaction_id`s, which are hashes of transaction content.
+- **Never an OS error's text:** a failure event carries only the exception
+  class name and `import_run_id` where known, never an `OSError`'s
+  `str(error)`, `filename` or `filename2`, because OS error text carries
+  paths. The terminal may show it.
 
 A test runs every walkthrough on synthetic data and asserts that no fixture
 amount, description or filename appears in the log.
