@@ -249,12 +249,51 @@ lists each outcome line, and
 `uv run budget review` lists open review items and quarantined runs, and
 prints nothing when none are open.
 
+## Suggest rules
+
+`suggest-rules` turns the bank's own categories into a first draft of
+`taxonomy.toml` and `rules.toml`. It reads Silver and writes only the drafts.
+
+```powershell
+uv run budget suggest-rules
+```
+
+Expect one line per bank category pair with its transaction count and sum,
+`covered by <rule id>` where a rule already matches it, and a last
+`No bank category` line for transactions without one.
+
+Write the drafts to a scratch folder, then use them in place of your inputs:
+
+```powershell
+$drafts = "$env:TEMP\budget-drafts"
+uv run budget suggest-rules --out $drafts
+Copy-Item "$drafts\taxonomy-draft.toml" "$inputs\taxonomy.toml"
+Copy-Item "$drafts\rules-draft.toml" "$inputs\rules.toml"
+uv run budget check; uv run budget rebuild
+uv run budget review --kind unclassified
+```
+
+Expect `Wrote taxonomy-draft.toml and rules-draft.toml to <folder>`, then
+`No problems found.`, and far fewer unclassified items than before.
+[Clean up](#clean-up) puts your own inputs back.
+
+| Do | Expect |
+| --- | --- |
+| Run `--out $drafts` again | Refused with `3`; the existing drafts are named and left alone |
+| `--out $inputs` | Refused with `3`: drafts never go into `inputs` |
+
+Remove the scratch folder when done: `Remove-Item $drafts -Recurse`.
+
 ## Dashboard
 
 Your dev profile needs `[dashboard]` and a passphrase
 (`uv run budget set-passphrase`). Run `uv run budget serve`, open the address
 it prints and log in. Check the account picker, the month picker and the
 monthly overview against the current publication.
+
+Click a category to open its detail. Its figure matches the overview, its
+rows add up to it, and a refund shows as a negative amount. Try "År til dato",
+"Hele <gruppe>", and back and forward; the pinned accounts and month stay.
 
 Without your profile, `demo` serves synthetic data from a new folder:
 
@@ -265,9 +304,10 @@ uv run budget demo --directory $demo --port 8765
 
 Open `http://127.0.0.1:8765` and log in with `budget-demo`. Expect two checked
 accounts, `Demo current` and `Demo savings`, the current month and the monthly
-overview. The demo publishes balances without transactions, so its
-transaction figures are known zeros, including `0,00 kr.` for Ind and Ud under
-Ukategoriseret. Stop it with `Ctrl+C`, then run
+overview. Every month Demo current has a salary and Groceries of 1.500,00 kr.
+(two purchases less a refund); click Groceries to try the detail. Nothing is
+unclassified, so "Ukategoriseret" shows `0,00 kr.` for "Ind" and "Ud". Stop
+it with `Ctrl+C`, then run
 `Remove-Item -LiteralPath $demo -Recurse`.
 
 ## Restore and dev refresh

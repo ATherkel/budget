@@ -22,7 +22,11 @@ from budget.gold import (
 type AccountMonthStatus = Literal["partial", "no_data", "outside_history"]
 type ProvisionalReason = Literal["current_month", "late_bookings_unsettled"]
 type SelectionRule = Literal[
-    "no_accounts", "unknown_account", "mixed_currencies", "month_out_of_range"
+    "no_accounts",
+    "unknown_account",
+    "mixed_currencies",
+    "month_out_of_range",
+    "unknown_category",
 ]
 
 
@@ -137,6 +141,51 @@ class MonthlyOverview:
     categories: tuple[CategorySpending, ...]
     unclassified: MoneyInOut | None
     adjustments: MoneyInOut | None
+    coverage: ReportCoverage
+    provisional: Provisional | None
+
+
+type DetailKind = Literal["category", "group"]
+type DetailScope = Literal["month", "year_to_date"]
+
+
+@dataclass(frozen=True)
+class DetailSubject:
+    """The expense Category, or the group of them, a detail report explains."""
+
+    kind: DetailKind
+    id: str
+
+
+@dataclass(frozen=True)
+class SpendingDetailRow:
+    """One allocation of the subject: what was bought, where, and its spending."""
+
+    transaction_date: date
+    description: str
+    account_id: str
+    account_display_name: str
+    category_id: str
+    category_name: str
+    spending: Decimal
+
+
+@dataclass(frozen=True)
+class SpendingDetail:
+    """The entries behind one Category's or group's overview figure."""
+
+    context: ReportContext
+    subject: DetailSubject
+    scope: DetailScope
+    publication: ReportPublication
+    currency: str
+    name: str
+    group_id: str
+    group_name: str
+    first_month: ReportingMonth
+    last_month: ReportingMonth
+    spending: Decimal | None
+    rows: tuple[SpendingDetailRow, ...]
     coverage: ReportCoverage
     provisional: Provisional | None
 
