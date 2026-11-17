@@ -5,18 +5,15 @@ type: architecture
 
 ## Summary
 
-- How the household runs the pipeline: where files live, how production,
-  development and test stay apart, what the household edits, the commands,
-  failures and retries, and backup and restore. Every example is synthetic.
-- Decisions behind it: [ADR-013](../decisions/ADR-013-sqlite-store-integer-minor-units.md)
-  (SQLite stores), [ADR-014](../decisions/ADR-014-gold-publications-and-history.md)
-  with [`publications.md`](publications.md) (publications and history), and
-  [ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md)
-  (profiles, stages, household inputs).
-- Only pipeline commands write production. Everything a person says is text,
-  everything a bank says is a file, so the stores can be rebuilt from the
-  export archive and the inputs folder. Financial values reach the terminal,
-  never a log.
+- How the household runs the pipeline: files, profiles, inputs, commands,
+  failures, backup and restore. Every example is synthetic.
+- Decisions: [ADR-013](../decisions/ADR-013-sqlite-store-integer-minor-units.md),
+  [ADR-014](../decisions/ADR-014-gold-publications-and-history.md) with
+  [`publications.md`](publications.md), and
+  [ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md).
+- Only pipeline commands write production. A person's words are text and a
+  bank's are files, so the archive and inputs rebuild every store.
+- Financial values reach the terminal, never a log.
 
 ## Stores
 
@@ -128,7 +125,7 @@ application touches.
   They hold paths and settings, no secrets, as UTF-8 with or without a
   byte-order mark. Nothing in them is expanded, so every path is absolute.
 - **Test profiles are never files.** The suite builds each one in a temporary
-  directory and refuses any derived path that resolves outside it, symlinks
+  directory and, on each access, refuses any derived path that resolves outside it, symlinks
   included. No test reads `imports/`, a profile file or `BUDGET_PROFILE`
   ([`tdd.md`](../agents/tdd.md)): the suite clears `BUDGET_PROFILE` for every
   test, and a CLI subprocess gets an explicit environment.
@@ -207,8 +204,9 @@ OneDrive\Budget\                       closed files only: safe to synchronise
 `dev refresh` restores production's newest complete backup set this code can
 use into development's `upstream/` folder, read-only. `rebuild --from <stage>`
 rebuilds that stage and every later one into development's own stores, and
-opens the earlier stages from `upstream/` with SQLite's `immutable` flag,
-never recomputing them.
+opens the earlier stages from `upstream/`, never recomputing them. A restored
+set never changes, so they open with SQLite's `immutable` flag, which creates
+no files beside them.
 
 | What changed | Command | Reads from `upstream/` | Writes in development |
 | --- | --- | --- | --- |
@@ -216,8 +214,9 @@ never recomputing them.
 | Silver mapping, identity, or a Silver decision | `rebuild --from silver` | `bronze.db` | `silver.db`, `gold.db` |
 | Accounts, taxonomy, rules, a classification decision, or Gold code | `rebuild --from gold` | `silver.db` | `gold.db` |
 
-Development's inputs are a working copy; `dev refresh --inputs` replaces them
-with production's, first, so a failure changes no store. A development store
+Development's inputs are a working copy that plain `dev refresh` leaves alone.
+`dev refresh --inputs` replaces them with production's before touching any
+store, so a failure there changes no store. A development store
 promises no reproducibility: it may build from uncommitted code (ADR-014).
 Production refuses uncommitted code, so it runs from its own clean checkout.
 
@@ -709,7 +708,7 @@ files are stored and published, and `import` exits 3.
 | `undo` with no previous publication, or with its result no longer retained | Nothing changes; exit 4 | Fix the input and rebuild |
 | Refused import run (account conflict, or a declared range that ends after the export date or leaves out one of the payload's transactions) | Recorded as refused and logged, its bytes copied under `exports\<account_id>\refused\` | Move the file or correct the declaration, then rerun |
 | Misfiled export (filename's account number is not the declared `bank_account_number`) | Rejected before Bronze, with no run or log entry | Move it to the right folder, or fix the declaration, then rerun |
-| Format failure | Found by the preview, so nothing reaches Bronze and a parser fix needs no new presentation | Download the export again, or fix the parser, then rerun. Never edit an export by hand |
+| Format failure | Found by the preview, before anything is archived or logged: `import` never presents an unreadable file to Bronze (which can still record a `FormatFailure`), so a parser fix needs no new presentation and `rebuild --from bronze` parses retained payloads again | Download the export again, or fix the parser, then rerun. Never edit an export by hand |
 | A payload the inbox holds under two or more accounts (a cross-account duplicate) | Reported before anything is written, with each file's account, filename, export date, record count and dates; every file in the group is refused, with no run recorded; the others are imported only on `y` or `yes`, never without a terminal | Check which account the bank exported it from, download those accounts again, remove the duplicate, rerun |
 | Crash during an import | A file whose account, original filename and payload hash already have a `stored` or `repeat` run no decision voids is finished (archived, logged once, removed) without a new run; any other unlogged run is logged by the next import | Rerun `import` |
 | The archive or the import log disagrees with Bronze: no free place for a run's bytes, a damaged or extra log line, an entry for a run Bronze lacks, or a cut-off last entry | As [`imports.jsonl`](#importsjsonl-the-import-log) says: nothing is overwritten, and the import stops before writing or completes the entry, naming what to fix | Move the conflicting file aside, restore the log from the newest set, or restore Bronze up to the log, as named |
