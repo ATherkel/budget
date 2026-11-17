@@ -5,8 +5,9 @@ The logger is best effort: a log it may not write is refused with one fixed
 warning and never changes a command's outcome. A test profile may not let its
 `logs` folder, its current log file or its rotated one escape the temporary
 root ADR-015 confines it to, exactly as the store, input and backup paths are
-confined. The last test pins the walkthrough in `README.md` to the same privacy
-rule, on the example's own synthetic fixtures.
+confined. The last test pins the walkthrough in
+`docs/developers/silver-walkthrough.md` to the same privacy rule, on
+the example's own synthetic fixtures.
 """
 
 import io
