@@ -609,7 +609,7 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | `backup` | Writes a backup set of production and names it. Also runs automatically; see below. | The backups folder | No |
 | `restore [<backup set>]` | Restores the newest complete set this code can use, or the one named, into an empty profile, naming each newer complete set it passes over as unreadable or damaged, catches up with the import log, and rebuilds Silver and Gold, publishing when the recipe changed; records a recovery boundary. | Every store | Yes, if it caught up |
 | `restore --from-archive` | Last resort: rebuilds Bronze from the archive and the import log, then Silver and Gold. | Every store | Yes |
-| `verify` | Checks integrity. It does not replay recipes. | `scratch/` only | No |
+| `verify` | Checks integrity. It does not replay recipes (pending: [#259](https://github.com/ATherkel/budget/issues/259)). | `scratch/` only | No |
 | `dev refresh [--inputs] [--writable]` | Development only: restores production's newest complete backup set this code can use into `upstream/`, or with `--writable` into development's own stores, naming each newer complete set it passes over as unreadable or damaged. | Development only | No |
 | `serve` | Starts the read-only dashboard. | Nothing | No |
 | `set-passphrase` | Sets the dashboard passphrase, which logs out every device. | The passphrase file | No |
