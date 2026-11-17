@@ -331,3 +331,14 @@ def test_two_accounts_sharing_a_name_keep_their_own_incomplete_months(
         "Tallene mangler noget fra Joint current (januar 2026, februar 2026)"
         " og Joint current (januar 2026)."
     )
+
+
+def test_a_detail_with_no_accounts_selected_asks_for_one(client: TestClient) -> None:
+    response = client.get(
+        f"/category?publication=1&reference_date={REFERENCE_DATE}"
+        "&month=2026-02&category=groceries&scope=month"
+    )
+
+    assert "Vælg mindst én konto." in (
+        read(response.text).text_of("detail-failure") or ""
+    )
