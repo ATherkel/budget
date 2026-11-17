@@ -28,13 +28,13 @@
 {% endif %}
 {% if detail.coverage.status != "complete" %}
 {# Analytics judged each month; the page names them in words. #}
-<p id="coverage-note" class="trust-note">{% if not incomplete %}Ingen af de valgte konti har historik i perioden.{% elif detail.coverage.status == "no_data" %}Der er ingen data endnu fra {{ incomplete }}.{% else %}Tallene mangler noget fra {{ incomplete }}.{% endif %}</p>
+<p id="coverage-note" class="trust-note">{% if not incomplete %}Ingen af de valgte konti har historik i perioden.{% elif detail.coverage.status == "no_data" %}Der er ingen data endnu fra {{ incomplete | danish_list }}.{% else %}Tallene mangler noget fra {{ incomplete | danish_list }}.{% endif %}</p>
 {% endif %}
 <dl class="summary">
   <div class="summary-figure"><dt>Udgifter</dt><dd id="detail-spending">{{ detail.spending | amount(detail.currency) }}</dd></div>
 </dl>
 {# The report's rows in its order; their amounts add up to the figure above. #}
-<table id="detail-rows" class="detail-table">
+<table id="detail-rows" class="detail-table" aria-label="Posteringer bag udgifterne">
 <thead><tr><th scope="col">Dato</th><th scope="col">Tekst</th><th scope="col">Konto</th>{% if is_group %}<th scope="col">Kategori</th>{% endif %}<th scope="col" class="detail-amount">Beløb</th></tr></thead>
 <tbody>
 {% for row in detail.rows %}
