@@ -5,6 +5,7 @@ It reads Gold only through analytics, opened read-only from one profile.
 """
 
 from collections.abc import Callable, Collection
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 from typing import Annotated
@@ -15,8 +16,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, PackageLoader, select_autoescape
+from pydantic import BaseModel
 
 from budget.analytics import (
+    DetailScope,
+    DetailSubject,
     HouseholdReports,
     InvalidSelectionError,
     MonthlyOverview,
@@ -49,6 +53,37 @@ _TEMPLATES = Environment(
 )
 _TEMPLATES.filters["amount"] = display.amount
 _TEMPLATES.filters["signed_amount"] = display.signed_amount
+
+
+@dataclass(frozen=True)
+class DetailRequest:
+    """What a detail address asks for, beside the pinned publication and date."""
+
+    accounts: tuple[str, ...]
+    month: str
+    subject: DetailSubject
+    scope: DetailScope
+
+
+class DetailAddress(BaseModel):
+    """The query string of a detail page: the pin, the selection and the subject."""
+
+    publication: int
+    reference_date: date
+    month: str
+    account: list[str] = []
+    category: str | None = None
+    group: str | None = None
+    scope: DetailScope = "month"
+
+    def asked(self) -> DetailRequest:
+        """Return what the address asks for beside its pin."""
+        subject = (
+            DetailSubject("category", self.category)
+            if self.category is not None
+            else DetailSubject("group", self.group or "")
+        )
+        return DetailRequest(tuple(self.account), self.month, subject, self.scope)
 
 
 def _send_to_login(request: Request) -> Response:
@@ -246,6 +281,30 @@ def _detail_url(
     return f"{page}&" + urlencode([(kind, subject_id), ("scope", scope)])
 
 
+def _render_detail(
+    profile: Profile,
+    pin: tuple[int, date],
+    request: DetailRequest,
+) -> str:
+    """Render the detail page of one subject under one pinned selection."""
+    publication_id, reference_date = pin
+    context = ReportContext(
+        publication_id=publication_id,
+        account_ids=frozenset(request.accounts),
+        month=display.parse_month(request.month),
+        reference_date=reference_date,
+    )
+    with GoldStore(profile, read_only=True) as store:
+        detail_report = HouseholdReports(store).spending_detail(
+            context, request.subject, request.scope
+        )
+    month_label = display.month_label(detail_report.context.month)
+    return _TEMPLATES.get_template("category.html").render(
+        detail=detail_report,
+        title=f"{detail_report.name}, {month_label}",
+    )
+
+
 def _render_report(
     profile: Profile,
     pin: tuple[int, date],
@@ -412,6 +471,21 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             lambda: HTMLResponse(
                 _render_explanation(
                     profile, (publication, reference_date), account or (), month
+                )
+            ),
+        )
+
+    @app.get("/category")
+    def category_detail(
+        request: Request, address: Annotated[DetailAddress, Query()]
+    ) -> Response:
+        return for_reader(
+            request,
+            lambda: HTMLResponse(
+                _render_detail(
+                    profile,
+                    (address.publication, address.reference_date),
+                    address.asked(),
                 )
             ),
         )

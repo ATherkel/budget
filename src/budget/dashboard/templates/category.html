@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · Budget{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">Husstandsøkonomi</p>
+    <h1 id="detail-title">{{ title }}</h1>
+  </div>
+</div>
+<section class="report-panel" aria-labelledby="detail-title">
+<dl class="summary">
+  <div class="summary-figure"><dt>Udgifter</dt><dd id="detail-spending">{{ detail.spending | amount(detail.currency) }}</dd></div>
+</dl>
+{# The report's rows in its order; their amounts add up to the figure above. #}
+<table id="detail-rows" class="detail-table">
+<thead><tr><th scope="col">Dato</th><th scope="col">Tekst</th><th scope="col">Konto</th><th scope="col" class="detail-amount">Beløb</th></tr></thead>
+<tbody>
+{% for row in detail.rows %}
+<tr><td>{{ row.transaction_date.strftime("%d.%m.%Y") }}</td><td>{{ row.description }}</td><td>{{ row.account_display_name }}</td><td class="detail-amount">{{ row.spending | amount(detail.currency) }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</section>
+{% endblock %}
