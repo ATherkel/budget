@@ -6,6 +6,7 @@ Expected values are the "Spending detail" worked examples in
 dashboard is driven in-process.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -28,11 +29,13 @@ PINNED = (
 )
 
 
-@pytest.fixture
-def client(tmp_path: Path) -> TestClient:
+def logged_in(tmp_path: Path, publications: int = 1) -> TestClient:
+    """Publish the worked example `publications` times and log in to it."""
     profile = dashboard_profile(tmp_path)
     with GoldStore(profile) as store:
-        store.publish(GoldResult(PUBLICATION, RECORDS), RECIPE, CONFIGURATION)
+        for publication_id in range(1, publications + 1):
+            published = replace(PUBLICATION, publication_id=publication_id)
+            store.publish(GoldResult(published, RECORDS), RECIPE, CONFIGURATION)
     client = TestClient(
         create_app(profile, clock=lambda: datetime(2026, 5, 14, 10, tzinfo=UTC)),
         follow_redirects=False,
@@ -40,6 +43,11 @@ def client(tmp_path: Path) -> TestClient:
     login = client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
     assert login.status_code == 303, "the household passphrase did not log in"
     return client
+
+
+@pytest.fixture
+def client(tmp_path: Path) -> TestClient:
+    return logged_in(tmp_path)
 
 
 def report(client: TestClient, month: str) -> Page:
@@ -267,3 +275,20 @@ def test_a_year_to_date_detail_is_headed_with_its_whole_period(
     year = detail(client, "2026-02", "category=groceries&scope=year_to_date")
 
     assert year.text_of("detail-title") == "Groceries, januar\N{EN DASH}februar 2026"
+
+
+def test_a_detail_of_a_superseded_publication_offers_the_newer_figures(
+    tmp_path: Path,
+) -> None:
+    # Publication 2 is current, so a detail pinned to 1 says newer figures exist.
+    older = read(
+        logged_in(tmp_path, publications=2)
+        .get(f"/category?{PINNED}&month=2026-02&category=groceries&scope=month")
+        .text
+    )
+
+    assert (
+        older.text_of("newer-figures"),
+        older.attributes("newer-figures").get("href"),
+        older.text_of("detail-spending"),
+    ) == ("Hent de nyeste tal", "/", "520,00 kr.")
