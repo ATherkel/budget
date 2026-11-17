@@ -232,6 +232,20 @@ def _answered_url(overview_report: MonthlyOverview, path: str) -> str:
     )
 
 
+def _detail_url(
+    answered: ReportContext, kind: str, subject_id: str, scope: str = "month"
+) -> str:
+    """Return the address of one subject's detail under the pinned `answered`."""
+    page = _pinned_url(
+        answered.publication_id,
+        answered.reference_date,
+        answered.account_ids,
+        display.month_value(answered.month),
+        "/category",
+    )
+    return f"{page}&" + urlencode([(kind, subject_id), ("scope", scope)])
+
+
 def _render_report(
     profile: Profile,
     pin: tuple[int, date],
@@ -252,6 +266,12 @@ def _render_report(
         month_label=display.month_label(answered.month),
         overview=overview_report,
         explanation_url=_answered_url(overview_report, "/explanation"),
+        detail_urls={
+            category.category_id: _detail_url(
+                answered, "category", category.category_id
+            )
+            for category in overview_report.categories
+        },
     )
 
 
