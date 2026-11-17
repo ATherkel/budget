@@ -151,7 +151,7 @@ def test_a_group_detail_names_each_rows_category_and_adds_up_the_group(
         housing.text_of("detail-rows"),
         housing.text_of("group-link"),
     ) == (
-        "Housing, april 2026",
+        "Housing, januar\N{EN DASH}april 2026",
         "18.000,00 kr.",
         (
             "Dato Tekst Konto Kategori Beløb"
@@ -258,3 +258,12 @@ def test_a_detail_without_data_shows_its_figure_as_unknown_and_no_rows(
         "Ingen data endnu",
         "Dato Tekst Konto Beløb",
     )
+
+
+def test_a_year_to_date_detail_is_headed_with_its_whole_period(
+    client: TestClient,
+) -> None:
+    # The year to date through February covers January and February.
+    year = detail(client, "2026-02", "category=groceries&scope=year_to_date")
+
+    assert year.text_of("detail-title") == "Groceries, januar\N{EN DASH}februar 2026"

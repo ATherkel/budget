@@ -376,6 +376,8 @@ def test_a_category_detail_is_readable_at_phone_width(
         "&group=housing&scope=year_to_date"
     )
 
-    expect(page.get_by_role("heading", name="Housing, april 2026")).to_be_visible()
+    expect(
+        page.get_by_role("heading", name="Housing, januar\N{EN DASH}april 2026")
+    ).to_be_visible()
     expect(page.locator("#detail-rows")).to_contain_text("Utilities")
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
