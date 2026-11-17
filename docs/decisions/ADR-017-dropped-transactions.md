@@ -63,8 +63,8 @@ handled as ADR-009 handles a dropped repeat:
 
 Silver never picks the decision. A dropped transaction and an added one on the
 same date with the same amount look like a text change, but pairing them
-without a person would deduplicate by date and amount, which the Silver brief
-prohibits (`agents/silver-agent.md`).
+without a person would deduplicate by date and amount, which Silver prohibits
+([`silver-layer.md`](../architecture/silver-layer.md#rules), *Duplicates*).
 
 ADR-009 argues that comparing balances only on dates both sides state exempts
 nothing, because an export must show every admitted transaction for a date it

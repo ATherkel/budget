@@ -5,7 +5,10 @@ type: decisions
 
 **Status:** Accepted. The question this ADR left open for issue #12 is
 settled: money moved to an account that is not imported stays an expense in
-the first release ([`gold-contract.md`](../architecture/gold-contract.md#settled-by-the-readiness-review)).
+the first release. The household can give it a category of its own so it
+reads as a separate line ([`classification.md`](../architecture/classification.md#taxonomy)),
+and importing the account later turns those movements into transfers and
+restates history.
 
 ## Context
 
