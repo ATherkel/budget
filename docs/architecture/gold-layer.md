@@ -92,7 +92,7 @@ Dimension keys are durable, household-assigned identifiers such as
 `joint-current` or `groceries`. They are immutable and never reused for a
 different meaning. They are not surrogate keys and are never
 derived from bank identifiers. `transaction_id` is derived from the Silver
-canonical transaction identity (issue #5), so rebuilds keep it stable.
+canonical transaction identity, so rebuilds keep it stable.
 
 ## Balance Chain Evaluation
 

@@ -56,7 +56,7 @@ must preserve the analytics-facing DTO boundary.
   land on their transaction date, so an export starting after a month cannot
   show them, however late it was produced. Checking every month, not only the
   period's last, keeps a year-to-date total provisional while one of its
-  months can still change (issue #12). Gold publishes the per-account, per-month
+  months can still change. Gold publishes the per-account, per-month
   half of this rule as `MonthlyBalanceSnapshot.late_bookings_settled`;
   analytics adds the current month and returns the label with the report.
   This bullet and the one above are the only statement of the rule; other
@@ -78,8 +78,7 @@ must preserve the analytics-facing DTO boundary.
   current one carries a visible banner naming it (its label, and whether it is
   an as-was or as-known-at view). A past view takes the provisional label as
   of the publication's `known_at`, not today
-  ([`publications.md`](publications.md)). How the picker and banner look
-  belongs to issue #109.
+  ([`publications.md`](publications.md)).
 - A page opened on the current publication keeps reading it after a newer
   build becomes current, so its parts never mix two publications. That is a
   superseded page, not a past view: instead of the banner, it says that newer
@@ -91,8 +90,7 @@ must preserve the analytics-facing DTO boundary.
   balance or totals are complete.
 - Every screen that shows a household-level measure (overview, category, and
   trend views) must display the coverage the report carries for it. A
-  `partial` total names the accounts that are not complete. How coverage is
-  rendered belongs to issue #11.
+  `partial` total names the accounts that are not complete.
 
 ## Non-Responsibilities
 

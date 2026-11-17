@@ -3,10 +3,9 @@ type: architecture
 ---
 # Gold Publications and History
 
-Status: accepted ([ADR-014](../decisions/ADR-014-gold-publications-and-history.md)),
-with legacy publications added by
-[ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md), and
-stage-specific producer identity added by
+The decisions behind this doc are
+[ADR-014](../decisions/ADR-014-gold-publications-and-history.md),
+[ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md) and
 [ADR-020](../decisions/ADR-020-stage-specific-build-provenance.md).
 Command names and file formats are in [`operations.md`](operations.md).
 
@@ -271,12 +270,11 @@ restored store holds (1,000,000 when it holds none). The catch-up build, or
 with no catch-up the next build, takes that id, and later builds continue
 from it. Publications lost after the set were numbered below the jump, so a
 bare id written down before the restore cannot name a publication built
-after it (#376). A store that was never restored numbers 1, 2, 3, ….
+after it. A store that was never restored numbers 1, 2, 3, ….
 
 One gap is accepted: a second restore of the same set, or of an older one,
 jumps from that set's highest id again, and so can reuse ids in a range that
-publications built between the two restores had taken. Issue #414 makes the
-recovery part of a publication's identity, which closes it.
+publications built between the two restores had taken.
 
 ### Past views
 
@@ -368,7 +366,7 @@ item, or voids an import run, is an entry in one append-only log:
 | `entry` | Increasing position in the log. |
 | `decision_id` | Durable identifier of the decision. |
 | `recorded_at` | When the platform accepted the entry. It is set by the platform, never typed by a person. |
-| `kind` | For example `classify`, `pair`, `one-sided-transfer`, `retract`, or the Silver kinds from issue #5. |
+| `kind` | For example `classify`, `pair`, `one-sided-transfer`, `retract`, or Silver's kinds. |
 | `targets`, outcome, `reason` | As defined for the kind. A `retract` entry has no targets and no outcome. |
 | `supersedes` | The `decision_id`s this entry replaces. Empty for most entries. |
 
@@ -574,17 +572,3 @@ available only when its exact replay inputs are available.
    exception is a Gold migration that cannot convert a result: that result
    then survives in the pre-migration backup instead, and, when labeled, in
    its legacy extract (ADR-015).
-
-## First Release Scope
-
-The readiness review (issue #12) scoped the first dashboard release to the
-recipe, pipeline builds, the pointer history, `undo`, the printed diff, and
-retention of the current and previous results. Changed rules and manual
-inputs are tested there, from the lifecycle scenarios above. `verify`, past
-views, labels, scratch stores and legacy publications, with their replay and
-version-selection cases, come later.
-
-## Left to Other Tickets
-
-- **Issue #11:** how the dashboard shows the publication picker and the banner
-  for a non-current publication.
