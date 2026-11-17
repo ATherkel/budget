@@ -5,7 +5,6 @@ The caller opens the publication and says whether it is current; analytics
 never decides which publication a page reads.
 """
 
-import calendar
 from collections.abc import Collection, Sequence
 from datetime import date
 
@@ -25,6 +24,8 @@ from budget.gold import (
     GoldRepository,
     MonthlyBalanceSnapshot,
     ReportingMonth,
+    first_day,
+    last_day,
 )
 
 
@@ -72,8 +73,7 @@ def _figures(
     gold: GoldRepository, month: ReportingMonth, account_ids: Collection[str]
 ) -> Figures:
     """Return the figures of `month`'s transactions on `account_ids`."""
-    start = date(month.year, month.month, 1)
-    end = date(month.year, month.month, calendar.monthrange(month.year, month.month)[1])
+    start, end = first_day(month), last_day(month)
     return figures(
         gold.transactions(start_date=start, end_date=end, account_ids=account_ids),
         gold.category_allocations(
@@ -84,11 +84,14 @@ def _figures(
 
 
 def selected_accounts(
-    gold: GoldRepository, context: ReportContext, *, unknown_category: bool = False
+    gold: GoldRepository,
+    context: ReportContext,
+    also_broken: Collection[SelectionRule] = (),
 ) -> list[GoldAccount]:
     """Return the accounts `context` selects, or name every rule it breaks.
 
-    A detail report passes `unknown_category` when its subject names nothing.
+    `also_broken` names rules the caller's own arguments break, so one
+    `InvalidSelectionError` names them together with the context's.
     """
     by_id = {account.account_id: account for account in gold.accounts()}
     unknown = context.account_ids - by_id.keys()
@@ -100,9 +103,9 @@ def selected_accounts(
         # Gold contract invariant 13: never aggregate across currencies.
         "mixed_currencies": len({account.currency for account in selected}) > 1,
         "month_out_of_range": not first_month <= context.month <= last_month,
-        "unknown_category": unknown_category,
     }
     reasons = [rule for rule, is_broken in broken.items() if is_broken]
+    reasons.extend(also_broken)
     if reasons:
         raise InvalidSelectionError(reasons, unknown)
     return selected

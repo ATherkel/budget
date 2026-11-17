@@ -18,9 +18,13 @@ from budget.analytics.reports import (
     ProvisionalReason,
     ReportCoverage,
 )
-from budget.gold import Coverage, GoldAccount, MonthlyBalanceSnapshot, ReportingMonth
-
-_MONTHS_IN_A_YEAR = 12
+from budget.gold import (
+    Coverage,
+    GoldAccount,
+    MonthlyBalanceSnapshot,
+    ReportingMonth,
+    months_through,
+)
 
 type AccountMonthState = Literal["complete", "partial", "no_data", "outside_history"]
 
@@ -81,16 +85,6 @@ class Trust:
     provisional: Provisional | None
 
 
-def _months(first: ReportingMonth, last: ReportingMonth) -> list[ReportingMonth]:
-    """Return every month from `first` through `last`."""
-    start = first.year * _MONTHS_IN_A_YEAR + first.month - 1
-    end = last.year * _MONTHS_IN_A_YEAR + last.month - 1
-    return [
-        ReportingMonth(index // _MONTHS_IN_A_YEAR, index % _MONTHS_IN_A_YEAR + 1)
-        for index in range(start, end + 1)
-    ]
-
-
 def trust(
     accounts: Sequence[GoldAccount],
     rows: Sequence[MonthlyBalanceSnapshot],
@@ -123,7 +117,7 @@ def trust_over(
             ),
         )
         for account in sorted(accounts, key=lambda account: account.account_id)
-        for month in _months(first_month, last_month)
+        for month in months_through(first_month, last_month)
     ]
     coverage = ReportCoverage(
         status=combined_status([e.state for _, e in evidence]),

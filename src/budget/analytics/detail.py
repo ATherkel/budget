@@ -1,9 +1,6 @@
 # Copyright 2026 Therkel
 """The entries behind one Category's or group's overview figure."""
 
-import calendar
-from datetime import date
-
 from budget.analytics.measures import ZERO
 from budget.analytics.overview import (
     every_row,
@@ -18,17 +15,13 @@ from budget.analytics.reports import (
     SpendingDetailRow,
 )
 from budget.analytics.trust import trust_over
-from budget.gold import GoldCategory, GoldRepository, ReportingMonth
-
-
-def _first_day(month: ReportingMonth) -> date:
-    return date(month.year, month.month, 1)
-
-
-def _last_day(month: ReportingMonth) -> date:
-    return date(
-        month.year, month.month, calendar.monthrange(month.year, month.month)[1]
-    )
+from budget.gold import (
+    GoldCategory,
+    GoldRepository,
+    ReportingMonth,
+    first_day,
+    last_day,
+)
 
 
 def _scope_months(
@@ -66,18 +59,24 @@ def spending_detail(
 ) -> SpendingDetail:
     """Return the entries behind `subject`'s figure in `scope`."""
     categories = {c.category_id: c for c in _subject_categories(gold, subject)}
-    accounts = selected_accounts(gold, context, unknown_category=not categories)
+    accounts = selected_accounts(
+        gold, context, () if categories else ("unknown_category",)
+    )
     first_month, last_month = _scope_months(context, scope)
-    window = {
-        "start_date": _first_day(first_month),
-        "end_date": _last_day(last_month),
-        "account_ids": context.account_ids,
-    }
+    start, end = first_day(first_month), last_day(last_month)
     names = {a.account_id: a.display_name for a in accounts}
-    transactions = {t.transaction_id: t for t in gold.transactions(**window)}
+    transactions = {
+        t.transaction_id: t
+        for t in gold.transactions(
+            start_date=start, end_date=end, account_ids=context.account_ids
+        )
+    }
+    allocations = gold.category_allocations(
+        start_date=start, end_date=end, account_ids=context.account_ids
+    )
     # Newest first: by date, then account, then booking sequence, descending.
     entries = sorted(
-        (a for a in gold.category_allocations(**window) if a.category_id in categories),
+        (a for a in allocations if a.category_id in categories),
         key=lambda a: (
             a.transaction_date,
             a.account_id,
