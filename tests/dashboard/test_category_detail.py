@@ -15,7 +15,6 @@ from fastapi.testclient import TestClient
 from budget.dashboard import create_app
 from budget.gold import GoldResult
 from budget.gold.store import GoldStore
-from budget.profiles import Profile
 from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
 from tests.dashboard.pages import Page, read
 from tests.gold.publishing import CONFIGURATION, RECIPE
@@ -25,14 +24,13 @@ from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
 REFERENCE_DATE = "2026-05-14"
 
 PINNED = (
-    f"publication=1&reference_date={REFERENCE_DATE}"
-    f"&account={CURRENT}&account={SAVINGS}"
+    f"publication=1&reference_date={REFERENCE_DATE}&account={CURRENT}&account={SAVINGS}"
 )
 
 
 @pytest.fixture
 def client(tmp_path: Path) -> TestClient:
-    profile: Profile = dashboard_profile(tmp_path)
+    profile = dashboard_profile(tmp_path)
     with GoldStore(profile) as store:
         store.publish(GoldResult(PUBLICATION, RECORDS), RECIPE, CONFIGURATION)
     client = TestClient(
@@ -60,6 +58,13 @@ def report(client: TestClient, month: str) -> Page:
     return read(response.text)
 
 
+def detail(client: TestClient, month: str, query: str) -> Page:
+    """Return the detail page `query` (`category=…&scope=…`) asks for."""
+    response = client.get(f"/category?{PINNED}&month={month}&{query}")
+    assert response.status_code == 200
+    return read(response.text)
+
+
 def test_each_overview_category_links_to_its_detail_in_the_same_pinned_context(
     client: TestClient,
 ) -> None:
@@ -73,4 +78,26 @@ def test_each_overview_category_links_to_its_detail_in_the_same_pinned_context(
     ) == (
         f"/category?{PINNED}&month=2026-02&category=groceries&scope=month",
         f"/category?{PINNED}&month=2026-02&category=rent&scope=month",
+    )
+
+
+def test_a_category_detail_shows_its_total_and_the_rows_behind_it(
+    client: TestClient,
+) -> None:
+    # February groceries: the 120.00 Refund, then the 640.00 purchase, newest
+    # first and in the spending sign, adding up to the overview's 520.00.
+    groceries = detail(client, "2026-02", "category=groceries&scope=month")
+
+    assert (
+        groceries.text_of("detail-title"),
+        groceries.text_of("detail-spending"),
+        groceries.text_of("detail-rows"),
+    ) == (
+        "Groceries, februar 2026",
+        "520,00 kr.",
+        (
+            "Dato Tekst Konto Beløb"
+            " 12.02.2026 GROCERIES Joint current \N{MINUS SIGN}120,00 kr."
+            " 02.02.2026 GROCERIES Joint current 640,00 kr."
+        ),
     )
