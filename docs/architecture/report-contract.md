@@ -3,37 +3,16 @@ type: architecture
 ---
 # Report Contract
 
-## Status
+## Summary
 
-Version `0.1`, this contract's first publication. The owner approved the
-narrowed scope on 2026-10-04. It is accepted and effective for the scoped
-release 0.2 upon merge of PR #190. Issue #101 is satisfied by accepted scoped
-documentation, not by application code; what release 0.2 needs from it is the
-shared report context, the monthly overview, the shared selection and failure
-semantics, and the interaction transitions below.
-
-Version `0.2` amends it for the Enkel overview (issue #104), as the owner
-decided on 2026-10-08: the overview orders its Categories by spending, largest
-first, and Enkel shows every row; and Enkel notes Unclassified money quietly,
-without its amounts. It also states that Income can be negative. Nothing else
-changes, and no implementation had been built against `0.1`.
-
-Issue #380 amends the presentation of Unclassified money only: Enkel shows its
-money in and money out in a fourth summary figure, Ukategoriseret, beside the
-quiet note. The report types do not change, and the count still belongs to
-Kontrol.
-
-Version `0.3` adds [category and group detail](#spendingdetail) and the
-`unknown_category` selection rule. The monthly overview does not change.
-
-It covers what the monthly overview and its category detail need: the report
-context, the monthly overview report, the spending detail report, and the
-failures a report read can raise. Account activity, Kontrol checks, budget
-comparison, trends and history views
-extend this document in their own tickets; [Deferred Sections and
-Owners](#deferred-sections-and-owners) names each one, and nothing here
-describes them until they land.
-[Decisions about this document](https://github.com/ATherkel/budget/issues?q=is%3Aissue+is%3Aopen+%22report-contract.md%22).
+- The only schema, version `0.3`, of the reports analytics builds and
+  presentation shows: the monthly overview and its category and group detail.
+- A page pins one publication and one reference date, never mixing two.
+- A figure with no evidence is null, never zero; each report says how complete
+  and provisional it is.
+- A failed read raises an error, never an empty report.
+- Other reports add their own sections when built.
+  [Open questions](https://github.com/ATherkel/budget/issues?q=is%3Aissue+is%3Aopen+%22report-contract.md%22).
 
 ## Purpose
 
@@ -43,7 +22,7 @@ Analytics produces household reports from Gold
 normative schema of the reports that pass between them. Analytics implements
 it as `HouseholdReports`; presentation is developed and tested against that
 same implementation over synthetic Gold publications, so there is no second,
-fake implementation to keep in step (issue #103).
+fake implementation to keep in step.
 
 Analytics owns every financial figure, every coverage and provisional
 judgement, and every validation rule here. Presentation formats and lays out
@@ -215,12 +194,12 @@ provisional figures: money left leaves it out, so money left may be off by up
 to that amount. When `unclassified.count` is greater than zero, Enkel says so
 in quiet wording that links to the
 [explanation](#navigation-and-selection-transitions). Enkel always shows the
-two amounts in a fourth summary figure, Ukategoriseret (issue #380): `money_in`
+two amounts in a fourth summary figure, Ukategoriseret: `money_in`
 labelled Ind with an explicit plus sign when positive, and `money_out` labelled
 Ud with its minus sign, never netted. A known zero reads 0,00 kr. and a null
 `unclassified` reads as unknown, like every other figure. The count belongs to
-Kontrol (issue #106), and the explanation shows neither the amounts nor the
-count. Adjustments carry no such note.
+Kontrol, and the explanation shows neither the amounts nor the count.
+Adjustments carry no such note.
 
 ### Coverage
 
@@ -370,15 +349,8 @@ follows preserve the pin the same way.
 explanation stays reachable within the same context: the page offers the
 report's own incomplete account-months and provisional reasons, and whether it
 has Unclassified money, without leaving the pinned context or resolving a new
-one (issue #104). It does not require the Kontrol screen, which arrives later
-(issue #106). Analytics owns the judgements the explanation
-shows, which issue #179 implements; presentation owns the destination and the
-way it is reached.
-
-**Ownership in 0.2.** Pinning the publication, the notice that a newer build
-exists, `PublicationUnavailableError` recovery, and the coverage and provisional
-explanation are 0.2 responsibilities (issues #103, #104, #180 and #111). The
-history picker and history-specific verification arrive later (issue #109).
+one. It does not require the Kontrol screen. Analytics owns the judgements the
+explanation shows; presentation owns the destination and the way it is reached.
 
 **Report figures and browser storage.** Navigation state and browser storage
 carry no financial payload at all: they hold the pinned identity and the
@@ -386,20 +358,6 @@ selection, and nothing else, and no new financial model appears
 ([`presentation-layer.md`](presentation-layer.md#non-responsibilities)). The
 rendered HTML necessarily displays the figures the reader is looking at; this
 rule governs what is stored and reused, not what is displayed.
-
-## Deferred Sections and Owners
-
-Each entry names the ticket that extends this document with its own report
-section and approved examples before application implementation. Nothing is
-deleted: a section moves to its owner.
-
-| Section | Owner | What the owner adds here |
-| --- | --- | --- |
-| Account and Kontrol diagnostics | #106 | Dated bank balances against monthly snapshots, public Transfer evidence including one-sided and unknown restrictions, Evidence through, and reconciliation and count semantics. |
-| Budget input | #102 | Publication and recipe identity, immutable history, and the exact scope, completeness and availability policy. |
-| Budget comparison | #107 | The comparison report that follows #102: targets, variance and ratios, with their availability. |
-| Trend report | #108 | Ranges, grouped selection, gaps, trust per point, and the budgets some points depend on. |
-| Historical navigation | #109 | Known-at reference dates and plan history, the banner and picker, and legacy-specific behaviour. |
 
 ## Worked Examples (synthetic)
 
@@ -508,14 +466,9 @@ February, with `A` meaning the selection `{joint-current}` and `B` meaning
 - *`A -> B -> A`.* Returning to `A` asks again. The response that answered the
   first `A` is obsolete even when it arrives late, and the page renders only the
   answer to the current `A`.
-- *Back and forward.* Back from `B` to `A` restores that entry's full state:
-  the pinned P1, the reference date, the `A` selection and the mode. The page
-  revalidates the restored selection against P1 rather than against whatever is
-  current then, and reads again under a fresh request generation. This holds
-  when an explicit refresh has since resolved P2: history entries that pin P1
-  still restore P1 while its result is retained, and stay an explicit
-  `PublicationUnavailableError` once it is deleted. A restored empty selection
-  restores the prompt instead of reading.
+- *Back and forward.* Back from `B` to `A` restores P1, the reference date, the
+  `A` selection and the mode, and reads `A` from P1 again, even when an
+  explicit refresh has since resolved P2.
 - *A failure that stays visible.* An explicit refresh resolves a fresh context;
   with no current publication the page shows `NothingPublished` instead of an
   empty report. Selecting a month outside P1's range shows `InvalidSelection`
@@ -527,8 +480,3 @@ February, with `A` meaning the selection `{joint-current}` and `B` meaning
   discarded, the figures are cleared, and the account controls stay usable. A
   request actually made for the empty selection raises `InvalidSelection` with
   `no_accounts`.
-- *Publication removal and supersession.* A page pinned to P1 keeps reading P1
-  while P2 is current, with `is_current` false and the superseded-page notice.
-  Changing account or month still reads P1. Once P3 is built and P1's result is
-  deleted, the next read raises `PublicationUnavailableError`, and the page offers
-  the current publication explicitly rather than substituting it.
