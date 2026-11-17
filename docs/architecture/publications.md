@@ -5,19 +5,16 @@ type: architecture
 
 ## Summary
 
-- A **publication** is one complete, immutable Gold build from one
-  **recipe**, the record of every input it used. Consumers read exactly one
-  publication at a time.
-- The **current** publication is a pointer; every move is appended to the
-  pointer history, so `undo` and past views work.
-- **A report is a function of recorded inputs**: the build never reads the
-  clock or anything unrecorded. A stored result is always readable; a lost one
-  can be replayed only from its exact inputs and producer.
+- A **publication** is one immutable Gold build from one **recipe** of every
+  input it used; consumers read exactly one at a time.
+- The **current** one is a pointer whose moves are logged, so `undo` and past
+  views work.
+- **A report is a function of recorded inputs**: no clock, nothing unrecorded.
+  A lost result replays only from its exact inputs and producer.
 - Recipes are kept forever, results only while current, previous or labeled.
 - Decisions: [ADR-014](../decisions/ADR-014-gold-publications-and-history.md),
   [ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md),
-  [ADR-020](../decisions/ADR-020-stage-specific-build-provenance.md). Commands
-  and file formats: [`operations.md`](operations.md).
+  [ADR-020](../decisions/ADR-020-stage-specific-build-provenance.md).
 
 ## Two Time Axes
 
@@ -193,8 +190,9 @@ time between the set and the restore as unavailable.
 That first id is the smallest multiple of 1,000,000 above the highest id the
 restored store holds (1,000,000 for none), so an id written down before the
 restore never names a publication built after it. A never-restored store
-numbers 1, 2, 3, …. A second restore of the same or an older set can reuse ids
-in that range (pending: [#414](https://github.com/ATherkel/budget/issues/414)).
+numbers 1, 2, 3, …. A second restore of the same or an older set jumps from
+that set's highest id again, so it can reuse ids that builds between the two
+restores took (pending: [#414](https://github.com/ATherkel/budget/issues/414)).
 
 ### Past views
 
@@ -237,9 +235,9 @@ until its label is removed. Others are deleted when they stop qualifying;
 re-creating one needs the [replay prerequisites](#what-reproducible-promises).
 
 A Gold migration converts the retained results it can. One it cannot survives
-only in the pre-migration backup (ADR-013), and a labeled one also as a
-[legacy publication](operations.md#legacy-publications) whose backup retention
-keeps (ADR-015). The migration then runs a pipeline build with `cause`
+only in the pre-migration backup (ADR-013). A labeled one also becomes a
+[legacy publication](operations.md#legacy-publications), and retention keeps
+that backup (ADR-015). The migration then runs a pipeline build with `cause`
 `migration`; until it commits, `current()` returns `None` and the dashboard
 says nothing is published, and `undo` has nothing to return to until the next
 build. Development and test take no backup, so they lose unconvertible
