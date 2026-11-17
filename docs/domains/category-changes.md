@@ -27,9 +27,7 @@ the categories changed; the publication shows what they were.
 
 ## Log
 
-The household taxonomy does not exist yet — it arrives with
-[issue #7](https://github.com/ATherkel/budget/issues/7) — so there is nothing
-to record. The first entry is the taxonomy's own creation.
+No entries yet. The first entry is the taxonomy's own creation.
 
 | Date | Key | Change | Before | After | Why |
 | --- | --- | --- | --- | --- | --- |

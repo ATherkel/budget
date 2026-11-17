@@ -272,6 +272,11 @@ status is in the [documentation map](../README.md#provenance-at-a-glance).
 - A source value with more decimal places than its currency allows is an
   unparseable decimal. Silver never rounds it.
 
+**Duplicates**
+- Silver never collapses records by content alone, or by date and amount.
+  Two records are one transaction only by canonical identity (ADR-009) or a
+  person's *same transaction* decision.
+
 **Booking state**
 - Each source format maps its status values to `booking_status`: `booked`,
   `pending`, or `cancelled`. For `danske-csv-v1`, `Udført` is `booked`,

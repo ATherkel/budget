@@ -3,8 +3,8 @@ type: architecture
 ---
 # Operations
 
-Status: accepted ([ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md)).
-Resolves [issue #10](https://github.com/ATherkel/budget/issues/10).
+The decision behind this doc is
+[ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md).
 
 ## Purpose
 
@@ -459,7 +459,7 @@ entry and never repeating the decision's text.
 The fields and their rules are defined in
 [`publications.md`](publications.md#the-decision-log). Kinds: `classify`,
 `pair`, `one-sided-transfer` (ADR-011, ADR-012); `void-import-run`,
-`same-transaction`, `withdrawn`, `accept-discrepancy` (Silver, issue #5); and
+`same-transaction`, `withdrawn`, `accept-discrepancy` (Silver); and
 `retract`, which withdraws an earlier decision without replacing it. It is
 named `retract` so it is not confused with *withdrawn*, which records that the
 bank removed a transaction. A new decision that collides with one in force
@@ -609,7 +609,7 @@ dashboard stays read-only: it has no route that reaches the boundary.
 | `backup` | Writes a backup set of production and names it. Also runs automatically; see below. | The backups folder | No |
 | `restore [<backup set>]` | Restores the newest complete set this code can use, or the one named, into an empty profile, naming each newer complete set it passes over as unreadable or damaged, catches up with the import log, and rebuilds Silver and Gold, publishing when the recipe changed; records a recovery boundary. | Every store | Yes, if it caught up |
 | `restore --from-archive` | Last resort: rebuilds Bronze from the archive and the import log, then Silver and Gold. | Every store | Yes |
-| `verify` | Checks integrity. Recipe replay remains deferred ([#259](https://github.com/ATherkel/budget/issues/259)). | `scratch/` only | No |
+| `verify` | Checks integrity. It does not replay recipes (pending: [#259](https://github.com/ATherkel/budget/issues/259)). | `scratch/` only | No |
 | `dev refresh [--inputs] [--writable]` | Development only: restores production's newest complete backup set this code can use into `upstream/`, or with `--writable` into development's own stores, naming each newer complete set it passes over as unreadable or damaged. | Development only | No |
 | `serve` | Starts the read-only dashboard. | Nothing | No |
 | `set-passphrase` | Sets the dashboard passphrase, which logs out every device. | The passphrase file | No |
@@ -1184,18 +1184,3 @@ Production is prerelease, so a merge needs no upgrade path for it.
 - `git` on the household machine, so a production build can name its commit
   and refuse uncommitted code (ADR-014).
 - The existing quality gate: ruff, ty, complexipy, pytest.
-
-## Left to Other Tickets
-
-- **Issue #11:** the dashboard's screens, its publication picker, and how the
-  login page looks.
-- **Retry and profile separation:** their acceptance cases, taken from
-  *Failure and Retry* and *Profiles*, belong to the first dashboard release's
-  store and pipeline-build issues, which the readiness review (issue #12)
-  created.
-- **Restore and `dev refresh`:** their acceptance cases, taken from the tables
-  above, belong to the issue that builds them; the readiness review (issue
-  #12) moved them out of the first dashboard release.
-- **Pull request #45:** the Bronze store moves its schema into
-  `migrations/bronze/`, records its profile and stage, and is opened through
-  the profile.
