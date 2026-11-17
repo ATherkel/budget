@@ -1158,18 +1158,3 @@ Production is prerelease, so a merge needs no upgrade path for it.
 - `git` on the household machine, so a production build can name its commit
   and refuse uncommitted code (ADR-014).
 - The existing quality gate: ruff, ty, complexipy, pytest.
-
-## Left to Other Tickets
-
-- **Issue #11:** the dashboard's screens, its publication picker, and how the
-  login page looks.
-- **Retry and profile separation:** their acceptance cases, taken from
-  *Failure and Retry* and *Profiles*, belong to the first dashboard release's
-  store and pipeline-build issues, which the readiness review (issue #12)
-  created.
-- **Restore and `dev refresh`:** their acceptance cases, taken from the tables
-  above, belong to the issue that builds them; the readiness review (issue
-  #12) moved them out of the first dashboard release.
-- **Pull request #45:** the Bronze store moves its schema into
-  `migrations/bronze/`, records its profile and stage, and is opened through
-  the profile.
