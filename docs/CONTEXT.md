@@ -255,7 +255,8 @@ _Avoid_: error, warning, conflict
 **Handle**:
 A short prefix of a transaction's durable ID that names one current Silver
 transaction, at least eight characters long. A Manual decision accepts a
-Handle and resolves it to the full transaction ID.
+Handle and resolves it to the full transaction ID. The rules are in
+[`operations.md`](architecture/operations.md#commands).
 _Avoid_: transaction ID (the full identity), truncated ID without uniqueness
 
 **Manual decision**:
