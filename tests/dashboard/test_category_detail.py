@@ -176,3 +176,28 @@ def test_leaving_a_detail_returns_to_the_same_overview_with_the_same_figure(
     assert (read(overview.text).text_of("categories") or "").endswith(
         "Groceries 520,00 kr."
     )
+
+
+def test_a_detail_names_each_incomplete_month_of_its_scope_by_account(
+    client: TestClient,
+) -> None:
+    # February year to date: Joint current's January and February and Joint
+    # savings' January are partial. Neither month can still change.
+    year = detail(client, "2026-02", "category=groceries&scope=year_to_date")
+
+    assert (year.text_of("coverage-note"), year.text_of("provisional-label")) == (
+        (
+            "Tallene mangler noget fra Joint current (januar 2026, februar 2026)"
+            " og Joint savings (januar 2026)."
+        ),
+        None,
+    )
+
+
+def test_a_detail_whose_scope_can_still_change_is_labelled_provisional(
+    client: TestClient,
+) -> None:
+    # May is the current month, and its bookings are not settled.
+    may = detail(client, "2026-05", "category=groceries&scope=year_to_date")
+
+    assert may.text_of("provisional-label") == "Foreløbige tal"
