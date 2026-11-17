@@ -35,7 +35,7 @@
 {# Every row, in the report's order, so the list adds up to Expenses. #}
 <ul id="categories" class="category-list" aria-labelledby="categories-heading">
 {% for category in overview.categories %}
-  <li class="category-row"><span>{{ category.name }}</span> <span class="category-amount">{{ category.spending | amount(overview.currency) }}</span></li>
+  <li class="category-row"><a id="category-link-{{ category.category_id }}" href="{{ detail_urls[category.category_id] }}">{{ category.name }}</a> <span class="category-amount">{{ category.spending | amount(overview.currency) }}</span></li>
 {% endfor %}
 </ul>
 {% endif %}
