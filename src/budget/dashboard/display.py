@@ -59,6 +59,10 @@ def selection_problems(error: InvalidSelectionError) -> list[str]:
         f"Kontoen {account_id} findes ikke i disse tal."
         for account_id in error.unknown_account_ids
     ]
+    if "no_accounts" in error.reasons:
+        problems.append("Vælg mindst én konto.")
+    if "mixed_currencies" in error.reasons:
+        problems.append("De valgte konti har forskellig valuta.")
     if "month_out_of_range" in error.reasons:
         problems.append("Den valgte måned ligger uden for de måneder, der kan vælges.")
     if "unknown_category" in error.reasons:
