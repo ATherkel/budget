@@ -5,9 +5,10 @@ It reads Gold only through analytics, opened read-only from one profile.
 """
 
 from collections.abc import Callable, Collection
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Self
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Query, Request
@@ -15,14 +16,18 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, PackageLoader, select_autoescape
+from pydantic import BaseModel, model_validator
 
 from budget.analytics import (
+    DetailScope,
+    DetailSubject,
     HouseholdReports,
     InvalidSelectionError,
     MonthlyOverview,
     NothingPublishedError,
     PublicationUnavailableError,
     ReportContext,
+    SpendingDetail,
 )
 from budget.dashboard import display, session
 from budget.dashboard.display import copenhagen_date
@@ -49,6 +54,46 @@ _TEMPLATES = Environment(
 )
 _TEMPLATES.filters["amount"] = display.amount
 _TEMPLATES.filters["signed_amount"] = display.signed_amount
+_TEMPLATES.filters["danish_list"] = display.danish_list
+
+
+@dataclass(frozen=True)
+class DetailRequest:
+    """What a detail address asks for, beside the pinned publication and date."""
+
+    accounts: tuple[str, ...]
+    month: str
+    subject: DetailSubject
+    scope: DetailScope
+
+
+class DetailAddress(BaseModel):
+    """The query string of a detail page: the pin, the selection and the subject."""
+
+    publication: int
+    reference_date: date
+    month: str
+    account: list[str] = []
+    category: str | None = None
+    group: str | None = None
+    scope: DetailScope = "month"
+
+    @model_validator(mode="after")
+    def _names_one_subject(self) -> Self:
+        """Refuse an address naming no subject, or both a Category and a group."""
+        if (self.category is None) == (self.group is None):
+            message = "name exactly one of category and group"
+            raise ValueError(message)
+        return self
+
+    def asked(self) -> DetailRequest:
+        """Return what the address asks for beside its pin."""
+        subject = (
+            DetailSubject("category", self.category)
+            if self.category is not None
+            else DetailSubject("group", self.group or "")
+        )
+        return DetailRequest(tuple(self.account), self.month, subject, self.scope)
 
 
 def _send_to_login(request: Request) -> Response:
@@ -232,6 +277,80 @@ def _answered_url(overview_report: MonthlyOverview, path: str) -> str:
     )
 
 
+def _detail_url(
+    answered: ReportContext, kind: str, subject_id: str, scope: str = "month"
+) -> str:
+    """Return the address of one subject's detail under the pinned `answered`."""
+    page = _pinned_url(
+        answered.publication_id,
+        answered.reference_date,
+        answered.account_ids,
+        display.month_value(answered.month),
+        "/category",
+    )
+    return f"{page}&" + urlencode([(kind, subject_id), ("scope", scope)])
+
+
+def _read_detail(
+    profile: Profile,
+    pin: tuple[int, date],
+    request: DetailRequest,
+) -> SpendingDetail | str:
+    """Return the detail `request` asks for, or a fragment saying why not."""
+    publication_id, reference_date = pin
+    try:
+        context = ReportContext(
+            publication_id=publication_id,
+            account_ids=frozenset(request.accounts),
+            month=display.parse_month(request.month),
+            reference_date=reference_date,
+        )
+        with GoldStore(profile, read_only=True) as store:
+            return HouseholdReports(store).spending_detail(
+                context, request.subject, request.scope
+            )
+    except InvalidSelectionError as error:
+        return _TEMPLATES.get_template("invalid_selection.html").render(
+            problems=display.selection_problems(error)
+        )
+    except PublicationUnavailableError:
+        return _TEMPLATES.get_template("unavailable.html").render()
+
+
+def _render_detail(
+    profile: Profile,
+    pin: tuple[int, date],
+    request: DetailRequest,
+) -> str:
+    """Render the detail page of one subject under one pinned selection."""
+    detail_report = _read_detail(profile, pin, request)
+    if isinstance(detail_report, str):
+        return _TEMPLATES.get_template("category.html").render(
+            failure=detail_report, title="Udgifter"
+        )
+    answered = detail_report.context
+    subject = detail_report.subject
+    period = display.period_label(detail_report.first_month, detail_report.last_month)
+    return _TEMPLATES.get_template("category.html").render(
+        detail=detail_report,
+        title=f"{detail_report.name}, {period}",
+        scope_urls={
+            scope: _detail_url(answered, subject.kind, subject.id, scope)
+            for scope in ("month", "year_to_date")
+        },
+        group_url=_detail_url(
+            answered, "group", detail_report.group_id, detail_report.scope
+        ),
+        incomplete=display.incomplete_by_account(detail_report.coverage),
+        overview_url=_pinned_url(
+            answered.publication_id,
+            answered.reference_date,
+            answered.account_ids,
+            display.month_value(answered.month),
+        ),
+    )
+
+
 def _render_report(
     profile: Profile,
     pin: tuple[int, date],
@@ -252,6 +371,12 @@ def _render_report(
         month_label=display.month_label(answered.month),
         overview=overview_report,
         explanation_url=_answered_url(overview_report, "/explanation"),
+        detail_urls={
+            category.category_id: _detail_url(
+                answered, "category", category.category_id
+            )
+            for category in overview_report.categories
+        },
     )
 
 
@@ -392,6 +517,21 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             lambda: HTMLResponse(
                 _render_explanation(
                     profile, (publication, reference_date), account or (), month
+                )
+            ),
+        )
+
+    @app.get("/category")
+    def category_detail(
+        request: Request, address: Annotated[DetailAddress, Query()]
+    ) -> Response:
+        return for_reader(
+            request,
+            lambda: HTMLResponse(
+                _render_detail(
+                    profile,
+                    (address.publication, address.reference_date),
+                    address.asked(),
                 )
             ),
         )

@@ -85,7 +85,7 @@ file may hold and where production lives.
 | `budget status` | Shows whether the figures are complete: [completeness outputs](docs/architecture/operations.md#completeness-outputs) |
 | `budget rebuild`, `budget undo` | Builds the stages again, or returns to the previous publication: [commands](docs/architecture/operations.md#commands) |
 | `budget backup`, `budget restore` | Writes or restores a backup set of production: [backup and restore](docs/architecture/operations.md#backup-and-restore) |
-| `budget set-passphrase`, `budget serve` | Sets the login and starts the read-only dashboard: [dashboard access](docs/architecture/operations.md#dashboard-access) |
+| `budget set-passphrase`, `budget serve` | Sets the login and starts the read-only dashboard: the monthly overview, and each category's detail for the month or year to date. [Dashboard access](docs/architecture/operations.md#dashboard-access) |
 | `budget demo` | Serves a synthetic dashboard from a new folder, with no profile: [testing by hand](docs/developers/manual-testing.md#dashboard) |
 
 The [command reference](docs/architecture/operations.md#commands) covers every

@@ -291,6 +291,10 @@ Your dev profile needs `[dashboard]` and a passphrase
 it prints and log in. Check the account picker, the month picker and the
 monthly overview against the current publication.
 
+Click a category to open its detail. Its figure matches the overview, its
+rows add up to it, and a refund shows as a negative amount. Try "År til dato",
+"Hele <gruppe>", and back and forward; the pinned accounts and month stay.
+
 Without your profile, `demo` serves synthetic data from a new folder:
 
 ```powershell
@@ -300,9 +304,10 @@ uv run budget demo --directory $demo --port 8765
 
 Open `http://127.0.0.1:8765` and log in with `budget-demo`. Expect two checked
 accounts, `Demo current` and `Demo savings`, the current month and the monthly
-overview. The demo publishes balances without transactions, so its
-transaction figures are known zeros, including `0,00 kr.` for Ind and Ud under
-Ukategoriseret. Stop it with `Ctrl+C`, then run
+overview. Every month Demo current has a salary and Groceries of 1.500,00 kr.
+(two purchases less a refund); click Groceries to try the detail. Nothing is
+unclassified, so "Ukategoriseret" shows `0,00 kr.` for "Ind" and "Ud". Stop
+it with `Ctrl+C`, then run
 `Remove-Item -LiteralPath $demo -Recurse`.
 
 ## Restore and dev refresh
