@@ -100,13 +100,18 @@ def incomplete_by_account(coverage: ReportCoverage) -> list[str]:
 
     Months outside an account's history are never missing anything.
     """
+    names: dict[str, str] = {}
     months: dict[str, list[str]] = {}
     for account_month in coverage.account_months:
         if account_month.status != "outside_history":
-            months.setdefault(account_month.display_name, []).append(
+            names[account_month.account_id] = account_month.display_name
+            months.setdefault(account_month.account_id, []).append(
                 month_label(account_month.month)
             )
-    return [f"{name} ({', '.join(labels)})" for name, labels in months.items()]
+    return [
+        f"{names[account_id]} ({', '.join(labels)})"
+        for account_id, labels in months.items()
+    ]
 
 
 def danish_list(items: list[str]) -> str:
