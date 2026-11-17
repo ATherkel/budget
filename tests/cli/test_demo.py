@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 
 from budget.cli import main
 from budget.dashboard import create_app
+from budget.demo import create_demo_profile
 from budget.gold.recipe import RecipeImportRun
 from budget.gold.store import GoldStore
 from budget.profiles import load_profile_file
@@ -219,3 +220,28 @@ def test_the_demo_command_serves_a_real_login_and_htmx_report(
             f"&account=demo-current&month={month}"
         ),
     ), (stdout, stderr)
+
+
+def test_the_demo_has_categorized_spending_to_investigate(tmp_path: Path) -> None:
+    # Each demo month on Demo current: groceries of 900.00 and 650.00 less a
+    # 50.00 Refund, so the month's Groceries detail adds up to 1,500.00.
+    profile = create_demo_profile(tmp_path / "demo", port=8877)
+    dashboard = TestClient(
+        create_app(profile, clock=lambda: datetime.now(UTC)),
+        follow_redirects=False,
+    )
+    dashboard.post("/login", data={"passphrase": "budget-demo"})
+    today = datetime.now(ZoneInfo("Europe/Copenhagen")).date()
+    detail = dashboard.get(
+        "/category",
+        params={
+            "publication": "1",
+            "reference_date": today.isoformat(),
+            "account": ["demo-current", "demo-savings"],
+            "month": f"{today.year}-{today.month:02d}",
+            "category": "groceries",
+            "scope": "month",
+        },
+    )
+
+    assert 'id="detail-spending">1.500,00 kr.<' in detail.text
