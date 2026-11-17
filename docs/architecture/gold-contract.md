@@ -5,17 +5,15 @@ type: architecture
 
 ## Summary
 
-- Gold is what reports are built from: two dimensions (accounts and
-  categories) and three facts (transactions, category allocations and monthly
-  balances).
-- Analytics and forecasting read Gold only through the interface below.
-  Presentation and APIs read analytics reports, never Gold itself.
-- This document is the only normative Gold schema, at version `0.2`. A
-  backward-incompatible change needs a new contract version.
-- The numbered [invariants](#invariants) hold in every publication. Code and
-  tests cite them by number, so the numbers never change.
-- Lineage, which says why a transaction was classified as it was, is for
-  review and audit tooling only.
+- Gold is what reports are built from: accounts and categories, plus
+  transactions, category allocations and monthly balances.
+- Analytics and forecasting read Gold only through the interface below;
+  presentation and APIs read analytics reports, never Gold.
+- This is the only normative Gold schema, version `0.2`. A breaking change
+  needs a new version.
+- The numbered [invariants](#invariants) hold in every publication and never
+  renumber, because code and tests cite them.
+- Lineage, why a transaction got its classification, is for review tooling.
 
 ## Purpose
 
