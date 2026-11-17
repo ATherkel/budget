@@ -5,7 +5,9 @@ type: architecture
 
 ## Purpose
 
-Render household financial information for phone and desktop browsers.
+Render household financial information for phone and desktop browsers. The
+dashboard is in Danish, supports keyboard use, and shows loading, empty,
+unavailable and request-failure states.
 
 ## Boundary
 
