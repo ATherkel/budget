@@ -298,10 +298,16 @@ def _render_detail(
         detail_report = HouseholdReports(store).spending_detail(
             context, request.subject, request.scope
         )
-    month_label = display.month_label(detail_report.context.month)
+    answered = detail_report.context
+    subject = detail_report.subject
+    month_label = display.month_label(answered.month)
     return _TEMPLATES.get_template("category.html").render(
         detail=detail_report,
         title=f"{detail_report.name}, {month_label}",
+        scope_urls={
+            scope: _detail_url(answered, subject.kind, subject.id, scope)
+            for scope in ("month", "year_to_date")
+        },
     )
 
 

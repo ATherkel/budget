@@ -7,6 +7,10 @@
     <h1 id="detail-title">{{ title }}</h1>
   </div>
 </div>
+<nav class="scope-switch" aria-label="Periode">
+  <a id="scope-month" href="{{ scope_urls['month'] }}"{% if detail.scope == "month" %} aria-current="page"{% endif %}>Måned</a>
+  <a id="scope-year-to-date" href="{{ scope_urls['year_to_date'] }}"{% if detail.scope == "year_to_date" %} aria-current="page"{% endif %}>År til dato</a>
+</nav>
 <section class="report-panel" aria-labelledby="detail-title">
 <dl class="summary">
   <div class="summary-figure"><dt>Udgifter</dt><dd id="detail-spending">{{ detail.spending | amount(detail.currency) }}</dd></div>
