@@ -13,11 +13,15 @@ from pathlib import Path
 from budget.dashboard.passphrase import set_passphrase
 from budget.gold import (
     GoldAccount,
+    GoldCategory,
+    GoldCategoryAllocation,
     GoldPublication,
     GoldRecords,
     GoldResult,
+    GoldTransaction,
     MonthlyBalanceSnapshot,
     ReportingMonth,
+    TransactionType,
 )
 from budget.gold.recipe import Recipe, RecipeImportRun
 from budget.gold.storage import migrate_gold
@@ -27,6 +31,19 @@ from budget.profiles import Profile, load_profile_file
 
 DEMO_ACCESS_TEXT = "budget-demo"
 DEFAULT_DEMO_PORT = 8765
+
+# Every demo month on Demo current, booked on the 1st so the current month has
+# them too: amount, text, type and category.
+_MONTHLY_ENTRIES: tuple[tuple[str, str, TransactionType, str], ...] = (
+    ("1700.00", "DEMO SALARY", "income", "salary"),
+    ("-900.00", "DEMO SUPERMARKET", "expense", "groceries"),
+    ("-650.00", "DEMO BAKERY", "expense", "groceries"),
+    ("50.00", "DEMO SUPERMARKET REFUND", "refund", "groceries"),
+)
+_CATEGORIES = (
+    GoldCategory("salary", "Salary", "income", "Income", "income"),
+    GoldCategory("groceries", "Groceries", "food", "Food", "expense"),
+)
 
 
 class DemoDirectoryExistsError(ValueError):
@@ -95,7 +112,46 @@ def _gold_records(accounts: tuple[Account, ...], today: date) -> GoldRecords:
         for account in gold_accounts
         for month in months
     )
-    return GoldRecords(accounts=gold_accounts, monthly_balances=balances)
+    entries = [
+        _entry(date(today.year, month, 1), month * 10 + sequence, entry)
+        for month in months
+        for sequence, entry in enumerate(_MONTHLY_ENTRIES)
+    ]
+    return GoldRecords(
+        accounts=gold_accounts,
+        monthly_balances=balances,
+        categories=_CATEGORIES,
+        transactions=tuple(transaction for transaction, _ in entries),
+        category_allocations=tuple(allocation for _, allocation in entries),
+    )
+
+
+def _entry(
+    booked: date, sequence: int, entry: tuple[str, str, TransactionType, str]
+) -> tuple[GoldTransaction, GoldCategoryAllocation]:
+    """Return one demo transaction on Demo current and its single allocation."""
+    amount, description, transaction_type, category_id = entry
+    transaction = GoldTransaction(
+        transaction_id=f"demo-{sequence}",
+        account_id="demo-current",
+        transaction_date=booked,
+        account_sequence=sequence,
+        amount=Decimal(amount),
+        description=description,
+        transaction_type=transaction_type,
+        transfer_group_id=None,
+        balance_after=None,
+        balance_check="missing_balance",
+    )
+    allocation = GoldCategoryAllocation(
+        allocation_id=f"{transaction.transaction_id}/{category_id}",
+        transaction_id=transaction.transaction_id,
+        account_id=transaction.account_id,
+        transaction_date=booked,
+        category_id=category_id,
+        amount=transaction.amount,
+    )
+    return transaction, allocation
 
 
 def _configuration(accounts: tuple[Account, ...]) -> ConfigurationSnapshot:

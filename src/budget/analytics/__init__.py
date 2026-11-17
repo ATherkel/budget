@@ -16,6 +16,8 @@ from budget.analytics.reports import (
     AccountMonthCoverage,
     AccountMonthStatus,
     CategorySpending,
+    DetailScope,
+    DetailSubject,
     InvalidSelectionError,
     MoneyInOut,
     MonthlyOverview,
@@ -27,6 +29,8 @@ from budget.analytics.reports import (
     SelectableAccount,
     SelectionOptions,
     SelectionRule,
+    SpendingDetail,
+    SpendingDetailRow,
 )
 
 __all__ = [
@@ -34,6 +38,8 @@ __all__ = [
     "AccountMonthCoverage",
     "AccountMonthStatus",
     "CategorySpending",
+    "DetailScope",
+    "DetailSubject",
     "HouseholdReports",
     "InvalidSelectionError",
     "MoneyInOut",
@@ -48,6 +54,8 @@ __all__ = [
     "SelectableAccount",
     "SelectionOptions",
     "SelectionRule",
+    "SpendingDetail",
+    "SpendingDetailRow",
     "monthly_overview",
     "selection_options",
 ]
