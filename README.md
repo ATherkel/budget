@@ -80,6 +80,7 @@ file may hold and where production lives.
 | `budget migrate` | Creates or upgrades the Bronze, Silver and Gold [stores](docs/architecture/operations.md#stores) |
 | `budget import` | Imports each export saved in `inbox\<account_id>\`, then rebuilds and publishes: [the monthly import](docs/architecture/operations.md#w1-the-monthly-import) |
 | `budget review` | Lists what needs a decision: [settling a review item](docs/architecture/operations.md#w2-settling-a-review-item) |
+| `budget suggest-rules` | Drafts a first `taxonomy.toml` and `rules.toml` from the bank's own categories: [suggest rules](docs/developers/manual-testing.md#suggest-rules) |
 | `budget find`, `budget decide` | Finds a transaction and records a manual decision about it: [commands](docs/architecture/operations.md#commands) |
 | `budget status` | Shows whether the figures are complete: [completeness outputs](docs/architecture/operations.md#completeness-outputs) |
 | `budget rebuild`, `budget undo` | Builds the stages again, or returns to the previous publication: [commands](docs/architecture/operations.md#commands) |

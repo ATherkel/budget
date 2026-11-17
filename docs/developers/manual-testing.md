@@ -249,6 +249,41 @@ lists each outcome line, and
 `uv run budget review` lists open review items and quarantined runs, and
 prints nothing when none are open.
 
+## Suggest rules
+
+`suggest-rules` turns the bank's own categories into a first draft of
+`taxonomy.toml` and `rules.toml`. It reads Silver and writes only the drafts.
+
+```powershell
+uv run budget suggest-rules
+```
+
+Expect one line per bank category pair with its transaction count and sum,
+`covered by <rule id>` where a rule already matches it, and a last
+`No bank category` line for transactions without one.
+
+Write the drafts to a scratch folder, then use them in place of your inputs:
+
+```powershell
+$drafts = "$env:TEMP\budget-drafts"
+uv run budget suggest-rules --out $drafts
+Copy-Item "$drafts\taxonomy-draft.toml" "$inputs\taxonomy.toml"
+Copy-Item "$drafts\rules-draft.toml" "$inputs\rules.toml"
+uv run budget check; uv run budget rebuild
+uv run budget review --kind unclassified
+```
+
+Expect `Wrote taxonomy-draft.toml and rules-draft.toml to <folder>`, then
+`No problems found.`, and far fewer unclassified items than before.
+[Clean up](#clean-up) puts your own inputs back.
+
+| Do | Expect |
+| --- | --- |
+| Run `--out $drafts` again | Refused with `3`; the existing drafts are named and left alone |
+| `--out $inputs` | Refused with `3`: drafts never go into `inputs` |
+
+Remove the scratch folder when done: `Remove-Item $drafts -Recurse`.
+
 ## Dashboard
 
 Your dev profile needs `[dashboard]` and a passphrase
