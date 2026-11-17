@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from datetime import date, datetime
 from decimal import Decimal
 
-from budget.analytics import InvalidSelectionError
+from budget.analytics import InvalidSelectionError, ReportCoverage
 from budget.gold import ReportingMonth
 from budget.timezone import COPENHAGEN
 
@@ -59,8 +59,14 @@ def selection_problems(error: InvalidSelectionError) -> list[str]:
         f"Kontoen {account_id} findes ikke i disse tal."
         for account_id in error.unknown_account_ids
     ]
+    if "no_accounts" in error.reasons:
+        problems.append("Vælg mindst én konto.")
+    if "mixed_currencies" in error.reasons:
+        problems.append("De valgte konti har forskellig valuta.")
     if "month_out_of_range" in error.reasons:
         problems.append("Den valgte måned ligger uden for de måneder, der kan vælges.")
+    if "unknown_category" in error.reasons:
+        problems.append("Kategorien findes ikke i disse tal.")
     return problems
 
 
@@ -81,6 +87,41 @@ def parse_month(value: str) -> ReportingMonth:
 def month_label(month: ReportingMonth) -> str:
     """Return a month as a Danish reader reads it, such as `juni 2026`."""
     return f"{_MONTH_NAMES[month.month - 1]} {month.year}"
+
+
+def period_label(first: ReportingMonth, last: ReportingMonth) -> str:
+    """Return a period within one year: `januar 2026`, or January to February.
+
+    A span joins its months with an en dash, as Danish writes a range.
+    """
+    if first == last:
+        return month_label(last)
+    return f"{_MONTH_NAMES[first.month - 1]}\N{EN DASH}{month_label(last)}"
+
+
+def incomplete_by_account(coverage: ReportCoverage) -> list[str]:
+    """Return each account with incomplete months, as `Konto (januar 2026, …)`.
+
+    Months outside an account's history are never missing anything.
+    """
+    names: dict[str, str] = {}
+    months: dict[str, list[str]] = {}
+    for account_month in coverage.account_months:
+        if account_month.status != "outside_history":
+            names[account_month.account_id] = account_month.display_name
+            months.setdefault(account_month.account_id, []).append(
+                month_label(account_month.month)
+            )
+    return [
+        f"{names[account_id]} ({', '.join(labels)})"
+        for account_id, labels in months.items()
+    ]
+
+
+def danish_list(items: list[str]) -> str:
+    """Return items as Danish lists them: `A`, `A og B`, `A, B og C`."""
+    *rest, last = items or [""]
+    return f"{', '.join(rest)} og {last}" if rest else last
 
 
 def months_between(
