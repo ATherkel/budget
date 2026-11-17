@@ -85,6 +85,16 @@ def month_label(month: ReportingMonth) -> str:
     return f"{_MONTH_NAMES[month.month - 1]} {month.year}"
 
 
+def period_label(first: ReportingMonth, last: ReportingMonth) -> str:
+    """Return a period within one year: `januar 2026`, or January to February.
+
+    A span joins its months with an en dash, as Danish writes a range.
+    """
+    if first == last:
+        return month_label(last)
+    return f"{_MONTH_NAMES[first.month - 1]}\N{EN DASH}{month_label(last)}"
+
+
 def incomplete_by_account(coverage: ReportCoverage) -> list[str]:
     """Return each account with incomplete months, as `Konto (januar 2026, …)`.
 
