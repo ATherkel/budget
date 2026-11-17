@@ -160,7 +160,7 @@ application touches.
 | Written by | Pipeline commands only | Pipeline commands; experiments allowed | The test run |
 | Lifetime | Permanent | Until the next `dev refresh` | Created and destroyed by each run |
 | Migrations | Backup first, then migrate | Rehearsed here before production | From empty, every run |
-| Dashboard | Home network, with a passphrase | This PC only | Not served; tested in-process |
+| Dashboard | Home network or a [private tailnet](#away-from-home), with a passphrase | This PC only | Not served; tested in-process |
 
 ### Selecting a profile
 
@@ -1050,6 +1050,32 @@ presented to Bronze as a new `repeat` run, as the Bronze rules require.
   another one.
 - It runs while `budget serve` runs. Starting it with Windows is an optional
   Task Scheduler entry.
+
+### Away from home
+
+The household's own devices reach the dashboard over a private
+[Tailscale](https://tailscale.com) network, a tailnet. Tailscale gives the PC
+an HTTPS address that only devices signed in to the tailnet can open; the
+passphrase still guards every page.
+
+1. Install Tailscale on the PC and on each phone, and sign in on all of them
+   with the household's Tailscale account.
+2. Run `budget serve`, then `tailscale serve 8750`. Tailscale prints the
+   address, such as `https://<pc>.<tailnet>.ts.net`.
+3. Open that address on the phone and log in.
+
+Tailscale forwards to the port on `127.0.0.1`, the default `bind`. A profile
+that binds another address or port gives Tailscale the same:
+`tailscale serve http://<bind>:<port>`. To try it first, run `budget demo` and
+`tailscale serve 8765`, the demo's port.
+
+- **Never** port-forward the dashboard, tunnel it through a service such as
+  ngrok, or use `tailscale funnel`: each one puts it on the public internet.
+- Only the household's own devices join the tailnet.
+- Tailscale's coordination server, run in the US, learns which devices are in
+  the tailnet but not the dashboard's traffic, which is encrypted between the
+  devices. The household accepts that. Headscale, a self-hosted coordination
+  server, is the alternative if it stops being acceptable.
 
 ## Logging
 
