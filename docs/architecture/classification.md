@@ -3,17 +3,15 @@ type: architecture
 ---
 # Gold Classification
 
-Status: accepted (ADR-011, ADR-012). The fields it produces are part of Gold
-contract 0.2, which the readiness review (issue #12) accepted.
-
 ## Purpose
 
 Classification gives every Gold transaction a `transaction_type`, a category
 allocation when the type needs one, and a `transfer_group_id` when it is a
-paired transfer. A classified transaction has exactly one allocation, for its
-whole amount ([ADR-008](../decisions/ADR-008-category-allocation-grain.md)).
-The fields are defined in the [Gold contract](gold-contract.md). The decisions
-behind this policy are
+paired transfer. Household rules and manual decisions drive it; transfers pair
+only on evidence from both legs. A classified transaction has exactly one
+allocation, for its whole amount
+([ADR-008](../decisions/ADR-008-category-allocation-grain.md)). The fields are
+defined in the [Gold contract](gold-contract.md); the policy's reasons are in
 [ADR-011](../decisions/ADR-011-classification-precedence.md) and
 [ADR-012](../decisions/ADR-012-transfer-evidence.md).
 
@@ -186,8 +184,7 @@ An unpaired leg whose rule result is a transfer claim is `unknown`, with an
 - `no-candidate`: otherwise.
 
 A transfer that loses a fee, such as 1,000.00 out and 995.00 in, never pairs,
-because the amounts do not cancel. Each leg is classified on its own until
-splits exist ([issue #47](https://github.com/ATherkel/budget/issues/47)).
+because the amounts do not cancel. Each leg is classified on its own.
 
 A **one-sided transfer**, whose other leg can never be in Gold, comes only
 from a manual decision naming the counterpart Gold account. The transaction
@@ -211,8 +208,7 @@ A manual decision is a recorded human ruling. Classification uses three kinds:
 | `one-sided-transfer` | one transaction and a counterpart account | `transfer` with no group | the target is missing, or the transaction date falls inside the counterpart's managed period |
 
 - A decision targets `transaction_id`s, which survive re-imports, overlapping
-  exports, and rebuilds ([issue #5](https://github.com/ATherkel/budget/issues/5)).
-  When the bank rewords a transaction's text, Silver's *same transaction*
+  exports, and rebuilds. When the bank rewords a transaction's text, Silver's *same transaction*
   decision keeps its identifier.
 - Each decision has a durable `decision_id` and a short reason.
 - Decisions are entries in an append-only decision log. A decision is never
@@ -281,15 +277,9 @@ anything is published, and the error lists every offending entry:
 Problems that depend on the data become review items. Gold derives them afresh
 on every build, so an item exists exactly while its cause does. A
 `review_item_id` derives from the kind and the transaction or decision
-identifiers involved, so it is stable across rebuilds.
-
-Each build stores its review items atomically with the publication. `budget
-review` reads the current publication through one SQLite snapshot, so a
-concurrent publish or retention cleanup cannot combine two results or make the
-selected one disappear mid-read. The stored target and rule identifier lists
-keep their order. A `decision-not-applicable` item names its decision
-identifier and any targets still present; a wholly missing target is not
-invented into the publication.
+identifiers involved, so it is stable across rebuilds. Each build stores its
+review items with its publication
+([`publications.md`](publications.md)).
 
 | Kind | Raised when | Transaction is | Settled by |
 | --- | --- | --- | --- |
@@ -300,45 +290,28 @@ invented into the publication.
 | `unmatched-transfer` | a transfer claim finds no pair | `unknown` | the next import, a `pair`, `one-sided-transfer`, or `classify` decision, or a rule fix |
 | `decision-not-applicable` | a decision's target or conditions no longer hold | classified as if the decision did not exist | a decision that supersedes or retracts it |
 
-Silver's import review items (issue #5) are separate.
+A zero-amount target can only be settled as an `adjustment`, never with a
+category. Silver's import review items are separate.
 
 ### What the review workflow shows
 
-After each Gold build, the CLI review workflow
-([`operations.md`](operations.md)) shows:
+The CLI review workflow ([`operations.md`](operations.md)) shows, from the
+selected publication:
 
 - a summary: transactions by classification source; unclassified money in,
   money out, and count per account and month; and open review items by kind;
-- each open review item with what a person needs to settle it: the
-  transactions (account, transaction date, amount, description, and bank
-  category label), the rules or candidate legs involved, and the decision
-  kinds that would settle it;
+- each open review item with its transactions, the rules or candidate legs
+  involved, and the decision kinds that would settle it;
 - every pair formed on a date gap, and every pair where a leg's own rule
   result is not a transfer claim, so a coincidental match can be spotted and
   undone with a `classify` decision.
 
-Each target's account, transaction date, amount with currency, description,
-and bank category label comes from the same selected publication as its review
-item. The bank label is optional privileged lineage persisted with the target.
-A publication built before that lineage was retained shows the label as
-unavailable; review never fills the blank from current Silver. Account
-filtering retains every target of a matching item. Control characters in free
-text are escaped so a published description or label cannot forge another
-terminal line.
-
-The item's settlement guidance follows its kind. A conflict needs a rule
-priority or narrower-rule change, alternatively a classification. An ambiguous
-transfer can be paired only when its intended legs still cancel; otherwise its
-targets can be classified. An unmatched transfer can wait for an import or be
-paired when an opposite-amount counterpart appears, can be one-sided only when
-its counterpart is outside that account's managed period, or can be classified.
-No zero-amount target can use a category decision, including when it is
-unclassified or in a rule conflict; adjustment is its only classification
-route. Nonzero targets in the same item retain the category-or-adjustment
-choice. A non-applicable decision needs a superseding decision or a
-retraction, including when every target is missing.
-
-🤖 Added by Codex (DeepSeek V4.1 Flash)
+It reads one publication through one SQLite snapshot, so a concurrent publish
+or retention cleanup cannot mix two results. Every target's details come from
+that publication: a bank label it never stored shows as unavailable, never
+filled from current Silver, and a missing target is never invented. Filtering
+by account keeps every target of a matching item. Control characters in free
+text are escaped, so a description cannot forge a terminal line.
 
 This output contains financial values. It goes to the operator's terminal or a
 private report, never to routine logs.
@@ -422,7 +395,3 @@ A zero-amount `INTEREST ADJ` matched by `r-interest` is `unknown`, with a
 | T2 | Move `household-goods` from `home` to `housing` | The `housing` and `home` rollups restate for every month. |
 | T3 | Split: add `furniture` to `home`, and `r-furniture` (priority 10, text contains `IKEA`, amount at most −1,000.00, assigns `furniture`) | IKEA purchases of 1,000.00 or more move to `furniture` in every month. Scenario 10's −250.00 stays in `household-goods`. Scenario 7 stays `gifts`, because `d-0001` beats every rule. |
 | T4 | Delete `gifts` while `d-0001` references it | Configuration error naming `d-0001`. Nothing is published. |
-
-## Left to Other Tickets
-
-- **Issue #47:** pairing transfers that lose a fee, once splits exist.
