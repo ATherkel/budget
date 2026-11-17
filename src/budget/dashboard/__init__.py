@@ -8,7 +8,7 @@ from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Self
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Query, Request
@@ -16,7 +16,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, PackageLoader, select_autoescape
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from budget.analytics import (
     DetailScope,
@@ -76,6 +76,14 @@ class DetailAddress(BaseModel):
     category: str | None = None
     group: str | None = None
     scope: DetailScope = "month"
+
+    @model_validator(mode="after")
+    def _names_one_subject(self) -> Self:
+        """Refuse an address naming no subject, or both a Category and a group."""
+        if (self.category is None) == (self.group is None):
+            message = "name exactly one of category and group"
+            raise ValueError(message)
+        return self
 
     def asked(self) -> DetailRequest:
         """Return what the address asks for beside its pin."""
