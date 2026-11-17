@@ -18,6 +18,8 @@ from budget.analytics import (
     HouseholdReports,
     InvalidSelectionError,
     ReportContext,
+    SpendingDetail,
+    SpendingDetailRow,
 )
 from budget.gold import (
     GoldCategoryAllocation,
@@ -69,11 +71,29 @@ def test_february_groceries_lists_the_purchase_and_its_refund(
     assert detail.spending == Decimal("520.00")
 
 
-def _grocery(account_id: str, seq: int, amount: str) -> GoldTransaction:
+def test_a_row_names_its_date_text_account_and_category_but_no_identifiers(
+    reports: HouseholdReports,
+) -> None:
+    detail = reports.spending_detail(_context(2), _category("groceries"), "month")
+
+    assert detail.rows[0] == SpendingDetailRow(
+        transaction_date=date(2026, 2, 12),
+        description="GROCERIES",
+        account_id="joint-current",
+        account_display_name="Joint current",
+        category_id="groceries",
+        category_name="Groceries",
+        spending=Decimal("-120.00"),
+    )
+
+
+def _grocery(
+    account_id: str, seq: int, amount: str, booked: date = date(2026, 2, 12)
+) -> GoldTransaction:
     return GoldTransaction(
         transaction_id=f"extra-{account_id}-{seq}",
         account_id=account_id,
-        transaction_date=date(2026, 2, 12),
+        transaction_date=booked,
         account_sequence=seq,
         amount=Decimal(amount),
         description="GROCERIES",
@@ -84,13 +104,10 @@ def _grocery(account_id: str, seq: int, amount: str) -> GoldTransaction:
     )
 
 
-def test_same_day_rows_run_by_account_then_booking_sequence_descending(
-    tmp_path: Path,
-) -> None:
-    extra = (
-        _grocery("joint-current", 12, "-11.00"),
-        _grocery("joint-savings", 3, "-22.00"),
-    )
+def _groceries_with(
+    tmp_path: Path, extra: tuple[GoldTransaction, ...]
+) -> SpendingDetail:
+    """Return February's groceries detail with `extra` purchases added."""
     records = replace(
         RECORDS,
         transactions=(*RECORDS.transactions, *extra),
@@ -113,15 +130,41 @@ def test_same_day_rows_run_by_account_then_booking_sequence_descending(
     migrate_gold(profile)
     with GoldStore(profile) as store:
         store.publish(GoldResult(PUBLICATION, records), RECIPE, CONFIGURATION)
-        detail = HouseholdReports(store).spending_detail(
+        return HouseholdReports(store).spending_detail(
             _context(2), _category("groceries"), "month"
         )
+
+
+def test_same_day_rows_run_by_account_then_booking_sequence_descending(
+    tmp_path: Path,
+) -> None:
+    detail = _groceries_with(
+        tmp_path,
+        (
+            _grocery("joint-current", 12, "-11.00"),
+            _grocery("joint-savings", 3, "-22.00"),
+        ),
+    )
 
     assert [(row.account_id, row.spending) for row in detail.rows] == [
         ("joint-savings", Decimal("22.00")),
         ("joint-current", Decimal("11.00")),
         ("joint-current", Decimal("-120.00")),
         ("joint-current", Decimal("640.00")),
+    ]
+
+
+def test_an_older_row_comes_last_whatever_its_account(tmp_path: Path) -> None:
+    # 2026-02-01 on Joint savings is older than both February groceries rows on
+    # Joint current, so newest-first puts it last despite its account.
+    detail = _groceries_with(
+        tmp_path, (_grocery("joint-savings", 3, "-22.00", date(2026, 2, 1)),)
+    )
+
+    assert [(row.account_id, row.spending) for row in detail.rows] == [
+        ("joint-current", Decimal("-120.00")),
+        ("joint-current", Decimal("640.00")),
+        ("joint-savings", Decimal("22.00")),
     ]
 
 
@@ -138,6 +181,19 @@ def test_april_housing_year_to_date_lists_every_housing_allocation(
         ("RENT", Decimal("8500.00")),
     ]
     assert detail.spending == Decimal("18000.00")
+    assert (
+        detail.name,
+        detail.group_id,
+        detail.group_name,
+        detail.first_month,
+        detail.last_month,
+    ) == (
+        "Housing",
+        "housing",
+        "Housing",
+        ReportingMonth(2026, 1),
+        ReportingMonth(2026, 4),
+    )
 
 
 def test_february_groceries_year_to_date_adds_the_januarys_purchase(
@@ -198,6 +254,67 @@ def test_a_month_without_data_has_no_spending_and_no_rows(
 
     assert (detail.spending, detail.rows) == (None, ())
     assert detail.coverage.status == "no_data"
+    assert detail.provisional is not None
+    assert detail.provisional.reasons == {"current_month", "late_bookings_unsettled"}
+
+
+def test_a_year_to_date_gathers_unsettled_months_before_the_selected_one(
+    reports: HouseholdReports,
+) -> None:
+    # June, reference date 2026-06-03: May is unsettled as well as June, and
+    # the earlier months' evidence keeps the year to date partial.
+    detail = reports.spending_detail(
+        _context(6, date(2026, 6, 3)), _category("groceries"), "year_to_date"
+    )
+
+    assert detail.provisional is not None
+    assert [(m.account_id, m.month) for m in detail.provisional.unsettled] == [
+        ("joint-current", ReportingMonth(2026, 5)),
+        ("joint-current", ReportingMonth(2026, 6)),
+        ("joint-savings", ReportingMonth(2026, 5)),
+        ("joint-savings", ReportingMonth(2026, 6)),
+    ]
+    assert (detail.coverage.status, detail.spending) == ("partial", Decimal("1362.50"))
+
+
+@pytest.mark.parametrize(
+    ("month", "subject"),
+    [
+        (month, subject)
+        for month in range(1, 6)
+        for subject in (
+            DetailSubject("category", "groceries"),
+            DetailSubject("category", "rent"),
+            DetailSubject("category", "utilities"),
+            DetailSubject("group", "housing"),
+            DetailSubject("group", "food"),
+        )
+    ],
+)
+def test_a_month_detail_reconciles_to_the_overview(
+    reports: HouseholdReports, month: int, subject: DetailSubject
+) -> None:
+    detail = reports.spending_detail(_context(month), subject, "month")
+    overview = reports.monthly_overview(_context(month))
+
+    in_overview = [
+        row.spending
+        for row in overview.categories
+        if subject.id
+        == (row.category_id if subject.kind == "category" else row.group_id)
+    ]
+    assert detail.spending == sum(in_overview, Decimal("0.00"))
+
+
+def test_an_unknown_subject_is_named_beside_the_contexts_broken_rules(
+    reports: HouseholdReports,
+) -> None:
+    empty = replace(_context(2), account_ids=frozenset())
+
+    with pytest.raises(InvalidSelectionError) as raised:
+        reports.spending_detail(empty, DetailSubject("category", "homeware"), "month")
+
+    assert raised.value.reasons == {"no_accounts", "unknown_category"}
 
 
 @pytest.mark.parametrize(
