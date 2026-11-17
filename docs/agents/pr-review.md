@@ -18,6 +18,9 @@ rationale is in issue #362.
   accepted). Do not silently downgrade a required finding or weaken its
   acceptance test. Record evidence for reclassification; disputed findings or
   changes to accepted behavior go to the owner before dependent work continues.
+- **Docs**: content restated outside its owner doc is a finding. The fix is
+  a link to the owner section, as
+  [Writing docs](../../AGENTS.md#writing-docs) requires.
 - **Fix in place**: a required finding is fixed in the PR that introduced it,
   then carried up through the branches stacked on it. A later PR never makes
   an earlier one correct; after merge, fix it in a follow-up PR.
