@@ -237,6 +237,15 @@ One transaction replaces `SilverBuild.result`, `SilverBuild.currencies`, the
 provenance value, and a completion marker. Readers take one SQLite snapshot,
 so they cannot combine rows from different builds.
 
+`SilverStore` is the seam to `silver.db`. `replace(result, currencies=...)`
+writes one complete result, and a replacement that fails leaves the previous
+one readable. `read()` returns the result with `Decimal` money, in the order
+the build produced. A pipeline command calls
+`rebuild_silver(profile, inputs=SilverBuildInputs(...))`, which holds the
+profile's writer lock, runs the pure `budget.silver.build` and replaces the
+stored result. A command that already holds the lock passes its `WriterLock`
+in place of the `Profile`, so one command keeps one lock.
+
 No completion marker means Silver has never been built. A direct replacement
 without provenance is complete but explicitly unknown. A migrated
 pre-provenance result is cleared because its old inputs and producer cannot be

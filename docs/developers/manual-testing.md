@@ -235,14 +235,54 @@ uv run budget import --ranges $ranges
 Expect `[1] <account>  stored`, the Silver line, then Gold published, and the
 file gone from the inbox. With no fresh export from the bank, copy an archived
 one from `$exports\<account_id>\`: it is stored again and Gold reports
-unchanged. The README's
-[import outcomes](../../README.md#importing-the-inbox-budget-import) list each
-line and exit status.
+unchanged.
+[The monthly import](../architecture/operations.md#w1-the-monthly-import)
+lists each outcome line, and
+[exit codes](../architecture/operations.md#exit-codes) each exit status.
+
+| Do | Expect |
+| --- | --- |
+| With an export whose name carries the account number in the inbox: `$f = Get-ChildItem "$inbox\*\*.csv" \| Select-Object -First 1; $lock = [IO.File]::Open($f.FullName,'Open','Read','None'); uv run budget import --ranges $ranges; $lock.Close(); $no = [regex]::Match($f.Name,'\d{10}').Value; Select-String -Path "$stores\logs\commands*.jsonl" -SimpleMatch -Pattern $f.Name, $no, $f.Directory.Name` | `[1] <account>  unreadable`, exit 3, the file still in the inbox; `Select-String` prints nothing |
 
 ## Review
 
 `uv run budget review` lists open review items and quarantined runs, and
 prints nothing when none are open.
+
+## Suggest rules
+
+`suggest-rules` turns the bank's own categories into a first draft of
+`taxonomy.toml` and `rules.toml`. It reads Silver and writes only the drafts.
+
+```powershell
+uv run budget suggest-rules
+```
+
+Expect one line per bank category pair with its transaction count and sum,
+`covered by <rule id>` where a rule already matches it, and a last
+`No bank category` line for transactions without one.
+
+Write the drafts to a scratch folder, then use them in place of your inputs:
+
+```powershell
+$drafts = "$env:TEMP\budget-drafts"
+uv run budget suggest-rules --out $drafts
+Copy-Item "$drafts\taxonomy-draft.toml" "$inputs\taxonomy.toml"
+Copy-Item "$drafts\rules-draft.toml" "$inputs\rules.toml"
+uv run budget check; uv run budget rebuild
+uv run budget review --kind unclassified
+```
+
+Expect `Wrote taxonomy-draft.toml and rules-draft.toml to <folder>`, then
+`No problems found.`, and far fewer unclassified items than before.
+[Clean up](#clean-up) puts your own inputs back.
+
+| Do | Expect |
+| --- | --- |
+| Run `--out $drafts` again | Refused with `3`; the existing drafts are named and left alone |
+| `--out $inputs` | Refused with `3`: drafts never go into `inputs` |
+
+Remove the scratch folder when done: `Remove-Item $drafts -Recurse`.
 
 ## Dashboard
 
@@ -255,8 +295,20 @@ Click a category to open its detail. Its figure matches the overview, its
 rows add up to it, and a refund shows as a negative amount. Try "År til dato",
 "Hele <gruppe>", and back and forward; the pinned accounts and month stay.
 
-Without your profile, `uv run budget demo` serves synthetic data; see the
-README's [dashboard section](../../README.md#the-dashboard-budget-serve).
+Without your profile, `demo` serves synthetic data from a new folder:
+
+```powershell
+$demo = Join-Path $env:TEMP ("budget-demo-" + [guid]::NewGuid().ToString("N"))
+uv run budget demo --directory $demo --port 8765
+```
+
+Open `http://127.0.0.1:8765` and log in with `budget-demo`. Expect two checked
+accounts, `Demo current` and `Demo savings`, the current month and the monthly
+overview. Every month Demo current has a salary and Groceries of 1.500,00 kr.
+(two purchases less a refund); click Groceries to try the detail. Nothing is
+unclassified, so "Ukategoriseret" shows `0,00 kr.` for "Ind" and "Ud". Stop
+it with `Ctrl+C`, then run
+`Remove-Item -LiteralPath $demo -Recurse`.
 
 ## Restore and dev refresh
 

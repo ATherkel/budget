@@ -411,6 +411,11 @@ class GoldPublications(Protocol):
     def open(self, publication_id: int) -> GoldRepository: ...
 ```
 
+`GoldStore` in `budget.gold.store` implements it. A build takes its
+publication's id from `next_publication_id()` and stores the result with
+`publish(result, recipe, configuration)`, which keeps the configuration's
+canonical text once per fingerprint.
+
 `GoldRepository` gains `publication() -> GoldPublication`. Every read through
 one `GoldRepository` comes from its one publication. The dashboard opens the
 current publication for each page and carries that `publication_id` in the
