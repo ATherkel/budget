@@ -311,6 +311,12 @@ def _render_detail(
         group_url=_detail_url(
             answered, "group", detail_report.group_id, detail_report.scope
         ),
+        overview_url=_pinned_url(
+            answered.publication_id,
+            answered.reference_date,
+            answered.account_ids,
+            display.month_value(answered.month),
+        ),
     )
 
 
