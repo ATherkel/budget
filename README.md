@@ -480,6 +480,9 @@ newer build exists, or a selection cannot be shown. The dashboard shell is
 responsive on phones and desktop browsers, supports keyboard use, and exposes
 loading, empty, unavailable and request-failure states. The monthly overview
 shows income, expenses, money left, and uncategorized inflows and outflows.
+Click a category to see the entries behind its figure, for the month or the
+year to date, or for its whole group
+([report contract](docs/architecture/report-contract.md#spendingdetail)).
 
 Gold migration and publication storage are implemented. A profile's dashboard
 still shows the shell until a publication exists; `budget serve` never creates
@@ -520,9 +523,10 @@ sets a demo-only login, and starts the real `budget serve` path on
 `http://127.0.0.1:8765`. It never reads or changes a profile outside that
 folder and refuses to reuse an existing target. Open the address, sign in with
 `budget-demo`, and expect two checked demo accounts (`Demo current` and
-`Demo savings`), the current month, and the monthly overview. The demo publishes
-balances without transactions, so its transaction-based summary figures are
-known zeros, including `0,00 kr.` for both Ind and Ud under Ukategoriseret.
+`Demo savings`), the current month, and the monthly overview. Every month
+Demo current has a salary and Groceries of 1.500,00 kr. (two purchases less a
+refund); click Groceries to try the detail. Nothing is unclassified, so
+Ukategoriseret shows `0,00 kr.` for both Ind and Ud.
 
 Stop the foreground command with `Ctrl+C`, then remove only the isolated demo
 folder:

@@ -251,6 +251,10 @@ Your dev profile needs `[dashboard]` and a passphrase
 it prints and log in. Check the account picker, the month picker and the
 monthly overview against the current publication.
 
+Click a category to open its detail. Its figure matches the overview, its
+rows add up to it, and a refund shows as a negative amount. Try År til dato,
+"Hele <gruppe>", and back and forward; the pinned accounts and month stay.
+
 Without your profile, `uv run budget demo` serves synthetic data; see the
 README's [dashboard section](../../README.md#the-dashboard-budget-serve).
 
