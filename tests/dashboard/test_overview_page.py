@@ -202,6 +202,16 @@ def test_each_account_offers_a_link_to_the_same_page_with_only_that_account(
     )
 
 
+def test_a_screen_reader_hears_which_account_each_kun_link_picks(
+    client: TestClient,
+) -> None:
+    # Listed on their own, the links would all read "kun".
+    page = read(client.get("/").text)
+
+    described_by = page.attributes(f"only-{SAVINGS}").get("aria-describedby", "")
+    assert page.text_of(described_by) == "Joint savings"
+
+
 def test_the_account_list_offers_links_to_every_account_and_to_none(
     client: TestClient,
 ) -> None:
