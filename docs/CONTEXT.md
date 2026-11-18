@@ -13,18 +13,17 @@ and links to the doc that owns its rules.
 ### Accounts and boundary
 
 **Reporting boundary**:
-The imported accounts (`ownership_scope` `household` or `person`). Only they
-can hold a Transfer; money to or from any other account, a member's unimported
-one included, is income or expense.
-_Avoid_: Household accounts (ambiguous with `ownership_scope=household`),
+The imported accounts, whoever their Owner. Only they can hold a Transfer;
+money to or from any other account, a member's unimported one included, is
+income or expense.
+_Avoid_: Household accounts (ambiguous with the household as an Owner),
 transfer-eligible account (same set)
 
 **Owner**:
 Who an imported account belongs to, from the household's declared list: a
 member, the household in common, or the children
 ([`account.md`](domains/account.md)). Every account has exactly one owner.
-_Avoid_: Ownership scope (the coarser `household` or `person` split it
-replaces), holder
+_Avoid_: Ownership scope (a coarser `household` or `person` split), holder
 
 **Managed period**:
 The reporting months an account is part of the household's history: from its

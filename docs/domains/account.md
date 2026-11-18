@@ -14,7 +14,6 @@ Required attributes:
 - display name
 - account type (`current`, `savings`, `credit`, `investment`, or `other`)
 - currency
-- ownership scope (`household` or `person`)
 - owner: one of the household's declared owners, such as a member or the
   household in common ([ADR-021](../decisions/ADR-021-outlays-and-account-owners.md))
 - closing date, when the account has closed

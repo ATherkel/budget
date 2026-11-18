@@ -48,11 +48,23 @@ current household interpretation.
 | `account_id` | string | Yes | Durable, household-assigned identifier. Never a bank account number or other source identifier. |
 | `display_name` | string | Yes | Household-facing name. |
 | `account_type` | `AccountType` | Yes | `current` or `savings`. |
-| `ownership_scope` | `OwnershipScope` | Yes | `household` or `person`. |
+| `owner_id` | string | Yes | The `GoldOwner` the account belongs to. `legacy-unrecorded` on an account a publication stored before owners were recorded; a rebuild replaces it. |
 | `currency` | ISO 4217 string | Yes | Currency of every amount and balance on this account. `DKK` in the first release. |
 | `closed_on` | `date`/null | No | Date the account closed; null while open. Ends the account's managed period. |
 | `coverage_start` | `date`/null | No | First day of the account's earliest [evidence range](silver-layer.md#evidence-ranges). Null when the account has no admitted import run. |
 | `evidence_through` | `date`/null | No | Last day of the account's latest evidence range, never derived from an export date. Null when no export of the account has been imported. Days between the two dates can still fall in a gap between ranges. |
+
+### `GoldOwner`
+
+One row per owner the household declares in `accounts.toml`
+([Owner](../CONTEXT.md#accounts-and-boundary)). Type 1. `GoldRepository.owners()`
+returns them in display order.
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `owner_id` | string | Yes | Durable, household-assigned identifier. |
+| `display_name` | string | Yes | Household-facing name. |
+| `display_order` | int | Yes | Position in the household's declaration, counting from 1. |
 
 ### `GoldCategory`
 
@@ -212,6 +224,8 @@ class GoldRepository(Protocol):
     def publication(self) -> GoldPublication: ...
 
     def accounts(self) -> Sequence[GoldAccount]: ...
+
+    def owners(self) -> Sequence[GoldOwner]: ...
 
     def categories(self) -> Sequence[GoldCategory]: ...
 
