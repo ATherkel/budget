@@ -98,6 +98,7 @@ _FIELDS: Mapping[str, FieldRule] = MappingProxyType(
         "closed_on": FieldRule(
             is_date, "must be a date such as 2027-06-30", required=False
         ),
+        "owner": FieldRule(is_text, "must be a non-empty string", required=False),
     }
 )
 
@@ -171,13 +172,14 @@ def _account(account_id: str, entry: Mapping[str, Any]) -> Account:
         source_format=entry["source_format"],
         bank_account_number=entry.get("bank_account_number"),
         closed_on=entry.get("closed_on"),
+        owner=entry.get("owner"),
     )
 
 
 def load_accounts(profile: Profile) -> Mapping[str, Account]:
     """Load and validate the profile's `accounts.toml`, keyed by account ID."""
     document = read_document(profile.accounts_file, ACCOUNTS_FILE_NAME)
-    problems = unknown_top_level_keys(document, ACCOUNTS_FILE_NAME, ("account",))
+    problems = unknown_top_level_keys(document, ACCOUNTS_FILE_NAME, ("account", "owners"))
     entries, shape_problems = keyed_tables(document, ACCOUNTS_FILE_NAME, "account")
     problems.extend(shape_problems)
     for account_id, entry in entries.items():
