@@ -2,6 +2,8 @@
 """Public Gold diagnostics for Kontrol."""
 
 from collections.abc import Sequence
+from datetime import date
+from typing import Final
 
 from budget.analytics.measures import ZERO
 from budget.analytics.overview import (
@@ -14,6 +16,7 @@ from budget.analytics.reports import (
     Diagnostics,
     MoneyInOut,
     ReportContext,
+    TransferSummary,
 )
 from budget.analytics.trust import trust
 from budget.gold import (
@@ -23,6 +26,8 @@ from budget.gold import (
     first_day,
     last_day,
 )
+
+_TRANSFER_PAIR_LEGS: Final = 2
 
 
 def _money_in_out(
@@ -39,6 +44,46 @@ def _money_in_out(
         money_in=sum((amount for amount in of_type if amount > 0), ZERO),
         money_out=sum((amount for amount in of_type if amount < 0), ZERO),
         count=len(of_type),
+    )
+
+
+def _transfer_summary(
+    gold: GoldRepository,
+    selected: Sequence[GoldTransaction],
+) -> TransferSummary:
+    """Count selected Transfer legs and their unique public pairings."""
+    transfers = [
+        transaction
+        for transaction in selected
+        if transaction.transaction_type == "transfer"
+    ]
+    grouped: dict[str, int] = {}
+    for transaction in gold.transactions(
+        start_date=date.min,
+        end_date=date.max,
+        account_ids=None,
+    ):
+        if transaction.transfer_group_id is not None:
+            grouped[transaction.transfer_group_id] = (
+                grouped.get(transaction.transfer_group_id, 0) + 1
+            )
+    paired = sum(
+        transaction.transfer_group_id is not None
+        and grouped.get(transaction.transfer_group_id, 0) == _TRANSFER_PAIR_LEGS
+        for transaction in transfers
+    )
+    return TransferSummary(
+        money_in=sum(
+            (transaction.amount for transaction in transfers if transaction.amount > 0),
+            ZERO,
+        ),
+        money_out=sum(
+            (transaction.amount for transaction in transfers if transaction.amount < 0),
+            ZERO,
+        ),
+        count=len(transfers),
+        paired_count=paired,
+        one_sided_count=len(transfers) - paired,
     )
 
 
@@ -74,6 +119,6 @@ def diagnostics(
         provisional=judged.provisional,
         unclassified=(_money_in_out(transactions, "unknown") if known else None),
         adjustments=(_money_in_out(transactions, "adjustment") if known else None),
-        transfers=None,
+        transfers=_transfer_summary(gold, transactions) if known else None,
         reconciliations=(),
     )
