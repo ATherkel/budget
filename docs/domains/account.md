@@ -15,6 +15,8 @@ Required attributes:
 - account type (`current`, `savings`, `credit`, `investment`, or `other`)
 - currency
 - ownership scope (`household` or `person`)
+- owner: one of the household's declared owners, such as a member or the
+  household in common ([ADR-021](../decisions/ADR-021-outlays-and-account-owners.md))
 - closing date, when the account has closed
 
 Sensitive identifiers such as full IBANs are stored only when needed and are
@@ -37,8 +39,9 @@ one between a shared and an individually-owned account.
   types stay reserved: a `credit`, `investment`, or `other` account is rejected
   until a reporting policy for it exists, which preserves the extension point
   for later debt support.
-- There is no account hierarchy and no person dimension. `account_type` is
-  the only grouping, and the display name can say whose account it is.
+- There is no account hierarchy. Accounts group by `account_type` and by
+  owner. The household declares its owners once, each with a display name, in
+  the order reports show them, and every account names one of them.
 - An account's managed period starts with its first booked transaction and
   ends in the month of its closing date. Reports do not show gaps for months
   outside it.

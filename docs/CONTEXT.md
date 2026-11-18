@@ -19,6 +19,13 @@ one included, is income or expense.
 _Avoid_: Household accounts (ambiguous with `ownership_scope=household`),
 transfer-eligible account (same set)
 
+**Owner**:
+Who an imported account belongs to, from the household's declared list: a
+member, the household in common, or the children
+([`account.md`](domains/account.md)). Every account has exactly one owner.
+_Avoid_: Ownership scope (the coarser `household` or `person` split it
+replaces), holder
+
 **Managed period**:
 The reporting months an account is part of the household's history: from its
 first Booked transaction to the month it closes, or while open, the latest

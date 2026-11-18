@@ -281,6 +281,11 @@ source_format = "danske-csv-v1"
 # closed_on = 2027-06-30         # set when the account closes
 ```
 
+`[owners]` lists the household's owners, ID to display name, in the order
+reports show them. Every account names one of them as `owner`; a missing or
+undeclared owner is refused with the account's ID
+([Owner](../CONTEXT.md#accounts-and-boundary)).
+
 `bank_account_number` is the account's number as the bank writes it in export
 filenames, a quoted string so leading zeros survive; two accounts may not
 share one. It catches an export saved to the wrong inbox folder: when a
