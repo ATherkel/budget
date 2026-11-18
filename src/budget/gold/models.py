@@ -64,6 +64,7 @@ class GoldAccount:
     closed_on: date | None
     coverage_start: date | None
     evidence_through: date | None
+    owner_id: str | None = None
 
 
 @dataclass(frozen=True)

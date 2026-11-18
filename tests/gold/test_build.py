@@ -50,6 +50,21 @@ def test_the_registry_and_taxonomy_are_published_as_dimensions() -> None:
     assert Counter(result.categories()) == Counter(CATEGORIES)
 
 
+def test_each_gold_account_publishes_its_accounts_owner() -> None:
+    # The savings account is one member's, though the household shares the other.
+    accounts = {
+        CURRENT: replace(REGISTRY[CURRENT], owner="household"),
+        SAVINGS: replace(REGISTRY[SAVINGS], owner="alex"),
+    }
+
+    result = build_from(accounts=accounts)
+
+    assert {account.account_id: account.owner_id for account in result.accounts()} == {
+        CURRENT: "household",
+        SAVINGS: "alex",
+    }
+
+
 def test_an_account_with_no_export_is_published_without_evidence() -> None:
     unimported = Account(
         account_id="own-savings",
