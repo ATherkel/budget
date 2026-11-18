@@ -12,7 +12,7 @@ from budget.gold import GoldResult
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
 from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
-from tests.dashboard.pages import read
+from tests.dashboard.pages import Page, read
 from tests.gold.publishing import CONFIGURATION, RECIPE
 from tests.gold.worked_example import PUBLICATION, RECORDS
 
@@ -156,3 +156,104 @@ def test_targeted_kontrol_link_keeps_the_originating_simple_view(
         "checks",
         origin,
     )
+
+
+def test_explicit_mode_switches_land_on_overview_with_updated_form_state(
+    client: TestClient,
+) -> None:
+    def fragment(mode: str, active_mode: str, tab: str) -> Page:
+        response = client.get(
+            "/report",
+            params={
+                "publication": "1",
+                "reference_date": "2026-05-14",
+                "account": ["joint-current", "joint-savings"],
+                "month": "2026-03",
+                "mode": mode,
+                "active_mode": active_mode,
+                "tab": tab,
+            },
+            headers={"HX-Request": "true"},
+        )
+        return read(response.text)
+
+    simple = fragment("simple", "advanced", "checks")
+    advanced = fragment("advanced", "simple", "overview")
+
+    assert (
+        simple.attributes("report").get("data-mode"),
+        simple.attributes("report").get("data-tab"),
+        simple.hidden("active_mode"),
+        simple.hidden("tab"),
+        advanced.attributes("report").get("data-mode"),
+        advanced.attributes("report").get("data-tab"),
+        advanced.hidden("active_mode"),
+        advanced.hidden("tab"),
+    ) == (
+        "simple",
+        "overview",
+        "simple",
+        "overview",
+        "advanced",
+        "overview",
+        "advanced",
+        "overview",
+    )
+
+
+def test_account_change_keeps_the_active_advanced_detail_tab(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        "/report",
+        params={
+            "publication": "1",
+            "reference_date": "2026-05-14",
+            "account": "joint-current",
+            "month": "2026-04",
+            "mode": "advanced",
+            "active_mode": "advanced",
+            "tab": "details",
+        },
+        headers={"HX-Request": "true"},
+    )
+    page = read(response.text)
+
+    assert (
+        page.attributes("report").get("data-month"),
+        page.attributes("report").get("data-mode"),
+        page.attributes("report").get("data-tab"),
+        page.hidden("active_mode"),
+        page.hidden("tab"),
+    ) == ("2026-04", "advanced", "details", "advanced", "details")
+
+
+def test_category_navigation_retains_advanced_mode_and_tab(
+    client: TestClient,
+) -> None:
+    report_response = client.get(
+        "/report",
+        params={
+            "publication": "1",
+            "reference_date": "2026-05-14",
+            "account": ["joint-current", "joint-savings"],
+            "month": "2026-04",
+            "mode": "advanced",
+            "active_mode": "advanced",
+            "tab": "overview",
+        },
+        headers={"HX-Request": "true"},
+    )
+    report = read(report_response.text)
+    target = report.attributes("category-link-rent")["href"]
+    detail = read(client.get(target).text)
+    back = detail.attributes("back-to-overview")["href"]
+    target_query = parse_qs(urlsplit(target).query)
+    back_query = parse_qs(urlsplit(back).query)
+
+    assert (
+        target_query["mode"],
+        target_query["tab"],
+        back_query["mode"],
+        back_query["tab"],
+    ) == (["advanced"], ["overview"], ["advanced"], ["overview"])

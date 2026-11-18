@@ -1,4 +1,7 @@
 <section id="report" class="report-content" data-publication="{{ publication_id }}" data-reference-date="{{ reference_date }}" data-accounts="{{ accounts }}" data-month="{{ month }}" data-mode="{{ mode }}" data-tab="{{ tab }}" aria-labelledby="report-ready-title">
+<input id="active-mode" type="hidden" name="active_mode" value="{{ mode }}" hx-swap-oob="true">
+<input id="active-tab" type="hidden" name="tab" value="{{ tab }}" hx-swap-oob="true">
+<input id="return-to" type="hidden" name="return_to" value="{{ return_to or '' }}" hx-swap-oob="true">
 {% if mode == "advanced" %}
 <nav id="advanced-tabs" class="mode-tabs" aria-label="Avanceret visning">
   <a href="{{ tab_urls['overview'] }}"{% if tab == "overview" %} aria-current="page"{% endif %}>Overblik</a>

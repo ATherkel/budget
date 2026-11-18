@@ -138,7 +138,10 @@ def test_empty_selection_survives_reload_back_and_forward(
     expect(page.get_by_label("Joint savings")).not_to_be_checked()
     expect(page.locator("#report-region")).to_contain_text("Vælg mindst én konto.")
     expect(page).to_have_url(
-        re.compile(r"/\?publication=2&reference_date=2026-06-01&month=2026-06$")
+        re.compile(
+            r"/\?publication=2&reference_date=2026-06-01&month=2026-06"
+            r"&mode=simple&tab=overview&comparison=amounts$"
+        )
     )
 
     page.get_by_label("Joint current").check()
@@ -149,7 +152,10 @@ def test_empty_selection_survives_reload_back_and_forward(
     expect(page.get_by_label("Joint current")).not_to_be_checked()
     expect(page.locator("#report-region")).to_contain_text("Vælg mindst én konto.")
     expect(page).to_have_url(
-        re.compile(r"/\?publication=2&reference_date=2026-06-01&month=2026-06$")
+        re.compile(
+            r"/\?publication=2&reference_date=2026-06-01&month=2026-06"
+            r"&mode=simple&tab=overview&comparison=amounts$"
+        )
     )
 
     page.go_forward()
@@ -381,3 +387,82 @@ def test_a_category_detail_is_readable_at_phone_width(
     ).to_be_visible()
     expect(page.locator("#detail-rows")).to_contain_text("Utilities")
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+
+def test_advanced_mode_and_tabs_work_by_keyboard_and_at_phone_width(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+    page.get_by_label("Måned", exact=True).select_option("2026-04")
+    page.wait_for_function("location.search.includes('month=2026-04')")
+
+    advanced = page.get_by_role("radio", name="Avanceret")
+    advanced.focus()
+    page.keyboard.press("Space")
+    expect(page.locator("#report")).to_have_attribute("data-mode", "advanced")
+    expect(page.locator("#report")).to_have_attribute("data-tab", "overview")
+    expect(page.locator("#advanced-tabs")).to_be_visible()
+
+    details = page.get_by_role("link", name="Detaljer")
+    details.focus()
+    page.keyboard.press("Enter")
+    expect(page.get_by_role("heading", name="Kontodetaljer")).to_be_visible()
+    expect(page.locator("#activity-dated-balance-joint-current")).to_contain_text(
+        "52.087,50 kr."
+    )
+    expect(advanced).to_be_checked()
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    screenshot_dir = os.environ.get("PR106_SCREENSHOT_DIR")
+    destination = None if screenshot_dir is None else Path(screenshot_dir)
+    if destination is not None:
+        destination.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=destination / "advanced-details-phone.png", full_page=True)
+
+    checks = page.get_by_role("link", name="Kontrol")
+    checks.focus()
+    page.keyboard.press("Enter")
+    expect(page.get_by_role("heading", name="Diagnostik og afstemning")).to_be_visible()
+    expect(page.locator("#diagnostics-reconciliation-joint-current")).to_be_visible()
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    if destination is not None:
+        page.screenshot(path=destination / "advanced-checks-phone.png", full_page=True)
+
+    simple = page.get_by_role("radio", name="Enkel")
+    simple.focus()
+    page.keyboard.press("Space")
+    expect(page.locator("#report")).to_have_attribute("data-mode", "simple")
+    expect(page.locator("#report")).to_have_attribute("data-tab", "overview")
+    expect(page.locator("#advanced-tabs")).to_have_count(0)
+
+
+def test_targeted_kontrol_link_and_returns_survive_history(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+    page.get_by_label("Måned", exact=True).select_option("2026-03")
+    page.wait_for_function("location.search.includes('month=2026-03')")
+
+    explanation = page.get_by_role("link", name="Hvorfor tallene er ufuldstændige")
+    explanation.focus()
+    page.keyboard.press("Enter")
+    expect(page.get_by_role("heading", name="Diagnostik og afstemning")).to_be_visible()
+    expect(page.get_by_role("radio", name="Avanceret")).to_be_checked()
+
+    page.go_back()
+    expect(page.get_by_role("radio", name="Enkel")).to_be_checked()
+    expect(page.get_by_label("Måned", exact=True)).to_have_value("2026-03")
+    expect(
+        page.get_by_role("link", name="Hvorfor tallene er ufuldstændige")
+    ).to_be_visible()
+
+    page.go_forward()
+    expect(page.get_by_role("heading", name="Diagnostik og afstemning")).to_be_visible()
+    back = page.get_by_role("link", name="Tilbage til den forrige visning")
+    back.focus()
+    page.keyboard.press("Enter")
+    expect(page.get_by_role("radio", name="Enkel")).to_be_checked()
+    expect(page.get_by_label("Måned", exact=True)).to_have_value("2026-03")
