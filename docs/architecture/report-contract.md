@@ -245,6 +245,9 @@ The interaction a page owes its reader. It is route-neutral: it constrains what
 the reader is shown, never the transport or URL shape, and the report DTOs
 carry no HTML, URL or framework schema.
 
+For screen ownership and mode navigation, see the
+[“Enkel” and “Avanceret” display contract](presentation-layer.md#enkel-and-avanceret).
+
 **One pinned context.** A page pins `publication_id` and the Copenhagen
 `reference_date` for the whole visit ([`ReportContext`](#reportcontext)).
 Navigation inside the page (an account or month change, a fragment, a
