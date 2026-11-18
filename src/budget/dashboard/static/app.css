@@ -353,6 +353,24 @@ button {
   background: var(--surface);
 }
 
+.diagnostic-block,
+.reconciliation-card {
+  margin-block: 1rem;
+  padding: 1rem;
+  background: var(--surface-muted);
+  border-radius: var(--radius);
+}
+
+.diagnostic-block h4,
+.reconciliation-card h5 {
+  margin-block: 0.35rem;
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.reconciliation-summary {
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+}
+
 .account-fieldset {
   display: grid;
   gap: 0.55rem;

@@ -1,0 +1,63 @@
+{% set coverage_labels = {"complete": "fuldt dækket", "partial": "delvist dækket", "no_data": "ingen data", "outside_history": "uden for historikken"} %}
+<p class="eyebrow">Kontrol</p>
+<h3>Diagnostik og afstemning</h3>
+<section class="diagnostic-block" aria-labelledby="diagnostics-evidence-heading">
+  <h4 id="diagnostics-evidence-heading">Datagrundlag</h4>
+  <ul id="diagnostics-evidence" class="explanation-list">
+  {% for account in diagnostics.evidence %}
+    <li>{{ account.display_name }}: {% if account.evidence_through is none %}ingen importeret data{% else %}Gennem {{ account.evidence_through.strftime("%d.%m.%Y") }}{% endif %}</li>
+  {% endfor %}
+  </ul>
+  {% if diagnostics.coverage.account_months %}
+  <ul id="diagnostics-incomplete-months" class="explanation-list">
+  {% for account_month in diagnostics.coverage.account_months %}
+    <li>{{ account_month.display_name }}, {{ account_month.month.year }}-{{ "%02d" | format(account_month.month.month) }}: {{ coverage_labels[account_month.status] }}</li>
+  {% endfor %}
+  </ul>
+  {% endif %}
+  {% if diagnostics.provisional %}
+  <p id="diagnostics-provisional">Foreløbigt:
+    {% if "current_month" in diagnostics.provisional.reasons %}indeværende måned{% endif %}
+    {% if "late_bookings_unsettled" in diagnostics.provisional.reasons %}sene bogføringer kan stadig komme{% endif %}
+  </p>
+  {% endif %}
+</section>
+<section class="diagnostic-block" aria-labelledby="diagnostics-counts-heading">
+  <h4 id="diagnostics-counts-heading">Observationer, ikke totale tal</h4>
+  <p id="diagnostics-unclassified">
+    {% if diagnostics.unclassified is none %}Ukategoriseret: ukendt.
+    {% else %}Ukategoriseret: ind {{ diagnostics.unclassified.money_in | signed_amount(diagnostics.currency) }}; ud {{ diagnostics.unclassified.money_out | signed_amount(diagnostics.currency) }}; {{ diagnostics.unclassified.count }} {% if diagnostics.unclassified.count == 1 %}postering{% else %}posteringer{% endif %}.
+    {% endif %}
+  </p>
+  <p id="diagnostics-adjustments">
+    {% if diagnostics.adjustments is none %}Reguleringer: ukendt.
+    {% else %}Reguleringer: ind {{ diagnostics.adjustments.money_in | signed_amount(diagnostics.currency) }}; ud {{ diagnostics.adjustments.money_out | signed_amount(diagnostics.currency) }}; {{ diagnostics.adjustments.count }} {% if diagnostics.adjustments.count == 1 %}postering{% else %}posteringer{% endif %}.
+    {% endif %}
+  </p>
+  <p id="diagnostics-transfer-summary">
+    {% if diagnostics.transfers is none %}Overførsler: ukendt.
+    {% else %}Overførsler: ind {{ diagnostics.transfers.money_in | signed_amount(diagnostics.currency) }}; ud {{ diagnostics.transfers.money_out | signed_amount(diagnostics.currency) }}; {{ diagnostics.transfers.count }} valgte ben; {{ diagnostics.transfers.paired_count }} parrede; {{ diagnostics.transfers.one_sided_count }} ensidige.
+    {% endif %}
+  </p>
+</section>
+<section class="diagnostic-block" aria-labelledby="diagnostics-reconciliation-heading">
+  <h4 id="diagnostics-reconciliation-heading">Afstemning per konto</h4>
+  {% for item in diagnostics.reconciliations %}
+  <article id="diagnostics-reconciliation-{{ item.account_id }}" class="reconciliation-card">
+    <h5>{{ item.display_name }}</h5>
+    <dl class="summary reconciliation-summary">
+      <div class="summary-figure"><dt>Åbningssaldo</dt><dd>{{ item.opening_balance | amount(diagnostics.currency) }}</dd></div>
+      <div class="summary-figure"><dt>Indtægter minus udgifter</dt><dd>{{ item.income_minus_expenses | amount(diagnostics.currency) }}</dd></div>
+      <div class="summary-figure"><dt>Overførsler</dt><dd>{{ item.transfers | signed_amount(diagnostics.currency) }}</dd></div>
+      <div class="summary-figure"><dt>Ukategoriseret ind</dt><dd>{{ item.unclassified_in | signed_amount(diagnostics.currency) }}</dd></div>
+      <div class="summary-figure"><dt>Ukategoriseret ud</dt><dd>{{ item.unclassified_out | signed_amount(diagnostics.currency) }}</dd></div>
+      <div class="summary-figure"><dt>Reguleringer ind</dt><dd>{{ item.adjustments_in | signed_amount(diagnostics.currency) }}</dd></div>
+      <div class="summary-figure"><dt>Reguleringer ud</dt><dd>{{ item.adjustments_out | signed_amount(diagnostics.currency) }}</dd></div>
+      <div class="summary-figure"><dt>Lukningssaldo</dt><dd>{{ item.closing_balance | amount(diagnostics.currency) }}</dd></div>
+    </dl>
+    <p id="diagnostics-reconciliation-{{ item.account_id }}-residual">Beregnet afvigelse: {{ item.internal_residual | amount(diagnostics.currency) }}</p>
+    <p id="diagnostics-reconciliation-{{ item.account_id }}-opening-gap">Åbningsforskel mod forrige lukning: {{ item.opening_gap | amount(diagnostics.currency) }}</p>
+    <p id="diagnostics-reconciliation-{{ item.account_id }}-coverage">Dækning: {{ coverage_labels[item.coverage] }}.</p>
+  </article>
+  {% endfor %}
+</section>
