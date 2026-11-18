@@ -6,10 +6,12 @@ writer lock, then reads the outcome back from the reopened Bronze store, the
 export archive, `imports.jsonl` and the inbox.
 """
 
+import json
 import os
+import sqlite3
 import unittest
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import date
 from hashlib import sha256
 from pathlib import Path
@@ -109,6 +111,58 @@ class OrdinaryImportTests(unittest.TestCase):
                     2,
                     expected_codes,
                 )
+
+    def test_a_log_the_old_import_wrote_still_works_with_the_new_import(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            stored_source = drop(
+                profile, "joint-current", EXPORT, payload("01.04.2026")
+            )
+            refused_source = drop(
+                profile, "joint-current", "export-20260501.csv", payload("02.04.2026")
+            )
+            with writer_lock(profile) as lock:
+                stored = import_inbox_file(lock, stored_source, APRIL).import_run
+                refused = import_inbox_file(lock, refused_source, THROUGH_MAY_3)
+            assert (stored.outcome, refused.import_run.outcome) == ("stored", "refused")
+
+            # The old import wrote format 1 and no refusal codes, so give the
+            # log exactly those lines.
+            old_lines = b"".join(
+                (
+                    json.dumps(
+                        {k: v for k, v in each.items() if k != "refusal_reasons"}
+                        | {"format": 1}
+                    )
+                    + "\n"
+                ).encode("utf-8")
+                for each in log_entries(profile)
+            )
+            profile.import_log_file.write_bytes(old_lines)
+            # A store migrated from version 1 holds `legacy-unrecorded` for a
+            # refused run, not the code the new import just recorded.
+            with (
+                closing(sqlite3.connect(profile.bronze_store)) as connection,
+                connection,
+            ):
+                connection.execute("DELETE FROM import_run_refusals")
+                connection.execute(
+                    "INSERT INTO import_run_refusals VALUES (?, 'legacy-unrecorded')",
+                    (refused.import_run.import_run_id,),
+                )
+            later_source = drop(
+                profile, "joint-current", LATER_EXPORT, payload("03.04.2026")
+            )
+
+            with writer_lock(profile) as lock:
+                later = import_inbox_file(lock, later_source, THROUGH_MAY_3).import_run
+
+            assert later.outcome == "stored"
+            new_log = profile.import_log_file.read_bytes()
+            assert new_log.startswith(old_lines)
+            (appended,) = new_log.removeprefix(old_lines).splitlines()
+            assert json.loads(appended)["format"] == 2
+            assert json.loads(appended)["import_run_id"] == later.import_run_id
 
     def test_one_held_lock_covers_every_file_of_the_inbox(self) -> None:
         with TemporaryDirectory() as directory:
