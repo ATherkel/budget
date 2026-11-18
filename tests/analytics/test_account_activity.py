@@ -1,6 +1,7 @@
 # Copyright 2026 Therkel
 """Account activity reports from public Gold records."""
 
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
@@ -14,8 +15,8 @@ from budget.analytics import (
     ReportPublication,
     account_activity,
 )
-from budget.gold import GoldResult, ReportingMonth
-from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS
+from budget.gold import GoldResult, GoldTransaction, ReportingMonth
+from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
 
 GOLD = GoldResult(PUBLICATION, RECORDS)
 P1 = ReportPublication(
@@ -85,7 +86,6 @@ def test_selected_transfer_names_its_public_pair_without_adding_the_other_leg() 
     transfers = tuple(
         row for row in report.transactions if row.transaction_type == "transfer"
     )
-
     assert transfers == (
         ActivityRow(
             transaction_date=date(2026, 1, 20),
@@ -100,3 +100,91 @@ def test_selected_transfer_names_its_public_pair_without_adding_the_other_leg() 
             counterpart_transaction_date=date(2026, 1, 20),
         ),
     )
+
+
+def _transfer(
+    transaction_id: str,
+    account_id: str,
+    transaction_date: date,
+    amount: str,
+    group: str | None,
+) -> GoldTransaction:
+    return GoldTransaction(
+        transaction_id=transaction_id,
+        account_id=account_id,
+        transaction_date=transaction_date,
+        account_sequence=1,
+        amount=Decimal(amount),
+        description="TRANSFER",
+        transaction_type="transfer",
+        transfer_group_id=group,
+        balance_after=None,
+        balance_check="missing_balance",
+    )
+
+
+def test_cross_month_transfer_legs_keep_their_date_and_public_pair() -> None:
+    gold = GoldResult(
+        PUBLICATION,
+        replace(
+            RECORDS,
+            transactions=(
+                _transfer("out", CURRENT, date(2026, 1, 31), "-300.00", "T2"),
+                _transfer("in", SAVINGS, date(2026, 2, 1), "300.00", "T2"),
+            ),
+        ),
+    )
+
+    report = account_activity(gold, _context(1, CURRENT), is_current=True)
+
+    assert report.transactions == (
+        ActivityRow(
+            transaction_date=date(2026, 1, 31),
+            description="TRANSFER",
+            account_id=CURRENT,
+            account_display_name="Joint current",
+            amount=Decimal("-300.00"),
+            transaction_type="transfer",
+            transfer_pairing="paired",
+            counterpart_account_id=SAVINGS,
+            counterpart_account_display_name="Joint savings",
+            counterpart_transaction_date=date(2026, 2, 1),
+        ),
+    )
+
+
+def test_null_group_is_one_sided_and_unknown_text_stays_unknown() -> None:
+    unknown = GoldTransaction(
+        transaction_id="unknown",
+        account_id=CURRENT,
+        transaction_date=date(2026, 2, 2),
+        account_sequence=2,
+        amount=Decimal("-50.00"),
+        description="TRANSFER SUGGESTION",
+        transaction_type="unknown",
+        transfer_group_id=None,
+        balance_after=None,
+        balance_check="missing_balance",
+    )
+    gold = GoldResult(
+        PUBLICATION,
+        replace(
+            RECORDS,
+            transactions=(
+                _transfer("one-sided", CURRENT, date(2026, 2, 1), "-300.00", None),
+                unknown,
+            ),
+        ),
+    )
+
+    report = account_activity(gold, _context(2, CURRENT), is_current=True)
+    by_type = {row.transaction_type: row for row in report.transactions}
+    transfer = by_type["transfer"]
+
+    assert (
+        transfer.transfer_pairing,
+        transfer.counterpart_account_id,
+        transfer.counterpart_account_display_name,
+        by_type["unknown"].transaction_type,
+        by_type["unknown"].transfer_pairing,
+    ) == ("one_sided", None, None, "unknown", None)
