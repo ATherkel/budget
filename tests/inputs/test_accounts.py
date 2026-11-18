@@ -486,6 +486,29 @@ class LoadOwnersTests(unittest.TestCase):
 
         assert list(owners.items()) == [("household", "Fælles"), ("alex", "Alex")]
 
+    def test_the_legacy_owner_id_is_reserved(self) -> None:
+        # Gold gives it to accounts published before owners were recorded.
+        content = OWNED_ACCOUNTS.replace(
+            'household = "Fælles"\n',
+            'household = "Fælles"\nlegacy-unrecorded = "Old"\n',
+        )
+        for loader in (load_accounts, load_owners):
+            with (
+                self.subTest(loader=loader.__name__),
+                TemporaryDirectory() as directory,
+            ):
+                profile = profile_with_accounts(directory, content)
+
+                with pytest.raises(ConfigurationError) as refusal:
+                    loader(profile)
+
+                assert refusal.value.problems == (
+                    (
+                        'accounts.toml: owner "legacy-unrecorded": the ID is reserved '
+                        "for accounts published before owners were recorded"
+                    ),
+                )
+
     def test_a_malformed_owner_is_refused_by_both_loaders(self) -> None:
         for content, expected in (
             (
