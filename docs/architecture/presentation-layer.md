@@ -39,26 +39,26 @@ must preserve the analytics-facing DTO boundary.
 - Account activity: balances and transfer activity.
 - Trend view: month-over-month totals.
 
-## Enkel and Avanceret
+## “Enkel” and “Avanceret”
 
-Enkel is the calm monthly overview, with category investigation on demand.
-Avanceret adds independently navigable **Overblik**, **Detaljer** (account
-activity) and **Kontrol** (trust diagnostics and reconciliation). Mode is a
+“Enkel” is the calm monthly overview, with category investigation on demand.
+“Avanceret” adds independently navigable **“Overblik”**, **“Detaljer”** (account
+activity) and **“Kontrol”** (trust diagnostics and reconciliation). Mode is a
 presentation preference available to every authenticated household reader.
 Both summaries use the same [monthly report](report-contract.md#monthlyoverview);
 changing mode never changes financial values or their trust semantics.
 
-A fresh visit starts in Enkel and Beløb. Mode persists during the active visit,
+A fresh visit starts in “Enkel” and “Beløb”. Mode persists during the active visit,
 not as a lasting preference. An explicit switch closes detail overlays and
 returns to the destination mode's overview, preserving the shared report context
-and Beløb/Mod budget choice. A targeted explanation link instead opens Kontrol
+and “Beløb”/“Mod budget” choice. A targeted explanation link instead opens “Kontrol”
 with a route back to its originating view. Browser back/forward restores the
 recorded mode, tab and applicable detail/comparison state under the
 [navigation contract](report-contract.md#navigation-and-selection-transitions).
 
 The switch and advanced screens are pending:
 [#106](https://github.com/ATherkel/budget/issues/106), which holds the implementation
-brief and acceptance scenarios. Keep the shell Enkel-only until a working advanced
+brief and acceptance scenarios. Keep the shell in “Enkel” until a working advanced
 screen exists; expose no controls for undelivered features. Both modes retain
 access to the basic trust explanation.
 
