@@ -15,11 +15,12 @@ from budget.analytics import (
     ReportContext,
     ReportPublication,
     SelectableAccount,
+    SelectableOwner,
     SelectionOptions,
     monthly_overview,
     selection_options,
 )
-from budget.gold import GoldRecords, GoldResult, ReportingMonth
+from budget.gold import GoldOwner, GoldRecords, GoldResult, ReportingMonth
 from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS
 
 GOLD = GoldResult(PUBLICATION, RECORDS)
@@ -47,6 +48,36 @@ def test_a_page_may_select_every_account_from_the_first_snapshot_month() -> None
             last_month=ReportingMonth(2026, 5),
         )
     )
+
+
+def test_a_page_may_select_by_owner_in_the_owners_display_order() -> None:
+    owned = replace(
+        RECORDS,
+        accounts=tuple(
+            replace(
+                account,
+                owner_id="household" if account.account_id == CURRENT else "alex",
+            )
+            for account in RECORDS.accounts
+        ),
+        owners=(
+            GoldOwner(owner_id="household", display_name="Fælles", display_order=1),
+            GoldOwner(owner_id="alex", display_name="Alex", display_order=2),
+        ),
+    )
+
+    options = selection_options(
+        GoldResult(PUBLICATION, owned), REFERENCE_DATE, is_current=True
+    )
+
+    assert options.owners == (
+        SelectableOwner("household", "Fælles"),
+        SelectableOwner("alex", "Alex"),
+    )
+    assert {a.account_id: a.owner_id for a in options.accounts} == {
+        "joint-current": "household",
+        "joint-savings": "alex",
+    }
 
 
 def test_before_any_snapshot_only_the_reference_month_is_selectable() -> None:

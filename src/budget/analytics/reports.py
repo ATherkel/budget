@@ -60,6 +60,7 @@ class SelectableAccount:
     account_type: AccountType
     ownership_scope: OwnershipScope
     currency: str
+    owner_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,15 @@ class SelectionOptions:
     accounts: tuple[SelectableAccount, ...]
     first_month: ReportingMonth
     last_month: ReportingMonth
+    owners: tuple["SelectableOwner", ...] = ()
+
+
+@dataclass(frozen=True)
+class SelectableOwner:
+    """One owner a page may select by; `SelectionOptions.owners` is in display order."""
+
+    owner_id: str
+    display_name: str
 
 
 @dataclass(frozen=True)
