@@ -455,6 +455,50 @@ class LoadOwnersTests(unittest.TestCase):
 
         assert list(owners.items()) == [("household", "Fælles"), ("alex", "Alex")]
 
+    def test_a_malformed_owner_is_refused_by_both_loaders(self) -> None:
+        for content, expected in (
+            (
+                OWNED_ACCOUNTS.replace(
+                    'household = "Fælles"\n',
+                    'household = "Fælles"\nSam = "Sam"\nkids = ""\nbaby = 1\n',
+                ),
+                (
+                    (
+                        'accounts.toml: owner "Sam": the ID must be lowercase words '
+                        "joined by hyphens, such as household"
+                    ),
+                    (
+                        'accounts.toml: owner "kids": the display name must be a '
+                        "non-empty string"
+                    ),
+                    (
+                        'accounts.toml: owner "baby": the display name must be a '
+                        "non-empty string"
+                    ),
+                ),
+            ),
+            (
+                "format = 1\nowners = 1\n",
+                (
+                    (
+                        "accounts.toml: owners must be one [owners] table of "
+                        "owner ID = display name"
+                    ),
+                ),
+            ),
+        ):
+            for loader in (load_accounts, load_owners):
+                with (
+                    self.subTest(content=content, loader=loader.__name__),
+                    TemporaryDirectory() as directory,
+                ):
+                    profile = profile_with_accounts(directory, content)
+
+                    with pytest.raises(ConfigurationError) as refusal:
+                        loader(profile)
+
+                    assert refusal.value.problems == expected
+
 
 class CheckExportFilenameTests(unittest.TestCase):
     def test_an_export_naming_its_account_number_is_accepted(self) -> None:
