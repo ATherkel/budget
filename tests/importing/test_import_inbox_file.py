@@ -88,6 +88,27 @@ class OrdinaryImportTests(unittest.TestCase):
                 }
             ]
 
+    def test_a_log_line_is_format_2_and_carries_the_run_refusal_codes(self) -> None:
+        cases = (
+            ("refused", THROUGH_MAY_3, ["range-ends-after-export"]),
+            ("stored", APRIL, []),
+        )
+
+        for outcome, coverage, expected_codes in cases:
+            with self.subTest(outcome=outcome), TemporaryDirectory() as directory:
+                profile = household(Path(directory))
+                source = drop(profile, "joint-current", EXPORT, payload("01.04.2026"))
+
+                with writer_lock(profile) as lock:
+                    result = import_inbox_file(lock, source, coverage)
+
+                assert result.import_run.outcome == outcome
+                (entry,) = log_entries(profile)
+                assert (entry.get("format"), entry.get("refusal_reasons")) == (
+                    2,
+                    expected_codes,
+                )
+
     def test_one_held_lock_covers_every_file_of_the_inbox(self) -> None:
         with TemporaryDirectory() as directory:
             profile = household(Path(directory))
