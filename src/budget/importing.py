@@ -27,6 +27,8 @@ from budget.locking import WriterLock
 from budget.profiles import Profile
 
 IMPORT_LOG_FORMAT: Final = 2
+# The first log format, whose lines carry no `refusal_reasons`.
+FORMAT_WITHOUT_REFUSAL_REASONS: Final = 1
 # How much of the payload hash names an archive folder (operations.md, W1).
 HASH_PREFIX_LENGTH: Final = 12
 REFUSED_FOLDER: Final = "refused"
@@ -336,10 +338,17 @@ def _missing_folders(folder: Path) -> list[Path]:
     return missing
 
 
-def log_entry(run: ImportRun, archive_path: str) -> bytes:
-    """Mirror one import run as an `imports.jsonl` line, with its line feed."""
-    entry = {
-        "format": IMPORT_LOG_FORMAT,
+def log_entry(
+    run: ImportRun, archive_path: str, *, log_format: int = IMPORT_LOG_FORMAT
+) -> bytes:
+    """Mirror one import run as an `imports.jsonl` line, with its line feed.
+
+    An import always writes the current format. `log_format=1` gives the line
+    the first format wrote, which had no `refusal_reasons`, so replay can check
+    that an old line is exactly what that import wrote.
+    """
+    entry: dict[str, object] = {
+        "format": log_format,
         "import_run_id": run.import_run_id,
         "account_id": run.declared_account_id,
         "source_format": run.source_format,
@@ -352,8 +361,9 @@ def log_entry(run: ImportRun, archive_path: str) -> bytes:
         "started_at": run.started_at.isoformat(),
         "outcome": run.outcome,
         "repeat_of": run.repeat_of,
-        "refusal_reasons": list(run.refusal_reasons),
     }
+    if log_format != FORMAT_WITHOUT_REFUSAL_REASONS:
+        entry["refusal_reasons"] = list(run.refusal_reasons)
     return (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
 
 
