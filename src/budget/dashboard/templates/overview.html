@@ -39,7 +39,7 @@
   <input type="checkbox" name="account" value="{{ account.account_id }}"{% if account.account_id in selected_accounts %} checked{% endif %}>
   <span>{{ account.display_name }}</span>
 </label>
-<a class="account-only" id="only-{{ account.account_id }}" href="{{ only_urls[account.account_id] }}" aria-label="Kun {{ account.display_name }}">kun</a>
+<a class="account-only" id="only-{{ account.account_id }}" href="{{ only_urls[account.account_id] }}">kun</a>
 {% endfor %}
 </fieldset>
 <label class="field-label" for="month">Måned</label>
