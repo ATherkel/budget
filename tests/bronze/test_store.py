@@ -792,6 +792,19 @@ class BronzeStoreTests(unittest.TestCase):
                 assert records == ()
                 assert failures == ()
 
+    def test_a_range_that_starts_after_it_ends_is_refused_with_that_reason(
+        self,
+    ) -> None:
+        # No transactions, so the range is the only rule the run can break.
+        run, _records, _failures = import_into_new_store(
+            danske_payload(),
+            covers_from=date(2026, 9, 13),
+            covers_through=date(2026, 9, 1),
+        )
+
+        assert run.outcome == "refused"
+        assert run.refusal_reasons == ("range-starts-after-end",)
+
     def test_an_unreadable_payload_keeps_its_declared_range(self) -> None:
         # The payload has no dates Bronze can read, so only the range's own
         # bounds apply: it must not start after it ends or reach past the
