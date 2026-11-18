@@ -805,6 +805,110 @@ class BronzeStoreTests(unittest.TestCase):
         assert run.outcome == "refused"
         assert run.refusal_reasons == ("range-starts-after-end",)
 
+    def test_each_refusal_code_names_only_the_rule_the_run_broke(self) -> None:
+        # One transaction on 2026-09-12; the export date is 2026-09-14.
+        content = danske_payload("12.09.2026")
+        cases = (
+            (
+                "range ends after the export",
+                date(2026, 9, 1),
+                date(2026, 9, 15),
+                ("range-ends-after-export",),
+            ),
+            (
+                "transaction before the range",
+                date(2026, 9, 13),
+                date(2026, 9, 13),
+                ("transaction-before-range",),
+            ),
+            (
+                "transaction after the range",
+                date(2026, 9, 1),
+                date(2026, 9, 11),
+                ("transaction-after-range",),
+            ),
+        )
+
+        for label, covers_from, covers_through, expected_reasons in cases:
+            with self.subTest(rule=label):
+                run, _records, _failures = import_into_new_store(
+                    content, covers_from=covers_from, covers_through=covers_through
+                )
+
+                assert run.outcome == "refused"
+                assert run.refusal_reasons == expected_reasons
+
+    def test_a_run_that_breaks_two_rules_records_both_in_table_order(self) -> None:
+        # Ends after the export date, and the 2026-09-12 transaction precedes
+        # the range.
+        run, _records, _failures = import_into_new_store(
+            danske_payload("12.09.2026"),
+            covers_from=date(2026, 9, 13),
+            covers_through=date(2026, 9, 15),
+        )
+
+        assert run.outcome == "refused"
+        assert run.refusal_reasons == (
+            "range-ends-after-export",
+            "transaction-before-range",
+        )
+
+    def test_the_same_bytes_for_another_account_are_refused_as_a_conflict(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "synthetic-20260914.csv"
+            source.write_bytes(danske_payload("12.09.2026"))
+            profile = migrated_profile(root)
+
+            with BronzeStore(profile) as store:
+                runs = [
+                    store.import_file(
+                        source,
+                        ImportDeclaration(
+                            declared_account_id=account,
+                            source_format="danske-csv-v1",
+                            covers_from=date(2026, 9, 1),
+                            covers_through=date(2026, 9, 13),
+                        ),
+                    )
+                    for account in ("daily-account", "savings-account")
+                ]
+            with BronzeStore(profile) as reopened:
+                saved = reopened.get_import_run(runs[1].import_run_id)
+
+        assert runs[1].outcome == "refused"
+        assert runs[1].refusal_reasons == ("account-conflict",)
+        assert saved.refusal_reasons == ("account-conflict",)
+
+    def test_a_stored_run_and_a_repeat_run_record_no_refusal_reasons(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "synthetic-20260914.csv"
+            source.write_bytes(danske_payload("12.09.2026"))
+            profile = migrated_profile(root)
+
+            with BronzeStore(profile) as store:
+                runs = [
+                    store.import_file(
+                        source,
+                        ImportDeclaration(
+                            declared_account_id="daily-account",
+                            source_format="danske-csv-v1",
+                            covers_from=date(2026, 9, 1),
+                            covers_through=date(2026, 9, 13),
+                        ),
+                    )
+                    for _ in range(2)
+                ]
+            with BronzeStore(profile) as reopened:
+                saved = [reopened.get_import_run(run.import_run_id) for run in runs]
+
+        assert [run.outcome for run in runs] == ["stored", "repeat"]
+        assert [run.refusal_reasons for run in runs] == [(), ()]
+        assert [run.refusal_reasons for run in saved] == [(), ()]
+
     def test_an_unreadable_payload_keeps_its_declared_range(self) -> None:
         # The payload has no dates Bronze can read, so only the range's own
         # bounds apply: it must not start after it ends or reach past the
