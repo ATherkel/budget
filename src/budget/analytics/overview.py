@@ -15,6 +15,7 @@ from budget.analytics.reports import (
     ReportContext,
     ReportPublication,
     SelectableAccount,
+    SelectableOwner,
     SelectionOptions,
     SelectionRule,
 )
@@ -169,9 +170,14 @@ def selection_options(
                 account_type=account.account_type,
                 ownership_scope=account.ownership_scope,
                 currency=account.currency,
+                owner_id=account.owner_id,
             )
             for account in sorted(gold.accounts(), key=lambda a: a.account_id)
         ),
         first_month=first_month,
         last_month=last_month,
+        owners=tuple(
+            SelectableOwner(owner_id=owner.owner_id, display_name=owner.display_name)
+            for owner in sorted(gold.owners(), key=lambda o: o.display_order)
+        ),
     )
