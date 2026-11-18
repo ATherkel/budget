@@ -76,6 +76,17 @@ def test_current_publication_returns_the_current_build(gold_store: GoldStore) ->
     )
 
 
+def test_household_reports_exposes_account_activity_and_diagnostics(
+    gold_store: GoldStore,
+) -> None:
+    reports = HouseholdReports(gold_store)
+
+    assert (
+        callable(getattr(reports, "account_activity", None)),
+        callable(getattr(reports, "diagnostics", None)),
+    ) == (True, True)
+
+
 SECOND_BUILD_AT = datetime(2026, 5, 16, 7, 30, tzinfo=UTC)
 
 
