@@ -108,13 +108,21 @@ def _entry_problem(account_id: str, text: str) -> str:
     return file_problem(ACCOUNTS_FILE_NAME, f'account "{account_id}": {text}')
 
 
-def _entry_problems(account_id: str, entry: object) -> list[str]:
+def _entry_problems(
+    account_id: str, entry: object, owners: Mapping[str, object]
+) -> list[str]:
     """List one entry's problems: its ID, then its keys, then what is missing."""
     problems = entry_problems(account_id, entry, _FIELDS, "joint-current")
     if isinstance(entry, dict) and "owner" not in entry:
         problems.append(
             'owner is missing: add owner = "<id>" naming an owner in [owners]'
         )
+    elif (
+        isinstance(entry, dict)
+        and is_text(owner := entry["owner"])
+        and owner not in owners
+    ):
+        problems.append(f'owner "{owner}" is not declared in [owners]')
     return [_entry_problem(account_id, problem) for problem in problems]
 
 
@@ -186,8 +194,9 @@ def load_accounts(profile: Profile) -> Mapping[str, Account]:
     )
     entries, shape_problems = keyed_tables(document, ACCOUNTS_FILE_NAME, "account")
     problems.extend(shape_problems)
+    owners = document.get("owners", {})
     for account_id, entry in entries.items():
-        problems.extend(_entry_problems(account_id, entry))
+        problems.extend(_entry_problems(account_id, entry, owners))
         problems.extend(_number_shape_problems(account_id, entry))
     problems.extend(_shared_number_problems(entries))
     if problems:
