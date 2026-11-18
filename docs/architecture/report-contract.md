@@ -308,6 +308,91 @@ a new financial model
 ([`presentation-layer.md`](presentation-layer.md#non-responsibilities)). This
 governs what is stored and reused, not what the rendered page displays.
 
+## Account Activity and Kontrol
+
+Pending implementation: [#106](https://github.com/ATherkel/budget/issues/106).
+These reports use the same pinned context, validation, money types and public
+Gold boundary as the existing reports. Analytics supplies every judgement,
+component and residual; presentation only formats them.
+
+### Dated balances and monthly snapshots
+
+A dated bank balance is the last transaction's `balance_after` in the selected
+month, ordered by `account_sequence`, with its `transaction_date`. It describes
+the balance after that transaction, not a confirmed month-end balance. Monthly
+opening and closing balances remain the published snapshot values and carry
+Coverage. A null last balance is never replaced with an earlier non-null one.
+An earlier observation may appear as separately dated context, never as a
+replacement snapshot value. Observations from different dates are not summed
+into a household bank balance.
+
+Synthetic examples, in DKK:
+
+| Evidence | Dated balance | Monthly snapshot |
+| --- | --- | --- |
+| April's last transaction is on 24 April, balance 52,087.50 | 52,087.50 on 24 April | Closing 52,087.50, with April's Coverage |
+| May has no transactions and partial Coverage | Earlier observation may be shown separately: 52,087.50 on 24 April | Opening and closing unknown |
+| February is complete and quiet; last observation was 53,000.00 on 20 January | Earlier observation remains dated 20 January | Opening and closing 53,000.00 |
+| The month's last transaction has a null balance | Unknown for that transaction | Closing unknown; no substitution |
+
+### Public Transfer evidence
+
+Activity preserves the published transaction type under account and month
+selection. Two legs sharing a non-null `transfer_group_id` establish a pair.
+Analytics may identify the paired account through public transactions outside
+the selection, without adding that leg to the selected totals. A Transfer with
+a null group is one-sided by manual decision under Gold's invariant; its
+counterpart identity and decision details are unavailable through this boundary.
+Named matching evidence remains private lineage.
+
+| Synthetic public evidence | Result |
+| --- | --- |
+| A has -3,000.00 and B has +3,000.00 in one Transfer group | Two activity legs, publicly paired; neither contributes to Income or Expenses |
+| Only A is selected | -3,000.00 remains a Transfer, never an expense |
+| The legs are dated 31 January and 1 February | Each belongs to its own month; neither changes Income or Expenses |
+| A Transfer has a null group | One-sided Transfer, without an invented counterpart |
+| An unknown transaction's text suggests a transfer | Unclassified money; no inferred claim or missing counterpart |
+
+### Evidence and counts
+
+Evidence through is `GoldAccount.evidence_through`, not an export date, a
+transaction date or proof of uninterrupted evidence. With evidence ranges
+1–10 April and 20 April–8 May, it is 8 May while April remains partial. A null
+value means no imported evidence. Coverage explanations use only public facts;
+when those cannot establish the precise cause, that cause is unavailable.
+Coverage, provisional status and classification uncertainty stay separate:
+complete Coverage can coexist with Unclassified money.
+
+Two unknown transactions, +450.00 and -450.00, report money in +450.00, money
+out -450.00 and count 2. A separate +20.00 Adjustment reports money in +20.00,
+money out 0.00 and count 1. These lines never net into a reassuring zero.
+Under partial Coverage the counts describe observed transactions, not the
+unknown number in the complete month. With no evidence, amounts and counts
+are unknown. Transfer counts count selected legs, not paired movements.
+Counts of review items, missing transactions and unmatched claims are unknown
+through this public boundary.
+
+### Reconciliation
+
+For one account-month, analytics returns the opening balance, Income minus
+Expenses, signed selected Transfer legs, both Unclassified amounts, both
+Adjustment amounts, closing balance and residual. It also reports the gap
+between this opening and the preceding month's closing when both are known.
+Missing endpoints make the corresponding residual unknown. No balancing
+Adjustment is created, and arithmetic agreement never upgrades Coverage.
+
+For a complete synthetic month: opening 1,000.00, Income minus Expenses
++500.00, Transfer legs -300.00, Unclassified +450.00 and -450.00,
+Adjustments +20.00, closing 1,220.00. The residual is
+`1,220.00 - (1,000.00 + 500.00 - 300.00 + 450.00 - 450.00 + 20.00) = 0.00`.
+Both Unclassified amounts remain visible.
+
+In the Gold worked example, March's opening is 37,037.50, activity -1,450.00
+and closing 35,587.50: its internal residual is zero. February's closing was
+37,537.50, so the opening gap is -500.00. Show both results and partial
+Coverage, never a claim that the account is reconciled merely because the
+internal residual is zero.
+
 ## Worked Examples (synthetic)
 
 All examples read the publication of the worked example in
