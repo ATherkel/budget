@@ -27,6 +27,7 @@ REFERENCE_DATE = "2026-05-14"
 PINNED = (
     f"publication=1&reference_date={REFERENCE_DATE}&account={CURRENT}&account={SAVINGS}"
 )
+MODE_STATE = "&mode=simple&tab=overview&comparison=amounts"
 
 
 def logged_in(
@@ -86,8 +87,8 @@ def test_each_overview_category_links_to_its_detail_in_the_same_pinned_context(
         february.attributes("category-link-groceries").get("href"),
         february.attributes("category-link-rent").get("href"),
     ) == (
-        f"/category?{PINNED}&month=2026-02&category=groceries&scope=month",
-        f"/category?{PINNED}&month=2026-02&category=rent&scope=month",
+        f"/category?{PINNED}&month=2026-02{MODE_STATE}&category=groceries&scope=month",
+        f"/category?{PINNED}&month=2026-02{MODE_STATE}&category=rent&scope=month",
     )
 
 
@@ -117,7 +118,7 @@ def test_the_scope_switch_keeps_the_pin_and_marks_the_scope_shown(
     client: TestClient,
 ) -> None:
     # Year to date through February adds January's 842.50: 1,362.50.
-    groceries = f"/category?{PINNED}&month=2026-02&category=groceries"
+    groceries = f"/category?{PINNED}&month=2026-02{MODE_STATE}&category=groceries"
     year = detail(client, "2026-02", "category=groceries&scope=year_to_date")
 
     assert (
@@ -145,7 +146,10 @@ def test_a_category_detail_links_its_whole_group_in_the_same_scope(
         rent.attributes("group-link").get("href"),
     ) == (
         "Hele Housing",
-        f"/category?{PINNED}&month=2026-04&group=housing&scope=year_to_date",
+        (
+            f"/category?{PINNED}&month=2026-04{MODE_STATE}"
+            "&group=housing&scope=year_to_date"
+        ),
     )
 
 
@@ -182,7 +186,10 @@ def test_leaving_a_detail_returns_to_the_same_overview_with_the_same_figure(
     back = groceries.attributes("back-to-overview").get("href")
     overview = client.get(back or "/")
 
-    assert (back, overview.status_code) == (f"/?{PINNED}&month=2026-02", 200)
+    assert (back, overview.status_code) == (
+        f"/?{PINNED}&month=2026-02{MODE_STATE}",
+        200,
+    )
     assert groceries.text_of("detail-spending") == "520,00 kr."
     assert (read(overview.text).text_of("categories") or "").endswith(
         f"Groceries {groceries.text_of('detail-spending')}"

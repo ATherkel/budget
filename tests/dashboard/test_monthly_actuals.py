@@ -114,6 +114,7 @@ def test_a_partial_report_names_its_incomplete_accounts_and_links_the_explanatio
         (
             "/explanation?publication=1&reference_date=2026-05-14"
             f"&account={CURRENT}&account={SAVINGS}&month=2026-02"
+            "&mode=simple&tab=overview&comparison=amounts"
         ),
     )
 
@@ -146,6 +147,7 @@ def test_unclassified_money_keeps_its_quiet_note_and_explanation_link(
         (
             "/explanation?publication=1&reference_date=2026-05-14"
             f"&account={CURRENT}&account={SAVINGS}&month=2026-03"
+            "&mode=simple&tab=overview&comparison=amounts"
         ),
         None,
     )
@@ -327,6 +329,7 @@ def test_the_explanation_names_the_incomplete_and_unsettled_months_of_the_pinned
         (
             "/?publication=1&reference_date=2026-05-14"
             f"&account={CURRENT}&account={SAVINGS}&month=2026-05"
+            "&mode=simple&tab=overview&comparison=amounts"
         ),
     )
 
@@ -390,6 +393,7 @@ def test_a_report_without_data_names_its_accounts_and_links_the_explanation(
         (
             "/explanation?publication=1&reference_date=2026-06-03"
             f"&account={CURRENT}&account={SAVINGS}&month=2026-06"
+            "&mode=simple&tab=overview&comparison=amounts"
         ),
     )
 
@@ -404,6 +408,7 @@ def test_the_provisional_label_links_the_explanation_of_why(
     assert may.attributes("provisional-explanation").get("href") == (
         "/explanation?publication=1&reference_date=2026-05-14"
         f"&account={CURRENT}&account={SAVINGS}&month=2026-05"
+        "&mode=simple&tab=overview&comparison=amounts"
     )
 
 

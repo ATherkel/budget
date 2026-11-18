@@ -8,7 +8,7 @@ from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Query, Request
@@ -45,6 +45,57 @@ from budget.profiles import Profile
 __all__ = ["create_app", "set_passphrase"]
 
 SESSION_COOKIE = "session"
+DEFAULT_MODE: Literal["simple"] = "simple"
+DEFAULT_TAB: Literal["overview"] = "overview"
+DEFAULT_COMPARISON: Literal["amounts"] = "amounts"
+
+type DashboardMode = Literal["simple", "advanced"]
+type AdvancedTab = Literal["overview", "details", "checks"]
+type ComparisonMode = Literal["amounts"]
+
+
+@dataclass(frozen=True)
+class ViewState:
+    """Presentation state carried beside the pinned report context."""
+
+    mode: DashboardMode = "simple"
+    tab: AdvancedTab = "overview"
+    comparison: ComparisonMode = "amounts"
+
+
+DEFAULT_VIEW = ViewState()
+
+
+@dataclass(frozen=True)
+class PinnedAddress:
+    """The report pin and selection carried by a dashboard address."""
+
+    publication_id: int
+    reference_date: date
+    accounts: tuple[str, ...]
+    month: str
+
+
+@dataclass(frozen=True)
+class OverviewRequest:
+    """A complete overview-page request, fresh or pinned."""
+
+    pin: tuple[int, date] | None
+    accounts: tuple[str, ...] | None
+    month: str | None
+    view: ViewState
+
+
+@dataclass(frozen=True)
+class ReportRequest:
+    """A report-fragment request and its current presentation state."""
+
+    pin: tuple[int, date]
+    accounts: tuple[str, ...]
+    month: str
+    view: ViewState
+    active_mode: DashboardMode
+
 
 _STATIC = Path(__file__).parent / "static"
 
@@ -65,6 +116,61 @@ class DetailRequest:
     month: str
     subject: DetailSubject
     scope: DetailScope
+    mode: DashboardMode
+    tab: AdvancedTab
+    comparison: ComparisonMode
+
+
+class OverviewAddress(BaseModel):
+    """Query parameters of a fresh or restored overview."""
+
+    publication: int | None = None
+    reference_date: date | None = None
+    month: str | None = None
+    account: list[str] = []
+    mode: DashboardMode = "simple"
+    tab: AdvancedTab = "overview"
+    comparison: ComparisonMode = "amounts"
+
+    def asked(self) -> OverviewRequest:
+        """Return the page request without resolving a fresh pin."""
+        return OverviewRequest(
+            pin=(
+                None
+                if self.publication is None or self.reference_date is None
+                else (self.publication, self.reference_date)
+            ),
+            accounts=(
+                None
+                if self.publication is None or self.reference_date is None
+                else tuple(self.account)
+            ),
+            month=self.month,
+            view=ViewState(self.mode, self.tab, self.comparison),
+        )
+
+
+class ReportAddress(BaseModel):
+    """Query parameters of one in-place report request."""
+
+    publication: int
+    reference_date: date
+    month: str
+    account: list[str] = []
+    mode: DashboardMode = "simple"
+    active_mode: DashboardMode = "simple"
+    tab: AdvancedTab = "overview"
+    comparison: ComparisonMode = "amounts"
+
+    def asked(self) -> ReportRequest:
+        """Return the report request and its previous presentation state."""
+        return ReportRequest(
+            pin=(self.publication, self.reference_date),
+            accounts=tuple(self.account),
+            month=self.month,
+            view=ViewState(self.mode, self.tab, self.comparison),
+            active_mode=self.active_mode,
+        )
 
 
 class DetailAddress(BaseModel):
@@ -77,6 +183,9 @@ class DetailAddress(BaseModel):
     category: str | None = None
     group: str | None = None
     scope: DetailScope = "month"
+    mode: DashboardMode = "simple"
+    tab: AdvancedTab = "overview"
+    comparison: ComparisonMode = "amounts"
 
     @model_validator(mode="after")
     def _names_one_subject(self) -> Self:
@@ -93,7 +202,15 @@ class DetailAddress(BaseModel):
             if self.category is not None
             else DetailSubject("group", self.group or "")
         )
-        return DetailRequest(tuple(self.account), self.month, subject, self.scope)
+        return DetailRequest(
+            tuple(self.account),
+            self.month,
+            subject,
+            self.scope,
+            self.mode,
+            self.tab,
+            self.comparison,
+        )
 
 
 def _send_to_login(request: Request) -> Response:
@@ -125,29 +242,41 @@ def _logged_in(
 
 
 def _pinned_url(
-    publication_id: int,
-    reference_date: date,
-    accounts: Collection[str],
-    month: str,
+    address: PinnedAddress,
     path: str = "/",
+    *,
+    view: ViewState = DEFAULT_VIEW,
 ) -> str:
     """Return the complete address of `path` for one pinned selection."""
     return f"{path}?" + urlencode(
         [
-            ("publication", publication_id),
-            ("reference_date", reference_date.isoformat()),
-            *(("account", account) for account in sorted(accounts)),
-            ("month", month),
+            ("publication", address.publication_id),
+            ("reference_date", address.reference_date.isoformat()),
+            *(("account", account) for account in sorted(address.accounts)),
+            ("month", address.month),
+            ("mode", view.mode),
+            ("tab", view.tab),
+            ("comparison", view.comparison),
         ]
     )
+
+
+def _mode(value: str) -> DashboardMode:
+    """Return a supported mode, with a fresh or malformed address using Enkel."""
+    return "advanced" if value == "advanced" else "simple"
+
+
+def _tab(value: str) -> AdvancedTab:
+    """Return a supported advanced tab, defaulting to Overblik."""
+    if value == "details":
+        return "details"
+    return "checks" if value == "checks" else "overview"
 
 
 def _render_overview(
     profile: Profile,
     clock: Callable[[], datetime],
-    pin: tuple[int, date] | None,
-    accounts: list[str] | None,
-    month: str | None,
+    requested: OverviewRequest,
 ) -> str:
     """Render the overview page.
 
@@ -156,7 +285,8 @@ def _render_overview(
     every account and this month selected.
     """
     # A pinned address without accounts is an empty selection, not a fresh visit.
-    fresh = pin is None
+    fresh = requested.pin is None
+    pin = requested.pin
     with GoldStore(profile, read_only=True) as store:
         reports = HouseholdReports(store)
         if pin is None:
@@ -175,18 +305,35 @@ def _render_overview(
     selected_accounts = (
         {account.account_id for account in options.accounts}
         if fresh
-        else set(accounts or ())
+        else set(requested.accounts or ())
     )
-    selected_month = month or display.month_value(ReportingMonth.of(reference_date))
+    selected_month = requested.month or display.month_value(
+        ReportingMonth.of(reference_date)
+    )
     # The page carries its own report, so back, forward and a page without
     # scripts show what the selection's report says.
     report = (
-        _render_report(profile, pin, selected_accounts, selected_month)
+        _render_report(
+            profile,
+            ReportRequest(
+                pin=pin,
+                accounts=tuple(selected_accounts),
+                month=selected_month,
+                view=requested.view,
+                active_mode=requested.view.mode,
+            ),
+        )
         if selected_accounts
         else None
     )
     canonical_url = _pinned_url(
-        publication_id, reference_date, selected_accounts, selected_month
+        PinnedAddress(
+            publication_id,
+            reference_date,
+            tuple(selected_accounts),
+            selected_month,
+        ),
+        view=requested.view,
     )
     return _TEMPLATES.get_template("overview.html").render(
         publication_id=publication_id,
@@ -199,6 +346,9 @@ def _render_overview(
         ],
         selected_month=selected_month,
         report=report,
+        mode=requested.view.mode,
+        tab=requested.view.tab,
+        comparison=requested.view.comparison,
     )
 
 
@@ -265,28 +415,43 @@ def _read_overview(
         return _TEMPLATES.get_template("unavailable.html").render()
 
 
-def _answered_url(overview_report: MonthlyOverview, path: str) -> str:
+def _answered_url(
+    overview_report: MonthlyOverview,
+    path: str,
+    view: ViewState = DEFAULT_VIEW,
+) -> str:
     """Return the address of `path` for the context `overview_report` answers."""
     answered = overview_report.context
     return _pinned_url(
-        answered.publication_id,
-        answered.reference_date,
-        answered.account_ids,
-        display.month_value(answered.month),
+        PinnedAddress(
+            answered.publication_id,
+            answered.reference_date,
+            tuple(answered.account_ids),
+            display.month_value(answered.month),
+        ),
         path,
+        view=view,
     )
 
 
 def _detail_url(
-    answered: ReportContext, kind: str, subject_id: str, scope: str = "month"
+    answered: ReportContext,
+    kind: str,
+    subject_id: str,
+    scope: str = "month",
+    *,
+    view: ViewState = DEFAULT_VIEW,
 ) -> str:
     """Return the address of one subject's detail under the pinned `answered`."""
     page = _pinned_url(
-        answered.publication_id,
-        answered.reference_date,
-        answered.account_ids,
-        display.month_value(answered.month),
+        PinnedAddress(
+            answered.publication_id,
+            answered.reference_date,
+            tuple(answered.account_ids),
+            display.month_value(answered.month),
+        ),
         "/category",
+        view=view,
     )
     return f"{page}&" + urlencode([(kind, subject_id), ("scope", scope)])
 
@@ -335,33 +500,51 @@ def _render_detail(
         detail=detail_report,
         title=f"{detail_report.name}, {period}",
         scope_urls={
-            scope: _detail_url(answered, subject.kind, subject.id, scope)
+            scope: _detail_url(
+                answered,
+                subject.kind,
+                subject.id,
+                scope,
+                view=ViewState(request.mode, request.tab, request.comparison),
+            )
             for scope in ("month", "year_to_date")
         },
         group_url=_detail_url(
-            answered, "group", detail_report.group_id, detail_report.scope
+            answered,
+            "group",
+            detail_report.group_id,
+            detail_report.scope,
+            view=ViewState(request.mode, request.tab, request.comparison),
         ),
         incomplete=display.incomplete_by_account(detail_report.coverage),
         overview_url=_pinned_url(
-            answered.publication_id,
-            answered.reference_date,
-            answered.account_ids,
-            display.month_value(answered.month),
+            PinnedAddress(
+                answered.publication_id,
+                answered.reference_date,
+                tuple(answered.account_ids),
+                display.month_value(answered.month),
+            ),
+            view=ViewState(request.mode, request.tab, request.comparison),
         ),
     )
 
 
 def _render_report(
     profile: Profile,
-    pin: tuple[int, date],
-    accounts: Collection[str],
-    month: str,
+    requested: ReportRequest,
 ) -> str:
     """Render the report fragment a selection asks for, or why it cannot be shown."""
-    overview_report = _read_overview(profile, pin, accounts, month)
+    overview_report = _read_overview(
+        profile,
+        requested.pin,
+        requested.accounts,
+        requested.month,
+    )
     if isinstance(overview_report, str):
         return overview_report
     answered = overview_report.context
+    active_mode = requested.view.mode
+    active_tab = requested.view.tab
     return _TEMPLATES.get_template("report.html").render(
         is_current=overview_report.publication.is_current,
         publication_id=answered.publication_id,
@@ -370,10 +553,36 @@ def _render_report(
         month=display.month_value(answered.month),
         month_label=display.month_label(answered.month),
         overview=overview_report,
-        explanation_url=_answered_url(overview_report, "/explanation"),
+        mode=active_mode,
+        tab=active_tab,
+        comparison=requested.view.comparison,
+        tab_urls={
+            destination: _pinned_url(
+                PinnedAddress(
+                    answered.publication_id,
+                    answered.reference_date,
+                    tuple(answered.account_ids),
+                    display.month_value(answered.month),
+                ),
+                view=ViewState(
+                    "advanced",
+                    _tab(destination),
+                    requested.view.comparison,
+                ),
+            )
+            for destination in ("overview", "details", "checks")
+        },
+        explanation_url=_answered_url(
+            overview_report,
+            "/explanation",
+            requested.view,
+        ),
         detail_urls={
             category.category_id: _detail_url(
-                answered, "category", category.category_id
+                answered,
+                "category",
+                category.category_id,
+                view=requested.view,
             )
             for category in overview_report.categories
         },
@@ -401,21 +610,47 @@ def _render_explanation(
 
 def _report_response(
     profile: Profile,
-    pin: tuple[int, date],
-    accounts: list[str],
-    month: str,
+    requested: ReportRequest,
 ) -> Response:
     """Return the report fragment for one selection, or the empty-selection prompt.
 
     The address becomes this selection's own page, so back and forward reopen
     each selection the reader made.
     """
-    page = _pinned_url(*pin, accounts, month)
-    if not accounts:
+    destination_mode = requested.view.mode
+    destination_tab = (
+        DEFAULT_TAB if destination_mode != requested.active_mode else requested.view.tab
+    )
+    page = _pinned_url(
+        PinnedAddress(
+            *requested.pin,
+            requested.accounts,
+            requested.month,
+        ),
+        view=ViewState(
+            destination_mode,
+            destination_tab,
+            requested.view.comparison,
+        ),
+    )
+    if not requested.accounts:
         # An empty selection is a prompt, never a report of nothing.
         prompt = _TEMPLATES.get_template("no_accounts.html").render()
         return HTMLResponse(prompt, headers={"HX-Push-Url": page})
-    fragment = _render_report(profile, pin, accounts, month)
+    fragment = _render_report(
+        profile,
+        ReportRequest(
+            pin=requested.pin,
+            accounts=requested.accounts,
+            month=requested.month,
+            view=ViewState(
+                destination_mode,
+                destination_tab,
+                requested.view.comparison,
+            ),
+            active_mode=destination_mode,
+        ),
+    )
     return HTMLResponse(fragment, headers={"HX-Push-Url": page})
 
 
@@ -474,34 +709,21 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     @app.get("/")
     def overview(
         request: Request,
-        publication: int | None = None,
-        reference_date: date | None = None,
-        month: str | None = None,
-        account: Annotated[list[str] | None, Query()] = None,
+        address: Annotated[OverviewAddress, Query()],
     ) -> Response:
-        pin = (
-            None
-            if publication is None or reference_date is None
-            else (publication, reference_date)
-        )
         return for_reader(
             request,
-            lambda: HTMLResponse(_render_overview(profile, clock, pin, account, month)),
+            lambda: HTMLResponse(_render_overview(profile, clock, address.asked())),
         )
 
     @app.get("/report")
     def report(
         request: Request,
-        publication: int,
-        reference_date: date,
-        month: str,
-        account: Annotated[list[str] | None, Query()] = None,
+        address: Annotated[ReportAddress, Query()],
     ) -> Response:
         return for_reader(
             request,
-            lambda: _report_response(
-                profile, (publication, reference_date), account or [], month
-            ),
+            lambda: _report_response(profile, address.asked()),
         )
 
     @app.get("/explanation")
