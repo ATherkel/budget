@@ -190,6 +190,49 @@ class SpendingDetail:
     provisional: Provisional | None
 
 
+@dataclass(frozen=True)
+class BankBalanceObservation:
+    """The bank-stated balance after one dated transaction."""
+
+    transaction_date: date
+    balance_after: Decimal | None
+
+
+@dataclass(frozen=True)
+class MonthlyBalanceObservation:
+    """One account-month's published snapshot, separate from dated observations."""
+
+    opening_balance: Decimal | None
+    closing_balance: Decimal | None
+    coverage: Coverage
+    late_bookings_settled: bool
+
+
+@dataclass(frozen=True)
+class AccountActivitySnapshot:
+    """One selected account's dated observations and published monthly snapshot."""
+
+    account_id: str
+    display_name: str
+    dated_balance: BankBalanceObservation | None
+    earlier_observation: BankBalanceObservation | None
+    monthly_snapshot: MonthlyBalanceObservation | None
+    evidence_through: date | None
+    coverage: Coverage
+
+
+@dataclass(frozen=True)
+class AccountActivity:
+    """Dated balances and transaction activity for the selected account-month."""
+
+    context: ReportContext
+    publication: ReportPublication
+    currency: str
+    accounts: tuple[AccountActivitySnapshot, ...]
+    coverage: ReportCoverage
+    provisional: Provisional | None
+
+
 class InvalidSelectionError(ValueError):
     """`InvalidSelection`: a report context that breaks one or more selection rules."""
 
