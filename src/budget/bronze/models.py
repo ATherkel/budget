@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Literal
 
+from budget.bronze.refusals import RefusalCode
+
 
 @dataclass(frozen=True)
 class RawPayload:
@@ -50,7 +52,7 @@ class ImportRun:
     started_at: datetime
     outcome: Literal["stored", "repeat", "refused"]
     repeat_of: str | None
-    refusal_reasons: tuple[str, ...]
+    refusal_reasons: tuple[RefusalCode, ...]
 
 
 @dataclass(frozen=True)

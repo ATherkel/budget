@@ -242,7 +242,9 @@ def _repeat_of(entry: Mapping[str, object], outcome: str) -> str | None:
     return _text(entry, "repeat_of")
 
 
-def _refusal_reasons(entry: Mapping[str, object], outcome: str) -> tuple[str, ...]:
+def _refusal_reasons(
+    entry: Mapping[str, object], outcome: str
+) -> tuple[RefusalCode, ...]:
     """Return the refusal codes, which must be a list of strings.
 
     A format 1 line carries none: its refused run predates the codes.

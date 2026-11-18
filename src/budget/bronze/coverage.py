@@ -8,12 +8,7 @@ payload and its export date allow, whatever produced the payload.
 
 from datetime import date
 
-from budget.bronze.refusals import (
-    RANGE_ENDS_AFTER_EXPORT,
-    RANGE_STARTS_AFTER_END,
-    TRANSACTION_AFTER_RANGE,
-    TRANSACTION_BEFORE_RANGE,
-)
+from budget.bronze.refusals import RefusalCode
 
 
 def declared_range_refusals(
@@ -23,7 +18,7 @@ def declared_range_refusals(
     exported_on: date,
     first_transaction_date: date | None,
     last_transaction_date: date | None,
-) -> tuple[str, ...]:
+) -> tuple[RefusalCode, ...]:
     """Name every rule an import run's declared range breaks, or none.
 
     bronze-layer.md "Covers from and covers through": both ends are inclusive
@@ -34,14 +29,14 @@ def declared_range_refusals(
     lists them; the range is refused exactly when any code does.
     """
     broken = (
-        (RANGE_STARTS_AFTER_END, covers_from > covers_through),
-        (RANGE_ENDS_AFTER_EXPORT, covers_through > exported_on),
+        (RefusalCode.RANGE_STARTS_AFTER_END, covers_from > covers_through),
+        (RefusalCode.RANGE_ENDS_AFTER_EXPORT, covers_through > exported_on),
         (
-            TRANSACTION_BEFORE_RANGE,
+            RefusalCode.TRANSACTION_BEFORE_RANGE,
             first_transaction_date is not None and first_transaction_date < covers_from,
         ),
         (
-            TRANSACTION_AFTER_RANGE,
+            RefusalCode.TRANSACTION_AFTER_RANGE,
             last_transaction_date is not None
             and last_transaction_date > covers_through,
         ),
