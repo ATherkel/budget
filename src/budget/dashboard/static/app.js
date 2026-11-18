@@ -54,7 +54,7 @@ if (selection !== null && reportRegion !== null) {
   // A shortcut link names its selection in its address. With scripts, tick
   // those boxes and fetch the report as a checkbox change would.
   selection.addEventListener("click", (event) => {
-    const shortcut = event.target.closest("a.account-only");
+    const shortcut = event.target.closest("a[data-account-shortcut]");
     if (shortcut === null) {
       return;
     }

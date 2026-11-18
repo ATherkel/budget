@@ -33,13 +33,13 @@
 <input type="hidden" name="reference_date" value="{{ reference_date }}">
 <fieldset class="account-fieldset">
 <legend>Konti <span class="legend-note">Vælg mindst én</span></legend>
-<p class="account-shortcuts"><a id="accounts-all" href="{{ all_url }}">Alle</a> <a id="accounts-none" href="{{ none_url }}">Ingen</a></p>
+<p class="account-shortcuts"><a id="accounts-all" href="{{ all_url }}" data-account-shortcut>Alle</a> <a id="accounts-none" href="{{ none_url }}" data-account-shortcut>Ingen</a></p>
 {% for account in accounts %}
 <label class="account-option">
   <input type="checkbox" name="account" value="{{ account.account_id }}"{% if account.account_id in selected_accounts %} checked{% endif %}>
   <span>{{ account.display_name }}</span>
 </label>
-<a class="account-only" id="only-{{ account.account_id }}" href="{{ only_urls[account.account_id] }}">kun</a>
+<a class="account-only" id="only-{{ account.account_id }}" href="{{ only_urls[account.account_id] }}" data-account-shortcut>kun</a>
 {% endfor %}
 </fieldset>
 <label class="field-label" for="month">Måned</label>
