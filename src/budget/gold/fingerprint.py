@@ -17,7 +17,7 @@ from budget.gold.result import GoldResult
 from budget.inputs.snapshot import canonical_amount
 
 CONTRACT_VERSION: Final = "0.2"
-FINGERPRINT_SCHEME: Final = "1"
+FINGERPRINT_SCHEME: Final = "2"
 
 
 def result_fingerprint(result: GoldResult) -> str:
@@ -26,6 +26,7 @@ def result_fingerprint(result: GoldResult) -> str:
     transaction_ids = [each.transaction_id for each in records.transactions]
     document = {
         "accounts": sorted(records.accounts, key=lambda each: each.account_id),
+        "owners": sorted(records.owners, key=lambda each: each.display_order),
         "categories": sorted(records.categories, key=lambda each: each.category_id),
         "transactions": sorted(
             records.transactions, key=lambda each: each.transaction_id
