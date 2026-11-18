@@ -17,6 +17,16 @@ TRANSACTION_AFTER_RANGE: Final = "transaction-after-range"
 # A run refused before codes were recorded: its rule is not known.
 LEGACY_UNRECORDED: Final = "legacy-unrecorded"
 
+# Every code Bronze can record, in the order a run records its codes.
+REFUSAL_CODES: Final = (
+    ACCOUNT_CONFLICT,
+    RANGE_STARTS_AFTER_END,
+    RANGE_ENDS_AFTER_EXPORT,
+    TRANSACTION_BEFORE_RANGE,
+    TRANSACTION_AFTER_RANGE,
+    LEGACY_UNRECORDED,
+)
+
 
 def format_1_refusal_reasons(outcome: str) -> tuple[str, ...]:
     """Return the codes a run recorded before refusal codes existed implies.

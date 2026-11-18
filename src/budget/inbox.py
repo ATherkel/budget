@@ -412,6 +412,11 @@ _REFUSAL_PROSE: Final = {
 }
 
 
+def refusal_prose(code: str) -> str:
+    """Return the sentence the terminal says for one refusal code."""
+    return _REFUSAL_PROSE[code]
+
+
 def _still_in_inbox(imported: InboxFileImport, source: Path) -> str:
     """Say why an accepted export is still in the inbox, if it is.
 
@@ -445,7 +450,7 @@ def _outcome(
     run = imported.import_run
     account_id = run.declared_account_id
     if run.outcome == "refused":
-        reason = "; ".join(_REFUSAL_PROSE[code] for code in run.refusal_reasons)
+        reason = "; ".join(refusal_prose(code) for code in run.refusal_reasons)
         return FileOutcome(ordinal, account_id, "refused", reason)
     note = _still_in_inbox(imported, previewed.source)
     judged = run.repeat_of or run.import_run_id
