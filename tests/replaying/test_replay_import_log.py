@@ -156,6 +156,50 @@ class CompleteLogTests(unittest.TestCase):
                     "transaction-before-range",
                 )
 
+    def test_replay_accepts_a_format_1_line_and_marks_a_refused_run_legacy(
+        self,
+    ) -> None:
+        def format_1(each: dict[str, object]) -> dict[str, object]:
+            """The line as the old import wrote it: no `refusal_reasons`."""
+            return {k: v for k, v in each.items() if k != "refusal_reasons"} | {
+                "format": 1
+            }
+
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            stored = payload("01.04.2026")
+            refused = payload("01.03.2026")
+            stored_id = archive(profile, "joint-current/export-20260502.csv", stored)
+            path = f"joint-current/refused/{sha256(refused).hexdigest()[:12]}/old.csv"
+            refused_id = archive(profile, path, refused)
+            write_log(
+                profile,
+                format_1(
+                    entry("run-0001", "joint-current/export-20260502.csv", stored_id)
+                ),
+                format_1(
+                    entry(
+                        "run-0002",
+                        path,
+                        refused_id,
+                        started_at=LATER.isoformat(),
+                        outcome="refused",
+                    )
+                ),
+            )
+
+            with writer_lock(profile) as lock:
+                replay_import_log(lock)
+
+            with BronzeStore(profile) as store:
+                assert [
+                    (run.import_run_id, run.outcome, run.refusal_reasons)
+                    for run in store.import_runs()
+                ] == [
+                    ("run-0001", "stored", ()),
+                    ("run-0002", "refused", ("legacy-unrecorded",)),
+                ]
+
     def test_repeat_refused_and_unreadable_runs_keep_their_logged_outcomes(
         self,
     ) -> None:
