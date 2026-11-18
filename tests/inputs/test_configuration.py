@@ -150,6 +150,7 @@ format = 1
 [account.joint-savings]
 source_format = "danske-csv-v1"
 currency = "DKK"
+owner = "household"
 ownership_scope = "household"
 account_type = "savings"
 display_name = "Joint savings"
@@ -159,8 +160,12 @@ bank_account_number = "1234567890"
 display_name = "Joint current"
 account_type = "current"
 ownership_scope = "household"
+owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
+
+[owners]
+household = "Fælles"
 """
 REWRITTEN_TAXONOMY = """\
 format = 1

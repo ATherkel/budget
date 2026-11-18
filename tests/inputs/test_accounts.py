@@ -29,6 +29,7 @@ format = 1
 display_name = "Joint current"
 account_type = "current"
 ownership_scope = "household"
+owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
 bank_account_number = "0012345678"
@@ -37,9 +38,13 @@ bank_account_number = "0012345678"
 display_name = "Joint savings"
 account_type = "savings"
 ownership_scope = "person"
+owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
 closed_on = 2027-06-30
+
+[owners]
+household = "Fælles"
 """
 
 
@@ -73,6 +78,7 @@ class LoadAccountsTests(unittest.TestCase):
             currency="DKK",
             source_format="danske-csv-v1",
             bank_account_number="0012345678",
+            owner="household",
         )
         assert accounts["joint-savings"] == Account(
             account_id="joint-savings",
@@ -82,6 +88,7 @@ class LoadAccountsTests(unittest.TestCase):
             currency="DKK",
             source_format="danske-csv-v1",
             closed_on=date(2027, 6, 30),
+            owner="household",
         )
 
     def test_an_account_number_never_reaches_a_repr(self) -> None:
@@ -183,6 +190,7 @@ account.loose = "Joint current"
 display_name = "Joint current"
 account_type = "current"
 ownership_scope = "household"
+owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
 
@@ -190,6 +198,7 @@ source_format = "danske-csv-v1"
 display_name = "Joint savings"
 account_type = "credit"
 ownership_scope = "household"
+owner = "household"
 currency = "DKK"
 source_format = "nordea-csv-v1"
 colour = "blue"
@@ -199,6 +208,10 @@ closed_on = "2027-06-30"
 [account.card]
 display_name = ""
 ownership_scope = "family"
+owner = "household"
+
+[owners]
+household = "Fælles"
 """
         with TemporaryDirectory() as directory:
             profile = profile_with_accounts(directory, content)
@@ -249,7 +262,7 @@ ownership_scope = "family"
         ):
             key = line.partition(" ")[0]
             entry = "\n".join(
-                kept for kept in ACCOUNTS.splitlines()[2:9] if not kept.startswith(key)
+                kept for kept in ACCOUNTS.splitlines()[2:10] if not kept.startswith(key)
             )
             content = f"format = 1\n{entry}\n{line}\n"
             with self.subTest(line=line), TemporaryDirectory() as directory:
@@ -263,7 +276,7 @@ ownership_scope = "family"
                 )
 
     def test_an_account_id_is_lowercase_words_joined_by_hyphens(self) -> None:
-        entry = ACCOUNTS.splitlines()[3:9]
+        entry = ACCOUNTS.splitlines()[3:10]
         for account_id, accepted in (
             ("joint", True),
             ("card-2", True),
@@ -394,6 +407,21 @@ class AccountOwnerTests(unittest.TestCase):
         assert {
             account_id: account.owner for account_id, account in accounts.items()
         } == {"joint-current": "household", "alex-current": "alex"}
+
+    def test_an_account_without_an_owner_is_told_what_to_add(self) -> None:
+        content = OWNED_ACCOUNTS.replace('owner = "alex"\n', "")
+        with TemporaryDirectory() as directory:
+            profile = profile_with_accounts(directory, content)
+
+            with pytest.raises(ConfigurationError) as refusal:
+                load_accounts(profile)
+
+        assert refusal.value.problems == (
+            entry_problem(
+                "alex-current",
+                'owner is missing: add owner = "<id>" naming an owner in [owners]',
+            ),
+        )
 
 
 class CheckExportFilenameTests(unittest.TestCase):

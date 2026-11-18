@@ -199,8 +199,12 @@ SAVINGS_ONLY = """\
 display_name = "Joint savings"
 account_type = "savings"
 ownership_scope = "household"
+owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
+
+[owners]
+household = "Fælles"
 """
 
 

@@ -20,6 +20,7 @@ format = 1
 display_name = "Joint current"
 account_type = "current"
 ownership_scope = "household"
+owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
 bank_account_number = "0012345678"
@@ -28,8 +29,12 @@ bank_account_number = "0012345678"
 display_name = "Joint savings"
 account_type = "savings"
 ownership_scope = "household"
+owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
+
+[owners]
+household = "Fælles"
 """
 
 _HEADER = '"Dato","Kategori","Underkategori","Tekst","Beløb","Saldo","Status","Afstemt"'
