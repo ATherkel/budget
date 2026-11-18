@@ -38,6 +38,7 @@ ImportRun(
     started_at: datetime,     # UTC
     outcome: Literal["stored", "repeat", "refused"],
     repeat_of: str | None,    # the import run whose payload this repeats
+    refusal_reasons: tuple[str, ...],  # refusal codes; empty unless refused
 )
 
 SourceRecord(
@@ -85,8 +86,8 @@ for.
   below apply to a repeat as to any run, and a refusal takes precedence over a
   repeat.
 - **Account conflicts.** Presenting bytes already stored for a different
-  account is `refused`, unless the earlier import run has been voided by a
-  manual decision.
+  account is `refused` (`account-conflict`), unless the earlier import run has
+  been voided by a manual decision.
 - **Currency.** The account's currency comes from account configuration, never
   from the payload.
 - **Export date.** The export date is when the bank produced the file. It is
@@ -107,17 +108,25 @@ for.
   silently truncates the account's evidence, and too wide silently manufactures
   confirmed zeros over days the export never covered. So Bronze bounds the
   declaration:
-  - `covers_from` falls on or before `covers_through`;
-  - `covers_through` falls on or before `exported_on`;
+  - `covers_from` falls on or before `covers_through`
+    (`range-starts-after-end`);
+  - `covers_through` falls on or before `exported_on`
+    (`range-ends-after-export`);
   - for a payload Bronze can read, every transaction date falls within the
-    range: the earliest on or after `covers_from`, and the latest on or before
-    `covers_through`.
+    range: the earliest on or after `covers_from`
+    (`transaction-before-range`), and the latest on or before `covers_through`
+    (`transaction-after-range`).
 
   A declaration outside these bounds makes the import run `refused`, and the
   run records the range exactly as declared; it is never clamped or silently
   corrected. Reading the payload's earliest and latest transaction dates is the
   one thing Bronze interprets, and only to bound this declaration: every field
   is still stored and presented exactly as decoded.
+
+  A refused run records the code of every rule it broke, in the order listed
+  here, `account-conflict` first. The codes name rules only, never a date,
+  amount, account number or filename, so they are safe to log. A run refused
+  before Bronze recorded codes carries the single code `legacy-unrecorded`.
 
   A readable payload that states no transactions is bounded by the first two
   rules only, and when they hold it is `stored` (or a `repeat`): it shows the

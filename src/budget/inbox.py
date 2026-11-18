@@ -28,8 +28,8 @@ from budget.backups import (
     require_backup_allowed,
 )
 from budget.bronze import BronzeStore
-from budget.bronze.models import ImportRun
 from budget.bronze.parsers.registry import source_parser
+from budget.bronze.refusals import RefusalCode
 from budget.codeversion import committed_code_version, require_committed_code
 from budget.gold.build import closed_too_early, decision_problems
 from budget.gold.transactions import gold_transactions
@@ -399,27 +399,28 @@ def incident_files(incidents: Sequence[DuplicateIncident]) -> frozenset[Path]:
     )
 
 
-def refusal_reasons(run: ImportRun, previewed: ExportPreview) -> tuple[str, ...]:
-    """Say why Bronze refused a run, as `declared_range_refused` decides it.
+# The sentence the terminal says for each refusal code Bronze stores.
+_REFUSAL_PROSE: Final = {
+    RefusalCode.ACCOUNT_CONFLICT: (
+        "the same bytes are already stored for another account"
+    ),
+    RefusalCode.RANGE_STARTS_AFTER_END: "the declared range starts after it ends",
+    RefusalCode.RANGE_ENDS_AFTER_EXPORT: (
+        "the declared range ends after the export date"
+    ),
+    RefusalCode.TRANSACTION_BEFORE_RANGE: (
+        "the file has transactions before the declared range starts"
+    ),
+    RefusalCode.TRANSACTION_AFTER_RANGE: (
+        "the file has transactions after the declared range ends"
+    ),
+    RefusalCode.LEGACY_UNRECORDED: "it was refused before Bronze recorded why",
+}
 
-    Bronze records that a run was refused, not why, so the reasons are
-    derived again from the declaration and the file's own dates. A run whose
-    range Bronze allows was refused because its bytes are stored for another
-    account.
-    """
-    reasons = []
-    if run.covers_from > run.covers_through:
-        reasons.append("the declared range starts after it ends")
-    if run.covers_through > run.exported_on:
-        reasons.append("the declared range ends after the export date")
-    first, last = previewed.first_transaction, previewed.last_transaction
-    if first is not None and first < run.covers_from:
-        reasons.append("the file has transactions before the declared range starts")
-    if last is not None and last > run.covers_through:
-        reasons.append("the file has transactions after the declared range ends")
-    if not reasons:
-        reasons.append("the same bytes are already stored for another account")
-    return tuple(reasons)
+
+def refusal_prose(code: RefusalCode) -> str:
+    """Return the sentence the terminal says for one refusal code."""
+    return _REFUSAL_PROSE[code]
 
 
 def _still_in_inbox(imported: InboxFileImport, source: Path) -> str:
@@ -455,7 +456,7 @@ def _outcome(
     run = imported.import_run
     account_id = run.declared_account_id
     if run.outcome == "refused":
-        reason = "; ".join(refusal_reasons(run, previewed))
+        reason = "; ".join(refusal_prose(code) for code in run.refusal_reasons)
         return FileOutcome(ordinal, account_id, "refused", reason)
     note = _still_in_inbox(imported, previewed.source)
     judged = run.repeat_of or run.import_run_id

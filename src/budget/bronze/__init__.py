@@ -13,6 +13,7 @@ from budget.bronze.models import (
     RawPayload,
     SourceRecord,
 )
+from budget.bronze.refusals import RefusalCode
 from budget.bronze.storage import (
     migrate_bronze,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "ImportDeclaration",
     "ImportRun",
     "RawPayload",
+    "RefusalCode",
     "SourceRecord",
     "migrate_bronze",
 ]

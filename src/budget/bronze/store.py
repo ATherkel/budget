@@ -19,7 +19,7 @@ from types import MappingProxyType, TracebackType
 from typing import Literal, Self
 from uuid import uuid4
 
-from budget.bronze.coverage import declared_range_refused
+from budget.bronze.coverage import declared_range_refusals
 from budget.bronze.models import (
     FormatFailure,
     ImportDeclaration,
@@ -33,6 +33,7 @@ from budget.bronze.parsers.registry import (
     source_formats,
     source_parser,
 )
+from budget.bronze.refusals import RefusalCode, format_1_refusal_reasons
 from budget.bronze.storage import open_bronze_connection, open_bronze_snapshot
 from budget.profiles import Profile
 
@@ -105,12 +106,13 @@ def _decide_outcome(
     *,
     payload_id: str,
     declared_account_id: str,
-    declaration_refused: bool,
+    declaration_refusals: tuple[RefusalCode, ...],
     voided: Collection[str],
-) -> tuple[bool, str | None]:
+) -> tuple[tuple[RefusalCode, ...], str | None]:
     """Decide whether this presentation repeats, is refused, or is a new store.
 
     A voided run no longer stands for its bytes, so it is nobody's original.
+    The refusal codes come back account conflict first, then the declaration's.
     """
     stored_here = connection.execute(
         """
@@ -144,12 +146,14 @@ def _decide_outcome(
         account_conflict = any(
             row["import_run_id"] not in voided for row in stored_elsewhere
         )
-    refused = declaration_refused or account_conflict
-    if refused:
+    reasons = (
+        (RefusalCode.ACCOUNT_CONFLICT,) if account_conflict else ()
+    ) + declaration_refusals
+    if reasons:
         # A refused run is nobody's original: it is never the run a later
         # presentation of these bytes repeats.
         repeat_of = None
-    return refused, repeat_of
+    return reasons, repeat_of
 
 
 def _rebuild_derived_cache(
@@ -228,10 +232,43 @@ def _record_run(connection: sqlite3.Connection, run: ImportRun, content: bytes) 
             run.repeat_of,
         ),
     )
+    connection.executemany(
+        "INSERT INTO import_run_refusals (import_run_id, code) VALUES (?, ?)",
+        ((run.import_run_id, code.value) for code in run.refusal_reasons),
+    )
 
 
-def _import_run(row: sqlite3.Row) -> ImportRun:
-    """Read one `import_runs` row back as the run it records."""
+def _records_refusals(connection: sqlite3.Connection) -> bool:
+    """Say whether the store has the table refusal codes are recorded in.
+
+    A store or snapshot from before that schema has none.
+    """
+    return (
+        connection.execute(
+            "SELECT 1 FROM sqlite_master"
+            " WHERE type = 'table' AND name = 'import_run_refusals'"
+        ).fetchone()
+        is not None
+    )
+
+
+def _refusal_codes(
+    connection: sqlite3.Connection, row: sqlite3.Row, *, recorded: bool
+) -> tuple[RefusalCode, ...]:
+    """Return a run's refusal codes: its rows, or what an older store implies."""
+    if not recorded:
+        return format_1_refusal_reasons(row["outcome"])
+    codes = connection.execute(
+        "SELECT code FROM import_run_refusals WHERE import_run_id = ? ORDER BY rowid",
+        (row["import_run_id"],),
+    )
+    return tuple(RefusalCode(code["code"]) for code in codes)
+
+
+def _import_run(
+    connection: sqlite3.Connection, row: sqlite3.Row, *, recorded: bool
+) -> ImportRun:
+    """Read one `import_runs` row, and its refusal codes, back as the run."""
     return ImportRun(
         import_run_id=row["import_run_id"],
         payload_id=row["payload_id"],
@@ -245,6 +282,7 @@ def _import_run(row: sqlite3.Row) -> ImportRun:
         started_at=datetime.fromisoformat(row["started_at"]),
         outcome=row["outcome"],
         repeat_of=row["repeat_of"],
+        refusal_reasons=_refusal_codes(connection, row, recorded=recorded),
     )
 
 
@@ -269,6 +307,7 @@ class BronzeStore:
         else:
             self._connection = open_bronze_snapshot(profile, snapshot)
         self._parsers = selected
+        self._records_refusals = _records_refusals(self._connection)
 
     def __enter__(self) -> Self:
         """Return the open store for a `with` block."""
@@ -324,7 +363,7 @@ class BronzeStore:
             exported_on_source = "filename"
 
         result = parser.parse(content)
-        declaration_refused = declared_range_refused(
+        declaration_refusals = declared_range_refusals(
             covers_from=declaration.covers_from,
             covers_through=declaration.covers_through,
             exported_on=exported_on,
@@ -336,11 +375,11 @@ class BronzeStore:
         # Commit the payload, provenance, and derived records together.
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE")
-            refused, repeat_of = _decide_outcome(
+            refusal_reasons, repeat_of = _decide_outcome(
                 self._connection,
                 payload_id=payload_id,
                 declared_account_id=declaration.declared_account_id,
-                declaration_refused=declaration_refused,
+                declaration_refusals=declaration_refusals,
                 voided=voided,
             )
 
@@ -357,8 +396,11 @@ class BronzeStore:
                     covers_from=declaration.covers_from,
                     covers_through=declaration.covers_through,
                     started_at=started_at,
-                    outcome=_outcome_for(refused=refused, repeat_of=repeat_of),
+                    outcome=_outcome_for(
+                        refused=bool(refusal_reasons), repeat_of=repeat_of
+                    ),
                     repeat_of=repeat_of,
+                    refusal_reasons=refusal_reasons,
                 ),
                 content,
             )
@@ -397,14 +439,17 @@ class BronzeStore:
         ).fetchone()
         if row is None:
             raise KeyError(import_run_id)
-        return _import_run(row)
+        return _import_run(self._connection, row, recorded=self._records_refusals)
 
     def import_runs(self) -> tuple[ImportRun, ...]:
         """Return every import run's stored provenance, oldest first."""
         rows = self._connection.execute(
             "SELECT * FROM import_runs ORDER BY started_at, import_run_id"
+        ).fetchall()
+        return tuple(
+            _import_run(self._connection, row, recorded=self._records_refusals)
+            for row in rows
         )
-        return tuple(_import_run(row) for row in rows)
 
     def get_payload(self, payload_id: str) -> RawPayload:
         """Return one retained payload's exact bytes."""

@@ -17,7 +17,13 @@ from typing import Final, Literal
 
 from budget.bronze import BronzeStore, ImportRun
 from budget.bronze.parsers import source_formats
-from budget.importing import IMPORT_LOG_FORMAT, archive_candidates, log_entry
+from budget.bronze.refusals import RefusalCode, format_1_refusal_reasons
+from budget.importing import (
+    FORMAT_WITHOUT_REFUSAL_REASONS,
+    IMPORT_LOG_FORMAT,
+    archive_candidates,
+    log_entry,
+)
 from budget.locking import WriterLock
 from budget.profiles import Profile, ProfilePathOutsideRootError
 
@@ -37,8 +43,14 @@ _ENTRY_FIELDS: Final = frozenset(
         "started_at",
         "outcome",
         "repeat_of",
+        "refusal_reasons",
     }
 )
+# The fields of each format a log may hold: format 1 predates the refusal codes.
+_FIELDS_BY_FORMAT: Final[Mapping[int, frozenset[str]]] = {
+    FORMAT_WITHOUT_REFUSAL_REASONS: _ENTRY_FIELDS - {"refusal_reasons"},
+    IMPORT_LOG_FORMAT: _ENTRY_FIELDS,
+}
 # Identity maps: looking a logged string up in one both checks it and narrows
 # it to the Literal type `ImportRun` declares.
 _OUTCOMES: Final[Mapping[str, Literal["stored", "repeat", "refused"]]] = {
@@ -176,11 +188,12 @@ def _entry_object(line: bytes) -> dict[str, object]:
         parsed: object = json.loads(line)
     except ValueError:
         raise _NotAnEntryError from None
-    if not isinstance(parsed, dict) or set(parsed) != _ENTRY_FIELDS:
+    if not isinstance(parsed, dict):
         raise _NotAnEntryError
     entry: dict[str, object] = {str(field): value for field, value in parsed.items()}
-    # A bool is an int to Python, but `true` is not format 1.
-    if type(entry["format"]) is not int or entry["format"] != IMPORT_LOG_FORMAT:
+    # A bool is an int to Python, but `true` is not a format number.
+    log_format = entry.get("format")
+    if type(log_format) is not int or set(entry) != _FIELDS_BY_FORMAT.get(log_format):
         raise _NotAnEntryError
     return entry
 
@@ -229,6 +242,29 @@ def _repeat_of(entry: Mapping[str, object], outcome: str) -> str | None:
     return _text(entry, "repeat_of")
 
 
+def _refusal_reasons(
+    entry: Mapping[str, object], outcome: str
+) -> tuple[RefusalCode, ...]:
+    """Return the refusal codes, which must be a list of strings.
+
+    A format 1 line carries none: its refused run predates the codes.
+    """
+    if entry["format"] == FORMAT_WITHOUT_REFUSAL_REASONS:
+        return format_1_refusal_reasons(outcome)
+    codes = entry["refusal_reasons"]
+    if not isinstance(codes, list):
+        raise _NotAnEntryError
+    reasons: list[RefusalCode] = []
+    for code in codes:
+        if not isinstance(code, str):
+            raise _NotAnEntryError
+        try:
+            reasons.append(RefusalCode(code))
+        except ValueError:
+            raise _NotAnEntryError from None
+    return tuple(reasons)
+
+
 def _logged_run(line: bytes) -> tuple[ImportRun, str]:
     """Read one complete log line as the run it mirrors and its archive path."""
     entry = _entry_object(line)
@@ -250,6 +286,7 @@ def _logged_run(line: bytes) -> tuple[ImportRun, str]:
         started_at=_started_at(entry),
         outcome=outcome,
         repeat_of=_repeat_of(entry, outcome),
+        refusal_reasons=_refusal_reasons(entry, outcome),
     )
     if run.source_format not in source_formats():
         raise _NotAnEntryError
@@ -261,7 +298,10 @@ def _logged_run(line: bytes) -> tuple[ImportRun, str]:
         raise _NotAnEntryError
     # Byte for byte what the import writes for the run, so a replayed log is
     # one every later import accepts.
-    if line + b"\n" != log_entry(run, archive_path):
+    log_format = entry["format"]
+    if not isinstance(log_format, int) or line + b"\n" != log_entry(
+        run, archive_path, log_format=log_format
+    ):
         raise _NotAnEntryError
     return run, archive_path
 

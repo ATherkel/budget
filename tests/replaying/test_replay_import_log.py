@@ -11,7 +11,7 @@ from a household the real import wrote, so the writer and replay must agree.
 import json
 import shutil
 import unittest
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from hashlib import sha256
@@ -52,14 +52,18 @@ def archive(profile: Profile, archive_path: str, content: bytes) -> str:
 
 
 def entry(
-    import_run_id: str, archive_path: str, payload_sha256: str, **changes: object
+    import_run_id: str,
+    archive_path: str,
+    payload_sha256: str,
+    refusal_reasons: Sequence[str] = (),
+    **changes: object,
 ) -> dict[str, object]:
     """One import-log entry for a stored `joint-current` export of 2 May 2026.
 
     `changes` replaces any other field of the entry by name.
     """
     return {
-        "format": 1,
+        "format": 2,
         "import_run_id": import_run_id,
         "account_id": "joint-current",
         "source_format": "danske-csv-v1",
@@ -72,6 +76,7 @@ def entry(
         "started_at": STARTED_AT.isoformat(),
         "outcome": "stored",
         "repeat_of": None,
+        "refusal_reasons": list(refusal_reasons),
     } | changes
 
 
@@ -108,6 +113,7 @@ class CompleteLogTests(unittest.TestCase):
                 started_at=STARTED_AT,
                 outcome="stored",
                 repeat_of=None,
+                refusal_reasons=(),
             )
 
             with writer_lock(profile) as lock:
@@ -122,6 +128,78 @@ class CompleteLogTests(unittest.TestCase):
                     for record in store.get_source_records(payload_id)
                 ] == ["01.04.2026", "30.04.2026"]
                 assert store.get_format_failures(payload_id) == ()
+
+    def test_replay_restores_a_refused_runs_codes_from_a_format_2_log(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            refused = payload("01.03.2026")
+            path = f"joint-current/refused/{sha256(refused).hexdigest()[:12]}/old.csv"
+            payload_id = archive(profile, path, refused)
+            write_log(
+                profile,
+                entry(
+                    "run-0001",
+                    path,
+                    payload_id,
+                    ["range-ends-after-export", "transaction-before-range"],
+                    outcome="refused",
+                ),
+            )
+
+            with writer_lock(profile) as lock:
+                replay_import_log(lock)
+
+            with BronzeStore(profile) as store:
+                (run,) = store.import_runs()
+                assert run.outcome == "refused"
+                assert run.refusal_reasons == (
+                    "range-ends-after-export",
+                    "transaction-before-range",
+                )
+
+    def test_replay_accepts_a_format_1_line_and_marks_a_refused_run_legacy(
+        self,
+    ) -> None:
+        def format_1(each: dict[str, object]) -> dict[str, object]:
+            """The line as the old import wrote it: no `refusal_reasons`."""
+            return {k: v for k, v in each.items() if k != "refusal_reasons"} | {
+                "format": 1
+            }
+
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            stored = payload("01.04.2026")
+            refused = payload("01.03.2026")
+            stored_id = archive(profile, "joint-current/export-20260502.csv", stored)
+            path = f"joint-current/refused/{sha256(refused).hexdigest()[:12]}/old.csv"
+            refused_id = archive(profile, path, refused)
+            write_log(
+                profile,
+                format_1(
+                    entry("run-0001", "joint-current/export-20260502.csv", stored_id)
+                ),
+                format_1(
+                    entry(
+                        "run-0002",
+                        path,
+                        refused_id,
+                        started_at=LATER.isoformat(),
+                        outcome="refused",
+                    )
+                ),
+            )
+
+            with writer_lock(profile) as lock:
+                replay_import_log(lock)
+
+            with BronzeStore(profile) as store:
+                assert [
+                    (run.import_run_id, run.outcome, run.refusal_reasons)
+                    for run in store.import_runs()
+                ] == [
+                    ("run-0001", "stored", ()),
+                    ("run-0002", "refused", ("legacy-unrecorded",)),
+                ]
 
     def test_repeat_refused_and_unreadable_runs_keep_their_logged_outcomes(
         self,
@@ -417,7 +495,12 @@ def _with(**changes: object) -> Callable[[dict[str, object]], dict[str, object]]
 
 # Each one turns a valid second entry into one replay must refuse.
 INVALID_ENTRIES: dict[str, Callable[[dict[str, object]], dict[str, object]]] = {
-    "a later format": _with(format=2),
+    "a later format": _with(format=3),
+    "refusal codes that are not a list": _with(refusal_reasons="legacy-unrecorded"),
+    "a refusal code that is not a string": _with(refusal_reasons=[7]),
+    "an unknown refusal code": _with(refusal_reasons=["range-too-wide"]),
+    "a format 1 line with refusal codes": _with(format=1),
+    "a format 2 line without refusal codes": _without("refusal_reasons"),
     "a missing field": _without("covers_from"),
     "an extra field": _with(note="extra"),
     "a number for a string": _with(account_id=7),

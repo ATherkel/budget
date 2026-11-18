@@ -20,7 +20,7 @@ import pytest
 from budget.bronze import BronzeStore, migrate_bronze, storage
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
-from tests.bronze.migration_resources import patched_resources
+from tests.bronze.migration_resources import migrations_through, patched_resources
 
 
 @contextmanager
@@ -58,11 +58,12 @@ class BronzeStorageTests(unittest.TestCase):
                     "import_runs",
                     "source_records",
                     "format_failures",
+                    "import_run_refusals",
                     "store_identity",
                 }
                 for definition in definitions.values():
                     assert "STRICT" in definition
-                assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
                 assert connection.execute(
                     "SELECT profile, stage FROM store_identity"
                 ).fetchall() == [("test", "bronze")]
@@ -290,7 +291,7 @@ class BronzeStorageTests(unittest.TestCase):
                         "INSERT INTO store_identity (profile, stage) VALUES (?, ?)",
                         rows,
                     )
-                    connection.execute("PRAGMA user_version = 1")
+                    connection.execute("PRAGMA user_version = 2")
 
                 with pytest.raises(storage.StoreIdentityError):
                     BronzeStore(profile)
@@ -351,11 +352,45 @@ class BronzeStorageTests(unittest.TestCase):
                 migrate_bronze(profile)
 
             with _connected(profile.bronze_store) as connection:
-                assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
                 assert connection.execute("SELECT x FROM first").fetchall() == [
                     ("a;b",)
                 ]
             assert _tables(profile.bronze_store) >= {"first", "second"}
+
+    def test_a_refused_run_from_a_version_1_store_reads_back_as_legacy_unrecorded(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            with migrations_through(1):
+                migrate_bronze(profile)
+            with _connected(profile.bronze_store) as connection:
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+                connection.execute(
+                    "INSERT INTO raw_payloads (payload_id, byte_length, content)"
+                    " VALUES ('payload-1', 3, x'616263')"
+                )
+                for run_id, outcome in (
+                    ("run-stored", "stored"),
+                    ("run-no", "refused"),
+                ):
+                    connection.execute(
+                        "INSERT INTO import_runs VALUES"
+                        " (?, 'payload-1', 'daily-account', 'danske-csv-v1',"
+                        " 'synthetic-20260914.csv', '2026-09-14', 'filename',"
+                        " '2026-09-01', '2026-09-13', '2026-09-14T10:00:00+00:00',"
+                        " ?, NULL)",
+                        (run_id, outcome),
+                    )
+
+            migrate_bronze(profile)
+
+            with BronzeStore(profile) as store:
+                assert store.get_import_run("run-no").refusal_reasons == (
+                    "legacy-unrecorded",
+                )
+                assert store.get_import_run("run-stored").refusal_reasons == ()
 
 
 if __name__ == "__main__":

@@ -16,8 +16,10 @@ from unittest import mock
 
 from budget.bronze import BronzeStore
 from budget.bronze.parsers.registry import source_parser
+from budget.bronze.refusals import RefusalCode
 from budget.gold.recipe import RecipeImportRun
 from budget.gold.store import GoldStore
+from budget.inbox import refusal_prose
 from budget.profiles import Profile, load_profile_file
 from budget.routine_logging import LOG_FILE, LOG_FOLDER
 from budget.silver import SilverImportRun, SilverStore
@@ -209,6 +211,31 @@ class ImportCommandTests(unittest.TestCase):
             ) in stdout
             assert "[2] joint-savings  stored\n" in stdout
             assert "Silver   1 admitted, 0 quarantined, 0 dropped\n" in stdout
+
+    def test_a_file_that_is_both_an_account_conflict_and_out_of_range_says_both(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            profile_file = write_profile(folder)
+            profile = _household(profile_file, folder)
+            content = payload("01.03.2026")
+            drop(profile, "joint-current", "danske-20260305.csv", content)
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-05"))
+            assert import_(profile_file, "--ranges", str(ranges))[0] == EXIT_OK
+            # The same bytes for another account, with a range that ends after
+            # the export date, so both rules fail.
+            drop(profile, "joint-savings", "danske-20260305.csv", content)
+            ranges = write_ranges(folder, default=("2026-03-01", "2026-03-06"))
+
+            status, stdout, stderr = import_(profile_file, "--ranges", str(ranges))
+
+            assert (status, stderr) == (EXIT_REFUSED_INPUT, "")
+            assert (
+                "[1] joint-savings  refused: the same bytes are already stored for"
+                " another account; the declared range ends after the export date;"
+                " it stays in the inbox\n"
+            ) in stdout
 
     def test_misfiled_exports_stay_while_the_others_are_stored(self) -> None:
         with TemporaryDirectory() as directory:
@@ -569,6 +596,26 @@ class ImportCommandTests(unittest.TestCase):
                 assert stderr.endswith("; nothing was imported\n")
                 assert source.read_bytes() == content
                 assert not profile.import_log_file.exists()
+
+
+class RefusalProseTests(unittest.TestCase):
+    def test_every_code_bronze_can_record_has_a_terminal_sentence(self) -> None:
+        for code in RefusalCode:
+            with self.subTest(code=code):
+                sentence = refusal_prose(code)
+
+                assert sentence
+                assert sentence != code
+
+    def test_bronze_can_record_exactly_these_six_codes(self) -> None:
+        assert [code.value for code in RefusalCode] == [
+            "account-conflict",
+            "range-starts-after-end",
+            "range-ends-after-export",
+            "transaction-before-range",
+            "transaction-after-range",
+            "legacy-unrecorded",
+        ]
 
 
 class InteractiveImportTests(unittest.TestCase):

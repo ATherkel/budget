@@ -430,9 +430,13 @@ Every command that writes Bronze brings it up to date before it finishes, and
 `verify` checks the two agree.
 
 ```json
-{"format": 1, "import_run_id": "run-0001", "account_id": "joint-current", "source_format": "danske-csv-v1", "archive_path": "joint-current/export-20260402.csv", "payload_sha256": "c0ffee…", "exported_on": "2026-04-02", "exported_on_source": "filename", "covers_from": "2026-03-01", "covers_through": "2026-04-02", "started_at": "2026-04-02T18:03:44.120731+00:00", "outcome": "stored", "repeat_of": null}
+{"format": 2, "import_run_id": "run-0001", "account_id": "joint-current", "source_format": "danske-csv-v1", "archive_path": "joint-current/export-20260402.csv", "payload_sha256": "c0ffee…", "exported_on": "2026-04-02", "exported_on_source": "filename", "covers_from": "2026-03-01", "covers_through": "2026-04-02", "started_at": "2026-04-02T18:03:44.120731+00:00", "outcome": "stored", "repeat_of": null, "refusal_reasons": []}
 ```
 
+- **`refusal_reasons`** lists a refused run's
+  [refusal codes](bronze-layer.md#rules), and is empty for every other run.
+  Replay and the import also accept format 1 lines, which carry no codes: a
+  refused run from one reads as `legacy-unrecorded`.
 - **`started_at`** is Bronze's own timestamp, exact to the microsecond and
   offset, so a replay restores the run unchanged.
 - **`archive_path`** is relative to the archive, with `/`, and ends in the
@@ -711,7 +715,7 @@ files are stored and published, and `import` exits 3.
 | `import` stored files, then Silver or Gold refused in a way no earlier check could foresee, or a store was busy, full or failing I/O | Bronze, the archive and the log are committed and the inbox files gone; Silver may be committed; the previous publication stays current. Production attempts its backup set and reports if that failed; exit 4 names `budget import` | Fix the cause and run `import` again, with or without inbox files: it finishes the rebuild, the publication and the backup. If the backup had failed, run `budget backup` after |
 | A production `rebuild` or `undo` succeeds, then its backup set cannot be written | The stores are rebuilt or the pointer moved; exit 4, saying so | Fix what the message names, then run `budget backup` |
 | `undo` with no previous publication, or with its result no longer retained | Nothing changes; exit 4 | Fix the input and rebuild |
-| Refused import run (account conflict, or a declared range that ends after the export date or leaves out one of the payload's transactions) | Recorded as refused and logged, its bytes copied under `exports\<account_id>\refused\` | Move the file or correct the declaration, then rerun |
+| Refused import run (an account conflict, or a declared range that starts after it ends, ends after the export date, or leaves out the payload's first or last transaction; [`bronze-layer.md`](bronze-layer.md#rules) names each rule) | Recorded as refused and logged, its bytes copied under `exports\<account_id>\refused\` | Move the file or correct the declaration, then rerun |
 | Misfiled export (filename's account number is not the declared `bank_account_number`) | Rejected before Bronze, with no run or log entry | Move it to the right folder, or fix the declaration, then rerun |
 | Format failure | Found by the preview, before anything is archived or logged: `import` never presents an unreadable file to Bronze (which can still record a `FormatFailure`), so a parser fix needs no new presentation and `rebuild --from bronze` parses retained payloads again | Download the export again, or fix the parser, then rerun. Never edit an export by hand |
 | A payload the inbox holds under two or more accounts (a cross-account duplicate) | Reported before anything is written, with each file's account, filename, export date, record count and dates; every file in the group is refused, with no run recorded; the others are imported only on `y` or `yes`, never without a terminal | Check which account the bank exported it from, download those accounts again, remove the duplicate, rerun |

@@ -31,6 +31,7 @@ def test_a_run_in_a_supplied_format_is_read_into_transactions() -> None:
         started_at=datetime(2026, 3, 5, tzinfo=UTC),
         outcome="stored",
         repeat_of=None,
+        refusal_reasons=(),
     )
     record = SourceRecord(
         payload_id=PAYLOAD,

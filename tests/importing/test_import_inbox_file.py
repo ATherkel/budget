@@ -6,10 +6,12 @@ writer lock, then reads the outcome back from the reopened Bronze store, the
 export archive, `imports.jsonl` and the inbox.
 """
 
+import json
 import os
+import sqlite3
 import unittest
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import date
 from hashlib import sha256
 from pathlib import Path
@@ -72,7 +74,7 @@ class OrdinaryImportTests(unittest.TestCase):
                 assert store.get_payload(run.payload_id).content == content
             assert log_entries(profile) == [
                 {
-                    "format": 1,
+                    "format": 2,
                     "import_run_id": run.import_run_id,
                     "account_id": "joint-current",
                     "source_format": "danske-csv-v1",
@@ -85,8 +87,112 @@ class OrdinaryImportTests(unittest.TestCase):
                     "started_at": run.started_at.isoformat(),
                     "outcome": "stored",
                     "repeat_of": None,
+                    "refusal_reasons": [],
                 }
             ]
+
+    def test_a_log_line_is_format_2_and_carries_the_run_refusal_codes(self) -> None:
+        cases = (
+            ("refused", THROUGH_MAY_3, ["range-ends-after-export"]),
+            ("stored", APRIL, []),
+        )
+
+        for outcome, coverage, expected_codes in cases:
+            with self.subTest(outcome=outcome), TemporaryDirectory() as directory:
+                profile = household(Path(directory))
+                source = drop(profile, "joint-current", EXPORT, payload("01.04.2026"))
+
+                with writer_lock(profile) as lock:
+                    result = import_inbox_file(lock, source, coverage)
+
+                assert result.import_run.outcome == outcome
+                (entry,) = log_entries(profile)
+                assert (entry.get("format"), entry.get("refusal_reasons")) == (
+                    2,
+                    expected_codes,
+                )
+
+    def test_a_log_the_old_import_wrote_still_works_with_the_new_import(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            stored_source = drop(
+                profile, "joint-current", EXPORT, payload("01.04.2026")
+            )
+            refused_source = drop(
+                profile, "joint-current", "export-20260501.csv", payload("02.04.2026")
+            )
+            with writer_lock(profile) as lock:
+                stored = import_inbox_file(lock, stored_source, APRIL).import_run
+                refused = import_inbox_file(lock, refused_source, THROUGH_MAY_3)
+            assert (stored.outcome, refused.import_run.outcome) == ("stored", "refused")
+
+            # The old import wrote format 1 and no refusal codes, so give the
+            # log exactly those lines.
+            old_lines = b"".join(
+                (
+                    json.dumps(
+                        {k: v for k, v in each.items() if k != "refusal_reasons"}
+                        | {"format": 1}
+                    )
+                    + "\n"
+                ).encode("utf-8")
+                for each in log_entries(profile)
+            )
+            profile.import_log_file.write_bytes(old_lines)
+            # A store migrated from version 1 holds `legacy-unrecorded` for a
+            # refused run, not the code the new import just recorded.
+            with (
+                closing(sqlite3.connect(profile.bronze_store)) as connection,
+                connection,
+            ):
+                connection.execute("DELETE FROM import_run_refusals")
+                connection.execute(
+                    "INSERT INTO import_run_refusals VALUES (?, 'legacy-unrecorded')",
+                    (refused.import_run.import_run_id,),
+                )
+            later_source = drop(
+                profile, "joint-current", LATER_EXPORT, payload("03.04.2026")
+            )
+
+            with writer_lock(profile) as lock:
+                later = import_inbox_file(lock, later_source, THROUGH_MAY_3).import_run
+
+            assert later.outcome == "stored"
+            new_log = profile.import_log_file.read_bytes()
+            assert new_log.startswith(old_lines)
+            (appended,) = new_log.removeprefix(old_lines).splitlines()
+            assert json.loads(appended)["format"] == 2
+            assert json.loads(appended)["import_run_id"] == later.import_run_id
+
+    def test_a_format_1_line_for_a_run_with_real_refusal_codes_is_damage(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            refused_source = drop(
+                profile, "joint-current", "export-20260501.csv", payload("02.04.2026")
+            )
+            with writer_lock(profile) as lock:
+                refused = import_inbox_file(lock, refused_source, THROUGH_MAY_3)
+            assert refused.import_run.refusal_reasons == ("range-ends-after-export",)
+            # Format 1 stands for `legacy-unrecorded` only; Bronze holds a real
+            # code here, so the line no longer restates the run.
+            (each,) = log_entries(profile)
+            profile.import_log_file.write_bytes(
+                (
+                    json.dumps(
+                        {k: v for k, v in each.items() if k != "refusal_reasons"}
+                        | {"format": 1}
+                    )
+                    + "\n"
+                ).encode("utf-8")
+            )
+            later_source = drop(
+                profile, "joint-current", LATER_EXPORT, payload("03.04.2026")
+            )
+
+            with writer_lock(profile) as lock, pytest.raises(ImportLogDamagedError):
+                import_inbox_file(lock, later_source, THROUGH_MAY_3)
 
     def test_one_held_lock_covers_every_file_of_the_inbox(self) -> None:
         with TemporaryDirectory() as directory:
@@ -1128,7 +1234,7 @@ class CutOffProofTests(unittest.TestCase):
                 )
             complete = profile.import_log_file.read_bytes()
             first_entry = complete[: complete.index(b"\n") + 1]
-            shared_start = b'{"format": 1, "import_run_id": "'
+            shared_start = b'{"format": 2, "import_run_id": "'
             assert complete[len(first_entry) :].startswith(shared_start)
             profile.import_log_file.write_bytes(first_entry + shared_start)
 
@@ -1223,9 +1329,9 @@ class DamagedLogTests(unittest.TestCase):
                     APRIL,
                 )
             log = profile.import_log_file.read_bytes()
-            assert log.startswith(b'{"format": 1,')
+            assert log.startswith(b'{"format": 2,')
             profile.import_log_file.write_bytes(
-                log.replace(b'{"format": 1,', b'{"format": true,', 1)
+                log.replace(b'{"format": 2,', b'{"format": true,', 1)
             )
             source = drop(profile, "joint-savings", EXPORT, payload("02.04.2026"))
 

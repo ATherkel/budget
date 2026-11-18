@@ -21,12 +21,15 @@ from pathlib import Path
 from typing import Final
 
 from budget.bronze import BronzeStore, ImportDeclaration, ImportRun
+from budget.bronze.refusals import format_1_refusal_reasons
 from budget.durability import sync_folder
 from budget.inputs import Account, load_accounts
 from budget.locking import WriterLock
 from budget.profiles import Profile
 
-IMPORT_LOG_FORMAT: Final = 1
+IMPORT_LOG_FORMAT: Final = 2
+# The first log format, whose lines carry no `refusal_reasons`.
+FORMAT_WITHOUT_REFUSAL_REASONS: Final = 1
 # How much of the payload hash names an archive folder (operations.md, W1).
 HASH_PREFIX_LENGTH: Final = 12
 REFUSED_FOLDER: Final = "refused"
@@ -336,10 +339,17 @@ def _missing_folders(folder: Path) -> list[Path]:
     return missing
 
 
-def log_entry(run: ImportRun, archive_path: str) -> bytes:
-    """Mirror one import run as an `imports.jsonl` line, with its line feed."""
-    entry = {
-        "format": IMPORT_LOG_FORMAT,
+def log_entry(
+    run: ImportRun, archive_path: str, *, log_format: int = IMPORT_LOG_FORMAT
+) -> bytes:
+    """Mirror one import run as an `imports.jsonl` line, with its line feed.
+
+    An import always writes the current format. `log_format=1` gives the line
+    the first format wrote, which had no `refusal_reasons`, so replay can check
+    that an old line is exactly what that import wrote.
+    """
+    entry: dict[str, object] = {
+        "format": log_format,
         "import_run_id": run.import_run_id,
         "account_id": run.declared_account_id,
         "source_format": run.source_format,
@@ -353,6 +363,8 @@ def log_entry(run: ImportRun, archive_path: str) -> bytes:
         "outcome": run.outcome,
         "repeat_of": run.repeat_of,
     }
+    if log_format != FORMAT_WITHOUT_REFUSAL_REASONS:
+        entry["refusal_reasons"] = list(run.refusal_reasons)
     return (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
 
 
@@ -414,12 +426,17 @@ def _parse_log(content: bytes) -> _LogState:
 def _logged_archive_path(run: ImportRun, line: bytes) -> str:
     """Return where a logged run's export is archived, as its entry says.
 
-    The entry must be exactly what this code writes for the run, at one of
-    the places the run's export may be archived; anything else is damage.
+    The entry must be exactly what this code writes for the run, or what the
+    first format wrote when that format's codes are the run's, at one of the
+    places the run's export may be archived; anything else is damage.
     """
+    log_formats = [IMPORT_LOG_FORMAT]
+    if run.refusal_reasons == format_1_refusal_reasons(run.outcome):
+        log_formats.append(FORMAT_WITHOUT_REFUSAL_REASONS)
     for archive_path in archive_candidates(run):
-        if line == log_entry(run, archive_path):
-            return archive_path
+        for log_format in log_formats:
+            if line == log_entry(run, archive_path, log_format=log_format):
+                return archive_path
     raise ImportLogDamagedError
 
 
