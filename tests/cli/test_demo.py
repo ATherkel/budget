@@ -245,3 +245,42 @@ def test_the_demo_has_categorized_spending_to_investigate(tmp_path: Path) -> Non
     )
 
     assert 'id="detail-spending">1.500,00 kr.<' in detail.text
+
+
+def test_the_demo_has_public_activity_and_diagnostics_for_advanced_views(
+    tmp_path: Path,
+) -> None:
+    profile = create_demo_profile(tmp_path / "demo", port=8877)
+    dashboard = TestClient(
+        create_app(profile, clock=lambda: datetime.now(UTC)),
+        follow_redirects=False,
+    )
+    dashboard.post("/login", data={"passphrase": "budget-demo"})
+    today = datetime.now(ZoneInfo("Europe/Copenhagen")).date()
+    pin = {
+        "publication": "1",
+        "reference_date": today.isoformat(),
+        "account": ["demo-current", "demo-savings"],
+        "month": f"{today.year}-{today.month:02d}",
+        "mode": "advanced",
+        "active_mode": "advanced",
+    }
+
+    details = dashboard.get(
+        "/report",
+        params={**pin, "tab": "details"},
+        headers={"HX-Request": "true"},
+    )
+    checks = dashboard.get(
+        "/report",
+        params={**pin, "tab": "checks"},
+        headers={"HX-Request": "true"},
+    )
+
+    assert (
+        "Overførsel, parret med Demo savings" in details.text,
+        "Ukategoriseret" in details.text,
+        "Regulering" in details.text,
+        "1 valgte ben" in checks.text or "2 valgte ben" in checks.text,
+        "postering" in checks.text,
+    ) == (True, True, True, True, True)
