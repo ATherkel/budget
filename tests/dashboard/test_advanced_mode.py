@@ -78,3 +78,36 @@ def test_advanced_details_show_dated_balances_separately_from_month_snapshot(
         ("Månedssnapshot: Åbning 35.587,50 kr.; lukning 52.087,50 kr.; fuldt dækket."),
         "Gennem 08.05.2026",
     )
+
+
+def test_kontrol_shows_observed_counts_and_reconciliation_without_upgrading_coverage(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        "/report",
+        params={
+            "publication": "1",
+            "reference_date": "2026-05-14",
+            "account": ["joint-current", "joint-savings"],
+            "month": "2026-03",
+            "mode": "advanced",
+            "active_mode": "advanced",
+            "tab": "checks",
+        },
+        headers={"HX-Request": "true"},
+    )
+    page = read(response.text)
+
+    assert (
+        page.text_of("diagnostics-unclassified"),
+        page.text_of("diagnostics-adjustments"),
+        page.text_of("diagnostics-reconciliation-joint-current-residual"),
+        page.text_of("diagnostics-reconciliation-joint-current-opening-gap"),
+        page.text_of("diagnostics-reconciliation-joint-current-coverage"),
+    ) == (
+        "Ukategoriseret: ind 0,00 kr.; ud \N{MINUS SIGN}450,00 kr.; 1 postering.",
+        "Reguleringer: ind 0,00 kr.; ud 0,00 kr.; 0 posteringer.",
+        "Beregnet afvigelse: 0,00 kr.",
+        "Åbningsforskel mod forrige lukning: \N{MINUS SIGN}500,00 kr.",
+        "Dækning: delvist dækket.",
+    )
