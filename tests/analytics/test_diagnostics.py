@@ -8,6 +8,7 @@ from decimal import Decimal
 from budget.analytics import (
     MoneyInOut,
     ReportContext,
+    TransferSummary,
     diagnostics,
 )
 from budget.gold import (
@@ -17,6 +18,8 @@ from budget.gold import (
     TransactionType,
 )
 from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS
+
+GOLD = GoldResult(PUBLICATION, RECORDS)
 
 
 def _context(month: int, *account_ids: str) -> ReportContext:
@@ -70,4 +73,17 @@ def test_unknown_and_adjustment_money_stay_separate_and_never_net() -> None:
     assert (report.unclassified, report.adjustments) == (
         MoneyInOut(Decimal("450.00"), Decimal("-450.00"), 2),
         MoneyInOut(Decimal("20.00"), Decimal("0.00"), 1),
+    )
+
+
+def test_transfer_count_counts_selected_legs_and_records_public_pairing() -> None:
+    # Only A is selected; T1's public B leg identifies the pair but is not counted.
+    report = diagnostics(GOLD, _context(1), is_current=True)
+
+    assert report.transfers == TransferSummary(
+        money_in=Decimal("0.00"),
+        money_out=Decimal("-3000.00"),
+        count=1,
+        paired_count=1,
+        one_sided_count=0,
     )
