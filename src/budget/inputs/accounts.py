@@ -188,7 +188,8 @@ def _account(account_id: str, entry: Mapping[str, Any]) -> Account:
 
 def load_owners(profile: Profile) -> Mapping[str, str]:
     """Load the profile's `[owners]`: owner ID to display name, in display order."""
-    return MappingProxyType({})
+    document = read_document(profile.accounts_file, ACCOUNTS_FILE_NAME)
+    return MappingProxyType(dict[str, str](document.get("owners", {})))
 
 
 def load_accounts(profile: Profile) -> Mapping[str, Account]:
