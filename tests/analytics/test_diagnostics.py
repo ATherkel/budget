@@ -8,6 +8,7 @@ from decimal import Decimal
 from budget.analytics import (
     AccountEvidence,
     MoneyInOut,
+    Reconciliation,
     ReportContext,
     TransferSummary,
     diagnostics,
@@ -15,6 +16,7 @@ from budget.analytics import (
 from budget.gold import (
     GoldResult,
     GoldTransaction,
+    MonthlyBalanceSnapshot,
     ReportingMonth,
     TransactionType,
 )
@@ -112,4 +114,59 @@ def test_no_evidence_keeps_counts_unknown_and_reports_direct_evidence_through() 
         None,
         None,
         None,
+    )
+
+
+def test_reconciliation_keeps_each_component_and_computes_the_internal_residual() -> (
+    None
+):
+    # report-contract.md, "For a complete synthetic month".
+    transactions = (
+        _transaction("income", date(2026, 3, 2), 1, "1500.00", "income"),
+        _transaction("expense", date(2026, 3, 3), 2, "-1000.00", "expense"),
+        _transaction("transfer", date(2026, 3, 4), 3, "-300.00", "transfer"),
+        _transaction("unknown-in", date(2026, 3, 5), 4, "450.00", "unknown"),
+        _transaction("unknown-out", date(2026, 3, 6), 5, "-450.00", "unknown"),
+        _transaction("adjustment", date(2026, 3, 7), 6, "20.00", "adjustment"),
+    )
+    synthetic = replace(
+        RECORDS,
+        transactions=transactions,
+        category_allocations=(),
+        monthly_balances=(
+            MonthlyBalanceSnapshot(
+                account_id=CURRENT,
+                month=ReportingMonth(2026, 3),
+                opening_balance=Decimal("1000.00"),
+                closing_balance=Decimal("1220.00"),
+                coverage="complete",
+                late_bookings_settled=True,
+            ),
+        ),
+    )
+
+    report = diagnostics(
+        GoldResult(PUBLICATION, synthetic),
+        _context(3),
+        is_current=True,
+    )
+
+    assert report.reconciliations == (
+        Reconciliation(
+            account_id=CURRENT,
+            display_name="Joint current",
+            month=ReportingMonth(2026, 3),
+            opening_balance=Decimal("1000.00"),
+            income_minus_expenses=Decimal("500.00"),
+            transfers=Decimal("-300.00"),
+            unclassified_in=Decimal("450.00"),
+            unclassified_out=Decimal("-450.00"),
+            adjustments_in=Decimal("20.00"),
+            adjustments_out=Decimal("0.00"),
+            closing_balance=Decimal("1220.00"),
+            internal_residual=Decimal("0.00"),
+            previous_closing_balance=None,
+            opening_gap=None,
+            coverage="complete",
+        ),
     )
