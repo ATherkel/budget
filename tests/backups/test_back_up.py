@@ -270,7 +270,9 @@ class ChecksumTests(unittest.TestCase):
                 import_one(lock)
                 later = back_up(lock, now=NOW)
             cases = {
-                "a changed byte": lambda content: content[:-1] + b"\x00",
+                "a changed byte": lambda content: (
+                    content[:-1] + bytes([content[-1] ^ 0xFF])
+                ),
                 "a cut-off file": lambda content: content[:-1],
             }
             for case, damage in cases.items():
