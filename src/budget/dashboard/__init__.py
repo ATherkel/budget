@@ -200,6 +200,13 @@ def _render_overview(
             )
             for account in options.accounts
         },
+        all_url=_pinned_url(
+            publication_id,
+            reference_date,
+            [account.account_id for account in options.accounts],
+            selected_month,
+        ),
+        none_url=_pinned_url(publication_id, reference_date, [], selected_month),
         months=[
             (display.month_value(month), display.month_label(month)) for month in months
         ],
