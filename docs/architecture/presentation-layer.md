@@ -41,79 +41,26 @@ must preserve the analytics-facing DTO boundary.
 
 ## Enkel and Avanceret
 
-Avanceret combines a richer shared overview with separate investigation screens:
-**Overblik**, **Detaljer** and **Kontrol**. Both modes are available to the same
-authenticated household reader; mode is a presentation preference, not an access
-role. Both summaries use the same
-[monthly overview report](report-contract.md#monthlyoverview), including its
-figure visibility and Category display rules.
+Enkel is the calm monthly overview, with category investigation on demand.
+Avanceret adds independently navigable **Overblik**, **Detaljer** (account
+activity) and **Kontrol** (trust diagnostics and reconciliation). Mode is a
+presentation preference available to every authenticated household reader.
+Both summaries use the same [monthly report](report-contract.md#monthlyoverview);
+changing mode never changes financial values or their trust semantics.
 
-The mode switch and advanced screens are pending:
-[#106](https://github.com/ATherkel/budget/issues/106). Until a working advanced
-screen is delivered, the shell remains Enkel-only. Expose only implemented tabs
-and features, never dead controls.
+A fresh visit starts in Enkel and Beløb. Mode persists during the active visit,
+not as a lasting preference. An explicit switch closes detail overlays and
+returns to the destination mode's overview, preserving the shared report context
+and Beløb/Mod budget choice. A targeted explanation link instead opens Kontrol
+with a route back to its originating view. Browser back/forward restores the
+recorded mode, tab and applicable detail/comparison state under the
+[navigation contract](report-contract.md#navigation-and-selection-transitions).
 
-### Screen ownership
-
-| Surface | Enkel | Avanceret | Contract or pending delivery |
-| --- | --- | --- | --- |
-| Monthly summary | Monthly overview | The same overview in **Overblik** | [MonthlyOverview](report-contract.md#monthlyoverview) |
-| Category investigation | On-demand detail, not a ledger in the overview | The same investigation from Overblik | [Spending detail](report-contract.md#spendingdetail) |
-| Monthly comparison | Beløb by default; Mod budget when delivered | The same choice in Overblik | Pending: [budget inputs](https://github.com/ATherkel/budget/issues/102) and [comparison](https://github.com/ATherkel/budget/issues/107) |
-| Trends | No trend panel in the calm overview | Udvikling over tid in Overblik, with its range and Category controls and exact-value table | Pending: [trends](https://github.com/ATherkel/budget/issues/108) |
-| Account activity | Shared account selection, without an account ledger or balance panel | **Detaljer**: dated bank balances, Evidence through, account Coverage and activity, public Transfer and Adjustment detail | Pending: [account activity](https://github.com/ATherkel/budget/issues/106) |
-| Diagnostics | Compact trust notes and the basic explanation | **Kontrol**: Coverage and provisional reasons, incomplete account-months, Unclassified money, Adjustments, public Transfer evidence and reconciliation | Pending: [Kontrol](https://github.com/ATherkel/budget/issues/106) |
-| Historical navigation | Historical banner and return-to-current action remain visible | Publication picker in the advanced controls, with the same banner and return action | [Data trust display](#data-trust-display); picker pending: [historical navigation](https://github.com/ATherkel/budget/issues/109) |
-
-Detaljer explains account activity; Kontrol explains confidence and reconciliation.
-They reuse public detail modules and remain read-only. Operator correction guidance
-is descriptive, without a dashboard execution or editing endpoint; operator stages
-are a separate pending workflow: [operator stages](https://github.com/ATherkel/budget/issues/155).
-
-Additional measures are pending separate contracts and are not introduced by these
-modes: [fixed/other spending and planned rådighedsbeløb](https://github.com/ATherkel/budget/issues/110),
-subject to [their design](https://github.com/ATherkel/budget/issues/99), and
-[carry-forward and earmarking](https://github.com/ATherkel/budget/issues/112).
-Account and diagnostic implementation remains gated on approved balance, Transfer,
-Evidence through and reconciliation examples in the [report contract](report-contract.md),
-pending [the account and Kontrol contract](https://github.com/ATherkel/budget/issues/106).
-
-### Switching and navigation
-
-- Place one labelled **Enkel / Avanceret** control below the page heading/month
-  control and above the account selector and screen content. Keep it reachable
-  in both modes and at phone widths, with keyboard access and an exposed selected
-  state.
-- A fresh visit starts in Enkel and Beløb. Keep the selected mode during the
-  active visit/session, including ordinary links, forms, account/month changes,
-  tab changes and detail navigation. Do not save a lasting preference that makes
-  a fresh visit start in Avanceret.
-- An explicit mode switch closes open detail overlays and goes to the calm
-  summary: Enkel's overview or Avanceret's Overblik. Preserve the shared report
-  context and Beløb/Mod budget choice. Switching back to Avanceret does not resume
-  a previous Kontrol tab.
-- Overblik, Detaljer and Kontrol are independently navigable within Avanceret.
-  A deliberate explanation link to Kontrol opens Avanceret/Kontrol at the relevant
-  context rather than applying the generic switch's Overblik destination. Keep
-  the basic explanation usable before Kontrol ships and retain an explicit route
-  back to the originating view once it does.
-- Browser back/forward restores the entry's mode and destination, rather than
-  applying the explicit-switch reset. Entries carry the active tab and applicable
-  comparison/detail return state alongside the selection required by the
-  [navigation contract](report-contract.md#navigation-and-selection-transitions).
-  That contract governs context preservation, validation, response eligibility,
-  empty selections, unavailable Publications and browser storage for both modes.
-
-### Mode transition examples
-
-- From Enkel with a selected report context, switch to Avanceret: land on Overblik
-  with the same summary and comparison choice. From Kontrol, switch to Enkel and
-  then to Avanceret: land on Overblik with detail overlays closed.
-- Follow an explanation link into Kontrol, then return or use browser Back:
-  restore the originating mode and selection. Forward restores Kontrol, not
-  Overblik. Account/month changes within Kontrol keep Avanceret/Kontrol selected.
-- A fresh visit starts in Enkel; a restored history entry keeps its recorded mode.
-  Undelivered features have no controls, even after the mode switch is available.
+The switch and advanced screens are pending:
+[#106](https://github.com/ATherkel/budget/issues/106), which holds the implementation
+brief and acceptance scenarios. Keep the shell Enkel-only until a working advanced
+screen exists; expose no controls for undelivered features. Both modes retain
+access to the basic trust explanation.
 
 ## Data Trust Display
 
