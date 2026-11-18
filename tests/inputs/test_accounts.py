@@ -46,6 +46,8 @@ closed_on = 2027-06-30
 [owners]
 household = "Fælles"
 """
+# The `[owners]` table `ACCOUNTS` ends with, for a file built from one entry.
+OWNERS = '[owners]\nhousehold = "Fælles"\n'
 
 
 def profile_with_accounts(root: str | Path, content: str | bytes) -> Profile:
@@ -264,7 +266,7 @@ household = "Fælles"
             entry = "\n".join(
                 kept for kept in ACCOUNTS.splitlines()[2:10] if not kept.startswith(key)
             )
-            content = f"format = 1\n{entry}\n{line}\n"
+            content = f"format = 1\n{OWNERS}\n{entry}\n{line}\n"
             with self.subTest(line=line), TemporaryDirectory() as directory:
                 profile = profile_with_accounts(directory, content)
 
@@ -286,7 +288,9 @@ household = "Fælles"
             ("joint-", False),
             ("kørsel", False),
         ):
-            content = "\n".join(["format = 1", f'[account."{account_id}"]', *entry])
+            content = "\n".join(
+                ["format = 1", OWNERS, f'[account."{account_id}"]', *entry]
+            )
             with self.subTest(account_id=account_id), TemporaryDirectory() as directory:
                 profile = profile_with_accounts(directory, content)
 
@@ -421,6 +425,19 @@ class AccountOwnerTests(unittest.TestCase):
                 "alex-current",
                 'owner is missing: add owner = "<id>" naming an owner in [owners]',
             ),
+        )
+
+    def test_an_owner_not_declared_in_owners_is_refused(self) -> None:
+        # "sam" is a plausible owner the household forgot to declare.
+        content = OWNED_ACCOUNTS.replace('owner = "alex"', 'owner = "sam"')
+        with TemporaryDirectory() as directory:
+            profile = profile_with_accounts(directory, content)
+
+            with pytest.raises(ConfigurationError) as refusal:
+                load_accounts(profile)
+
+        assert refusal.value.problems == (
+            entry_problem("alex-current", 'owner "sam" is not declared in [owners]'),
         )
 
 
