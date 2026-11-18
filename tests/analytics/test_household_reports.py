@@ -87,6 +87,31 @@ def test_household_reports_exposes_account_activity_and_diagnostics(
     ) == (True, True)
 
 
+def test_household_reports_reads_advanced_reports_from_the_pinned_publication(
+    gold_store: GoldStore,
+) -> None:
+    _publish(gold_store, 1)
+    context = ReportContext(
+        publication_id=1,
+        account_ids=frozenset({"joint-current"}),
+        month=ReportingMonth(2026, 1),
+        reference_date=date(2026, 5, 14),
+    )
+    reports = HouseholdReports(gold_store)
+
+    activity = reports.account_activity(context)
+    diagnostics = reports.diagnostics(context)
+    transfers = diagnostics.transfers
+
+    assert transfers is not None
+    assert (
+        activity.context,
+        [row.transaction_type for row in activity.transactions],
+        diagnostics.context,
+        transfers.count,
+    ) == (context, ["expense", "transfer", "income"], context, 1)
+
+
 SECOND_BUILD_AT = datetime(2026, 5, 16, 7, 30, tzinfo=UTC)
 
 
