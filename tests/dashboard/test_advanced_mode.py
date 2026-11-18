@@ -2,6 +2,7 @@
 """The Enkel and Avanceret display contract."""
 
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from fastapi.testclient import TestClient
@@ -110,4 +111,48 @@ def test_kontrol_shows_observed_counts_and_reconciliation_without_upgrading_cove
         "Beregnet afvigelse: 0,00 kr.",
         "Åbningsforskel mod forrige lukning: \N{MINUS SIGN}500,00 kr.",
         "Dækning: delvist dækket.",
+    )
+
+
+def test_targeted_kontrol_link_keeps_the_originating_simple_view(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        "/report",
+        params={
+            "publication": "1",
+            "reference_date": "2026-05-14",
+            "account": ["joint-current", "joint-savings"],
+            "month": "2026-03",
+            "mode": "simple",
+            "active_mode": "simple",
+            "tab": "overview",
+        },
+        headers={"HX-Request": "true"},
+    )
+    simple = read(response.text)
+    target = simple.attributes("coverage-explanation")["href"]
+    query = parse_qs(urlsplit(target).query)
+    origin = (
+        "/?publication=1&reference_date=2026-05-14"
+        "&account=joint-current&account=joint-savings&month=2026-03"
+        "&mode=simple&tab=overview&comparison=amounts"
+    )
+
+    checks = read(client.get(target).text)
+
+    assert (
+        query["mode"],
+        query["tab"],
+        query.get("return_to"),
+        checks.attributes("report").get("data-mode"),
+        checks.attributes("report").get("data-tab"),
+        checks.attributes("return-from-control").get("href"),
+    ) == (
+        ["advanced"],
+        ["checks"],
+        [origin],
+        "advanced",
+        "checks",
+        origin,
     )
