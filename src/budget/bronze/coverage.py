@@ -8,6 +8,13 @@ payload and its export date allow, whatever produced the payload.
 
 from datetime import date
 
+from budget.bronze.refusals import (
+    RANGE_ENDS_AFTER_EXPORT,
+    RANGE_STARTS_AFTER_END,
+    TRANSACTION_AFTER_RANGE,
+    TRANSACTION_BEFORE_RANGE,
+)
+
 
 def declared_range_refusals(
     *,
@@ -27,14 +34,14 @@ def declared_range_refusals(
     lists them; the range is refused exactly when any code does.
     """
     broken = (
-        ("range-starts-after-end", covers_from > covers_through),
-        ("range-ends-after-export", covers_through > exported_on),
+        (RANGE_STARTS_AFTER_END, covers_from > covers_through),
+        (RANGE_ENDS_AFTER_EXPORT, covers_through > exported_on),
         (
-            "transaction-before-range",
+            TRANSACTION_BEFORE_RANGE,
             first_transaction_date is not None and first_transaction_date < covers_from,
         ),
         (
-            "transaction-after-range",
+            TRANSACTION_AFTER_RANGE,
             last_transaction_date is not None
             and last_transaction_date > covers_through,
         ),

@@ -33,7 +33,7 @@ from budget.bronze.parsers.registry import (
     source_formats,
     source_parser,
 )
-from budget.bronze.refusals import format_1_refusal_reasons
+from budget.bronze.refusals import ACCOUNT_CONFLICT, format_1_refusal_reasons
 from budget.bronze.storage import open_bronze_connection, open_bronze_snapshot
 from budget.profiles import Profile
 
@@ -146,7 +146,7 @@ def _decide_outcome(
         account_conflict = any(
             row["import_run_id"] not in voided for row in stored_elsewhere
         )
-    reasons = (("account-conflict",) if account_conflict else ()) + declaration_refusals
+    reasons = ((ACCOUNT_CONFLICT,) if account_conflict else ()) + declaration_refusals
     if reasons:
         # A refused run is nobody's original: it is never the run a later
         # presentation of these bytes repeats.
