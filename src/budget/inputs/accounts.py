@@ -26,6 +26,7 @@ from budget.inputs.fields import (
     FieldRule,
     entry_problems,
     is_date,
+    is_durable_id,
     is_text,
     one_of,
 )
@@ -186,10 +187,38 @@ def _account(account_id: str, entry: Mapping[str, Any]) -> Account:
     )
 
 
+def _owners(document: Mapping[str, object]) -> tuple[dict[str, str], list[str]]:
+    """Return the file's `[owners]`, or the problems with its shape and entries.
+
+    A key holding anything but a table of names gives no owners.
+    """
+    owners = document.get("owners", {})
+    if not isinstance(owners, dict):
+        problem = "owners must be one [owners] table of owner ID = display name"
+        return {}, [file_problem(ACCOUNTS_FILE_NAME, problem)]
+    problems = []
+    for owner_id, name in owners.items():
+        if not is_durable_id(owner_id):
+            problems.append(
+                f'owner "{owner_id}": the ID must be lowercase words joined by '
+                "hyphens, such as household"
+            )
+        if not is_text(name):
+            problems.append(
+                f'owner "{owner_id}": the display name must be a non-empty string'
+            )
+    return dict[str, str](owners), [
+        file_problem(ACCOUNTS_FILE_NAME, problem) for problem in problems
+    ]
+
+
 def load_owners(profile: Profile) -> Mapping[str, str]:
     """Load the profile's `[owners]`: owner ID to display name, in display order."""
     document = read_document(profile.accounts_file, ACCOUNTS_FILE_NAME)
-    return MappingProxyType(dict[str, str](document.get("owners", {})))
+    owners, problems = _owners(document)
+    if problems:
+        raise ConfigurationError(tuple(problems))
+    return MappingProxyType(owners)
 
 
 def load_accounts(profile: Profile) -> Mapping[str, Account]:
@@ -200,7 +229,8 @@ def load_accounts(profile: Profile) -> Mapping[str, Account]:
     )
     entries, shape_problems = keyed_tables(document, ACCOUNTS_FILE_NAME, "account")
     problems.extend(shape_problems)
-    owners = document.get("owners", {})
+    owners, owner_problems = _owners(document)
+    problems.extend(owner_problems)
     for account_id, entry in entries.items():
         problems.extend(_entry_problems(account_id, entry, owners))
         problems.extend(_number_shape_problems(account_id, entry))
