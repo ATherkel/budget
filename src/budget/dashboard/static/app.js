@@ -55,7 +55,11 @@ if (selection !== null && reportRegion !== null) {
   // those boxes and fetch the report as a checkbox change would.
   selection.addEventListener("click", (event) => {
     const shortcut = event.target.closest("a[data-account-shortcut]");
-    if (shortcut === null) {
+    // A click meant for a new tab or window keeps this page as it is.
+    const plainClick =
+      event.button === 0 &&
+      !(event.ctrlKey || event.metaKey || event.shiftKey || event.altKey);
+    if (shortcut === null || !plainClick) {
       return;
     }
     event.preventDefault();
@@ -64,6 +68,19 @@ if (selection !== null && reportRegion !== null) {
       box.checked = wanted.includes(box.value);
     }
     htmx.trigger(selection, "change");
+  });
+
+  // The shortcuts sit outside the swapped report, so their addresses follow
+  // the month by hand: one opened in a new tab shows the month shown here.
+  selection.addEventListener("change", (event) => {
+    if (event.target.name !== "month") {
+      return;
+    }
+    for (const shortcut of selection.querySelectorAll("a[data-account-shortcut]")) {
+      const address = new URL(shortcut.href);
+      address.searchParams.set("month", event.target.value);
+      shortcut.href = address.pathname + address.search;
+    }
   });
 
   document.body.addEventListener("htmx:beforeRequest", (event) => {
