@@ -213,6 +213,35 @@ def test_ingen_and_alle_change_every_box_in_place_and_move_the_address(
     assert page.evaluate("window.stillThisPage === true"), "the page was reloaded"
 
 
+def test_a_shortcut_opened_in_a_new_tab_leaves_this_page_as_it_was(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+
+    with page.context.expect_page(timeout=5000) as opened:
+        page.locator("#only-joint-savings").click(modifiers=["Control"])
+
+    expect(opened.value).to_have_url(re.compile(r"&account=joint-savings&month="))
+    expect(page.get_by_label("Joint current")).to_be_checked()
+    expect(page.get_by_label("Joint savings")).to_be_checked()
+
+
+def test_a_shortcut_names_the_month_shown_after_the_month_changes(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+
+    page.get_by_label("Måned", exact=True).select_option("2026-05")
+    page.wait_for_function("location.search.includes('month=2026-05')")
+
+    for shortcut in ("#only-joint-savings", "#accounts-all", "#accounts-none"):
+        expect(page.locator(shortcut)).to_have_attribute(
+            "href", re.compile(r"&month=2026-05$")
+        )
+
+
 def test_active_request_failure_is_visible_accessible_and_retryable(
     page: Page,
     dashboard: BrowserDashboard,
