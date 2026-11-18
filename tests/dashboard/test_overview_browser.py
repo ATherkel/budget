@@ -128,6 +128,10 @@ def test_empty_selection_survives_reload_back_and_forward(
     dashboard: BrowserDashboard,
 ) -> None:
     log_in(page, dashboard)
+    advanced = page.get_by_role("radio", name="Avanceret")
+    advanced.focus()
+    page.keyboard.press("Space")
+    expect(page.locator("#report")).to_have_attribute("data-mode", "advanced")
     page.get_by_label("Joint current").uncheck()
     page.get_by_label("Joint savings").uncheck()
     page.wait_for_function("!location.search.includes('account=')")
@@ -140,7 +144,7 @@ def test_empty_selection_survives_reload_back_and_forward(
     expect(page).to_have_url(
         re.compile(
             r"/\?publication=2&reference_date=2026-06-01&month=2026-06"
-            r"&mode=simple&tab=overview&comparison=amounts$"
+            r"&mode=advanced&tab=overview&comparison=amounts$"
         )
     )
 
@@ -154,7 +158,7 @@ def test_empty_selection_survives_reload_back_and_forward(
     expect(page).to_have_url(
         re.compile(
             r"/\?publication=2&reference_date=2026-06-01&month=2026-06"
-            r"&mode=simple&tab=overview&comparison=amounts$"
+            r"&mode=advanced&tab=overview&comparison=amounts$"
         )
     )
 
@@ -189,6 +193,10 @@ def test_a_superseded_failure_cannot_replace_a_newer_successful_report(
     dashboard: BrowserDashboard,
 ) -> None:
     log_in(page, dashboard)
+    advanced = page.get_by_role("radio", name="Avanceret")
+    advanced.focus()
+    page.keyboard.press("Space")
+    expect(page.locator("#report")).to_have_attribute("data-mode", "advanced")
     pending = []
     old_request_handled = False
 
@@ -215,7 +223,7 @@ def test_a_superseded_failure_cannot_replace_a_newer_successful_report(
             """() => {
               htmx.ajax(
                 'GET',
-                '/report?publication=2&reference_date=2026-06-01&account=joint-current&month=2026-06',
+                '/report?publication=2&reference_date=2026-06-01&account=joint-current&month=2026-06&mode=advanced&active_mode=advanced&tab=overview',
                 {
                   source: document.querySelector('#race-old'),
                   target: '#report-region',
@@ -231,7 +239,7 @@ def test_a_superseded_failure_cannot_replace_a_newer_successful_report(
             """() => {
               htmx.ajax(
                 'GET',
-                '/report?publication=2&reference_date=2026-06-01&account=joint-current&month=2026-05',
+                '/report?publication=2&reference_date=2026-06-01&account=joint-current&month=2026-05&mode=advanced&active_mode=advanced&tab=overview',
                 {
                   source: document.querySelector('#race-new'),
                   target: '#report-region',
@@ -249,6 +257,7 @@ def test_a_superseded_failure_cannot_replace_a_newer_successful_report(
 
         expect(page.get_by_role("alert")).to_have_count(0)
         expect(page.locator("#report")).to_have_attribute("data-month", "2026-05")
+        expect(page.locator("#report")).to_have_attribute("data-mode", "advanced")
     finally:
         if pending and not old_request_handled:
             pending[0].abort("failed")
