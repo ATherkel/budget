@@ -2,10 +2,13 @@
 """Public Gold diagnostics for Kontrol."""
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date
-from typing import Final
+from decimal import Decimal
+from typing import Final, Literal
 
 from budget.analytics.measures import ZERO
+from budget.analytics.measures import figures as measure_figures
 from budget.analytics.overview import (
     every_row,
     report_publication,
@@ -15,19 +18,52 @@ from budget.analytics.reports import (
     AccountEvidence,
     Diagnostics,
     MoneyInOut,
+    Reconciliation,
     ReportContext,
     TransferSummary,
 )
 from budget.analytics.trust import trust
 from budget.gold import (
+    Coverage,
+    GoldCategory,
+    GoldCategoryAllocation,
     GoldRepository,
     GoldTransaction,
+    MonthlyBalanceSnapshot,
+    ReportingMonth,
     TransactionType,
     first_day,
     last_day,
 )
 
 _TRANSFER_PAIR_LEGS: Final = 2
+
+
+@dataclass(frozen=True)
+class _ResidualComponents:
+    """The explicit activity amounts reconciled against a snapshot."""
+
+    income_minus_expenses: Decimal | None
+    transfers: Decimal | None
+    unclassified_in: Decimal | None
+    unclassified_out: Decimal | None
+    adjustments_in: Decimal | None
+    adjustments_out: Decimal | None
+
+
+@dataclass(frozen=True)
+class _ReconciliationInput:
+    """The public records needed to reconcile one account-month."""
+
+    account_id: str
+    display_name: str
+    month: ReportingMonth
+    transactions: Sequence[GoldTransaction]
+    snapshot: MonthlyBalanceSnapshot | None
+    previous: MonthlyBalanceSnapshot | None
+    coverage: Coverage | Literal["outside_history"]
+    allocations: Sequence[GoldCategoryAllocation]
+    categories: Sequence[GoldCategory]
 
 
 def _money_in_out(
@@ -87,6 +123,104 @@ def _transfer_summary(
     )
 
 
+def _previous_month(month: ReportingMonth) -> ReportingMonth:
+    """Return the calendar month before `month`."""
+    index = month.year * 12 + month.month - 2
+    year, zero_based_month = divmod(index, 12)
+    return ReportingMonth(year, zero_based_month + 1)
+
+
+def _known_sum(values: Sequence[Decimal | None]) -> Decimal | None:
+    """Sum the values when every one is known."""
+    total = ZERO
+    for value in values:
+        if value is None:
+            return None
+        total += value
+    return total
+
+
+def _internal_residual(
+    opening: Decimal | None,
+    components: _ResidualComponents,
+    closing: Decimal | None,
+) -> Decimal | None:
+    """Return closing less every explicit component, or unknown with an endpoint."""
+    expected = _known_sum(
+        (
+            opening,
+            components.income_minus_expenses,
+            components.transfers,
+            components.unclassified_in,
+            components.unclassified_out,
+            components.adjustments_in,
+            components.adjustments_out,
+        )
+    )
+    if expected is None or closing is None:
+        return None
+    return closing - expected
+
+
+def _reconciliation(data: _ReconciliationInput) -> Reconciliation:
+    """Build one account-month's public reconciliation."""
+    known = data.coverage != "no_data"
+    measured = (
+        measure_figures(data.transactions, data.allocations, data.categories)
+        if known
+        else None
+    )
+    unclassified = _money_in_out(data.transactions, "unknown")
+    adjustments = _money_in_out(data.transactions, "adjustment")
+    opening = None if data.snapshot is None else data.snapshot.opening_balance
+    closing = None if data.snapshot is None else data.snapshot.closing_balance
+    previous_closing = None if data.previous is None else data.previous.closing_balance
+    components = _ResidualComponents(
+        income_minus_expenses=(
+            None
+            if measured is None or measured.income is None or measured.expenses is None
+            else measured.income - measured.expenses
+        ),
+        transfers=(
+            sum(
+                (
+                    transaction.amount
+                    for transaction in data.transactions
+                    if transaction.transaction_type == "transfer"
+                ),
+                ZERO,
+            )
+            if known
+            else None
+        ),
+        unclassified_in=unclassified.money_in if known else None,
+        unclassified_out=unclassified.money_out if known else None,
+        adjustments_in=adjustments.money_in if known else None,
+        adjustments_out=adjustments.money_out if known else None,
+    )
+    return Reconciliation(
+        account_id=data.account_id,
+        display_name=data.display_name,
+        month=data.month,
+        opening_balance=opening,
+        income_minus_expenses=components.income_minus_expenses,
+        transfers=components.transfers,
+        unclassified_in=components.unclassified_in,
+        unclassified_out=components.unclassified_out,
+        adjustments_in=components.adjustments_in,
+        adjustments_out=components.adjustments_out,
+        closing_balance=closing,
+        internal_residual=_internal_residual(opening, components, closing),
+        previous_closing_balance=previous_closing,
+        opening_gap=(
+            opening - previous_closing
+            if opening is not None and previous_closing is not None
+            else None
+        ),
+        coverage=data.coverage,
+    )
+
+
 def diagnostics(
     gold: GoldRepository,
     context: ReportContext,
@@ -103,6 +237,21 @@ def diagnostics(
         account_ids=context.account_ids,
     )
     known = judged.coverage.status != "no_data"
+    snapshots = {row.account_id: row for row in rows if row.month == context.month}
+    previous_month = _previous_month(context.month)
+    previous = {row.account_id: row for row in rows if row.month == previous_month}
+    incomplete = {row.account_id: row.status for row in judged.coverage.account_months}
+    by_account: dict[str, list[GoldTransaction]] = {
+        account.account_id: [] for account in accounts
+    }
+    for transaction in transactions:
+        by_account[transaction.account_id].append(transaction)
+    allocations = gold.category_allocations(
+        start_date=first_day(context.month),
+        end_date=last_day(context.month),
+        account_ids=context.account_ids,
+    )
+    categories = gold.categories()
     return Diagnostics(
         context=context,
         publication=report_publication(gold, is_current=is_current),
@@ -120,5 +269,28 @@ def diagnostics(
         unclassified=(_money_in_out(transactions, "unknown") if known else None),
         adjustments=(_money_in_out(transactions, "adjustment") if known else None),
         transfers=_transfer_summary(gold, transactions) if known else None,
-        reconciliations=(),
+        reconciliations=tuple(
+            _reconciliation(
+                _ReconciliationInput(
+                    account_id=account.account_id,
+                    display_name=account.display_name,
+                    month=context.month,
+                    transactions=by_account[account.account_id],
+                    snapshot=snapshots.get(account.account_id),
+                    previous=previous.get(account.account_id),
+                    coverage=(
+                        snapshots[account.account_id].coverage
+                        if account.account_id in snapshots
+                        else incomplete.get(account.account_id, "complete")
+                    ),
+                    allocations=[
+                        allocation
+                        for allocation in allocations
+                        if allocation.account_id == account.account_id
+                    ],
+                    categories=categories,
+                )
+            )
+            for account in accounts
+        ),
     )
