@@ -362,6 +362,40 @@ def loaded_accounts(content: str = ACCOUNTS) -> Mapping[str, Account]:
         return load_accounts(profile_with_accounts(directory, content))
 
 
+OWNED_ACCOUNTS = """\
+format = 1
+
+[owners]
+alex = "Alex"
+household = "Fælles"
+
+[account.joint-current]
+display_name = "Joint current"
+account_type = "current"
+ownership_scope = "household"
+owner = "household"
+currency = "DKK"
+source_format = "danske-csv-v1"
+
+[account.alex-current]
+display_name = "Alex current"
+account_type = "current"
+ownership_scope = "person"
+owner = "alex"
+currency = "DKK"
+source_format = "danske-csv-v1"
+"""
+
+
+class AccountOwnerTests(unittest.TestCase):
+    def test_each_account_carries_the_owner_it_declares(self) -> None:
+        accounts = loaded_accounts(OWNED_ACCOUNTS)
+
+        assert {
+            account_id: account.owner for account_id, account in accounts.items()
+        } == {"joint-current": "household", "alex-current": "alex"}
+
+
 class CheckExportFilenameTests(unittest.TestCase):
     def test_an_export_naming_its_account_number_is_accepted(self) -> None:
         loaded_accounts()["joint-current"].check_export_filename(

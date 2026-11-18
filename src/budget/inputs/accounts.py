@@ -66,6 +66,7 @@ class Account:
     source_format: str
     bank_account_number: str | None = field(default=None, repr=False)
     closed_on: date | None = None
+    owner: str | None = None
 
     def check_export_filename(self, filename: str) -> None:
         """Refuse an export whose filename names another bank account.
