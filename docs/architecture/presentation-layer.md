@@ -56,11 +56,9 @@ with a route back to its originating view. Browser back/forward restores the
 recorded mode, tab and applicable detail/comparison state under the
 [navigation contract](report-contract.md#navigation-and-selection-transitions).
 
-The switch and advanced screens are pending:
-[#106](https://github.com/ATherkel/budget/issues/106), which holds the implementation
-brief and acceptance scenarios. Keep the shell in “Enkel” until a working advanced
-screen exists; expose no controls for undelivered features. Both modes retain
-access to the basic trust explanation.
+Both modes expose the trust explanation. Its targeted links open Kontrol with
+the same [pinned report context](report-contract.md#reportcontext) and retain an
+internal return address.
 
 ## Data Trust Display
 

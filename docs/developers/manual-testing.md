@@ -294,6 +294,11 @@ monthly overview against the current publication.
 Click a category to open its detail. Its figure matches the overview, its
 rows add up to it, and a refund shows as a negative amount. Try "År til dato",
 "Hele <gruppe>", and back and forward; the pinned accounts and month stay.
+Switch to "Avanceret" with a keyboard and on a phone. Check "Overblik",
+"Detaljer" and "Kontrol", then open a trust explanation and follow its return
+link and browser Back/Forward. The mode, tab, pinned selection and return path
+survive each transition. The [report contract](../architecture/report-contract.md#account-activity-and-kontrol)
+owns what each advanced figure means.
 
 Without your profile, `demo` serves synthetic data from a new folder:
 
@@ -305,9 +310,10 @@ uv run budget demo --directory $demo --port 8765
 Open `http://127.0.0.1:8765` and log in with `budget-demo`. Expect two checked
 accounts, `Demo current` and `Demo savings`, the current month and the monthly
 overview. Every month Demo current has a salary and Groceries of 1.500,00 kr.
-(two purchases less a refund); click Groceries to try the detail. Nothing is
-unclassified, so "Ukategoriseret" shows `0,00 kr.` for "Ind" and "Ud". Stop
-it with `Ctrl+C`, then run
+(two purchases less a refund); click Groceries to try the detail. The same
+month also has a paired Transfer, Unclassified money and an Adjustment. Check
+that "Detaljer" shows the Transfer pair while "Kontrol" keeps those observed
+counts and components separate. Stop it with `Ctrl+C`, then run
 `Remove-Item -LiteralPath $demo -Recurse`.
 
 ## Restore and dev refresh

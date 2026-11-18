@@ -47,14 +47,19 @@ class HouseholdReports(Protocol):
     def spending_detail(
         self, context: ReportContext, subject: DetailSubject, scope: DetailScope
     ) -> SpendingDetail: ...
+
+    def account_activity(self, context: ReportContext) -> AccountActivity: ...
+
+    def diagnostics(self, context: ReportContext) -> Diagnostics: ...
 ```
 
 `current_publication()` raises `NothingPublished` when Gold has no current
-publication. The other three raise `PublicationUnavailableError` when the named
-result is not retained, and the two reports raise `InvalidSelection` for a
-context breaking a [`ReportContext`](#reportcontext) rule or, for detail, a
-subject breaking the [`SpendingDetail`](#spendingdetail) one. A failure is
-never an empty or zero report. In code each name ends in `Error`
+publication. `selection_options()` and every context-addressed report raise
+`PublicationUnavailableError` when the named result is not retained. The
+context-addressed reports raise `InvalidSelection` for a context breaking a
+[`ReportContext`](#reportcontext) rule or, for detail, a subject breaking the
+[`SpendingDetail`](#spendingdetail) one. A failure is never an empty or zero
+report. In code each name ends in `Error`
 (`NothingPublishedError`, `InvalidSelectionError`), as the lint rules require.
 
 ### `ReportContext`
@@ -310,10 +315,45 @@ governs what is stored and reused, not what the rendered page displays.
 
 ## Account Activity and Kontrol
 
-Pending implementation: [#106](https://github.com/ATherkel/budget/issues/106).
 These reports use the same pinned context, validation, money types and public
 Gold boundary as the existing reports. Analytics supplies every judgement,
 component and residual; presentation only formats them.
+
+`AccountActivity` holds the echoed `context`, `publication`, `currency`, the
+selected `accounts` as `AccountActivitySnapshot` rows, `coverage`,
+`provisional`, and the selected `transactions` as `ActivityRow` rows.
+
+`AccountActivitySnapshot` holds an `account_id`, `display_name`, a nullable
+`dated_balance`, a separately nullable `earlier_observation`, a nullable
+`monthly_snapshot`, the account's direct `evidence_through`, and the
+account-month `coverage` (`complete`, `partial`, `no_data` or
+`outside_history`).
+
+`BankBalanceObservation` holds a `transaction_date` and nullable
+`balance_after`. `MonthlyBalanceObservation` holds nullable
+`opening_balance`, nullable `closing_balance`, `coverage`, and
+`late_bookings_settled`.
+
+`ActivityRow` holds `transaction_date`, `description`, `account_id`,
+`account_display_name`, signed `amount`, the published `transaction_type`, a
+nullable `transfer_pairing` (`paired` or `one_sided`), and nullable
+`counterpart_account_id`, `counterpart_account_display_name`, and
+`counterpart_transaction_date`.
+
+`Diagnostics` holds the echoed `context`, `publication`, `currency`, an
+`AccountEvidence` row for each selected account, `coverage`, `provisional`,
+nullable `unclassified` and `adjustments` `MoneyInOut` rows, a nullable
+`TransferSummary`, and one `Reconciliation` for each selected account.
+`AccountEvidence` holds `account_id`, `display_name` and direct
+`evidence_through`.
+
+`TransferSummary` holds `money_in`, `money_out`, selected-leg `count`,
+`paired_count` and `one_sided_count`. `Reconciliation` holds `account_id`,
+`display_name`, `month`, `opening_balance`, `income_minus_expenses`,
+`transfers`, `unclassified_in`, `unclassified_out`, `adjustments_in`,
+`adjustments_out`, `closing_balance`, `internal_residual`,
+`previous_closing_balance`, `opening_gap`, and the account-month `coverage`.
+Every amount or residual is nullable when its evidence is unavailable.
 
 ### Dated balances and monthly snapshots
 
