@@ -9,6 +9,7 @@
 {% if not is_current %}
 <p class="notice notice--warning">Der findes nyere tal. <a id="newer-figures" href="/">Hent de nyeste tal</a></p>
 {% endif %}
+{% if tab == "overview" %}
 <p class="eyebrow">Rapporten er indlæst</p>
 <h3 id="report-ready-title">{{ month_label }}</h3>
 {% if overview.provisional %}
@@ -45,5 +46,12 @@
   <li class="category-row"><a id="category-link-{{ category.category_id }}" href="{{ detail_urls[category.category_id] }}">{{ category.name }}</a> <span class="category-amount">{{ category.spending | amount(overview.currency) }}</span></li>
 {% endfor %}
 </ul>
+{% endif %}
+{% elif tab == "details" %}
+{% include "activity.html" %}
+{% elif tab == "checks" %}
+<p class="eyebrow">Kontrol</p>
+<h3>Diagnostik og afstemning</h3>
+<p>Kontroloplysningerne indlæses her.</p>
 {% endif %}
 </section>

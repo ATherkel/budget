@@ -19,8 +19,10 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from pydantic import BaseModel, model_validator
 
 from budget.analytics import (
+    AccountActivity,
     DetailScope,
     DetailSubject,
+    Diagnostics,
     HouseholdReports,
     InvalidSelectionError,
     MonthlyOverview,
@@ -415,6 +417,56 @@ def _read_overview(
         return _TEMPLATES.get_template("unavailable.html").render()
 
 
+def _read_activity(
+    profile: Profile,
+    pin: tuple[int, date],
+    accounts: Collection[str],
+    month: str,
+) -> AccountActivity | str:
+    """Return account activity for a pinned selection, or a failure fragment."""
+    publication_id, reference_date = pin
+    try:
+        context = ReportContext(
+            publication_id=publication_id,
+            account_ids=frozenset(accounts),
+            month=display.parse_month(month),
+            reference_date=reference_date,
+        )
+        with GoldStore(profile, read_only=True) as store:
+            return HouseholdReports(store).account_activity(context)
+    except InvalidSelectionError as error:
+        return _TEMPLATES.get_template("invalid_selection.html").render(
+            problems=display.selection_problems(error)
+        )
+    except PublicationUnavailableError:
+        return _TEMPLATES.get_template("unavailable.html").render()
+
+
+def _read_diagnostics(
+    profile: Profile,
+    pin: tuple[int, date],
+    accounts: Collection[str],
+    month: str,
+) -> Diagnostics | str:
+    """Return Kontrol diagnostics for a pinned selection, or a failure fragment."""
+    publication_id, reference_date = pin
+    try:
+        context = ReportContext(
+            publication_id=publication_id,
+            account_ids=frozenset(accounts),
+            month=display.parse_month(month),
+            reference_date=reference_date,
+        )
+        with GoldStore(profile, read_only=True) as store:
+            return HouseholdReports(store).diagnostics(context)
+    except InvalidSelectionError as error:
+        return _TEMPLATES.get_template("invalid_selection.html").render(
+            problems=display.selection_problems(error)
+        )
+    except PublicationUnavailableError:
+        return _TEMPLATES.get_template("unavailable.html").render()
+
+
 def _answered_url(
     overview_report: MonthlyOverview,
     path: str,
@@ -545,6 +597,30 @@ def _render_report(
     answered = overview_report.context
     active_mode = requested.view.mode
     active_tab = requested.view.tab
+    activity = (
+        _read_activity(
+            profile,
+            requested.pin,
+            requested.accounts,
+            requested.month,
+        )
+        if active_mode == "advanced" and active_tab == "details"
+        else None
+    )
+    diagnostics = (
+        _read_diagnostics(
+            profile,
+            requested.pin,
+            requested.accounts,
+            requested.month,
+        )
+        if active_mode == "advanced" and active_tab == "checks"
+        else None
+    )
+    if isinstance(activity, str):
+        return activity
+    if isinstance(diagnostics, str):
+        return diagnostics
     return _TEMPLATES.get_template("report.html").render(
         is_current=overview_report.publication.is_current,
         publication_id=answered.publication_id,
@@ -553,6 +629,8 @@ def _render_report(
         month=display.month_value(answered.month),
         month_label=display.month_label(answered.month),
         overview=overview_report,
+        activity=activity,
+        diagnostics=diagnostics,
         mode=active_mode,
         tab=active_tab,
         comparison=requested.view.comparison,
