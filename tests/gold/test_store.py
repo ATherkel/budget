@@ -55,7 +55,11 @@ from budget.silver.decisions import (
     Withdrawn,
 )
 from budget.sqlstore import StoreBusyError
-from tests.bronze.migration_resources import GOLD_MIGRATIONS, added_migration
+from tests.bronze.migration_resources import (
+    GOLD_MIGRATIONS,
+    added_migration,
+    migrations_through,
+)
 from tests.gold.contract import GoldRepositoryContract
 from tests.gold.publishing import CONFIGURATION, RECIPE, publication, publish
 from tests.gold.worked_example import (
@@ -294,6 +298,36 @@ def test_a_stored_publication_reads_back_its_owners(store: GoldStore) -> None:
         SAVINGS: "alex",
     }
     assert list(stored.owners()) == list(owned.owners)
+
+
+def test_an_account_published_before_owners_existed_is_legacy_unrecorded(
+    tmp_path: Path,
+) -> None:
+    # A version 1 store knows no owners; a guess from its ownership scope would
+    # be wrong for a member's account, so the migration says so instead.
+    old = make_test_profile(tmp_path)
+    with migrations_through(1, folder=GOLD_MIGRATIONS):
+        migrate_gold(old)
+    with closing(sqlite3.connect(old.gold_store)) as connection, connection:
+        connection.execute(
+            "INSERT INTO publications (publication_id, kind, known_at, built_at,"
+            " contract_version, fingerprint_scheme, result_fingerprint) VALUES"
+            " (1, 'pipeline', '2026-03-01T00:00:00+00:00',"
+            " '2026-03-01T00:00:00+00:00', '0.2', '1', 'e')"
+        )
+        connection.execute("INSERT INTO results (publication_id) VALUES (1)")
+        connection.execute(
+            "INSERT INTO accounts (publication_id, account_id, display_name,"
+            " account_type, ownership_scope, currency) VALUES"
+            " (1, 'joint-current', 'Joint current', 'current', 'household', 'DKK')"
+        )
+
+    migrate_gold(old)
+
+    with closing(sqlite3.connect(old.gold_store)) as connection:
+        assert connection.execute("SELECT owner_id FROM accounts").fetchall() == [
+            ("legacy-unrecorded",)
+        ]
 
 
 def test_the_store_hands_out_increasing_publication_ids(store: GoldStore) -> None:
