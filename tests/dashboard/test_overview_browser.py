@@ -271,6 +271,9 @@ def test_login_and_account_selection_work_from_the_keyboard(
         " && !location.search.includes('account=joint-current')"
     )
 
+    # Each account's "kun" link follows its box in the tab order.
+    page.keyboard.press("Tab")
+    expect(page.locator("#only-joint-current")).to_be_focused()
     page.keyboard.press("Tab")
     savings = page.get_by_label("Joint savings")
     expect(savings).to_be_focused()
