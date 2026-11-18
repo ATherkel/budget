@@ -18,6 +18,7 @@ from budget.inputs import (
     ConfigurationError,
     MisfiledExportError,
     load_accounts,
+    load_owners,
 )
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
@@ -439,6 +440,20 @@ class AccountOwnerTests(unittest.TestCase):
         assert refusal.value.problems == (
             entry_problem("alex-current", 'owner "sam" is not declared in [owners]'),
         )
+
+
+class LoadOwnersTests(unittest.TestCase):
+    def test_owners_load_in_declaration_order_with_their_display_names(
+        self,
+    ) -> None:
+        # Declared out of alphabetical order: the file's order is display order.
+        content = OWNED_ACCOUNTS.replace(
+            'alex = "Alex"\nhousehold = "Fælles"', 'household = "Fælles"\nalex = "Alex"'
+        )
+        with TemporaryDirectory() as directory:
+            owners = load_owners(profile_with_accounts(directory, content))
+
+        assert list(owners.items()) == [("household", "Fælles"), ("alex", "Alex")]
 
 
 class CheckExportFilenameTests(unittest.TestCase):
