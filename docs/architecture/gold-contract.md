@@ -5,26 +5,14 @@ type: architecture
 
 ## Summary
 
-- Gold is what reports are built from: accounts and categories, plus
-  transactions, category allocations and monthly balances.
-- Analytics and forecasting read Gold only through the interface below;
-  presentation and APIs read analytics reports, never Gold.
-- This is the only normative Gold schema, version `0.2`. A breaking change
-  needs a new version.
+- Gold, rebuilt from Silver, the registries and classification inputs, is
+  what reports read: accounts, categories, transactions, allocations, balances.
+- Analytics and forecasting read it only through the interface below, never
+  Bronze or Silver; presentation and APIs read analytics reports.
+- The only normative Gold schema, version `0.2`; a break needs a new version.
 - The numbered [invariants](#invariants) hold in every publication and never
   renumber, because code and tests cite them.
 - Lineage, why a transaction got its classification, is for review tooling.
-
-## Purpose
-
-Gold is the stable business-facing representation of household financial facts.
-Analytics also opens the publication a report reads. No consumer imports a
-connector, parses CSV, or queries Bronze/Silver storage.
-
-Gold is derived from Silver, the household account and category registries,
-and classification inputs. It is not the original bank record, and it can be
-rebuilt when classification logic changes. Related rules have their own
-owners:
 
 | Topic | Owner |
 | --- | --- |
@@ -68,13 +56,9 @@ current household interpretation.
 
 ### `GoldCategory`
 
-One row per assignable category. The two-level hierarchy is flattened onto the
-category: every category belongs to exactly one category group, and groups are
-never assigned to transactions. All categories in a group share one direction.
-Type 1: renaming or regrouping a category restates all history, so each such
-change is recorded in
-[`category-changes.md`](../domains/category-changes.md) on the day it is
-made.
+One row per assignable category, in exactly one group, which is never assigned
+itself. Type 1: a rename or regroup restates history, so it is recorded in
+[`category-changes.md`](../domains/category-changes.md) the day it is made.
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
@@ -84,19 +68,17 @@ made.
 | `group_name` | string | Yes | Household-facing category group name. |
 | `direction` | `CategoryDirection` | Yes | `income` or `expense`. |
 
-There is no stored calendar dimension in the contract. A `date` is its own
-conformed date key, and `ReportingMonth` is derived from it. Persistence may
-materialize a calendar table without changing this contract.
+There is no calendar dimension: a `date` is its own key and `ReportingMonth`
+derives from it. Persistence may add a calendar table without changing the
+contract.
 
 ## Facts
 
 ### `GoldTransaction`
 
-Grain: one booked transaction on one account. Amounts are signed in the
-account's currency: money into the account is positive and money out is
-negative. A transaction carries no category of its own; category assignment
-is a separate fact at its own grain
-([ADR-008](../decisions/ADR-008-category-allocation-grain.md)).
+Grain: one booked transaction on one account. Amounts are signed: money in is
+positive, money out negative. A transaction has no category of its own; that is
+the allocation fact ([ADR-008](../decisions/ADR-008-category-allocation-grain.md)).
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
@@ -113,15 +95,11 @@ is a separate fact at its own grain
 
 ### `GoldCategoryAllocation`
 
-Grain: one category allocation of one booked transaction
-([ADR-008](../decisions/ADR-008-category-allocation-grain.md)). This is the
-only place a category is assigned. In the first release a classified
-transaction has exactly one allocation, for its whole amount; authoring more
-than one is a later release, and needs no change to this grain or to any
-consumer that already reads it.
-
-The allocation repeats its transaction's account and date so that category
-reporting slices by account and month without joining the transaction fact.
+Grain: one category allocation of one booked transaction, the only place a
+category is assigned. In the first release a classified transaction has exactly
+one, for its whole amount; more later needs no change to this grain or its
+consumers. It repeats the transaction's account and date, so category reports
+slice by account and month without a join.
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
@@ -134,16 +112,12 @@ reporting slices by account and month without joining the transaction fact.
 
 ### `MonthlyBalanceSnapshot`
 
-Grain: one account for one reporting month of its managed period. The managed
-period runs from the month of the account's first booked transaction to the
-latest published month, or to the month of `closed_on` if that is earlier, so
-a closing date recorded ahead of time never produces a row beyond the
-published data. The **latest published month** is the month of the latest
-`evidence_through` over every `GoldAccount`. No transaction falls after its account's
-`evidence_through`, so no transaction falls after that month either. An open
-account whose own exports lag behind therefore still has a row for each later
-month, which its coverage reports as `partial` or `no_data`. There is exactly
-one row per month in that range, including months with no transactions.
+Grain: one account for one reporting month of its managed period, with exactly
+one row per month, quiet months included. The managed period runs from the month of the account's first booked
+transaction to the **latest published month**, the month of the latest
+`evidence_through` over every `GoldAccount`, or to the month of `closed_on` if
+earlier, so a future closing date adds no row. An account whose exports lag
+still has a row for each later month, reported `partial` or `no_data`.
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
@@ -154,27 +128,25 @@ one row per month in that range, including months with no transactions.
 | `coverage` | `Coverage` | Yes | Trust status for this account and month, as [`gold-layer.md`](gold-layer.md#coverage) defines it. |
 | `late_bookings_settled` | bool | Yes | True when a counted export was produced late enough after the month's last day, and covers that day, for late bookings to have appeared. The rule is in [`gold-layer.md`](gold-layer.md#late-bookings-settled). Computed at build from recorded export dates and ranges, never from the clock. |
 
-A complete quiet month carries the last bank-stated balance into both
-balances. Both are null when the required balance is missing, the month is
-`no_data`, or the month is quiet and not `complete`.
+A complete quiet month carries the last stated balance into both. Both are
+null when the needed balance is missing, the month is `no_data`, or it is quiet
+and not `complete`.
 
 Additivity: `amount` is additive across every dimension within one currency,
-on both the transaction and the allocation fact. The two are never summed
-together: a transaction and its allocations describe the same money, so adding
-them double-counts it. Balances are semi-additive: they may be summed across
-accounts for the same month, never across months. `coverage` is non-additive.
+on each fact, but transactions and allocations are never summed together: they
+describe the same money. Balances sum across accounts in one month, never
+across months. `coverage` is non-additive.
 
 ## Invariants
 
 1. Every `account_id` and `category_id` on a fact references a published
    dimension row. Every `GoldAccount` is inside the reporting boundary.
-   Dimension keys — `account_id`, `category_id`, and `group_id` — are
-   immutable and are never reused for a different meaning. A category or
-   account is retired by deactivating it, never by repointing its key. Every
-   other attribute may change, and changing one restates history, which is
-   what Type 1 means. A Silver transaction on an account the registry no
-   longer declares refuses the build rather than publishing an orphan fact
-   (see [`accounts.toml`](operations.md#accountstoml)).
+   Dimension keys (`account_id`, `category_id`, `group_id`) are immutable and
+   never reused; a category or account is retired by deactivating it, never by
+   repointing its key. Any other
+   attribute may change and restates history (Type 1). A Silver transaction on
+   an account the registry no longer declares refuses the build
+   ([`accounts.toml`](operations.md#accountstoml)).
 2. Each booked Silver transaction on a Gold account yields exactly one
    `GoldTransaction`. Only `booking_status=booked` rows qualify; pending and
    cancelled records remain provenance.
@@ -214,10 +186,9 @@ accounts for the same month, never across months. `coverage` is non-additive.
     build refuses a `closed_on` that would break this, rather than dropping
     the transactions after it
     ([`operations.md`, `accounts.toml`](operations.md#accountstoml)).
-15. A consumer reads exactly one Gold publication at a time, and every record
-    it reads belongs to that publication. A consumer reads the current
-    publication unless it opens another one explicitly. Identity across
-    publications is defined in [`publications.md`](publications.md).
+15. A consumer reads exactly one Gold publication at a time, the current one
+    unless it opens another, and every record it reads belongs to it
+    ([identity across publications](publications.md#identity-across-publications)).
 16. `transfer_group_id` is non-null only on `transfer` transactions. Each
     non-null value appears on exactly two transactions, which are on different
     accounts and whose amounts sum to zero.
@@ -231,12 +202,10 @@ accounts for the same month, never across months. `coverage` is non-additive.
 
 ## Consumer Interface
 
-Analytics, forecasting, APIs, and presentation-facing services depend on this
-protocol only. The persistence technology is not part of this contract.
-All date and month ranges are inclusive. `account_ids=None` means every
-account, and an empty collection means none. A bare `str` raises `TypeError`:
-it type-checks as a collection of strings, but means a forgotten pair of
-brackets.
+Analytics, forecasting, APIs and presentation-facing services depend on this
+protocol only, never on the persistence technology. Date and month ranges are
+inclusive. `account_ids=None` means every account and an empty collection
+none; a bare `str` raises `TypeError`, as a forgotten pair of brackets.
 
 ```python
 class GoldRepository(Protocol):
@@ -271,26 +240,21 @@ class GoldRepository(Protocol):
     ) -> Sequence[MonthlyBalanceSnapshot]: ...
 ```
 
-Consumers may filter, join on dimension keys, and aggregate the returned
-records. They may not assume a table name, a source-system identifier, or a
-raw CSV column. A month with no `MonthlyBalanceSnapshot` row for an account is
-outside that account's managed period. A requested month beyond the latest
-published month has no data and must never be read as zero.
+Consumers may filter, join on dimension keys and aggregate, but never assume a
+table name, source identifier or CSV column. A month with no snapshot row is
+outside the account's managed period; a month beyond the latest published one
+has no data and is never zero.
 
-Whether a period is provisional is decided when a report is read, not
-published. Gold supplies only `late_bookings_settled`; the rule that combines
-it with the reference date is in
-[`presentation-layer.md`](presentation-layer.md#data-trust-display).
+Gold supplies only `late_bookings_settled`; whether a period is provisional is
+decided when a report is read
+([`presentation-layer.md`](presentation-layer.md#data-trust-display)).
 
-Anything reported by category is summed over `category_allocations`, and
-anything reported per transaction over `transactions`. Household income and
-expenses are transaction measures; category and category-group spending are
-allocation measures. Because allocations sum exactly to their transactions,
-the two agree today and keep agreeing once a transaction carries several
-allocations.
+Household income and expenses are summed over `transactions`; category and
+group spending over `category_allocations`. They agree because allocations sum
+exactly to their transactions.
 
-A `GoldRepository` is bound to one publication, and every method reads from
-it. Consumers obtain one through `GoldPublications`:
+A `GoldRepository` reads from one publication. Consumers get one through
+`GoldPublications`:
 
 ```python
 class GoldPublications(Protocol):
@@ -301,12 +265,9 @@ class GoldPublications(Protocol):
     def open(self, publication_id: int) -> GoldRepository: ...
 ```
 
-`available()` lists the publications whose results are retained: the current
-one, the previous one, and every labeled one. `current()` returns `None` when
-there is no current publication, and `open()` raises
-`PublicationUnavailableError` when the publication does not exist or its
-result is not retained. When each happens, and how long a concrete
-`GoldStore` and its repositories may live, is in
+`available()` lists the retained publications: current, previous and labeled.
+`current()` may return `None`, and `open()` raises
+`PublicationUnavailableError`; when, and how long a `GoldStore` may live, is in
 [`publications.md`](publications.md#reading-a-publication).
 
 #### `GoldPublication`
@@ -327,9 +288,8 @@ Publication metadata. None of it enters the result fingerprint.
 
 ## Lineage Interface (privileged)
 
-Lineage explains where a Gold fact came from. Review and audit tooling reads it,
-for example the CLI classification-review and rebuild workflows. Analytics and
-presentation must not depend on it.
+Lineage explains where a Gold fact came from, for review and audit tooling such
+as the CLI's review and rebuild. Analytics and presentation never depend on it.
 
 ```python
 class GoldLineageRepository(Protocol):
@@ -355,9 +315,8 @@ class GoldLineageRepository(Protocol):
 | `bank_category` | string/null | Optional | The bank's category label, retained as privileged provenance for rule explanation and review. It never becomes a Gold Category. Null means the source supplied none or an older publication did not retain it. |
 | `adjustment_reason` | string/null | Conditional | The explanation invariant 3 asks of an adjustment: the reason its rule or decision gives. Required on every `adjustment`, otherwise null. |
 
-The classification fields describe how the transaction's type and its
-allocations were derived, for the transaction as a whole. Per-allocation
-provenance is added to lineage with the split workflow.
+The classification fields describe the transaction as a whole; per-allocation
+provenance comes with the split workflow.
 
 #### `TransferEvidence`
 
@@ -383,35 +342,22 @@ Confidence is a named evidence basis, not a score.
 | `reason` | string/null | No | Detail, such as `counterpart-may-not-be-imported`, `no-candidate`, or `target-missing`. |
 
 Gold derives review items afresh on every build, so an item exists exactly
-while its cause does. A retained publication stores its review items and their
-existing target and rule identifiers atomically with its result. The privileged
-review reader selects the current publication in one SQLite read snapshot and
-does not expose this reader through the analytics interface. A non-applicable
-decision remains discoverable by its decision identifier and any surviving
-targets; a missing target is not reconstructed. Silver's import review items
-are separate.
+while its cause does, and stores them atomically with the result. The review
+reader selects the current publication in one SQLite read snapshot, outside
+the analytics interface. A non-applicable decision stays findable by its
+decision and surviving targets; a missing target is not reconstructed. Silver's
+import review items are separate.
 
-Each publication's [recipe](publications.md#the-recipe) is privileged
-metadata for the CLI and audit tooling, alongside lineage.
+Each publication's [recipe](publications.md#the-recipe) is privileged metadata
+too, for the CLI and audit tooling.
 
 ## Contract Fixtures
 
-Synthetic fixtures cover:
-income; expense; refund netting against its category; adjustment without a
-category; paired transfer; unmatched transfer candidate; unknown transaction;
-a classified transaction and its single allocation summing to its amount; a
-transaction type that must carry no allocation; manual classification decision
-(visible through lineage); missing balance; chain break that demotes the
-previous month; first managed month (`partial`); complete quiet month; partial
-quiet month crossed by a broken link; partial quiet month after a last
-transaction with no balance; `no_data` month beyond evidence; an
-account whose exports lag behind the latest published month; a month whose
-late bookings are settled and one whose covering export was produced less
-than the late-booking window after it ended; closed account; and two categories sharing a
-group. The worked example in `gold-layer.md` covers most of these.
-
-Classification fixtures reproduce every synthetic scenario and taxonomy change
-in [`classification.md`](classification.md) exactly. Publication fixtures
-reproduce the lifecycle and view scenarios in
-[`publications.md`](publications.md), including an unchanged result
-fingerprint after a full rebuild.
+Synthetic fixtures cover every transaction type, allocation rule, balance
+check and coverage case above, a closed account and two categories in one
+group; the worked example in [`gold-layer.md`](gold-layer.md#worked-example-synthetic)
+covers most. Classification fixtures reproduce every scenario and taxonomy
+change in [`classification.md`](classification.md) exactly. Publication
+fixtures reproduce the scenarios in
+[`publications.md`](publications.md#synthetic-scenarios), including an
+unchanged result fingerprint after a full rebuild.

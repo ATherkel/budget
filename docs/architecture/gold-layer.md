@@ -3,30 +3,28 @@ type: architecture
 ---
 # Gold Layer
 
-## Purpose
+## Summary
 
-Represent household financial facts as a small dimensional model. Gold stays
-stable when source systems change.
-
-The normative field list, invariants, and interfaces are in the
-[Gold contract](gold-contract.md). This document explains the model behind
-them: business processes, grains, dimensions, and the balance-chain and
-coverage rules. Field names here are illustrative references to that
-contract. See [ADR-007](../decisions/ADR-007-dimensional-gold-model.md) and
-[ADR-008](../decisions/ADR-008-category-allocation-grain.md).
+- Gold models household financial facts as a small dimensional model that
+  stays stable when sources change.
+- Three facts: booked transactions, their category allocations, and a monthly
+  balance snapshot per account; three dimensions: account, category, date.
+- This doc explains the model, the balance chain and coverage. The
+  [Gold contract](gold-contract.md) owns the fields, invariants and
+  interfaces; decisions are
+  [ADR-007](../decisions/ADR-007-dimensional-gold-model.md) and
+  [ADR-008](../decisions/ADR-008-category-allocation-grain.md).
 
 ## Responsibilities
 
 - Publish the account and category dimensions from the household registries.
 - Materialize one Gold transaction per booked Silver transaction, classify it
-  ([`classification.md`](classification.md)), and publish its category
-  allocation.
-- Publish classification lineage and review items for review tooling.
-- Evaluate each account's balance chain and publish a balance check per
-  transaction.
+  ([`classification.md`](classification.md)), and publish its allocation.
+- Publish classification lineage and review items, behind the privileged
+  lineage interface.
+- Evaluate each account's balance chain, with a balance check per transaction.
 - Publish a monthly balance snapshot with coverage for every month of each
   account's managed period.
-- Keep lineage behind the privileged lineage interface.
 
 ## Business Processes and Grains
 
@@ -36,15 +34,10 @@ contract. See [ADR-007](../decisions/ADR-007-dimensional-gold-model.md) and
 | Assigning a transaction to a category | `GoldCategoryAllocation` | One category allocation of one booked transaction. Exactly one per classified transaction in the first release. |
 | Observing account balances | `MonthlyBalanceSnapshot` | One account for one reporting month of its managed period, including months with no transactions. |
 
-Category assignment is a process of its own because it is the household's
-judgement about a transaction, not a property of the money movement, and
-because one movement can legitimately belong to more than one category. Giving
-it its own grain now means the day a mixed purchase is divided by hand, nothing
-about the transaction fact or any consumer query changes
-([ADR-008](../decisions/ADR-008-category-allocation-grain.md)).
-
-Budgets and forecasts are out of scope for the first release. They appear in
-the bus matrix only to check that the dimensions will conform later.
+Category assignment has its own grain because it is the household's judgement,
+not a property of the movement, and one movement can belong to several
+categories: dividing a mixed purchase later changes no transaction fact or
+consumer query ([ADR-008](../decisions/ADR-008-category-allocation-grain.md)).
 
 ## Bus Matrix
 
@@ -55,51 +48,39 @@ the bus matrix only to check that the dimensions will conform later.
 | Monthly balance snapshots | ✓ (month) | ✓ | — |
 | *Future: budget targets* | ✓ (month) | — | ✓ |
 
-Currency is an attribute of the account, not a separate dimension, because
-every amount is in its account's currency. A future budget should be
-compared with actuals only after both are aggregated to category × month.
-Joining a monthly budget directly to transactions would count the budget once
-per transaction.
+Budgets appear only to check that the dimensions will conform. Currency is an
+account attribute, not a dimension. A future budget is compared with actuals
+only after both are aggregated to category × month; joined to transactions, it
+would count once per transaction.
 
 ## Dimensions
 
-- **Account.** Only accounts inside the reporting boundary
-  (`ownership_scope` of `household` or `person`). First-release types are
-  `current` and `savings`. There is no person dimension and no account
-  hierarchy: `account_type` is the only grouping. An optional `closed_on` ends
-  the account's managed period.
-- **Category.** A fixed two-level hierarchy, category group → category,
-  flattened onto the category row. Only categories are assigned, through an
-  allocation; groups are for rollups.
-- **Date.** A `date` is its own conformed key. `ReportingMonth` derives from
-  it. The contract has no calendar table.
+- **Account.** Only accounts inside the reporting boundary (`ownership_scope`
+  `household` or `person`), of type `current` or `savings`. No person dimension
+  or hierarchy; `account_type` is the only grouping. `closed_on` ends the
+  managed period.
+- **Category.** A fixed two-level hierarchy, group → category, flattened onto
+  the category row. Only categories are assigned; groups are for rollups.
+- **Date.** A `date` is its own conformed key, and `ReportingMonth` derives
+  from it. There is no calendar table.
 
-All dimensions are Type 1. Renaming an account or regrouping a category
-restates every report. Two things keep that from erasing the reasoning behind a
-past decision: dimension keys never change meaning, and every category rename,
-regrouping, retirement, and direction change is appended to
-[`category-changes.md`](../domains/category-changes.md) when it is made.
-Reproducing a report exactly as it was read needs the publication it was built
-from: an as-was view ([`publications.md`](publications.md)).
+All dimensions are Type 1: a rename or regroup restates every report. Keys
+never change meaning, every category change is appended to
+[`category-changes.md`](../domains/category-changes.md), and a report exactly
+as it was read is an as-was view ([`publications.md`](publications.md)).
+Reclassifying old transactions changes allocations, not a dimension; its
+history is the publications and the decision log.
 
-Deliberately reclassifying old transactions is a change to the facts'
-classification, not a dimension change. Now that a category reaches a
-transaction through an allocation, that change has a row of its own to record;
-its history is the sequence of publications and the decision log
-([`publications.md`](publications.md)).
-
-Dimension keys are durable, household-assigned identifiers such as
-`joint-current` or `groceries`. They are immutable and never reused for a
-different meaning. They are not surrogate keys and are never
-derived from bank identifiers. `transaction_id` is derived from the Silver
-canonical transaction identity, so rebuilds keep it stable.
+Dimension keys are durable household identifiers such as `joint-current` or
+`groceries`: immutable, never reused, not surrogates, never derived from bank
+identifiers. `transaction_id` derives from Silver's canonical identity, so
+rebuilds keep it.
 
 ## Balance Chain Evaluation
 
-For each account, walk its transactions in `account_sequence` order. The
-sequence follows `transaction_date`, then Silver's deterministic order within a
-transaction date. Gold keeps an anchor, the last known bank-stated balance, and
-the sum of amounts booked since that anchor.
+For each account, walk its transactions in `account_sequence` order
+(`transaction_date`, then Silver's deterministic order within a date), keeping
+an anchor, the last bank-stated balance, and the sum booked since it.
 
 | Condition for transaction *t* | `balance_check` | Anchor afterwards |
 | --- | --- | --- |
@@ -108,62 +89,55 @@ the sum of amounts booked since that anchor.
 | `balance_after == anchor + amounts since anchor + amount` | `consistent` | *t*'s `balance_after`. |
 | Otherwise | `break` | *t*'s `balance_after` (re-anchor, so one break does not cascade). |
 
-Bridging across a missing balance verifies the chain. It never invents the
-missing value.
+Bridging a missing balance verifies the chain; it never invents the value.
 
 ## Coverage
 
-Gold applies ADR-006's whole-period evidence rules. A link joins consecutive
-booked transactions in `(transaction_date, day_sequence)` order. It is verified
-when both balances exist and the later balance equals the earlier balance plus
-the later amount. Otherwise it is broken. Its span includes both transaction
-dates. Bridging a missing balance for `balance_check` does not make either
-adjacent link verified. A final link runs from the account's last transaction
-onward without end. It is verified when that transaction states its balance,
-so no month after a last transaction with no balance is `complete` until a
-later import adds a transaction that states one. That transaction's month
-stays `partial`, since the link into it is broken.
+Gold applies ADR-006's whole-period evidence rules. A **link** joins
+consecutive booked transactions in `(transaction_date, day_sequence)` order,
+spanning both dates. It is verified when both balances exist and the later
+equals the earlier plus the later amount, and broken otherwise; bridging for
+`balance_check` does not verify it. A final link runs from the last transaction
+onward, verified only when that transaction states its balance, so no later
+month is `complete` until an import adds one that does (whose own month stays
+`partial`).
 
 For each account and month of its managed period:
 
-- **`complete`**: one of the account's evidence ranges
-  ([`silver-layer.md`](silver-layer.md#evidence-ranges)) starts on or before
-  the month's first day and reaches its last day, and every link whose span
-  overlaps the month is verified, including links into and out of the month.
-- **`no_data`**: none of the account's evidence ranges reaches into the month.
-- **`partial`**: otherwise. This includes the first managed month, evidence
-  starting or ending inside a month, a gap between two ranges inside a month,
-  and every month overlapped by a broken link, the final one included.
+- **`complete`**: one evidence range
+  ([`silver-layer.md`](silver-layer.md#evidence-ranges)) covers the whole
+  month, and every link overlapping it, into and out of the month included, is
+  verified.
+- **`no_data`**: no evidence range reaches into the month.
+- **`partial`**: otherwise, such as the first managed month, evidence starting,
+  ending or gapping inside the month, or a broken link, the final one included.
 
-A quiet month inside verified evidence is `complete` with zero activity; carry
-the last bank-stated balance into its opening and closing snapshot fields.
-For a quiet month with partial or absent evidence, both balances are null.
-GoldAccount retains `coverage_start` and `evidence_through`, so consumers can
-report an account with no transactions as `no_data` even before it has a
-managed period. No account may disappear merely because it has no transactions.
+A quiet month inside verified evidence is `complete` with zero activity and the
+last stated balance as opening and closing. With partial or absent evidence,
+both balances are null. `GoldAccount` keeps `coverage_start` and
+`evidence_through`, so an account with no transactions still reports
+`no_data` and never disappears.
 
 ### Late bookings settled
 
-A transaction can be booked days after its transaction date, so a month can
-still change after it ends. For each account and month of its managed period,
-`late_bookings_settled` is true when one of the import runs counted in the
-account's evidence has an export date at least the **late-booking window**
-after the month's last day *and* a declared range from `covers_from` through `covers_through` that
-includes that day. The runs counted are exactly those behind the evidence
-ranges: admitted runs, and `repeat` runs of an admitted payload. A quiet
-account whose monthly export repeats the same bytes therefore settles its
-months like any other. Silver passes each counted run's export date and range
-on as an `EvidenceExport` ([`silver-layer.md`](silver-layer.md#evidence-ranges)),
-so Gold never reads Bronze. An export whose range starts after the month
-cannot show its late bookings, however late it was produced. The window is 7
-days unless the profile's `[gold] late_booking_days` sets another whole number
-of days from 0 to 366 ([`operations.md`](operations.md#selecting-a-profile)).
-The build is given it rather than reading a clock or a constant, refuses one
-outside that range or not in whole days, and the recipe records it
-([`publications.md`](publications.md#the-recipe)). The flag depends only on recorded export dates
-and ranges and that window, so a rebuild of the same recipe gives the same
-flags. Analytics combines it with the reference date to decide
-the provisional label
+A transaction can be booked days after its date, so a month can change after
+it ends. For each account and month of its managed period,
+`late_bookings_settled` is true when a run counted in the account's evidence
+has an export date at least the **late-booking window** after the month's last
+day *and* a declared range (`covers_from` through `covers_through`) that
+includes that day. The counted runs are those behind the evidence ranges:
+admitted runs and `repeat`s of an admitted payload, so a quiet account
+repeating the same bytes settles normally. Silver passes each one's export date
+and range as an `EvidenceExport`
+([`silver-layer.md`](silver-layer.md#evidence-ranges)); Gold never reads
+Bronze.
+
+The window is the profile's `[gold] late_booking_days`, 7 by default
+([`operations.md`](operations.md#selecting-a-profile)). The build is given it,
+refuses a value outside whole days 0 to 366, and the recipe records it
+([`publications.md`](publications.md#the-recipe)), so a rebuild gives the same
+flags. Analytics combines the flag with the reference date into the
+provisional label
 ([`presentation-layer.md`](presentation-layer.md#data-trust-display)).
 
 ## Worked Example (synthetic)
@@ -171,24 +145,19 @@ the provisional label
 Two open DKK household accounts: `joint-current` (current) and
 `joint-savings` (savings). Categories: `salary` and `interest` (group
 `income`, direction `income`), `rent` and `utilities` (group `housing`),
-`groceries` (group `food`), all three with direction `expense`. The latest
-published month is 2026-04. Both accounts have an admitted export dated
-2026-05-08 whose declared range runs from 2026-01-01 through 2026-05-08, so
-by the rule in [`silver-layer.md`](silver-layer.md#evidence-ranges) each
-account has one evidence range, 2026-01-01 through 2026-05-08:
-`coverage_start` is 2026-01-01 and `evidence_through` is 2026-05-08. The export was produced more than the default 7-day window after April ended and
-its range covers April's last day, so April is past the provisional window.
-Gold carries both values; it never derives them from an export date itself.
-The latest published month is therefore 2026-05, the month of the latest
-`evidence_through`, and both accounts have a May row although neither has a May
-transaction. Every row through April has `late_bookings_settled` true. The May
-rows do not: the only export was produced on 2026-05-08, and settling May needs
-one produced on or after 2026-06-07 whose range covers 2026-05-31.
+`groceries` (group `food`), all three with direction `expense`. Both accounts
+have one admitted export dated 2026-05-08, declared from 2026-01-01 through
+2026-05-08, so each has one [evidence range](silver-layer.md#evidence-ranges):
+`coverage_start` 2026-01-01, `evidence_through` 2026-05-08. The latest
+published month is therefore 2026-05, and both accounts have a May row without
+a May transaction. The export came more than 7 days after April and covers
+April's last day, so every row through April has `late_bookings_settled` true;
+May's do not, since settling May needs an export produced on or after
+2026-06-07 that covers 2026-05-31.
 
 `joint-current` transactions. The `category` column is each transaction's
-single allocation, shown inline to keep the example readable; in the model it is
-a `GoldCategoryAllocation` row of its own, carrying the same account and date
-and the transaction's whole amount:
+single allocation, shown inline; in the model it is a `GoldCategoryAllocation`
+row with the same account, date and whole amount:
 
 | seq | transaction_date | amount | type | category | transfer | balance_after | check |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -213,12 +182,10 @@ February's allocations on `joint-current`, written out in full:
 | …seq6/groceries | seq 6 | joint-current | 2026-02-12 | groceries | 120.00 |
 | …seq7/salary | seq 7 | joint-current | 2026-02-25 | salary | 25,000.00 |
 
-A `transfer`, `adjustment`, or `unknown` transaction has no allocation at all,
-so seq 2 (a January transfer) and seq 8 (a March `unknown`) appear in no
-allocation table. Were seq 5 one day divided into 510.00 of groceries and
-130.00 of homeware, it would have two rows here summing to -640.00, the
-groceries row keeping its `allocation_id`, and nothing else in this document or
-in any consumer query would change.
+A `transfer`, `adjustment` or `unknown` transaction has no allocation, so seq 2
+and seq 8 appear in none. Were seq 5 divided into 510.00 of groceries and
+130.00 of homeware, it would have two rows summing to -640.00, the groceries
+row keeping its `allocation_id`, and no consumer query would change.
 
 `joint-savings` transactions:
 
@@ -244,45 +211,37 @@ Monthly balance snapshots:
 
 What consumers can and cannot derive:
 
-- April household balance: 52,087.50 + 53,012.40 = 105,099.90. Balances are
-  summed across accounts for the same month, and both rows are `complete`.
-- Summing `joint-current` closing balances over February–April is
-  meaningless: balances are never summed across months.
-- February (analytics): income 25,000.00 and expenses 9,020.00, summed over
-  transactions; `groceries` spending 640.00 − 120.00 = 520.00 and the `housing`
-  group 8,500.00, summed over allocations. The two agree because a
-  transaction's allocations sum to its amount: 8,500.00 + 520.00 = 9,020.00.
-  The report must show `joint-current` as `partial` and `joint-savings` as
-  `complete`.
-- March: unclassified money in is 0.00, money out is −450.00, and count is 1.
-- January: transfer T1 is excluded from income and expenses, and both legs
-  stay visible in account activity. T1 is a `same_day` pair
-  ([`classification.md`](classification.md)).
-- `joint-savings` February and March are verified quiet months. A requested
-  June beyond the publication has no data and must not be read as zero.
-- A May report is provisional because its rows have `late_bookings_settled`
-  false, and it is `partial` because the evidence ends inside May. May's zero
-  activity is not a confirmed zero. An April report is not provisional, unless
-  the reference date falls in April.
-- The DKK 500.00 break is between admitted exports, so ADR-010 does not
-  quarantine either internally consistent export. It still makes February
-  and March partial under ADR-006.
-- Missing balances remain a separate fixture for a source that states no
-  balances: its transactions have `missing_balance` and its covered months
-  are partial. A balance-stating export with a missing balance is quarantined
-  under ADR-010 and never reaches this Gold example. If *accept discrepancy*
-  admits it, that transaction has `missing_balance` too (ADR-016).
+- April household balance: 52,087.50 + 53,012.40 = 105,099.90, summed across
+  accounts in one month, both `complete`. Balances are never summed across
+  months.
+- February: income 25,000.00 and expenses 9,020.00 over transactions;
+  `groceries` 640.00 − 120.00 = 520.00 and `housing` 8,500.00 over
+  allocations, which agree because allocations sum to their transaction:
+  8,500.00 + 520.00 = 9,020.00. `joint-current` shows `partial`,
+  `joint-savings` `complete`.
+- March: unclassified money in 0.00, out −450.00, count 1.
+- January: transfer T1, a `same_day` pair
+  ([`classification.md`](classification.md)), is excluded from income and
+  expenses; both legs stay in account activity.
+- `joint-savings` February and March are verified quiet months. A June beyond
+  the publication has no data, not zero.
+- May is provisional (`late_bookings_settled` false) and `partial` (evidence
+  ends inside it), so its zero activity is unconfirmed. April is not
+  provisional unless the reference date falls in April.
+- The DKK 500.00 break lies between admitted exports, so ADR-010 quarantines
+  neither, but it makes February and March partial under ADR-006.
+- A source that states no balances is a separate fixture: `missing_balance`
+  throughout and partial months. A balance-stating export missing a balance is
+  quarantined (ADR-010) unless *accept discrepancy* admits it, giving
+  `missing_balance` too (ADR-016).
 
 ## Not in the First Release
 
-Authored category splits — a workflow for dividing one transaction across
-several allocations, and the rule for which allocation a refund reverses. The
-allocation fact exists from the first release, always with one allocation per
-classified transaction. Also out: Type 2 dimensions, counterparty or merchant
-dimension, person dimension, account hierarchy, daily balance snapshots,
-budget facts, and audit or publication dimensions. Publication metadata is
-not a dimension: it describes the whole publication
-([`publications.md`](publications.md)).
+Authored category splits (dividing one transaction across allocations, and
+which allocation a refund reverses), Type 2 dimensions, counterparty, merchant
+or person dimensions, account hierarchy, daily balance snapshots, budget facts,
+and audit or publication dimensions. Publication metadata describes the whole
+publication, not a dimension ([`publications.md`](publications.md)).
 
 ## Consumers
 

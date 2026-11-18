@@ -5,30 +5,14 @@ type: architecture
 
 ## Summary
 
-- The only schema, version `0.3`, of the reports analytics builds and
-  presentation shows: the monthly overview and its category and group detail.
+- The only schema, version `0.3`, of the reports [analytics](analytics-layer.md)
+  builds as `HouseholdReports` and [presentation](presentation-layer.md) shows.
+- Analytics owns every figure and judgement; presentation only formats, never
+  summing or opening Gold.
 - A page pins one publication and one reference date, never mixing two.
-- A figure with no evidence is null, never zero; each report says how complete
-  and provisional it is.
-- A failed read raises an error, never an empty report.
-- Other reports add their own sections when built.
-  [Open questions](https://github.com/ATherkel/budget/issues?q=is%3Aissue+is%3Aopen+%22report-contract.md%22).
-
-## Purpose
-
-Analytics produces household reports from Gold
-([`analytics-layer.md`](analytics-layer.md)); presentation renders them
-([`presentation-layer.md`](presentation-layer.md)). This document is the only
-normative schema of the reports that pass between them. Analytics implements
-it as `HouseholdReports`; presentation is developed and tested against that
-same implementation over synthetic Gold publications, so there is no second,
-fake implementation to keep in step.
-
-Analytics owns every financial figure, every coverage and provisional
-judgement, and every validation rule here. Presentation formats and lays out
-what it receives. It never sums, nets, or re-derives a figure, and it never
-opens a Gold publication: it names one in the report context, and analytics
-opens it.
+- A figure with no evidence is null, never zero, and a failure raises an error,
+  never an empty report.
+- [Open questions](https://github.com/ATherkel/budget/issues?q=is%3Aissue+is%3Aopen+%22report-contract.md%22).
 
 ## Value Types
 
@@ -40,18 +24,13 @@ opens it.
 | `Coverage` | `complete`, `partial`, `no_data` | As in [`gold-contract.md`](gold-contract.md#shared-value-types). |
 | `AccountMonthStatus` | `partial`, `no_data`, `outside_history` | Status of one selected account in one month that is not `complete`; see [Coverage](#coverage). |
 
-When a report is serialized, for example in a fixture file or across a process
-boundary, money is a decimal string with exactly the currency's minor-unit
-places (`"-450.00"`), a ratio is the string form of its `Decimal`
-(`"0.6392"`), a month is `"YYYY-MM"`, and a date is ISO 8601. Neither money nor
-a ratio is ever a JSON number.
+Serialized, money is a decimal string with exactly the currency's minor-unit places
+(`"-450.00"`), a ratio its `Decimal`'s string (`"0.6392"`), a month
+`"YYYY-MM"` and a date ISO 8601; money and ratios are never JSON numbers.
 
-Signs: Income, Expenses and category spending are reported as positive
-amounts, and a net Refund makes Income, Expenses or a category's spending
-negative.
-Net cash flow is negative when Expenses exceed Income. On the Unclassified and
-Adjustment lines, money in is zero or positive and money out is zero or
-negative.
+Signs: Income, Expenses and category spending are positive, and negative only
+under a net Refund. Net cash flow is negative when Expenses exceed Income. On
+the Unclassified and Adjustment lines, money in is ≥ 0 and money out ≤ 0.
 
 ## Interface
 
@@ -71,15 +50,12 @@ class HouseholdReports(Protocol):
 ```
 
 `current_publication()` raises `NothingPublished` when Gold has no current
-publication. `selection_options()`, `monthly_overview()` and
-`spending_detail()` raise `PublicationUnavailableError` when the named
-publication's result is not retained. `monthly_overview()` and
-`spending_detail()` raise `InvalidSelection` for a context that breaks a rule
-under [`ReportContext`](#reportcontext), and `spending_detail()` also raises it
-for a subject that breaks the rule under [`SpendingDetail`](#spendingdetail). A failure is never returned as an
-empty or zero report. In code each failure carries an `Error` suffix, as the
-lint rules require: `NothingPublishedError`, `PublicationUnavailableError` and
-`InvalidSelectionError`.
+publication. The other three raise `PublicationUnavailableError` when the named
+result is not retained, and the two reports raise `InvalidSelection` for a
+context breaking a [`ReportContext`](#reportcontext) rule or, for detail, a
+subject breaking the [`SpendingDetail`](#spendingdetail) one. A failure is
+never an empty or zero report. In code each name ends in `Error`
+(`NothingPublishedError`, `InvalidSelectionError`), as the lint rules require.
 
 ### `ReportContext`
 
@@ -92,15 +68,11 @@ The one selection every report on a page shares.
 | `month` | `ReportingMonth` | The selected month. A report covering several months will take its range as its own parameter, anchored to this month. |
 | `reference_date` | `date` | The date the provisional rule is judged on. Analytics never reads a clock. |
 
-A page resolves its context once: it asks for the current publication and
-takes today's date in Europe/Copenhagen as the reference date. Every follow-up
-request from that page, such as a fragment or a drill-down, carries the same
-`publication_id` and `reference_date`, so one page never mixes two
-publications or two days. Opening the page without a pin resolves a fresh
-context; the pin travels in the page's address, so a browser reload of a
-pinned address keeps it, as back and forward do. On a fresh visit
-the selection is every account in `SelectionOptions.accounts` and the month of
-the reference date.
+A page resolves its context once, from the current publication and today in
+Europe/Copenhagen, and every follow-up request carries the same
+`publication_id` and `reference_date`. The pin travels in the page's address,
+so reload, back and forward keep it; opening the page without one resolves a
+fresh context, selecting every account and the reference date's month.
 
 A context is valid when:
 
@@ -138,12 +110,11 @@ What a page may select within one publication on one reference date.
 | `known_at` | datetime | As on `GoldPublication`. |
 | `is_current` | bool | Whether this publication was current when the report was read. |
 
-A page pinned to a publication keeps reading it after a newer build becomes
-current, for as long as its result is retained, so the page's parts never mix
-two publications. `is_current` turns false on the first report read after the
-newer build, so the page can say that newer figures exist and offer a reload.
-Once the result is deleted, the next read raises `PublicationUnavailableError`, and
-the page offers the current publication explicitly instead of substituting it.
+A pinned page keeps reading its publication after a newer build, while the
+result is retained; `is_current` turns false, so the page can offer the newer
+figures. Once the result is deleted, the next read raises
+`PublicationUnavailableError`, and the page offers the current publication
+rather than substituting it.
 
 ### `MonthlyOverview`
 
@@ -164,16 +135,13 @@ the page offers the current publication explicitly instead of substituting it.
 
 `income`, `expenses`, `net_cash_flow`, `unclassified` and `adjustments` are
 null exactly when `coverage.status` is `no_data`: with no evidence, a figure is
-unknown, never zero. A `partial` report carries the amounts known from the
-evidence that exists, and presentation shows them only with the coverage the
-report carries.
+unknown, never zero. A `partial` report carries the known amounts, shown only
+with its coverage.
 
-Income and Expenses are summed over transactions, and category spending over
-category allocations (ADR-008); the two are never added together. Category
-spending therefore always adds up to Expenses. Transfers are excluded from
-every figure, whichever accounts are selected (Gold contract invariant 8). An
-absent Category means no categorized expense in the month; it is a known zero
-only when `coverage.status` is `complete`.
+Income and Expenses sum transactions, category spending sums allocations
+(ADR-008), so categories always add up to Expenses. Transfers are excluded from
+every figure whichever accounts are selected (Gold invariant 8). An absent
+Category is a known zero only when coverage is `complete`.
 
 `CategorySpending`: `category_id`, `name`, `group_id`, `group_name`, and
 `spending`, the Category's net spending as Money: −(Σ allocations of `expense`
@@ -181,25 +149,22 @@ transactions + Σ allocations of `refund` transactions), negative when Refunds
 exceed purchases. The overview carries no Category group totals and no
 transaction rows; reports that need them add them.
 
-Enkel shows every row in the order the report gives, so the list it shows
-still adds up to Expenses and needs no remainder line. Presentation neither
-reorders nor truncates it; a net Refund Category falls to the bottom.
+Enkel shows every row in the given order, neither reordered nor truncated, so
+the list adds up to Expenses with no remainder line; a net Refund Category
+falls to the bottom.
 
 `MoneyInOut`: `money_in` (Σ positive amounts), `money_out` (Σ negative
-amounts), and `count`. The two amounts are never netted, so offsetting entries
-cannot read as nothing.
+amounts) and `count`, never netted, so offsetting entries cannot read as
+nothing.
 
-Unclassified money is a trust condition of its own, distinct from coverage and
-provisional figures: money left leaves it out, so money left may be off by up
-to that amount. When `unclassified.count` is greater than zero, Enkel says so
-in quiet wording that links to the
-[explanation](#navigation-and-selection-transitions). Enkel always shows the
-two amounts in a fourth summary figure, Ukategoriseret: `money_in`
-labelled Ind with an explicit plus sign when positive, and `money_out` labelled
-Ud with its minus sign, never netted. A known zero reads 0,00 kr. and a null
-`unclassified` reads as unknown, like every other figure. The count belongs to
-Kontrol, and the explanation shows neither the amounts nor the count.
-Adjustments carry no such note.
+Unclassified money is a trust condition of its own: money left leaves it out
+and may be off by up to that amount. When `unclassified.count` > 0, Enkel says
+so quietly, linking to the [explanation](#navigation-and-selection-transitions).
+Enkel always shows a fourth summary figure, Ukategoriseret: `money_in` as Ind,
+with a plus sign when positive, and `money_out` as Ud with its minus sign. A
+known zero reads 0,00 kr. and a null reads as unknown. The count belongs to
+Kontrol; the explanation shows neither amounts nor count. Adjustments carry no
+note.
 
 ### Coverage
 
@@ -219,12 +184,10 @@ Each selected account-month gets one status:
   imported, or has no booked transaction), or the month is after the latest
   published month.
 
-The contributing account-months are the selected ones that are not
-`outside_history`. `status` is `complete` when every contributing
-account-month is `complete`, `no_data` when none has evidence (including when
-none contributes), and `partial` otherwise. One status covers every figure in
-the report because every figure draws on the same contributing account-months:
-the selected accounts in the selected month.
+The contributing account-months are the selected ones not `outside_history`.
+`status` is `complete` when all of them are, `no_data` when none has evidence
+(or none contributes), and `partial` otherwise. One status covers every figure,
+since all draw on the same account-months.
 
 ### `Provisional`
 
@@ -240,10 +203,8 @@ second reason (`account_id`, `display_name`, `month`), ordered as in
   `late_bookings_settled` false, or it has no row because the month is after
   the latest published month.
 
-An account without a managed period never holds the label: one never imported
-is exempt by the rule, and one imported without a booked transaction is the
-rule's known first-release limitation. An `outside_history` month cannot hold
-it either.
+An account without a managed period never holds the label, even one imported
+without a booked transaction, and neither does an `outside_history` month.
 
 ### `SpendingDetail`
 
@@ -280,84 +241,69 @@ Unclassified money have no allocation, so they never appear.
 
 ## Navigation and Selection Transitions
 
-This section fixes the interaction a page owes its reader. It is route-neutral:
-the contract constrains what the reader is shown, never the transport or the
-shape of a URL. The report DTOs above carry no HTML-, URL-, or
-framework-specific schema.
+The interaction a page owes its reader. It is route-neutral: it constrains what
+the reader is shown, never the transport or URL shape, and the report DTOs
+carry no HTML, URL or framework schema.
 
-**One pinned context.** A page resolves its context once, as defined under
-[`ReportContext`](#reportcontext), and pins `publication_id` and the Copenhagen
-`reference_date` for the whole visit. Ordinary navigation inside the page - an
-account or month change, a fragment, a drill-down, a mode change, an ordinary
-link or a form - keeps that pin and never re-resolves it from the clock or from
-whichever publication is current. Only an explicit refresh, or an explicit
-return to the current publication, resolves a fresh context: in the dashboard
-both mean opening the page without a pin, which is what the "newer figures"
-link does.
+**One pinned context.** A page pins `publication_id` and the Copenhagen
+`reference_date` for the whole visit ([`ReportContext`](#reportcontext)).
+Navigation inside the page (an account or month change, a fragment, a
+drill-down, a mode change, a link or a form) keeps the pin and never
+re-resolves it. Only an explicit refresh or return to the current publication
+resolves a fresh context; in the dashboard both open the page without a pin,
+as the "newer figures" link does.
 
-**Central validation.** Every candidate selection, restored or freshly entered,
-is validated against the publication its context pins, by the rules under
-[`ReportContext`](#reportcontext), before it is used. Validation never resolves
-the current publication and never repairs a selection behind the reader's back.
+**Central validation.** Every candidate selection, restored or entered, is
+validated against its pinned publication by the [`ReportContext`](#reportcontext)
+rules before use. Validation never resolves the current publication and never
+repairs a selection silently.
 
-**Response eligibility.** A successful report response may render only when
-both hold:
+**Response eligibility.** A successful response renders only when:
 
 1. it answers the activity that is current now: the navigation change or
    request generation that asked for it is still the active one; and
 2. its echoed `context` equals the active validated selection on all four
    fields, with `account_ids` compared canonically as a set.
 
-A successful response that fails either test is discarded. A selection change
-therefore invalidates every outstanding response for the previous selection
-before any replacement is rendered, so figures that answered one selection can
-never appear under the controls of another. Returning to an earlier selection is
-a new request: `A -> B -> A` does not revive the response that answered the
-first `A`.
+Anything else is discarded, so a selection change invalidates every
+outstanding response for the previous one, and figures can never appear under
+another selection's controls. Returning to an earlier selection is a new
+request: `A -> B -> A` does not revive the first `A`'s response.
 
-**Failures.** A failure carries no report and no echoed context, so it is
-matched to the active request generation and the candidate selection it was
-raised for instead. `NothingPublished`, `InvalidSelection` and
-`PublicationUnavailableError` must not be made to invent an echoed valid
-`ReportContext`. A failure raised for the current generation displays: an
-`InvalidSelection` names the rules it broke, `NothingPublished` says no
-publication exists, and `PublicationUnavailableError` offers the current publication
-explicitly. A failure whose generation is superseded is discarded, so a late
-error cannot replace the result of a newer successful selection either.
+**Failures.** A failure carries no report or echoed context, so it is matched
+to the active request generation and its candidate selection, never given an
+invented `ReportContext`. One for the current generation displays:
+`InvalidSelection` names the broken rules, `NothingPublished` says nothing is
+published, `PublicationUnavailableError` offers the current publication. One
+for a superseded generation is discarded, so a late error never replaces a
+newer success.
 
-**Empty selection.** A context with no accounts selected is an intentional
-prompt, not a report. Presentation invalidates outstanding responses, clears or
-hides the previous financial output, keeps the account controls usable, and
-does not let a late response repaint figures. Analytics keeps its rule: a
-request actually made for an empty selection raises `InvalidSelection` with
-`no_accounts`, because an empty selection is never a successful zero report.
+**Empty selection.** No accounts selected is a prompt, not a report:
+presentation invalidates outstanding responses, clears the previous figures,
+keeps the account controls usable, and lets no late response repaint. A
+request actually made for it still raises `InvalidSelection` with
+`no_accounts`.
 
-**Back and forward.** A browser history entry carries the full state it belongs
-to: the pinned `publication_id`, the `reference_date`, the account and month
-selection, and the mode. Going back or forward restores that state even when an
-explicit refresh has resolved another context since, validates it against the
-publication it pins rather than against what is current now, and reads again
-under a fresh request generation. A restored context whose publication result
-is no longer retained stays explicit as `PublicationUnavailableError`; a restored
-selection that breaks a rule stays explicit as `InvalidSelection` naming the
-rules it broke; a restored empty selection restores the prompt. No restored
-state falls back to the current publication, to the default selection, or to
-whatever the reader was looking at before. Ordinary links and forms the page
-follows preserve the pin the same way.
+**Back and forward.** A history entry carries its full state: the pinned
+`publication_id`, `reference_date`, selection and mode. Going back or forward
+restores it even after a refresh resolved another context, validates it
+against its own publication, and reads again under a fresh generation. An
+unretained result stays `PublicationUnavailableError`, a broken selection
+`InvalidSelection`, an empty one the prompt; nothing falls back to the current
+publication, the default selection or the previous view. Links and forms keep
+the pin the same way.
 
-**Explanation of coverage, provisional figures and Unclassified money.** The
-explanation stays reachable within the same context: the page offers the
-report's own incomplete account-months and provisional reasons, and whether it
-has Unclassified money, without leaving the pinned context or resolving a new
-one. It does not require the Kontrol screen. Analytics owns the judgements the
-explanation shows; presentation owns the destination and the way it is reached.
+**Explanation of coverage, provisional figures and Unclassified money.** It is
+reachable within the pinned context, without the Kontrol screen: the report's
+incomplete account-months, provisional reasons, and whether it has
+Unclassified money. Analytics owns the judgements; presentation owns the
+destination.
 
 **Report figures and browser storage.** Navigation state and browser storage
-carry no financial payload at all: they hold the pinned identity and the
-selection, and nothing else, and no new financial model appears
-([`presentation-layer.md`](presentation-layer.md#non-responsibilities)). The
-rendered HTML necessarily displays the figures the reader is looking at; this
-rule governs what is stored and reused, not what is displayed.
+hold only the pinned identity and the selection, never a financial payload or
+a new financial model
+([`presentation-layer.md`](presentation-layer.md#non-responsibilities)). This
+governs what is stored and reused, not what the rendered page displays.
 
 ## Worked Examples (synthetic)
 
@@ -459,24 +405,18 @@ example.
 February, with `A` meaning the selection `{joint-current}` and `B` meaning
 `{joint-savings}`; the two reports carry different coverage.
 
-- *Replies out of order.* The reader selects `A` and then `B` before either
-  answer arrives. Only the `B` response renders, so the coverage line describes
-  `joint-savings`; the late `A` response is discarded instead of painting its
-  figures under the `B` controls.
-- *`A -> B -> A`.* Returning to `A` asks again. The response that answered the
-  first `A` is obsolete even when it arrives late, and the page renders only the
-  answer to the current `A`.
-- *Back and forward.* Back from `B` to `A` restores P1, the reference date, the
-  `A` selection and the mode, and reads `A` from P1 again, even when an
-  explicit refresh has since resolved P2.
-- *A failure that stays visible.* An explicit refresh resolves a fresh context;
-  with no current publication the page shows `NothingPublished` instead of an
-  empty report. Selecting a month outside P1's range shows `InvalidSelection`
-  with `month_out_of_range`. Neither failure carries an echoed context, and
-  each stays visible while it is the active generation rather than leaving the
-  previous figures on screen as if they answered the new selection.
-- *Empty selection during an outstanding request.* The reader selects `A`, then
-  clears every account before the answer arrives. The outstanding response is
-  discarded, the figures are cleared, and the account controls stay usable. A
-  request actually made for the empty selection raises `InvalidSelection` with
-  `no_accounts`.
+- *Replies out of order.* The reader selects `A`, then `B`, before either
+  answers. Only `B`'s response renders, so coverage describes `joint-savings`;
+  the late `A` response is discarded.
+- *`A -> B -> A`.* Returning to `A` asks again; the first `A`'s response is
+  obsolete even if it arrives late.
+- *Back and forward.* Back from `B` to `A` restores P1, the reference date, `A`
+  and the mode, and reads `A` from P1 again, even after a refresh resolved P2.
+- *A failure that stays visible.* A refresh with no current publication shows
+  `NothingPublished`, not an empty report; a month outside P1's range shows
+  `InvalidSelection` with `month_out_of_range`. Each stays visible while its
+  generation is active, never leaving the previous figures as if they answered.
+- *Empty selection during an outstanding request.* Selecting `A`, then clearing
+  every account before it answers, discards the response, clears the figures
+  and keeps the controls usable. A request made for the empty selection raises
+  `InvalidSelection` with `no_accounts`.

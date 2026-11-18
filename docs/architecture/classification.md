@@ -3,26 +3,18 @@ type: architecture
 ---
 # Gold Classification
 
-## Purpose
+## Summary
 
-Classification gives every Gold transaction a `transaction_type`, a category
-allocation when the type needs one, and a `transfer_group_id` when it is a
-paired transfer. Household rules and manual decisions drive it; transfers pair
-only on evidence from both legs. A classified transaction has exactly one
-allocation, for its whole amount
-([ADR-008](../decisions/ADR-008-category-allocation-grain.md)). The fields are
-defined in the [Gold contract](gold-contract.md); the policy's reasons are in
-[ADR-011](../decisions/ADR-011-classification-precedence.md) and
-[ADR-012](../decisions/ADR-012-transfer-evidence.md).
-
-Two principles apply throughout:
-
-- **A visible unknown beats a silent guess.** Weak, conflicting, or ambiguous
-  evidence leaves a transaction `unknown`. It then counts as unclassified
-  money and raises a review item, instead of silently moving money between
-  income, expense, and transfer totals.
-- **Classification is a pure function of its inputs.** Import order and
-  earlier publications do not affect the result.
+- Gives every Gold transaction a type, one whole-amount allocation when the
+  type needs a category (ADR-008), and a `transfer_group_id` when paired.
+- Rules and manual decisions drive it; transfers pair only on evidence from
+  both legs.
+- **A visible unknown beats a silent guess**: weak or conflicting evidence
+  leaves a transaction `unknown`, with a review item.
+- **A pure function of its inputs**: import order never matters.
+- Fields: the [Gold contract](gold-contract.md). Reasons:
+  [ADR-011](../decisions/ADR-011-classification-precedence.md),
+  [ADR-012](../decisions/ADR-012-transfer-evidence.md).
 
 ## Inputs
 
@@ -47,23 +39,18 @@ Analytics sees only the first. Review and audit tooling reads the rest.
 
 ## Taxonomy
 
-The household defines its taxonomy in configuration; the platform ships no
-categories. `transfer`, `adjustment`, and `unknown` are transaction types, not
-categories.
+The household defines its taxonomy ([format](operations.md#taxonomytoml)); the
+platform ships no categories.
 
-- Two levels: category group → category. Only a category is allocated to a
-  transaction.
-- Every category has a direction, `income` or `expense`, shared by every
-  category in its group, so a group rollup never mixes the two.
-- Identifiers are durable and household-assigned, such as `groceries`. No
-  category may be named `transfer`, `adjustment` or `unknown`.
-- A useful taxonomy has at least one income and one expense category, plus
-  categories for money that crosses the reporting boundary without being pay
-  or spending: for example, money moved to a savings account that is not
-  imported, or contributions from a member's account that is not imported.
-  Such money is never a transfer. This is guidance, not a configuration
-  error: money no category rule matches stays `unknown` and is raised as an
-  `unclassified` review item.
+- Two levels, group → category; only a category is allocated.
+- Every category has a direction, `income` or `expense`, shared within its
+  group, so a rollup never mixes the two.
+- Identifiers are durable and household-assigned, such as `groceries`, and
+  never `transfer`, `adjustment` or `unknown`, which are types.
+- Guidance, not a check: include income and expense categories, plus ones for
+  money crossing the reporting boundary, such as to an unimported savings
+  account or from a member's unimported account. That money is never a
+  transfer; unmatched, it stays `unknown` and `unclassified`.
 
 | Change | Effect |
 | --- | --- |
@@ -78,26 +65,23 @@ Every change restates history, because dimensions are Type 1
 
 ## Classification Rules
 
-A classification rule is a household-authored pattern over one transaction's
-own facts. Only transfer matching relates transactions to each other.
+A rule is a household-authored pattern over one transaction's own facts
+([format](operations.md#rulestoml)); only transfer matching relates
+transactions.
 
 ### What a rule may test
 
 - `account_id`
-- description text: contains, starts with, or a regular expression, always
-  case-insensitive. A contains or starts-with pattern and the description are
-  compared after Unicode case folding (`budget.inputs.fold`), so "ß" matches
-  "SS". A regular expression uses Python's `re.IGNORECASE`, which does not
-  equate "ß" with "SS".
+- description text: contains or starts with, compared after Unicode case
+  folding (`budget.inputs.fold`, so "ß" matches "SS"), or a regular expression
+  with `re.IGNORECASE` (where "ß" is not "SS")
 - amount: sign, or an inclusive range
 - transaction date: an inclusive range
-- the bank's category labels, where the source supplies them, compared after
-  the same case folding, so `Groceries` matches `GROCERIES`
+- the bank's category labels, where supplied, case-folded the same way
 
-Bank category labels are provenance. A rule may test them, but they never
-become Gold categories on their own and no fallback copies them: Danske files
-transfers under its income and expense groups, and returned goods under
-income.
+Bank labels are provenance: a rule may test them, but they never become Gold
+categories and no fallback copies them, since Danske files transfers under
+income and expense and returned goods under income.
 
 ### What a rule may assign
 
@@ -125,12 +109,9 @@ No rule assigns `unknown`; matching no rule does.
 ### Priority and conflicts
 
 Every rule has an integer `priority`, 0 by default. The highest-priority
-matching rules decide. If they agree, that is the rule result. If they
-disagree, there is none: the transaction is `unknown`, with a `rule-conflict`
-review item naming the rules.
-
-File order never matters, so a broad rule cannot silently shadow a narrower
-one. Raise a specific rule's priority to let it win; lower a fallback's.
+matching rules decide if they agree; if not, the transaction is `unknown` with
+a `rule-conflict` item naming them. File order never matters: raise a specific
+rule's priority, or lower a fallback's.
 
 ## Transfer Matching
 
@@ -224,12 +205,9 @@ A manual decision is a recorded human ruling. Classification uses three kinds:
   `zero-amount` (a category meets a zero amount), `amounts-do-not-cancel`,
   `same-account`, or `inside-managed-period`. It lists the decision's targets
   still present, so none when a single target is missing.
-- A one-sided transfer's managed-period test runs by month: the counterpart's
-  managed period runs from the month of its first booked transaction to the
-  month of its `closed_on`, if any. An account with no booked transaction has
-  no managed period yet. The period's other end, the latest published month,
-  never matters here: a transaction's own account has evidence through its
-  date, so no transaction date falls after that month.
+- A one-sided transfer's managed-period test runs by month, from the
+  counterpart's first booked transaction to its `closed_on`, if any; an account
+  with no booked transaction has no period yet.
 
 Review items are never marked resolved. A decision removes the cause, and the
 item disappears on the next build.
@@ -249,10 +227,9 @@ For each transaction, the first step that applies decides:
    - A conflict gives `unknown` with a `rule-conflict` item.
 5. **Nothing matched:** `unknown`, with an `unclassified` item.
 
-A pair beats a rule result because a transfer claim confirmed by an opposite
-leg in the household's own accounts is stronger evidence than a text pattern
-alone. Otherwise a broad rule,
-such as one on the bank's "other income" label, would swallow incoming
+A pair beats a rule because a claim confirmed by an opposite leg in the
+household's own accounts is stronger than a text pattern; otherwise a broad
+rule, such as one on the bank's "other income" label, would swallow incoming
 transfers.
 
 ## Validation and Review
@@ -275,13 +252,10 @@ anything is published, and the error lists every offending entry:
 
 ### Review items
 
-Problems that depend on the data become review items. Gold derives them afresh
-on every build, so an item exists exactly while its cause does. A
-`review_item_id` derives from the kind and the transaction or decision
-identifiers involved, so it is stable across rebuilds. Each build stores its
-review items with its publication
-([`publications.md`](publications.md)); the stored target and rule identifier
-lists keep their order.
+Problems that depend on the data become review items, derived afresh on every
+build and stored with the publication
+([`ClassificationReviewItem`](gold-contract.md#classificationreviewitem)); the
+stored target and rule lists keep their order.
 
 | Kind | Raised when | Transaction is | Settled by |
 | --- | --- | --- | --- |
@@ -297,27 +271,24 @@ category. Silver's import review items are separate.
 
 ### What the review workflow shows
 
-The CLI review workflow ([`operations.md`](operations.md)) shows, from the
-selected publication:
+`budget review` ([`operations.md`](operations.md#commands)) shows, from one
+publication:
 
 - a summary: transactions by classification source; unclassified money in,
-  money out, and count per account and month; and open review items by kind;
-- each open review item with its transactions (account, transaction date,
-  amount with currency, description and bank category label), the rules or
-  candidate legs involved, and the decision kinds that would settle it;
-- every pair formed on a date gap, and every pair where a leg's own rule
-  result is not a transfer claim, so a coincidental match can be spotted and
-  undone with a `classify` decision.
+  out and count per account and month; open items by kind;
+- each open item with its transactions (account, date, amount with currency,
+  description, bank label), the rules or candidate legs involved, and the
+  decision kinds that would settle it;
+- every pair formed on a date gap, or where a leg's own rule is not a transfer
+  claim, so a coincidence can be undone with `classify`.
 
-It reads one publication through one SQLite snapshot, so a concurrent publish
-or retention cleanup cannot mix two results. Every target's details come from
-that publication: a bank label it never stored shows as unavailable, never
-filled from current Silver, and a missing target is never invented. Filtering
-by account keeps every target of a matching item. Control characters in free
-text are escaped, so a description cannot forge a terminal line.
-
-This output contains financial values. It goes to the operator's terminal or a
-private report, never to routine logs.
+It reads one SQLite snapshot, so a concurrent publish or retention cleanup
+cannot mix results.
+Details come only from that publication: an unstored bank label shows as
+unavailable, and a missing target is never invented. An account filter keeps
+every target of a matching item. Control characters are escaped so a
+description cannot forge a terminal line. The output holds financial values,
+so it never reaches routine logs.
 
 ## Synthetic Examples
 

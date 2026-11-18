@@ -3,45 +3,23 @@ type: architecture
 ---
 # Gold Publications and History
 
-The decisions behind this doc are
-[ADR-014](../decisions/ADR-014-gold-publications-and-history.md),
-[ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md) and
-[ADR-020](../decisions/ADR-020-stage-specific-build-provenance.md).
-Command names and file formats are in [`operations.md`](operations.md).
+## Summary
 
-## Purpose
-
-This document defines what one Gold publication is, what report reads it,
-what history is kept, and what a reproducible build promises.
-
-The principle behind it is that **a report is a function of recorded inputs**.
-The build never reads the clock or anything else that was not recorded. A
-stored result can always be read, and an unavailable historical result can be
-replayed only when its exact recorded inputs and producer are available, as
-[What Reproducible Promises](#what-reproducible-promises) defines.
-
-## Terms
-
-- **Publication**: one complete, immutable build of Gold. It holds every
-  dimension row, every fact, the lineage, and the review items, all built
-  from one recipe. A consumer reads exactly one publication at a time.
-- **Recipe**: the record of every input a publication was built from. See
-  [The Recipe](#the-recipe). The publication, not the recipe, carries the
-  fingerprint of the result.
-- **Current publication**: the one reports show by default. It is a pointer,
-  and every move of the pointer is appended to the *pointer history*.
-- **Decision log**: the append-only record of manual decisions. See
-  [The Decision Log](#the-decision-log).
-- **As-was view**: the publication that was current at a moment D, shown
-  exactly as it was.
-- **As-known-at view**: a new publication built from only the import runs
-  started by D, interpreted with today's configuration, decisions, and code.
+- A **publication** is one immutable Gold build from one **recipe** of every
+  input it used; consumers read exactly one at a time.
+- The **current** one is a pointer whose moves are logged, so `undo` and past
+  views work.
+- **A report is a function of recorded inputs**: no clock, nothing unrecorded.
+  A lost result replays only from its exact inputs and producer.
+- Recipes are kept forever, results only while current, previous or labeled.
+- Decisions: [ADR-014](../decisions/ADR-014-gold-publications-and-history.md),
+  [ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md),
+  [ADR-020](../decisions/ADR-020-stage-specific-build-provenance.md).
 
 ## Two Time Axes
 
-Every report answers two questions: *which data* does it cover, and *which
-interpretation* (configuration, manual decisions, code) does it apply? Each
-answer is a point in time.
+Every report answers *which data* it covers and *which interpretation*
+(configuration, decisions, code) it applies. Each answer is a moment.
 
 | View | Data | Interpretation | How it is produced |
 | --- | --- | --- | --- |
@@ -49,53 +27,36 @@ answer is a point in time.
 | As-was at D | import runs started by D | the one in force at D, including its code | the publication current at D, from its retained result or the [replay prerequisites](#what-reproducible-promises) |
 | As-known-at D | import runs started by D | today's | a new publication of kind `as_known_at` |
 
-The data axis is cut at the import run's recorded `started_at`: the moment the
-platform learned of the data. The bank's export date is not used, because it
-says when the bank made the file, not when the household knew of it.
-
-A moment D given as a date means **the end of that day in Europe/Copenhagen**,
-the zone presentation already uses for "today". "Started by D" therefore
-includes an import at 21:30 on D, and an as-was view at D shows the
-publication current at the end of D. D may instead be a timestamp with an
-explicit offset, which is taken as given. `started_at`, like every recorded
-moment in this document, is stored in UTC (`bronze-layer.md`), and D is
-converted to UTC before it is compared.
-
-A fourth combination is possible: all of today's data under the interpretation
-in force at D. The first release does not offer it. Configuration files are
-read only when a build runs, so an interpretation is known only at the points
-where a publication was built.
+Data is cut at the import run's recorded `started_at`, when the platform
+learned of it, not the bank's export date. A date D means **the end of that
+day in Europe/Copenhagen**, presentation's zone for "today"; a timestamp with
+an explicit offset is taken as given. Every recorded moment is UTC, and D is
+converted before comparing. Today's data under an earlier interpretation is not
+offered: configuration is only known where a publication was built.
 
 ## The Recipe
 
-A recipe names each input exactly and never by "latest":
+A recipe names each input exactly, never by "latest":
 
 | Part | Content |
 | --- | --- |
-| Silver build | An immutable copy of the provenance consumed from Silver. The exact stored fields are defined under [Silver build provenance](silver-layer.md#build-provenance); Gold reads that stored value and never reads Bronze. The recipe keeps every consumed import run with its payload and declared account. Recipes migrated from schema 6 retain their runs with an unknown account; nothing infers that account from Bronze or later Silver. |
-| Configuration snapshot | The parsed, canonical content of the account registry, category taxonomy, and classification rules. It is stored once per distinct content and referenced by its fingerprint. |
-| Late-booking window | The profile's `[gold] late_booking_days` at the build, in whole days ([`operations.md`](operations.md#selecting-a-profile)). `late_bookings_settled` depends on it, so changing it requires a new publication, and an earlier publication keeps the window its recipe records. |
-| Decision context | The position and prefix hash of the shared Decision log consumed. Effective Gold decisions are derived from the complete entries through that position. |
-| Gold code version | The commit of the application code that built Gold, with its locked dependencies and Gold contract version. It also determines the transfer matching policy, which is a constant of the code ([`classification.md`](classification.md#inputs)). |
+| Silver build | An immutable copy of the provenance consumed from Silver, with the fields [Silver build provenance](silver-layer.md#build-provenance) defines; Gold never reads Bronze. It keeps every consumed import run, voided and repeated ones included, with its payload and declared account. Recipes migrated from schema 6 keep their runs with an unknown account, never inferred later. |
+| Configuration snapshot | The parsed, canonical account registry, taxonomy and rules, stored once per distinct content and referenced by fingerprint. |
+| Late-booking window | The profile's `[gold] late_booking_days` at the build ([`operations.md`](operations.md#selecting-a-profile)). `late_bookings_settled` depends on it, so a change needs a new publication. |
+| Decision context | The position and prefix hash of the decision log consumed; effective Gold decisions come from the complete entries through it. |
+| Gold code version | The commit that built Gold, with its locked dependencies and Gold contract version. It fixes the transfer matching policy ([`classification.md`](classification.md#inputs)). |
 
-A recipe holds inputs only, so two recipes can be compared before anything is
-built. The recipe also records the Python and SQLite versions that ran the
-build.
-They are diagnostic only and not part of the recipe's identity.
-Silver's decision-log position and prefix hash are also left out of the
-recipe's identity: they record where Silver read the log, for audit. The log
-can move while Silver's result stays the same, as a Gold-only decision does,
-and Silver's result fingerprint decides whether Gold republishes.
-
-A recipe records every consumed run's account, including voided and repeated
-runs. A new recipe with any unknown run account is refused before anything is
-written.
+A recipe holds inputs only, so two can be compared before building. The Python
+and SQLite versions, and Silver's own decision-log position and prefix hash,
+are recorded for diagnosis and audit but are not part of the recipe's identity:
+the log can move while Silver's result stays the same, and Silver's result
+fingerprint decides whether Gold republishes. A new recipe with any unknown run
+account is refused before anything is written.
 
 ### Gold Acceptance
 
-The recipe stores the consumed Silver provenance without rereading current
-Silver or Bronze. Before writing a new publication, Gold
-applies this acceptance contract:
+Before writing a publication, Gold checks the Silver provenance its recipe
+stores, without rereading Silver or Bronze:
 
 | Stored Silver state | Check that decides whether Gold may publish |
 | --- | --- |
@@ -108,77 +69,52 @@ applies this acceptance contract:
 | Fresh | Every required scheme and freshness check passes: continue the Gold build. |
 | Undeclared consumed account | The account is absent from `accounts.toml`: refuse with exit 3, name the account, and require its declaration. |
 
-Unknown, stale, and incompatible provenance remain readable wherever the
-stored shape permits, but none of them can authorize a new publication.
-Gold-only decisions, Gold configuration, and an added empty account leave
-Silver fresh. A Silver rebuild cannot repair a missing account declaration.
-Recovery actions are summarized in
+Unknown, stale and incompatible provenance stays readable where its shape
+allows, but never authorizes a publication. A changed Silver result with the
+same import-run IDs changes the recipe. Recovery actions are in
 [Provenance recovery](operations.md#provenance-recovery).
-
-A changed Silver result with the same import-run IDs changes the Gold recipe
-and is not a no-op. Parser provenance and its non-substitution limit are
-defined in [Silver build provenance](silver-layer.md#build-provenance).
 
 ### Gold Result Fingerprint
 
-The result belongs to the publication. Its **result fingerprint** is a
-SHA-256 hash over a canonical serialization of every record the publication
-returns through `GoldRepository` and `GoldLineageRepository`, in key order.
-The serialization is versioned as the **fingerprint scheme**, which is
-recorded beside each fingerprint, and fingerprints are compared only within
-one scheme. A code version that changes the scheme, for example by adding a
-contract field, makes its fingerprints incomparable with earlier ones. The
-printed diff compares measures, not fingerprints, so it still shows whether
-any figure moved.
+The **result fingerprint** belongs to the publication: a SHA-256 over a
+canonical serialization of every record it returns through `GoldRepository`
+and `GoldLineageRepository`, in key order. The serialization is versioned as
+the **fingerprint scheme**, recorded beside each fingerprint; fingerprints
+compare only within one scheme. The printed diff compares measures, so it
+still shows moved figures across schemes.
 
-`classification_version` in lineage is the fingerprint of the classification
-inputs: the configuration snapshot and the effective classification
-decisions. The transfer matching policy and the classifier's code are not part
-of it; they change with the recipe's code version.
+`classification_version` in lineage fingerprints the classification inputs:
+the configuration snapshot and the effective classification decisions. The
+transfer policy and classifier code change with the code version instead.
 
 ## What Reproducible Promises
 
 1. **A stored Silver build and its Gold recipe yield the same Gold result.**
-   A retained publication result is read directly. If the result is no longer
-   retained, reproduction requires both the exact consumed Silver result and
-   the recipe's Gold inputs and producer identity; replaying them gives the
-   same Gold fingerprint. A recipe alone cannot reconstruct unavailable
-   historical Silver. Missing prerequisites make replay unavailable; they are
-   not a fingerprint mismatch. The historical applications below use this
-   rule.
-2. **Timestamps never enter the result.** `built_at` is publication metadata
-   outside the fingerprint. The build never reads the clock, file modification
-   times, environment variables, or import order beyond the order Silver
-   derives from recorded fields (ADR-009). Anything that depends on today's
-   date, such as the provisional label, is computed when the report is read.
+   A retained result is read directly. An unretained one needs the exact
+   consumed Silver result and the recipe's Gold inputs and producer; replaying
+   them gives the same fingerprint. Missing prerequisites make replay
+   unavailable, not a mismatch.
+2. **Timestamps never enter the result.** `built_at` is metadata outside the
+   fingerprint. The build reads no clock, file times, environment variables or
+   import order beyond Silver's recorded order (ADR-009). Anything that depends
+   on today, such as the provisional label, is computed when a report is read.
 3. **Each code change is attributable to its stage.** Silver and Gold record
-   their own producer code. Different code may give a different result, and
-   the diff printed on every build shows it. A behavior-neutral Gold code
-   change that keeps the fingerprint scheme yields a new publication with an
-   unchanged Gold result fingerprint without pretending the Silver producer
-   changed.
-4. **Production only builds from named code.** A production build refuses to
-   run when it cannot name its code version exactly, for example from
-   uncommitted changes. A development store makes no reproducibility promise:
-   a development build may run from uncommitted code, and nothing records
-   which code that was. Each profile keeps its own stores
-   ([`operations.md`](operations.md#profiles)). A producer commit is never
-   backfilled from the checkout that happens to read the store later.
+   their own producer code, and every build prints its diff. A behavior-neutral
+   Gold change in the same scheme gives a new publication with the same
+   fingerprint.
+4. **Production only builds from named code.** It refuses uncommitted code;
+   development makes no promise ([`operations.md`](operations.md#profiles)). A
+   producer commit is never backfilled from a later checkout.
 
 Not promised:
 
-- Replaying through a parser whose identity was not recorded. Silver says its
-  Bronze parser provenance is unknown, and a rebuild may produce a new result
-  when the installed parser changes. `rebuild --from bronze` remains supported,
-  but replaying historical parser output is not promised without a recorded
-  parser identity.
-- Replaying a recipe whose code can no longer run. A publication that must
-  outlive its code keeps its result by being labeled, and across a Gold
-  migration that cannot convert it, in the pre-migration backup
-  ([Retention](#retention)).
-- Stable `transaction_id`s across a Silver identity version change. That
-  change needs a migration of every reference (ADR-009), including the
-  decision log.
+- Replay through an unrecorded parser. `rebuild --from bronze` works, but may
+  give a new result when the installed parser changes.
+- Replay of a recipe whose code no longer runs. A result that must outlive its
+  code is labeled, and kept across an unconvertible migration as in
+  [Retention](#retention).
+- Stable `transaction_id`s across a Silver identity version change, which needs
+  a migration of every reference, the decision log included (ADR-009).
 
 ## Identity Across Publications
 
@@ -191,46 +127,38 @@ Not promised:
 | `publication_id` | Names one publication | Increasing integer per store. |
 | (`publication_id`, `transaction_id`) | Names one version of one fact | The only way two versions of a transaction differ. |
 
-Facts do not carry `publication_id`. A consumer learns which publication it is
-reading from `GoldRepository.publication()`.
-
-**No double counting.** Every Gold table is keyed by `publication_id` first.
-Every repository read filters on exactly one, and no interface reads across
-publications. A summed query over a store that holds several retained results
-would otherwise count each transaction once per result.
+Facts do not carry `publication_id`; a consumer learns it from
+`GoldRepository.publication()`. **No double counting**: every Gold table is
+keyed by `publication_id` first, every repository read filters on exactly one,
+and no interface reads across publications.
 
 ## Lifecycle
 
 ### Pipeline builds
 
-An import, a configuration change, a new manual decision, or a new code version
-starts a pipeline build:
+An import, a configuration change, a decision or a new code version starts a
+pipeline build:
 
-1. Bronze has already committed the import run's payload on import.
+1. Bronze has already committed the import run's payload.
 2. Silver derives and commits one complete result with one provenance value.
-3. Gold reads that complete stored value and the household inputs, then checks
-   that the Silver provenance is complete, supported, and fresh for the
-   values it would consume ([Gold Acceptance](#gold-acceptance)).
-4. The stage-aware recipe is assembled from those values. If it equals the
-   current publication's recipe, nothing is built or published.
-5. Gold is derived and checked. A configuration, freshness, or compatibility
+3. Gold reads it and the household inputs and runs
+   [Gold Acceptance](#gold-acceptance).
+4. The recipe is assembled. If it equals the current one, nothing is built.
+5. Gold is derived and checked. A configuration, freshness or compatibility
    error fails the build before publication (ADR-011, ADR-020).
-6. On success, in one write transaction, the new publication's result is
-   stored, the pointer moves to it, and the pointer history records the move.
-   A failed build leaves everything as it was, and readers never see a partial
-   publication.
+6. In one write transaction the result is stored, the pointer moves and the
+   pointer history records it. A failed build changes nothing, and readers
+   never see a partial publication.
 7. The CLI prints a **diff against the previous current publication**: per
-   month and account, the measures that changed (income, expenses, each
-   category and group, unclassified money, and coverage), and the review items
-   opened and closed. The diff contains financial values, so it goes to the
-   terminal and never to routine logs.
+   month and account, the changed measures (income, expenses, each category
+   and group, unclassified money, coverage) and the review items opened and
+   closed. It holds financial values, so it goes to the terminal only.
 
 ### Undo
 
-`undo` moves the pointer back to the previous current publication and appends
-the move to the pointer history. Undo is itself undoable: after undo, the
-publication just left is the previous one. Undo changes no input. The mistake
-must still be fixed; otherwise the next build brings it back.
+`undo` moves the pointer back to the previous current publication and records
+the move, so undo is itself undoable. It changes no input: fix the mistake, or
+the next build brings it back.
 
 ### Pointer history
 
@@ -244,123 +172,82 @@ Every move of the pointer appends one row:
 | `cause` | `build`, `undo`, or `migration`. |
 
 The publication current at a moment is the `to_publication_id` of the last
-move at or before it. The previous current publication is the
-`from_publication_id` of the last move. The printed diff and the dashboard
-banner show the cause.
+move at or before it; the previous one is the last move's
+`from_publication_id`. The diff and the dashboard banner show the cause.
 
 ### Publication recovery
 
-`restore` brings back Gold's recipes, results and pointer history as they
-stood in the backup set; publications, labels and pointer moves made after it
-are lost. If the recipe changed since, catch-up builds a new current
-publication, and undo returns from it to the set's current one, whose result
-the build's pointer move keeps; `restore` names that publication.
+`restore` brings back Gold's recipes, results and pointer history as the
+backup set holds them; later publications, labels and pointer moves are lost.
+If the recipe changed since, catch-up builds a new current publication, and
+undo returns to the set's current one, which `restore` names.
 
-Each restore records a **recovery boundary** in `gold.db`: the set it came
-from and when the set was taken, when the restore ran, the set's current
-publication, and the first `publication_id` any build after the restore
-takes. The boundary lives in the store, so it survives a restart and is
-backed up and restored with the publications. A past-view lookup reads it to
-report the time between the set and the restore as unavailable, never as the
-set's publication having stayed current.
+Each restore records a **recovery boundary** in `gold.db`: the set and when it
+was taken, when the restore ran, the set's current publication, and the first
+`publication_id` after the restore. Past-view lookups read it to report the
+time between the set and the restore as unavailable.
 
-Publication ids jump at a restore: the boundary's first `publication_id` is
-the smallest multiple of 1,000,000 strictly above the highest id the
-restored store holds (1,000,000 when it holds none). The catch-up build, or
-with no catch-up the next build, takes that id, and later builds continue
-from it. Publications lost after the set were numbered below the jump, so a
-bare id written down before the restore cannot name a publication built
-after it. A store that was never restored numbers 1, 2, 3, ….
-
-One gap is accepted: a second restore of the same set, or of an older one,
-jumps from that set's highest id again, and so can reuse ids in a range that
-publications built between the two restores had taken (pending:
-[#414](https://github.com/ATherkel/budget/issues/414)).
+That first id is the smallest multiple of 1,000,000 above the highest id the
+restored store holds (1,000,000 for none), so an id written down before the
+restore never names a publication built after it. A never-restored store
+numbers 1, 2, 3, …. A second restore of the same or an older set jumps from
+that set's highest id again, so it can reuse ids that builds between the two
+restores took (pending: [#414](https://github.com/ATherkel/budget/issues/414)).
 
 ### Past views
 
-A view is always built by the CLI and never by the dashboard, which stays
-read-only.
+Only the CLI builds views; the dashboard stays read-only. A view never becomes
+current.
 
-- `view --as-was D --label L` finds the publication that was current at the
-  end of D in the pointer history. If its result is retained, it is labeled.
-  Otherwise it uses the exact-input replay in
-  [What Reproducible Promises](#what-reproducible-promises). If an input is
-  unavailable, the result is unavailable; today's code is not a substitute.
-  A successful replay keeps the original `built_at` and `known_at`, records
+- `view --as-was D --label L` finds the publication current at the end of D.
+  A retained result is labeled; otherwise it is replayed
+  [from exact inputs](#what-reproducible-promises), never with today's code.
+  A replay keeps the original `built_at` and `known_at`, records
   `replayed_at`, and must match the recorded fingerprint.
-- `view --known-at D --label L` builds a new publication of kind
-  `as_known_at` from the import runs started by D, with today's
-  configuration, decisions, and code. A decision whose target was not yet
-  imported at D raises `decision-not-applicable`, as it would have then.
-
-A view can never become current.
+- `view --known-at D --label L` builds a new `as_known_at` publication from
+  the runs started by D, with today's configuration, decisions and code. A
+  decision whose target was not imported by D raises
+  `decision-not-applicable`.
 
 ### Verify
 
-Recipe replay by `verify` is deferred with the wider history work
-([#259](https://github.com/ATherkel/budget/issues/259)). When supported, it
-uses the
-[exact-input replay](#what-reproducible-promises) and compares
-the Gold fingerprint without publishing. A mismatch after the prerequisites
-are established is a platform defect.
+Recipe replay by `verify` is pending
+([#259](https://github.com/ATherkel/budget/issues/259)). It will replay
+[from exact inputs](#what-reproducible-promises) and compare the fingerprint
+without publishing; a mismatch once the prerequisites hold is a defect.
 
 ### Scratch stores
 
-Views, supported replays, and recipe verification work away from the current
-state, in a **scratch store**: a temporary SQLite file in a location the
-profile configures ([`operations.md`](operations.md#stores)). The migrate
-runner creates it from the same migration files, so ADR-013's rule that only the migrate command creates a
-schema still holds, and opening a store still never creates tables. An
-in-memory database is not used, because only the migrate runner may create
-tables.
-
-When the work finishes, a result that is to be kept, meaning an as-known-at
-view or a replayed as-was view, is copied into the main store in one write
-transaction, and the scratch file is deleted. A replayed result joins the
-main store only when its code's schema version (`user_version`) equals the
-main store's. When the versions differ, the running dashboard could not open
-the result, so the replay refuses `--label`. It still checks the fingerprint,
-and the CLI shows the view from the scratch store with that code version. The
-scratch store is then deleted, the recipe remains, and invariant 7 keeps its
-single exception.
+Views, replays and verification run in a **scratch store**, a temporary SQLite
+file where the profile says ([`operations.md`](operations.md#stores)), created
+by the migrate runner so only it creates schemas (ADR-013). A result to keep,
+an as-known-at view or a replayed as-was view, is copied into the main store in
+one transaction, and the scratch file deleted. A replay joins the main store
+only when its code's `user_version` equals the store's; otherwise it refuses
+`--label`, still checks the fingerprint, and the CLI shows the view from the
+scratch store. Invariant 7 keeps its single exception.
 
 ## Retention
 
-Every recipe is kept forever. A few kilobytes each, recipes are what make
-history explainable.
+Every recipe is kept forever. A **result** is kept only for the current
+publication, the previous one (so `undo` is instant), and every labeled one
+until its label is removed. Others are deleted when they stop qualifying;
+re-creating one needs the [replay prerequisites](#what-reproducible-promises).
 
-A **result** (the publication's tables) is kept only for:
-
-- the current publication;
-- the previous current publication, so `undo` is instant;
-- every labeled publication, until its label is removed.
-
-Any other result is deleted when it stops qualifying. Re-creation requires
-the [replay prerequisites](#what-reproducible-promises); retaining a recipe
-alone does not guarantee that its consumed Silver result can be reconstructed.
-
-A Gold schema migration converts the retained results where it can. A result
-it cannot convert survives only in the backup that production takes before
-migrating (ADR-013), which the code version that built it can open. Its recipe
-also remains; replay into a separate store requires the recorded Gold producer
-and exact consumed Silver, as described above.
-A labeled result is also extracted to its own file and recorded as a legacy
-publication, and retention keeps its backup
-([ADR-015](../decisions/ADR-015-profiles-stages-and-household-inputs.md),
-[`operations.md`](operations.md#legacy-publications)).
-
-After such a migration, the migrate command runs a pipeline build with the new
-code. The new publication becomes current, with `cause` `migration` in the
-pointer history. Until that build commits, the store has no current
-publication: `current()` returns `None`, and the dashboard says so. Until the next build after it, `undo` has no
-previous result to return to. Development and test stores take no backup
-before migrating, so they lose any result a migration cannot convert.
+A Gold migration converts the retained results it can. One it cannot survives
+only in the pre-migration backup (ADR-013). A labeled one also becomes a
+[legacy publication](operations.md#legacy-publications), and retention keeps
+that backup (ADR-015). The migration then runs a pipeline build with `cause`
+`migration`; until it commits, `current()` returns `None` and the dashboard
+says nothing is published, and `undo` has nothing to return to until the next
+build. Development and test take no backup, so they lose unconvertible
+results.
 
 ## The Decision Log
 
 Every manual decision, whether it classifies a transaction, settles a review
-item, or voids an import run, is an entry in one append-only log:
+item or voids an import run, is an entry in one append-only log
+([format](operations.md#decisionsjsonl-the-decision-log)):
 
 | Field | Meaning |
 | --- | --- |
@@ -371,34 +258,25 @@ item, or voids an import run, is an entry in one append-only log:
 | `targets`, outcome, `reason` | As defined for the kind. A `retract` entry has no targets and no outcome. |
 | `supersedes` | The `decision_id`s this entry replaces. Empty for most entries. |
 
-- An entry is never edited or deleted. To change a decision, record a new one
-  that supersedes it. To retract one without replacing it, record a `retract`
-  entry that supersedes it.
-- The kind is `retract`, not *withdraw*, so it cannot be confused with Silver's
-  *withdrawn*, which records that the bank removed a transaction.
-- The effective decisions at an entry are those recorded up to it and not
-  superseded up to it, excluding `retract` entries, which are never
-  effective.
-- Decisions collide only within a group, and a Silver decision never
-  collides with a Gold one:
+- An entry is never edited or deleted. A new entry supersedes one to change it;
+  a `retract` supersedes one to withdraw it.
+- The effective decisions at an entry are those recorded and not superseded up
+  to it, excluding `retract`s, which are never effective.
+- Decisions collide only within a group, never Silver with Gold:
   - `classify`, `pair` and `one-sided-transfer` collide on a transaction, so
     ADR-011's "at most one decision per transaction" holds by construction.
   - `void-import-run` and `accept-discrepancy` collide on an import run.
-  - `withdrawn` and `same-transaction` exclude each other on a transaction.
-    Several `same-transaction` decisions stand for one transaction, one per
-    `record.payload_id`.
-- An entry that collides with an effective decision must list that decision
-  in `supersedes`. Every decision it lists must be effective, and, unless the
-  entry is a `retract`, must collide with it, so an entry never quietly
-  cancels a decision on another target. Otherwise the entry is rejected when
-  it is recorded. The same validation serves the CLI now and a browser editor
-  later ([`operations.md`](operations.md#the-validation-boundary-for-decisions)).
-- One entry can supersede several decisions. A `pair` of two legs that are
-  each classified by their own decision supersedes both in one entry, and
-  therefore in one build, never passing through a publication where both legs
-  are unclassified.
-- Rules, the taxonomy, and the account registry remain edited files. Their
-  history is the configuration snapshots in recipes.
+  - `withdrawn` and `same-transaction` exclude each other on a transaction;
+    several `same-transaction`s stand, one per `record.payload_id`.
+- An entry that collides with an effective decision must list it in
+  `supersedes`. Each listed decision must be effective and, unless the entry
+  is a `retract`, collide with it, so nothing is cancelled quietly. Otherwise
+  [the boundary](operations.md#the-validation-boundary-for-decisions) rejects
+  the entry.
+- One entry can supersede several: a `pair` whose legs each had a `classify`
+  supersedes both, so no publication shows both legs unclassified.
+- Rules, taxonomy and account registry stay edited files, whose history is the
+  configuration snapshots.
 
 ## Reading a Publication
 
@@ -410,31 +288,23 @@ class GoldPublications(Protocol):
     def open(self, publication_id: int) -> GoldRepository: ...
 ```
 
-`GoldStore` in `budget.gold.store` implements it. A build takes its
-publication's id from `next_publication_id()` and stores the result with
-`publish(result, recipe, configuration)`, which keeps the configuration's
-canonical text once per fingerprint.
+`GoldStore` in `budget.gold.store` implements it. A build takes its id from
+`next_publication_id()` and stores the result with
+`publish(result, recipe, configuration)`. `GoldRepository.publication()` names
+the one publication all its reads come from.
 
-`GoldRepository` gains `publication() -> GoldPublication`. Every read through
-one `GoldRepository` comes from its one publication. The dashboard opens the
-current publication for each page and carries that `publication_id` in the
-page's follow-up requests, so a page never mixes two publications, even if a
-build finishes while it is open.
-
-`current()` returns `None` when there is no current publication with a
-retained result: before a store's first successful build, and between a Gold
-migration that could not convert the current result and the build that
-follows it. The dashboard then says that nothing is published. `open()` raises
-`PublicationUnavailableError` when the publication does not exist or its result is
-not retained. Example: a page is pinned to P5, two imports run, and P5's
-result is deleted. The page's next request gets `PublicationUnavailableError`, and
-the dashboard offers the current publication instead.
+The dashboard opens the current publication per page and carries that
+`publication_id` in follow-up requests, so a page never mixes publications.
+`current()` returns `None` when no current result is retained: before the first
+build, and after an unconvertible migration until the next build. `open()`
+raises `PublicationUnavailableError` for a publication that does not exist or
+whose result was deleted, and the dashboard offers the current one.
 
 ### Reader Connection Lifetime
 
-The dashboard's production reader is a `GoldStore(profile, read_only=True)`.
-It owns one SQLite connection opened with `mode=ro`. Open, use, and close that
-store on the thread that created it, within one synchronous request or task:
+The dashboard's reader is a `GoldStore(profile, read_only=True)` owning one
+`mode=ro` SQLite connection. Open, use and close it on the creating thread,
+within one request or task:
 
 ```python
 with GoldStore(profile, read_only=True) as publications:
@@ -444,22 +314,14 @@ with GoldStore(profile, read_only=True) as publications:
 # `overview` and `context` are immutable DTOs; the store's connection is gone.
 ```
 
-A page carries its `ReportContext`, not a live store or `GoldRepository`.
-Follow-up requests may run on different server threads, and each creates a
-fresh read-only store in the thread that will use it. A repository returned by
-`open()` borrows its store's connection and cannot outlive that store.
+A page carries its `ReportContext`, not a store or repository; each request
+opens a fresh store on its own thread. A repository from `open()` borrows its
+store's connection and cannot outlive it.
 
-Lifecycle misuse has explicit public errors. A store used after close raises
-`GoldStoreClosedError`; a store or borrowed repository used from another thread
-raises `GoldStoreThreadError`. These errors subclass
-`GoldStoreLifecycleError`. They are not `PublicationUnavailableError`, because
-retention has not removed the result, and analytics propagates them unchanged.
-Closing is idempotent on the creating thread. A wrong-thread close raises
-`GoldStoreThreadError` without closing or releasing the owner's connection.
-SQLite's thread check stays enabled; the supported design opens a new
-connection per thread and request instead of sharing one across threads.
-
-Publishing remains a writable-store operation. Calling `publish()` on a
+Misuse raises a `GoldStoreLifecycleError` subclass, which analytics passes on
+unchanged: `GoldStoreClosedError` after close, `GoldStoreThreadError` from
+another thread (a wrong-thread close releases nothing). Closing is idempotent
+on the creating thread, and SQLite's thread check stays on. `publish()` on a
 read-only store raises `GoldStoreReadOnlyError` before any write.
 
 ## Synthetic Scenarios
@@ -497,63 +359,53 @@ Import run-1 starts on 2026-03-03, from an export covering through
 | 5 | 04-12 | `undo` | P3 current again | as step 3 | 3,349.00 | 0.00 |
 | 6 | 04-12 | Delete `r-net` from the rules file | Nothing published: the recipe equals P3's | as step 3 | 3,349.00 | 0.00 |
 | 7 | 05-02 | **Dimension change.** Rename `streaming` to "Subscriptions" and move it from `leisure` to `housing`; logged in `category-changes.md` | P5 current | as step 3 | 3,349.00 | 0.00 |
-| 8 | 05-03 | **Gold recipe verification (deferred)** | Nothing published when the exact-input replay matches | as step 3 | 3,349.00 | 0.00 |
+| 8 | 05-03 | **Gold recipe verification (pending)** | Nothing published when the exact-input replay matches | as step 3 | 3,349.00 | 0.00 |
 | 9 | 06-01 | New code version, with no change in behavior | P6 current, same result fingerprint as P5 | as step 3 | 3,349.00 | 0.00 |
 
-Notes:
-
-- **Step 3.** The correction moves 2,400.00 between categories, so Expenses
-  do not change. The decision beats `r-home` (ADR-011), and lineage still
-  names `r-home` as matching.
+- **Step 3.** 2,400.00 moves between categories, so Expenses hold. The decision
+  beats `r-home` (ADR-011); lineage still names `r-home` as matching.
 - **Step 4.** `r-net` and `r-streaming` have equal priority and disagree on E,
-  so E becomes `unknown` with a `rule-conflict` review item (ADR-011). A, B,
-  and F match both `r-net` and `r-netto`, which agree, so they are unchanged.
-  The build's diff shows it: *February streaming −129.00, Expenses −129.00,
-  unclassified out −129.00, one `rule-conflict` opened*. That diff is the cue
-  to undo.
-- **Step 6.** The configuration snapshot is taken of parsed content, so a
-  rules file restored to its old meaning gives the same fingerprint. A
-  `contains` or `starts_with` pattern counts by its case-folded text, so
-  changing only its case is no change; a regular expression counts as
-  written.
-- **Step 7.** No fact or allocation changes. The `GoldCategory` row changes,
-  so the result fingerprint changes too. Group rollups restate for every
-  month: `leisure` −129.00, `housing` +129.00 in February.
-- **Step 9.** P6's recipe differs from P5's only in its code version. Both
-  use the same fingerprint scheme, and the result fingerprint is unchanged.
-  That shows the code change was behavior-neutral.
+  so E becomes `unknown` with a `rule-conflict` review item (ADR-011); A, B and
+  F match `r-net` and `r-netto`, which agree. The diff, *February streaming
+  −129.00, Expenses −129.00, unclassified out −129.00, one `rule-conflict`
+  opened*, is the cue to undo.
+- **Step 6.** The snapshot is of parsed content, so restoring a rule's meaning
+  restores the fingerprint. A `contains` or `starts_with` pattern counts by its
+  case-folded text; a regular expression counts as written.
+- **Step 7.** No fact or allocation changes, but the `GoldCategory` row does,
+  so the fingerprint changes. Group rollups restate every month: `leisure`
+  −129.00, `housing` +129.00 in February.
+- **Step 9.** Only the code version differs, in the same scheme, and the
+  fingerprint is unchanged: the change was behavior-neutral.
 
 Pointer history after step 9: P1, P2, P3, P4, P3, P5, P6. Results kept: P6
 (current) and P5 (previous).
 
 ### Views, on 2026-06-15
 
-The deferred V1 scenario follows [Verify](#verify); an unretained P1 is
-available only when its exact replay inputs are available.
+V1 depends on the pending replay in [Verify](#verify): an unretained P1 is
+available only with its exact replay inputs.
 
 | # | Request | Publication read | February: groceries / household-goods / gifts / streaming (name, group) | Expenses |
 | --- | --- | --- | --- | --- |
-| V1 | `view --as-was 2026-03-05 --label "March review"` | P1, using the deferred exact-input replay | 520.00 / 2,400.00 / 0.00 / 129.00 ("Streaming", `leisure`) | 3,049.00 |
+| V1 | `view --as-was 2026-03-05 --label "March review"` | P1, using the pending exact-input replay | 520.00 / 2,400.00 / 0.00 / 129.00 ("Streaming", `leisure`) | 3,049.00 |
 | V2 | `view --known-at 2026-03-05 --label "Known 5 March"` | P7, kind `as_known_at`: run-1 only, today's interpretation | 520.00 / 0.00 / 2,400.00 / 129.00 ("Subscriptions", `housing`) | 3,049.00 |
 | V3 | the dashboard, default | P6 | 820.00 / 0.00 / 2,400.00 / 129.00 ("Subscriptions", `housing`) | 3,349.00 |
 
-- **V1** shows exactly what the household saw on 5 March: IKEA as
-  household goods, and the old category name and group. `k1` and `k2` share a
-  schema version (step 9 changed no schema), so the replayed result joins the
-  main store and the label keeps it.
-- **V2 against V3** isolates the late bookings: 300.00 of groceries reached
-  February after 5 March. Everything else is the same interpretation.
+- **V1** shows what the household saw on 5 March: IKEA as household goods,
+  under the old category name and group. Step 9 changed no schema, so the
+  replay joins the main store and the label keeps it.
+- **V2 against V3** isolates late bookings: 300.00 of groceries reached
+  February after 5 March.
 - **V1 against V2** isolates reinterpretation: the IKEA correction and the
-  category rename, on the same data.
-- Past views get the provisional label as of their knowledge time: the
-  original build time for an as-was view, and D for an as-known-at view.
-  V1's knowledge time is 3 March, P1's build, and V2's is the end of 5 March.
-  February is provisional in both, because by neither moment had an export
-  produced at least 7 days after the end of February been imported.
-- After V1 and V2 the store holds four results: P6, P5, P1, and P7. A query
-  summing February expenses over all of them without a publication filter
-  would read 3,349.00 + 3,349.00 + 3,049.00 + 3,049.00 = 12,796.00. That is
-  why no interface reads across publications.
+  rename, on the same data.
+- A past view's provisional label is as of its knowledge time: the build time
+  for as-was (3 March for V1), D for as-known-at (end of 5 March for V2).
+  February is provisional in both: no export produced 7 days after February
+  had been imported by then.
+- The store now holds P6, P5, P1 and P7. Summing February expenses over all of
+  them would read 3,349.00 + 3,349.00 + 3,049.00 + 3,049.00 = 12,796.00, which
+  is why no interface reads across publications.
 
 ## Invariants
 
