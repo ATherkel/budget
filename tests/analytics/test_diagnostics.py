@@ -144,7 +144,6 @@ def test_reconciliation_keeps_each_component_and_computes_the_internal_residual(
             ),
         ),
     )
-
     report = diagnostics(
         GoldResult(PUBLICATION, synthetic),
         _context(3),
@@ -170,3 +169,34 @@ def test_reconciliation_keeps_each_component_and_computes_the_internal_residual(
             coverage="complete",
         ),
     )
+
+
+def test_reconciliation_reports_the_opening_gap_without_upgrading_coverage() -> None:
+    # report-contract.md: March residual zero, February closing 37,537.50.
+    report = diagnostics(GOLD, _context(3), is_current=True)
+    reconciliation = report.reconciliations[0]
+
+    assert (
+        reconciliation.internal_residual,
+        reconciliation.previous_closing_balance,
+        reconciliation.opening_gap,
+        reconciliation.coverage,
+    ) == (
+        Decimal("0.00"),
+        Decimal("37537.50"),
+        Decimal("-500.00"),
+        "partial",
+    )
+
+
+def test_a_missing_snapshot_endpoint_makes_the_residual_unknown() -> None:
+    # May has a snapshot row whose opening and closing balances are unknown.
+    report = diagnostics(GOLD, _context(5), is_current=True)
+    reconciliation = report.reconciliations[0]
+
+    assert (
+        reconciliation.opening_balance,
+        reconciliation.closing_balance,
+        reconciliation.internal_residual,
+        reconciliation.opening_gap,
+    ) == (None, None, None, None)
