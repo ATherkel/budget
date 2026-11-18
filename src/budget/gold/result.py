@@ -24,6 +24,7 @@ class GoldRecords:
     """The consumer records of one build; a kind left unnamed is empty."""
 
     accounts: Sequence[GoldAccount] = ()
+    owners: Sequence[GoldOwner] = ()
     categories: Sequence[GoldCategory] = ()
     transactions: Sequence[GoldTransaction] = ()
     category_allocations: Sequence[GoldCategoryAllocation] = ()
@@ -111,7 +112,7 @@ class GoldResult:
 
     def owners(self) -> Sequence[GoldOwner]:
         """Return every declared owner, in display order."""
-        return ()
+        return self._records.owners
 
     def categories(self) -> Sequence[GoldCategory]:
         """Return every assignable category."""

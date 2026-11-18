@@ -10,6 +10,7 @@ from budget.gold.decisions import Classify, GoldDecision, OneSidedTransfer, targ
 from budget.gold.models import (
     GoldAccount,
     GoldCategory,
+    GoldOwner,
     GoldPublication,
     GoldTransaction,
 )
@@ -66,6 +67,12 @@ def build(
     classified = classify(transactions, silver.transactions, configuration, decisions)
     records = GoldRecords(
         accounts=gold_accounts,
+        owners=tuple(
+            GoldOwner(owner_id, display_name, display_order)
+            for display_order, (owner_id, display_name) in enumerate(
+                configuration.owners.items(), start=1
+            )
+        ),
         categories=_categories(configuration.taxonomy),
         transactions=classified.transactions,
         category_allocations=classified.allocations,
