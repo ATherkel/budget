@@ -128,6 +128,34 @@ class CompleteLogTests(unittest.TestCase):
                 ] == ["01.04.2026", "30.04.2026"]
                 assert store.get_format_failures(payload_id) == ()
 
+    def test_replay_restores_a_refused_runs_codes_from_a_format_2_log(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            refused = payload("01.03.2026")
+            path = f"joint-current/refused/{sha256(refused).hexdigest()[:12]}/old.csv"
+            payload_id = archive(profile, path, refused)
+            write_log(
+                profile,
+                entry(
+                    "run-0001",
+                    path,
+                    payload_id,
+                    ["range-ends-after-export", "transaction-before-range"],
+                    outcome="refused",
+                ),
+            )
+
+            with writer_lock(profile) as lock:
+                replay_import_log(lock)
+
+            with BronzeStore(profile) as store:
+                (run,) = store.import_runs()
+                assert run.outcome == "refused"
+                assert run.refusal_reasons == (
+                    "range-ends-after-export",
+                    "transaction-before-range",
+                )
+
     def test_repeat_refused_and_unreadable_runs_keep_their_logged_outcomes(
         self,
     ) -> None:
