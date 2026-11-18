@@ -51,6 +51,21 @@ if (selection !== null && reportRegion !== null) {
     return xhr === undefined ? undefined : generations.get(xhr);
   };
 
+  // A shortcut link names its selection in its address. With scripts, tick
+  // those boxes and fetch the report as a checkbox change would.
+  selection.addEventListener("click", (event) => {
+    const shortcut = event.target.closest("a.account-only");
+    if (shortcut === null) {
+      return;
+    }
+    event.preventDefault();
+    const wanted = new URL(shortcut.href).searchParams.getAll("account");
+    for (const box of selection.querySelectorAll('input[name="account"]')) {
+      box.checked = wanted.includes(box.value);
+    }
+    htmx.trigger(selection, "change");
+  });
+
   document.body.addEventListener("htmx:beforeRequest", (event) => {
     if (event.detail.elt !== selection && event.detail.target !== reportRegion) {
       return;
