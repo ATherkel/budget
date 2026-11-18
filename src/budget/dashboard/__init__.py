@@ -194,6 +194,12 @@ def _render_overview(
         canonical_url=canonical_url,
         accounts=options.accounts,
         selected_accounts=selected_accounts,
+        only_urls={
+            account.account_id: _pinned_url(
+                publication_id, reference_date, [account.account_id], selected_month
+            )
+            for account in options.accounts
+        },
         months=[
             (display.month_value(month), display.month_label(month)) for month in months
         ],
