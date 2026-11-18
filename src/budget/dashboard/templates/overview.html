@@ -38,9 +38,9 @@
 <div class="account-row">
 <label class="account-option">
   <input type="checkbox" name="account" value="{{ account.account_id }}"{% if account.account_id in selected_accounts %} checked{% endif %}>
-  <span>{{ account.display_name }}</span>
+  <span id="name-{{ account.account_id }}">{{ account.display_name }}</span>
 </label>
-<a class="account-only" id="only-{{ account.account_id }}" href="{{ only_urls[account.account_id] }}" data-account-shortcut>kun</a>
+<a class="account-only" id="only-{{ account.account_id }}" href="{{ only_urls[account.account_id] }}" aria-describedby="name-{{ account.account_id }}" data-account-shortcut>kun</a>
 </div>
 {% endfor %}
 </fieldset>
