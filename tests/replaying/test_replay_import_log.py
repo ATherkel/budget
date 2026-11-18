@@ -113,6 +113,7 @@ class CompleteLogTests(unittest.TestCase):
                 started_at=STARTED_AT,
                 outcome="stored",
                 repeat_of=None,
+                refusal_reasons=(),
             )
 
             with writer_lock(profile) as lock:

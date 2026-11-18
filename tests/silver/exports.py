@@ -88,6 +88,7 @@ def export(
         or datetime.combine(exported_on, datetime.min.time(), UTC),
         outcome="stored",
         repeat_of=None,
+        refusal_reasons=(),
     )
     records = tuple(
         SourceRecord(payload_id=payload_id, record_ordinal=ordinal, fields=fields)
