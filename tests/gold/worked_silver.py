@@ -151,6 +151,7 @@ def build_from(
     silver: SilverResult = SILVER,
     *,
     accounts: Mapping[str, Account] = REGISTRY,
+    owners: Mapping[str, str] | None = None,
     late_booking_window: timedelta = LATE_BOOKING_WINDOW,
 ) -> GoldResult:
     """Run the Gold build over these inputs, bound to the example's publication.
@@ -161,7 +162,7 @@ def build_from(
     result = build(
         silver=silver,
         configuration=ConfigurationSnapshot(
-            accounts=accounts, taxonomy=TAXONOMY, rules={}
+            accounts=accounts, taxonomy=TAXONOMY, rules={}, owners=owners or {}
         ),
         decisions=(),
         publication=PUBLICATION,

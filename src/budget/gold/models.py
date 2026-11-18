@@ -68,6 +68,15 @@ class GoldAccount:
 
 
 @dataclass(frozen=True)
+class GoldOwner:
+    """One owner the household declares; `display_order` counts from 1 (Type 1)."""
+
+    owner_id: str
+    display_name: str
+    display_order: int
+
+
+@dataclass(frozen=True)
 class GoldCategory:
     """One assignable category, with its group flattened onto it (Type 1)."""
 

@@ -16,6 +16,7 @@ import pytest
 
 from budget.gold import (
     GoldAccount,
+    GoldOwner,
     GoldResult,
     GoldTransaction,
     MonthlyBalanceSnapshot,
@@ -63,6 +64,16 @@ def test_each_gold_account_publishes_its_accounts_owner() -> None:
         CURRENT: "household",
         SAVINGS: "alex",
     }
+
+
+def test_the_owners_are_published_in_their_display_order() -> None:
+    # Declared out of alphabetical order: the declaration is the display order.
+    result = build_from(owners={"household": "Fælles", "alex": "Alex"})
+
+    assert list(result.owners()) == [
+        GoldOwner(owner_id="household", display_name="Fælles", display_order=1),
+        GoldOwner(owner_id="alex", display_name="Alex", display_order=2),
+    ]
 
 
 def test_an_account_with_no_export_is_published_without_evidence() -> None:
