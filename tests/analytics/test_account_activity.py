@@ -5,8 +5,8 @@ from datetime import date
 from decimal import Decimal
 
 from budget.analytics import (
-    AccountActivity,
     AccountActivitySnapshot,
+    ActivityRow,
     BankBalanceObservation,
     MonthlyBalanceObservation,
     ReportContext,
@@ -39,12 +39,20 @@ def _context(month: int, *account_ids: str) -> ReportContext:
 def test_dated_observation_and_monthly_snapshot_remain_separate_values() -> None:
     # report-contract.md, "April's last transaction is on 24 April".
     context = _context(4)
+    report = account_activity(GOLD, context, is_current=True)
 
-    assert account_activity(GOLD, context, is_current=True) == AccountActivity(
-        context=context,
-        publication=P1,
-        currency="DKK",
-        accounts=(
+    assert (
+        report.context,
+        report.publication,
+        report.currency,
+        report.accounts,
+        report.coverage,
+        report.provisional,
+    ) == (
+        context,
+        P1,
+        "DKK",
+        (
             AccountActivitySnapshot(
                 account_id=CURRENT,
                 display_name="Joint current",
@@ -66,6 +74,29 @@ def test_dated_observation_and_monthly_snapshot_remain_separate_values() -> None
                 coverage="complete",
             ),
         ),
-        coverage=ReportCoverage(status="complete", account_months=()),
-        provisional=None,
+        ReportCoverage(status="complete", account_months=()),
+        None,
+    )
+
+
+def test_selected_transfer_names_its_public_pair_without_adding_the_other_leg() -> None:
+    # A is selected and B is outside it; both public legs share transfer group T1.
+    report = account_activity(GOLD, _context(1, CURRENT), is_current=True)
+    transfers = tuple(
+        row for row in report.transactions if row.transaction_type == "transfer"
+    )
+
+    assert transfers == (
+        ActivityRow(
+            transaction_date=date(2026, 1, 20),
+            description="TRANSFER",
+            account_id=CURRENT,
+            account_display_name="Joint current",
+            amount=Decimal("-3000.00"),
+            transaction_type="transfer",
+            transfer_pairing="paired",
+            counterpart_account_id="joint-savings",
+            counterpart_account_display_name="Joint savings",
+            counterpart_transaction_date=date(2026, 1, 20),
+        ),
     )

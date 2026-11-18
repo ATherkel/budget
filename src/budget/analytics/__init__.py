@@ -18,6 +18,7 @@ from budget.analytics.reports import (
     AccountMonth,
     AccountMonthCoverage,
     AccountMonthStatus,
+    ActivityRow,
     BankBalanceObservation,
     CategorySpending,
     DetailScope,
@@ -36,6 +37,7 @@ from budget.analytics.reports import (
     SelectionRule,
     SpendingDetail,
     SpendingDetailRow,
+    TransferPairing,
 )
 
 __all__ = [
@@ -44,6 +46,7 @@ __all__ = [
     "AccountMonth",
     "AccountMonthCoverage",
     "AccountMonthStatus",
+    "ActivityRow",
     "BankBalanceObservation",
     "CategorySpending",
     "DetailScope",
@@ -65,6 +68,7 @@ __all__ = [
     "SelectionRule",
     "SpendingDetail",
     "SpendingDetailRow",
+    "TransferPairing",
     "account_activity",
     "monthly_overview",
     "selection_options",

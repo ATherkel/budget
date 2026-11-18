@@ -17,6 +17,7 @@ from budget.gold import (
     OwnershipScope,
     PublicationKind,
     ReportingMonth,
+    TransactionType,
 )
 
 type AccountMonthStatus = Literal["partial", "no_data", "outside_history"]
@@ -147,6 +148,7 @@ class MonthlyOverview:
 
 type DetailKind = Literal["category", "group"]
 type DetailScope = Literal["month", "year_to_date"]
+type TransferPairing = Literal["paired", "one_sided"]
 
 
 @dataclass(frozen=True)
@@ -222,6 +224,22 @@ class AccountActivitySnapshot:
 
 
 @dataclass(frozen=True)
+class ActivityRow:
+    """One selected transaction, preserving its published type and public pairing."""
+
+    transaction_date: date
+    description: str
+    account_id: str
+    account_display_name: str
+    amount: Decimal
+    transaction_type: TransactionType
+    transfer_pairing: TransferPairing | None
+    counterpart_account_id: str | None
+    counterpart_account_display_name: str | None
+    counterpart_transaction_date: date | None
+
+
+@dataclass(frozen=True)
 class AccountActivity:
     """Dated balances and transaction activity for the selected account-month."""
 
@@ -231,6 +249,7 @@ class AccountActivity:
     accounts: tuple[AccountActivitySnapshot, ...]
     coverage: ReportCoverage
     provisional: Provisional | None
+    transactions: tuple[ActivityRow, ...] = ()
 
 
 class InvalidSelectionError(ValueError):
