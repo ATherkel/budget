@@ -87,7 +87,7 @@ class NewProductionStoreTests(unittest.TestCase):
             assert user_version(backup.path / "gold.db") == 1
             assert manifest(backup.path)["profile"] == "production"
             assert manifest(backup.path)["stores"] == {
-                "bronze": {"path": "bronze.db", "schema_version": 1},
+                "bronze": {"path": "bronze.db", "schema_version": 2},
                 "silver": {"path": "silver.db", "schema_version": 2},
                 "gold": {"path": "gold.db", "schema_version": 1},
             }
@@ -371,7 +371,7 @@ class SilverBesideBronzeTests(unittest.TestCase):
             newest, older = complete_backup_sets(production)
             assert older == bronze_only
             assert manifest(newest.path)["stores"] == {
-                "bronze": {"path": "bronze.db", "schema_version": 1},
+                "bronze": {"path": "bronze.db", "schema_version": 2},
                 "silver": {"path": "silver.db", "schema_version": 2},
             }
 
@@ -391,7 +391,7 @@ class SilverBesideBronzeTests(unittest.TestCase):
             assert status == EXIT_REFUSED_ENVIRONMENT
             # `--new-store` alone would be refused: Bronze's store exists.
             assert "budget migrate --stage silver --new-store" in stderr
-            assert user_version(production.bronze_store) == 1
+            assert user_version(production.bronze_store) == 2
             assert not production.silver_store.exists()
             assert complete_backup_sets(production) == sets
 
@@ -434,7 +434,7 @@ class GoldBesideSilverTests(unittest.TestCase):
             newest, *older = complete_backup_sets(production)
             assert tuple(older) == before_gold
             assert manifest(newest.path)["stores"] == {
-                "bronze": {"path": "bronze.db", "schema_version": 1},
+                "bronze": {"path": "bronze.db", "schema_version": 2},
                 "silver": {"path": "silver.db", "schema_version": 2},
                 "gold": {"path": "gold.db", "schema_version": 1},
             }
@@ -453,13 +453,13 @@ class OlderProductionStoreTests(unittest.TestCase):
                 assert migrate(profile_file) == (EXIT_OK, "")
                 after, before, _ = complete_backup_sets(production)
 
-            assert user_version(production.bronze_store) == 2
-            assert user_version(before.path / "bronze.db") == 1
+            assert user_version(production.bronze_store) == 3
+            assert user_version(before.path / "bronze.db") == 2
             assert "marker" not in tables(before.path / "bronze.db")
-            assert user_version(after.path / "bronze.db") == 2
+            assert user_version(after.path / "bronze.db") == 3
             assert "marker" in tables(after.path / "bronze.db")
-            assert _schema_version(before.path) == 1
-            assert _schema_version(after.path) == 2
+            assert _schema_version(before.path) == 2
+            assert _schema_version(after.path) == 3
 
     def test_an_older_silver_store_is_backed_up_before_and_after_it_is_migrated(
         self,
@@ -480,7 +480,7 @@ class OlderProductionStoreTests(unittest.TestCase):
             assert "marker" in tables(after.path / "silver.db")
             assert _schema_version(before.path, "silver") == 2
             assert _schema_version(after.path, "silver") == 3
-            assert _schema_version(after.path) == 1
+            assert _schema_version(after.path) == 2
 
     def test_older_stores_of_both_stages_share_one_set_before_and_one_after(
         self,
@@ -496,7 +496,7 @@ class OlderProductionStoreTests(unittest.TestCase):
                 after, before, _ = complete_backup_sets(production)
 
             # Silver already has its second schema, so the added one is its third.
-            for stage, version in (("bronze", 1), ("silver", 2)):
+            for stage, version in (("bronze", 2), ("silver", 2)):
                 assert _schema_version(before.path, stage) == version
                 assert _schema_version(after.path, stage) == version + 1
             assert not production.recovery_sets_file.exists()
@@ -548,7 +548,7 @@ class FailedBackupTests(unittest.TestCase):
 
                 assert status == expected_status
                 assert message in stderr
-                assert user_version(production.bronze_store) == 1
+                assert user_version(production.bronze_store) == 2
                 assert "marker" not in tables(production.bronze_store)
                 assert complete_backup_sets(production) == sets
 
@@ -574,9 +574,9 @@ class FailedMigrationTests(unittest.TestCase):
                 migrate(profile_file)
 
             # The store is as it was, and so is its backup set.
-            assert user_version(production.bronze_store) == 1
+            assert user_version(production.bronze_store) == 2
             (before,) = complete_backup_sets(production)
-            assert _schema_version(before.path) == 1
+            assert _schema_version(before.path) == 2
             with writer_lock(production) as lock:
                 later = back_up(lock, now=datetime.now(UTC))
             assert complete_backup_sets(production) == (later, before)
@@ -607,7 +607,7 @@ class FailedMigrationTests(unittest.TestCase):
                 migrate(profile_file)
 
             # Bronze stays migrated; Silver rolled back to the version it had.
-            assert user_version(production.bronze_store) == 2
+            assert user_version(production.bronze_store) == 3
             assert "marker" in tables(production.bronze_store)
             assert user_version(production.silver_store) == 2
             # One set before both stages, none after, and that one is held.
@@ -615,7 +615,7 @@ class FailedMigrationTests(unittest.TestCase):
             assert len(sets) == 2
             before = sets[0]
             assert sets[1] == first
-            assert _schema_version(before.path) == 1
+            assert _schema_version(before.path) == 2
             assert _schema_version(before.path, "silver") == 2
             held = json.loads(production.recovery_sets_file.read_bytes())
             assert held["sets"] == [before.name]
@@ -640,7 +640,7 @@ class RecoveryFileTests(unittest.TestCase):
 
             assert status == EXIT_REFUSED_ENVIRONMENT
             assert "recovery-sets.json" in stderr
-            assert user_version(production.bronze_store) == 1
+            assert user_version(production.bronze_store) == 2
             assert "marker" not in tables(production.bronze_store)
             assert production.recovery_sets_file.read_bytes() == b"not json"
 
@@ -661,7 +661,7 @@ class ContendedProductionStoreTests(unittest.TestCase):
             assert status == EXIT_REFUSED_ENVIRONMENT
             assert "another command is running" in stderr
             assert complete_backup_sets(production) == sets
-            assert user_version(production.bronze_store) == 1
+            assert user_version(production.bronze_store) == 2
 
 
 class CurrentProductionStoreTests(unittest.TestCase):

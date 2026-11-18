@@ -9,33 +9,34 @@ payload and its export date allow, whatever produced the payload.
 from datetime import date
 
 
-def declared_range_refused(
+def declared_range_refusals(
     *,
     covers_from: date,
     covers_through: date,
     exported_on: date,
     first_transaction_date: date | None,
     last_transaction_date: date | None,
-) -> bool:
-    """Say whether an import run's declared range must be refused.
+) -> tuple[str, ...]:
+    """Name every rule an import run's declared range breaks, or none.
 
     bronze-layer.md "Covers from and covers through": both ends are inclusive
     and declared, and nothing here falls back, clamps, or corrects them. The
     transaction dates are the parser's span over every record; both are `None`
     when the payload has no records, whether it states no transactions or
-    Bronze could not read it.
+    Bronze could not read it. The codes come back in the order that document
+    lists them; the range is refused exactly when any code does.
     """
-    starts_after_it_ends = covers_from > covers_through
-    ends_after_export = covers_through > exported_on
-    transaction_before_range = (
-        first_transaction_date is not None and first_transaction_date < covers_from
+    broken = (
+        ("range-starts-after-end", covers_from > covers_through),
+        ("range-ends-after-export", covers_through > exported_on),
+        (
+            "transaction-before-range",
+            first_transaction_date is not None and first_transaction_date < covers_from,
+        ),
+        (
+            "transaction-after-range",
+            last_transaction_date is not None
+            and last_transaction_date > covers_through,
+        ),
     )
-    transaction_after_range = (
-        last_transaction_date is not None and last_transaction_date > covers_through
-    )
-    return (
-        starts_after_it_ends
-        or ends_after_export
-        or transaction_before_range
-        or transaction_after_range
-    )
+    return tuple(code for code, is_broken in broken if is_broken)

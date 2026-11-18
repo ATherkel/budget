@@ -102,7 +102,7 @@ class BackUpTests(unittest.TestCase):
             assert written["profile"] == "test"
             assert written["created_at"] == "2026-05-02T18:05:11.120731+00:00"
             assert written["stores"] == {
-                "bronze": {"path": "bronze.db", "schema_version": 1}
+                "bronze": {"path": "bronze.db", "schema_version": 2}
             }
             assert complete_backup_sets(profile) == (backup,)
 
@@ -129,7 +129,7 @@ class BackUpTests(unittest.TestCase):
             assert files["bronze.db"] == checksum(backup.path / "bronze.db")
             assert silver_accounts(store) == ["joint-current"]
             assert written["stores"] == {
-                "bronze": {"path": "bronze.db", "schema_version": 1},
+                "bronze": {"path": "bronze.db", "schema_version": 2},
                 "silver": {"path": "silver.db", "schema_version": 2},
             }
             assert complete_backup_sets(profile) == (backup,)
@@ -158,7 +158,7 @@ class BackUpTests(unittest.TestCase):
             assert files["gold.db"] == checksum(store)
             assert gold_publications(store) == [1]
             assert written["stores"] == {
-                "bronze": {"path": "bronze.db", "schema_version": 1},
+                "bronze": {"path": "bronze.db", "schema_version": 2},
                 "silver": {"path": "silver.db", "schema_version": 2},
                 "gold": {"path": "gold.db", "schema_version": 1},
             }
@@ -556,7 +556,7 @@ class RetentionTests(unittest.TestCase):
             written = manifest(bronze_only.path)
             assert written["format"] == 1
             assert written["stores"] == {
-                "bronze": {"path": "bronze.db", "schema_version": 1}
+                "bronze": {"path": "bronze.db", "schema_version": 2}
             }
             assert complete_backup_sets(profile) == (newest, bronze_only)
 

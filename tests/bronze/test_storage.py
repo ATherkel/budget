@@ -58,11 +58,12 @@ class BronzeStorageTests(unittest.TestCase):
                     "import_runs",
                     "source_records",
                     "format_failures",
+                    "import_run_refusals",
                     "store_identity",
                 }
                 for definition in definitions.values():
                     assert "STRICT" in definition
-                assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
                 assert connection.execute(
                     "SELECT profile, stage FROM store_identity"
                 ).fetchall() == [("test", "bronze")]
@@ -290,7 +291,7 @@ class BronzeStorageTests(unittest.TestCase):
                         "INSERT INTO store_identity (profile, stage) VALUES (?, ?)",
                         rows,
                     )
-                    connection.execute("PRAGMA user_version = 1")
+                    connection.execute("PRAGMA user_version = 2")
 
                 with pytest.raises(storage.StoreIdentityError):
                     BronzeStore(profile)
@@ -351,7 +352,7 @@ class BronzeStorageTests(unittest.TestCase):
                 migrate_bronze(profile)
 
             with _connected(profile.bronze_store) as connection:
-                assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+                assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
                 assert connection.execute("SELECT x FROM first").fetchall() == [
                     ("a;b",)
                 ]

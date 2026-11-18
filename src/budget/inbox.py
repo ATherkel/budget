@@ -400,7 +400,7 @@ def incident_files(incidents: Sequence[DuplicateIncident]) -> frozenset[Path]:
 
 
 def refusal_reasons(run: ImportRun, previewed: ExportPreview) -> tuple[str, ...]:
-    """Say why Bronze refused a run, as `declared_range_refused` decides it.
+    """Say why Bronze refused a run, as `declared_range_refusals` decides it.
 
     Bronze records that a run was refused, not why, so the reasons are
     derived again from the declaration and the file's own dates. A run whose

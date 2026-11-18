@@ -45,7 +45,7 @@ class MigratedWithoutBackupTests(unittest.TestCase):
                 ):
                     migrate_profile(lock, clock=lambda: NOW)
 
-                assert user_version(production.bronze_store) == 2
+                assert user_version(production.bronze_store) == 3
                 sets = complete_backup_sets(production)
             # The new store's own set, and the one taken before the migration.
             assert len(sets) == 2
@@ -85,7 +85,7 @@ class MigratedWithoutBackupTests(unittest.TestCase):
                 ):
                     migrate_profile(lock, clock=clock)
 
-                assert user_version(production.bronze_store) == 2
+                assert user_version(production.bronze_store) == 3
                 assert list(production.backup_staging.iterdir()) == []
 
 

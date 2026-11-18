@@ -80,7 +80,7 @@ class BackupCommandTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_OK, "")
             newest, _ = complete_backup_sets(production)
             assert manifest(newest.path)["stores"] == {
-                "bronze": {"path": "bronze.db", "schema_version": 1},
+                "bronze": {"path": "bronze.db", "schema_version": 2},
             }
 
     def test_backup_leaves_out_a_gold_store_an_interrupted_start_left_empty(
@@ -102,7 +102,7 @@ class BackupCommandTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_OK, "")
             newest, *_ = complete_backup_sets(production)
             assert manifest(newest.path)["stores"] == {
-                "bronze": {"path": "bronze.db", "schema_version": 1},
+                "bronze": {"path": "bronze.db", "schema_version": 2},
                 "silver": {"path": "silver.db", "schema_version": 2},
             }
 
