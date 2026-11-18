@@ -164,6 +164,36 @@ class OrdinaryImportTests(unittest.TestCase):
             assert json.loads(appended)["format"] == 2
             assert json.loads(appended)["import_run_id"] == later.import_run_id
 
+    def test_a_format_1_line_for_a_run_with_real_refusal_codes_is_damage(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile = household(Path(directory))
+            refused_source = drop(
+                profile, "joint-current", "export-20260501.csv", payload("02.04.2026")
+            )
+            with writer_lock(profile) as lock:
+                refused = import_inbox_file(lock, refused_source, THROUGH_MAY_3)
+            assert refused.import_run.refusal_reasons == ("range-ends-after-export",)
+            # Format 1 stands for `legacy-unrecorded` only; Bronze holds a real
+            # code here, so the line no longer restates the run.
+            (each,) = log_entries(profile)
+            profile.import_log_file.write_bytes(
+                (
+                    json.dumps(
+                        {k: v for k, v in each.items() if k != "refusal_reasons"}
+                        | {"format": 1}
+                    )
+                    + "\n"
+                ).encode("utf-8")
+            )
+            later_source = drop(
+                profile, "joint-current", LATER_EXPORT, payload("03.04.2026")
+            )
+
+            with writer_lock(profile) as lock, pytest.raises(ImportLogDamagedError):
+                import_inbox_file(lock, later_source, THROUGH_MAY_3)
+
     def test_one_held_lock_covers_every_file_of_the_inbox(self) -> None:
         with TemporaryDirectory() as directory:
             profile = household(Path(directory))
