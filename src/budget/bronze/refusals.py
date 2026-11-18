@@ -7,7 +7,20 @@ migration `bronze/0002_record_refusal_reasons.sql` spells `LEGACY_UNRECORDED`
 as a literal, because a migration is frozen text.
 """
 
+from enum import StrEnum
 from typing import Final
+
+
+class RefusalCode(StrEnum):
+    """A rule Bronze refused an import run for, in the order bronze-layer.md lists."""
+
+    ACCOUNT_CONFLICT = "account-conflict"
+    RANGE_STARTS_AFTER_END = "range-starts-after-end"
+    RANGE_ENDS_AFTER_EXPORT = "range-ends-after-export"
+    TRANSACTION_BEFORE_RANGE = "transaction-before-range"
+    TRANSACTION_AFTER_RANGE = "transaction-after-range"
+    LEGACY_UNRECORDED = "legacy-unrecorded"
+
 
 ACCOUNT_CONFLICT: Final = "account-conflict"
 RANGE_STARTS_AFTER_END: Final = "range-starts-after-end"
