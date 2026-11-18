@@ -225,6 +225,10 @@ def test_closed_store_lifecycle_errors_propagate_from_reports(
         reports.selection_options(1, date(2026, 5, 14))
     with pytest.raises(GoldStoreClosedError):
         reports.monthly_overview(context)
+    with pytest.raises(GoldStoreClosedError):
+        reports.account_activity(context)
+    with pytest.raises(GoldStoreClosedError):
+        reports.diagnostics(context)
 
 
 def test_read_only_reports_keep_superseded_and_deleted_recovery(
@@ -334,6 +338,16 @@ def test_an_unavailable_pinned_result_offers_the_current_id(
         HouseholdReports(gold_store).monthly_overview(context)
 
     assert (raised.value.publication_id, raised.value.current_publication_id) == (1, 3)
+    for report in (
+        HouseholdReports(gold_store).account_activity,
+        HouseholdReports(gold_store).diagnostics,
+    ):
+        with pytest.raises(PublicationUnavailableError) as advanced_raised:
+            report(context)
+        assert (
+            advanced_raised.value.publication_id,
+            advanced_raised.value.current_publication_id,
+        ) == (1, 3)
 
 
 def test_selection_options_expose_the_same_unavailable_recovery(

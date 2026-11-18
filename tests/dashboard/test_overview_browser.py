@@ -16,6 +16,7 @@ import uvicorn
 from playwright.sync_api import Browser, Page, Route, expect, sync_playwright
 
 from budget.dashboard import create_app
+from budget.demo import DEMO_ACCESS_TEXT, create_demo_profile
 from budget.gold import GoldResult
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
@@ -68,6 +69,38 @@ def dashboard(tmp_path: Path) -> Iterator[BrowserDashboard]:
         thread.join(timeout=10)
         if thread.is_alive():
             pytest.fail("the synthetic dashboard server did not stop")
+
+
+@pytest.fixture
+def development_dashboard(tmp_path: Path) -> Iterator[BrowserDashboard]:
+    """Run the separate synthetic development demo in a real server."""
+    profile = create_demo_profile(tmp_path / "development-demo", port=8877)
+    socket_number = socket.socket()
+    socket_number.bind(("127.0.0.1", 0))
+    port = int(socket_number.getsockname()[1])
+    socket_number.close()
+    server = uvicorn.Server(
+        uvicorn.Config(
+            create_app(profile, clock=lambda: datetime.now(UTC)),
+            host="127.0.0.1",
+            port=port,
+            log_level="error",
+        )
+    )
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 10
+    while not server.started and time.monotonic() < deadline:
+        time.sleep(0.02)
+    if not server.started:
+        pytest.fail("the synthetic development dashboard server did not start")
+    try:
+        yield BrowserDashboard(f"http://127.0.0.1:{port}", profile)
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)
+        if thread.is_alive():
+            pytest.fail("the synthetic development dashboard server did not stop")
 
 
 @pytest.fixture(scope="session")
@@ -475,3 +508,47 @@ def test_targeted_kontrol_link_and_returns_survive_history(
     page.keyboard.press("Enter")
     expect(page.get_by_role("radio", name="Enkel")).to_be_checked()
     expect(page.get_by_label("Måned", exact=True)).to_have_value("2026-03")
+
+
+def test_synthetic_development_demo_advanced_views_at_phone_width(
+    page: Page,
+    development_dashboard: BrowserDashboard,
+) -> None:
+    page.goto(f"{development_dashboard.url}/login")
+    page.get_by_label("Adgangskode").fill(DEMO_ACCESS_TEXT)
+    page.get_by_role("button", name="Log ind").click()
+    expect(page.get_by_role("heading", name="Oversigt")).to_be_visible()
+
+    advanced = page.get_by_role("radio", name="Avanceret")
+    advanced.focus()
+    page.keyboard.press("Space")
+    expect(page.locator("#report")).to_have_attribute("data-mode", "advanced")
+    expect(page.locator("#report")).to_have_attribute("data-tab", "overview")
+
+    details = page.get_by_role("link", name="Detaljer")
+    details.focus()
+    page.keyboard.press("Enter")
+    expect(page.locator("#activity-account-demo-current")).to_contain_text(
+        "DEMO SALARY"
+    )
+    expect(page.locator("#activity-account-demo-current")).to_contain_text(
+        "Overførsel, parret med Demo savings"
+    )
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    checks = page.get_by_role("link", name="Kontrol")
+    checks.focus()
+    page.keyboard.press("Enter")
+    expect(page.get_by_role("heading", name="Diagnostik og afstemning")).to_be_visible()
+    expect(page.locator("#diagnostics-unclassified")).to_contain_text("1 postering")
+    expect(page.locator("#diagnostics-adjustments")).to_contain_text("1 postering")
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+    screenshot_dir = os.environ.get("PR106_SCREENSHOT_DIR")
+    if screenshot_dir is not None:
+        destination = Path(screenshot_dir)
+        destination.mkdir(parents=True, exist_ok=True)
+        page.screenshot(
+            path=destination / "development-demo-checks-phone.png",
+            full_page=True,
+        )

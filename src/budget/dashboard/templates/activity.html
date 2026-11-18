@@ -50,9 +50,9 @@
     <tbody>
     {% for row in activity.transactions if row.account_id == account.account_id %}
     <tr>
-      <td>{{ row.transaction_date.strftime("%d.%m.%Y") }}</td>
-      <td>{{ row.description }}</td>
-      <td>
+      <td data-label="Dato">{{ row.transaction_date.strftime("%d.%m.%Y") }}</td>
+      <td data-label="Tekst">{{ row.description }}</td>
+      <td data-label="Type">
         {% if row.transaction_type == "income" %}Indtægt
         {% elif row.transaction_type == "expense" %}Udgift
         {% elif row.transaction_type == "refund" %}Tilbagebetaling
@@ -63,7 +63,7 @@
         {% elif row.transaction_type == "adjustment" %}Regulering
         {% else %}Ukategoriseret{% endif %}
       </td>
-      <td class="detail-amount">{{ row.amount | signed_amount(activity.currency) }}</td>
+      <td data-label="Beløb" class="detail-amount">{{ row.amount | signed_amount(activity.currency) }}</td>
     </tr>
     {% else %}
     <tr><td colspan="4">Ingen observerede posteringer i måneden.</td></tr>
