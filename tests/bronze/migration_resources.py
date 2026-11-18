@@ -88,6 +88,28 @@ def added_migrations(sql_by_folder: Mapping[Path, str]) -> Iterator[None]:
         yield
 
 
+@contextmanager
+def migrations_through(version: int, *, folder: Path = MIGRATIONS) -> Iterator[None]:
+    """List only a stage's first `version` packaged migrations.
+
+    A store migrated inside the block is left at that older schema version,
+    so a test can fill it and then migrate it forward for real. Only
+    `pathlib.Path.glob` is replaced; the runner stays the real code.
+    """
+    original_glob = Path.glob
+
+    def glob(
+        path: Path, pattern: str, *, case_sensitive: bool | None = None
+    ) -> Iterator[Path]:
+        found = sorted(original_glob(path, pattern, case_sensitive=case_sensitive))
+        if path == folder and pattern == "*.sql":
+            found = found[:version]
+        return iter(found)
+
+    with mock.patch.object(Path, "glob", autospec=True, side_effect=glob):
+        yield
+
+
 # Where the installed package keeps the Silver migrations, for `added_migration`.
 SILVER_MIGRATIONS = MIGRATIONS.parent / "silver"
 # Where the installed package keeps the Gold migrations, for `added_migration`.
