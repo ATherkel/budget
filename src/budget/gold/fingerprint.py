@@ -16,7 +16,7 @@ from typing import Final
 from budget.gold.result import GoldResult
 from budget.inputs.snapshot import canonical_amount
 
-CONTRACT_VERSION: Final = "0.2"
+CONTRACT_VERSION: Final = "0.3"
 FINGERPRINT_SCHEME: Final = "2"
 
 

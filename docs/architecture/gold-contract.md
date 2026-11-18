@@ -9,7 +9,7 @@ type: architecture
   what reports read: accounts, categories, transactions, allocations, balances.
 - Analytics and forecasting read it only through the interface below, never
   Bronze or Silver; presentation and APIs read analytics reports.
-- The only normative Gold schema, version `0.2`; a break needs a new version.
+- The only normative Gold schema, version `0.3`; a break needs a new version.
 - The numbered [invariants](#invariants) hold in every publication and never
   renumber, because code and tests cite them.
 - Lineage, why a transaction got its classification, is for review tooling.
