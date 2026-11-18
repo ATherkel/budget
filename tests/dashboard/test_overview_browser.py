@@ -182,6 +182,37 @@ def test_kun_ticks_only_its_account_and_updates_the_report_in_place(
     assert page.evaluate("window.stillThisPage === true"), "the page was reloaded"
 
 
+def test_ingen_and_alle_change_every_box_in_place_and_move_the_address(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+    # A full page load would forget this mark.
+    page.evaluate("window.stillThisPage = true")
+
+    page.locator("#accounts-none").click()
+    expect(page.locator("#report-region")).to_contain_text("Vælg mindst én konto.")
+    expect(page.get_by_label("Joint current")).not_to_be_checked()
+    expect(page.get_by_label("Joint savings")).not_to_be_checked()
+    expect(page).to_have_url(
+        re.compile(r"/\?publication=2&reference_date=2026-06-01&month=2026-06$")
+    )
+
+    page.locator("#accounts-all").click()
+    expect(page.locator("#report")).to_have_attribute(
+        "data-accounts", "joint-current joint-savings"
+    )
+    expect(page.get_by_label("Joint current")).to_be_checked()
+    expect(page.get_by_label("Joint savings")).to_be_checked()
+    expect(page).to_have_url(
+        re.compile(
+            r"/\?publication=2&reference_date=2026-06-01"
+            r"&account=joint-current&account=joint-savings&month=2026-06$"
+        )
+    )
+    assert page.evaluate("window.stillThisPage === true"), "the page was reloaded"
+
+
 def test_active_request_failure_is_visible_accessible_and_retryable(
     page: Page,
     dashboard: BrowserDashboard,
