@@ -17,7 +17,7 @@ from typing import Final, Literal
 
 from budget.bronze import BronzeStore, ImportRun
 from budget.bronze.parsers import source_formats
-from budget.bronze.refusals import format_1_refusal_reasons
+from budget.bronze.refusals import RefusalCode, format_1_refusal_reasons
 from budget.importing import (
     FORMAT_WITHOUT_REFUSAL_REASONS,
     IMPORT_LOG_FORMAT,
@@ -242,7 +242,9 @@ def _repeat_of(entry: Mapping[str, object], outcome: str) -> str | None:
     return _text(entry, "repeat_of")
 
 
-def _refusal_reasons(entry: Mapping[str, object], outcome: str) -> tuple[str, ...]:
+def _refusal_reasons(
+    entry: Mapping[str, object], outcome: str
+) -> tuple[RefusalCode, ...]:
     """Return the refusal codes, which must be a list of strings.
 
     A format 1 line carries none: its refused run predates the codes.
@@ -252,11 +254,14 @@ def _refusal_reasons(entry: Mapping[str, object], outcome: str) -> tuple[str, ..
     codes = entry["refusal_reasons"]
     if not isinstance(codes, list):
         raise _NotAnEntryError
-    reasons: list[str] = []
+    reasons: list[RefusalCode] = []
     for code in codes:
         if not isinstance(code, str):
             raise _NotAnEntryError
-        reasons.append(code)
+        try:
+            reasons.append(RefusalCode(code))
+        except ValueError:
+            raise _NotAnEntryError from None
     return tuple(reasons)
 
 

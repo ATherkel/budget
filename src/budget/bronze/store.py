@@ -33,7 +33,7 @@ from budget.bronze.parsers.registry import (
     source_formats,
     source_parser,
 )
-from budget.bronze.refusals import ACCOUNT_CONFLICT, format_1_refusal_reasons
+from budget.bronze.refusals import RefusalCode, format_1_refusal_reasons
 from budget.bronze.storage import open_bronze_connection, open_bronze_snapshot
 from budget.profiles import Profile
 
@@ -106,9 +106,9 @@ def _decide_outcome(
     *,
     payload_id: str,
     declared_account_id: str,
-    declaration_refusals: tuple[str, ...],
+    declaration_refusals: tuple[RefusalCode, ...],
     voided: Collection[str],
-) -> tuple[tuple[str, ...], str | None]:
+) -> tuple[tuple[RefusalCode, ...], str | None]:
     """Decide whether this presentation repeats, is refused, or is a new store.
 
     A voided run no longer stands for its bytes, so it is nobody's original.
@@ -146,7 +146,9 @@ def _decide_outcome(
         account_conflict = any(
             row["import_run_id"] not in voided for row in stored_elsewhere
         )
-    reasons = ((ACCOUNT_CONFLICT,) if account_conflict else ()) + declaration_refusals
+    reasons = (
+        (RefusalCode.ACCOUNT_CONFLICT,) if account_conflict else ()
+    ) + declaration_refusals
     if reasons:
         # A refused run is nobody's original: it is never the run a later
         # presentation of these bytes repeats.
@@ -232,7 +234,7 @@ def _record_run(connection: sqlite3.Connection, run: ImportRun, content: bytes) 
     )
     connection.executemany(
         "INSERT INTO import_run_refusals (import_run_id, code) VALUES (?, ?)",
-        ((run.import_run_id, code) for code in run.refusal_reasons),
+        ((run.import_run_id, code.value) for code in run.refusal_reasons),
     )
 
 
@@ -252,7 +254,7 @@ def _records_refusals(connection: sqlite3.Connection) -> bool:
 
 def _refusal_codes(
     connection: sqlite3.Connection, row: sqlite3.Row, *, recorded: bool
-) -> tuple[str, ...]:
+) -> tuple[RefusalCode, ...]:
     """Return a run's refusal codes: its rows, or what an older store implies."""
     if not recorded:
         return format_1_refusal_reasons(row["outcome"])
@@ -260,7 +262,7 @@ def _refusal_codes(
         "SELECT code FROM import_run_refusals WHERE import_run_id = ? ORDER BY rowid",
         (row["import_run_id"],),
     )
-    return tuple(str(code["code"]) for code in codes)
+    return tuple(RefusalCode(code["code"]) for code in codes)
 
 
 def _import_run(

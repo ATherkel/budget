@@ -498,6 +498,7 @@ INVALID_ENTRIES: dict[str, Callable[[dict[str, object]], dict[str, object]]] = {
     "a later format": _with(format=3),
     "refusal codes that are not a list": _with(refusal_reasons="legacy-unrecorded"),
     "a refusal code that is not a string": _with(refusal_reasons=[7]),
+    "an unknown refusal code": _with(refusal_reasons=["range-too-wide"]),
     "a format 1 line with refusal codes": _with(format=1),
     "a format 2 line without refusal codes": _without("refusal_reasons"),
     "a missing field": _without("covers_from"),

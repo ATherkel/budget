@@ -5,8 +5,8 @@
 --
 -- Version 1 recorded no reasons, so every run it already refused gets the
 -- single code `legacy-unrecorded` rather than a guess at which rule applied.
--- The literal below is `LEGACY_UNRECORDED` in `budget/bronze/refusals.py`; a
--- migration is frozen text, so it cannot import the constant.
+-- The literal below is `RefusalCode.LEGACY_UNRECORDED` (`budget/bronze/refusals.py`);
+-- a migration is frozen text, so it cannot use the enum.
 
 CREATE TABLE import_run_refusals (
     import_run_id TEXT NOT NULL REFERENCES import_runs(import_run_id),
