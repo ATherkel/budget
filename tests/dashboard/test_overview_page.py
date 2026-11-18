@@ -202,6 +202,37 @@ def test_each_account_offers_a_link_to_the_same_page_with_only_that_account(
     )
 
 
+def test_the_account_list_offers_links_to_every_account_and_to_none(
+    client: TestClient,
+) -> None:
+    # From a one-account page: "Alle" names every account, and "Ingen"
+    # is the empty selection's own page, which shows the prompt.
+    page = read(
+        client.get(
+            "/",
+            params={
+                "publication": "1",
+                "reference_date": "2026-05-14",
+                "account": [SAVINGS],
+                "month": "2026-04",
+            },
+        ).text
+    )
+
+    pin = "/?publication=1&reference_date=2026-05-14"
+    assert (
+        page.attributes("accounts-all").get("href"),
+        page.text_of("accounts-all"),
+        page.attributes("accounts-none").get("href"),
+        page.text_of("accounts-none"),
+    ) == (
+        f"{pin}&account=joint-current&account=joint-savings&month=2026-04",
+        "Alle",
+        f"{pin}&month=2026-04",
+        "Ingen",
+    )
+
+
 def test_an_invalid_selection_is_explained_naming_every_rule_it_breaks(
     client: TestClient,
 ) -> None:
