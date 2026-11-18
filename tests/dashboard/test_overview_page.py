@@ -173,6 +173,35 @@ def test_a_page_opened_with_a_pinned_selection_keeps_it(client: TestClient) -> N
     ) == ("1", "2026-05-14", {SAVINGS}, [("2026-04", "april 2026")], "2026-05")
 
 
+def test_each_account_offers_a_link_to_the_same_page_with_only_that_account(
+    client: TestClient,
+) -> None:
+    # A plain link, so a page without scripts reloads with the one account; the
+    # pin and month stay as they are, even when the account was not ticked.
+    page = read(
+        client.get(
+            "/",
+            params={
+                "publication": "1",
+                "reference_date": "2026-05-14",
+                "account": [CURRENT],
+                "month": "2026-04",
+            },
+        ).text
+    )
+
+    pin = "/?publication=1&reference_date=2026-05-14"
+    assert (
+        page.attributes(f"only-{CURRENT}").get("href"),
+        page.attributes(f"only-{SAVINGS}").get("href"),
+        page.text_of(f"only-{SAVINGS}"),
+    ) == (
+        f"{pin}&account=joint-current&month=2026-04",
+        f"{pin}&account=joint-savings&month=2026-04",
+        "kun",
+    )
+
+
 def test_an_invalid_selection_is_explained_naming_every_rule_it_breaks(
     client: TestClient,
 ) -> None:
