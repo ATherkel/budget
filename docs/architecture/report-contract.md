@@ -245,10 +245,8 @@ The interaction a page owes its reader. It is route-neutral: it constrains what
 the reader is shown, never the transport or URL shape, and the report DTOs
 carry no HTML, URL or framework schema.
 
-The [Enkel and Avanceret display contract](presentation-layer.md#enkel-and-avanceret)
-defines screen ownership, the mode switch and its destinations. Mode and tab are
-presentation state, not additional fields of `ReportContext`; the context,
-validation and response-eligibility rules below apply equally to both modes.
+For screen ownership and mode navigation, see the
+[Enkel and Avanceret display contract](presentation-layer.md#enkel-and-avanceret).
 
 **One pinned context.** A page pins `publication_id` and the Copenhagen
 `reference_date` for the whole visit ([`ReportContext`](#reportcontext)).
