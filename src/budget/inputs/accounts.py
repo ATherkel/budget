@@ -110,10 +110,12 @@ def _entry_problem(account_id: str, text: str) -> str:
 
 def _entry_problems(account_id: str, entry: object) -> list[str]:
     """List one entry's problems: its ID, then its keys, then what is missing."""
-    return [
-        _entry_problem(account_id, problem)
-        for problem in entry_problems(account_id, entry, _FIELDS, "joint-current")
-    ]
+    problems = entry_problems(account_id, entry, _FIELDS, "joint-current")
+    if isinstance(entry, dict) and "owner" not in entry:
+        problems.append(
+            'owner is missing: add owner = "<id>" naming an owner in [owners]'
+        )
+    return [_entry_problem(account_id, problem) for problem in problems]
 
 
 def _number_shape_problems(account_id: str, entry: object) -> list[str]:
@@ -179,7 +181,9 @@ def _account(account_id: str, entry: Mapping[str, Any]) -> Account:
 def load_accounts(profile: Profile) -> Mapping[str, Account]:
     """Load and validate the profile's `accounts.toml`, keyed by account ID."""
     document = read_document(profile.accounts_file, ACCOUNTS_FILE_NAME)
-    problems = unknown_top_level_keys(document, ACCOUNTS_FILE_NAME, ("account", "owners"))
+    problems = unknown_top_level_keys(
+        document, ACCOUNTS_FILE_NAME, ("account", "owners")
+    )
     entries, shape_problems = keyed_tables(document, ACCOUNTS_FILE_NAME, "account")
     problems.extend(shape_problems)
     for account_id, entry in entries.items():
