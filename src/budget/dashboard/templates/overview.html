@@ -35,11 +35,13 @@
 <legend>Konti <span class="legend-note">Vælg mindst én</span></legend>
 <p class="account-shortcuts"><a id="accounts-all" href="{{ all_url }}" data-account-shortcut>Alle</a> <a id="accounts-none" href="{{ none_url }}" data-account-shortcut>Ingen</a></p>
 {% for account in accounts %}
+<div class="account-row">
 <label class="account-option">
   <input type="checkbox" name="account" value="{{ account.account_id }}"{% if account.account_id in selected_accounts %} checked{% endif %}>
   <span>{{ account.display_name }}</span>
 </label>
 <a class="account-only" id="only-{{ account.account_id }}" href="{{ only_urls[account.account_id] }}" data-account-shortcut>kun</a>
+</div>
 {% endfor %}
 </fieldset>
 <label class="field-label" for="month">Måned</label>

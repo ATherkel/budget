@@ -286,6 +286,28 @@ button {
   font-weight: 600;
 }
 
+.account-shortcuts {
+  display: flex;
+  gap: 1rem;
+  margin: 0;
+  font-size: 0.86rem;
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.account-row .account-option {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-only {
+  font-size: 0.86rem;
+}
+
 .account-option:hover {
   border-color: var(--line-strong);
 }
