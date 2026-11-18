@@ -6,6 +6,7 @@ from datetime import date
 from decimal import Decimal
 
 from budget.analytics import (
+    AccountEvidence,
     MoneyInOut,
     ReportContext,
     TransferSummary,
@@ -86,4 +87,29 @@ def test_transfer_count_counts_selected_legs_and_records_public_pairing() -> Non
         count=1,
         paired_count=1,
         one_sided_count=0,
+    )
+
+
+def test_no_evidence_keeps_counts_unknown_and_reports_direct_evidence_through() -> None:
+    # May's Evidence through does not turn June into evidence.
+    context = replace(_context(6), reference_date=date(2026, 6, 3))
+
+    report = diagnostics(GOLD, context, is_current=True)
+
+    assert (
+        report.evidence,
+        report.unclassified,
+        report.adjustments,
+        report.transfers,
+    ) == (
+        (
+            AccountEvidence(
+                account_id=CURRENT,
+                display_name="Joint current",
+                evidence_through=date(2026, 5, 8),
+            ),
+        ),
+        None,
+        None,
+        None,
     )
