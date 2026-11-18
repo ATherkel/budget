@@ -6,6 +6,9 @@
   <a href="{{ tab_urls['checks'] }}"{% if tab == "checks" %} aria-current="page"{% endif %}>Kontrol</a>
 </nav>
 {% endif %}
+{% if return_to %}
+<p><a id="return-from-control" href="{{ return_to }}">Tilbage til den forrige visning</a></p>
+{% endif %}
 {% if not is_current %}
 <p class="notice notice--warning">Der findes nyere tal. <a id="newer-figures" href="/">Hent de nyeste tal</a></p>
 {% endif %}

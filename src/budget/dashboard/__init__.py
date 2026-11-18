@@ -86,6 +86,7 @@ class OverviewRequest:
     accounts: tuple[str, ...] | None
     month: str | None
     view: ViewState
+    return_to: str | None
 
 
 @dataclass(frozen=True)
@@ -97,6 +98,7 @@ class ReportRequest:
     month: str
     view: ViewState
     active_mode: DashboardMode
+    return_to: str | None
 
 
 _STATIC = Path(__file__).parent / "static"
@@ -133,6 +135,7 @@ class OverviewAddress(BaseModel):
     mode: DashboardMode = "simple"
     tab: AdvancedTab = "overview"
     comparison: ComparisonMode = "amounts"
+    return_to: str | None = None
 
     def asked(self) -> OverviewRequest:
         """Return the page request without resolving a fresh pin."""
@@ -149,6 +152,7 @@ class OverviewAddress(BaseModel):
             ),
             month=self.month,
             view=ViewState(self.mode, self.tab, self.comparison),
+            return_to=self.return_to,
         )
 
 
@@ -163,6 +167,7 @@ class ReportAddress(BaseModel):
     active_mode: DashboardMode = "simple"
     tab: AdvancedTab = "overview"
     comparison: ComparisonMode = "amounts"
+    return_to: str | None = None
 
     def asked(self) -> ReportRequest:
         """Return the report request and its previous presentation state."""
@@ -172,6 +177,7 @@ class ReportAddress(BaseModel):
             month=self.month,
             view=ViewState(self.mode, self.tab, self.comparison),
             active_mode=self.active_mode,
+            return_to=self.return_to,
         )
 
 
@@ -275,6 +281,13 @@ def _tab(value: str) -> AdvancedTab:
     return "checks" if value == "checks" else "overview"
 
 
+def _safe_return_to(value: str | None) -> str | None:
+    """Return an internal path for a return link, or no link for other text."""
+    if value is None or not value.startswith("/") or value.startswith("//"):
+        return None
+    return value
+
+
 def _render_overview(
     profile: Profile,
     clock: Callable[[], datetime],
@@ -323,6 +336,7 @@ def _render_overview(
                 month=selected_month,
                 view=requested.view,
                 active_mode=requested.view.mode,
+                return_to=requested.return_to,
             ),
         )
         if selected_accounts
@@ -337,6 +351,9 @@ def _render_overview(
         ),
         view=requested.view,
     )
+    return_to = _safe_return_to(requested.return_to)
+    if return_to is not None:
+        canonical_url += "&" + urlencode({"return_to": return_to})
     return _TEMPLATES.get_template("overview.html").render(
         publication_id=publication_id,
         reference_date=reference_date.isoformat(),
@@ -351,6 +368,7 @@ def _render_overview(
         mode=requested.view.mode,
         tab=requested.view.tab,
         comparison=requested.view.comparison,
+        return_to=return_to,
     )
 
 
@@ -621,6 +639,17 @@ def _render_report(
         return activity
     if isinstance(diagnostics, str):
         return diagnostics
+    origin_url = _answered_url(overview_report, "/", requested.view)
+    control_url = _pinned_url(
+        PinnedAddress(
+            answered.publication_id,
+            answered.reference_date,
+            tuple(answered.account_ids),
+            display.month_value(answered.month),
+        ),
+        view=ViewState("advanced", "checks", requested.view.comparison),
+    )
+    control_url += "&" + urlencode({"return_to": origin_url})
     return _TEMPLATES.get_template("report.html").render(
         is_current=overview_report.publication.is_current,
         publication_id=answered.publication_id,
@@ -634,6 +663,7 @@ def _render_report(
         mode=active_mode,
         tab=active_tab,
         comparison=requested.view.comparison,
+        return_to=_safe_return_to(requested.return_to),
         tab_urls={
             destination: _pinned_url(
                 PinnedAddress(
@@ -650,11 +680,7 @@ def _render_report(
             )
             for destination in ("overview", "details", "checks")
         },
-        explanation_url=_answered_url(
-            overview_report,
-            "/explanation",
-            requested.view,
-        ),
+        explanation_url=control_url,
         detail_urls={
             category.category_id: _detail_url(
                 answered,
@@ -711,6 +737,13 @@ def _report_response(
             requested.view.comparison,
         ),
     )
+    return_to = (
+        _safe_return_to(requested.return_to)
+        if destination_mode == "advanced" and destination_tab == "checks"
+        else None
+    )
+    if return_to is not None:
+        page += "&" + urlencode({"return_to": return_to})
     if not requested.accounts:
         # An empty selection is a prompt, never a report of nothing.
         prompt = _TEMPLATES.get_template("no_accounts.html").render()
@@ -727,6 +760,7 @@ def _report_response(
                 requested.view.comparison,
             ),
             active_mode=destination_mode,
+            return_to=return_to,
         ),
     )
     return HTMLResponse(fragment, headers={"HX-Push-Url": page})

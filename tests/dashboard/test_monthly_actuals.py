@@ -9,6 +9,7 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from urllib.parse import urlencode
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,6 +26,23 @@ from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
 
 # The worked examples' reference date: May is the current month.
 REFERENCE_DATE = "2026-05-14"
+
+
+def _origin_url(month: str, reference_date: str = REFERENCE_DATE) -> str:
+    return (
+        f"/?publication=1&reference_date={reference_date}"
+        f"&account={CURRENT}&account={SAVINGS}&month={month}"
+        "&mode=simple&tab=overview&comparison=amounts"
+    )
+
+
+def _kontrol_url(month: str, reference_date: str = REFERENCE_DATE) -> str:
+    return (
+        f"/?publication=1&reference_date={reference_date}"
+        f"&account={CURRENT}&account={SAVINGS}&month={month}"
+        "&mode=advanced&tab=checks&comparison=amounts&"
+        + urlencode({"return_to": _origin_url(month, reference_date)})
+    )
 
 
 @pytest.fixture
@@ -111,11 +129,7 @@ def test_a_partial_report_names_its_incomplete_accounts_and_links_the_explanatio
     ) == (
         True,
         False,
-        (
-            "/explanation?publication=1&reference_date=2026-05-14"
-            f"&account={CURRENT}&account={SAVINGS}&month=2026-02"
-            "&mode=simple&tab=overview&comparison=amounts"
-        ),
+        _kontrol_url("2026-02"),
     )
 
 
@@ -144,11 +158,7 @@ def test_unclassified_money_keeps_its_quiet_note_and_explanation_link(
         february.text_of("unclassified-note"),
     ) == (
         True,
-        (
-            "/explanation?publication=1&reference_date=2026-05-14"
-            f"&account={CURRENT}&account={SAVINGS}&month=2026-03"
-            "&mode=simple&tab=overview&comparison=amounts"
-        ),
+        _kontrol_url("2026-03"),
         None,
     )
 
@@ -390,11 +400,7 @@ def test_a_report_without_data_names_its_accounts_and_links_the_explanation(
         june.attributes("coverage-explanation").get("href"),
     ) == (
         True,
-        (
-            "/explanation?publication=1&reference_date=2026-06-03"
-            f"&account={CURRENT}&account={SAVINGS}&month=2026-06"
-            "&mode=simple&tab=overview&comparison=amounts"
-        ),
+        _kontrol_url("2026-06", "2026-06-03"),
     )
 
 
@@ -405,10 +411,8 @@ def test_the_provisional_label_links_the_explanation_of_why(
     # its own way to the reasons.
     may = report(client, "2026-05")
 
-    assert may.attributes("provisional-explanation").get("href") == (
-        "/explanation?publication=1&reference_date=2026-05-14"
-        f"&account={CURRENT}&account={SAVINGS}&month=2026-05"
-        "&mode=simple&tab=overview&comparison=amounts"
+    assert may.attributes("provisional-explanation").get("href") == _kontrol_url(
+        "2026-05"
     )
 
 
@@ -514,7 +518,7 @@ def test_the_trust_notes_read_as_quiet_danish_sentences_without_counts(
     )
 
 
-def test_a_month_outside_every_selected_accounts_history_says_so_on_both_pages(
+def test_a_month_outside_every_selected_accounts_history_says_so_in_kontrol(
     tmp_path: Path,
 ) -> None:
     # Person current starts in April, so February lies outside its history:
@@ -534,15 +538,12 @@ def test_a_month_outside_every_selected_accounts_history_says_so_on_both_pages(
     assert (
         february.text_of("coverage-note"),
         february.text_of("money-left"),
-        explained.text_of("explanation-coverage"),
+        explained.text_of("diagnostics-reconciliation-person-current-coverage"),
     ) == (
         (
             "Ingen af de valgte konti har historik i februar 2026. "
             "Hvorfor der ingen tal er"
         ),
         "Ingen data endnu",
-        (
-            "Ingen af de valgte konti har historik i februar 2026, så der er "
-            "ingen tal for måneden. Vælg en anden måned eller andre konti."
-        ),
+        "Dækning: uden for historikken.",
     )
