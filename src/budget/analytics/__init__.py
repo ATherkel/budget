@@ -6,6 +6,7 @@ Silver, a parser or `GoldLineageRepository`.
 """
 
 from budget.analytics.activity import account_activity
+from budget.analytics.diagnostics import diagnostics
 from budget.analytics.household import (
     HouseholdReports,
     NothingPublishedError,
@@ -15,6 +16,7 @@ from budget.analytics.overview import monthly_overview, selection_options
 from budget.analytics.reports import (
     AccountActivity,
     AccountActivitySnapshot,
+    AccountEvidence,
     AccountMonth,
     AccountMonthCoverage,
     AccountMonthStatus,
@@ -23,12 +25,14 @@ from budget.analytics.reports import (
     CategorySpending,
     DetailScope,
     DetailSubject,
+    Diagnostics,
     InvalidSelectionError,
     MoneyInOut,
     MonthlyBalanceObservation,
     MonthlyOverview,
     Provisional,
     ProvisionalReason,
+    Reconciliation,
     ReportContext,
     ReportCoverage,
     ReportPublication,
@@ -38,11 +42,13 @@ from budget.analytics.reports import (
     SpendingDetail,
     SpendingDetailRow,
     TransferPairing,
+    TransferSummary,
 )
 
 __all__ = [
     "AccountActivity",
     "AccountActivitySnapshot",
+    "AccountEvidence",
     "AccountMonth",
     "AccountMonthCoverage",
     "AccountMonthStatus",
@@ -51,6 +57,7 @@ __all__ = [
     "CategorySpending",
     "DetailScope",
     "DetailSubject",
+    "Diagnostics",
     "HouseholdReports",
     "InvalidSelectionError",
     "MoneyInOut",
@@ -60,6 +67,7 @@ __all__ = [
     "Provisional",
     "ProvisionalReason",
     "PublicationUnavailableError",
+    "Reconciliation",
     "ReportContext",
     "ReportCoverage",
     "ReportPublication",
@@ -69,7 +77,9 @@ __all__ = [
     "SpendingDetail",
     "SpendingDetailRow",
     "TransferPairing",
+    "TransferSummary",
     "account_activity",
+    "diagnostics",
     "monthly_overview",
     "selection_options",
 ]
