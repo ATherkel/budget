@@ -442,6 +442,45 @@ class AccountOwnerTests(unittest.TestCase):
         )
 
 
+class OwnershipScopeTests(unittest.TestCase):
+    def test_a_leftover_ownership_scope_is_told_to_make_way_for_the_owner(
+        self,
+    ) -> None:
+        # An accounts.toml written before owners existed still carries it.
+        content = """\
+format = 1
+
+[owners]
+household = "Fælles"
+
+[account.joint-current]
+display_name = "Joint current"
+account_type = "current"
+owner = "household"
+currency = "DKK"
+source_format = "danske-csv-v1"
+
+[account.joint-savings]
+display_name = "Joint savings"
+account_type = "savings"
+ownership_scope = "household"
+owner = "household"
+currency = "DKK"
+source_format = "danske-csv-v1"
+"""
+        with TemporaryDirectory() as directory:
+            profile = profile_with_accounts(directory, content)
+
+            with pytest.raises(ConfigurationError) as refusal:
+                load_accounts(profile)
+
+        assert refusal.value.problems == (
+            entry_problem(
+                "joint-savings", "ownership_scope is replaced by owner: remove it"
+            ),
+        )
+
+
 class LoadOwnersTests(unittest.TestCase):
     def test_owners_load_in_declaration_order_with_their_display_names(
         self,
