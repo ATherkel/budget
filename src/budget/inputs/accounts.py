@@ -32,6 +32,10 @@ from budget.inputs.fields import (
 )
 from budget.profiles import ACCOUNTS_FILE_NAME, Profile
 
+# The owner Gold migration 0002 gives every account stored before owners were
+# recorded; a migration is frozen text, so it spells the literal itself.
+LEGACY_OWNER_ID = "legacy-unrecorded"
+
 
 class MisfiledExportError(ValueError):
     """An export's filename names another bank account than its folder's account.
@@ -203,6 +207,11 @@ def _owners(document: Mapping[str, object]) -> tuple[dict[str, str], list[str]]:
             problems.append(
                 f'owner "{owner_id}": the ID must be lowercase words joined by '
                 "hyphens, such as household"
+            )
+        elif owner_id == LEGACY_OWNER_ID:
+            problems.append(
+                f'owner "{owner_id}": the ID is reserved for accounts published '
+                "before owners were recorded"
             )
         if not is_text(name):
             problems.append(
