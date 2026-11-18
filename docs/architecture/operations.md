@@ -265,7 +265,6 @@ alex = "Alex"
 [account.joint-current]
 display_name = "Joint current"
 account_type = "current"         # current | savings
-ownership_scope = "household"    # household | person
 owner = "household"              # an owner declared in [owners]
 currency = "DKK"
 source_format = "danske-csv-v1"  # what its inbox folder receives
@@ -274,7 +273,6 @@ bank_account_number = "1234567890"   # optional; checked against the export file
 [account.joint-savings]
 display_name = "Joint savings"
 account_type = "savings"
-ownership_scope = "household"
 owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"

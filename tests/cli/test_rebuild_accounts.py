@@ -38,7 +38,6 @@ format = 1
 [account.joint-savings]
 display_name = "Joint savings"
 account_type = "savings"
-ownership_scope = "household"
 owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
@@ -53,7 +52,6 @@ format = 1
 [account.joint-current]
 display_name = "Joint current"
 account_type = "current"
-ownership_scope = "household"
 owner = "household"
 currency = "{PRIVATE_CURRENCY}"
 source_format = "danske-csv-v1"

@@ -14,7 +14,6 @@ from typing import Literal
 from budget.gold import (
     AccountType,
     Coverage,
-    OwnershipScope,
     PublicationKind,
     ReportingMonth,
 )
@@ -58,9 +57,8 @@ class SelectableAccount:
     account_id: str
     display_name: str
     account_type: AccountType
-    ownership_scope: OwnershipScope
+    owner_id: str
     currency: str
-    owner_id: str | None = None
 
 
 @dataclass(frozen=True)

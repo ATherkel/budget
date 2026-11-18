@@ -29,7 +29,6 @@ format = 1
 [account.joint-current]
 display_name = "Joint current"
 account_type = "current"
-ownership_scope = "household"
 owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
@@ -38,7 +37,6 @@ bank_account_number = "0012345678"
 [account.joint-savings]
 display_name = "Joint savings"
 account_type = "savings"
-ownership_scope = "person"
 owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
@@ -77,7 +75,6 @@ class LoadAccountsTests(unittest.TestCase):
             account_id="joint-current",
             display_name="Joint current",
             account_type="current",
-            ownership_scope="household",
             currency="DKK",
             source_format="danske-csv-v1",
             bank_account_number="0012345678",
@@ -87,7 +84,6 @@ class LoadAccountsTests(unittest.TestCase):
             account_id="joint-savings",
             display_name="Joint savings",
             account_type="savings",
-            ownership_scope="person",
             currency="DKK",
             source_format="danske-csv-v1",
             closed_on=date(2027, 6, 30),
@@ -192,7 +188,6 @@ account.loose = "Joint current"
 [account.Joint-Current]
 display_name = "Joint current"
 account_type = "current"
-ownership_scope = "household"
 owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
@@ -200,7 +195,6 @@ source_format = "danske-csv-v1"
 [account.joint-savings]
 display_name = "Joint savings"
 account_type = "credit"
-ownership_scope = "household"
 owner = "household"
 currency = "DKK"
 source_format = "nordea-csv-v1"
@@ -243,7 +237,7 @@ household = "Fælles"
                 "joint-savings", "closed_on must be a date such as 2027-06-30"
             ),
             entry_problem("card", "display_name must be a non-empty string"),
-            entry_problem("card", "ownership_scope must be one of household, person"),
+            entry_problem("card", "ownership_scope is replaced by owner: remove it"),
             entry_problem("card", "account_type is missing"),
             entry_problem("card", "currency is missing"),
             entry_problem("card", "source_format is missing"),
@@ -265,7 +259,7 @@ household = "Fælles"
         ):
             key = line.partition(" ")[0]
             entry = "\n".join(
-                kept for kept in ACCOUNTS.splitlines()[2:10] if not kept.startswith(key)
+                kept for kept in ACCOUNTS.splitlines()[2:9] if not kept.startswith(key)
             )
             content = f"format = 1\n{OWNERS}\n{entry}\n{line}\n"
             with self.subTest(line=line), TemporaryDirectory() as directory:
@@ -279,7 +273,7 @@ household = "Fælles"
                 )
 
     def test_an_account_id_is_lowercase_words_joined_by_hyphens(self) -> None:
-        entry = ACCOUNTS.splitlines()[3:10]
+        entry = ACCOUNTS.splitlines()[3:9]
         for account_id, accepted in (
             ("joint", True),
             ("card-2", True),
@@ -390,7 +384,6 @@ household = "Fælles"
 [account.joint-current]
 display_name = "Joint current"
 account_type = "current"
-ownership_scope = "household"
 owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
@@ -398,7 +391,6 @@ source_format = "danske-csv-v1"
 [account.alex-current]
 display_name = "Alex current"
 account_type = "current"
-ownership_scope = "person"
 owner = "alex"
 currency = "DKK"
 source_format = "danske-csv-v1"

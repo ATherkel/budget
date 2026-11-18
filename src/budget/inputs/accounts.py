@@ -62,12 +62,11 @@ class Account:
     account_id: str
     display_name: str
     account_type: Literal["current", "savings"]
-    ownership_scope: Literal["household", "person"]
+    owner: str
     currency: str
     source_format: str
     bank_account_number: str | None = field(default=None, repr=False)
     closed_on: date | None = None
-    owner: str | None = None
 
     def check_export_filename(self, filename: str) -> None:
         """Refuse an export whose filename names another bank account.
@@ -90,7 +89,6 @@ _FIELDS: Mapping[str, FieldRule] = MappingProxyType(
     {
         "display_name": TEXT,
         "account_type": one_of("current", "savings"),
-        "ownership_scope": one_of("household", "person"),
         "currency": TEXT,
         "source_format": one_of(*source_formats()),
         "bank_account_number": FieldRule(
@@ -100,6 +98,10 @@ _FIELDS: Mapping[str, FieldRule] = MappingProxyType(
             is_date, "must be a date such as 2027-06-30", required=False
         ),
         "owner": FieldRule(is_text, "must be a non-empty string", required=False),
+        # Replaced by `owner`: a file that still carries it is told so.
+        "ownership_scope": FieldRule(
+            lambda _: False, "is replaced by owner: remove it", required=False
+        ),
     }
 )
 
@@ -178,12 +180,11 @@ def _account(account_id: str, entry: Mapping[str, Any]) -> Account:
         account_id=account_id,
         display_name=entry["display_name"],
         account_type=entry["account_type"],
-        ownership_scope=entry["ownership_scope"],
+        owner=entry["owner"],
         currency=entry["currency"],
         source_format=entry["source_format"],
         bank_account_number=entry.get("bank_account_number"),
         closed_on=entry.get("closed_on"),
-        owner=entry.get("owner"),
     )
 
 

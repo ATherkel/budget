@@ -81,7 +81,7 @@ def test_an_account_with_no_export_is_published_without_evidence() -> None:
         account_id="own-savings",
         display_name="Own savings",
         account_type="savings",
-        ownership_scope="person",
+        owner="person",
         currency="DKK",
         source_format="danske-csv-v1",
     )
@@ -95,7 +95,7 @@ def test_an_account_with_no_export_is_published_without_evidence() -> None:
                 account_id="own-savings",
                 display_name="Own savings",
                 account_type="savings",
-                ownership_scope="person",
+                owner_id="person",
                 currency="DKK",
                 closed_on=None,
                 coverage_start=None,

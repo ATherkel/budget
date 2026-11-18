@@ -293,8 +293,8 @@ _SELECT_RECIPE_RUNS: Final = (
 # The result records of one publication.
 _INSERT_ACCOUNTS: Final = (
     "INSERT INTO accounts (publication_id, account_id, display_name,"
-    " account_type, ownership_scope, currency, closed_on, coverage_start,"
-    " evidence_through, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    " account_type, owner_id, currency, closed_on, coverage_start,"
+    " evidence_through) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 _INSERT_OWNERS: Final = (
     "INSERT INTO owners (publication_id, owner_id, display_name, display_order)"
@@ -1330,12 +1330,11 @@ def _account_row(publication_id: int, account: GoldAccount) -> tuple[object, ...
         account.account_id,
         account.display_name,
         account.account_type,
-        account.ownership_scope,
+        account.owner_id,
         account.currency,
         _optional_iso(account.closed_on),
         _optional_iso(account.coverage_start),
         _optional_iso(account.evidence_through),
-        account.owner_id,
     )
 
 
@@ -1345,12 +1344,11 @@ def _account(row: sqlite3.Row) -> GoldAccount:
         account_id=row["account_id"],
         display_name=row["display_name"],
         account_type=row["account_type"],
-        ownership_scope=row["ownership_scope"],
+        owner_id=row["owner_id"],
         currency=row["currency"],
         closed_on=_optional_date(row["closed_on"]),
         coverage_start=_optional_date(row["coverage_start"]),
         evidence_through=_optional_date(row["evidence_through"]),
-        owner_id=row["owner_id"],
     )
 
 

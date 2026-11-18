@@ -256,12 +256,11 @@ def _account(account: Account, ranges: Sequence[AccountEvidence]) -> GoldAccount
         account_id=account.account_id,
         display_name=account.display_name,
         account_type=account.account_type,
-        ownership_scope=account.ownership_scope,
+        owner_id=account.owner,
         currency=account.currency,
         closed_on=account.closed_on,
         coverage_start=min((r.covers_from for r in own), default=None),
         evidence_through=max((r.covers_through for r in own), default=None),
-        owner_id=account.owner,
     )
 
 

@@ -140,7 +140,6 @@ def _canonical_account(account: Account) -> dict[str, object]:
         {
             "display_name": account.display_name,
             "account_type": account.account_type,
-            "ownership_scope": account.ownership_scope,
             "owner": account.owner,
             "currency": account.currency,
             "source_format": account.source_format,

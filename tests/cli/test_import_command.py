@@ -46,7 +46,6 @@ THIRD_ACCOUNT = """
 [account.pension]
 display_name = "Pension"
 account_type = "savings"
-ownership_scope = "person"
 owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"

@@ -168,9 +168,8 @@ def selection_options(
                 account_id=account.account_id,
                 display_name=account.display_name,
                 account_type=account.account_type,
-                ownership_scope=account.ownership_scope,
-                currency=account.currency,
                 owner_id=account.owner_id,
+                currency=account.currency,
             )
             for account in sorted(gold.accounts(), key=lambda a: a.account_id)
         ),

@@ -1096,7 +1096,6 @@ class EmptyAccountTests(unittest.TestCase):
 [account.joint-empty]
 display_name = "Joint empty"
 account_type = "savings"
-ownership_scope = "household"
 owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
