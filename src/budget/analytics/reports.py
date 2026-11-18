@@ -218,7 +218,7 @@ class AccountActivitySnapshot:
     earlier_observation: BankBalanceObservation | None
     monthly_snapshot: MonthlyBalanceObservation | None
     evidence_through: date | None
-    coverage: Coverage
+    coverage: Coverage | Literal["outside_history"]
 
 
 @dataclass(frozen=True)
