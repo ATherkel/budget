@@ -5,6 +5,7 @@ import json
 import sqlite3
 import sys
 import tempfile
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from hashlib import sha256
@@ -117,11 +118,19 @@ def _gold_records(accounts: tuple[Account, ...], today: date) -> GoldRecords:
         for month in months
         for sequence, entry in enumerate(_MONTHLY_ENTRIES)
     ]
+    activity = tuple(
+        transaction
+        for month in months
+        for transaction in _advanced_activity(today.year, month)
+    )
     return GoldRecords(
         accounts=gold_accounts,
         monthly_balances=balances,
         categories=_CATEGORIES,
-        transactions=tuple(transaction for transaction, _ in entries),
+        transactions=(
+            *(transaction for transaction, _ in entries),
+            *activity,
+        ),
         category_allocations=tuple(allocation for _, allocation in entries),
     )
 
@@ -152,6 +161,93 @@ def _entry(
         amount=transaction.amount,
     )
     return transaction, allocation
+
+
+@dataclass(frozen=True)
+class _AdvancedEntry:
+    """One synthetic demo transaction that carries no Category allocation."""
+
+    transaction_id: str
+    account_id: str
+    booked: date
+    sequence: int
+    amount: str
+    description: str
+    transaction_type: TransactionType
+    transfer_group_id: str | None
+
+
+def _advanced_activity(year: int, month: int) -> tuple[GoldTransaction, ...]:
+    """Return the demo month's paired Transfer, Unclassified money and Adjustment."""
+    booked = date(year, month, 1)
+    group = f"demo-transfer-{year}-{month:02d}"
+    base = month * 10
+    return (
+        _plain_transaction(
+            _AdvancedEntry(
+                f"demo-current-transfer-{month}",
+                "demo-current",
+                booked,
+                base + 4,
+                "-250.00",
+                "DEMO TRANSFER OUT",
+                "transfer",
+                group,
+            )
+        ),
+        _plain_transaction(
+            _AdvancedEntry(
+                f"demo-savings-transfer-{month}",
+                "demo-savings",
+                booked,
+                base + 4,
+                "250.00",
+                "DEMO TRANSFER IN",
+                "transfer",
+                group,
+            )
+        ),
+        _plain_transaction(
+            _AdvancedEntry(
+                f"demo-current-unknown-{month}",
+                "demo-current",
+                booked,
+                base + 5,
+                "-25.00",
+                "DEMO UNCLASSIFIED",
+                "unknown",
+                None,
+            )
+        ),
+        _plain_transaction(
+            _AdvancedEntry(
+                f"demo-current-adjustment-{month}",
+                "demo-current",
+                booked,
+                base + 6,
+                "100.00",
+                "DEMO ADJUSTMENT",
+                "adjustment",
+                None,
+            )
+        ),
+    )
+
+
+def _plain_transaction(entry: _AdvancedEntry) -> GoldTransaction:
+    """Return one synthetic transaction that carries no Category allocation."""
+    return GoldTransaction(
+        transaction_id=entry.transaction_id,
+        account_id=entry.account_id,
+        transaction_date=entry.booked,
+        account_sequence=entry.sequence,
+        amount=Decimal(entry.amount),
+        description=entry.description,
+        transaction_type=entry.transaction_type,
+        transfer_group_id=entry.transfer_group_id,
+        balance_after=None,
+        balance_check="missing_balance",
+    )
 
 
 def _configuration(accounts: tuple[Account, ...]) -> ConfigurationSnapshot:
