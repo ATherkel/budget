@@ -433,10 +433,10 @@ Every command that writes Bronze brings it up to date before it finishes, and
 {"format": 2, "import_run_id": "run-0001", "account_id": "joint-current", "source_format": "danske-csv-v1", "archive_path": "joint-current/export-20260402.csv", "payload_sha256": "c0ffee…", "exported_on": "2026-04-02", "exported_on_source": "filename", "covers_from": "2026-03-01", "covers_through": "2026-04-02", "started_at": "2026-04-02T18:03:44.120731+00:00", "outcome": "stored", "repeat_of": null, "refusal_reasons": []}
 ```
 
-- **`refusal_reasons`** lists the codes of the rules a refused run broke, and
-  is empty for every other run. Replay still reads format 1 lines, which carry
-  no codes: a refused run from one is restored with the single code
-  `legacy-unrecorded`.
+- **`refusal_reasons`** lists a refused run's
+  [refusal codes](bronze-layer.md#rules), and is empty for every other run.
+  Replay and the import still read format 1 lines, which carry no codes: a
+  refused run from one reads as `legacy-unrecorded`.
 - **`started_at`** is Bronze's own timestamp, exact to the microsecond and
   offset, so a replay restores the run unchanged.
 - **`archive_path`** is relative to the archive, with `/`, and ends in the
