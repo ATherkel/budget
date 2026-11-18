@@ -1,9 +1,45 @@
 # Copyright 2026 Therkel
 """Public Gold diagnostics for Kontrol."""
 
-from budget.analytics.overview import report_publication, selected_accounts
-from budget.analytics.reports import Diagnostics, ReportContext, ReportCoverage
-from budget.gold import GoldRepository
+from collections.abc import Sequence
+
+from budget.analytics.measures import ZERO
+from budget.analytics.overview import (
+    every_row,
+    report_publication,
+    selected_accounts,
+)
+from budget.analytics.reports import (
+    AccountEvidence,
+    Diagnostics,
+    MoneyInOut,
+    ReportContext,
+)
+from budget.analytics.trust import trust
+from budget.gold import (
+    GoldRepository,
+    GoldTransaction,
+    TransactionType,
+    first_day,
+    last_day,
+)
+
+
+def _money_in_out(
+    transactions: Sequence[GoldTransaction],
+    transaction_type: TransactionType,
+) -> MoneyInOut:
+    """Sum one type's money in and out separately, with its observed count."""
+    of_type = [
+        transaction.amount
+        for transaction in transactions
+        if transaction.transaction_type == transaction_type
+    ]
+    return MoneyInOut(
+        money_in=sum((amount for amount in of_type if amount > 0), ZERO),
+        money_out=sum((amount for amount in of_type if amount < 0), ZERO),
+        count=len(of_type),
+    )
 
 
 def diagnostics(
@@ -13,16 +49,31 @@ def diagnostics(
     is_current: bool,
 ) -> Diagnostics:
     """Return the diagnostics `context` selects from `gold`."""
-    accounts = selected_accounts(gold, context)
+    accounts = sorted(selected_accounts(gold, context), key=lambda a: a.account_id)
+    rows = every_row(gold, context.account_ids)
+    judged = trust(accounts, rows, context.month, context.reference_date)
+    transactions = gold.transactions(
+        start_date=first_day(context.month),
+        end_date=last_day(context.month),
+        account_ids=context.account_ids,
+    )
+    known = judged.coverage.status != "no_data"
     return Diagnostics(
         context=context,
         publication=report_publication(gold, is_current=is_current),
         currency=accounts[0].currency,
-        evidence=(),
-        coverage=ReportCoverage(status="no_data", account_months=()),
-        provisional=None,
-        unclassified=None,
-        adjustments=None,
+        evidence=tuple(
+            AccountEvidence(
+                account_id=account.account_id,
+                display_name=account.display_name,
+                evidence_through=account.evidence_through,
+            )
+            for account in accounts
+        ),
+        coverage=judged.coverage,
+        provisional=judged.provisional,
+        unclassified=(_money_in_out(transactions, "unknown") if known else None),
+        adjustments=(_money_in_out(transactions, "adjustment") if known else None),
         transfers=None,
         reconciliations=(),
     )
