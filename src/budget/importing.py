@@ -26,7 +26,7 @@ from budget.inputs import Account, load_accounts
 from budget.locking import WriterLock
 from budget.profiles import Profile
 
-IMPORT_LOG_FORMAT: Final = 1
+IMPORT_LOG_FORMAT: Final = 2
 # How much of the payload hash names an archive folder (operations.md, W1).
 HASH_PREFIX_LENGTH: Final = 12
 REFUSED_FOLDER: Final = "refused"
@@ -352,6 +352,7 @@ def log_entry(run: ImportRun, archive_path: str) -> bytes:
         "started_at": run.started_at.isoformat(),
         "outcome": run.outcome,
         "repeat_of": run.repeat_of,
+        "refusal_reasons": list(run.refusal_reasons),
     }
     return (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
 

@@ -37,6 +37,7 @@ _ENTRY_FIELDS: Final = frozenset(
         "started_at",
         "outcome",
         "repeat_of",
+        "refusal_reasons",
     }
 )
 # Identity maps: looking a logged string up in one both checks it and narrows
@@ -179,7 +180,7 @@ def _entry_object(line: bytes) -> dict[str, object]:
     if not isinstance(parsed, dict) or set(parsed) != _ENTRY_FIELDS:
         raise _NotAnEntryError
     entry: dict[str, object] = {str(field): value for field, value in parsed.items()}
-    # A bool is an int to Python, but `true` is not format 1.
+    # A bool is an int to Python, but `true` is not a format number.
     if type(entry["format"]) is not int or entry["format"] != IMPORT_LOG_FORMAT:
         raise _NotAnEntryError
     return entry
@@ -229,6 +230,19 @@ def _repeat_of(entry: Mapping[str, object], outcome: str) -> str | None:
     return _text(entry, "repeat_of")
 
 
+def _refusal_reasons(entry: Mapping[str, object]) -> tuple[str, ...]:
+    """Return the refusal codes, which must be a list of strings."""
+    codes = entry["refusal_reasons"]
+    if not isinstance(codes, list):
+        raise _NotAnEntryError
+    reasons: list[str] = []
+    for code in codes:
+        if not isinstance(code, str):
+            raise _NotAnEntryError
+        reasons.append(code)
+    return tuple(reasons)
+
+
 def _logged_run(line: bytes) -> tuple[ImportRun, str]:
     """Read one complete log line as the run it mirrors and its archive path."""
     entry = _entry_object(line)
@@ -250,6 +264,7 @@ def _logged_run(line: bytes) -> tuple[ImportRun, str]:
         started_at=_started_at(entry),
         outcome=outcome,
         repeat_of=_repeat_of(entry, outcome),
+        refusal_reasons=_refusal_reasons(entry),
     )
     if run.source_format not in source_formats():
         raise _NotAnEntryError

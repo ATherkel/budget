@@ -11,7 +11,7 @@ from a household the real import wrote, so the writer and replay must agree.
 import json
 import shutil
 import unittest
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from hashlib import sha256
@@ -52,14 +52,18 @@ def archive(profile: Profile, archive_path: str, content: bytes) -> str:
 
 
 def entry(
-    import_run_id: str, archive_path: str, payload_sha256: str, **changes: object
+    import_run_id: str,
+    archive_path: str,
+    payload_sha256: str,
+    refusal_reasons: Sequence[str] = (),
+    **changes: object,
 ) -> dict[str, object]:
     """One import-log entry for a stored `joint-current` export of 2 May 2026.
 
     `changes` replaces any other field of the entry by name.
     """
     return {
-        "format": 1,
+        "format": 2,
         "import_run_id": import_run_id,
         "account_id": "joint-current",
         "source_format": "danske-csv-v1",
@@ -72,6 +76,7 @@ def entry(
         "started_at": STARTED_AT.isoformat(),
         "outcome": "stored",
         "repeat_of": None,
+        "refusal_reasons": list(refusal_reasons),
     } | changes
 
 
@@ -417,7 +422,7 @@ def _with(**changes: object) -> Callable[[dict[str, object]], dict[str, object]]
 
 # Each one turns a valid second entry into one replay must refuse.
 INVALID_ENTRIES: dict[str, Callable[[dict[str, object]], dict[str, object]]] = {
-    "a later format": _with(format=2),
+    "a later format": _with(format=3),
     "a missing field": _without("covers_from"),
     "an extra field": _with(note="extra"),
     "a number for a string": _with(account_id=7),

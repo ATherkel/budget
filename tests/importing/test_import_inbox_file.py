@@ -72,7 +72,7 @@ class OrdinaryImportTests(unittest.TestCase):
                 assert store.get_payload(run.payload_id).content == content
             assert log_entries(profile) == [
                 {
-                    "format": 1,
+                    "format": 2,
                     "import_run_id": run.import_run_id,
                     "account_id": "joint-current",
                     "source_format": "danske-csv-v1",
@@ -85,6 +85,7 @@ class OrdinaryImportTests(unittest.TestCase):
                     "started_at": run.started_at.isoformat(),
                     "outcome": "stored",
                     "repeat_of": None,
+                    "refusal_reasons": [],
                 }
             ]
 
@@ -1149,7 +1150,7 @@ class CutOffProofTests(unittest.TestCase):
                 )
             complete = profile.import_log_file.read_bytes()
             first_entry = complete[: complete.index(b"\n") + 1]
-            shared_start = b'{"format": 1, "import_run_id": "'
+            shared_start = b'{"format": 2, "import_run_id": "'
             assert complete[len(first_entry) :].startswith(shared_start)
             profile.import_log_file.write_bytes(first_entry + shared_start)
 
@@ -1244,9 +1245,9 @@ class DamagedLogTests(unittest.TestCase):
                     APRIL,
                 )
             log = profile.import_log_file.read_bytes()
-            assert log.startswith(b'{"format": 1,')
+            assert log.startswith(b'{"format": 2,')
             profile.import_log_file.write_bytes(
-                log.replace(b'{"format": 1,', b'{"format": true,', 1)
+                log.replace(b'{"format": 2,', b'{"format": true,', 1)
             )
             source = drop(profile, "joint-savings", EXPORT, payload("02.04.2026"))
 
