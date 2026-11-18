@@ -22,6 +22,7 @@ import pytest
 
 from budget import sqlstore
 from budget.gold import (
+    GoldOwner,
     GoldPublication,
     GoldPublications,
     GoldRepository,
@@ -267,6 +268,32 @@ def test_undo_moves_to_the_previous_current_and_keeps_both_results(
     assert first.publication_id not in {
         publication.publication_id for publication in store.available()
     }
+
+
+def test_a_stored_publication_reads_back_its_owners(store: GoldStore) -> None:
+    owned = replace(
+        RECORDS,
+        accounts=tuple(
+            replace(
+                account,
+                owner_id="alex" if account.account_id == SAVINGS else "household",
+            )
+            for account in RECORDS.accounts
+        ),
+        owners=(
+            GoldOwner(owner_id="household", display_name="Fælles", display_order=1),
+            GoldOwner(owner_id="alex", display_name="Alex", display_order=2),
+        ),
+    )
+    store.publish(GoldResult(publication(1), owned), RECIPE, CONFIGURATION)
+
+    stored = store.open(1)
+
+    assert {a.account_id: a.owner_id for a in stored.accounts()} == {
+        CURRENT: "household",
+        SAVINGS: "alex",
+    }
+    assert list(stored.owners()) == list(owned.owners)
 
 
 def test_the_store_hands_out_increasing_publication_ids(store: GoldStore) -> None:
