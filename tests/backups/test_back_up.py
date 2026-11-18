@@ -29,12 +29,13 @@ from budget.backups import (
     complete_backup_sets,
     hold_for_recovery,
 )
-from budget.bronze import migrate_bronze
+from budget.bronze import BronzeStore, migrate_bronze
 from budget.gold.storage import migrate_gold
 from budget.gold.store import GoldStore
 from budget.importing import ImportLogAheadOfBronzeError, ImportLogDamagedError
 from budget.locking import writer_lock
 from budget.profiles import Profile, RetentionPolicy
+from budget.profiles import test_profile as make_test_profile
 from budget.silver import migrate_silver
 from tests.backups.sets import (
     NOW,
@@ -51,9 +52,13 @@ from tests.backups.sets import (
     run_ids,
     silver_accounts,
 )
-from tests.bronze.migration_resources import SILVER_MIGRATIONS, added_migration
+from tests.bronze.migration_resources import (
+    SILVER_MIGRATIONS,
+    added_migration,
+    migrations_through,
+)
 from tests.gold.publishing import publish
-from tests.importing.households import household
+from tests.importing.households import ACCOUNTS, household
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 
@@ -369,6 +374,72 @@ class ImportLogAgreementTests(unittest.TestCase):
                     assert logs["imports.jsonl"] == len(first)
                     copy = backup.path / "inputs" / "imports.jsonl"
                     assert copy.read_bytes() == log
+
+
+class VersionOneStoreTests(unittest.TestCase):
+    def test_a_version_1_store_with_a_refused_run_can_be_backed_up(self) -> None:
+        # `migrate` backs a store up before it applies a newer schema, so a
+        # store from before refusal codes must still back up.
+        with TemporaryDirectory() as directory:
+            profile = make_test_profile(directory)
+            with migrations_through(1):
+                migrate_bronze(profile)
+            profile.inputs.mkdir(parents=True, exist_ok=True)
+            profile.accounts_file.write_text(ACCOUNTS, encoding="utf-8")
+            payload_id = sha256(b"abc").hexdigest()
+            started = NOW.isoformat()
+            with (
+                closing(sqlite3.connect(profile.bronze_store)) as connection,
+                connection,
+            ):
+                connection.execute(
+                    "INSERT INTO raw_payloads VALUES (?, 3, x'616263')", (payload_id,)
+                )
+                for run_id, outcome in (("run-1", "stored"), ("run-2", "refused")):
+                    connection.execute(
+                        "INSERT INTO import_runs VALUES"
+                        " (?, ?, 'joint-current', 'danske-csv-v1',"
+                        " 'export-20260502.csv', '2026-05-02', 'filename',"
+                        " '2026-04-01', '2026-05-02', ?, ?, NULL)",
+                        (run_id, payload_id, started, outcome),
+                    )
+            # The log the old import wrote: format 1, no refusal codes.
+            archive_paths = {
+                "run-1": "joint-current/export-20260502.csv",
+                "run-2": f"joint-current/refused/{payload_id[:12]}/export-20260502.csv",
+            }
+            profile.import_log_file.write_bytes(
+                b"".join(
+                    json.dumps(
+                        {
+                            "format": 1,
+                            "import_run_id": run_id,
+                            "account_id": "joint-current",
+                            "source_format": "danske-csv-v1",
+                            "archive_path": archive_path,
+                            "payload_sha256": payload_id,
+                            "exported_on": "2026-05-02",
+                            "exported_on_source": "filename",
+                            "covers_from": "2026-04-01",
+                            "covers_through": "2026-05-02",
+                            "started_at": started,
+                            "outcome": "stored" if run_id == "run-1" else "refused",
+                            "repeat_of": None,
+                        }
+                    ).encode("utf-8")
+                    + b"\n"
+                    for run_id, archive_path in archive_paths.items()
+                )
+            )
+
+            with writer_lock(profile) as lock:
+                backup = back_up(lock, now=NOW)
+
+            with BronzeStore(profile, snapshot=backup.path / "bronze.db") as snapshot:
+                assert [
+                    (run.import_run_id, run.refusal_reasons)
+                    for run in snapshot.import_runs()
+                ] == [("run-1", ()), ("run-2", ("legacy-unrecorded",))]
 
 
 class UnsupportedStoreTests(unittest.TestCase):

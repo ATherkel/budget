@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Final
 
 from budget.bronze import BronzeStore, ImportDeclaration, ImportRun
+from budget.bronze.refusals import format_1_refusal_reasons
 from budget.durability import sync_folder
 from budget.inputs import Account, load_accounts
 from budget.locking import WriterLock
@@ -336,16 +337,6 @@ def _missing_folders(folder: Path) -> list[Path]:
         missing.append(folder)
         folder = folder.parent
     return missing
-
-
-def format_1_refusal_reasons(outcome: str) -> tuple[str, ...]:
-    """Return the codes a format 1 line implies for a run with this outcome.
-
-    That format recorded none, so a refused run reads as `legacy-unrecorded`
-    and any other run as having none. Replay and the import's own log check
-    both use this, so they cannot disagree about an old line.
-    """
-    return ("legacy-unrecorded",) if outcome == "refused" else ()
 
 
 def log_entry(

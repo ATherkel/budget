@@ -17,11 +17,11 @@ from typing import Final, Literal
 
 from budget.bronze import BronzeStore, ImportRun
 from budget.bronze.parsers import source_formats
+from budget.bronze.refusals import format_1_refusal_reasons
 from budget.importing import (
     FORMAT_WITHOUT_REFUSAL_REASONS,
     IMPORT_LOG_FORMAT,
     archive_candidates,
-    format_1_refusal_reasons,
     log_entry,
 )
 from budget.locking import WriterLock

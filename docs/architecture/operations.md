@@ -435,7 +435,7 @@ Every command that writes Bronze brings it up to date before it finishes, and
 
 - **`refusal_reasons`** lists a refused run's
   [refusal codes](bronze-layer.md#rules), and is empty for every other run.
-  Replay and the import still read format 1 lines, which carry no codes: a
+  Replay and the import also accept format 1 lines, which carry no codes: a
   refused run from one reads as `legacy-unrecorded`.
 - **`started_at`** is Bronze's own timestamp, exact to the microsecond and
   offset, so a replay restores the run unchanged.

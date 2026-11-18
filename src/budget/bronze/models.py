@@ -50,7 +50,7 @@ class ImportRun:
     started_at: datetime
     outcome: Literal["stored", "repeat", "refused"]
     repeat_of: str | None
-    refusal_reasons: tuple[str, ...] = ()
+    refusal_reasons: tuple[str, ...]
 
 
 @dataclass(frozen=True)
