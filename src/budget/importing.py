@@ -338,6 +338,16 @@ def _missing_folders(folder: Path) -> list[Path]:
     return missing
 
 
+def format_1_refusal_reasons(outcome: str) -> tuple[str, ...]:
+    """Return the codes a format 1 line implies for a run with this outcome.
+
+    That format recorded none, so a refused run reads as `legacy-unrecorded`
+    and any other run as having none. Replay and the import's own log check
+    both use this, so they cannot disagree about an old line.
+    """
+    return ("legacy-unrecorded",) if outcome == "refused" else ()
+
+
 def log_entry(
     run: ImportRun, archive_path: str, *, log_format: int = IMPORT_LOG_FORMAT
 ) -> bytes:
@@ -425,12 +435,17 @@ def _parse_log(content: bytes) -> _LogState:
 def _logged_archive_path(run: ImportRun, line: bytes) -> str:
     """Return where a logged run's export is archived, as its entry says.
 
-    The entry must be exactly what this code writes for the run, at one of
-    the places the run's export may be archived; anything else is damage.
+    The entry must be exactly what this code writes for the run, or what the
+    first format wrote when that format's codes are the run's, at one of the
+    places the run's export may be archived; anything else is damage.
     """
+    log_formats = [IMPORT_LOG_FORMAT]
+    if run.refusal_reasons == format_1_refusal_reasons(run.outcome):
+        log_formats.append(FORMAT_WITHOUT_REFUSAL_REASONS)
     for archive_path in archive_candidates(run):
-        if line == log_entry(run, archive_path):
-            return archive_path
+        for log_format in log_formats:
+            if line == log_entry(run, archive_path, log_format=log_format):
+                return archive_path
     raise ImportLogDamagedError
 
 

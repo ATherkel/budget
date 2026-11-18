@@ -21,6 +21,7 @@ from budget.importing import (
     FORMAT_WITHOUT_REFUSAL_REASONS,
     IMPORT_LOG_FORMAT,
     archive_candidates,
+    format_1_refusal_reasons,
     log_entry,
 )
 from budget.locking import WriterLock
@@ -247,7 +248,7 @@ def _refusal_reasons(entry: Mapping[str, object], outcome: str) -> tuple[str, ..
     A format 1 line carries none: its refused run predates the codes.
     """
     if entry["format"] == FORMAT_WITHOUT_REFUSAL_REASONS:
-        return ("legacy-unrecorded",) if outcome == "refused" else ()
+        return format_1_refusal_reasons(outcome)
     codes = entry["refusal_reasons"]
     if not isinstance(codes, list):
         raise _NotAnEntryError
