@@ -29,14 +29,7 @@ from budget.backups import (
 )
 from budget.bronze import BronzeStore
 from budget.bronze.parsers.registry import source_parser
-from budget.bronze.refusals import (
-    ACCOUNT_CONFLICT,
-    LEGACY_UNRECORDED,
-    RANGE_ENDS_AFTER_EXPORT,
-    RANGE_STARTS_AFTER_END,
-    TRANSACTION_AFTER_RANGE,
-    TRANSACTION_BEFORE_RANGE,
-)
+from budget.bronze.refusals import RefusalCode
 from budget.codeversion import committed_code_version, require_committed_code
 from budget.gold.build import closed_too_early, decision_problems
 from budget.gold.transactions import gold_transactions
@@ -408,20 +401,24 @@ def incident_files(incidents: Sequence[DuplicateIncident]) -> frozenset[Path]:
 
 # The sentence the terminal says for each refusal code Bronze stores.
 _REFUSAL_PROSE: Final = {
-    ACCOUNT_CONFLICT: "the same bytes are already stored for another account",
-    RANGE_STARTS_AFTER_END: "the declared range starts after it ends",
-    RANGE_ENDS_AFTER_EXPORT: "the declared range ends after the export date",
-    TRANSACTION_BEFORE_RANGE: (
+    RefusalCode.ACCOUNT_CONFLICT: (
+        "the same bytes are already stored for another account"
+    ),
+    RefusalCode.RANGE_STARTS_AFTER_END: "the declared range starts after it ends",
+    RefusalCode.RANGE_ENDS_AFTER_EXPORT: (
+        "the declared range ends after the export date"
+    ),
+    RefusalCode.TRANSACTION_BEFORE_RANGE: (
         "the file has transactions before the declared range starts"
     ),
-    TRANSACTION_AFTER_RANGE: (
+    RefusalCode.TRANSACTION_AFTER_RANGE: (
         "the file has transactions after the declared range ends"
     ),
-    LEGACY_UNRECORDED: "it was refused before Bronze recorded why",
+    RefusalCode.LEGACY_UNRECORDED: "it was refused before Bronze recorded why",
 }
 
 
-def refusal_prose(code: str) -> str:
+def refusal_prose(code: RefusalCode) -> str:
     """Return the sentence the terminal says for one refusal code."""
     return _REFUSAL_PROSE[code]
 

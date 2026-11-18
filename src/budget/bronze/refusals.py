@@ -9,16 +9,6 @@ migration `bronze/0002_record_refusal_reasons.sql` spells
 
 from enum import StrEnum
 
-# Every code Bronze can record, in the order a run records its codes.
-REFUSAL_CODES: Final = (
-    ACCOUNT_CONFLICT,
-    RANGE_STARTS_AFTER_END,
-    RANGE_ENDS_AFTER_EXPORT,
-    TRANSACTION_BEFORE_RANGE,
-    TRANSACTION_AFTER_RANGE,
-    LEGACY_UNRECORDED,
-)
-
 
 class RefusalCode(StrEnum):
     """A rule Bronze refused an import run for, in the order bronze-layer.md lists."""

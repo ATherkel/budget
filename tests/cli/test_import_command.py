@@ -16,7 +16,7 @@ from unittest import mock
 
 from budget.bronze import BronzeStore
 from budget.bronze.parsers.registry import source_parser
-from budget.bronze.refusals import REFUSAL_CODES
+from budget.bronze.refusals import RefusalCode
 from budget.gold.recipe import RecipeImportRun
 from budget.gold.store import GoldStore
 from budget.inbox import refusal_prose
@@ -600,7 +600,7 @@ class ImportCommandTests(unittest.TestCase):
 
 class RefusalProseTests(unittest.TestCase):
     def test_every_code_bronze_can_record_has_a_terminal_sentence(self) -> None:
-        for code in REFUSAL_CODES:
+        for code in RefusalCode:
             with self.subTest(code=code):
                 sentence = refusal_prose(code)
 
@@ -608,14 +608,14 @@ class RefusalProseTests(unittest.TestCase):
                 assert sentence != code
 
     def test_bronze_can_record_exactly_these_six_codes(self) -> None:
-        assert REFUSAL_CODES == (
+        assert [code.value for code in RefusalCode] == [
             "account-conflict",
             "range-starts-after-end",
             "range-ends-after-export",
             "transaction-before-range",
             "transaction-after-range",
             "legacy-unrecorded",
-        )
+        ]
 
 
 class InteractiveImportTests(unittest.TestCase):
