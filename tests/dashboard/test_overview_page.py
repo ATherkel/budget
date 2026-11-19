@@ -588,7 +588,7 @@ def test_the_overview_loads_htmx_and_its_form_asks_for_the_report(
     form = read(html).attributes("selection")
 
     assert (
-        '<script src="/static/htmx.min.js"' in html,
+        '<script src="/static/htmx.min.js?v=' in html,
         client.get("/static/htmx.min.js").status_code,
         form.get("hx-get"),
         form.get("hx-target"),
