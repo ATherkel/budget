@@ -49,14 +49,17 @@ class HouseholdReports(Protocol):
     ) -> SpendingDetail: ...
 
     def diagnostics(self, context: ReportContext) -> Diagnostics: ...
+
+    def account_activity(self, context: ReportContext) -> AccountActivity: ...
 ```
 
 `current_publication()` raises `NothingPublished` when Gold has no current
-publication. The other methods raise `PublicationUnavailableError` when the named
-result is not retained, and the reports raise `InvalidSelection` for a
-context breaking a [`ReportContext`](#reportcontext) rule or, for detail, a
-subject breaking the [`SpendingDetail`](#spendingdetail) one. A failure is
-never an empty or zero report. In code each name ends in `Error`
+publication. `selection_options()` and every context-addressed report raise
+`PublicationUnavailableError` when the named result is not retained.
+Context-addressed reports raise `InvalidSelection` for a context breaking a
+[`ReportContext`](#reportcontext) rule or, for detail, a subject breaking the
+[`SpendingDetail`](#spendingdetail) one. A failure is never an empty or zero
+report. In code each name ends in `Error`
 (`NothingPublishedError`, `InvalidSelectionError`), as the lint rules require.
 
 ### `ReportContext`
@@ -338,6 +341,37 @@ hold only the pinned identity and the selection, never a financial payload or
 a new financial model
 ([`presentation-layer.md`](presentation-layer.md#non-responsibilities)). This
 governs what is stored and reused, not what the rendered page displays.
+
+### Account Activity
+
+`account_activity()` returns the selected month's Booked transactions and the
+selected accounts' balance evidence under the same pinned context,
+[Coverage](#coverage) and [Provisional](#provisional) rules as the overview.
+Rows preserve the published date, description, signed amount and transaction
+type, newest first by date, account ID and account sequence.
+
+A dated balance is the account month's last transaction's
+[`balance_after`](gold-contract.md#goldtransaction), ordered by
+`account_sequence`. It is not the month-end balance. Monthly opening and
+closing balances remain the separate [published snapshot](gold-contract.md#monthlybalancesnapshot)
+values. A final null balance stays null, and an older observation may appear
+only with its own date. A quiet partial month can therefore have unknown
+snapshot balances, while a quiet complete month may carry only an earlier
+dated observation. Observations from different dates are not summed into a
+household bank balance.
+
+Transfers keep Gold's published classification
+([`GoldTransaction`](gold-contract.md#goldtransaction),
+[matching](classification.md#transfer-matching)). Two legs with the same
+`transfer_group_id` are publicly paired, including when the other leg is
+outside the selected account or month; that other leg is evidence, never an
+extra activity row. A Transfer without a group is one-sided. Unknown
+descriptions stay unknown text, and an unknown transaction is never inferred
+to be a Transfer. Matching evidence and decisions remain private lineage.
+
+The selected account carries [`GoldAccount.evidence_through`](gold-contract.md#goldaccount)
+directly, including null and gaps between Evidence ranges. It is not inferred
+from a transaction, export date or Coverage status.
 
 ## Worked Examples (synthetic)
 
