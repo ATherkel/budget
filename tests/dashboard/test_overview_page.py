@@ -6,6 +6,8 @@ Selection Transitions". The household's Gold holds the synthetic worked
 example, published twice; the dashboard is driven in-process.
 """
 
+import hashlib
+import re
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,6 +15,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+import budget.dashboard
 from budget.dashboard import create_app
 from budget.gold import GoldResult
 from budget.gold.store import GoldStore
@@ -200,6 +203,26 @@ def test_each_account_offers_a_link_to_the_same_page_with_only_that_account(
         f"{pin}&account=joint-savings&month=2026-04",
         "kun",
     )
+
+
+def test_scripts_and_styles_are_addressed_by_their_content(
+    client: TestClient,
+) -> None:
+    # A browser that cached an older file under the same address would keep
+    # running it after a deploy, so each address names its file's SHA-256.
+    html = client.get("/").text
+    shipped = Path(budget.dashboard.__file__).parent / "static"
+
+    addressed = {}
+    for address in re.findall(r'(?:src|href)="(/static/[^"]+)"', html):
+        name, _, version = address.removeprefix("/static/").partition("?v=")
+        served = client.get(address).content == (shipped / name).read_bytes()
+        addressed[name] = (version, served)
+
+    assert addressed == {
+        name: (hashlib.sha256((shipped / name).read_bytes()).hexdigest()[:12], True)
+        for name in ("app.css", "htmx.min.js", "app.js")
+    }
 
 
 def test_a_screen_reader_hears_which_account_each_kun_link_picks(
