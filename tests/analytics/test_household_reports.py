@@ -76,6 +76,45 @@ def test_current_publication_returns_the_current_build(gold_store: GoldStore) ->
     )
 
 
+def test_account_activity_reads_current_and_superseded_pinned_publications(
+    gold_store: GoldStore,
+) -> None:
+    old_records = replace(
+        RECORDS,
+        accounts=tuple(
+            replace(account, display_name=f"Pinned {account.display_name}")
+            for account in RECORDS.accounts
+        ),
+    )
+    old = replace(PUBLICATION, publication_id=1)
+    gold_store.publish(GoldResult(old, old_records), RECIPE, CONFIGURATION)
+    _publish(gold_store, 2)
+    old_context = ReportContext(
+        publication_id=1,
+        account_ids=frozenset({"joint-current"}),
+        month=ReportingMonth(2026, 2),
+        reference_date=date(2026, 5, 14),
+    )
+    current_context = replace(old_context, publication_id=2)
+    reports = HouseholdReports(gold_store)
+
+    current = reports.account_activity(current_context)
+    superseded = reports.account_activity(old_context)
+
+    assert (
+        current.publication.publication_id,
+        current.publication.is_current,
+        current.context,
+        superseded.publication.publication_id,
+        superseded.publication.is_current,
+        superseded.context,
+    ) == (2, True, current_context, 1, False, old_context)
+    assert superseded.transactions[0].description == "SALARY"
+    assert {row.account_display_name for row in superseded.transactions} == {
+        "Pinned Joint current"
+    }
+
+
 SECOND_BUILD_AT = datetime(2026, 5, 16, 7, 30, tzinfo=UTC)
 
 
@@ -189,6 +228,8 @@ def test_closed_store_lifecycle_errors_propagate_from_reports(
         reports.selection_options(1, date(2026, 5, 14))
     with pytest.raises(GoldStoreClosedError):
         reports.monthly_overview(context)
+    with pytest.raises(GoldStoreClosedError):
+        reports.account_activity(context)
 
 
 def test_read_only_reports_keep_superseded_and_deleted_recovery(
@@ -298,6 +339,12 @@ def test_an_unavailable_pinned_result_offers_the_current_id(
         HouseholdReports(gold_store).monthly_overview(context)
 
     assert (raised.value.publication_id, raised.value.current_publication_id) == (1, 3)
+    with pytest.raises(PublicationUnavailableError) as activity_raised:
+        HouseholdReports(gold_store).account_activity(context)
+    assert (
+        activity_raised.value.publication_id,
+        activity_raised.value.current_publication_id,
+    ) == (1, 3)
 
 
 def test_selection_options_expose_the_same_unavailable_recovery(
@@ -343,7 +390,7 @@ def test_unavailable_overview_without_current_offers_no_replacement(
     )
 
 
-def test_monthly_overview_keeps_the_existing_selection_failure(
+def test_context_reports_keep_the_existing_selection_failure(
     gold_store: GoldStore,
 ) -> None:
     _publish(gold_store, 1)
@@ -354,10 +401,11 @@ def test_monthly_overview_keeps_the_existing_selection_failure(
         reference_date=date(2026, 5, 14),
     )
 
-    with pytest.raises(InvalidSelectionError) as raised:
-        HouseholdReports(gold_store).monthly_overview(context)
-
-    assert raised.value.reasons == {"no_accounts"}
+    reports = HouseholdReports(gold_store)
+    for report in (reports.monthly_overview, reports.account_activity):
+        with pytest.raises(InvalidSelectionError) as raised:
+            report(context)
+        assert raised.value.reasons == {"no_accounts"}
 
 
 def test_as_known_at_uses_the_known_date_in_copenhagen(
@@ -385,9 +433,11 @@ def test_as_known_at_uses_the_known_date_in_copenhagen(
 
     reports = HouseholdReports(gold_store)
     report = reports.monthly_overview(context)
+    activity = reports.account_activity(context)
     options = reports.selection_options(1, date(2026, 5, 14))
 
     assert report.context == replace(context, reference_date=date(2026, 7, 1))
+    assert activity.context == replace(context, reference_date=date(2026, 7, 1))
     assert (report.publication.kind, report.publication.is_current) == (
         "as_known_at",
         False,
