@@ -198,6 +198,63 @@ class SpendingDetail:
     provisional: Provisional | None
 
 
+@dataclass(frozen=True)
+class AccountEvidence:
+    """One selected account's public Evidence through value."""
+
+    account_id: str
+    display_name: str
+    evidence_through: date | None
+
+
+@dataclass(frozen=True)
+class TransferSummary:
+    """The selected Transfer legs' signs, count, and public pairing state."""
+
+    money_in: Decimal
+    money_out: Decimal
+    count: int
+    paired_count: int
+    one_sided_count: int
+
+
+@dataclass(frozen=True)
+class Reconciliation:
+    """One account-month's analytics-supplied balance and activity components."""
+
+    account_id: str
+    display_name: str
+    month: ReportingMonth
+    opening_balance: Decimal | None
+    income_minus_expenses: Decimal | None
+    transfers: Decimal | None
+    unclassified_in: Decimal | None
+    unclassified_out: Decimal | None
+    adjustments_in: Decimal | None
+    adjustments_out: Decimal | None
+    closing_balance: Decimal | None
+    internal_residual: Decimal | None
+    previous_closing_balance: Decimal | None
+    opening_gap: Decimal | None
+    coverage: Coverage | Literal["outside_history"]
+
+
+@dataclass(frozen=True)
+class Diagnostics:
+    """Public trust diagnostics and account-month reconciliation components."""
+
+    context: ReportContext
+    publication: ReportPublication
+    currency: str
+    evidence: tuple[AccountEvidence, ...]
+    coverage: ReportCoverage
+    provisional: Provisional | None
+    unclassified: MoneyInOut | None
+    adjustments: MoneyInOut | None
+    transfers: TransferSummary | None
+    reconciliations: tuple[Reconciliation, ...]
+
+
 class InvalidSelectionError(ValueError):
     """`InvalidSelection`: a report context that breaks one or more selection rules."""
 

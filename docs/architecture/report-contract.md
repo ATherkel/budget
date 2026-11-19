@@ -47,11 +47,13 @@ class HouseholdReports(Protocol):
     def spending_detail(
         self, context: ReportContext, subject: DetailSubject, scope: DetailScope
     ) -> SpendingDetail: ...
+
+    def diagnostics(self, context: ReportContext) -> Diagnostics: ...
 ```
 
 `current_publication()` raises `NothingPublished` when Gold has no current
-publication. The other three raise `PublicationUnavailableError` when the named
-result is not retained, and the two reports raise `InvalidSelection` for a
+publication. The other methods raise `PublicationUnavailableError` when the named
+result is not retained, and the reports raise `InvalidSelection` for a
 context breaking a [`ReportContext`](#reportcontext) rule or, for detail, a
 subject breaking the [`SpendingDetail`](#spendingdetail) one. A failure is
 never an empty or zero report. In code each name ends in `Error`
@@ -206,6 +208,34 @@ second reason (`account_id`, `display_name`, `month`), ordered as in
 
 An account without a managed period never holds the label, even one imported
 without a booked transaction, and neither does an `outside_history` month.
+
+### Diagnostics
+
+`diagnostics()` returns public trust evidence and each selected account's
+reconciliation. It reuses [`MoneyInOut`](#monthlyoverview) and [Coverage](#coverage)
+without reclassifying transactions: with `no_data`, Unclassified money,
+Adjustments and Transfers are unknown; with `partial`, observed signed amounts
+and counts remain visible. Transfers count selected legs, including across
+month or account boundaries; a one-sided leg stays one-sided.
+
+`evidence` exposes each selected account's
+[`GoldAccount`](gold-contract.md#goldaccount) `evidence_through` directly,
+including null. Coverage, provisional status and classification are independent,
+so later evidence does not upgrade a partial month.
+
+For each `account_month`:
+
+```text
+opening_balance + income_minus_expenses + transfers + unclassified_in
++ unclassified_out + adjustments_in + adjustments_out + internal_residual
+= closing_balance
+```
+
+An absent component or balance endpoint makes the residual unknown.
+`opening_gap = opening_balance - previous_closing_balance`; either missing
+endpoint makes it unknown. In the synthetic worked example March has internal
+residual `0.00`, opening gap `-500.00` and Coverage `partial`. Diagnostics never
+balance with an Adjustment, alter a component, or upgrade Coverage.
 
 ### `SpendingDetail`
 
