@@ -218,6 +218,7 @@ def test_the_demo_command_serves_a_real_login_and_htmx_report(
         (
             f"/?publication=1&reference_date={reference_date}"
             f"&account=demo-current&month={month}"
+            "&mode=simple&tab=overview&comparison=amounts"
         ),
     ), (stdout, stderr)
 

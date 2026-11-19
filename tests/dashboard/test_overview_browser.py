@@ -138,7 +138,10 @@ def test_empty_selection_survives_reload_back_and_forward(
     expect(page.get_by_label("Joint savings")).not_to_be_checked()
     expect(page.locator("#report-region")).to_contain_text("Vælg mindst én konto.")
     expect(page).to_have_url(
-        re.compile(r"/\?publication=2&reference_date=2026-06-01&month=2026-06$")
+        re.compile(
+            r"/\?publication=2&reference_date=2026-06-01&month=2026-06"
+            r"&mode=simple&tab=overview&comparison=amounts$"
+        )
     )
 
     page.get_by_label("Joint current").check()
@@ -149,7 +152,10 @@ def test_empty_selection_survives_reload_back_and_forward(
     expect(page.get_by_label("Joint current")).not_to_be_checked()
     expect(page.locator("#report-region")).to_contain_text("Vælg mindst én konto.")
     expect(page).to_have_url(
-        re.compile(r"/\?publication=2&reference_date=2026-06-01&month=2026-06$")
+        re.compile(
+            r"/\?publication=2&reference_date=2026-06-01&month=2026-06"
+            r"&mode=simple&tab=overview&comparison=amounts$"
+        )
     )
 
     page.go_forward()
@@ -178,11 +184,18 @@ def test_active_request_failure_is_visible_accessible_and_retryable(
     expect(page.locator("#report-region #report")).to_have_count(1)
 
 
+@pytest.mark.parametrize("mode", ["simple", "advanced"])
 def test_a_superseded_failure_cannot_replace_a_newer_successful_report(
     page: Page,
     dashboard: BrowserDashboard,
+    mode: str,
 ) -> None:
     log_in(page, dashboard)
+    if mode == "advanced":
+        advanced = page.get_by_role("radio", name="Avanceret")
+        advanced.focus()
+        page.keyboard.press("Space")
+    expect(page.locator("#report")).to_have_attribute("data-mode", mode)
     pending = []
     old_request_handled = False
 
@@ -205,34 +218,44 @@ def test_a_superseded_failure_cannot_replace_a_newer_successful_report(
         }"""
     )
     try:
+        old_url = (
+            "/report?publication=2&reference_date=2026-06-01"
+            f"&account=joint-current&month=2026-06&mode={mode}"
+        )
         page.evaluate(
-            """() => {
+            """(url) => {
               htmx.ajax(
                 'GET',
-                '/report?publication=2&reference_date=2026-06-01&account=joint-current&month=2026-06',
+                url,
                 {
                   source: document.querySelector('#race-old'),
                   target: '#report-region',
                   swap: 'innerHTML'
                 }
               );
-            }"""
+            }""",
+            old_url,
         )
         page.wait_for_timeout(100)
         assert len(pending) == 1, "the first report request was not held"
 
+        new_url = (
+            "/report?publication=2&reference_date=2026-06-01"
+            f"&account=joint-current&month=2026-05&mode={mode}"
+        )
         page.evaluate(
-            """() => {
+            """(url) => {
               htmx.ajax(
                 'GET',
-                '/report?publication=2&reference_date=2026-06-01&account=joint-current&month=2026-05',
+                url,
                 {
                   source: document.querySelector('#race-new'),
                   target: '#report-region',
                   swap: 'innerHTML'
                 }
               );
-            }"""
+            }""",
+            new_url,
         )
         page.wait_for_function("location.search.includes('month=2026-05')")
         expect(page.locator("#report")).to_have_attribute("data-month", "2026-05")
@@ -243,6 +266,7 @@ def test_a_superseded_failure_cannot_replace_a_newer_successful_report(
 
         expect(page.get_by_role("alert")).to_have_count(0)
         expect(page.locator("#report")).to_have_attribute("data-month", "2026-05")
+        expect(page.locator("#report")).to_have_attribute("data-mode", mode)
     finally:
         if pending and not old_request_handled:
             pending[0].abort("failed")
@@ -381,3 +405,95 @@ def test_a_category_detail_is_readable_at_phone_width(
     ).to_be_visible()
     expect(page.locator("#detail-rows")).to_contain_text("Utilities")
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+
+def test_advanced_mode_is_keyboard_accessible_and_survives_history(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+    page.get_by_label("Måned", exact=True).select_option("2026-04")
+    page.wait_for_function("location.search.includes('month=2026-04')")
+
+    advanced = page.get_by_role("radio", name="Avanceret")
+    advanced.focus()
+    page.keyboard.press("Space")
+    expect(advanced).to_be_checked()
+    expect(page.locator("#report")).to_have_attribute("data-mode", "advanced")
+    expect(page.locator("#report")).to_have_attribute("data-tab", "overview")
+    expect(page.get_by_role("link", name="Detaljer")).to_have_count(0)
+    expect(page.get_by_role("link", name="Kontrol")).to_have_count(0)
+    expect(page).to_have_url(
+        re.compile(r".*month=2026-04&mode=advanced&tab=overview.*")
+    )
+    page.set_viewport_size({"width": 390, "height": 844})
+    expect(page.get_by_role("group", name="Visning")).to_be_visible()
+    expect(page.get_by_label("Måned", exact=True)).to_be_visible()
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+    rent = page.get_by_role("link", name="Rent")
+    rent.focus()
+    page.keyboard.press("Enter")
+    expect(page.get_by_role("heading", name="Rent, april 2026")).to_be_visible()
+    expect(page).to_have_url(re.compile(r".*mode=advanced&tab=overview.*"))
+
+    page.go_back()
+    expect(page.get_by_label("Måned", exact=True)).to_have_value("2026-04")
+    expect(page.get_by_role("radio", name="Avanceret")).to_be_checked()
+    expect(page.locator("#report")).to_have_attribute("data-mode", "advanced")
+    assert "25.000" not in str(page.evaluate("history.state"))
+
+    page.go_forward()
+    expect(page.get_by_role("heading", name="Rent, april 2026")).to_be_visible()
+    back = page.get_by_role("link", name="Tilbage til oversigten")
+    back.focus()
+    page.keyboard.press("Enter")
+    expect(page.get_by_role("radio", name="Avanceret")).to_be_checked()
+    expect(page.locator("#report")).to_have_attribute("data-mode", "advanced")
+
+
+def test_empty_switches_and_basic_explanation_restore_the_pinned_advanced_view(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+    page.get_by_label("Måned", exact=True).select_option("2026-03")
+    page.wait_for_function("location.search.includes('month=2026-03')")
+    advanced = page.get_by_role("radio", name="Avanceret")
+    advanced.focus()
+    page.keyboard.press("Space")
+    expect(advanced).to_be_checked()
+
+    explanation = page.get_by_role("link", name="Hvorfor tallene er ufuldstændige")
+    explanation.focus()
+    page.keyboard.press("Enter")
+    expect(
+        page.get_by_role("heading", name="Om tallene for marts 2026")
+    ).to_be_visible()
+    page.go_back()
+    expect(advanced).to_be_checked()
+    expect(page.get_by_label("Måned", exact=True)).to_have_value("2026-03")
+
+    page.get_by_label("Joint current").uncheck()
+    page.get_by_label("Joint savings").uncheck()
+    page.wait_for_function("!location.search.includes('account=')")
+    expect(page.locator("#report-region")).to_contain_text("Vælg mindst én konto.")
+
+    simple = page.get_by_role("radio", name="Enkel")
+    simple.focus()
+    page.keyboard.press("Space")
+    expect(simple).to_be_checked()
+    expect(page).to_have_url(re.compile(r".*month=2026-03&mode=simple&tab=overview.*"))
+
+    advanced.focus()
+    page.keyboard.press("Space")
+    expect(advanced).to_be_checked()
+    expect(page).to_have_url(
+        re.compile(r".*month=2026-03&mode=advanced&tab=overview.*")
+    )
+
+    page.get_by_label("Joint current").check()
+    page.wait_for_function("location.search.includes('account=joint-current')")
+    expect(page.get_by_role("radio", name="Avanceret")).to_be_checked()
+    expect(page.locator("#report")).to_have_attribute("data-mode", "advanced")
+    expect(page.locator("#report")).to_have_attribute("data-tab", "overview")
