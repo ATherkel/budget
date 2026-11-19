@@ -3,8 +3,8 @@
 {% block head %}
 {# No page snapshots in browser storage: a history miss reloads the page. #}
 <meta name="htmx-config" content='{"historyCacheSize": 0, "refreshOnHistoryMiss": true}'>
-<script src="/static/htmx.min.js" defer></script>
-<script src="/static/app.js" defer></script>
+<script src="{{ 'htmx.min.js' | static_url }}" defer></script>
+<script src="{{ 'app.js' | static_url }}" defer></script>
 {% endblock %}
 {% block header_actions %}
 <a class="header-link" href="/">Nyeste data</a>

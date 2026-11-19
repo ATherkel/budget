@@ -4,9 +4,11 @@
 It reads Gold only through analytics, opened read-only from one profile.
 """
 
+import hashlib
 from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from datetime import date, datetime
+from functools import cache
 from pathlib import Path
 from typing import Annotated, Self
 from urllib.parse import urlencode
@@ -53,6 +55,27 @@ _TEMPLATES = Environment(
     autoescape=select_autoescape(),
 )
 _TEMPLATES.filters["amount"] = display.amount
+
+
+@cache
+def _static_digest(name: str) -> str:
+    """Return the start of static file `name`'s SHA-256, read once per process.
+
+    An edited file therefore gets its new address after a restart.
+    """
+    return hashlib.sha256((_STATIC / name).read_bytes()).hexdigest()[:12]
+
+
+def _static_url(name: str) -> str:
+    """Return the address of static file `name`, named by its content.
+
+    A browser that cached an older file under a bare address could keep
+    running it after a deploy.
+    """
+    return f"/static/{name}?v={_static_digest(name)}"
+
+
+_TEMPLATES.filters["static_url"] = _static_url
 _TEMPLATES.filters["signed_amount"] = display.signed_amount
 _TEMPLATES.filters["danish_list"] = display.danish_list
 
