@@ -10,6 +10,7 @@ from budget.gold.models import (
     GoldAccount,
     GoldCategory,
     GoldCategoryAllocation,
+    GoldOwner,
     GoldPublication,
     GoldTransaction,
     GoldTransactionLineage,
@@ -23,6 +24,7 @@ class GoldRecords:
     """The consumer records of one build; a kind left unnamed is empty."""
 
     accounts: Sequence[GoldAccount] = ()
+    owners: Sequence[GoldOwner] = ()
     categories: Sequence[GoldCategory] = ()
     transactions: Sequence[GoldTransaction] = ()
     category_allocations: Sequence[GoldCategoryAllocation] = ()
@@ -107,6 +109,10 @@ class GoldResult:
     def accounts(self) -> Sequence[GoldAccount]:
         """Return every account inside the reporting boundary."""
         return self._records.accounts
+
+    def owners(self) -> Sequence[GoldOwner]:
+        """Return every declared owner, in display order."""
+        return self._records.owners
 
     def categories(self) -> Sequence[GoldCategory]:
         """Return every assignable category."""

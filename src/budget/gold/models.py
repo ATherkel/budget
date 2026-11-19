@@ -11,7 +11,6 @@ from decimal import Decimal
 from typing import Literal, Self
 
 type AccountType = Literal["current", "savings"]
-type OwnershipScope = Literal["household", "person"]
 type CategoryDirection = Literal["income", "expense"]
 type TransactionType = Literal[
     "income", "expense", "refund", "transfer", "adjustment", "unknown"
@@ -59,11 +58,20 @@ class GoldAccount:
     account_id: str
     display_name: str
     account_type: AccountType
-    ownership_scope: OwnershipScope
+    owner_id: str
     currency: str
     closed_on: date | None
     coverage_start: date | None
     evidence_through: date | None
+
+
+@dataclass(frozen=True)
+class GoldOwner:
+    """One owner the household declares; `display_order` counts from 1 (Type 1)."""
+
+    owner_id: str
+    display_name: str
+    display_order: int
 
 
 @dataclass(frozen=True)

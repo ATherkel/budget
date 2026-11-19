@@ -14,7 +14,6 @@ from typing import Literal
 from budget.gold import (
     AccountType,
     Coverage,
-    OwnershipScope,
     PublicationKind,
     ReportingMonth,
 )
@@ -58,7 +57,7 @@ class SelectableAccount:
     account_id: str
     display_name: str
     account_type: AccountType
-    ownership_scope: OwnershipScope
+    owner_id: str
     currency: str
 
 
@@ -70,6 +69,15 @@ class SelectionOptions:
     accounts: tuple[SelectableAccount, ...]
     first_month: ReportingMonth
     last_month: ReportingMonth
+    owners: tuple["SelectableOwner", ...] = ()
+
+
+@dataclass(frozen=True)
+class SelectableOwner:
+    """One owner a page may select by; `SelectionOptions.owners` is in display order."""
+
+    owner_id: str
+    display_name: str
 
 
 @dataclass(frozen=True)

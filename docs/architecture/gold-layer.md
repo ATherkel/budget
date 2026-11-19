@@ -55,10 +55,11 @@ would count once per transaction.
 
 ## Dimensions
 
-- **Account.** Only accounts inside the reporting boundary (`ownership_scope`
-  `household` or `person`), of type `current` or `savings`. No person dimension
-  or hierarchy; `account_type` is the only grouping. `closed_on` ends the
-  managed period.
+- **Account.** Only accounts inside the reporting boundary, of type `current`
+  or `savings`. No hierarchy; accounts group by `account_type` and by owner.
+  `closed_on` ends the managed period.
+- **Owner.** The household's declared owners, in display order. Each account
+  names one ([`gold-contract.md`](gold-contract.md#goldowner)).
 - **Category.** A fixed two-level hierarchy, group → category, flattened onto
   the category row. Only categories are assigned; groups are for rollups.
 - **Date.** A `date` is its own conformed key, and `ReportingMonth` derives

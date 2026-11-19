@@ -96,7 +96,8 @@ What a page may select within one publication on one reference date.
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `publication` | `ReportPublication` | The publication the options belong to. |
-| `accounts` | list of `SelectableAccount` | Every `GoldAccount` in the publication, ordered by `account_id`: `account_id`, `display_name`, `account_type`, `ownership_scope`, `currency`. Every Gold account is inside the Reporting boundary, so this is "all imported accounts". |
+| `accounts` | list of `SelectableAccount` | Every `GoldAccount` in the publication, ordered by `account_id`: `account_id`, `display_name`, `account_type`, `owner_id`, `currency`. Every Gold account is inside the Reporting boundary, so this is "all imported accounts". |
+| `owners` | list of `SelectableOwner` | Every `GoldOwner` in the publication, in display order: `owner_id`, `display_name`. A page selects an owner as the set of accounts naming it. A publication stored before owners were recorded has none, and its accounts name `legacy-unrecorded` ([`gold-contract.md`](gold-contract.md#goldaccount)) until the next rebuild. |
 | `first_month` | `ReportingMonth` | The earliest month in which any account has a `MonthlyBalanceSnapshot` row. The month of the reference date when no account has one yet. |
 | `last_month` | `ReportingMonth` | The month of the reference date. |
 

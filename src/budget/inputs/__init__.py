@@ -8,7 +8,12 @@ naming the file, the entry and the problem (`operations.md`, *Household
 Inputs*).
 """
 
-from budget.inputs.accounts import Account, MisfiledExportError, load_accounts
+from budget.inputs.accounts import (
+    Account,
+    MisfiledExportError,
+    load_accounts,
+    load_owners,
+)
 from budget.inputs.document import ConfigurationError
 from budget.inputs.rules import (
     AssignAdjustment,
@@ -39,4 +44,5 @@ __all__ = [
     "fold",
     "load_accounts",
     "load_configuration",
+    "load_owners",
 ]

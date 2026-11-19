@@ -38,9 +38,12 @@ format = 1
 [account.joint-savings]
 display_name = "Joint savings"
 account_type = "savings"
-ownership_scope = "household"
+owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
+
+[owners]
+household = "Fælles"
 """
 # The imported account, with a currency the ISO 4217 table does not know.
 UNKNOWN_CURRENCY = f"""\
@@ -49,9 +52,12 @@ format = 1
 [account.joint-current]
 display_name = "Joint current"
 account_type = "current"
-ownership_scope = "household"
+owner = "household"
 currency = "{PRIVATE_CURRENCY}"
 source_format = "danske-csv-v1"
+
+[owners]
+household = "Fælles"
 """
 # Nothing a bank said, and no bank account number, may reach the operator.
 LEAKED = ("-45,00", "955,00", "Café", "Dagligvarer", BANK_NUMBER)

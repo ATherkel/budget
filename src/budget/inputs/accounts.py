@@ -26,10 +26,15 @@ from budget.inputs.fields import (
     FieldRule,
     entry_problems,
     is_date,
+    is_durable_id,
     is_text,
     one_of,
 )
 from budget.profiles import ACCOUNTS_FILE_NAME, Profile
+
+# The owner Gold migration 0002 gives every account stored before owners were
+# recorded; a migration is frozen text, so it spells the literal itself.
+LEGACY_OWNER_ID = "legacy-unrecorded"
 
 
 class MisfiledExportError(ValueError):
@@ -61,7 +66,7 @@ class Account:
     account_id: str
     display_name: str
     account_type: Literal["current", "savings"]
-    ownership_scope: Literal["household", "person"]
+    owner: str
     currency: str
     source_format: str
     bank_account_number: str | None = field(default=None, repr=False)
@@ -88,7 +93,6 @@ _FIELDS: Mapping[str, FieldRule] = MappingProxyType(
     {
         "display_name": TEXT,
         "account_type": one_of("current", "savings"),
-        "ownership_scope": one_of("household", "person"),
         "currency": TEXT,
         "source_format": one_of(*source_formats()),
         "bank_account_number": FieldRule(
@@ -96,6 +100,11 @@ _FIELDS: Mapping[str, FieldRule] = MappingProxyType(
         ),
         "closed_on": FieldRule(
             is_date, "must be a date such as 2027-06-30", required=False
+        ),
+        "owner": FieldRule(is_text, "must be a non-empty string", required=False),
+        # Replaced by `owner`: a file that still carries it is told so.
+        "ownership_scope": FieldRule(
+            lambda _: False, "is replaced by owner: remove it", required=False
         ),
     }
 )
@@ -106,12 +115,22 @@ def _entry_problem(account_id: str, text: str) -> str:
     return file_problem(ACCOUNTS_FILE_NAME, f'account "{account_id}": {text}')
 
 
-def _entry_problems(account_id: str, entry: object) -> list[str]:
+def _entry_problems(
+    account_id: str, entry: object, owners: Mapping[str, object]
+) -> list[str]:
     """List one entry's problems: its ID, then its keys, then what is missing."""
-    return [
-        _entry_problem(account_id, problem)
-        for problem in entry_problems(account_id, entry, _FIELDS, "joint-current")
-    ]
+    problems = entry_problems(account_id, entry, _FIELDS, "joint-current")
+    if isinstance(entry, dict) and "owner" not in entry:
+        problems.append(
+            'owner is missing: add owner = "<id>" naming an owner in [owners]'
+        )
+    elif (
+        isinstance(entry, dict)
+        and is_text(owner := entry["owner"])
+        and owner not in owners
+    ):
+        problems.append(f'owner "{owner}" is not declared in [owners]')
+    return [_entry_problem(account_id, problem) for problem in problems]
 
 
 def _number_shape_problems(account_id: str, entry: object) -> list[str]:
@@ -165,7 +184,7 @@ def _account(account_id: str, entry: Mapping[str, Any]) -> Account:
         account_id=account_id,
         display_name=entry["display_name"],
         account_type=entry["account_type"],
-        ownership_scope=entry["ownership_scope"],
+        owner=entry["owner"],
         currency=entry["currency"],
         source_format=entry["source_format"],
         bank_account_number=entry.get("bank_account_number"),
@@ -173,14 +192,57 @@ def _account(account_id: str, entry: Mapping[str, Any]) -> Account:
     )
 
 
+def _owners(document: Mapping[str, object]) -> tuple[dict[str, str], list[str]]:
+    """Return the file's `[owners]`, or the problems with its shape and entries.
+
+    A key holding anything but a table of names gives no owners.
+    """
+    owners = document.get("owners", {})
+    if not isinstance(owners, dict):
+        problem = "owners must be one [owners] table of owner ID = display name"
+        return {}, [file_problem(ACCOUNTS_FILE_NAME, problem)]
+    problems = []
+    for owner_id, name in owners.items():
+        if not is_durable_id(owner_id):
+            problems.append(
+                f'owner "{owner_id}": the ID must be lowercase words joined by '
+                "hyphens, such as household"
+            )
+        elif owner_id == LEGACY_OWNER_ID:
+            problems.append(
+                f'owner "{owner_id}": the ID is reserved for accounts published '
+                "before owners were recorded"
+            )
+        if not is_text(name):
+            problems.append(
+                f'owner "{owner_id}": the display name must be a non-empty string'
+            )
+    return dict[str, str](owners), [
+        file_problem(ACCOUNTS_FILE_NAME, problem) for problem in problems
+    ]
+
+
+def load_owners(profile: Profile) -> Mapping[str, str]:
+    """Load the profile's `[owners]`: owner ID to display name, in display order."""
+    document = read_document(profile.accounts_file, ACCOUNTS_FILE_NAME)
+    owners, problems = _owners(document)
+    if problems:
+        raise ConfigurationError(tuple(problems))
+    return MappingProxyType(owners)
+
+
 def load_accounts(profile: Profile) -> Mapping[str, Account]:
     """Load and validate the profile's `accounts.toml`, keyed by account ID."""
     document = read_document(profile.accounts_file, ACCOUNTS_FILE_NAME)
-    problems = unknown_top_level_keys(document, ACCOUNTS_FILE_NAME, ("account",))
+    problems = unknown_top_level_keys(
+        document, ACCOUNTS_FILE_NAME, ("account", "owners")
+    )
     entries, shape_problems = keyed_tables(document, ACCOUNTS_FILE_NAME, "account")
     problems.extend(shape_problems)
+    owners, owner_problems = _owners(document)
+    problems.extend(owner_problems)
     for account_id, entry in entries.items():
-        problems.extend(_entry_problems(account_id, entry))
+        problems.extend(_entry_problems(account_id, entry, owners))
         problems.extend(_number_shape_problems(account_id, entry))
     problems.extend(_shared_number_problems(entries))
     if problems:

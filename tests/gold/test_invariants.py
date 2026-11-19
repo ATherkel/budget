@@ -44,7 +44,7 @@ def account(
         account_id=account_id,
         display_name=f"Synthetic {account_id}",
         account_type="current",
-        ownership_scope="household",
+        owner_id="household",
         currency="DKK",
         closed_on=closed_on,
         coverage_start=date(2026, 1, 1),

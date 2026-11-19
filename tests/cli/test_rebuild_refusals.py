@@ -24,9 +24,12 @@ format = 1
 [account.joint-offset]
 display_name = "Joint offset"
 account_type = "current"
-ownership_scope = "household"
+owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
+
+[owners]
+household = "Fælles"
 """
 SAVINGS_ROWS = (("03.02.2026", "RENTE", "10,00", "10,00"),)
 
@@ -75,7 +78,12 @@ class UndeclaredAccountTests(unittest.TestCase):
             registry.write_text(ONLY_ANOTHER_ACCOUNT, encoding="utf-8")
             assert rebuild(household.profile_file)[0] == EXIT_REFUSED_INPUT
             # The savings account closed after its last transaction.
-            registry.write_text(ACCOUNTS + "closed_on = 2026-06-30\n", encoding="utf-8")
+            registry.write_text(
+                ACCOUNTS.replace(
+                    "\n\n[owners]", "\nclosed_on = 2026-06-30\n\n[owners]"
+                ),
+                encoding="utf-8",
+            )
 
             status, stdout, stderr = rebuild(household.profile_file)
 

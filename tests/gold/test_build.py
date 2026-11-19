@@ -16,6 +16,7 @@ import pytest
 
 from budget.gold import (
     GoldAccount,
+    GoldOwner,
     GoldResult,
     GoldTransaction,
     MonthlyBalanceSnapshot,
@@ -50,12 +51,37 @@ def test_the_registry_and_taxonomy_are_published_as_dimensions() -> None:
     assert Counter(result.categories()) == Counter(CATEGORIES)
 
 
+def test_each_gold_account_publishes_its_accounts_owner() -> None:
+    # The savings account is one member's, though the household shares the other.
+    accounts = {
+        CURRENT: replace(REGISTRY[CURRENT], owner="household"),
+        SAVINGS: replace(REGISTRY[SAVINGS], owner="alex"),
+    }
+
+    result = build_from(accounts=accounts)
+
+    assert {account.account_id: account.owner_id for account in result.accounts()} == {
+        CURRENT: "household",
+        SAVINGS: "alex",
+    }
+
+
+def test_the_owners_are_published_in_their_display_order() -> None:
+    # Declared out of alphabetical order: the declaration is the display order.
+    result = build_from(owners={"household": "Fælles", "alex": "Alex"})
+
+    assert list(result.owners()) == [
+        GoldOwner(owner_id="household", display_name="Fælles", display_order=1),
+        GoldOwner(owner_id="alex", display_name="Alex", display_order=2),
+    ]
+
+
 def test_an_account_with_no_export_is_published_without_evidence() -> None:
     unimported = Account(
         account_id="own-savings",
         display_name="Own savings",
         account_type="savings",
-        ownership_scope="person",
+        owner="person",
         currency="DKK",
         source_format="danske-csv-v1",
     )
@@ -69,7 +95,7 @@ def test_an_account_with_no_export_is_published_without_evidence() -> None:
                 account_id="own-savings",
                 display_name="Own savings",
                 account_type="savings",
-                ownership_scope="person",
+                owner_id="person",
                 currency="DKK",
                 closed_on=None,
                 coverage_start=None,

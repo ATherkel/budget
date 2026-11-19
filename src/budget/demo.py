@@ -9,12 +9,15 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from hashlib import sha256
 from pathlib import Path
+from types import MappingProxyType
+from typing import Final
 
 from budget.dashboard.passphrase import set_passphrase
 from budget.gold import (
     GoldAccount,
     GoldCategory,
     GoldCategoryAllocation,
+    GoldOwner,
     GoldPublication,
     GoldRecords,
     GoldResult,
@@ -62,6 +65,10 @@ def _toml_path(path: Path) -> str:
     return json.dumps(path.as_posix(), ensure_ascii=False)
 
 
+# The one owner the demo's synthetic accounts share.
+_OWNERS: Final = MappingProxyType({"household": "Fælles"})
+
+
 def _accounts() -> tuple[Account, ...]:
     """Return the two synthetic accounts shown by the demo dashboard."""
     return (
@@ -69,7 +76,7 @@ def _accounts() -> tuple[Account, ...]:
             account_id="demo-current",
             display_name="Demo current",
             account_type="current",
-            ownership_scope="household",
+            owner="household",
             currency="DKK",
             source_format="synthetic",
         ),
@@ -77,7 +84,7 @@ def _accounts() -> tuple[Account, ...]:
             account_id="demo-savings",
             display_name="Demo savings",
             account_type="savings",
-            ownership_scope="household",
+            owner="household",
             currency="DKK",
             source_format="synthetic",
         ),
@@ -91,7 +98,7 @@ def _gold_records(accounts: tuple[Account, ...], today: date) -> GoldRecords:
             account_id=account.account_id,
             display_name=account.display_name,
             account_type=account.account_type,
-            ownership_scope=account.ownership_scope,
+            owner_id=account.owner,
             currency=account.currency,
             closed_on=None,
             coverage_start=date(today.year, 1, 1),
@@ -119,6 +126,12 @@ def _gold_records(accounts: tuple[Account, ...], today: date) -> GoldRecords:
     ]
     return GoldRecords(
         accounts=gold_accounts,
+        owners=tuple(
+            GoldOwner(owner_id, display_name, display_order)
+            for display_order, (owner_id, display_name) in enumerate(
+                _OWNERS.items(), start=1
+            )
+        ),
         monthly_balances=balances,
         categories=_CATEGORIES,
         transactions=tuple(transaction for transaction, _ in entries),
@@ -160,6 +173,7 @@ def _configuration(accounts: tuple[Account, ...]) -> ConfigurationSnapshot:
         accounts={account.account_id: account for account in accounts},
         taxonomy=Taxonomy(groups={}, categories={}),
         rules={},
+        owners=_OWNERS,
     )
 
 
