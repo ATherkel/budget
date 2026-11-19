@@ -16,6 +16,7 @@ from budget.gold import (
     Coverage,
     PublicationKind,
     ReportingMonth,
+    TransactionType,
 )
 
 type AccountMonthStatus = Literal["partial", "no_data", "outside_history"]
@@ -155,6 +156,7 @@ class MonthlyOverview:
 
 type DetailKind = Literal["category", "group"]
 type DetailScope = Literal["month", "year_to_date"]
+type TransferPairing = Literal["paired", "one_sided"]
 
 
 @dataclass(frozen=True)
@@ -196,6 +198,66 @@ class SpendingDetail:
     rows: tuple[SpendingDetailRow, ...]
     coverage: ReportCoverage
     provisional: Provisional | None
+
+
+@dataclass(frozen=True)
+class BankBalanceObservation:
+    """The bank-stated balance after one dated transaction."""
+
+    transaction_date: date
+    balance_after: Decimal | None
+
+
+@dataclass(frozen=True)
+class MonthlyBalanceObservation:
+    """One account-month's published snapshot, separate from dated observations."""
+
+    opening_balance: Decimal | None
+    closing_balance: Decimal | None
+    coverage: Coverage
+    late_bookings_settled: bool
+
+
+@dataclass(frozen=True)
+class AccountActivitySnapshot:
+    """One selected account's dated observations and published monthly snapshot."""
+
+    account_id: str
+    display_name: str
+    dated_balance: BankBalanceObservation | None
+    earlier_observation: BankBalanceObservation | None
+    monthly_snapshot: MonthlyBalanceObservation | None
+    evidence_through: date | None
+    coverage: Coverage | Literal["outside_history"]
+
+
+@dataclass(frozen=True)
+class ActivityRow:
+    """One selected transaction, preserving its published type and public pairing."""
+
+    transaction_date: date
+    description: str
+    account_id: str
+    account_display_name: str
+    amount: Decimal
+    transaction_type: TransactionType
+    transfer_pairing: TransferPairing | None
+    counterpart_account_id: str | None
+    counterpart_account_display_name: str | None
+    counterpart_transaction_date: date | None
+
+
+@dataclass(frozen=True)
+class AccountActivity:
+    """Dated balances and transaction activity for the selected account-month."""
+
+    context: ReportContext
+    publication: ReportPublication
+    currency: str
+    accounts: tuple[AccountActivitySnapshot, ...]
+    coverage: ReportCoverage
+    provisional: Provisional | None
+    transactions: tuple[ActivityRow, ...] = ()
 
 
 class InvalidSelectionError(ValueError):
