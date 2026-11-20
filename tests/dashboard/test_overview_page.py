@@ -229,7 +229,7 @@ def test_scripts_and_styles_are_addressed_by_their_content(
     }
 
 
-def test_a_screen_reader_hears_which_account_each_kun_link_picks(
+def test_a_screen_reader_hears_which_account_each_only_link_picks(
     client: TestClient,
 ) -> None:
     # Listed on their own, the links would all read "kun".

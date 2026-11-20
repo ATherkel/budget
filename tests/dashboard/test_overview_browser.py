@@ -163,7 +163,7 @@ def test_empty_selection_survives_reload_back_and_forward(
     expect(page.get_by_label("Joint savings")).not_to_be_checked()
 
 
-def test_kun_ticks_only_its_account_and_updates_the_report_in_place(
+def test_only_ticks_only_its_account_and_updates_the_report_in_place(
     page: Page,
     dashboard: BrowserDashboard,
 ) -> None:
@@ -189,7 +189,7 @@ def test_kun_ticks_only_its_account_and_updates_the_report_in_place(
     assert page.evaluate("window.stillThisPage === true"), "the page was reloaded"
 
 
-def test_ingen_and_alle_change_every_box_in_place_and_move_the_address(
+def test_none_and_all_change_every_box_in_place_and_move_the_address(
     page: Page,
     dashboard: BrowserDashboard,
 ) -> None:
