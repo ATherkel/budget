@@ -51,6 +51,39 @@ if (selection !== null && reportRegion !== null) {
     return xhr === undefined ? undefined : generations.get(xhr);
   };
 
+  // A shortcut link names its selection in its address. With scripts, tick
+  // those boxes and fetch the report as a checkbox change would.
+  selection.addEventListener("click", (event) => {
+    const shortcut = event.target.closest("a[data-account-shortcut]");
+    // A click meant for a new tab or window keeps this page as it is.
+    const plainClick =
+      event.button === 0 &&
+      !(event.ctrlKey || event.metaKey || event.shiftKey || event.altKey);
+    if (shortcut === null || !plainClick) {
+      return;
+    }
+    event.preventDefault();
+    const wanted = new URL(shortcut.href).searchParams.getAll("account");
+    for (const box of selection.querySelectorAll('input[name="account"]')) {
+      box.checked = wanted.includes(box.value);
+    }
+    htmx.trigger(selection, "change");
+  });
+
+  // The shortcuts sit outside the swapped report, so their addresses follow
+  // the month and mode by hand: one opened in a new tab shows this page's.
+  selection.addEventListener("change", (event) => {
+    const name = event.target.name;
+    if (name !== "month" && name !== "mode") {
+      return;
+    }
+    for (const shortcut of selection.querySelectorAll("a[data-account-shortcut]")) {
+      const address = new URL(shortcut.href);
+      address.searchParams.set(name, event.target.value);
+      shortcut.href = address.pathname + address.search;
+    }
+  });
+
   document.body.addEventListener("htmx:beforeRequest", (event) => {
     if (event.detail.elt !== selection && event.detail.target !== reportRegion) {
       return;

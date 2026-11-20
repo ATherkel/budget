@@ -4,9 +4,11 @@
 It reads Gold only through analytics, opened read-only from one profile.
 """
 
+import hashlib
 from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from datetime import date, datetime
+from functools import cache
 from pathlib import Path
 from typing import Annotated, Literal, Self
 from urllib.parse import urlencode
@@ -69,6 +71,27 @@ _TEMPLATES = Environment(
     autoescape=select_autoescape(),
 )
 _TEMPLATES.filters["amount"] = display.amount
+
+
+@cache
+def _static_digest(name: str) -> str:
+    """Return the start of static file `name`'s SHA-256, read once per process.
+
+    An edited file therefore gets its new address after a restart.
+    """
+    return hashlib.sha256((_STATIC / name).read_bytes()).hexdigest()[:12]
+
+
+def _static_url(name: str) -> str:
+    """Return the address of static file `name`, named by its content.
+
+    A browser that cached an older file under a bare address could keep
+    running it after a deploy.
+    """
+    return f"/static/{name}?v={_static_digest(name)}"
+
+
+_TEMPLATES.filters["static_url"] = _static_url
 _TEMPLATES.filters["signed_amount"] = display.signed_amount
 _TEMPLATES.filters["danish_list"] = display.danish_list
 _VIEW_STATE_CONTROLS = _TEMPLATES.from_string(
@@ -317,21 +340,29 @@ def _render_overview(
         if selected_accounts
         else None
     )
-    canonical_url = _pinned_url(
-        PinnedAddress(
-            publication_id,
-            reference_date,
-            tuple(selected_accounts),
-            selected_month,
-        ),
-        view=requested.view,
-    )
+
+    def pinned_with(accounts: Collection[str]) -> str:
+        """Return this page's address with `accounts` selected instead."""
+        return _pinned_url(
+            PinnedAddress(
+                publication_id, reference_date, tuple(accounts), selected_month
+            ),
+            view=requested.view,
+        )
+
+    canonical_url = pinned_with(selected_accounts)
     return _TEMPLATES.get_template("overview.html").render(
         publication_id=publication_id,
         reference_date=reference_date.isoformat(),
         canonical_url=canonical_url,
         accounts=options.accounts,
         selected_accounts=selected_accounts,
+        only_urls={
+            account.account_id: pinned_with([account.account_id])
+            for account in options.accounts
+        },
+        all_url=pinned_with([account.account_id for account in options.accounts]),
+        none_url=pinned_with([]),
         months=[
             (display.month_value(month), display.month_label(month)) for month in months
         ],

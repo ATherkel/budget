@@ -3,8 +3,8 @@
 {% block head %}
 {# No page snapshots in browser storage: a history miss reloads the page. #}
 <meta name="htmx-config" content='{"historyCacheSize": 0, "refreshOnHistoryMiss": true}'>
-<script src="/static/htmx.min.js" defer></script>
-<script src="/static/app.js" defer></script>
+<script src="{{ 'htmx.min.js' | static_url }}" defer></script>
+<script src="{{ 'app.js' | static_url }}" defer></script>
 {% endblock %}
 {% block header_actions %}
 <a class="header-link" href="/">Nyeste data</a>
@@ -50,11 +50,15 @@
 </fieldset>
 <fieldset class="account-fieldset">
 <legend>Konti <span class="legend-note">Vælg mindst én</span></legend>
+<p class="account-shortcuts"><a id="accounts-all" href="{{ all_url }}" data-account-shortcut>Alle</a> <a id="accounts-none" href="{{ none_url }}" data-account-shortcut>Ingen</a></p>
 {% for account in accounts %}
+<div class="account-row">
 <label class="account-option">
   <input type="checkbox" name="account" value="{{ account.account_id }}"{% if account.account_id in selected_accounts %} checked{% endif %}>
-  <span>{{ account.display_name }}</span>
+  <span id="name-{{ account.account_id }}">{{ account.display_name }}</span>
 </label>
+<a class="account-only" id="only-{{ account.account_id }}" href="{{ only_urls[account.account_id] }}" aria-describedby="name-{{ account.account_id }}" data-account-shortcut>kun</a>
+</div>
 {% endfor %}
 </fieldset>
 <button class="button button--primary" type="submit">Vis rapport</button>

@@ -6,6 +6,8 @@ Selection Transitions". The household's Gold holds the synthetic worked
 example, published twice; the dashboard is driven in-process.
 """
 
+import hashlib
+import re
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,6 +15,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+import budget.dashboard
 from budget.dashboard import create_app
 from budget.gold import GoldResult
 from budget.gold.store import GoldStore
@@ -21,6 +24,9 @@ from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
 from tests.dashboard.pages import Page, read
 from tests.gold.publishing import CONFIGURATION, RECIPE
 from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
+
+# The default view every pinned address ends with.
+VIEW = "&mode=simple&tab=overview&comparison=amounts"
 
 # 00:30 on 1 June in Copenhagen, still 31 May in UTC.
 JUST_AFTER_MIDNIGHT = datetime(2026, 5, 31, 22, 30, tzinfo=UTC)
@@ -172,6 +178,96 @@ def test_a_page_opened_with_a_pinned_selection_keeps_it(client: TestClient) -> N
         page.selected("month"),
         page.offered("month")[-1],
     ) == ("1", "2026-05-14", {SAVINGS}, [("2026-04", "april 2026")], "2026-05")
+
+
+def test_each_account_offers_a_link_to_the_same_page_with_only_that_account(
+    client: TestClient,
+) -> None:
+    # A plain link, so a page without scripts reloads with the one account; the
+    # pin and month stay as they are, even when the account was not ticked.
+    page = read(
+        client.get(
+            "/",
+            params={
+                "publication": "1",
+                "reference_date": "2026-05-14",
+                "account": [CURRENT],
+                "month": "2026-04",
+            },
+        ).text
+    )
+
+    pin = "/?publication=1&reference_date=2026-05-14"
+    assert (
+        page.attributes(f"only-{CURRENT}").get("href"),
+        page.attributes(f"only-{SAVINGS}").get("href"),
+        page.text_of(f"only-{SAVINGS}"),
+    ) == (
+        f"{pin}&account=joint-current&month=2026-04{VIEW}",
+        f"{pin}&account=joint-savings&month=2026-04{VIEW}",
+        "kun",
+    )
+
+
+def test_scripts_and_styles_are_addressed_by_their_content(
+    client: TestClient,
+) -> None:
+    # A browser that cached an older file under the same address would keep
+    # running it after a deploy, so each address names its file's SHA-256.
+    html = client.get("/").text
+    shipped = Path(budget.dashboard.__file__).parent / "static"
+
+    addressed = {}
+    for address in re.findall(r'(?:src|href)="(/static/[^"]+)"', html):
+        name, _, version = address.removeprefix("/static/").partition("?v=")
+        served = client.get(address).content == (shipped / name).read_bytes()
+        addressed[name] = (version, served)
+
+    assert addressed == {
+        name: (hashlib.sha256((shipped / name).read_bytes()).hexdigest()[:12], True)
+        for name in ("app.css", "htmx.min.js", "app.js")
+    }
+
+
+def test_a_screen_reader_hears_which_account_each_only_link_picks(
+    client: TestClient,
+) -> None:
+    # Listed on their own, the links would all read "kun".
+    page = read(client.get("/").text)
+
+    described_by = page.attributes(f"only-{SAVINGS}").get("aria-describedby", "")
+    assert page.text_of(described_by) == "Joint savings"
+
+
+def test_the_account_list_offers_links_to_every_account_and_to_none(
+    client: TestClient,
+) -> None:
+    # From a one-account page: "Alle" names every account, and "Ingen"
+    # is the empty selection's own page, which shows the prompt.
+    page = read(
+        client.get(
+            "/",
+            params={
+                "publication": "1",
+                "reference_date": "2026-05-14",
+                "account": [SAVINGS],
+                "month": "2026-04",
+            },
+        ).text
+    )
+
+    pin = "/?publication=1&reference_date=2026-05-14"
+    assert (
+        page.attributes("accounts-all").get("href"),
+        page.text_of("accounts-all"),
+        page.attributes("accounts-none").get("href"),
+        page.text_of("accounts-none"),
+    ) == (
+        f"{pin}&account=joint-current&account=joint-savings&month=2026-04{VIEW}",
+        "Alle",
+        f"{pin}&month=2026-04{VIEW}",
+        "Ingen",
+    )
 
 
 def test_an_invalid_selection_is_explained_naming_every_rule_it_breaks(
@@ -498,7 +594,7 @@ def test_the_overview_loads_htmx_and_its_form_asks_for_the_report(
     form = read(html).attributes("selection")
 
     assert (
-        '<script src="/static/htmx.min.js"' in html,
+        '<script src="/static/htmx.min.js?v=' in html,
         client.get("/static/htmx.min.js").status_code,
         form.get("hx-get"),
         form.get("hx-target"),
