@@ -25,6 +25,9 @@ from tests.dashboard.pages import Page, read
 from tests.gold.publishing import CONFIGURATION, RECIPE
 from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
 
+# The default view every pinned address ends with.
+VIEW = "&mode=simple&tab=overview&comparison=amounts"
+
 # 00:30 on 1 June in Copenhagen, still 31 May in UTC.
 JUST_AFTER_MIDNIGHT = datetime(2026, 5, 31, 22, 30, tzinfo=UTC)
 
@@ -200,8 +203,8 @@ def test_each_account_offers_a_link_to_the_same_page_with_only_that_account(
         page.attributes(f"only-{SAVINGS}").get("href"),
         page.text_of(f"only-{SAVINGS}"),
     ) == (
-        f"{pin}&account=joint-current&month=2026-04",
-        f"{pin}&account=joint-savings&month=2026-04",
+        f"{pin}&account=joint-current&month=2026-04{VIEW}",
+        f"{pin}&account=joint-savings&month=2026-04{VIEW}",
         "kun",
     )
 
@@ -260,9 +263,9 @@ def test_the_account_list_offers_links_to_every_account_and_to_none(
         page.attributes("accounts-none").get("href"),
         page.text_of("accounts-none"),
     ) == (
-        f"{pin}&account=joint-current&account=joint-savings&month=2026-04",
+        f"{pin}&account=joint-current&account=joint-savings&month=2026-04{VIEW}",
         "Alle",
-        f"{pin}&month=2026-04",
+        f"{pin}&month=2026-04{VIEW}",
         "Ingen",
     )
 

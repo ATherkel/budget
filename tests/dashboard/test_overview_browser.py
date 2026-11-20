@@ -182,7 +182,8 @@ def test_kun_ticks_only_its_account_and_updates_the_report_in_place(
     expect(page).to_have_url(
         re.compile(
             r"/\?publication=2&reference_date=2026-06-01"
-            r"&account=joint-savings&month=2026-06$"
+            r"&account=joint-savings&month=2026-06"
+            r"&mode=simple&tab=overview&comparison=amounts$"
         )
     )
     assert page.evaluate("window.stillThisPage === true"), "the page was reloaded"
@@ -201,7 +202,10 @@ def test_ingen_and_alle_change_every_box_in_place_and_move_the_address(
     expect(page.get_by_label("Joint current")).not_to_be_checked()
     expect(page.get_by_label("Joint savings")).not_to_be_checked()
     expect(page).to_have_url(
-        re.compile(r"/\?publication=2&reference_date=2026-06-01&month=2026-06$")
+        re.compile(
+            r"/\?publication=2&reference_date=2026-06-01&month=2026-06"
+            r"&mode=simple&tab=overview&comparison=amounts$"
+        )
     )
 
     page.locator("#accounts-all").click()
@@ -213,7 +217,8 @@ def test_ingen_and_alle_change_every_box_in_place_and_move_the_address(
     expect(page).to_have_url(
         re.compile(
             r"/\?publication=2&reference_date=2026-06-01"
-            r"&account=joint-current&account=joint-savings&month=2026-06$"
+            r"&account=joint-current&account=joint-savings&month=2026-06"
+            r"&mode=simple&tab=overview&comparison=amounts$"
         )
     )
     assert page.evaluate("window.stillThisPage === true"), "the page was reloaded"
@@ -244,7 +249,7 @@ def test_a_shortcut_names_the_month_shown_after_the_month_changes(
 
     for shortcut in ("#only-joint-savings", "#accounts-all", "#accounts-none"):
         expect(page.locator(shortcut)).to_have_attribute(
-            "href", re.compile(r"&month=2026-05$")
+            "href", re.compile(r"&month=2026-05&")
         )
 
 
