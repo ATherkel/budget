@@ -71,14 +71,15 @@ if (selection !== null && reportRegion !== null) {
   });
 
   // The shortcuts sit outside the swapped report, so their addresses follow
-  // the month by hand: one opened in a new tab shows the month shown here.
+  // the month and mode by hand: one opened in a new tab shows this page's.
   selection.addEventListener("change", (event) => {
-    if (event.target.name !== "month") {
+    const name = event.target.name;
+    if (name !== "month" && name !== "mode") {
       return;
     }
     for (const shortcut of selection.querySelectorAll("a[data-account-shortcut]")) {
       const address = new URL(shortcut.href);
-      address.searchParams.set("month", event.target.value);
+      address.searchParams.set(name, event.target.value);
       shortcut.href = address.pathname + address.search;
     }
   });
