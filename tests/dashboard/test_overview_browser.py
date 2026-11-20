@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlencode
 
 import pytest
 import uvicorn
@@ -131,6 +132,8 @@ def _choose_view(page: Page, mode: str, tab: str) -> None:
         page.keyboard.press("Space")
         if tab == "details":
             page.get_by_role("link", name="Detaljer").click()
+        elif tab == "checks":
+            page.get_by_role("link", name="Kontrol", exact=True).click()
     expect(page.locator("#report")).to_have_attribute("data-mode", mode)
     expect(page.locator("#report")).to_have_attribute("data-tab", tab)
 
@@ -140,6 +143,7 @@ def _choose_view(page: Page, mode: str, tab: str) -> None:
     [
         ("simple", "overview"),
         ("advanced", "details"),
+        ("advanced", "checks"),
     ],
 )
 def test_empty_selection_survives_reload_back_and_forward(
@@ -319,6 +323,7 @@ def test_active_request_failure_is_visible_accessible_and_retryable(
         ("simple", "overview"),
         ("advanced", "overview"),
         ("advanced", "details"),
+        ("advanced", "checks"),
     ],
 )
 def test_a_superseded_failure_cannot_replace_a_newer_successful_report(
@@ -563,7 +568,7 @@ def test_advanced_mode_is_keyboard_accessible_and_survives_history(
     expect(page.locator("#report")).to_have_attribute("data-mode", "advanced")
     expect(page.locator("#report")).to_have_attribute("data-tab", "overview")
     expect(page.get_by_role("link", name="Detaljer")).to_have_count(1)
-    expect(page.get_by_role("link", name="Kontrol")).to_have_count(0)
+    expect(page.get_by_role("link", name="Kontrol", exact=True)).to_have_count(1)
     expect(page).to_have_url(
         re.compile(r".*month=2026-04&mode=advanced&tab=overview.*")
     )
@@ -740,4 +745,175 @@ def test_empty_switches_and_basic_explanation_restore_the_pinned_advanced_view(
     page.wait_for_function("location.search.includes('account=joint-current')")
     expect(page.get_by_role("radio", name="Avanceret")).to_be_checked()
     expect(page.locator("#report")).to_have_attribute("data-mode", "advanced")
+    expect(page.locator("#report")).to_have_attribute("data-tab", "overview")
+
+
+def test_targeted_kontrol_restores_its_origin_through_link_and_history(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+    page.get_by_label("Måned", exact=True).select_option("2026-03")
+    page.wait_for_function("location.search.includes('month=2026-03')")
+
+    origin = page.url
+    target = page.get_by_role("link", name="Se dækning og kontomåneder i Kontrol")
+    target.focus()
+    page.keyboard.press("Enter")
+    expect(page.get_by_role("heading", name="Diagnostik og afstemning")).to_be_visible()
+    expect(page).to_have_url(re.compile(r".*mode=advanced&tab=checks.*"))
+    expect(page.locator("#report")).to_have_attribute("data-tab", "checks")
+    expect(page.locator("#tab-checks")).to_have_attribute("aria-current", "page")
+    expect(
+        page.locator("#diagnostics-reconciliation-joint-current-residual")
+    ).to_contain_text("0,00 kr.")
+    expect(
+        page.locator("#diagnostics-reconciliation-joint-current-opening-gap")
+    ).to_contain_text("\N{MINUS SIGN}500,00 kr.")
+    assert "450" not in str(page.evaluate("history.state"))
+
+    page.go_back()
+    expect(page.get_by_role("radio", name="Enkel")).to_be_checked()
+    expect(page.get_by_label("Måned", exact=True)).to_have_value("2026-03")
+    expect(page.locator("#report")).to_have_attribute("data-tab", "overview")
+
+    page.go_forward()
+    expect(page.locator("#report")).to_have_attribute("data-tab", "checks")
+    page.get_by_label("Måned", exact=True).select_option("2026-04")
+    page.wait_for_function(
+        "location.search.includes('month=2026-04')"
+        " && location.search.includes('tab=checks')"
+    )
+    expect(page.locator("#report")).to_have_attribute("data-month", "2026-04")
+    expect(page.locator("#report")).to_have_attribute("data-tab", "checks")
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    expect(page.locator("#report")).to_be_visible()
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+    back = page.get_by_role("link", name="Tilbage til den forrige visning")
+    back.focus()
+    page.keyboard.press("Enter")
+    expect(page).to_have_url(origin)
+    expect(page.get_by_role("radio", name="Enkel")).to_be_checked()
+    expect(page.get_by_label("Måned", exact=True)).to_have_value("2026-03")
+    expect(page.get_by_label("Joint current")).to_be_checked()
+    expect(page.get_by_label("Joint savings")).to_be_checked()
+
+
+@pytest.mark.parametrize(
+    ("mode", "tab"),
+    [("simple", "overview"), ("advanced", "details")],
+)
+def test_basic_explanation_round_trip_keeps_the_targeted_origin(
+    page: Page,
+    dashboard: BrowserDashboard,
+    mode: str,
+    tab: str,
+) -> None:
+    log_in(page, dashboard)
+    page.get_by_label("Måned", exact=True).select_option("2026-03")
+    page.wait_for_function("location.search.includes('month=2026-03')")
+    if mode == "advanced":
+        page.get_by_role("radio", name="Avanceret").check()
+        page.get_by_role("link", name="Detaljer").click()
+        expect(page.locator("#report")).to_have_attribute("data-tab", "details")
+
+    origin = page.url
+    page.get_by_role("link", name="Se dækning og kontomåneder i Kontrol").click()
+    expect(page.locator("#report")).to_have_attribute("data-tab", "checks")
+    page.get_by_role("link", name="Om tallene og dækningen").click()
+    expect(
+        page.get_by_role("heading", name="Om tallene for marts 2026")
+    ).to_be_visible()
+    page.get_by_role("link", name="Tilbage til oversigten").click()
+    expect(page.locator("#report")).to_have_attribute("data-tab", "checks")
+    page.get_by_role("link", name="Tilbage til den forrige visning").click()
+
+    expect(page).to_have_url(origin)
+    expect(page.locator("#report")).to_have_attribute("data-mode", mode)
+    expect(page.locator("#report")).to_have_attribute("data-tab", tab)
+
+
+def test_kontrol_empty_selection_mode_round_trip_starts_advanced_overview(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+    advanced = page.get_by_role("radio", name="Avanceret")
+    advanced.focus()
+    page.keyboard.press("Space")
+    page.get_by_role("link", name="Kontrol", exact=True).click()
+    expect(page.locator("#report")).to_have_attribute("data-tab", "checks")
+
+    current = page.get_by_role("checkbox", name="Joint current")
+    savings = page.get_by_role("checkbox", name="Joint savings")
+    current.uncheck()
+    savings.uncheck()
+    page.wait_for_function("!location.search.includes('account=')")
+    expect(page.locator("#report-region")).to_contain_text("Vælg mindst én konto.")
+    expect(page.locator('input[name="tab"]')).to_have_value("checks")
+
+    simple = page.get_by_role("radio", name="Enkel")
+    simple.focus()
+    page.keyboard.press("Space")
+    expect(page).to_have_url(re.compile(r".*mode=simple&tab=overview.*"))
+    expect(page.locator('input[name="tab"]')).to_have_value("overview")
+
+    advanced.focus()
+    page.keyboard.press("Space")
+    expect(page).to_have_url(re.compile(r".*mode=advanced&tab=overview.*"))
+    expect(page.locator('input[name="active_mode"]')).to_have_value("advanced")
+    expect(page.locator('input[name="tab"]')).to_have_value("overview")
+
+    current.check()
+    page.wait_for_function("location.search.includes('account=joint-current')")
+    expect(page.locator("#report")).to_have_attribute("data-mode", "advanced")
+    expect(page.locator("#report")).to_have_attribute("data-tab", "overview")
+    expect(page.locator('input[name="active_mode"]')).to_have_value("advanced")
+    expect(page.locator('input[name="tab"]')).to_have_value("overview")
+
+
+@pytest.mark.parametrize(
+    "return_to",
+    [
+        "https://example.invalid/",
+        "//example.invalid/",
+        r"/\example.invalid/",
+        "/%5Cexample.invalid/",
+        "/%2F%2Fexample.invalid/",
+        "/?publication=1%0D%0Areference_date=2026-05-14",
+    ],
+)
+def test_unsafe_browser_return_origin_falls_back_to_the_pinned_overview(
+    page: Page,
+    dashboard: BrowserDashboard,
+    return_to: str,
+) -> None:
+    log_in(page, dashboard)
+    query = urlencode(
+        {
+            "publication": "2",
+            "reference_date": "2026-05-31",
+            "account": ["joint-current", "joint-savings"],
+            "month": "2026-03",
+            "mode": "advanced",
+            "tab": "checks",
+            "comparison": "amounts",
+            "return_to": return_to,
+        },
+        doseq=True,
+    )
+    page.goto(f"{dashboard.url}/?{query}")
+
+    expect(page.locator("#report")).to_have_attribute("data-tab", "checks")
+    back = page.get_by_role("link", name="Tilbage til den forrige visning")
+    href = back.get_attribute("href")
+    assert href is not None
+    assert "example.invalid" not in href
+    assert "mode=simple&tab=overview" in href
+
+    back.click()
+    expect(page.get_by_role("heading", name="Oversigt")).to_be_visible()
+    expect(page.get_by_role("radio", name="Enkel")).to_be_checked()
     expect(page.locator("#report")).to_have_attribute("data-tab", "overview")

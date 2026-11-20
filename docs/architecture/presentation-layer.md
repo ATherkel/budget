@@ -51,15 +51,15 @@ changing mode never changes financial values or their trust semantics.
 A fresh visit starts in “Enkel” and “Beløb”. Mode persists during the active visit,
 not as a lasting preference. An explicit switch closes detail overlays and
 returns to the destination mode's overview, preserving the shared report context
-and “Beløb”/“Mod budget” choice. Once “Kontrol” ships, a targeted explanation
-link opens it with a route back to the originating view. Browser back/forward
-restores the recorded mode, tab and applicable detail/comparison state under the
+and “Beløb”/“Mod budget” choice. A targeted trust link opens “Kontrol” with a
+route back to the originating view. Browser back/forward restores the recorded
+mode, tab and applicable detail/comparison state under the
 [navigation contract](report-contract.md#navigation-and-selection-transitions).
 
-The switch and advanced “Overblik” and “Detaljer” are available. “Kontrol” is
-pending [#552](https://github.com/ATherkel/budget/issues/552); expose no control
-for that undelivered screen. Both modes retain access to the basic trust
-explanation.
+The switch and all three advanced tabs are available. “Kontrol” renders the
+[diagnostics and reconciliation observations](report-contract.md#diagnostics)
+without changing their Coverage. Both modes retain access to the basic trust
+explanation alongside targeted links into “Kontrol”.
 
 ## Data Trust Display
 

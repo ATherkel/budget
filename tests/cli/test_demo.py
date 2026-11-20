@@ -25,6 +25,7 @@ from budget.demo import create_demo_profile
 from budget.gold.recipe import RecipeImportRun
 from budget.gold.store import GoldStore
 from budget.profiles import load_profile_file
+from tests.dashboard.pages import read
 
 
 def _free_port() -> int:
@@ -246,3 +247,88 @@ def test_the_demo_has_categorized_spending_to_investigate(tmp_path: Path) -> Non
     )
 
     assert 'id="detail-spending">1.500,00 kr.<' in detail.text
+
+
+def test_the_demo_current_month_exercises_kontrol_diagnostics(
+    tmp_path: Path,
+) -> None:
+    profile = create_demo_profile(tmp_path / "demo", port=8877)
+    dashboard = TestClient(
+        create_app(profile, clock=lambda: datetime.now(UTC)),
+        follow_redirects=False,
+    )
+    dashboard.post("/login", data={"passphrase": "budget-demo"})
+    today = datetime.now(ZoneInfo("Europe/Copenhagen")).date()
+    response = dashboard.get(
+        "/report",
+        params={
+            "publication": "1",
+            "reference_date": today.isoformat(),
+            "account": ["demo-current", "demo-savings"],
+            "month": f"{today.year}-{today.month:02d}",
+            "mode": "advanced",
+            "active_mode": "advanced",
+            "tab": "checks",
+        },
+        headers={"HX-Request": "true"},
+    )
+
+    page = read(response.text)
+
+    assert response.status_code == 200
+    assert (
+        page.text_of("diagnostics-reconciliation-demo-current-residual"),
+        page.text_of("diagnostics-reconciliation-demo-current-opening-gap"),
+        page.text_of("diagnostics-unclassified"),
+        page.text_of("diagnostics-adjustments"),
+        page.text_of("diagnostics-transfer-summary"),
+    ) == (
+        "Beregnet afvigelse: 0,00 kr.",
+        "Åbningsforskel mod forrige lukning: \N{MINUS SIGN}500,00 kr.",
+        (
+            "Ukategoriseret: ind +100,00 kr.; ud "
+            "\N{MINUS SIGN}100,00 kr.; 2 posteringer."
+        ),
+        ("Reguleringer: ind +20,00 kr.; ud \N{MINUS SIGN}20,00 kr.; 2 posteringer."),
+        (
+            "Overførsler: ind +500,00 kr.; ud "
+            "\N{MINUS SIGN}500,00 kr.; 2 valgte ben; 2 parrede; 0 ensidige."
+        ),
+    )
+
+
+def test_the_demo_current_month_activity_orders_diagnostics_last(
+    tmp_path: Path,
+) -> None:
+    profile = create_demo_profile(tmp_path / "demo", port=8877)
+    dashboard = TestClient(
+        create_app(profile, clock=lambda: datetime.now(UTC)),
+        follow_redirects=False,
+    )
+    dashboard.post("/login", data={"passphrase": "budget-demo"})
+    today = datetime.now(ZoneInfo("Europe/Copenhagen")).date()
+    response = dashboard.get(
+        "/report",
+        params={
+            "publication": "1",
+            "reference_date": today.isoformat(),
+            "account": ["demo-current", "demo-savings"],
+            "month": f"{today.year}-{today.month:02d}",
+            "mode": "advanced",
+            "active_mode": "advanced",
+            "tab": "details",
+        },
+        headers={"HX-Request": "true"},
+    )
+    page = read(response.text)
+    diagnostic_date = f"{min(today.day, 2):02d}.{today.month:02d}.{today.year}"
+
+    assert page.text_of("activity-dated-balance-demo-current") == (
+        f"Ukendt den {diagnostic_date}"
+    )
+    assert page.text_of("activity-dated-balance-demo-savings") == (
+        f"Ukendt den {diagnostic_date}"
+    )
+    assert response.text.find('data-label="Tekst">DEMO TRANSFER') < response.text.find(
+        'data-label="Tekst">DEMO SALARY'
+    )

@@ -305,15 +305,24 @@ uv run budget demo --directory $demo --port 8765
 Open `http://127.0.0.1:8765` and log in with `budget-demo`. Expect two checked
 accounts, `Demo current` and `Demo savings`, the current month and the monthly
 overview. Every month Demo current has a salary and Groceries of 1.500,00 kr.
-(two purchases less a refund); click Groceries to try the detail. Nothing is
-unclassified, so "Ukategoriseret" shows `0,00 kr.` for "Ind" and "Ud". Stop
-it with `Ctrl+C`, then run
-`Remove-Item -LiteralPath $demo -Recurse`.
+(two purchases less a refund); click Groceries to try the detail.
 
-In Avanceret, open Detaljer with the keyboard and check that the phone layout
-does not scroll sideways. The dated observation, monthly snapshot and
-transaction table are the account activity
-[described in the presentation contract](../architecture/presentation-layer.md).
+In Avanceret, focus `Kontrol` and press Enter. In the current month, expect
+Unknown in/out `+100,00 kr.` and `−100,00 kr.`, Adjustments in/out
+`+20,00 kr.` and `−20,00 kr.`, and a paired Transfer in/out `+500,00 kr.`
+and `−500,00 kr.` Each account shows a `0,00 kr.` internal residual beside a
+`−500,00 kr.` opening gap. At 390 px, check that the page has no sideways
+scroll. From simple and details, follow a targeted `Kontrol` link, then
+`Om tallene og dækningen`, `Tilbage til oversigten`, and the return link. Use
+Back/Forward after changing the month or accounts. The expected navigation is
+the [navigation contract](../architecture/report-contract.md#navigation-and-selection-transitions);
+the figures come from [Diagnostics](../architecture/report-contract.md#diagnostics).
+
+Also open Detaljer with the keyboard and check its phone layout against the
+[account activity display](../architecture/presentation-layer.md).
+
+Stop the demo with `Ctrl+C`, then run
+`Remove-Item -LiteralPath $demo -Recurse`.
 
 ## Restore and dev refresh
 

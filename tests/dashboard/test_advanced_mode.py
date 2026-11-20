@@ -49,7 +49,7 @@ def client(profile: Profile) -> TestClient:
     return client
 
 
-def test_fresh_visit_offers_only_the_working_modes_and_defaults_to_enkel_belob(
+def test_fresh_visit_offers_the_working_views_and_defaults_to_enkel_belob(
     client: TestClient,
 ) -> None:
     html = client.get("/").text
@@ -72,7 +72,7 @@ def test_fresh_visit_offers_only_the_working_modes_and_defaults_to_enkel_belob(
         "amounts",
         "Beløb",
         False,
-        False,
+        True,
         True,
         True,
     )
@@ -626,7 +626,7 @@ def test_category_and_basic_explanation_returns_keep_advanced_pinned_state(
     )
 
 
-@pytest.mark.parametrize("tab", ["overview", "details"])
+@pytest.mark.parametrize("tab", ["overview", "details", "checks"])
 def test_advanced_mode_keeps_superseded_and_unavailable_publication_behavior(
     profile: Profile,
     client: TestClient,

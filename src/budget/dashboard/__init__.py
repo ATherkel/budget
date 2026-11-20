@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from functools import cache
 from pathlib import Path
-from typing import Annotated, Literal, Self
-from urllib.parse import urlencode
+from typing import Annotated, Final, Literal, Self
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from fastapi import FastAPI, Form, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -24,6 +24,7 @@ from budget.analytics import (
     AccountActivity,
     DetailScope,
     DetailSubject,
+    Diagnostics,
     HouseholdReports,
     InvalidSelectionError,
     MonthlyOverview,
@@ -50,8 +51,9 @@ __all__ = ["create_app", "set_passphrase"]
 SESSION_COOKIE = "session"
 
 type DashboardMode = Literal["simple", "advanced"]
-type DashboardTab = Literal["overview", "details"]
+type DashboardTab = Literal["overview", "details", "checks"]
 type ComparisonMode = Literal["amounts"]
+type ReturnPath = Literal["/", "/category"]
 
 
 @dataclass(frozen=True)
@@ -102,6 +104,8 @@ _VIEW_STATE_CONTROLS = _TEMPLATES.from_string(
     'value="{{ tab }}" hx-swap-oob="true">'
     '<input id="comparison" type="hidden" name="comparison" '
     'value="{{ comparison }}" hx-swap-oob="true">'
+    '<input id="return-to" type="hidden" name="return_to" '
+    'value="{{ return_to }}" hx-swap-oob="true">'
 )
 
 
@@ -127,6 +131,28 @@ class PinnedAddress:
 
 
 @dataclass(frozen=True)
+class ReturnDestination:
+    """A validated, canonical dashboard address a reader may return to."""
+
+    path: ReturnPath
+    address: PinnedAddress
+    view: ViewState
+    subject: tuple[str, str] | None = None
+    scope: DetailScope | None = None
+
+    def url(self) -> str:
+        """Reconstruct the address from typed state and the dashboard builders."""
+        url = _pinned_url(self.address, self.path, view=self.view)
+        if self.path == "/":
+            return url
+        if self.subject is None or self.scope is None:
+            message = "a detail return destination needs a subject and scope"
+            raise ValueError(message)
+        kind, subject_id = self.subject
+        return f"{url}&" + urlencode([(kind, subject_id), ("scope", self.scope)])
+
+
+@dataclass(frozen=True)
 class OverviewRequest:
     """A complete overview-page request, fresh or pinned."""
 
@@ -134,6 +160,7 @@ class OverviewRequest:
     accounts: tuple[str, ...] | None
     month: str | None
     view: ViewState
+    return_to: str | None
 
 
 @dataclass(frozen=True)
@@ -145,6 +172,18 @@ class ReportRequest:
     month: str
     view: ViewState
     active_mode: DashboardMode
+    return_to: str | None
+
+
+@dataclass(frozen=True)
+class ExplanationRequest:
+    """A basic explanation request under one pinned presentation state."""
+
+    pin: tuple[int, date]
+    accounts: tuple[str, ...]
+    month: str
+    view: ViewState
+    return_to: str | None
 
 
 class OverviewAddress(BaseModel):
@@ -157,10 +196,15 @@ class OverviewAddress(BaseModel):
     mode: str = "simple"
     tab: str = "overview"
     comparison: str = "amounts"
+    active_mode: str | None = None
+    return_to: str | None = None
 
     def asked(self) -> OverviewRequest:
         """Return the page request without resolving a fresh pin."""
         pinned = self.publication is not None and self.reference_date is not None
+        view = _view_state(self.mode, self.tab, self.comparison)
+        if self.active_mode is not None and view.mode != _mode(self.active_mode):
+            view = ViewState(view.mode, "overview", view.comparison)
         return OverviewRequest(
             pin=(
                 None
@@ -169,7 +213,8 @@ class OverviewAddress(BaseModel):
             ),
             accounts=tuple(self.account) if pinned else None,
             month=self.month,
-            view=_view_state(self.mode, self.tab, self.comparison),
+            view=view,
+            return_to=self.return_to,
         )
 
 
@@ -183,10 +228,21 @@ class PinnedQuery(BaseModel):
     mode: str = "simple"
     tab: str = "overview"
     comparison: str = "amounts"
+    return_to: str | None = None
 
     def pin(self) -> tuple[int, date]:
         """Return this address's publication and reference date."""
         return (self.publication, self.reference_date)
+
+    def explanation_request(self) -> ExplanationRequest:
+        """Return the request for the basic explanation page."""
+        return ExplanationRequest(
+            pin=self.pin(),
+            accounts=tuple(self.account),
+            month=self.month,
+            view=_view_state(self.mode, self.tab, self.comparison),
+            return_to=self.return_to,
+        )
 
 
 class ReportAddress(PinnedQuery):
@@ -205,6 +261,7 @@ class ReportAddress(PinnedQuery):
             active_mode=(
                 view.mode if self.active_mode is None else _mode(self.active_mode)
             ),
+            return_to=self.return_to,
         )
 
 
@@ -294,6 +351,179 @@ def _pinned_url(
     )
 
 
+_RETURN_COMMON_FIELDS = frozenset(
+    {
+        "publication",
+        "reference_date",
+        "month",
+        "mode",
+        "tab",
+        "comparison",
+    }
+)
+_RETURN_ACCOUNT = "account"
+_FIRST_PRINTABLE_ASCII: Final = 32
+_DELETE_CONTROL: Final = 127
+
+
+def _unsafe_return_text(value: str) -> bool:
+    """Whether text contains a character a browser may normalize out of a URL."""
+    return "\\" in value or any(
+        ord(character) < _FIRST_PRINTABLE_ASCII or ord(character) == _DELETE_CONTROL
+        for character in value
+    )
+
+
+def _return_entries(
+    pairs: list[tuple[str, str]],
+    allowed: frozenset[str],
+) -> tuple[dict[str, str], list[str]] | None:
+    """Split a return query into unique scalar fields and ordered accounts."""
+    values: dict[str, str] = {}
+    accounts: list[str] = []
+    for key, value in pairs:
+        if _unsafe_return_text(key) or _unsafe_return_text(value):
+            return None
+        if key not in allowed:
+            return None
+        if key == _RETURN_ACCOUNT:
+            if not value or value in accounts:
+                return None
+            accounts.append(value)
+        elif key in values:
+            return None
+        else:
+            values[key] = value
+    return values, accounts
+
+
+def _return_view(values: dict[str, str]) -> ViewState | None:
+    """Read a supported presentation state stored in a return destination."""
+    mode = _mode(values["mode"])
+    tab = _tab(values["tab"])
+    if (
+        values["mode"] != mode
+        or values["tab"] != tab
+        or values["comparison"] != "amounts"
+        or (mode == "simple" and tab != "overview")
+    ):
+        return None
+    return ViewState(mode, tab, "amounts")
+
+
+def _return_query(
+    pairs: list[tuple[str, str]],
+    extra_fields: frozenset[str],
+) -> tuple[PinnedAddress, ViewState] | None:
+    """Read one canonical dashboard query, refusing unknown or ambiguous fields."""
+    allowed = _RETURN_COMMON_FIELDS | extra_fields | {_RETURN_ACCOUNT}
+    entries = _return_entries(pairs, allowed)
+    if entries is None:
+        return None
+    values, accounts = entries
+    if not _RETURN_COMMON_FIELDS.issubset(values):
+        return None
+    view = _return_view(values)
+    if view is None:
+        return None
+    details = "category" in extra_fields or "group" in extra_fields
+    if details and not accounts:
+        return None
+    try:
+        address = PinnedAddress(
+            publication_id=int(values["publication"]),
+            reference_date=date.fromisoformat(values["reference_date"]),
+            accounts=tuple(sorted(accounts)),
+            month=display.month_value(display.parse_month(values["month"])),
+        )
+    except (ValueError, InvalidSelectionError):
+        return None
+    return address, view
+
+
+def _overview_return(
+    pairs: list[tuple[str, str]],
+) -> ReturnDestination | None:
+    """Read a typed overview return, or refuse any field it does not own."""
+    query = _return_query(pairs, frozenset())
+    if query is None:
+        return None
+    address, view = query
+    return ReturnDestination("/", address, view)
+
+
+def _detail_return(
+    pairs: list[tuple[str, str]],
+) -> ReturnDestination | None:
+    """Read a typed Category or group return with its scope."""
+    query = _return_query(pairs, frozenset({"category", "group", "scope"}))
+    if query is None:
+        return None
+    category = next((value for key, value in pairs if key == "category"), None)
+    group = next((value for key, value in pairs if key == "group"), None)
+    scope = next((value for key, value in pairs if key == "scope"), None)
+    if (category is None) == (group is None) or scope not in {"month", "year_to_date"}:
+        return None
+    address, view = query
+    subject = ("category", category) if category is not None else ("group", group or "")
+    if not subject[1]:
+        return None
+    return ReturnDestination(
+        "/category",
+        address,
+        view,
+        subject,
+        scope,
+    )
+
+
+def _return_destination(value: str | None) -> ReturnDestination | None:
+    """Parse a supported dashboard return destination without trusting an origin."""
+    if value is None or _unsafe_return_text(value):
+        return None
+    try:
+        split = urlsplit(value)
+        if (
+            split.scheme
+            or split.netloc
+            or split.fragment
+            or split.path not in {"/", "/category"}
+        ):
+            return None
+        pairs = parse_qsl(
+            split.query,
+            keep_blank_values=True,
+            strict_parsing=True,
+        )
+    except ValueError:
+        return None
+    return _overview_return(pairs) if split.path == "/" else _detail_return(pairs)
+
+
+def _safe_return_to(
+    value: str | None,
+    address: PinnedAddress,
+    view: ViewState,
+) -> str | None:
+    """Return a canonical supported destination, falling back to this pin's overview."""
+    if not value:
+        return None
+    destination = _return_destination(value)
+    if destination is not None:
+        return destination.url()
+    return _pinned_url(
+        address,
+        view=ViewState("simple", "overview", view.comparison),
+    )
+
+
+def _url_with_return(url: str, return_to: str | None) -> str:
+    """Append one validated return destination to an internal dashboard URL."""
+    if return_to is None:
+        return url
+    return f"{url}&" + urlencode({"return_to": return_to})
+
+
 def _mode(value: str | None) -> DashboardMode:
     """Return the supported mode named by `value`, defaulting to Enkel."""
     return "advanced" if value == "advanced" else "simple"
@@ -301,7 +531,9 @@ def _mode(value: str | None) -> DashboardMode:
 
 def _tab(value: str | None) -> DashboardTab:
     """Return a supported tab, defaulting a malformed address to Overblik."""
-    return "details" if value == "details" else "overview"
+    if value == "details":
+        return "details"
+    return "checks" if value == "checks" else "overview"
 
 
 def _comparison(_value: str | None) -> ComparisonMode:
@@ -323,12 +555,13 @@ def _view_state(
     )
 
 
-def _view_state_controls(view: ViewState) -> str:
+def _view_state_controls(view: ViewState, return_to: str = "") -> str:
     """Render the out-of-band controls every report response keeps current."""
     return _VIEW_STATE_CONTROLS.render(
         mode=view.mode,
         tab=view.tab,
         comparison=view.comparison,
+        return_to=return_to,
     )
 
 
@@ -369,6 +602,17 @@ def _render_overview(
     selected_month = requested.month or display.month_value(
         ReportingMonth.of(reference_date)
     )
+    pinned_address = PinnedAddress(
+        publication_id,
+        reference_date,
+        tuple(selected_accounts),
+        selected_month,
+    )
+    return_to = (
+        _safe_return_to(requested.return_to, pinned_address, requested.view)
+        if requested.view.mode == "advanced" and requested.view.tab == "checks"
+        else None
+    )
     # The page carries its own report, so back, forward and a page without
     # scripts show what the selection's report says.
     report = (
@@ -380,6 +624,7 @@ def _render_overview(
                 selected_month,
                 requested.view,
                 requested.view.mode,
+                return_to,
             ),
         )
         if selected_accounts
@@ -388,12 +633,13 @@ def _render_overview(
 
     def pinned_with(accounts: Collection[str]) -> str:
         """Return this page's address with `accounts` selected instead."""
-        return _pinned_url(
+        url = _pinned_url(
             PinnedAddress(
                 publication_id, reference_date, tuple(accounts), selected_month
             ),
             view=requested.view,
         )
+        return _url_with_return(url, return_to)
 
     canonical_url = pinned_with(selected_accounts)
     return _TEMPLATES.get_template("overview.html").render(
@@ -416,6 +662,7 @@ def _render_overview(
         mode=requested.view.mode,
         tab=requested.view.tab,
         comparison=requested.view.comparison,
+        return_to=return_to or "",
     )
 
 
@@ -499,6 +746,31 @@ def _read_activity(
         )
         with GoldStore(profile, read_only=True) as store:
             return HouseholdReports(store).account_activity(context)
+    except InvalidSelectionError as error:
+        return _TEMPLATES.get_template("invalid_selection.html").render(
+            problems=display.selection_problems(error)
+        )
+    except PublicationUnavailableError:
+        return _TEMPLATES.get_template("unavailable.html").render()
+
+
+def _read_diagnostics(
+    profile: Profile,
+    pin: tuple[int, date],
+    accounts: Collection[str],
+    month: str,
+) -> Diagnostics | str:
+    """Return Kontrol for a pinned selection, or a fragment saying why not."""
+    publication_id, reference_date = pin
+    try:
+        context = ReportContext(
+            publication_id=publication_id,
+            account_ids=frozenset(accounts),
+            month=display.parse_month(month),
+            reference_date=reference_date,
+        )
+        with GoldStore(profile, read_only=True) as store:
+            return HouseholdReports(store).diagnostics(context)
     except InvalidSelectionError as error:
         return _TEMPLATES.get_template("invalid_selection.html").render(
             problems=display.selection_problems(error)
@@ -645,24 +917,50 @@ def _render_report(
         if requested.view.mode == "advanced" and requested.view.tab == "details"
         else None
     )
+    diagnostics = (
+        _read_diagnostics(
+            profile,
+            requested.pin,
+            requested.accounts,
+            requested.month,
+        )
+        if requested.view.mode == "advanced" and requested.view.tab == "checks"
+        else None
+    )
     if isinstance(activity, str):
         return activity
+    if isinstance(diagnostics, str):
+        return diagnostics
+    answered_address = PinnedAddress(
+        answered.publication_id,
+        answered.reference_date,
+        tuple(answered.account_ids),
+        display.month_value(answered.month),
+    )
     tab_urls = {
         destination: _pinned_url(
-            PinnedAddress(
-                answered.publication_id,
-                answered.reference_date,
-                tuple(answered.account_ids),
-                display.month_value(answered.month),
-            ),
+            answered_address,
             view=ViewState(
                 "advanced",
                 destination,
                 requested.view.comparison,
             ),
         )
-        for destination in ("overview", "details")
+        for destination in ("overview", "details", "checks")
     }
+    origin_url = _answered_url(overview_report, "/", requested.view)
+    control_url = _pinned_url(
+        answered_address,
+        view=ViewState("advanced", "checks", requested.view.comparison),
+    )
+    control_url = _url_with_return(control_url, origin_url)
+    explanation_url = _answered_url(
+        overview_report,
+        "/explanation",
+        requested.view,
+    )
+    if requested.view.mode == "advanced" and requested.view.tab == "checks":
+        explanation_url = _url_with_return(explanation_url, requested.return_to)
     return _TEMPLATES.get_template("report.html").render(
         is_current=overview_report.publication.is_current,
         publication_id=answered.publication_id,
@@ -672,15 +970,14 @@ def _render_report(
         month_label=display.month_label(answered.month),
         overview=overview_report,
         activity=activity,
+        diagnostics=diagnostics,
         mode=requested.view.mode,
         tab=requested.view.tab,
         comparison=requested.view.comparison,
+        return_to=requested.return_to or "",
         tab_urls=tab_urls,
-        explanation_url=_answered_url(
-            overview_report,
-            "/explanation",
-            requested.view,
-        ),
+        explanation_url=explanation_url,
+        control_url=control_url,
         detail_urls={
             category.category_id: _detail_url(
                 answered,
@@ -695,21 +992,39 @@ def _render_report(
 
 def _render_explanation(
     profile: Profile,
-    pin: tuple[int, date],
-    accounts: Collection[str],
-    month: str,
-    view: ViewState,
+    request: ExplanationRequest,
 ) -> str:
     """Render the explanation page of one pinned report's trust notes."""
-    overview_report = _read_overview(profile, pin, accounts, month)
+    overview_report = _read_overview(
+        profile,
+        request.pin,
+        request.accounts,
+        request.month,
+    )
     if isinstance(overview_report, str):
         return _TEMPLATES.get_template("explanation.html").render(
             failure=overview_report
         )
+    answered = overview_report.context
+    answered_address = PinnedAddress(
+        answered.publication_id,
+        answered.reference_date,
+        tuple(answered.account_ids),
+        display.month_value(answered.month),
+    )
+    safe_return = (
+        _safe_return_to(request.return_to, answered_address, request.view)
+        if request.view.mode == "advanced" and request.view.tab == "checks"
+        else None
+    )
+    report_url = _url_with_return(
+        _answered_url(overview_report, "/", request.view),
+        safe_return,
+    )
     return _TEMPLATES.get_template("explanation.html").render(
         overview=overview_report,
         month_label=display.month_label(overview_report.context.month),
-        report_url=_answered_url(overview_report, "/", view),
+        report_url=report_url,
     )
 
 
@@ -729,11 +1044,20 @@ def _report_response(
     )
     if view.mode != requested.active_mode:
         view = ViewState(view.mode, "overview", view.comparison)
-    page = _pinned_url(
-        PinnedAddress(*requested.pin, requested.accounts, requested.month),
-        view=view,
+    address = PinnedAddress(
+        *requested.pin,
+        requested.accounts,
+        requested.month,
     )
-    state = _view_state_controls(view)
+    return_to = (
+        _safe_return_to(requested.return_to, address, view)
+        if view.mode == "advanced" and view.tab == "checks"
+        else None
+    )
+    page = _pinned_url(address, view=view)
+    if return_to is not None:
+        page += "&" + urlencode({"return_to": return_to})
+    state = _view_state_controls(view, return_to or "")
     if not requested.accounts:
         # An empty selection is a prompt, never a report of nothing.
         prompt = _TEMPLATES.get_template("no_accounts.html").render()
@@ -746,6 +1070,7 @@ def _report_response(
             requested.month,
             view,
             view.mode,
+            return_to,
         ),
     )
     return HTMLResponse(fragment + state, headers={"HX-Push-Url": page})
@@ -833,10 +1158,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             lambda: HTMLResponse(
                 _render_explanation(
                     profile,
-                    address.pin(),
-                    address.account,
-                    address.month,
-                    _view_state(address.mode, address.tab, address.comparison),
+                    address.explanation_request(),
                 )
             ),
         )

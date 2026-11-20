@@ -93,6 +93,7 @@ def _accounts() -> tuple[Account, ...]:
 
 def _gold_records(accounts: tuple[Account, ...], today: date) -> GoldRecords:
     """Build a short, clearly synthetic reporting history through this month."""
+    first_month = date(today.year - 1, 12, 1)
     gold_accounts = tuple(
         GoldAccount(
             account_id=account.account_id,
@@ -101,29 +102,32 @@ def _gold_records(accounts: tuple[Account, ...], today: date) -> GoldRecords:
             owner_id=account.owner,
             currency=account.currency,
             closed_on=None,
-            coverage_start=date(today.year, 1, 1),
+            coverage_start=first_month,
             evidence_through=today,
         )
         for account in accounts
     )
-    months = range(1, today.month + 1)
-    balances = tuple(
-        MonthlyBalanceSnapshot(
-            account_id=account.account_id,
-            month=ReportingMonth(today.year, month),
-            opening_balance=Decimal("1000.00"),
-            closing_balance=Decimal("1200.00"),
-            coverage="complete",
-            late_bookings_settled=(month != today.month),
+    months = tuple(
+        ReportingMonth(year, month)
+        for year, first, through in (
+            (today.year - 1, 12, 12),
+            (today.year, 1, today.month),
         )
+        for month in range(first, through + 1)
+    )
+    balances = tuple(
+        _demo_balance(account, month, today)
         for account in gold_accounts
         for month in months
     )
-    entries = [
-        _entry(date(today.year, month, 1), month * 10 + sequence, entry)
-        for month in months
-        for sequence, entry in enumerate(_MONTHLY_ENTRIES)
-    ]
+    entries = []
+    for month in months:
+        booked = date(month.year, month.month, 1)
+        entries.extend(
+            _entry(booked, _sequence(booked, sequence), entry)
+            for sequence, entry in enumerate(_MONTHLY_ENTRIES)
+        )
+    diagnostic_entries = _diagnostic_entries(today)
     return GoldRecords(
         accounts=gold_accounts,
         owners=tuple(
@@ -134,8 +138,93 @@ def _gold_records(accounts: tuple[Account, ...], today: date) -> GoldRecords:
         ),
         monthly_balances=balances,
         categories=_CATEGORIES,
-        transactions=tuple(transaction for transaction, _ in entries),
+        transactions=(
+            *(transaction for transaction, _ in entries),
+            *diagnostic_entries,
+        ),
         category_allocations=tuple(allocation for _, allocation in entries),
+    )
+
+
+def _sequence(booked: date, ordinal: int) -> int:
+    """Return a chronological account sequence unique across demo dates."""
+    return booked.toordinal() * 100 + ordinal
+
+
+def _demo_balance(
+    account: GoldAccount,
+    month: ReportingMonth,
+    today: date,
+) -> MonthlyBalanceSnapshot:
+    """Return a rolling balance with one deliberate opening gap this month."""
+    current_month = month == ReportingMonth(today.year, today.month)
+    if account.account_id == "demo-current":
+        opening = Decimal("700.00") if current_month else Decimal("1000.00")
+        closing = Decimal("400.00") if current_month else Decimal("1200.00")
+    else:
+        opening = Decimal("500.00") if current_month else Decimal("1000.00")
+        closing = Decimal("1000.00")
+    return MonthlyBalanceSnapshot(
+        account_id=account.account_id,
+        month=month,
+        opening_balance=opening,
+        closing_balance=closing,
+        coverage="complete",
+        late_bookings_settled=not current_month,
+    )
+
+
+def _diagnostic_entries(booked: date) -> tuple[GoldTransaction, ...]:
+    """Return one current month with Unknown, Adjustment and paired Transfer cases."""
+    day = min(booked.day, 2)
+    booked_on = booked.replace(day=day)
+    return (
+        _unallocated(booked_on, _sequence(booked_on, 11), "100.00", "unknown"),
+        _unallocated(booked_on, _sequence(booked_on, 12), "-100.00", "unknown"),
+        _unallocated(booked_on, _sequence(booked_on, 13), "20.00", "adjustment"),
+        _unallocated(booked_on, _sequence(booked_on, 14), "-20.00", "adjustment"),
+        _unallocated(
+            booked_on,
+            _sequence(booked_on, 15),
+            "-500.00",
+            "transfer",
+            transfer_group_id="demo-transfer-current",
+        ),
+        GoldTransaction(
+            transaction_id=f"demo-savings-{_sequence(booked_on, 15)}",
+            account_id="demo-savings",
+            transaction_date=booked_on,
+            account_sequence=_sequence(booked_on, 15),
+            amount=Decimal("500.00"),
+            description="DEMO TRANSFER",
+            transaction_type="transfer",
+            transfer_group_id="demo-transfer-current",
+            balance_after=None,
+            balance_check="missing_balance",
+        ),
+    )
+
+
+def _unallocated(
+    booked: date,
+    sequence: int,
+    amount: str,
+    transaction_type: TransactionType,
+    *,
+    transfer_group_id: str | None = None,
+) -> GoldTransaction:
+    """Return one synthetic transaction that has no Category allocation."""
+    return GoldTransaction(
+        transaction_id=f"demo-current-{sequence}",
+        account_id="demo-current",
+        transaction_date=booked,
+        account_sequence=sequence,
+        amount=Decimal(amount),
+        description=f"DEMO {transaction_type.upper()}",
+        transaction_type=transaction_type,
+        transfer_group_id=transfer_group_id,
+        balance_after=None,
+        balance_check="missing_balance",
     )
 
 

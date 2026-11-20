@@ -3,13 +3,20 @@
 <nav id="advanced-tabs" class="scope-switch" aria-label="Avanceret visning">
   <a id="tab-overview" href="{{ tab_urls['overview'] }}"{% if tab == "overview" %} aria-current="page"{% endif %}>Overblik</a>
   <a id="tab-details" href="{{ tab_urls['details'] }}"{% if tab == "details" %} aria-current="page"{% endif %}>Detaljer</a>
+  <a id="tab-checks" href="{{ tab_urls['checks'] }}"{% if tab == "checks" %} aria-current="page"{% endif %}>Kontrol</a>
 </nav>
+{% endif %}
+{% if tab == "checks" and return_to %}
+<p><a id="return-from-control" href="{{ return_to }}">Tilbage til den forrige visning</a></p>
 {% endif %}
 {% if not is_current %}
 <p class="notice notice--warning">Der findes nyere tal. <a id="newer-figures" href="/">Hent de nyeste tal</a></p>
 {% endif %}
 {% if overview.provisional %}
 <p class="trust-note"><span id="provisional-label" class="status-chip status-chip--provisional">Foreløbige tal</span> <a id="provisional-explanation" href="{{ explanation_url }}">Hvorfor tallene er foreløbige</a></p>
+{% if tab != "checks" %}
+<p id="provisional-control-note" class="trust-note trust-note--control"><a id="provisional-control" class="control-link" href="{{ control_url }}">Se foreløbighed og afstemning i Kontrol</a></p>
+{% endif %}
 {% endif %}
 {% if overview.coverage.status != "complete" %}
 {% from "names.html" import names %}
@@ -19,6 +26,9 @@
 <p id="coverage-note" class="trust-note">Ingen af de valgte konti har historik i {{ month_label }}. <a id="coverage-explanation" href="{{ explanation_url }}">Hvorfor der ingen tal er</a></p>
 {% else %}
 <p id="coverage-note" class="trust-note">{% if overview.coverage.status == "no_data" %}Der er ingen data endnu fra{% else %}Tallene mangler noget fra{% endif %} {{ names(incomplete) }}. <a id="coverage-explanation" href="{{ explanation_url }}">Hvorfor tallene er ufuldstændige</a></p>
+{% endif %}
+{% if tab != "checks" %}
+<p id="coverage-control-note" class="trust-note trust-note--control"><a id="coverage-control" class="control-link" href="{{ control_url }}">Se dækning og kontomåneder i Kontrol</a></p>
 {% endif %}
 {% endif %}
 {% if tab == "overview" %}
@@ -36,6 +46,7 @@
 {% if unclassified and unclassified.count > 0 %}
 {# Quiet, without the count, which belongs to Kontrol; the amounts are in the summary. #}
 <p id="unclassified-note" class="trust-note">Nogle betalinger er endnu ikke placeret i en kategori, så penge tilbage kan ændre sig. <a id="unclassified-explanation" href="{{ explanation_url }}">Om betalinger uden kategori</a></p>
+<p id="unclassified-control-note" class="trust-note trust-note--control"><a id="unclassified-control" class="control-link" href="{{ control_url }}">Se antal og retning i Kontrol</a></p>
 {% endif %}
 {% if overview.categories %}
 <h4 id="categories-heading">Udgifter fordelt på kategorier</h4>
@@ -48,5 +59,7 @@
 {% endif %}
 {% elif tab == "details" %}
 {% include "activity.html" %}
+{% elif tab == "checks" %}
+{% include "checks.html" %}
 {% endif %}
 </section>
