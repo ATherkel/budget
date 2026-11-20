@@ -69,6 +69,20 @@ def _forget_import_run_accounts(gold_store: Path) -> None:
 
 
 class FirstPublicationTests(unittest.TestCase):
+    def test_a_publication_implements_gold_contract_0_3(self) -> None:
+        # gold-contract.md: owners replaced the ownership scope, a break.
+        with TemporaryDirectory() as directory:
+            built = household(Path(directory))
+
+            status, _, stderr = rebuild(built.profile_file)
+
+            assert (status, stderr) == (EXIT_OK, "")
+            with GoldStore(built.profile) as gold:
+                current = gold.current()
+                assert current is not None
+                assert current.contract_version == "0.3"
+                assert gold.recipe(1).contract_version == "0.3"
+
     def test_the_gold_recipe_copies_the_exact_silver_provenance(self) -> None:
         with TemporaryDirectory() as directory:
             built = household(Path(directory))
@@ -174,7 +188,7 @@ class FirstPublicationTests(unittest.TestCase):
                     decision_log_position=0,
                     decision_log_prefix_sha256=sha256(b"").hexdigest(),
                     code_version=None,
-                    contract_version="0.2",
+                    contract_version="0.3",
                     silver_identity_version="1",
                     late_booking_days=7,
                     python_version="",
@@ -1096,7 +1110,7 @@ class EmptyAccountTests(unittest.TestCase):
 [account.joint-empty]
 display_name = "Joint empty"
 account_type = "savings"
-ownership_scope = "household"
+owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
 """,

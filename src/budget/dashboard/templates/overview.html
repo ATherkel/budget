@@ -31,6 +31,23 @@
 <form id="selection" method="get" action="/" hx-get="/report" hx-target="#report-region" hx-swap="innerHTML" hx-sync="this:replace" hx-trigger="submit, change">
 <input type="hidden" name="publication" value="{{ publication_id }}">
 <input type="hidden" name="reference_date" value="{{ reference_date }}">
+<input id="active-mode" type="hidden" name="active_mode" value="{{ mode }}">
+<input id="active-tab" type="hidden" name="tab" value="{{ tab }}">
+<input id="comparison" type="hidden" name="comparison" value="{{ comparison }}">
+<label class="field-label" for="month">Måned</label>
+<select id="month" name="month">
+{% for value, label in months %}
+<option value="{{ value }}"{% if value == selected_month %} selected{% endif %}>{{ label }}</option>
+{% endfor %}
+</select>
+<fieldset id="mode-control" class="mode-control" role="group" aria-labelledby="mode-heading">
+<legend id="mode-heading">Visning</legend>
+<div class="mode-options">
+<label class="mode-option"><input type="radio" name="mode" value="simple" aria-label="Enkel"{% if mode == "simple" %} checked{% endif %}> <span>Enkel</span></label>
+<label class="mode-option"><input type="radio" name="mode" value="advanced" aria-label="Avanceret"{% if mode == "advanced" %} checked{% endif %}> <span>Avanceret</span></label>
+</div>
+<span id="comparison-choice" class="mode-note">Beløb</span>
+</fieldset>
 <fieldset class="account-fieldset">
 <legend>Konti <span class="legend-note">Vælg mindst én</span></legend>
 <p class="account-shortcuts"><a id="accounts-all" href="{{ all_url }}" data-account-shortcut>Alle</a> <a id="accounts-none" href="{{ none_url }}" data-account-shortcut>Ingen</a></p>
@@ -44,12 +61,6 @@
 </div>
 {% endfor %}
 </fieldset>
-<label class="field-label" for="month">Måned</label>
-<select id="month" name="month">
-{% for value, label in months %}
-<option value="{{ value }}"{% if value == selected_month %} selected{% endif %}>{{ label }}</option>
-{% endfor %}
-</select>
 <button class="button button--primary" type="submit">Vis rapport</button>
 <p class="field-help">Ændringer opdaterer rapporten med det samme.</p>
 </form>

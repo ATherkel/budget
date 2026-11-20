@@ -18,6 +18,7 @@ from budget.inputs import (
     ConfigurationError,
     MisfiledExportError,
     load_accounts,
+    load_owners,
 )
 from budget.profiles import Profile
 from budget.profiles import test_profile as make_test_profile
@@ -28,7 +29,7 @@ format = 1
 [account.joint-current]
 display_name = "Joint current"
 account_type = "current"
-ownership_scope = "household"
+owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
 bank_account_number = "0012345678"
@@ -36,11 +37,16 @@ bank_account_number = "0012345678"
 [account.joint-savings]
 display_name = "Joint savings"
 account_type = "savings"
-ownership_scope = "person"
+owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
 closed_on = 2027-06-30
+
+[owners]
+household = "Fælles"
 """
+# The `[owners]` table `ACCOUNTS` ends with, for a file built from one entry.
+OWNERS = '[owners]\nhousehold = "Fælles"\n'
 
 
 def profile_with_accounts(root: str | Path, content: str | bytes) -> Profile:
@@ -69,19 +75,19 @@ class LoadAccountsTests(unittest.TestCase):
             account_id="joint-current",
             display_name="Joint current",
             account_type="current",
-            ownership_scope="household",
             currency="DKK",
             source_format="danske-csv-v1",
             bank_account_number="0012345678",
+            owner="household",
         )
         assert accounts["joint-savings"] == Account(
             account_id="joint-savings",
             display_name="Joint savings",
             account_type="savings",
-            ownership_scope="person",
             currency="DKK",
             source_format="danske-csv-v1",
             closed_on=date(2027, 6, 30),
+            owner="household",
         )
 
     def test_an_account_number_never_reaches_a_repr(self) -> None:
@@ -182,14 +188,14 @@ account.loose = "Joint current"
 [account.Joint-Current]
 display_name = "Joint current"
 account_type = "current"
-ownership_scope = "household"
+owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
 
 [account.joint-savings]
 display_name = "Joint savings"
 account_type = "credit"
-ownership_scope = "household"
+owner = "household"
 currency = "DKK"
 source_format = "nordea-csv-v1"
 colour = "blue"
@@ -199,6 +205,10 @@ closed_on = "2027-06-30"
 [account.card]
 display_name = ""
 ownership_scope = "family"
+owner = "household"
+
+[owners]
+household = "Fælles"
 """
         with TemporaryDirectory() as directory:
             profile = profile_with_accounts(directory, content)
@@ -227,7 +237,7 @@ ownership_scope = "family"
                 "joint-savings", "closed_on must be a date such as 2027-06-30"
             ),
             entry_problem("card", "display_name must be a non-empty string"),
-            entry_problem("card", "ownership_scope must be one of household, person"),
+            entry_problem("card", "ownership_scope is replaced by owner: remove it"),
             entry_problem("card", "account_type is missing"),
             entry_problem("card", "currency is missing"),
             entry_problem("card", "source_format is missing"),
@@ -251,7 +261,7 @@ ownership_scope = "family"
             entry = "\n".join(
                 kept for kept in ACCOUNTS.splitlines()[2:9] if not kept.startswith(key)
             )
-            content = f"format = 1\n{entry}\n{line}\n"
+            content = f"format = 1\n{OWNERS}\n{entry}\n{line}\n"
             with self.subTest(line=line), TemporaryDirectory() as directory:
                 profile = profile_with_accounts(directory, content)
 
@@ -273,7 +283,9 @@ ownership_scope = "family"
             ("joint-", False),
             ("kørsel", False),
         ):
-            content = "\n".join(["format = 1", f'[account."{account_id}"]', *entry])
+            content = "\n".join(
+                ["format = 1", OWNERS, f'[account."{account_id}"]', *entry]
+            )
             with self.subTest(account_id=account_id), TemporaryDirectory() as directory:
                 profile = profile_with_accounts(directory, content)
 
@@ -360,6 +372,186 @@ def loaded_accounts(content: str = ACCOUNTS) -> Mapping[str, Account]:
     """Load a synthetic accounts.toml through a throwaway test profile."""
     with TemporaryDirectory() as directory:
         return load_accounts(profile_with_accounts(directory, content))
+
+
+OWNED_ACCOUNTS = """\
+format = 1
+
+[owners]
+alex = "Alex"
+household = "Fælles"
+
+[account.joint-current]
+display_name = "Joint current"
+account_type = "current"
+owner = "household"
+currency = "DKK"
+source_format = "danske-csv-v1"
+
+[account.alex-current]
+display_name = "Alex current"
+account_type = "current"
+owner = "alex"
+currency = "DKK"
+source_format = "danske-csv-v1"
+"""
+
+
+class AccountOwnerTests(unittest.TestCase):
+    def test_each_account_carries_the_owner_it_declares(self) -> None:
+        accounts = loaded_accounts(OWNED_ACCOUNTS)
+
+        assert {
+            account_id: account.owner for account_id, account in accounts.items()
+        } == {"joint-current": "household", "alex-current": "alex"}
+
+    def test_an_account_without_an_owner_is_told_what_to_add(self) -> None:
+        content = OWNED_ACCOUNTS.replace('owner = "alex"\n', "")
+        with TemporaryDirectory() as directory:
+            profile = profile_with_accounts(directory, content)
+
+            with pytest.raises(ConfigurationError) as refusal:
+                load_accounts(profile)
+
+        assert refusal.value.problems == (
+            entry_problem(
+                "alex-current",
+                'owner is missing: add owner = "<id>" naming an owner in [owners]',
+            ),
+        )
+
+    def test_an_owner_not_declared_in_owners_is_refused(self) -> None:
+        # "sam" is a plausible owner the household forgot to declare.
+        content = OWNED_ACCOUNTS.replace('owner = "alex"', 'owner = "sam"')
+        with TemporaryDirectory() as directory:
+            profile = profile_with_accounts(directory, content)
+
+            with pytest.raises(ConfigurationError) as refusal:
+                load_accounts(profile)
+
+        assert refusal.value.problems == (
+            entry_problem("alex-current", 'owner "sam" is not declared in [owners]'),
+        )
+
+
+class OwnershipScopeTests(unittest.TestCase):
+    def test_a_leftover_ownership_scope_is_told_to_make_way_for_the_owner(
+        self,
+    ) -> None:
+        # An accounts.toml written before owners existed still carries it.
+        content = """\
+format = 1
+
+[owners]
+household = "Fælles"
+
+[account.joint-current]
+display_name = "Joint current"
+account_type = "current"
+owner = "household"
+currency = "DKK"
+source_format = "danske-csv-v1"
+
+[account.joint-savings]
+display_name = "Joint savings"
+account_type = "savings"
+ownership_scope = "household"
+owner = "household"
+currency = "DKK"
+source_format = "danske-csv-v1"
+"""
+        with TemporaryDirectory() as directory:
+            profile = profile_with_accounts(directory, content)
+
+            with pytest.raises(ConfigurationError) as refusal:
+                load_accounts(profile)
+
+        assert refusal.value.problems == (
+            entry_problem(
+                "joint-savings", "ownership_scope is replaced by owner: remove it"
+            ),
+        )
+
+
+class LoadOwnersTests(unittest.TestCase):
+    def test_owners_load_in_declaration_order_with_their_display_names(
+        self,
+    ) -> None:
+        # Declared out of alphabetical order: the file's order is display order.
+        content = OWNED_ACCOUNTS.replace(
+            'alex = "Alex"\nhousehold = "Fælles"', 'household = "Fælles"\nalex = "Alex"'
+        )
+        with TemporaryDirectory() as directory:
+            owners = load_owners(profile_with_accounts(directory, content))
+
+        assert list(owners.items()) == [("household", "Fælles"), ("alex", "Alex")]
+
+    def test_the_legacy_owner_id_is_reserved(self) -> None:
+        # Gold gives it to accounts published before owners were recorded.
+        content = OWNED_ACCOUNTS.replace(
+            'household = "Fælles"\n',
+            'household = "Fælles"\nlegacy-unrecorded = "Old"\n',
+        )
+        for loader in (load_accounts, load_owners):
+            with (
+                self.subTest(loader=loader.__name__),
+                TemporaryDirectory() as directory,
+            ):
+                profile = profile_with_accounts(directory, content)
+
+                with pytest.raises(ConfigurationError) as refusal:
+                    loader(profile)
+
+                assert refusal.value.problems == (
+                    (
+                        'accounts.toml: owner "legacy-unrecorded": the ID is reserved '
+                        "for accounts published before owners were recorded"
+                    ),
+                )
+
+    def test_a_malformed_owner_is_refused_by_both_loaders(self) -> None:
+        for content, expected in (
+            (
+                OWNED_ACCOUNTS.replace(
+                    'household = "Fælles"\n',
+                    'household = "Fælles"\nSam = "Sam"\nkids = ""\nbaby = 1\n',
+                ),
+                (
+                    (
+                        'accounts.toml: owner "Sam": the ID must be lowercase words '
+                        "joined by hyphens, such as household"
+                    ),
+                    (
+                        'accounts.toml: owner "kids": the display name must be a '
+                        "non-empty string"
+                    ),
+                    (
+                        'accounts.toml: owner "baby": the display name must be a '
+                        "non-empty string"
+                    ),
+                ),
+            ),
+            (
+                "format = 1\nowners = 1\n",
+                (
+                    (
+                        "accounts.toml: owners must be one [owners] table of "
+                        "owner ID = display name"
+                    ),
+                ),
+            ),
+        ):
+            for loader in (load_accounts, load_owners):
+                with (
+                    self.subTest(content=content, loader=loader.__name__),
+                    TemporaryDirectory() as directory,
+                ):
+                    profile = profile_with_accounts(directory, content)
+
+                    with pytest.raises(ConfigurationError) as refusal:
+                        loader(profile)
+
+                    assert refusal.value.problems == expected
 
 
 class CheckExportFilenameTests(unittest.TestCase):

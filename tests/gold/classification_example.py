@@ -38,13 +38,13 @@ ANNA = "anna-current"
 def _account(
     account_id: str,
     account_type: Literal["current", "savings"],
-    ownership_scope: Literal["household", "person"],
+    owner: str,
 ) -> Account:
     return Account(
         account_id=account_id,
         display_name=account_id,
         account_type=account_type,
-        ownership_scope=ownership_scope,
+        owner=owner,
         currency="DKK",
         source_format="danske-csv-v1",
     )

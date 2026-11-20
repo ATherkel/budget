@@ -9,11 +9,12 @@ stopping.
 import hashlib
 import json
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+from types import MappingProxyType
 
-from budget.inputs.accounts import Account, load_accounts
+from budget.inputs.accounts import Account, load_accounts, load_owners
 from budget.inputs.document import ConfigurationError
 from budget.inputs.rules import (
     AssignAdjustment,
@@ -36,6 +37,7 @@ class ConfigurationSnapshot:
     accounts: Mapping[str, Account]
     taxonomy: Taxonomy
     rules: Mapping[str, Rule]
+    owners: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
 
     @property
     def canonical_text(self) -> str:
@@ -138,7 +140,7 @@ def _canonical_account(account: Account) -> dict[str, object]:
         {
             "display_name": account.display_name,
             "account_type": account.account_type,
-            "ownership_scope": account.ownership_scope,
+            "owner": account.owner,
             "currency": account.currency,
             "source_format": account.source_format,
             "bank_account_number": account.bank_account_number,
@@ -155,6 +157,8 @@ def _canonical(snapshot: ConfigurationSnapshot) -> dict[str, object]:
     """
     taxonomy = snapshot.taxonomy
     return {
+        # A list, not an object: the owners' order is their display order.
+        "owners": [[owner_id, name] for owner_id, name in snapshot.owners.items()],
         "accounts": {
             account_id: _canonical_account(account)
             for account_id, account in snapshot.accounts.items()
@@ -213,7 +217,13 @@ def read_configuration(profile: Profile) -> ConfigurationRead:
     snapshot = (
         None
         if accounts is None or taxonomy is None or rules is None
-        else ConfigurationSnapshot(accounts=accounts, taxonomy=taxonomy, rules=rules)
+        else ConfigurationSnapshot(
+            accounts=accounts,
+            taxonomy=taxonomy,
+            rules=rules,
+            # The registry loaded, so its owners did too.
+            owners=load_owners(profile),
+        )
     )
     return ConfigurationRead(snapshot, known, tuple(problems))
 

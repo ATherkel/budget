@@ -26,6 +26,7 @@ from budget.gold.models import (
     GoldAccount,
     GoldCategory,
     GoldCategoryAllocation,
+    GoldOwner,
     GoldPublication,
     GoldReviewTarget,
     GoldTransaction,
@@ -222,6 +223,7 @@ _DELETE_RESULT: Final = (
     "DELETE FROM category_allocations WHERE publication_id = ?",
     "DELETE FROM transactions WHERE publication_id = ?",
     "DELETE FROM categories WHERE publication_id = ?",
+    "DELETE FROM owners WHERE publication_id = ?",
     "DELETE FROM accounts WHERE publication_id = ?",
     "DELETE FROM results WHERE publication_id = ?",
 )
@@ -291,8 +293,12 @@ _SELECT_RECIPE_RUNS: Final = (
 # The result records of one publication.
 _INSERT_ACCOUNTS: Final = (
     "INSERT INTO accounts (publication_id, account_id, display_name,"
-    " account_type, ownership_scope, currency, closed_on, coverage_start,"
+    " account_type, owner_id, currency, closed_on, coverage_start,"
     " evidence_through) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+)
+_INSERT_OWNERS: Final = (
+    "INSERT INTO owners (publication_id, owner_id, display_name, display_order)"
+    " VALUES (?, ?, ?, ?)"
 )
 _INSERT_CATEGORIES: Final = (
     "INSERT INTO categories (publication_id, category_id, name, group_id,"
@@ -335,6 +341,9 @@ _INSERT_REVIEW_RULES: Final = (
 # never composed, so no text but a bound parameter ever reaches SQLite.
 _SELECT_ACCOUNTS: Final = (
     "SELECT * FROM accounts WHERE publication_id = :publication_id ORDER BY account_id"
+)
+_SELECT_OWNERS: Final = (
+    "SELECT * FROM owners WHERE publication_id = :publication_id ORDER BY display_order"
 )
 _SELECT_CATEGORIES: Final = (
     "SELECT * FROM categories WHERE publication_id = :publication_id"
@@ -708,6 +717,10 @@ class StoredPublication:
         """Return every account inside the reporting boundary."""
         return self._select(_SELECT_ACCOUNTS, {}, _account)
 
+    def owners(self) -> Sequence[GoldOwner]:
+        """Return every declared owner, in display order."""
+        return self._select(_SELECT_OWNERS, {}, _owner)
+
     def categories(self) -> Sequence[GoldCategory]:
         """Return every assignable category."""
         return self._select(_SELECT_CATEGORIES, {}, _category)
@@ -894,6 +907,7 @@ class _Encoded:
     """One result as rows of plain SQLite values, table by table."""
 
     accounts: Rows
+    owners: Rows
     categories: Rows
     transactions: Rows
     allocations: Rows
@@ -919,6 +933,10 @@ def _encode(
     }
     return _Encoded(
         accounts=tuple(_account_row(publication_id, a) for a in records.accounts),
+        owners=tuple(
+            (publication_id, o.owner_id, o.display_name, o.display_order)
+            for o in records.owners
+        ),
         categories=tuple(_category_row(publication_id, c) for c in records.categories),
         transactions=tuple(
             _transaction_row(publication_id, t, _currency(currencies, t.account_id))
@@ -1221,6 +1239,7 @@ def _recipe_decision(row: sqlite3.Row) -> SilverDecision:
 def _write(connection: sqlite3.Connection, encoded: _Encoded) -> None:
     """Insert every result table, parents before the rows that reference them."""
     connection.executemany(_INSERT_ACCOUNTS, encoded.accounts)
+    connection.executemany(_INSERT_OWNERS, encoded.owners)
     connection.executemany(_INSERT_CATEGORIES, encoded.categories)
     connection.executemany(_INSERT_TRANSACTIONS, encoded.transactions)
     connection.executemany(_INSERT_ALLOCATIONS, encoded.allocations)
@@ -1311,7 +1330,7 @@ def _account_row(publication_id: int, account: GoldAccount) -> tuple[object, ...
         account.account_id,
         account.display_name,
         account.account_type,
-        account.ownership_scope,
+        account.owner_id,
         account.currency,
         _optional_iso(account.closed_on),
         _optional_iso(account.coverage_start),
@@ -1325,11 +1344,20 @@ def _account(row: sqlite3.Row) -> GoldAccount:
         account_id=row["account_id"],
         display_name=row["display_name"],
         account_type=row["account_type"],
-        ownership_scope=row["ownership_scope"],
+        owner_id=row["owner_id"],
         currency=row["currency"],
         closed_on=_optional_date(row["closed_on"]),
         coverage_start=_optional_date(row["coverage_start"]),
         evidence_through=_optional_date(row["evidence_through"]),
+    )
+
+
+def _owner(row: sqlite3.Row) -> GoldOwner:
+    """Read one `owners` row."""
+    return GoldOwner(
+        owner_id=row["owner_id"],
+        display_name=row["display_name"],
+        display_order=row["display_order"],
     )
 
 

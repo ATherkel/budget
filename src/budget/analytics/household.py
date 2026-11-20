@@ -6,10 +6,12 @@ from datetime import date, datetime
 from typing import Final
 from zoneinfo import ZoneInfo
 
+from budget.analytics.activity import account_activity as build_account_activity
 from budget.analytics.detail import spending_detail as build_spending_detail
 from budget.analytics.overview import monthly_overview as build_monthly_overview
 from budget.analytics.overview import selection_options as build_selection_options
 from budget.analytics.reports import (
+    AccountActivity,
     DetailScope,
     DetailSubject,
     MonthlyOverview,
@@ -135,6 +137,23 @@ class HouseholdReports:
                 reference_date=_reference_date(publication, context.reference_date),
             )
             return build_monthly_overview(
+                gold,
+                context,
+                is_current=_is_current(publication, self._publications.current()),
+            )
+        except GoldPublicationUnavailableError as error:
+            raise self._unavailable(context.publication_id) from error
+
+    def account_activity(self, context: ReportContext) -> AccountActivity:
+        """Return dated balances and transactions from the pinned publication."""
+        try:
+            gold = self._publications.open(context.publication_id)
+            publication = gold.publication()
+            context = replace(
+                context,
+                reference_date=_reference_date(publication, context.reference_date),
+            )
+            return build_account_activity(
                 gold,
                 context,
                 is_current=_is_current(publication, self._publications.current()),

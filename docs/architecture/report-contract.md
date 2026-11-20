@@ -47,14 +47,17 @@ class HouseholdReports(Protocol):
     def spending_detail(
         self, context: ReportContext, subject: DetailSubject, scope: DetailScope
     ) -> SpendingDetail: ...
+
+    def account_activity(self, context: ReportContext) -> AccountActivity: ...
 ```
 
 `current_publication()` raises `NothingPublished` when Gold has no current
-publication. The other three raise `PublicationUnavailableError` when the named
-result is not retained, and the two reports raise `InvalidSelection` for a
-context breaking a [`ReportContext`](#reportcontext) rule or, for detail, a
-subject breaking the [`SpendingDetail`](#spendingdetail) one. A failure is
-never an empty or zero report. In code each name ends in `Error`
+publication. `selection_options()` and every context-addressed report raise
+`PublicationUnavailableError` when the named result is not retained.
+Context-addressed reports raise `InvalidSelection` for a context breaking a
+[`ReportContext`](#reportcontext) rule or, for detail, a subject breaking the
+[`SpendingDetail`](#spendingdetail) one. A failure is never an empty or zero
+report. In code each name ends in `Error`
 (`NothingPublishedError`, `InvalidSelectionError`), as the lint rules require.
 
 ### `ReportContext`
@@ -96,7 +99,8 @@ What a page may select within one publication on one reference date.
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `publication` | `ReportPublication` | The publication the options belong to. |
-| `accounts` | list of `SelectableAccount` | Every `GoldAccount` in the publication, ordered by `account_id`: `account_id`, `display_name`, `account_type`, `ownership_scope`, `currency`. Every Gold account is inside the Reporting boundary, so this is "all imported accounts". |
+| `accounts` | list of `SelectableAccount` | Every `GoldAccount` in the publication, ordered by `account_id`: `account_id`, `display_name`, `account_type`, `owner_id`, `currency`. Every Gold account is inside the Reporting boundary, so this is "all imported accounts". |
+| `owners` | list of `SelectableOwner` | Every `GoldOwner` in the publication, in display order: `owner_id`, `display_name`. A page selects an owner as the set of accounts naming it. A publication stored before owners were recorded has none, and its accounts name `legacy-unrecorded` ([`gold-contract.md`](gold-contract.md#goldaccount)) until the next rebuild. |
 | `first_month` | `ReportingMonth` | The earliest month in which any account has a `MonthlyBalanceSnapshot` row. The month of the reference date when no account has one yet. |
 | `last_month` | `ReportingMonth` | The month of the reference date. |
 
@@ -307,6 +311,37 @@ hold only the pinned identity and the selection, never a financial payload or
 a new financial model
 ([`presentation-layer.md`](presentation-layer.md#non-responsibilities)). This
 governs what is stored and reused, not what the rendered page displays.
+
+### Account Activity
+
+`account_activity()` returns the selected month's Booked transactions and the
+selected accounts' balance evidence under the same pinned context,
+[Coverage](#coverage) and [Provisional](#provisional) rules as the overview.
+Rows preserve the published date, description, signed amount and transaction
+type, newest first by date, account ID and account sequence.
+
+A dated balance is the account month's last transaction's
+[`balance_after`](gold-contract.md#goldtransaction), ordered by
+`account_sequence`. It is not the month-end balance. Monthly opening and
+closing balances remain the separate [published snapshot](gold-contract.md#monthlybalancesnapshot)
+values. A final null balance stays null, and an older observation may appear
+only with its own date. A quiet partial month can therefore have unknown
+snapshot balances, while a quiet complete month may carry only an earlier
+dated observation. Observations from different dates are not summed into a
+household bank balance.
+
+Transfers keep Gold's published classification
+([`GoldTransaction`](gold-contract.md#goldtransaction),
+[matching](classification.md#transfer-matching)). Two legs with the same
+`transfer_group_id` are publicly paired, including when the other leg is
+outside the selected account or month; that other leg is evidence, never an
+extra activity row. A Transfer without a group is one-sided. Unknown
+descriptions stay unknown text, and an unknown transaction is never inferred
+to be a Transfer. Matching evidence and decisions remain private lineage.
+
+The selected account carries [`GoldAccount.evidence_through`](gold-contract.md#goldaccount)
+directly, including null and gaps between Evidence ranges. It is not inferred
+from a transaction, export date or Coverage status.
 
 ## Worked Examples (synthetic)
 

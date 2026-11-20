@@ -94,6 +94,7 @@ def test_a_fresh_page_names_the_fully_pinned_history_entry(
     assert page.attributes("overview").get("data-canonical-url") == (
         "/?publication=2&reference_date=2026-06-01"
         f"&account={CURRENT}&account={SAVINGS}&month=2026-06"
+        "&mode=simple&tab=overview&comparison=amounts"
     )
 
 
@@ -330,6 +331,7 @@ def test_an_empty_selection_still_moves_the_address_to_its_pinned_page(
 
     assert response.headers.get("hx-push-url") == (
         "/?publication=2&reference_date=2026-06-01&month=2026-05"
+        "&mode=simple&tab=overview&comparison=amounts"
     )
 
 
@@ -487,6 +489,7 @@ def test_a_report_fetched_in_place_moves_the_address_to_its_own_page(
     assert response.headers.get("hx-push-url") == (
         "/?publication=2&reference_date=2026-06-01"
         f"&account={CURRENT}&account={SAVINGS}&month=2026-05"
+        "&mode=simple&tab=overview&comparison=amounts"
     )
 
 

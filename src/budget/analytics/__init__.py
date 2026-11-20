@@ -5,6 +5,7 @@ Analytics reads Gold only through `GoldRepository`; it never imports Bronze,
 Silver, a parser or `GoldLineageRepository`.
 """
 
+from budget.analytics.activity import account_activity
 from budget.analytics.household import (
     HouseholdReports,
     NothingPublishedError,
@@ -12,14 +13,19 @@ from budget.analytics.household import (
 )
 from budget.analytics.overview import monthly_overview, selection_options
 from budget.analytics.reports import (
+    AccountActivity,
+    AccountActivitySnapshot,
     AccountMonth,
     AccountMonthCoverage,
     AccountMonthStatus,
+    ActivityRow,
+    BankBalanceObservation,
     CategorySpending,
     DetailScope,
     DetailSubject,
     InvalidSelectionError,
     MoneyInOut,
+    MonthlyBalanceObservation,
     MonthlyOverview,
     Provisional,
     ProvisionalReason,
@@ -27,22 +33,29 @@ from budget.analytics.reports import (
     ReportCoverage,
     ReportPublication,
     SelectableAccount,
+    SelectableOwner,
     SelectionOptions,
     SelectionRule,
     SpendingDetail,
     SpendingDetailRow,
+    TransferPairing,
 )
 
 __all__ = [
+    "AccountActivity",
+    "AccountActivitySnapshot",
     "AccountMonth",
     "AccountMonthCoverage",
     "AccountMonthStatus",
+    "ActivityRow",
+    "BankBalanceObservation",
     "CategorySpending",
     "DetailScope",
     "DetailSubject",
     "HouseholdReports",
     "InvalidSelectionError",
     "MoneyInOut",
+    "MonthlyBalanceObservation",
     "MonthlyOverview",
     "NothingPublishedError",
     "Provisional",
@@ -52,10 +65,13 @@ __all__ = [
     "ReportCoverage",
     "ReportPublication",
     "SelectableAccount",
+    "SelectableOwner",
     "SelectionOptions",
     "SelectionRule",
     "SpendingDetail",
     "SpendingDetailRow",
+    "TransferPairing",
+    "account_activity",
     "monthly_overview",
     "selection_options",
 ]

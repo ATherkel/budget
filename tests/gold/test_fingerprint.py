@@ -71,6 +71,19 @@ def test_a_change_to_one_fact_changes_the_fingerprint() -> None:
     assert result_fingerprint(changed) != result_fingerprint(result)
 
 
+def test_the_owners_alone_change_the_fingerprint() -> None:
+    result = build_from(owners={"household": "Fælles", "alex": "Alex"})
+    household, alex = result.records.owners
+
+    # Only the owner records change; nothing else in the result does.
+    for owners in (
+        (replace(household, display_name="Household"), alex),
+        (household,),
+    ):
+        changed = _with(result, records=replace(result.records, owners=owners))
+        assert result_fingerprint(changed) != result_fingerprint(result)
+
+
 def test_a_change_to_lineage_alone_changes_the_fingerprint() -> None:
     result = build_from()
     first, *rest = result.lineage.transaction_lineage

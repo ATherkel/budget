@@ -48,7 +48,7 @@ def _account(account_id: str, name: str, *, imported: bool) -> GoldAccount:
         account_id=account_id,
         display_name=name,
         account_type="current",
-        ownership_scope="person" if account_id == PERSON else "household",
+        owner_id="person" if account_id == PERSON else "household",
         currency="DKK",
         closed_on=None,
         coverage_start=date(2026, 4, 1) if imported else None,

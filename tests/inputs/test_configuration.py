@@ -147,10 +147,11 @@ def rule_problem(rule_id: str, text: str) -> str:
 # zero dropped.
 REWRITTEN_ACCOUNTS = """\
 format = 1
+owners = { household = "Fælles", alex = "Alex" }
 [account.joint-savings]
 source_format = "danske-csv-v1"
 currency = "DKK"
-ownership_scope = "household"
+owner = "household"
 account_type = "savings"
 display_name = "Joint savings"
 
@@ -158,7 +159,7 @@ display_name = "Joint savings"
 bank_account_number = "1234567890"
 display_name = "Joint current"
 account_type = "current"
-ownership_scope = "household"
+owner = "household"
 currency = "DKK"
 source_format = "danske-csv-v1"
 """
@@ -281,6 +282,21 @@ class FingerprintTests(unittest.TestCase):
         for accounts, taxonomy, rules in (
             (ACCOUNTS.replace('"Joint current"', '"Shared current"'), TAXONOMY, RULES),
             (ACCOUNTS.replace('"1234567890"', '"1234567891"'), TAXONOMY, RULES),
+            (
+                ACCOUNTS.replace('owner = "household"', 'owner = "alex"', 1),
+                TAXONOMY,
+                RULES,
+            ),
+            (ACCOUNTS.replace('"Fælles"', '"Household"'), TAXONOMY, RULES),
+            # The owners' order is their display order.
+            (
+                ACCOUNTS.replace(
+                    'household = "Fælles"\nalex = "Alex"',
+                    'alex = "Alex"\nhousehold = "Fælles"',
+                ),
+                TAXONOMY,
+                RULES,
+            ),
             (ACCOUNTS, TAXONOMY.replace('"Eating out"', '"Restaurants"'), RULES),
             (ACCOUNTS, TAXONOMY.replace('group = "home"', 'group = "food"'), RULES),
             (ACCOUNTS, TAXONOMY.replace('"expense"', '"income"'), RULES),
