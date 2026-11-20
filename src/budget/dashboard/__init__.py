@@ -340,15 +340,16 @@ def _render_overview(
         if selected_accounts
         else None
     )
-    canonical_url = _pinned_url(
-        PinnedAddress(
-            publication_id,
-            reference_date,
-            tuple(selected_accounts),
-            selected_month,
-        ),
-        view=requested.view,
-    )
+    def pinned_with(accounts: Collection[str]) -> str:
+        """Return this page's address with `accounts` selected instead."""
+        return _pinned_url(
+            PinnedAddress(
+                publication_id, reference_date, tuple(accounts), selected_month
+            ),
+            view=requested.view,
+        )
+
+    canonical_url = pinned_with(selected_accounts)
     return _TEMPLATES.get_template("overview.html").render(
         publication_id=publication_id,
         reference_date=reference_date.isoformat(),
@@ -356,18 +357,11 @@ def _render_overview(
         accounts=options.accounts,
         selected_accounts=selected_accounts,
         only_urls={
-            account.account_id: _pinned_url(
-                publication_id, reference_date, [account.account_id], selected_month
-            )
+            account.account_id: pinned_with([account.account_id])
             for account in options.accounts
         },
-        all_url=_pinned_url(
-            publication_id,
-            reference_date,
-            [account.account_id for account in options.accounts],
-            selected_month,
-        ),
-        none_url=_pinned_url(publication_id, reference_date, [], selected_month),
+        all_url=pinned_with([account.account_id for account in options.accounts]),
+        none_url=pinned_with([]),
         months=[
             (display.month_value(month), display.month_label(month)) for month in months
         ],
