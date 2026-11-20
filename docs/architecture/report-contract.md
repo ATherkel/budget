@@ -214,31 +214,22 @@ without a booked transaction, and neither does an `outside_history` month.
 
 ### Diagnostics
 
-`diagnostics()` returns public trust evidence and each selected account's
-reconciliation. It reuses [`MoneyInOut`](#monthlyoverview) and [Coverage](#coverage)
-without reclassifying transactions: with `no_data`, Unclassified money,
-Adjustments and Transfers are unknown; with `partial`, observed signed amounts
-and counts remain visible. Transfers count selected legs, including across
-month or account boundaries; a one-sided leg stays one-sided.
+`diagnostics()` follows the overview's [money](#monthlyoverview),
+[Coverage](#coverage) and [Provisional](#provisional) rules. `evidence` exposes
+selected accounts' [`evidence_through`](gold-contract.md#goldaccount) directly,
+including null. Transfer counts count selected legs, not pairs.
 
-`evidence` exposes each selected account's
-[`GoldAccount`](gold-contract.md#goldaccount) `evidence_through` directly,
-including null. Coverage, provisional status and classification are independent,
-so later evidence does not upgrade a partial month.
-
-For each `account_month`:
+For each selected account-month:
 
 ```text
-opening_balance + income_minus_expenses + transfers + unclassified_in
-+ unclassified_out + adjustments_in + adjustments_out + internal_residual
-= closing_balance
+internal_residual = closing_balance - (opening_balance + income_minus_expenses
+    + transfers + unclassified_in + unclassified_out + adjustments_in + adjustments_out)
+opening_gap = opening_balance - previous_closing_balance
 ```
 
-An absent component or balance endpoint makes the residual unknown.
-`opening_gap = opening_balance - previous_closing_balance`; either missing
-endpoint makes it unknown. In the synthetic worked example March has internal
-residual `0.00`, opening gap `-500.00` and Coverage `partial`. Diagnostics never
-balance with an Adjustment, alter a component, or upgrade Coverage.
+Either result is unknown if any of its inputs is missing. Arithmetic agreement
+never upgrades Coverage: the synthetic March example has internal residual
+`0.00`, opening gap `-500.00` and Coverage `partial`.
 
 ### `SpendingDetail`
 
