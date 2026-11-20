@@ -48,6 +48,8 @@ class HouseholdReports(Protocol):
         self, context: ReportContext, subject: DetailSubject, scope: DetailScope
     ) -> SpendingDetail: ...
 
+    def diagnostics(self, context: ReportContext) -> Diagnostics: ...
+
     def account_activity(self, context: ReportContext) -> AccountActivity: ...
 ```
 
@@ -209,6 +211,25 @@ second reason (`account_id`, `display_name`, `month`), ordered as in
 
 An account without a managed period never holds the label, even one imported
 without a booked transaction, and neither does an `outside_history` month.
+
+### Diagnostics
+
+`diagnostics()` follows the overview's [money](#monthlyoverview),
+[Coverage](#coverage) and [Provisional](#provisional) rules. `evidence` exposes
+selected accounts' [`evidence_through`](gold-contract.md#goldaccount) directly,
+including null. Transfer counts count selected legs, not pairs.
+
+For each selected account-month:
+
+```text
+internal_residual = closing_balance - (opening_balance + income_minus_expenses
+    + transfers + unclassified_in + unclassified_out + adjustments_in + adjustments_out)
+opening_gap = opening_balance - previous_closing_balance
+```
+
+Either result is unknown if any of its inputs is missing. Arithmetic agreement
+never upgrades Coverage: the synthetic March example has internal residual
+`0.00`, opening gap `-500.00` and Coverage `partial`.
 
 ### `SpendingDetail`
 
