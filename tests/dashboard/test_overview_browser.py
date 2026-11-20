@@ -187,6 +187,111 @@ def test_empty_selection_survives_reload_back_and_forward(
     expect(savings).not_to_be_checked()
 
 
+def test_only_ticks_only_its_account_and_updates_the_report_in_place(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+    # Start with savings unticked, so "kun" has to tick it as well.
+    page.get_by_label("Joint savings").uncheck()
+    page.wait_for_function("!location.search.includes('account=joint-savings')")
+    # A full page load would forget this mark.
+    page.evaluate("window.stillThisPage = true")
+
+    page.locator("#only-joint-savings").click()
+
+    expect(page.locator("#report")).to_have_attribute("data-accounts", "joint-savings")
+    expect(page.get_by_label("Joint current")).not_to_be_checked()
+    expect(page.get_by_label("Joint savings")).to_be_checked()
+    expect(page).to_have_url(
+        re.compile(
+            r"/\?publication=2&reference_date=2026-06-01"
+            r"&account=joint-savings&month=2026-06"
+            r"&mode=simple&tab=overview&comparison=amounts$"
+        )
+    )
+    assert page.evaluate("window.stillThisPage === true"), "the page was reloaded"
+
+
+def test_none_and_all_change_every_box_in_place_and_move_the_address(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+    # A full page load would forget this mark.
+    page.evaluate("window.stillThisPage = true")
+
+    page.locator("#accounts-none").click()
+    expect(page.locator("#report-region")).to_contain_text("Vælg mindst én konto.")
+    expect(page.get_by_label("Joint current")).not_to_be_checked()
+    expect(page.get_by_label("Joint savings")).not_to_be_checked()
+    expect(page).to_have_url(
+        re.compile(
+            r"/\?publication=2&reference_date=2026-06-01&month=2026-06"
+            r"&mode=simple&tab=overview&comparison=amounts$"
+        )
+    )
+
+    page.locator("#accounts-all").click()
+    expect(page.locator("#report")).to_have_attribute(
+        "data-accounts", "joint-current joint-savings"
+    )
+    expect(page.get_by_label("Joint current")).to_be_checked()
+    expect(page.get_by_label("Joint savings")).to_be_checked()
+    expect(page).to_have_url(
+        re.compile(
+            r"/\?publication=2&reference_date=2026-06-01"
+            r"&account=joint-current&account=joint-savings&month=2026-06"
+            r"&mode=simple&tab=overview&comparison=amounts$"
+        )
+    )
+    assert page.evaluate("window.stillThisPage === true"), "the page was reloaded"
+
+
+def test_a_shortcut_opened_in_a_new_tab_leaves_this_page_as_it_was(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+
+    with page.context.expect_page(timeout=5000) as opened:
+        page.locator("#only-joint-savings").click(modifiers=["Control"])
+
+    expect(opened.value).to_have_url(re.compile(r"&account=joint-savings&month="))
+    expect(page.get_by_label("Joint current")).to_be_checked()
+    expect(page.get_by_label("Joint savings")).to_be_checked()
+
+
+def test_a_shortcut_names_the_month_shown_after_the_month_changes(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+
+    page.get_by_label("Måned", exact=True).select_option("2026-05")
+    page.wait_for_function("location.search.includes('month=2026-05')")
+
+    for shortcut in ("#only-joint-savings", "#accounts-all", "#accounts-none"):
+        expect(page.locator(shortcut)).to_have_attribute(
+            "href", re.compile(r"&month=2026-05&")
+        )
+
+
+def test_a_shortcut_keeps_the_mode_chosen_on_the_page(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+
+    page.get_by_label("Avanceret", exact=True).check()
+    page.wait_for_function("location.search.includes('mode=advanced')")
+
+    for shortcut in ("#only-joint-savings", "#accounts-all", "#accounts-none"):
+        expect(page.locator(shortcut)).to_have_attribute(
+            "href", re.compile(r"&mode=advanced&")
+        )
+
+
 def test_active_request_failure_is_visible_accessible_and_retryable(
     page: Page,
     dashboard: BrowserDashboard,
@@ -328,6 +433,9 @@ def test_login_and_account_selection_work_from_the_keyboard(
         " && !location.search.includes('account=joint-current')"
     )
 
+    # Each account's "kun" link follows its box in the tab order.
+    page.keyboard.press("Tab")
+    expect(page.locator("#only-joint-current")).to_be_focused()
     page.keyboard.press("Tab")
     savings = page.get_by_label("Joint savings")
     expect(savings).to_be_focused()
