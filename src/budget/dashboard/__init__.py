@@ -19,6 +19,7 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from pydantic import BaseModel, model_validator
 
 from budget.analytics import (
+    AccountActivity,
     DetailScope,
     DetailSubject,
     HouseholdReports,
@@ -47,7 +48,7 @@ __all__ = ["create_app", "set_passphrase"]
 SESSION_COOKIE = "session"
 
 type DashboardMode = Literal["simple", "advanced"]
-type DashboardTab = Literal["overview"]
+type DashboardTab = Literal["overview", "details"]
 type ComparisonMode = Literal["amounts"]
 
 
@@ -120,6 +121,7 @@ class ReportRequest:
     accounts: tuple[str, ...]
     month: str
     view: ViewState
+    active_mode: DashboardMode
 
 
 class OverviewAddress(BaseModel):
@@ -130,6 +132,8 @@ class OverviewAddress(BaseModel):
     month: str | None = None
     account: list[str] = []
     mode: str = "simple"
+    tab: str = "overview"
+    comparison: str = "amounts"
 
     def asked(self) -> OverviewRequest:
         """Return the page request without resolving a fresh pin."""
@@ -142,7 +146,7 @@ class OverviewAddress(BaseModel):
             ),
             accounts=tuple(self.account) if pinned else None,
             month=self.month,
-            view=_view_state(self.mode),
+            view=_view_state(self.mode, self.tab, self.comparison),
         )
 
 
@@ -154,10 +158,31 @@ class PinnedQuery(BaseModel):
     month: str
     account: list[str] = []
     mode: str = "simple"
+    tab: str = "overview"
+    comparison: str = "amounts"
 
     def pin(self) -> tuple[int, date]:
         """Return this address's publication and reference date."""
         return (self.publication, self.reference_date)
+
+
+class ReportAddress(PinnedQuery):
+    """The query string of one in-place report request and its prior mode."""
+
+    active_mode: str | None = None
+
+    def asked(self) -> ReportRequest:
+        """Return the report request and the presentation state it came from."""
+        view = _view_state(self.mode, self.tab, self.comparison)
+        return ReportRequest(
+            pin=self.pin(),
+            accounts=tuple(self.account),
+            month=self.month,
+            view=view,
+            active_mode=(
+                view.mode if self.active_mode is None else _mode(self.active_mode)
+            ),
+        )
 
 
 class DetailAddress(BaseModel):
@@ -194,7 +219,7 @@ class DetailAddress(BaseModel):
             self.month,
             subject,
             self.scope,
-            _view_state(self.mode),
+            _view_state(self.mode, self.tab, self.comparison),
         )
 
 
@@ -251,9 +276,28 @@ def _mode(value: str | None) -> DashboardMode:
     return "advanced" if value == "advanced" else "simple"
 
 
-def _view_state(mode: str | None) -> ViewState:
-    """Return the only delivered tab and comparison for a normalized mode."""
-    return ViewState(mode=_mode(mode))
+def _tab(value: str | None) -> DashboardTab:
+    """Return a supported tab, defaulting a malformed address to Overblik."""
+    return "details" if value == "details" else "overview"
+
+
+def _comparison(_value: str | None) -> ComparisonMode:
+    """Return the only delivered comparison."""
+    return "amounts"
+
+
+def _view_state(
+    mode: str | None,
+    tab: str | None = None,
+    comparison: str | None = None,
+) -> ViewState:
+    """Return the delivered presentation state a mode and address select."""
+    normalized_mode = _mode(mode)
+    return ViewState(
+        mode=normalized_mode,
+        tab=_tab(tab) if normalized_mode == "advanced" else "overview",
+        comparison=_comparison(comparison),
+    )
 
 
 def _view_state_controls(view: ViewState) -> str:
@@ -312,6 +356,7 @@ def _render_overview(
                 tuple(selected_accounts),
                 selected_month,
                 requested.view,
+                requested.view.mode,
             ),
         )
         if selected_accounts
@@ -399,6 +444,31 @@ def _read_overview(
             return HouseholdReports(store).monthly_overview(context)
     except InvalidSelectionError as error:
         # A failure is shown, and echoes no context the page could render.
+        return _TEMPLATES.get_template("invalid_selection.html").render(
+            problems=display.selection_problems(error)
+        )
+    except PublicationUnavailableError:
+        return _TEMPLATES.get_template("unavailable.html").render()
+
+
+def _read_activity(
+    profile: Profile,
+    pin: tuple[int, date],
+    accounts: Collection[str],
+    month: str,
+) -> AccountActivity | str:
+    """Return account activity for a pinned selection, or a failure fragment."""
+    publication_id, reference_date = pin
+    try:
+        context = ReportContext(
+            publication_id=publication_id,
+            account_ids=frozenset(accounts),
+            month=display.parse_month(month),
+            reference_date=reference_date,
+        )
+        with GoldStore(profile, read_only=True) as store:
+            return HouseholdReports(store).account_activity(context)
+    except InvalidSelectionError as error:
         return _TEMPLATES.get_template("invalid_selection.html").render(
             problems=display.selection_problems(error)
         )
@@ -534,6 +604,34 @@ def _render_report(
     if isinstance(overview_report, str):
         return overview_report
     answered = overview_report.context
+    activity = (
+        _read_activity(
+            profile,
+            requested.pin,
+            requested.accounts,
+            requested.month,
+        )
+        if requested.view.mode == "advanced" and requested.view.tab == "details"
+        else None
+    )
+    if isinstance(activity, str):
+        return activity
+    tab_urls = {
+        destination: _pinned_url(
+            PinnedAddress(
+                answered.publication_id,
+                answered.reference_date,
+                tuple(answered.account_ids),
+                display.month_value(answered.month),
+            ),
+            view=ViewState(
+                "advanced",
+                destination,
+                requested.view.comparison,
+            ),
+        )
+        for destination in ("overview", "details")
+    }
     return _TEMPLATES.get_template("report.html").render(
         is_current=overview_report.publication.is_current,
         publication_id=answered.publication_id,
@@ -542,9 +640,11 @@ def _render_report(
         month=display.month_value(answered.month),
         month_label=display.month_label(answered.month),
         overview=overview_report,
+        activity=activity,
         mode=requested.view.mode,
         tab=requested.view.tab,
         comparison=requested.view.comparison,
+        tab_urls=tab_urls,
         explanation_url=_answered_url(
             overview_report,
             "/explanation",
@@ -584,26 +684,39 @@ def _render_explanation(
 
 def _report_response(
     profile: Profile,
-    pin: tuple[int, date],
-    accounts: list[str],
-    month: str,
-    view: ViewState,
+    requested: ReportRequest,
 ) -> Response:
     """Return the report fragment for one selection, or the empty-selection prompt.
 
     The address becomes this selection's own page, so back and forward reopen
     each selection the reader made.
     """
+    view = _view_state(
+        requested.view.mode,
+        requested.view.tab,
+        requested.view.comparison,
+    )
+    if view.mode != requested.active_mode:
+        view = ViewState(view.mode, "overview", view.comparison)
     page = _pinned_url(
-        PinnedAddress(*pin, tuple(accounts), month),
+        PinnedAddress(*requested.pin, requested.accounts, requested.month),
         view=view,
     )
     state = _view_state_controls(view)
-    if not accounts:
+    if not requested.accounts:
         # An empty selection is a prompt, never a report of nothing.
         prompt = _TEMPLATES.get_template("no_accounts.html").render()
         return HTMLResponse(prompt + state, headers={"HX-Push-Url": page})
-    fragment = _render_report(profile, ReportRequest(pin, tuple(accounts), month, view))
+    fragment = _render_report(
+        profile,
+        ReportRequest(
+            requested.pin,
+            requested.accounts,
+            requested.month,
+            view,
+            view.mode,
+        ),
+    )
     return HTMLResponse(fragment + state, headers={"HX-Push-Url": page})
 
 
@@ -672,17 +785,11 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     @app.get("/report")
     def report(
         request: Request,
-        address: Annotated[PinnedQuery, Query()],
+        address: Annotated[ReportAddress, Query()],
     ) -> Response:
         return for_reader(
             request,
-            lambda: _report_response(
-                profile,
-                address.pin(),
-                address.account,
-                address.month,
-                _view_state(address.mode),
-            ),
+            lambda: _report_response(profile, address.asked()),
         )
 
     @app.get("/explanation")
@@ -698,7 +805,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
                     address.pin(),
                     address.account,
                     address.month,
-                    _view_state(address.mode),
+                    _view_state(address.mode, address.tab, address.comparison),
                 )
             ),
         )
