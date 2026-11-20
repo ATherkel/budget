@@ -310,6 +310,11 @@ unclassified, so "Ukategoriseret" shows `0,00 kr.` for "Ind" and "Ud". Stop
 it with `Ctrl+C`, then run
 `Remove-Item -LiteralPath $demo -Recurse`.
 
+In Avanceret, open Detaljer with the keyboard and check that the phone layout
+does not scroll sideways. The dated observation, monthly snapshot and
+transaction table are the account activity
+[described in the presentation contract](../architecture/presentation-layer.md).
+
 ## Restore and dev refresh
 
 Both read production's backup sets. Your dev profile needs `upstream_backups`

@@ -56,10 +56,10 @@ link opens it with a route back to the originating view. Browser back/forward
 restores the recorded mode, tab and applicable detail/comparison state under the
 [navigation contract](report-contract.md#navigation-and-selection-transitions).
 
-The switch and advanced “Overblik” are available. “Detaljer” is pending
-[#556](https://github.com/ATherkel/budget/issues/556), and “Kontrol” is pending
-[#552](https://github.com/ATherkel/budget/issues/552); expose no controls for
-those undelivered screens. Both modes retain access to the basic trust explanation.
+The switch and advanced “Overblik” and “Detaljer” are available. “Kontrol” is
+pending [#552](https://github.com/ATherkel/budget/issues/552); expose no control
+for that undelivered screen. Both modes retain access to the basic trust
+explanation.
 
 ## Data Trust Display
 

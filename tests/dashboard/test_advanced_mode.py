@@ -1,8 +1,8 @@
 # Copyright 2026 Therkel
-"""The narrowed Enkel and Avanceret overview contract."""
+"""The Enkel and Avanceret report navigation contract."""
 
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from budget.dashboard import create_app
-from budget.gold import GoldResult
+from budget.gold import GoldResult, ReportingMonth
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
 from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
@@ -78,6 +78,223 @@ def test_fresh_visit_offers_only_the_working_modes_and_defaults_to_enkel_belob(
     )
 
 
+def test_details_render_dated_balances_snapshots_and_public_transfer_evidence(
+    client: TestClient,
+) -> None:
+    page = read(
+        client.get(
+            "/report",
+            params={
+                **PINNED,
+                "account": [CURRENT],
+                "month": "2026-01",
+                "mode": "advanced",
+                "tab": "details",
+            },
+            headers={"HX-Request": "true"},
+        ).text
+    )
+
+    assert (
+        page.attributes("report").get("data-mode"),
+        page.attributes("report").get("data-tab"),
+        page.attributes("tab-details").get("aria-current"),
+        page.text_of("activity-evidence-joint-current"),
+        page.text_of("activity-dated-balance-joint-current"),
+        page.text_of("activity-monthly-snapshot-joint-current"),
+        "Overførsel, parret med Joint savings" in page.visible(),
+        page.attributes("income"),
+    ) == (
+        "advanced",
+        "details",
+        "page",
+        "Gennem 08.05.2026",
+        "21.557,50 kr. den 28.01.2026",
+        ("Månedssnapshot: Åbning 400,00 kr.; lukning 21.557,50 kr.; delvist dækket."),
+        True,
+        {},
+    )
+
+
+def test_details_keep_a_null_dated_balance_separate_from_unknown_snapshot_value(
+    profile: Profile,
+    client: TestClient,
+) -> None:
+    january = next(
+        transaction
+        for transaction in RECORDS.transactions
+        if transaction.transaction_id == "current-03"
+    )
+    earlier = next(
+        transaction
+        for transaction in RECORDS.transactions
+        if transaction.transaction_id == "current-04"
+    )
+    latest = replace(
+        earlier,
+        transaction_id="current-null",
+        transaction_date=date(2026, 2, 3),
+        account_sequence=12,
+        balance_after=None,
+        balance_check="missing_balance",
+    )
+    february = ReportingMonth(2026, 2)
+    snapshots = tuple(
+        replace(snapshot, closing_balance=None)
+        if snapshot.account_id == CURRENT and snapshot.month == february
+        else snapshot
+        for snapshot in RECORDS.monthly_balances
+    )
+    records = replace(
+        RECORDS,
+        transactions=(january, earlier, latest),
+        category_allocations=tuple(
+            allocation
+            for allocation in RECORDS.category_allocations
+            if allocation.transaction_id in {"current-03", "current-04"}
+        ),
+        monthly_balances=snapshots,
+    )
+    with GoldStore(profile) as store:
+        store.publish(
+            GoldResult(
+                replace(PUBLICATION, publication_id=2),
+                records,
+            ),
+            RECIPE,
+            CONFIGURATION,
+        )
+
+    page = read(
+        client.get(
+            "/report",
+            params={
+                **PINNED,
+                "publication": "2",
+                "account": [CURRENT],
+                "month": "2026-02",
+                "mode": "advanced",
+                "tab": "details",
+            },
+            headers={"HX-Request": "true"},
+        ).text
+    )
+
+    assert (
+        page.text_of("activity-dated-balance-joint-current"),
+        page.text_of("activity-monthly-snapshot-joint-current"),
+        page.text_of("activity-earlier-observation-joint-current"),
+    ) == (
+        "Ukendt den 03.02.2026",
+        (
+            "Månedssnapshot: Åbning 21.557,50 kr.; lukning Ingen data endnu; "
+            "delvist dækket."
+        ),
+        "21.557,50 kr. den 28.01.2026",
+    )
+
+
+def test_details_show_current_and_unsettled_closed_provisional_warnings(
+    profile: Profile,
+    client: TestClient,
+) -> None:
+    current = read(
+        client.get(
+            "/report",
+            params={
+                **PINNED,
+                "account": [CURRENT],
+                "month": "2026-05",
+                "mode": "advanced",
+                "tab": "details",
+            },
+            headers={"HX-Request": "true"},
+        ).text
+    )
+
+    april = ReportingMonth(2026, 4)
+    unsettled = tuple(
+        replace(snapshot, late_bookings_settled=False)
+        if snapshot.account_id == CURRENT and snapshot.month == april
+        else snapshot
+        for snapshot in RECORDS.monthly_balances
+    )
+    with GoldStore(profile) as store:
+        store.publish(
+            GoldResult(
+                replace(PUBLICATION, publication_id=2),
+                replace(RECORDS, monthly_balances=unsettled),
+            ),
+            RECIPE,
+            CONFIGURATION,
+        )
+    closed = read(
+        client.get(
+            "/report",
+            params={
+                **PINNED,
+                "publication": "2",
+                "account": [CURRENT],
+                "month": "2026-04",
+                "mode": "advanced",
+                "tab": "details",
+            },
+            headers={"HX-Request": "true"},
+        ).text
+    )
+
+    assert (
+        current.text_of("provisional-label"),
+        closed.text_of("provisional-label"),
+        parse_qs(urlsplit(current.attributes("provisional-explanation")["href"]).query)[
+            "tab"
+        ],
+        parse_qs(urlsplit(closed.attributes("provisional-explanation")["href"]).query)[
+            "tab"
+        ],
+    ) == (
+        "Foreløbige tal",
+        "Foreløbige tal",
+        ["details"],
+        ["details"],
+    )
+
+
+def test_details_basic_explanation_returns_to_the_same_pinned_tab(
+    client: TestClient,
+) -> None:
+    details = read(
+        client.get(
+            "/report",
+            params={
+                **PINNED,
+                "month": "2026-03",
+                "mode": "advanced",
+                "tab": "details",
+            },
+            headers={"HX-Request": "true"},
+        ).text
+    )
+    explanation_url = details.attributes("coverage-explanation")["href"]
+    explanation = read(client.get(explanation_url).text)
+    back_url = explanation.attributes("back-to-report")["href"]
+    restored = read(client.get(back_url).text)
+
+    assert (
+        parse_qs(urlsplit(explanation_url).query)["tab"],
+        parse_qs(urlsplit(back_url).query)["tab"],
+        parse_qs(urlsplit(back_url).query)["account"],
+        restored.attributes("report").get("data-tab"),
+        restored.hidden("tab"),
+    ) == (
+        ["details"],
+        ["details"],
+        [CURRENT, SAVINGS],
+        "details",
+        "details",
+    )
+
+
 def test_full_get_and_htmx_agree_on_the_normalized_pinned_mode(
     client: TestClient,
 ) -> None:
@@ -123,6 +340,80 @@ def test_full_get_and_htmx_agree_on_the_normalized_pinned_mode(
         "overview",
         "advanced",
         "overview",
+    )
+
+
+def test_explicit_details_to_enkel_switch_lands_on_overview_and_preserves_pin(
+    client: TestClient,
+) -> None:
+    params = {
+        **PINNED,
+        "account": [CURRENT],
+        "month": "2026-04",
+        "active_mode": "advanced",
+        "mode": "simple",
+        "tab": "details",
+    }
+    page = read(client.get("/", params=params).text)
+    response = client.get(
+        "/report",
+        params=params,
+        headers={"HX-Request": "true"},
+    )
+    fragment = read(response.text)
+    expected = (
+        "/?publication=1&reference_date=2026-05-14"
+        f"&account={CURRENT}&month=2026-04"
+        "&mode=simple&tab=overview&comparison=amounts"
+    )
+
+    assert (
+        page.checked("mode"),
+        page.hidden("tab"),
+        page.attributes("report").get("data-tab"),
+        page.attributes("overview").get("data-canonical-url"),
+        fragment.hidden("active_mode"),
+        fragment.hidden("tab"),
+        fragment.attributes("report").get("data-tab"),
+        response.headers.get("hx-push-url"),
+    ) == (
+        {"simple"},
+        "overview",
+        "overview",
+        expected,
+        "simple",
+        "overview",
+        "overview",
+        expected,
+    )
+
+
+def test_unavailable_details_response_keeps_the_requested_presentation_state(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        "/report",
+        params={
+            **PINNED,
+            "publication": "999",
+            "active_mode": "advanced",
+            "mode": "advanced",
+            "tab": "details",
+        },
+        headers={"HX-Request": "true"},
+    )
+    fragment = read(response.text)
+
+    assert (
+        fragment.text_of("report"),
+        fragment.hidden("active_mode"),
+        fragment.hidden("tab"),
+        parse_qs(urlsplit(response.headers["hx-push-url"]).query)["tab"],
+    ) == (
+        "Disse tal findes ikke længere. Vis de nyeste tal",
+        "advanced",
+        "details",
+        ["details"],
     )
 
 
@@ -335,9 +626,11 @@ def test_category_and_basic_explanation_returns_keep_advanced_pinned_state(
     )
 
 
+@pytest.mark.parametrize("tab", ["overview", "details"])
 def test_advanced_mode_keeps_superseded_and_unavailable_publication_behavior(
     profile: Profile,
     client: TestClient,
+    tab: str,
 ) -> None:
     with GoldStore(profile) as store:
         store.publish(
@@ -357,6 +650,7 @@ def test_advanced_mode_keeps_superseded_and_unavailable_publication_behavior(
                     **PINNED,
                     "publication": publication,
                     "mode": "advanced",
+                    "tab": tab,
                 },
                 headers={"HX-Request": "true"},
             ).text
@@ -369,12 +663,18 @@ def test_advanced_mode_keeps_superseded_and_unavailable_publication_behavior(
         "Der findes nyere tal." in superseded.visible(),
         superseded.attributes("newer-figures").get("href"),
         superseded.attributes("report").get("data-mode"),
+        superseded.attributes("report").get("data-tab"),
+        superseded.hidden("tab"),
         unavailable.text_of("report"),
         unavailable.attributes("current-figures").get("href"),
+        unavailable.hidden("tab"),
     ) == (
         True,
         "/",
         "advanced",
+        tab,
+        tab,
         "Disse tal findes ikke længere. Vis de nyeste tal",
         "/",
+        tab,
     )
