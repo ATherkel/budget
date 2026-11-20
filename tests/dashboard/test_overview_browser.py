@@ -253,6 +253,21 @@ def test_a_shortcut_names_the_month_shown_after_the_month_changes(
         )
 
 
+def test_a_shortcut_keeps_the_mode_chosen_on_the_page(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+
+    page.get_by_label("Avanceret", exact=True).check()
+    page.wait_for_function("location.search.includes('mode=advanced')")
+
+    for shortcut in ("#only-joint-savings", "#accounts-all", "#accounts-none"):
+        expect(page.locator(shortcut)).to_have_attribute(
+            "href", re.compile(r"&mode=advanced&")
+        )
+
+
 def test_active_request_failure_is_visible_accessible_and_retryable(
     page: Page,
     dashboard: BrowserDashboard,
