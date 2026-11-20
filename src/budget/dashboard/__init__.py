@@ -340,6 +340,7 @@ def _render_overview(
         if selected_accounts
         else None
     )
+
     def pinned_with(accounts: Collection[str]) -> str:
         """Return this page's address with `accounts` selected instead."""
         return _pinned_url(
