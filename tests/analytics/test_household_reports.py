@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ import pytest
 from budget.analytics import (
     HouseholdReports,
     InvalidSelectionError,
+    MoneyInOut,
     MonthlyOverview,
     NothingPublishedError,
     PublicationUnavailableError,
@@ -229,6 +231,8 @@ def test_closed_store_lifecycle_errors_propagate_from_reports(
     with pytest.raises(GoldStoreClosedError):
         reports.monthly_overview(context)
     with pytest.raises(GoldStoreClosedError):
+        reports.diagnostics(context)
+    with pytest.raises(GoldStoreClosedError):
         reports.account_activity(context)
 
 
@@ -323,6 +327,48 @@ def test_monthly_overview_keeps_reading_a_superseded_pipeline_page(
     ]
 
 
+def test_diagnostics_keeps_reading_a_superseded_pipeline_page(
+    gold_store: GoldStore,
+) -> None:
+    old_records = replace(
+        RECORDS,
+        accounts=tuple(
+            replace(account, display_name=f"Pinned {account.display_name}")
+            for account in RECORDS.accounts
+        ),
+    )
+    old = replace(PUBLICATION, publication_id=1)
+    gold_store.publish(GoldResult(old, old_records), RECIPE, CONFIGURATION)
+    _publish(gold_store, 2)
+    context = ReportContext(
+        publication_id=1,
+        account_ids=frozenset({"joint-current", "joint-savings"}),
+        month=ReportingMonth(2026, 3),
+        reference_date=date(2026, 5, 14),
+    )
+
+    report = HouseholdReports(gold_store).diagnostics(context)
+
+    assert (
+        report.context,
+        report.publication.publication_id,
+        report.publication.is_current,
+    ) == (context, 1, False)
+    assert [row.display_name for row in report.evidence] == [
+        "Pinned Joint current",
+        "Pinned Joint savings",
+    ]
+    assert [row.display_name for row in report.reconciliations] == [
+        "Pinned Joint current",
+        "Pinned Joint savings",
+    ]
+    assert report.unclassified == MoneyInOut(
+        Decimal("0.00"),
+        Decimal("-450.00"),
+        1,
+    )
+
+
 def test_an_unavailable_pinned_result_offers_the_current_id(
     gold_store: GoldStore,
 ) -> None:
@@ -345,6 +391,24 @@ def test_an_unavailable_pinned_result_offers_the_current_id(
         activity_raised.value.publication_id,
         activity_raised.value.current_publication_id,
     ) == (1, 3)
+
+
+def test_unavailable_diagnostics_offers_the_current_id(
+    gold_store: GoldStore,
+) -> None:
+    for publication_id in (1, 2, 3):
+        _publish(gold_store, publication_id)
+    context = ReportContext(
+        publication_id=1,
+        account_ids=frozenset({"joint-current"}),
+        month=ReportingMonth(2026, 3),
+        reference_date=date(2026, 5, 14),
+    )
+
+    with pytest.raises(PublicationUnavailableError) as raised:
+        HouseholdReports(gold_store).diagnostics(context)
+
+    assert (raised.value.publication_id, raised.value.current_publication_id) == (1, 3)
 
 
 def test_selection_options_expose_the_same_unavailable_recovery(
@@ -408,6 +472,23 @@ def test_context_reports_keep_the_existing_selection_failure(
         assert raised.value.reasons == {"no_accounts"}
 
 
+def test_diagnostics_keeps_the_existing_selection_failure(
+    gold_store: GoldStore,
+) -> None:
+    _publish(gold_store, 1)
+    context = ReportContext(
+        publication_id=1,
+        account_ids=frozenset(),
+        month=ReportingMonth(2026, 2),
+        reference_date=date(2026, 5, 14),
+    )
+
+    with pytest.raises(InvalidSelectionError) as raised:
+        HouseholdReports(gold_store).diagnostics(context)
+
+    assert raised.value.reasons == {"no_accounts"}
+
+
 def test_as_known_at_uses_the_known_date_in_copenhagen(
     profile: Profile, gold_store: GoldStore
 ) -> None:
@@ -433,10 +514,12 @@ def test_as_known_at_uses_the_known_date_in_copenhagen(
 
     reports = HouseholdReports(gold_store)
     report = reports.monthly_overview(context)
+    diagnostics = reports.diagnostics(context)
     activity = reports.account_activity(context)
     options = reports.selection_options(1, date(2026, 5, 14))
 
     assert report.context == replace(context, reference_date=date(2026, 7, 1))
+    assert diagnostics.context == replace(context, reference_date=date(2026, 7, 1))
     assert activity.context == replace(context, reference_date=date(2026, 7, 1))
     assert (report.publication.kind, report.publication.is_current) == (
         "as_known_at",
