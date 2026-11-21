@@ -51,6 +51,7 @@ repository.
 
 All Python code must pass ruff (lint and format), ty and complexipy (cognitive
 complexity at most 15 per function, mirroring SonarQube rule `python:S3776`).
+Templates must pass djlint, with lines of at most 120 characters.
 CI enforces all of them. Run the local checks before every commit, and never
 loosen the configuration or add a suppression without the owner's approval.
 See `docs/agents/code-quality.md`.

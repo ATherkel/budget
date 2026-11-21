@@ -3,9 +3,10 @@ type: agents
 ---
 # Code Quality Gate
 
-All Python code and templates in this repository must pass these checks. CI runs them in
-`.github/workflows/quality.yml` and blocks the merge when any one fails, so
-run them locally before every commit that touches Python.
+All Python code and templates in this repository must pass these checks. CI
+runs them in `.github/workflows/quality.yml` and blocks the merge when any one
+fails, so run them locally before every commit that touches Python or
+templates.
 
 | Check | Tool | Local command |
 | --- | --- | --- |
@@ -19,21 +20,24 @@ Run them all at once:
 
 ```sh
 uv sync
-uv run ruff check . && uv run ruff format --check . && uv run ty check && uv run complexipy && uv run djlint src --lint
+uv run ruff check . && uv run ruff format --check . && uv run ty check \
+  && uv run complexipy && uv run djlint src --lint
 ```
 
 Configuration lives in `pyproject.toml`; djlint's line rule lives in
 `.djlint_rules.yaml`, because its own `max_line_length` only steers the
-formatter. Dev tools are pinned in `uv.lock`. `.pre-commit-config.yaml` runs
-djlint on commit once installed with `uvx pre-commit install`.
+formatter. djlint skips a line that holds a comment, so
+`tests/test_template_lint.py` also checks every template line's length.
+Dev tools are pinned in `uv.lock`. `.pre-commit-config.yaml` runs djlint on
+commit once installed with `uvx pre-commit install`.
 
 ## Rules for agents
 
 - Write code that passes the gate; do not satisfy it by weakening it. Never
   edit the tool configuration, raise a threshold, add a rule to an ignore
   list, or add a suppression (`# noqa`, `# type: ignore`, `# ty: ignore`,
-  `# complexipy: ignore`, `{# djlint:off #}`) without the owner's explicit approval
-  in the task. When approved, the suppression names the exact rule and a
+  `# complexipy: ignore`, `{# djlint:off #}`) without the owner's explicit
+  approval in the task. When approved, the suppression names the exact rule and a
   comment says why.
 - Treat a complexity failure as a design signal. Split the function by
   responsibility, extract guard clauses, or replace branching with data
