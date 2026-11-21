@@ -311,16 +311,14 @@ In Avanceret, focus `Kontrol` and press Enter. In the current month, expect
 Unknown in/out `+100,00 kr.` and `−100,00 kr.`, Adjustments in/out
 `+20,00 kr.` and `−20,00 kr.`, and a paired Transfer in/out `+500,00 kr.`
 and `−500,00 kr.` Each account shows a `0,00 kr.` internal residual beside a
-`−500,00 kr.` opening gap. Open and close each account with Enter and Space; its summary keeps Coverage
-and both differences visible. Check the separate Ind/Ud/Antal table at 390 px
-and 320 px without sideways scroll, following the
-[Kontrol display](../architecture/presentation-layer.md#enkel-and-avanceret). From simple and details, follow a targeted `Kontrol` link, then
+`−500,00 kr.` opening gap. Open and close each account with Enter and Space,
+and check the page at 390 px and 320 px for sideways scroll against the
+[Kontrol display](../architecture/presentation-layer.md#enkel-and-avanceret).
+From simple and details, follow a targeted `Kontrol` link, then
 `Om tallene og dækningen`, `Tilbage til oversigten`, and the return link. Use
 Back/Forward after changing the month or accounts. The expected navigation is
 the [navigation contract](../architecture/report-contract.md#navigation-and-selection-transitions);
 the figures come from [Diagnostics](../architecture/report-contract.md#diagnostics).
-
-🤖 Added by Codex (GPT-6.1 Sol)
 
 Also open Detaljer with the keyboard and check its phone layout against the
 [account activity display](../architecture/presentation-layer.md).
