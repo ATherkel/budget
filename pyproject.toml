@@ -87,6 +87,14 @@ markers = [
 # Promote every ty warning to an error so the gate cannot pass with warnings.
 all = "error"
 
+[tool.djlint]
+# Lint only; the templates are never reformatted. The 120-character line limit
+# is the custom rule in .djlint_rules.yaml.
+profile = "jinja"
+# J018 asks for url_for() links; the dashboard renders through a plain Jinja
+# Environment that has no url_for.
+ignore = "J018"
+
 [tool.complexipy]
 # Mirrors SonarQube python:S3776 (cognitive complexity per function <= 15).
 max-complexity-allowed = 15
