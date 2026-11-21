@@ -34,8 +34,14 @@ def long_template_lines(root: Path) -> list[str]:
     djlint drops a match that overlaps a comment, so its rule alone lets a long
     line through when it holds one; this reads the lines themselves.
     """
-    del root
-    return []
+    return [
+        f"{path.relative_to(root)}:{number}"
+        for path in sorted(root.rglob("*.html"))
+        for number, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), start=1
+        )
+        if len(line) > 120
+    ]
 
 
 def paragraph(length: int) -> str:
