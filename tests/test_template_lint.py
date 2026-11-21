@@ -28,6 +28,16 @@ def lint(tmp_path: Path, line: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def long_template_lines(root: Path) -> list[str]:
+    """Return `path:line` for each template line under `root` over 120 characters.
+
+    djlint drops a match that overlaps a comment, so its rule alone lets a long
+    line through when it holds one; this reads the lines themselves.
+    """
+    del root
+    return []
+
+
 def paragraph(length: int) -> str:
     """Return a `<p>` element exactly `length` characters long."""
     return "<p>" + "x" * (length - len("<p></p>")) + "</p>"
@@ -47,3 +57,18 @@ def test_a_template_line_of_at_most_120_characters_passes(
     result = lint(tmp_path, paragraph(length))
 
     assert result.returncode == 0, result.stdout
+
+
+def test_a_long_template_line_with_a_comment_is_still_too_long(
+    tmp_path: Path,
+) -> None:
+    folder = tmp_path / "templates"
+    folder.mkdir()
+    comment = "{# n #}"
+    lines = [
+        paragraph(120 - len(comment)) + comment,
+        paragraph(121 - len(comment)) + comment,
+    ]
+    (folder / "page.html").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    assert long_template_lines(tmp_path) == [str(Path("templates/page.html")) + ":2"]
