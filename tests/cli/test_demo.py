@@ -279,20 +279,32 @@ def test_the_demo_current_month_exercises_kontrol_diagnostics(
     assert (
         page.text_of("diagnostics-reconciliation-demo-current-residual"),
         page.text_of("diagnostics-reconciliation-demo-current-opening-gap"),
-        page.text_of("diagnostics-unclassified"),
-        page.text_of("diagnostics-adjustments"),
-        page.text_of("diagnostics-transfer-summary"),
+        page.text_of("diagnostics-unclassified-in"),
+        page.text_of("diagnostics-unclassified-out"),
+        page.text_of("diagnostics-unclassified-count"),
+        page.text_of("diagnostics-adjustments-in"),
+        page.text_of("diagnostics-adjustments-out"),
+        page.text_of("diagnostics-adjustments-count"),
+        page.text_of("diagnostics-transfer-in"),
+        page.text_of("diagnostics-transfer-out"),
+        page.text_of("diagnostics-transfer-count"),
+        page.text_of("diagnostics-transfer-pairing"),
     ) == (
-        "Beregnet afvigelse: 0,00 kr.",
-        "Åbningsforskel mod forrige lukning: \N{MINUS SIGN}500,00 kr.",
+        "Intern forskel: 0,00 kr.",
+        "Åbningsforskel: \N{MINUS SIGN}500,00 kr.",
+        "+100,00 kr.",
+        "\N{MINUS SIGN}100,00 kr.",
+        "2",
+        "+20,00 kr.",
+        "\N{MINUS SIGN}20,00 kr.",
+        "2",
+        "+500,00 kr.",
+        "\N{MINUS SIGN}500,00 kr.",
+        "2",
         (
-            "Ukategoriseret: ind +100,00 kr.; ud "
-            "\N{MINUS SIGN}100,00 kr.; 2 posteringer."
-        ),
-        ("Reguleringer: ind +20,00 kr.; ud \N{MINUS SIGN}20,00 kr.; 2 posteringer."),
-        (
-            "Overførsler: ind +500,00 kr.; ud "
-            "\N{MINUS SIGN}500,00 kr.; 2 valgte ben; 2 parrede; 0 ensidige."
+            "Af de 2 overførselsposteringer er 2 parrede med en modpostering "
+            "og 0 ensidige. En parret modpostering kan ligge uden for de valgte "
+            "konti eller måneden."
         ),
     )
 

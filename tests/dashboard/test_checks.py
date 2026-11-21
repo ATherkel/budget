@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from budget.dashboard import create_app
-from budget.gold import GoldResult, ReportingMonth
+from budget.gold import GoldOwner, GoldResult, ReportingMonth
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
 from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
@@ -84,9 +84,8 @@ def test_kontrol_renders_diagnostics_without_upgrading_partial_coverage(
         page.attributes("tab-checks").get("aria-current"),
         page.text_of("diagnostics-coverage"),
         page.text_of("diagnostics-incomplete-months"),
-        page.text_of("diagnostics-evidence"),
-        page.text_of("diagnostics-unclassified"),
-        page.text_of("diagnostics-adjustments"),
+        page.text_of("diagnostics-unclassified-out"),
+        page.text_of("diagnostics-adjustments-count"),
         page.text_of("diagnostics-reconciliation-joint-current-residual"),
         page.text_of("diagnostics-reconciliation-joint-current-opening-gap"),
         page.text_of("diagnostics-reconciliation-joint-current-coverage"),
@@ -96,25 +95,49 @@ def test_kontrol_renders_diagnostics_without_upgrading_partial_coverage(
         "page",
         "Dækning: delvist dækket.",
         "Joint current, marts 2026: delvist dækket.",
-        "Joint current: Gennem 08.05.2026 Joint savings: Gennem 08.05.2026",
-        ("Ukategoriseret: ind 0,00 kr.; ud \N{MINUS SIGN}450,00 kr.; 1 postering."),
-        "Reguleringer: ind 0,00 kr.; ud 0,00 kr.; 0 posteringer.",
-        "Beregnet afvigelse: 0,00 kr.",
-        "Åbningsforskel mod forrige lukning: \N{MINUS SIGN}500,00 kr.",
+        "\N{MINUS SIGN}450,00 kr.",
+        "0",
+        "Intern forskel: 0,00 kr.",
+        "Åbningsforskel: \N{MINUS SIGN}500,00 kr.",
         "Dækning: delvist dækket.",
         False,
     )
 
 
-def test_kontrol_names_selected_transfer_legs_and_their_public_pairing(
+@pytest.mark.parametrize(
+    ("accounts", "money_in", "count", "paired"),
+    [
+        ([CURRENT, SAVINGS], "+3.000,00 kr.", "2", "2 parrede"),
+        ([CURRENT], "0,00 kr.", "1", "1 parret"),
+    ],
+)
+def test_kontrol_names_selected_transfer_postings_and_their_public_pairing(
     client: TestClient,
+    accounts: list[str],
+    money_in: str,
+    count: str,
+    paired: str,
 ) -> None:
-    page = _report(client, month="2026-01")
-
-    assert page.text_of("diagnostics-transfer-summary") == (
-        "Overførsler: ind +3.000,00 kr.; ud \N{MINUS SIGN}3.000,00 kr.; "
-        "2 valgte ben; 2 parrede; 0 ensidige."
+    response = client.get(
+        "/report",
+        params={
+            **PINNED,
+            "account": accounts,
+            "month": "2026-01",
+            "mode": "advanced",
+            "tab": "checks",
+        },
+        headers={"HX-Request": "true"},
     )
+    page = read(response.text)
+
+    assert response.status_code == 200
+    assert page.text_of("diagnostics-transfer-in") == money_in
+    assert page.text_of("diagnostics-transfer-out") == "\N{MINUS SIGN}3.000,00 kr."
+    assert page.text_of("diagnostics-transfer-count") == count
+    assert paired in (page.text_of("diagnostics-transfer-pairing") or "")
+    assert "ikke nødvendigvis antal unikke overførsler" in page.visible()
+    assert "valgte ben" not in page.visible()
 
 
 def test_kontrol_keeps_missing_balance_endpoints_unknown(
@@ -150,8 +173,8 @@ def test_kontrol_keeps_missing_balance_endpoints_unknown(
         "0,00 kr."
         in (page.text_of("diagnostics-reconciliation-joint-current-residual") or ""),
     ) == (
-        "Beregnet afvigelse: Ukendt.",
-        "Åbningsforskel mod forrige lukning: Ukendt.",
+        "Intern forskel: Ukendt.",
+        "Åbningsforskel: Ukendt.",
         "Dækning: delvist dækket.",
         False,
     )
@@ -168,18 +191,18 @@ def test_kontrol_without_evidence_does_not_turn_observations_into_zero(
 
     assert (
         page.text_of("diagnostics-coverage"),
-        page.text_of("diagnostics-unclassified"),
-        page.text_of("diagnostics-adjustments"),
-        page.text_of("diagnostics-transfer-summary"),
+        page.text_of("diagnostics-unclassified-out"),
+        page.text_of("diagnostics-adjustments-count"),
+        page.text_of("diagnostics-transfer-count"),
         page.text_of("diagnostics-reconciliation-joint-current-residual"),
         page.text_of("diagnostics-reconciliation-joint-current-opening-gap"),
     ) == (
         "Dækning: ingen data.",
-        "Ukategoriseret: ukendt.",
-        "Reguleringer: ukendt.",
-        "Overførsler: ukendt.",
-        "Beregnet afvigelse: Ukendt.",
-        "Åbningsforskel mod forrige lukning: Ukendt.",
+        "Ukendt",
+        "Ukendt",
+        "Ukendt",
+        "Intern forskel: Ukendt.",
+        "Åbningsforskel: Ukendt.",
     )
 
 
@@ -618,3 +641,98 @@ def test_kontrol_to_enkel_switch_returns_to_overview(
         )
 
     assert observed == ("simple", "overview", "overview")
+
+
+def test_kontrol_groups_accounts_by_published_owner_identity(
+    profile: Profile,
+    client: TestClient,
+) -> None:
+    accounts = (
+        replace(RECORDS.accounts[0], display_name="Alex opsparing", owner_id="shared"),
+        replace(RECORDS.accounts[1], display_name="Fælles konto", owner_id="alex"),
+    )
+    with GoldStore(profile) as store:
+        store.publish(
+            GoldResult(
+                replace(PUBLICATION, publication_id=2),
+                replace(
+                    RECORDS,
+                    accounts=accounts,
+                    owners=(
+                        GoldOwner("shared", "Fælles", 1),
+                        GoldOwner("alex", "Alex", 2),
+                    ),
+                ),
+            ),
+            RECIPE,
+            CONFIGURATION,
+        )
+
+    page = _report(client, publication="2")
+
+    assert "Alex opsparing" in (page.text_of("diagnostics-owner-shared") or "")
+    assert "Fælles konto" not in (page.text_of("diagnostics-owner-shared") or "")
+    assert "Fælles konto" in (page.text_of("diagnostics-owner-alex") or "")
+    assert page.text_of("diagnostics-owner-shared-heading") == "Fælles"
+    assert page.text_of("diagnostics-owner-alex-heading") == "Alex"
+
+
+def test_kontrol_names_evidence_date_and_its_limits(client: TestClient) -> None:
+    page = _report(client)
+
+    assert page.text_of("diagnostics-evidence-joint-current") == (
+        "Importerede data frem til 8. maj 2026"
+    )
+    assert page.text_of("diagnostics-evidence-limits") == (
+        "Der kan være huller i tidligere perioder. Datoen viser hverken "
+        "sammenhængende dækning eller at kontoen er afstemt."
+    )
+    assert "Et nul er ikke en bekræftelse" in page.visible()
+
+
+def test_kontrol_observed_postings_have_separate_direction_and_count_cells(
+    client: TestClient,
+) -> None:
+    page = _report(client)
+
+    assert (
+        page.text_of("diagnostics-unclassified-in"),
+        page.text_of("diagnostics-unclassified-out"),
+        page.text_of("diagnostics-unclassified-count"),
+        page.text_of("diagnostics-adjustments-in"),
+        page.text_of("diagnostics-adjustments-out"),
+        page.text_of("diagnostics-adjustments-count"),
+    ) == ("0,00 kr.", "\N{MINUS SIGN}450,00 kr.", "1", "0,00 kr.", "0,00 kr.", "0")
+    assert page.text_of("diagnostics-counts-scope") == (
+        "På tværs af de valgte konti · marts 2026"
+    )
+
+
+def test_kontrol_keeps_an_unknown_import_boundary_explicit(
+    profile: Profile,
+    client: TestClient,
+) -> None:
+    with GoldStore(profile) as store:
+        store.publish(
+            GoldResult(
+                replace(PUBLICATION, publication_id=2),
+                replace(
+                    RECORDS,
+                    accounts=(
+                        replace(RECORDS.accounts[0], evidence_through=None),
+                        RECORDS.accounts[1],
+                    ),
+                ),
+            ),
+            RECIPE,
+            CONFIGURATION,
+        )
+
+    page = _report(client, publication="2")
+
+    assert page.text_of("diagnostics-evidence-joint-current") == (
+        "Importerede data: ukendt · ingen importeret data"
+    )
+    assert page.text_of("diagnostics-reconciliation-joint-current-coverage") == (
+        "Dækning: delvist dækket."
+    )

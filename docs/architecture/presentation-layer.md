@@ -61,6 +61,21 @@ The switch and all three advanced tabs are available. “Kontrol” renders the
 without changing their Coverage. Both modes retain access to the basic trust
 explanation alongside targeted links into “Kontrol”.
 
+Kontrol leads with the report's attention facts, then groups compact account
+summaries by the pinned publication's owner identities and display names.
+Each native disclosure keeps Coverage, internal difference and opening gap
+visible while closed; its components expand on demand. No owner balances or
+differences are summed. A dated import boundary uses a full Danish date and
+warns that earlier gaps may exist; null stays explicitly unknown. The
+selected-account totals occupy a separate semantic table with signed money in,
+money out and observed posting counts. Transfer pairing is secondary and does
+not turn selected postings into a count of unique transfers. These are displays
+of the [diagnostics contract](report-contract.md#diagnostics), never additional
+trust judgements.
+
+🤖 Added by Codex (GPT-6.1 Sol)
+
+
 ## Data Trust Display
 
 - Any report period that includes the current, still-accumulating calendar

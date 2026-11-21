@@ -24,7 +24,6 @@ from budget.analytics import (
     AccountActivity,
     DetailScope,
     DetailSubject,
-    Diagnostics,
     HouseholdReports,
     InvalidSelectionError,
     MonthlyOverview,
@@ -97,6 +96,7 @@ def _static_url(name: str) -> str:
 _TEMPLATES.filters["static_url"] = _static_url
 _TEMPLATES.filters["signed_amount"] = display.signed_amount
 _TEMPLATES.filters["danish_list"] = display.danish_list
+_TEMPLATES.filters["date_label"] = display.date_label
 _VIEW_STATE_CONTROLS = _TEMPLATES.from_string(
     '<input id="active-mode" type="hidden" name="active_mode" '
     'value="{{ mode }}" hx-swap-oob="true">'
@@ -759,7 +759,7 @@ def _read_diagnostics(
     pin: tuple[int, date],
     accounts: Collection[str],
     month: str,
-) -> Diagnostics | str:
+) -> display.ChecksView | str:
     """Return Kontrol for a pinned selection, or a fragment saying why not."""
     publication_id, reference_date = pin
     try:
@@ -770,7 +770,10 @@ def _read_diagnostics(
             reference_date=reference_date,
         )
         with GoldStore(profile, read_only=True) as store:
-            return HouseholdReports(store).diagnostics(context)
+            reports = HouseholdReports(store)
+            diagnostics = reports.diagnostics(context)
+            options = reports.selection_options(publication_id, reference_date)
+            return display.checks_view(diagnostics, options)
     except InvalidSelectionError as error:
         return _TEMPLATES.get_template("invalid_selection.html").render(
             problems=display.selection_problems(error)
@@ -970,7 +973,8 @@ def _render_report(
         month_label=display.month_label(answered.month),
         overview=overview_report,
         activity=activity,
-        diagnostics=diagnostics,
+        diagnostics=diagnostics.diagnostics if diagnostics else None,
+        diagnostic_owners=diagnostics.owners if diagnostics else (),
         mode=requested.view.mode,
         tab=requested.view.tab,
         comparison=requested.view.comparison,

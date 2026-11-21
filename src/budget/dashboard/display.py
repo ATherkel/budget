@@ -2,10 +2,19 @@
 """Danish display of amounts, dates and months, as the dashboard's reader sees them."""
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 
-from budget.analytics import InvalidSelectionError, ReportCoverage
+from budget.analytics import (
+    AccountEvidence,
+    Diagnostics,
+    InvalidSelectionError,
+    Reconciliation,
+    ReportCoverage,
+    SelectableOwner,
+    SelectionOptions,
+)
 from budget.gold import ReportingMonth
 from budget.timezone import COPENHAGEN
 
@@ -134,3 +143,57 @@ def months_between(
     for index in range(start, stop):
         year, month = divmod(index, months_in_year)
         yield ReportingMonth(year, month + 1)
+
+
+@dataclass(frozen=True)
+class AccountChecks:
+    """One account's public observations, kept together for display."""
+
+    evidence: AccountEvidence
+    reconciliation: Reconciliation
+
+
+@dataclass(frozen=True)
+class OwnerChecks:
+    """Accounts grouped by their published owner identity, without aggregation."""
+
+    owner: SelectableOwner
+    accounts: tuple[AccountChecks, ...]
+
+
+@dataclass(frozen=True)
+class ChecksView:
+    """Diagnostics with the pinned publication's owner labels for presentation."""
+
+    diagnostics: Diagnostics
+    owners: tuple[OwnerChecks, ...]
+
+
+def checks_view(report: Diagnostics, options: SelectionOptions) -> ChecksView:
+    """Join public account identities to owner labels without judging any figures."""
+    owners = {owner.owner_id: owner for owner in options.owners}
+    account_owners = {
+        account.account_id: account.owner_id for account in options.accounts
+    }
+    reconciliations = {item.account_id: item for item in report.reconciliations}
+    grouped: dict[str, list[AccountChecks]] = {}
+    for account in report.evidence:
+        owner_id = account_owners[account.account_id]
+        # Legacy publications can lack owner display labels; keep their public ID.
+        owners.setdefault(owner_id, SelectableOwner(owner_id, owner_id))
+        grouped.setdefault(owner_id, []).append(
+            AccountChecks(account, reconciliations[account.account_id])
+        )
+    return ChecksView(
+        report,
+        tuple(
+            OwnerChecks(owner, tuple(grouped[owner_id]))
+            for owner_id, owner in owners.items()
+            if owner_id in grouped
+        ),
+    )
+
+
+def date_label(value: date) -> str:
+    """Return a full Danish date independent of the host locale."""
+    return f"{value.day}. {_MONTH_NAMES[value.month - 1]} {value.year}"

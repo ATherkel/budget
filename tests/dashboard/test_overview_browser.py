@@ -9,6 +9,7 @@ import time
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -917,3 +918,73 @@ def test_unsafe_browser_return_origin_falls_back_to_the_pinned_overview(
     expect(page.get_by_role("heading", name="Oversigt")).to_be_visible()
     expect(page.get_by_role("radio", name="Enkel")).to_be_checked()
     expect(page.locator("#report")).to_have_attribute("data-tab", "overview")
+
+
+def test_kontrol_account_disclosure_opens_with_keyboard(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+    page.get_by_label("Måned", exact=True).select_option("2026-03")
+    _choose_view(page, "advanced", "checks")
+    account = page.locator("#diagnostics-reconciliation-joint-current")
+    summary = account.locator("summary")
+
+    expect(summary).to_be_visible()
+    expect(summary).to_contain_text("Joint current")
+    expect(summary).to_contain_text("delvist dækket")
+    expect(summary).to_contain_text("Intern forskel: 0,00 kr.")
+    expect(summary).to_contain_text("Åbningsforskel: \N{MINUS SIGN}500,00 kr.")
+    expect(account).not_to_have_attribute("open", "")
+    expect(account.get_by_text("Åbningssaldo", exact=True)).not_to_be_visible()
+    summary.focus()
+    page.keyboard.press("Enter")
+    expect(account).to_have_attribute("open", "")
+    expect(account.get_by_text("Åbningssaldo", exact=True)).to_be_visible()
+    page.keyboard.press("Space")
+    expect(account).not_to_have_attribute("open", "")
+
+
+@pytest.mark.parametrize("width", [320, 390])
+def test_kontrol_phone_keeps_signed_amount_digits_together(
+    page: Page,
+    dashboard: BrowserDashboard,
+    width: int,
+) -> None:
+    transactions = tuple(
+        replace(transaction, amount=Decimal("-1234567.89"))
+        if transaction.transaction_type == "unknown"
+        else transaction
+        for transaction in RECORDS.transactions
+    )
+    with GoldStore(dashboard.profile) as store:
+        store.publish(
+            GoldResult(
+                replace(PUBLICATION, publication_id=3),
+                replace(RECORDS, transactions=transactions),
+            ),
+            RECIPE,
+            CONFIGURATION,
+        )
+    page.set_viewport_size({"width": width, "height": 844})
+    log_in(page, dashboard)
+    page.get_by_label("Måned", exact=True).select_option("2026-03")
+    _choose_view(page, "advanced", "checks")
+    amount = page.locator("#diagnostics-unclassified-out")
+
+    expect(amount).to_have_text("\N{MINUS SIGN}1.234.567,89 kr.")
+    assert (
+        amount.evaluate(
+            """element => {
+            const number = document.createRange();
+            number.setStart(element.firstChild, 0);
+            number.setEnd(element.firstChild, element.textContent.indexOf(' '));
+            return number.getClientRects().length;
+        }"""
+        )
+        == 1
+    )
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    table = page.get_by_role("table", name="På tværs af de valgte konti")
+    expect(table.get_by_role("columnheader")).to_have_count(4)
+    expect(table.get_by_role("rowheader")).to_have_count(3)

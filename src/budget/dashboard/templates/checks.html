@@ -5,11 +5,11 @@
 {% macro known_signed_amount(value, currency) -%}
 {{ "Ukendt" if value is none else value | signed_amount(currency) }}
 {%- endmacro %}
-<p class="eyebrow">Kontrol</p>
+<p class="eyebrow">Kontrol · {{ month_label }}</p>
 <h3 id="report-ready-title">Diagnostik og afstemning</h3>
 <p><a id="checks-basic-explanation" href="{{ explanation_url }}">Om tallene og dækningen</a></p>
-<section class="diagnostic-block" aria-labelledby="diagnostics-evidence-heading">
-  <h4 id="diagnostics-evidence-heading">Datagrundlag</h4>
+<section class="diagnostic-block checks-attention" aria-labelledby="diagnostics-attention-heading">
+  <h4 id="diagnostics-attention-heading">Vær opmærksom på</h4>
   <p id="diagnostics-coverage">Dækning: {{ coverage_labels[diagnostics.coverage.status] }}.</p>
   {% set incomplete = diagnostics.coverage.account_months | rejectattr("status", "equalto", "outside_history") | list %}
   {% if incomplete %}
@@ -21,43 +21,46 @@
   {% else %}
   <p id="diagnostics-incomplete-months">Ingen valgte kontomåneder mangler dækning.</p>
   {% endif %}
-  <ul id="diagnostics-evidence" class="explanation-list">
-  {% for account in diagnostics.evidence %}
-    <li>{{ account.display_name }}: {% if account.evidence_through is none %}ingen importeret data{% else %}Gennem {{ account.evidence_through.strftime("%d.%m.%Y") }}{% endif %}</li>
-  {% endfor %}
-  </ul>
   {% if diagnostics.provisional %}
   <p id="diagnostics-provisional">Foreløbigt:
     {% if "current_month" in diagnostics.provisional.reasons %}{{ month_label }} er indeværende måned, så der kan stadig komme posteringer.{% endif %}
     {% if "late_bookings_unsettled" in diagnostics.provisional.reasons %}Sene bogføringer kan stadig komme fra {{ diagnostics.provisional.unsettled | map(attribute="display_name") | list | danish_list }}.{% endif %}
   </p>
   {% endif %}
-</section>
-<section class="diagnostic-block" aria-labelledby="diagnostics-counts-heading">
-  <h4 id="diagnostics-counts-heading">Observerede posteringer</h4>
-  <p class="field-help">Beløbene er observationer i det valgte datasæt. Modsatrettede posteringer vises hver for sig og lægges ikke sammen.</p>
-  <p id="diagnostics-unclassified">
-    {% if diagnostics.unclassified is none %}Ukategoriseret: ukendt.
-    {% else %}Ukategoriseret: ind {{ diagnostics.unclassified.money_in | signed_amount(diagnostics.currency) }}; ud {{ diagnostics.unclassified.money_out | signed_amount(diagnostics.currency) }}; {{ diagnostics.unclassified.count }} {% if diagnostics.unclassified.count == 1 %}postering{% else %}posteringer{% endif %}.
+  {% if diagnostics.unclassified and diagnostics.unclassified.count > 0 %}
+  <p>Der er betalinger uden kategori. Kategorifordelingen og penge tilbage kan ændre sig.</p>
+  {% endif %}
+  <ul class="checks-differences">
+  {% for item in diagnostics.reconciliations %}
+    {% if (item.internal_residual is not none and item.internal_residual != 0) or (item.opening_gap is not none and item.opening_gap != 0) %}
+    <li><a href="#diagnostics-reconciliation-{{ item.account_id }}">{{ item.display_name }}</a>: {% if item.internal_residual is not none and item.internal_residual != 0 %}intern forskel {{ item.internal_residual | signed_amount(diagnostics.currency) }}{% endif %}{% if item.internal_residual is not none and item.internal_residual != 0 and item.opening_gap is not none and item.opening_gap != 0 %}; {% endif %}{% if item.opening_gap is not none and item.opening_gap != 0 %}åbningsforskel {{ item.opening_gap | signed_amount(diagnostics.currency) }}{% endif %}</li>
     {% endif %}
-  </p>
-  <p id="diagnostics-adjustments">
-    {% if diagnostics.adjustments is none %}Reguleringer: ukendt.
-    {% else %}Reguleringer: ind {{ diagnostics.adjustments.money_in | signed_amount(diagnostics.currency) }}; ud {{ diagnostics.adjustments.money_out | signed_amount(diagnostics.currency) }}; {{ diagnostics.adjustments.count }} {% if diagnostics.adjustments.count == 1 %}postering{% else %}posteringer{% endif %}.
-    {% endif %}
-  </p>
-  <p id="diagnostics-transfer-summary">
-    {% if diagnostics.transfers is none %}Overførsler: ukendt.
-    {% else %}Overførsler: ind {{ diagnostics.transfers.money_in | signed_amount(diagnostics.currency) }}; ud {{ diagnostics.transfers.money_out | signed_amount(diagnostics.currency) }}; {{ diagnostics.transfers.count }} valgte ben; {{ diagnostics.transfers.paired_count }} parrede; {{ diagnostics.transfers.one_sided_count }} ensidige.
-    {% endif %}
-  </p>
+  {% endfor %}
+  </ul>
 </section>
 <section class="diagnostic-block" aria-labelledby="diagnostics-reconciliation-heading">
-  <h4 id="diagnostics-reconciliation-heading">Afstemningsobservationer per konto</h4>
-  <p class="field-help">Afvigelserne er observationer. De ændrer ikke dækningen og gør ikke et delvist grundlag fuldt.</p>
-  {% for item in diagnostics.reconciliations %}
-  <article id="diagnostics-reconciliation-{{ item.account_id }}" class="reconciliation-card">
-    <h5>{{ item.display_name }}</h5>
+  <h4 id="diagnostics-reconciliation-heading">Konti og afstemning</h4>
+  <p class="field-help">Se dækning og forskelle for hver konto. Åbn en konto for at se beregningens dele.</p>
+  <p id="diagnostics-evidence-limits" class="field-help">Der kan være huller i tidligere perioder. Datoen viser hverken sammenhængende dækning eller at kontoen er afstemt.</p>
+  <p class="field-help">Et nul er ikke en bekræftelse på, at tallene er fuldstændige eller korrekte. Ukendt betyder, at grundlaget mangler. Afstemningen ændrer ikke dækningen.</p>
+  <div id="diagnostics-evidence">
+  {% for group in diagnostic_owners %}
+  <section id="diagnostics-owner-{{ group.owner.owner_id }}" class="checks-owner" aria-labelledby="diagnostics-owner-{{ group.owner.owner_id }}-heading">
+    <h5 id="diagnostics-owner-{{ group.owner.owner_id }}-heading">{{ group.owner.display_name }}</h5>
+  {% for account in group.accounts %}
+  {% set item = account.reconciliation %}
+  <details id="diagnostics-reconciliation-{{ item.account_id }}" class="reconciliation-card">
+    <summary>
+      <span class="checks-account-name">{{ item.display_name }}</span>
+      <span id="diagnostics-evidence-{{ item.account_id }}" class="checks-account-evidence">{% if account.evidence.evidence_through is none %}Importerede data: ukendt · ingen importeret data{% else %}Importerede data frem til {{ account.evidence.evidence_through | date_label }}{% endif %}</span>
+      <span class="checks-account-status">
+        <span id="diagnostics-reconciliation-{{ item.account_id }}-coverage">Dækning: {{ coverage_labels[item.coverage] }}.</span>
+        <span id="diagnostics-reconciliation-{{ item.account_id }}-residual">Intern forskel: {{ known_signed_amount(item.internal_residual, diagnostics.currency) }}{% if item.internal_residual is none %}.{% endif %}</span>
+        <span id="diagnostics-reconciliation-{{ item.account_id }}-opening-gap">Åbningsforskel: {{ known_signed_amount(item.opening_gap, diagnostics.currency) }}{% if item.opening_gap is none %}.{% endif %}</span>
+      </span>
+    </summary>
+    <div class="checks-components">
+      <p class="field-help">Intern forskel er lukningssaldo minus åbningssaldo og månedens posteringer. Åbningsforskel er åbningssaldo minus forrige måneds lukningssaldo.</p>
     <dl class="summary reconciliation-summary">
       <div class="summary-figure"><dt>Åbningssaldo</dt><dd>{{ known_amount(item.opening_balance, diagnostics.currency) }}</dd></div>
       <div class="summary-figure"><dt>Indtægter minus udgifter</dt><dd>{{ known_amount(item.income_minus_expenses, diagnostics.currency) }}</dd></div>
@@ -68,9 +71,35 @@
       <div class="summary-figure"><dt>Reguleringer ud</dt><dd>{{ known_signed_amount(item.adjustments_out, diagnostics.currency) }}</dd></div>
       <div class="summary-figure"><dt>Lukningssaldo</dt><dd>{{ known_amount(item.closing_balance, diagnostics.currency) }}</dd></div>
     </dl>
-    <p id="diagnostics-reconciliation-{{ item.account_id }}-residual">Beregnet afvigelse: {{ known_amount(item.internal_residual, diagnostics.currency) }}{% if item.internal_residual is none %}.{% endif %}</p>
-    <p id="diagnostics-reconciliation-{{ item.account_id }}-opening-gap">Åbningsforskel mod forrige lukning: {{ known_amount(item.opening_gap, diagnostics.currency) }}{% if item.opening_gap is none %}.{% endif %}</p>
-    <p id="diagnostics-reconciliation-{{ item.account_id }}-coverage">Dækning: {{ coverage_labels[item.coverage] }}.</p>
-  </article>
+      <p>Forrige måneds lukningssaldo: {{ known_amount(item.previous_closing_balance, diagnostics.currency) }}</p>
+    </div>
+  </details>
   {% endfor %}
+  </section>
+  {% endfor %}
+  </div>
+</section>
+<section class="diagnostic-block" aria-labelledby="diagnostics-counts-heading">
+  <h4 id="diagnostics-counts-heading">Observerede posteringer</h4>
+  <p class="field-help">Beløbene er observationer i det valgte datasæt. Ind og ud vises hver for sig uden modregning. Ved delvis dækning kan både beløb og antal være ufuldstændige. Ukendt er ikke nul.</p>
+  <table class="checks-table" role="table">
+    <caption id="diagnostics-counts-scope">På tværs af de valgte konti · {{ month_label }}</caption>
+    <thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Type</th><th scope="col" role="columnheader">Ind</th><th scope="col" role="columnheader">Ud</th><th scope="col" role="columnheader">Antal</th></tr></thead>
+    <tbody role="rowgroup">
+    {% for key, label, purpose, observed in [
+      ("unclassified", "Ukategoriseret", "Betalinger uden kategori kan ændre kategorifordelingen og penge tilbage.", diagnostics.unclassified),
+      ("adjustments", "Reguleringer", "Korrektioner uden kategori, holdt uden for indtægter og udgifter.", diagnostics.adjustments),
+      ("transfer", "Overførsler", "Flytter penge mellem konti og er ikke forbrug.", diagnostics.transfers)
+    ] %}
+      <tr id="diagnostics-{{ key if key != 'transfer' else 'transfer-summary' }}" role="row">
+        <th scope="row" role="rowheader">{{ label }}<span class="checks-row-purpose">{{ purpose }}</span></th>
+        <td role="cell"><span class="checks-cell-label" aria-hidden="true">Ind</span><span id="diagnostics-{{ key }}-in">{{ known_signed_amount(observed.money_in if observed else none, diagnostics.currency) }}</span></td>
+        <td role="cell"><span class="checks-cell-label" aria-hidden="true">Ud</span><span id="diagnostics-{{ key }}-out">{{ known_signed_amount(observed.money_out if observed else none, diagnostics.currency) }}</span></td>
+        <td role="cell"><span class="checks-cell-label" aria-hidden="true">Antal</span><span id="diagnostics-{{ key }}-count">{{ observed.count if observed else "Ukendt" }}</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="field-help">Antal er observerede posteringer på de valgte konti. En overførsel kan give to posteringer, når begge konti er valgt; antallet er derfor ikke nødvendigvis antal unikke overførsler.</p>
+  <p id="diagnostics-transfer-pairing" class="field-help">{% if diagnostics.transfers is none %}Parring af overførselsposteringer: ukendt.{% else %}Af de {{ diagnostics.transfers.count }} overførselsposteringer er {{ diagnostics.transfers.paired_count }} {% if diagnostics.transfers.paired_count == 1 %}parret{% else %}parrede{% endif %} med en modpostering og {{ diagnostics.transfers.one_sided_count }} {% if diagnostics.transfers.one_sided_count == 1 %}ensidig{% else %}ensidige{% endif %}. En parret modpostering kan ligge uden for de valgte konti eller måneden.{% endif %}</p>
 </section>

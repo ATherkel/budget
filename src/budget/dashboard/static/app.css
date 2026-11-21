@@ -886,3 +886,161 @@ select {
     display: grid;
   }
 }
+
+
+/* Kontrol keeps account observations separate from selection-wide totals. */
+.checks-attention {
+  border-left: 3px solid var(--accent);
+}
+
+.checks-differences:empty {
+  display: none;
+}
+
+.checks-owner {
+  margin-top: 1.2rem;
+}
+
+.checks-owner h5 {
+  font-size: 1rem;
+}
+
+.reconciliation-card summary {
+  cursor: pointer;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.reconciliation-card summary::marker {
+  color: var(--accent);
+}
+
+.checks-account-name {
+  font-weight: 750;
+}
+
+.checks-account-evidence,
+.checks-account-status {
+  margin-top: 0.3rem;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+}
+
+.checks-account-evidence {
+  display: block;
+}
+
+.checks-account-status {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  gap: 0.15rem 0.75rem;
+}
+
+.checks-components {
+  margin-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.checks-table {
+  width: 100%;
+  margin-block: 1rem;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.checks-table caption {
+  padding-bottom: 0.7rem;
+  color: var(--ink-soft);
+  text-align: left;
+}
+
+.checks-table th,
+.checks-table td {
+  padding: 0.7rem 0.35rem;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+}
+
+.checks-table th:first-child {
+  width: 44%;
+  padding-left: 0;
+  text-align: left;
+}
+
+.checks-row-purpose {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.checks-cell-label {
+  display: none;
+}
+
+@media (max-width: 48rem) {
+  .checks-table,
+  .checks-table tbody {
+    display: block;
+  }
+
+  .checks-table caption {
+    display: block;
+  }
+
+  .checks-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .checks-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    padding-block: 0.85rem;
+    border-top: 1px solid var(--line);
+  }
+
+  .checks-table th:first-child {
+    grid-column: 1 / -1;
+    width: auto;
+  }
+
+  .checks-table th,
+  .checks-table td {
+    padding: 0;
+    border: 0;
+    text-align: left;
+  }
+
+  .checks-table td:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .checks-cell-label {
+    display: block;
+    color: var(--ink-soft);
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
+  .checks-table td:last-child .checks-cell-label {
+    display: inline;
+    margin-right: 0.4rem;
+  }
+
+  .diagnostic-block,
+  .reconciliation-card {
+    padding: 0.75rem;
+  }
+
+  .reconciliation-summary {
+    grid-template-columns: 1fr;
+  }
+}
