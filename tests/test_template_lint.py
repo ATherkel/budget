@@ -10,7 +10,7 @@ import pytest
 
 from tests.cli.processes import explicit_environment
 
-REPOSITORY = Path(__file__).resolve().parents[2]
+REPOSITORY = Path(__file__).resolve().parents[1]
 CONFIG_FILES = ("pyproject.toml", ".djlint_rules.yaml")
 
 
