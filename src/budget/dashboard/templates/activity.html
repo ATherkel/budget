@@ -1,4 +1,9 @@
-{% set coverage_labels = {"complete": "fuldt dækket", "partial": "delvist dækket", "no_data": "ingen data", "outside_history": "uden for historikken"} %}
+{% set coverage_labels = {
+  "complete": "fuldt dækket",
+  "partial": "delvist dækket",
+  "no_data": "ingen data",
+  "outside_history": "uden for historikken",
+} %}
 <p class="eyebrow">Kontobevægelser</p>
 <h3 id="report-ready-title">Kontodetaljer</h3>
 {% for account in activity.accounts %}
