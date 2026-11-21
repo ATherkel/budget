@@ -78,3 +78,7 @@ def test_a_long_template_line_with_a_comment_is_still_too_long(
     (folder / "page.html").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     assert long_template_lines(tmp_path) == [str(Path("templates/page.html")) + ":2"]
+
+
+def test_no_template_line_in_src_is_over_120_characters() -> None:
+    assert long_template_lines(REPOSITORY / "src") == []
