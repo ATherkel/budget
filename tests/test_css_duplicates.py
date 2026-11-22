@@ -66,6 +66,19 @@ a {
     assert find_duplicates_in_sheets(sheets) == [message]
 
 
+def test_a_nested_rule_in_a_stylesheet_names_its_file() -> None:
+    sheets = {
+        "base.css": "a {\n  color: red;\n}\n",
+        "forms.css": ".card {\n  &:hover {\n  }\n}\n",
+    }
+
+    message = (
+        "`.card` (forms.css line 1) nests a rule;"
+        " write it flat so the check can read it"
+    )
+    assert find_duplicates_in_sheets(sheets) == [message]
+
+
 def test_rules_sharing_two_declarations_pass() -> None:
     css = """\
 .card {
