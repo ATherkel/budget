@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 # An innermost block: a selector list and declarations with no nested braces.
 RULE = re.compile(r"([^{}]+)\{([^{}]*)\}")
+# Two rules sharing this many declarations repeat each other.
+SHARED_LIMIT = 3
 
 
 @dataclass(frozen=True)
@@ -47,7 +49,7 @@ def find_duplicates(css: str) -> list[str]:
     for index, rule in enumerate(rules):
         for earlier in rules[:index]:
             shared = len(rule.declarations & earlier.declarations)
-            if shared:
+            if shared >= SHARED_LIMIT:
                 messages.append(
                     f"`{rule.selector}` shares {shared} declarations with"
                     f" `{earlier.selector}` (line {earlier.line});"
