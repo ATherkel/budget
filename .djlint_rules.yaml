@@ -1,0 +1,8 @@
+# Custom djlint rules. djlint's max_line_length only steers its formatter,
+# so the line limit is a lint rule of its own.
+- rule:
+    name: L001
+    message: Line is longer than 120 characters.
+    flags: re.M
+    patterns:
+      - ^[^\r\n]{121,}
