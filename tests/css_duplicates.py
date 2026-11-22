@@ -100,7 +100,8 @@ def find_duplicates(css: str, allowlist: Iterable[tuple[str, str]] = ()) -> list
             found.add(pair)
             if pair not in allowed:
                 messages.append(
-                    f"`{rule.selector}` shares {shared} declarations with"
+                    f"`{rule.selector}` (line {rule.line})"
+                    f" shares {shared} declarations with"
                     f" `{earlier.selector}` (line {earlier.line});"
                     f" reuse `{earlier.selector}`"
                 )
