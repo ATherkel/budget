@@ -37,11 +37,9 @@
 {# The wrapper stays on the page and htmx swaps only what is inside it: a live
    region that is replaced along with its content is often not announced. #}
 <div id="report-region" aria-live="polite" aria-busy="false">
-{% if report %}
+{# With no account selected, the report is the prompt to select one. #}
 {{ report | safe }}
-{% else %}
-{% include "no_accounts.html" %}
-{% endif %}
+
 </div>
 </section>
 </div>

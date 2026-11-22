@@ -86,6 +86,9 @@ def render_report(
     requested: ReportRequest,
 ) -> str:
     """Render the report fragment a selection asks for, or why it cannot be shown."""
+    if not requested.accounts:
+        # An empty selection is a prompt, never a report of nothing.
+        return dashboard.templates.get_template("report/no_accounts.html").render()
     overview_report = read_overview(
         dashboard,
         requested.pin,
@@ -123,7 +126,7 @@ def render_report(
         )
         for destination in ("overview", "details")
     }
-    return dashboard.templates.get_template("report.html").render(
+    return dashboard.templates.get_template("report/report.html").render(
         is_current=overview_report.publication.is_current,
         publication_id=answered.publication_id,
         reference_date=answered.reference_date.isoformat(),
@@ -178,10 +181,6 @@ def _report_response(
         view=view,
     )
     state = view_state_controls(dashboard.templates, view)
-    if not requested.accounts:
-        # An empty selection is a prompt, never a report of nothing.
-        prompt = dashboard.templates.get_template("no_accounts.html").render()
-        return HTMLResponse(prompt + state, headers={"HX-Push-Url": page})
     fragment = render_report(
         dashboard,
         ReportRequest(
