@@ -47,6 +47,7 @@ from budget.dashboard.display.text import (
     incomplete_by_account,
     selection_problems,
 )
+from budget.dashboard.features import Dashboard
 from budget.dashboard.passphrase import (
     CredentialSnapshot,
     read_credentials,
@@ -80,12 +81,6 @@ DEFAULT_VIEW = ViewState()
 
 _STATIC = Path(__file__).parent / "static"
 
-_TEMPLATES = Environment(
-    loader=PackageLoader("budget.dashboard"),
-    autoescape=select_autoescape(),
-)
-_TEMPLATES.filters["amount"] = amount
-
 
 @cache
 def _static_digest(name: str) -> str:
@@ -105,10 +100,20 @@ def _static_url(name: str) -> str:
     return f"/static/{name}?v={_static_digest(name)}"
 
 
-_TEMPLATES.filters["static_url"] = _static_url
-_TEMPLATES.filters["signed_amount"] = signed_amount
-_TEMPLATES.filters["danish_list"] = danish_list
-_VIEW_STATE_CONTROLS = _TEMPLATES.from_string(
+def _templates() -> Environment:
+    """Return the templates one dashboard renders its pages from."""
+    templates = Environment(
+        loader=PackageLoader("budget.dashboard"),
+        autoescape=select_autoescape(),
+    )
+    templates.filters["amount"] = amount
+    templates.filters["static_url"] = _static_url
+    templates.filters["signed_amount"] = signed_amount
+    templates.filters["danish_list"] = danish_list
+    return templates
+
+
+_VIEW_STATE_CONTROLS = Environment(autoescape=select_autoescape()).from_string(
     '<input id="active-mode" type="hidden" name="active_mode" '
     'value="{{ mode }}" hx-swap-oob="true">'
     '<input id="active-tab" type="hidden" name="tab" '
@@ -345,11 +350,7 @@ def _view_state_controls(view: ViewState) -> str:
     )
 
 
-def _render_overview(
-    profile: Profile,
-    clock: Callable[[], datetime],
-    requested: OverviewRequest,
-) -> str:
+def _render_overview(dashboard: Dashboard, requested: OverviewRequest) -> str:
     """Render the overview page.
 
     A pinned page keeps its publication, reference date and selection. A fresh
@@ -359,20 +360,21 @@ def _render_overview(
     # A pinned address without accounts is an empty selection, not a fresh visit.
     fresh = requested.pin is None
     pin = requested.pin
-    with GoldStore(profile, read_only=True) as store:
+    templates = dashboard.templates
+    with GoldStore(dashboard.profile, read_only=True) as store:
         reports = HouseholdReports(store)
         if pin is None:
             try:
                 publication_id = reports.current_publication().publication_id
             except NothingPublishedError:
-                return _TEMPLATES.get_template("nothing_published.html").render()
-            pin = (publication_id, copenhagen_date(clock()))
+                return templates.get_template("nothing_published.html").render()
+            pin = (publication_id, copenhagen_date(dashboard.clock()))
         publication_id, reference_date = pin
         try:
             options = reports.selection_options(publication_id, reference_date)
         except PublicationUnavailableError:
             # Offered, never substituted: the reader chooses the current figures.
-            return _TEMPLATES.get_template("unavailable_page.html").render()
+            return templates.get_template("unavailable_page.html").render()
     months = months_between(options.first_month, options.last_month)
     selected_accounts = (
         {account.account_id for account in options.accounts}
@@ -384,7 +386,7 @@ def _render_overview(
     # scripts show what the selection's report says.
     report = (
         _render_report(
-            profile,
+            dashboard,
             ReportRequest(
                 pin,
                 tuple(selected_accounts),
@@ -407,7 +409,7 @@ def _render_overview(
         )
 
     canonical_url = pinned_with(selected_accounts)
-    return _TEMPLATES.get_template("overview.html").render(
+    return templates.get_template("overview.html").render(
         publication_id=publication_id,
         reference_date=reference_date.isoformat(),
         canonical_url=canonical_url,
@@ -429,6 +431,7 @@ def _render_overview(
 
 
 def _refuse_login(
+    templates: Environment,
     credentials: CredentialSnapshot,
     throttle: LoginThrottle,
     now: datetime,
@@ -443,7 +446,7 @@ def _refuse_login(
     if wait:
         notice = f"For mange forkerte forsøg. Prøv igen om {wait} sekunder."
         return HTMLResponse(
-            _TEMPLATES.get_template("login.html").render(message=notice),
+            templates.get_template("login.html").render(message=notice),
             status_code=429,
             headers={"Retry-After": str(wait)},
         )
@@ -453,7 +456,7 @@ def _refuse_login(
         if not blank:
             throttle.failed(now)
         return HTMLResponse(
-            _TEMPLATES.get_template("login.html").render(
+            templates.get_template("login.html").render(
                 message="Adgangskoden er forkert."
             )
         )
@@ -462,7 +465,7 @@ def _refuse_login(
 
 
 def _read_overview(
-    profile: Profile,
+    dashboard: Dashboard,
     pin: tuple[int, date],
     accounts: Collection[str],
     month: str,
@@ -480,19 +483,19 @@ def _read_overview(
             month=selected_month,
             reference_date=reference_date,
         )
-        with GoldStore(profile, read_only=True) as store:
+        with GoldStore(dashboard.profile, read_only=True) as store:
             return HouseholdReports(store).monthly_overview(context)
     except InvalidSelectionError as error:
         # A failure is shown, and echoes no context the page could render.
-        return _TEMPLATES.get_template("invalid_selection.html").render(
+        return dashboard.templates.get_template("invalid_selection.html").render(
             problems=selection_problems(error)
         )
     except PublicationUnavailableError:
-        return _TEMPLATES.get_template("unavailable.html").render()
+        return dashboard.templates.get_template("unavailable.html").render()
 
 
 def _read_activity(
-    profile: Profile,
+    dashboard: Dashboard,
     pin: tuple[int, date],
     accounts: Collection[str],
     month: str,
@@ -506,14 +509,14 @@ def _read_activity(
             month=parse_month(month),
             reference_date=reference_date,
         )
-        with GoldStore(profile, read_only=True) as store:
+        with GoldStore(dashboard.profile, read_only=True) as store:
             return HouseholdReports(store).account_activity(context)
     except InvalidSelectionError as error:
-        return _TEMPLATES.get_template("invalid_selection.html").render(
+        return dashboard.templates.get_template("invalid_selection.html").render(
             problems=selection_problems(error)
         )
     except PublicationUnavailableError:
-        return _TEMPLATES.get_template("unavailable.html").render()
+        return dashboard.templates.get_template("unavailable.html").render()
 
 
 def _answered_url(
@@ -558,7 +561,7 @@ def _detail_url(
 
 
 def _read_detail(
-    profile: Profile,
+    dashboard: Dashboard,
     pin: tuple[int, date],
     request: DetailRequest,
 ) -> SpendingDetail | str:
@@ -571,33 +574,33 @@ def _read_detail(
             month=parse_month(request.month),
             reference_date=reference_date,
         )
-        with GoldStore(profile, read_only=True) as store:
+        with GoldStore(dashboard.profile, read_only=True) as store:
             return HouseholdReports(store).spending_detail(
                 context, request.subject, request.scope
             )
     except InvalidSelectionError as error:
-        return _TEMPLATES.get_template("invalid_selection.html").render(
+        return dashboard.templates.get_template("invalid_selection.html").render(
             problems=selection_problems(error)
         )
     except PublicationUnavailableError:
-        return _TEMPLATES.get_template("unavailable.html").render()
+        return dashboard.templates.get_template("unavailable.html").render()
 
 
 def _render_detail(
-    profile: Profile,
+    dashboard: Dashboard,
     pin: tuple[int, date],
     request: DetailRequest,
 ) -> str:
     """Render the detail page of one subject under one pinned selection."""
-    detail_report = _read_detail(profile, pin, request)
+    detail_report = _read_detail(dashboard, pin, request)
     if isinstance(detail_report, str):
-        return _TEMPLATES.get_template("category.html").render(
+        return dashboard.templates.get_template("category.html").render(
             failure=detail_report, title="Udgifter"
         )
     answered = detail_report.context
     subject = detail_report.subject
     period = period_label(detail_report.first_month, detail_report.last_month)
-    return _TEMPLATES.get_template("category.html").render(
+    return dashboard.templates.get_template("category.html").render(
         detail=detail_report,
         title=f"{detail_report.name}, {period}",
         scope_urls={
@@ -631,12 +634,12 @@ def _render_detail(
 
 
 def _render_report(
-    profile: Profile,
+    dashboard: Dashboard,
     requested: ReportRequest,
 ) -> str:
     """Render the report fragment a selection asks for, or why it cannot be shown."""
     overview_report = _read_overview(
-        profile,
+        dashboard,
         requested.pin,
         requested.accounts,
         requested.month,
@@ -646,7 +649,7 @@ def _render_report(
     answered = overview_report.context
     activity = (
         _read_activity(
-            profile,
+            dashboard,
             requested.pin,
             requested.accounts,
             requested.month,
@@ -672,7 +675,7 @@ def _render_report(
         )
         for destination in ("overview", "details")
     }
-    return _TEMPLATES.get_template("report.html").render(
+    return dashboard.templates.get_template("report.html").render(
         is_current=overview_report.publication.is_current,
         publication_id=answered.publication_id,
         reference_date=answered.reference_date.isoformat(),
@@ -703,19 +706,18 @@ def _render_report(
 
 
 def _render_explanation(
-    profile: Profile,
+    dashboard: Dashboard,
     pin: tuple[int, date],
     accounts: Collection[str],
     month: str,
     view: ViewState,
 ) -> str:
     """Render the explanation page of one pinned report's trust notes."""
-    overview_report = _read_overview(profile, pin, accounts, month)
+    overview_report = _read_overview(dashboard, pin, accounts, month)
+    page = dashboard.templates.get_template("explanation.html")
     if isinstance(overview_report, str):
-        return _TEMPLATES.get_template("explanation.html").render(
-            failure=overview_report
-        )
-    return _TEMPLATES.get_template("explanation.html").render(
+        return page.render(failure=overview_report)
+    return page.render(
         overview=overview_report,
         month_label=month_label(overview_report.context.month),
         report_url=_answered_url(overview_report, "/", view),
@@ -723,7 +725,7 @@ def _render_explanation(
 
 
 def _report_response(
-    profile: Profile,
+    dashboard: Dashboard,
     requested: ReportRequest,
 ) -> Response:
     """Return the report fragment for one selection, or the empty-selection prompt.
@@ -745,10 +747,10 @@ def _report_response(
     state = _view_state_controls(view)
     if not requested.accounts:
         # An empty selection is a prompt, never a report of nothing.
-        prompt = _TEMPLATES.get_template("no_accounts.html").render()
+        prompt = dashboard.templates.get_template("no_accounts.html").render()
         return HTMLResponse(prompt + state, headers={"HX-Push-Url": page})
     fragment = _render_report(
-        profile,
+        dashboard,
         ReportRequest(
             requested.pin,
             requested.accounts,
@@ -773,6 +775,8 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     # The htmx script ships in the package: nothing is fetched from the internet.
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")
     throttle = LoginThrottle()
+    dashboard = Dashboard(profile, clock, _templates())
+    templates = dashboard.templates
 
     @app.exception_handler(RequestValidationError)
     def malformed_address(request: Request, _error: RequestValidationError) -> Response:
@@ -781,9 +785,9 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         htmx swaps only a 2xx, so the fragment answers 200 while the page is a 400.
         """
         if request.url.path == "/report":
-            fragment = _TEMPLATES.get_template("invalid_address.html").render()
+            fragment = templates.get_template("invalid_address.html").render()
             return HTMLResponse(fragment)
-        page = _TEMPLATES.get_template("invalid_address_page.html").render()
+        page = templates.get_template("invalid_address_page.html").render()
         return HTMLResponse(page, status_code=400)
 
     def start_session(response: Response, credentials: CredentialSnapshot) -> Response:
@@ -819,7 +823,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     ) -> Response:
         return for_reader(
             request,
-            lambda: HTMLResponse(_render_overview(profile, clock, address.asked())),
+            lambda: HTMLResponse(_render_overview(dashboard, address.asked())),
         )
 
     @app.get("/report")
@@ -829,7 +833,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     ) -> Response:
         return for_reader(
             request,
-            lambda: _report_response(profile, address.asked()),
+            lambda: _report_response(dashboard, address.asked()),
         )
 
     @app.get("/explanation")
@@ -841,7 +845,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             request,
             lambda: HTMLResponse(
                 _render_explanation(
-                    profile,
+                    dashboard,
                     address.pin(),
                     address.account,
                     address.month,
@@ -858,7 +862,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             request,
             lambda: HTMLResponse(
                 _render_detail(
-                    profile,
+                    dashboard,
                     (address.publication, address.reference_date),
                     address.asked(),
                 )
@@ -867,14 +871,16 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
 
     @app.get("/login")
     def login_page() -> Response:
-        return HTMLResponse(_TEMPLATES.get_template("login.html").render(message=""))
+        return HTMLResponse(templates.get_template("login.html").render(message=""))
 
     @app.post("/login")
     def login(passphrase: Annotated[str, Form()] = "") -> Response:
         # One login at a time, from the lock check to recording the outcome.
         with throttle.guard:
             credentials = read_credentials(profile)
-            refused = _refuse_login(credentials, throttle, clock(), passphrase)
+            refused = _refuse_login(
+                templates, credentials, throttle, clock(), passphrase
+            )
         if refused is not None:
             return refused
         return start_session(RedirectResponse("/", status_code=303), credentials)
