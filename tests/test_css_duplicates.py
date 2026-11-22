@@ -148,3 +148,18 @@ def test_a_rule_after_a_top_level_statement_is_named_by_its_own_selector() -> No
     assert find_duplicates(css) == [
         "`.panel` shares 3 declarations with `.card` (line 2); reuse `.card`"
     ]
+
+
+def test_a_nested_rule_is_reported_as_unreadable() -> None:
+    css = """\
+.card {
+  padding: 1rem;
+  &:hover {
+    color: var(--ink);
+  }
+}
+"""
+
+    assert find_duplicates(css) == [
+        "`.card` (line 1) nests a rule; write it flat so the check can read it"
+    ]
