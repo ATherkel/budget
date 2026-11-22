@@ -1,7 +1,10 @@
 # Copyright 2026 Therkel
 """Danish sentences and lists the dashboard shows its reader."""
 
+from collections.abc import Sequence
+
 from budget.analytics import (
+    AccountMonth,
     AccountMonthCoverage,
     ActivityRow,
     BankBalanceObservation,
@@ -55,6 +58,11 @@ def incomplete_months(coverage: ReportCoverage) -> list[AccountMonthCoverage]:
         for account_month in coverage.account_months
         if account_month.status != "outside_history"
     ]
+
+
+def account_names(months: Sequence[AccountMonth | AccountMonthCoverage]) -> str:
+    """Return the accounts of `months` by name, as Danish lists them."""
+    return danish_list([month.account_id for month in months])
 
 
 def incomplete_by_account(coverage: ReportCoverage) -> list[str]:

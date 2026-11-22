@@ -17,6 +17,7 @@ from budget.analytics.reports import AccountMonthStatus
 from budget.analytics.trust import AccountMonthState
 from budget.dashboard.display.months import danish_date
 from budget.dashboard.display.text import (
+    account_names,
     balance_observation,
     coverage_label,
     coverage_note,
@@ -151,3 +152,9 @@ def test_a_month_outside_an_accounts_history_lacks_nothing() -> None:
     coverage = ReportCoverage("partial", (current, savings, budget))
 
     assert incomplete_months(coverage) == [current, budget]
+
+
+def test_account_months_read_as_their_accounts_names_in_a_danish_list() -> None:
+    months = [_month("Lønkonto", "partial"), _month("Budgetkonto", "no_data")]
+
+    assert account_names(months) == "Lønkonto og Budgetkonto"
