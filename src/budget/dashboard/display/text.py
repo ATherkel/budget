@@ -99,7 +99,7 @@ def coverage_note(status: Coverage, incomplete: list[str], period: str) -> str:
         return f"Ingen af de valgte konti har historik i {period}."
     if status == "no_data":
         return f"Der er ingen data endnu fra {danish_list(incomplete)}."
-    return f"{status} {incomplete} {period}"
+    return f"Tallene mangler noget fra {danish_list(incomplete)}."
 
 
 def danish_list(items: list[str]) -> str:
