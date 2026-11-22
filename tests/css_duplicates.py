@@ -5,8 +5,6 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-# An innermost block: a selector list and declarations with no nested braces.
-RULE = re.compile(r"([^{}]+)\{([^{}]*)\}")
 COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
 # Two rules sharing this many declarations repeat each other.
 SHARED_LIMIT = 3
@@ -27,19 +25,35 @@ def declaration(text: str) -> str:
     return f"{name.strip().lower()}: {' '.join(value.split())}"
 
 
-def enclosing_preludes(css: str, position: int) -> list[str]:
-    """Return the preludes of the blocks still open at `position`, outermost first."""
-    open_blocks: list[str] = []
-    start = 0
-    for index, character in enumerate(css[:position]):
-        if character == "{":
-            open_blocks.append(" ".join(css[start:index].split()))
-            start = index + 1
-        elif character in "};":
-            if character == "}":
-                open_blocks.pop()
-            start = index + 1
-    return open_blocks
+@dataclass
+class Block:
+    """A block still open while the parser walks the CSS."""
+
+    prelude: str
+    line: int
+    body_start: int
+    has_child: bool = False
+
+
+def open_block(css: str, prelude_start: int, brace: int) -> Block:
+    """Return the block whose prelude runs from `prelude_start` to `brace`."""
+    text = css[prelude_start:brace]
+    first = prelude_start + len(text) - len(text.lstrip())
+    return Block(
+        prelude=" ".join(text.split()),
+        line=css.count("\n", 0, first) + 1,
+        body_start=brace + 1,
+    )
+
+
+def close_rule(css: str, block: Block, brace: int, parents: list[Block]) -> Rule:
+    """Return the rule a closed block without nested blocks holds."""
+    body = css[block.body_start : brace].split(";")
+    return Rule(
+        selector=" ".join([*(parent.prelude for parent in parents), block.prelude]),
+        line=block.line,
+        declarations=frozenset(declaration(d) for d in body if d.strip()),
+    )
 
 
 def parse_rules(css: str) -> list[Rule]:
@@ -47,19 +61,20 @@ def parse_rules(css: str) -> list[Rule]:
     # Blank each comment but keep its line breaks, so line numbers still hold.
     css = COMMENT.sub(lambda match: re.sub(r"[^\n]", " ", match.group()), css)
     rules = []
-    for match in RULE.finditer(css):
-        prelude = match.group(1)
-        start = match.start(1) + len(prelude) - len(prelude.lstrip())
-        body = match.group(2).split(";")
-        rules.append(
-            Rule(
-                selector=" ".join(
-                    [*enclosing_preludes(css, match.start()), *prelude.split()]
-                ),
-                line=css.count("\n", 0, start) + 1,
-                declarations=frozenset(declaration(d) for d in body if d.strip()),
-            )
-        )
+    stack: list[Block] = []
+    # A prelude starts after the last `{`, `}` or `;`.
+    start = 0
+    for index, character in enumerate(css):
+        if character == "{":
+            if stack:
+                stack[-1].has_child = True
+            stack.append(open_block(css, start, index))
+        elif character == "}":
+            block = stack.pop()
+            if not block.has_child:
+                rules.append(close_rule(css, block, index, stack))
+        if character in "{};":
+            start = index + 1
     return rules
 
 
