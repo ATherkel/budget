@@ -1,11 +1,12 @@
 # Copyright 2026 Therkel
 """Find CSS rules that repeat another rule's declarations."""
 
-import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
+import tinycss2
+from tinycss2.ast import AtRule, Declaration, Node, QualifiedRule
+
 # Two rules sharing this many declarations repeat each other.
 SHARED_LIMIT = 3
 
@@ -19,66 +20,73 @@ class Rule:
     declarations: frozenset[str]
 
 
-def declaration(text: str) -> str:
-    """Return `property: value` with the property lower-cased."""
-    name, _, value = text.partition(":")
-    return f"{name.strip().lower()}: {' '.join(value.split())}"
-
-
-@dataclass
+@dataclass(frozen=True)
 class Block:
-    """A block still open while the parser walks the CSS."""
+    """A rule the check cannot read: its prelude and first line."""
 
     prelude: str
     line: int
-    body_start: int
-    has_child: bool = False
 
 
-def open_block(css: str, prelude_start: int, brace: int) -> Block:
-    """Return the block whose prelude runs from `prelude_start` to `brace`."""
-    text = css[prelude_start:brace]
-    first = prelude_start + len(text) - len(text.lstrip())
-    return Block(
-        prelude=" ".join(text.split()),
-        line=css.count("\n", 0, first) + 1,
-        body_start=brace + 1,
-    )
+def text(nodes: Iterable[Node]) -> str:
+    """Return `nodes` as CSS source with runs of whitespace collapsed."""
+    return " ".join(str(tinycss2.serialize(nodes)).split())
 
 
-def close_rule(css: str, block: Block, brace: int, parents: list[Block]) -> Rule:
-    """Return the rule a closed block without nested blocks holds."""
-    body = css[block.body_start : brace].split(";")
-    return Rule(
-        selector=" ".join([*(parent.prelude for parent in parents), block.prelude]),
-        line=block.line,
-        declarations=frozenset(declaration(d) for d in body if d.strip()),
-    )
+def declaration(node: Declaration) -> str:
+    """Return `property: value` with the property lower-cased."""
+    value = text(node.value)
+    if node.important:
+        value += " !important"
+    return f"{node.lower_name}: {value}"
+
+
+@dataclass
+class Parsed:
+    """The rules of a stylesheet and the rules the check cannot read."""
+
+    rules: list[Rule]
+    nesting: list[Block]
+
+    def add_rule(self, node: QualifiedRule, context: str) -> None:
+        """Add a style rule, or note it when it nests another rule."""
+        selector = " ".join(filter(None, [context, text(node.prelude)]))
+        items = tinycss2.parse_blocks_contents(
+            node.content, skip_comments=True, skip_whitespace=True
+        )
+        if any(not isinstance(item, Declaration) for item in items):
+            self.nesting.append(Block(selector, node.source_line))
+            return
+        self.rules.append(
+            Rule(
+                selector=selector,
+                line=node.source_line,
+                declarations=frozenset(
+                    declaration(item) for item in items if isinstance(item, Declaration)
+                ),
+            )
+        )
+
+    def add_nodes(self, nodes: Sequence[Node], context: str = "") -> None:
+        """Add the style rules among `nodes`, entering at-rule blocks."""
+        for node in nodes:
+            if isinstance(node, QualifiedRule):
+                self.add_rule(node, context)
+            elif isinstance(node, AtRule) and node.content is not None:
+                inner = tinycss2.parse_rule_list(
+                    node.content, skip_comments=True, skip_whitespace=True
+                )
+                prelude = f"@{node.at_keyword} {text(node.prelude)}"
+                self.add_nodes(inner, " ".join(filter(None, [context, prelude])))
 
 
 def parse_rules(css: str) -> tuple[list[Rule], list[Block]]:
     """Return the rules of `css` in source order, and the rules that nest a rule."""
-    # Blank each comment but keep its line breaks, so line numbers still hold.
-    css = COMMENT.sub(lambda match: re.sub(r"[^\n]", " ", match.group()), css)
-    rules = []
-    nesting = []
-    stack: list[Block] = []
-    # A prelude starts after the last `{`, `}` or `;`.
-    start = 0
-    for index, character in enumerate(css):
-        if character == "{":
-            if stack:
-                stack[-1].has_child = True
-            stack.append(open_block(css, start, index))
-        elif character == "}":
-            block = stack.pop()
-            if not block.has_child:
-                rules.append(close_rule(css, block, index, stack))
-            elif not block.prelude.startswith("@"):
-                nesting.append(block)
-        if character in "{};":
-            start = index + 1
-    return rules, nesting
+    parsed = Parsed(rules=[], nesting=[])
+    parsed.add_nodes(
+        tinycss2.parse_stylesheet(css, skip_comments=True, skip_whitespace=True)
+    )
+    return parsed.rules, parsed.nesting
 
 
 def most_shared_first(rule: Rule, earlier_rules: list[Rule]) -> list[Rule]:
