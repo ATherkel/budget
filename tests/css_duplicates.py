@@ -92,5 +92,9 @@ def find_duplicates(css: str, allowlist: Iterable[tuple[str, str]] = ()) -> list
 
 def read_allowlist(text: str) -> list[tuple[str, str]]:
     """Return the `rule | earlier rule` pairs of an allowlist file."""
-    del text  # Stub until the green commit reads it.
-    return []
+    pairs = []
+    for line in text.splitlines():
+        if line.strip() and not line.lstrip().startswith("#"):
+            rule, _, earlier = line.partition(" | ")
+            pairs.append((rule.strip(), earlier.strip()))
+    return pairs
