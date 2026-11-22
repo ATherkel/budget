@@ -179,9 +179,6 @@
 
   .login-layout {
     grid-template-columns: 1fr;
-  }
-
-  .login-layout {
     gap: 1.5rem;
     padding-block: 1.5rem;
   }
