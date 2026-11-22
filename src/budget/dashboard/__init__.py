@@ -6,11 +6,10 @@ It reads Gold only through analytics, opened read-only from one profile.
 
 import hashlib
 from collections.abc import Callable, Collection, MutableMapping, Sequence
-from dataclasses import dataclass
 from datetime import date, datetime
 from functools import cache
 from pathlib import Path
-from typing import Annotated, Any, Self
+from typing import Annotated, Any
 
 from fastapi import FastAPI, Form, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -24,33 +23,11 @@ from jinja2 import (
     PrefixLoader,
     select_autoescape,
 )
-from pydantic import BaseModel, model_validator
 
-from budget.analytics import (
-    DetailScope,
-    DetailSubject,
-    HouseholdReports,
-    InvalidSelectionError,
-    PublicationUnavailableError,
-    ReportContext,
-    SpendingDetail,
-)
 from budget.dashboard import session
-from budget.dashboard.addresses import (
-    PinnedAddress,
-    PinnedQuery,
-    answered_url,
-    detail_url,
-    pinned_url,
-)
+from budget.dashboard.addresses import PinnedQuery, answered_url
 from budget.dashboard.display.amounts import amount, signed_amount
-from budget.dashboard.display.months import (
-    danish_date,
-    month_label,
-    month_value,
-    parse_month,
-    period_label,
-)
+from budget.dashboard.display.months import danish_date, month_label
 from budget.dashboard.display.text import (
     account_names,
     balance_observation,
@@ -58,12 +35,11 @@ from budget.dashboard.display.text import (
     coverage_label,
     coverage_note,
     danish_list,
-    incomplete_by_account,
     incomplete_months,
-    selection_problems,
     transaction_kind,
 )
 from budget.dashboard.features import Dashboard, Feature
+from budget.dashboard.features.category import CATEGORY
 from budget.dashboard.features.overview import overview_feature
 from budget.dashboard.features.report import REPORT, render_report
 from budget.dashboard.features.view_state import (
@@ -180,55 +156,6 @@ def _templates(features: Sequence[Feature]) -> Environment:
     return templates
 
 
-@dataclass(frozen=True)
-class DetailRequest:
-    """What a detail address asks for, beside the pinned publication and date."""
-
-    accounts: tuple[str, ...]
-    month: str
-    subject: DetailSubject
-    scope: DetailScope
-    view: ViewState
-
-
-class DetailAddress(BaseModel):
-    """The query string of a detail page: the pin, the selection and the subject."""
-
-    publication: int
-    reference_date: date
-    month: str
-    account: list[str] = []
-    category: str | None = None
-    group: str | None = None
-    scope: DetailScope = "month"
-    mode: str = "simple"
-    tab: str = "overview"
-    comparison: str = "amounts"
-
-    @model_validator(mode="after")
-    def _names_one_subject(self) -> Self:
-        """Refuse an address naming no subject, or both a Category and a group."""
-        if (self.category is None) == (self.group is None):
-            message = "name exactly one of category and group"
-            raise ValueError(message)
-        return self
-
-    def asked(self) -> DetailRequest:
-        """Return what the address asks for beside its pin."""
-        subject = (
-            DetailSubject("category", self.category)
-            if self.category is not None
-            else DetailSubject("group", self.group or "")
-        )
-        return DetailRequest(
-            tuple(self.account),
-            self.month,
-            subject,
-            self.scope,
-            parse_view_state(self.mode, self.tab, self.comparison),
-        )
-
-
 def _send_to_login(request: Request) -> Response:
     """Send a reader who is not logged in to the login page.
 
@@ -291,79 +218,6 @@ def _refuse_login(
     return None
 
 
-def _read_detail(
-    dashboard: Dashboard,
-    pin: tuple[int, date],
-    request: DetailRequest,
-) -> SpendingDetail | str:
-    """Return the detail `request` asks for, or a fragment saying why not."""
-    publication_id, reference_date = pin
-    try:
-        context = ReportContext(
-            publication_id=publication_id,
-            account_ids=frozenset(request.accounts),
-            month=parse_month(request.month),
-            reference_date=reference_date,
-        )
-        with GoldStore(dashboard.profile, read_only=True) as store:
-            return HouseholdReports(store).spending_detail(
-                context, request.subject, request.scope
-            )
-    except InvalidSelectionError as error:
-        return dashboard.templates.get_template("invalid_selection.html").render(
-            problems=selection_problems(error)
-        )
-    except PublicationUnavailableError:
-        return dashboard.templates.get_template("unavailable.html").render()
-
-
-def _render_detail(
-    dashboard: Dashboard,
-    pin: tuple[int, date],
-    request: DetailRequest,
-) -> str:
-    """Render the detail page of one subject under one pinned selection."""
-    detail_report = _read_detail(dashboard, pin, request)
-    if isinstance(detail_report, str):
-        return dashboard.templates.get_template("category.html").render(
-            failure=detail_report, title="Udgifter"
-        )
-    answered = detail_report.context
-    subject = detail_report.subject
-    period = period_label(detail_report.first_month, detail_report.last_month)
-    return dashboard.templates.get_template("category.html").render(
-        detail=detail_report,
-        title=f"{detail_report.name}, {period}",
-        scope_urls={
-            scope: detail_url(
-                answered,
-                subject.kind,
-                subject.id,
-                scope,
-                view=request.view,
-            )
-            for scope in ("month", "year_to_date")
-        },
-        group_url=detail_url(
-            answered,
-            "group",
-            detail_report.group_id,
-            detail_report.scope,
-            view=request.view,
-        ),
-        incomplete=incomplete_by_account(detail_report.coverage),
-        overview_url=pinned_url(
-            PinnedAddress(
-                answered.publication_id,
-                answered.reference_date,
-                tuple(answered.account_ids),
-                month_value(answered.month),
-            ),
-            view=request.view,
-        ),
-    )
-
-
 def _render_explanation(
     dashboard: Dashboard,
     pin: tuple[int, date],
@@ -389,6 +243,7 @@ FEATURES: tuple[Feature, ...] = (
     VIEW_STATE,
     overview_feature(render_report),
     REPORT,
+    CATEGORY,
 )
 
 
@@ -470,21 +325,6 @@ def create_app(
                     address.account,
                     address.month,
                     parse_view_state(address.mode, address.tab, address.comparison),
-                )
-            ),
-        )
-
-    @app.get("/category")
-    def category_detail(
-        request: Request, address: Annotated[DetailAddress, Query()]
-    ) -> Response:
-        return for_reader(
-            request,
-            lambda: HTMLResponse(
-                _render_detail(
-                    dashboard,
-                    (address.publication, address.reference_date),
-                    address.asked(),
                 )
             ),
         )
