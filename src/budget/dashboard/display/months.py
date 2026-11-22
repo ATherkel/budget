@@ -29,6 +29,11 @@ def copenhagen_date(now: datetime) -> date:
     return now.astimezone(COPENHAGEN).date()
 
 
+def danish_date(day: date) -> str:
+    """Return a date as a Danish reader reads it, such as `03.02.2026`."""
+    return str(day)
+
+
 def month_value(month: ReportingMonth) -> str:
     """Return a month as a form submits it, `YYYY-MM`."""
     return f"{month.year:04d}-{month.month:02d}"
