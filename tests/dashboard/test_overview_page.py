@@ -215,19 +215,27 @@ def test_scripts_and_styles_are_addressed_by_their_content(
     # A browser that cached an older file under the same address would keep
     # running it after a deploy, so each address names its file's SHA-256.
     html = client.get("/").text
-    shipped = Path(budget.dashboard.__file__).parent / "static"
+    package = Path(budget.dashboard.__file__).parent
+
+    def shipped(name: str) -> bytes:
+        # A feature's stylesheet is addressed under its feature folder's name.
+        folder, _, file = name.rpartition("/")
+        return (
+            package / "features" / folder / file
+            if folder
+            else package / "static" / name
+        ).read_bytes()
 
     addressed = {}
     for address in re.findall(r'(?:src|href)="(/static/[^"]+)"', html):
         name, _, version = address.removeprefix("/static/").partition("?v=")
-        served = client.get(address).content == (shipped / name).read_bytes()
-        addressed[name] = (version, served)
+        addressed[name] = (version, client.get(address).content == shipped(name))
 
     assert addressed == {
-        name: (hashlib.sha256((shipped / name).read_bytes()).hexdigest()[:12], True)
+        name: (hashlib.sha256(shipped(name)).hexdigest()[:12], True)
         for name in (
             *("base.css", "layout.css", "forms.css", "report.css"),
-            *("tables.css", "states.css", "login.css"),
+            *("tables.css", "states.css", "login.css", "view_state/selection.css"),
             *("htmx.min.js", "app.js"),
         )
     }
