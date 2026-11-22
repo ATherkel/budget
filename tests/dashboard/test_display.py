@@ -19,6 +19,7 @@ from budget.dashboard.display.months import danish_date
 from budget.dashboard.display.text import (
     account_names,
     balance_observation,
+    coverage_gap,
     coverage_label,
     coverage_note,
     incomplete_months,
@@ -158,3 +159,16 @@ def test_account_months_read_as_their_accounts_names_in_a_danish_list() -> None:
     months = [_month("Lønkonto", "partial"), _month("Budgetkonto", "no_data")]
 
     assert account_names(months) == "Lønkonto og Budgetkonto"
+
+
+@pytest.mark.parametrize(
+    ("status", "gap"),
+    [
+        ("no_data", "der er ingen data for måneden endnu."),
+        ("partial", "kun en del af måneden er dækket."),
+    ],
+)
+def test_an_incomplete_month_says_what_it_lacks(
+    status: AccountMonthStatus, gap: str
+) -> None:
+    assert coverage_gap(status) == gap

@@ -11,6 +11,7 @@ from budget.analytics import (
     InvalidSelectionError,
     ReportCoverage,
 )
+from budget.analytics.reports import AccountMonthStatus
 from budget.analytics.trust import AccountMonthState
 from budget.dashboard.display.amounts import amount
 from budget.dashboard.display.months import danish_date, month_label
@@ -121,6 +122,11 @@ def coverage_note(status: Coverage, incomplete: list[str], period: str) -> str:
     if status == "no_data":
         return f"Der er ingen data endnu fra {danish_list(incomplete)}."
     return f"Tallene mangler noget fra {danish_list(incomplete)}."
+
+
+def coverage_gap(status: AccountMonthStatus) -> str:
+    """Return what an incomplete account-month lacks, as a sentence's end."""
+    return status
 
 
 def danish_list(items: list[str]) -> str:
