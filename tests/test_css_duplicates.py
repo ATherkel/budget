@@ -47,6 +47,29 @@ def test_an_allowlisted_duplicate_passes() -> None:
     assert find_duplicates(CARD_AND_PANEL, allowlist=[(".panel", ".card")]) == []
 
 
+def test_comments_are_not_part_of_a_rule() -> None:
+    css = """\
+/* Cards
+   and panels */
+.card {
+  padding: 1rem; /* roomy */
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+/* A panel { is a card } */
+.panel {
+  color: var(--ink);
+  padding: 1rem;
+  border: 1px solid var(--line);
+}
+"""
+
+    assert find_duplicates(css) == [
+        "`.panel` shares 3 declarations with `.card` (line 3); reuse `.card`"
+    ]
+
+
 def test_an_allowlist_entry_that_is_no_longer_a_duplicate_fails() -> None:
     allowlist = [(".panel", ".card"), (".panel", ".banner")]
 
