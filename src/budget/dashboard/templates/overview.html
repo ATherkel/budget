@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import mode_option, page_heading %}
 {% block title %}Oversigt · Budget{% endblock %}
 {% block head %}
 {# No page snapshots in browser storage: a history miss reloads the page. #}
@@ -14,13 +15,9 @@
 {% endblock %}
 {% block content %}
 <div id="overview" data-canonical-url="{{ canonical_url }}">
-<div class="page-heading">
-  <div>
-    <p class="eyebrow">Husstandsøkonomi</p>
-    <h1>Oversigt</h1>
-  </div>
-  <p class="page-heading-note">Alle valg på siden bruger samme offentliggjorte datasæt.</p>
-</div>
+{% call page_heading("Oversigt") -%}
+<p class="page-heading-note">Alle valg på siden bruger samme offentliggjorte datasæt.</p>
+{%- endcall %}
 <div class="dashboard-layout">
 <aside class="selection-panel" aria-labelledby="selection-heading">
 <div class="section-heading">
@@ -45,10 +42,8 @@
 <fieldset id="mode-control" class="mode-control" role="group" aria-labelledby="mode-heading">
 <legend id="mode-heading">Visning</legend>
 <div class="mode-options">
-<label class="mode-option"><input type="radio" name="mode" value="simple" aria-label="Enkel"
-  {%- if mode == "simple" %} checked{% endif %}> <span>Enkel</span></label>
-<label class="mode-option"><input type="radio" name="mode" value="advanced" aria-label="Avanceret"
-  {%- if mode == "advanced" %} checked{% endif %}> <span>Avanceret</span></label>
+{{ mode_option("simple", "Enkel", mode) }}
+{{ mode_option("advanced", "Avanceret", mode) }}
 </div>
 <span id="comparison-choice" class="mode-note">Beløb</span>
 </fieldset>

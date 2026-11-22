@@ -1,11 +1,7 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_heading %}
 {% block title %}Oversigt · Budget{% endblock %}
 {% block content %}
-<div class="page-heading">
-  <div>
-    <p class="eyebrow">Husstandsøkonomi</p>
-    <h1>Oversigt</h1>
-  </div>
-</div>
+{{ page_heading("Oversigt") }}
 <div role="alert">{% include "invalid_address.html" %}</div>
 {% endblock %}

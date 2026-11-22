@@ -1,0 +1,45 @@
+{# Markup more than one page shows. A page imports what it uses:
+   {% from "_macros.html" import page_heading %} #}
+{# A page's heading; a call block adds a note beside the title. #}
+{% macro page_heading(title, title_id="") -%}
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">Husstandsøkonomi</p>
+    <h1{% if title_id %} id="{{ title_id }}"{% endif %}>{{ title }}</h1>
+  </div>
+{%- if caller %}
+  {{ caller() }}
+{%- endif %}
+</div>
+{%- endmacro %}
+{# Figures from a superseded publication say so, linking to the newest. #}
+{% macro newer_figures(is_current) -%}
+{% if not is_current %}
+<p class="notice notice--warning">Der findes nyere tal. <a id="newer-figures" href="/">Hent de nyeste tal</a></p>
+{% endif %}
+{%- endmacro %}
+{# Why a page cannot be shown, and the way back to the newest overview. #}
+{% macro failure_notice(failure, notice_id="") -%}
+<div{% if notice_id %} id="{{ notice_id }}"{% endif %} role="alert">{{ failure | safe }}</div>
+<p><a id="back-to-overview" href="/">Gå til den nyeste oversigt</a></p>
+{%- endmacro %}
+{# One choice in a row of links where the current one is marked. #}
+{% macro switch_link(link_id, href, label, current) -%}
+<a id="{{ link_id }}" href="{{ href }}"{% if current %} aria-current="page"{% endif %}>{{ label }}</a>
+{%- endmacro %}
+{# One way to show the report, checked when it is the current one. #}
+{% macro mode_option(value, label, current) -%}
+<label class="mode-option"><input type="radio" name="mode" value="{{ value }}" aria-label="{{ label }}"
+  {%- if value == current %} checked{% endif %}> <span>{{ label }}</span></label>
+{%- endmacro %}
+{# The chip that marks figures that may still change. #}
+{% macro provisional_label() -%}
+<span id="provisional-label" class="status-chip status-chip--provisional">Foreløbige tal</span>
+{%- endmacro %}
+{# One titled panel; the call block holds its content. #}
+{% macro report_section(name, heading) -%}
+<section class="report-panel" aria-labelledby="{{ name }}-heading">
+<h2 id="{{ name }}-heading">{{ heading }}</h2>
+{{ caller() }}
+</section>
+{%- endmacro %}
