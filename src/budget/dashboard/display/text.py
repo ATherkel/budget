@@ -4,6 +4,13 @@
 from budget.analytics import ActivityRow, InvalidSelectionError, ReportCoverage
 from budget.dashboard.display.months import month_label
 
+_TRANSACTION_KINDS = {
+    "income": "Indtægt",
+    "expense": "Udgift",
+    "refund": "Tilbagebetaling",
+    "adjustment": "Regulering",
+}
+
 
 def selection_problems(error: InvalidSelectionError) -> list[str]:
     """Return a Danish sentence for every selection rule `error` names."""
@@ -43,7 +50,7 @@ def incomplete_by_account(coverage: ReportCoverage) -> list[str]:
 
 def transaction_kind(row: ActivityRow) -> str:
     """Return what kind of transaction `row` is, as the reader reads it."""
-    return row.transaction_type
+    return _TRANSACTION_KINDS.get(row.transaction_type, row.transaction_type)
 
 
 def danish_list(items: list[str]) -> str:
