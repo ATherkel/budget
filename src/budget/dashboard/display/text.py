@@ -8,6 +8,7 @@ from budget.analytics import (
     ReportCoverage,
 )
 from budget.analytics.trust import AccountMonthState
+from budget.dashboard.display.amounts import amount
 from budget.dashboard.display.months import danish_date, month_label
 
 _TRANSACTION_KINDS = {
@@ -84,7 +85,7 @@ def balance_observation(
     on = danish_date(observation.transaction_date)
     if observation.balance_after is None:
         return f"Ukendt den {on}"
-    return f"{observation} {currency}"
+    return f"{amount(observation.balance_after, currency)} den {on}"
 
 
 def danish_list(items: list[str]) -> str:
