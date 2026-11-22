@@ -202,3 +202,24 @@ def test_the_rule_sharing_the_most_declarations_is_named_first() -> None:
 def test_an_allowlist_line_without_a_pair_is_refused() -> None:
     with pytest.raises(ValueError, match=r"line 2 is not `rule \| earlier rule`: a\|b"):
         read_allowlist("# header\na|b\n")
+
+
+def test_declarations_match_across_spacing_and_property_case() -> None:
+    css = """\
+.card {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.panel {
+  PADDING:1rem;
+  border:
+    1px  solid var(--line);
+  Color : var(--ink)
+}
+"""
+
+    assert find_duplicates(css) == [
+        "`.panel` (line 7) shares 3 declarations with `.card` (line 1); reuse `.card`"
+    ]
