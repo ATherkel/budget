@@ -116,3 +116,9 @@ def test_a_coverage_note_with_no_account_in_history_says_none_has_history() -> N
     note = coverage_note("no_data", [], "februar 2026")
 
     assert note == "Ingen af de valgte konti har historik i februar 2026."
+
+
+def test_a_coverage_note_with_no_data_yet_names_the_accounts() -> None:
+    note = coverage_note("no_data", ["Lønkonto", "Opsparing"], "februar 2026")
+
+    assert note == "Der er ingen data endnu fra Lønkonto og Opsparing."
