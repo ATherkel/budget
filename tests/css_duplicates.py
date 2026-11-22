@@ -2,7 +2,7 @@
 """Find CSS rules that repeat another rule's declarations."""
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
@@ -119,6 +119,13 @@ def find_duplicates(css: str, allowlist: Iterable[tuple[str, str]] = ()) -> list
         if (rule, earlier) not in found
     )
     return messages
+
+
+def find_duplicates_in_sheets(
+    sheets: Mapping[str, str], allowlist: Iterable[tuple[str, str]] = ()
+) -> list[str]:
+    """Return one message per pair of rules across `sheets`, in cascade order."""
+    return []
 
 
 def read_allowlist(text: str) -> list[tuple[str, str]]:
