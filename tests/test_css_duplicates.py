@@ -3,6 +3,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from tests.css_duplicates import find_duplicates, read_allowlist
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -195,3 +197,8 @@ def test_the_rule_sharing_the_most_declarations_is_named_first() -> None:
         "`.new` (line 14) shares 4 declarations with `.panel` (line 7); reuse `.panel`",
         "`.new` (line 14) shares 3 declarations with `.card` (line 1); reuse `.card`",
     ]
+
+
+def test_an_allowlist_line_without_a_pair_is_refused() -> None:
+    with pytest.raises(ValueError, match=r"line 2 is not `rule \| earlier rule`: a\|b"):
+        read_allowlist("# header\na|b\n")
