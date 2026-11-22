@@ -25,8 +25,8 @@
 </fieldset>
 <fieldset class="account-fieldset">
 <legend>Konti <span class="legend-note">Vælg mindst én</span></legend>
-<p class="account-shortcuts"><a id="accounts-all" href="{{ all_url }}" data-account-shortcut>Alle</a>
-  <a id="accounts-none" href="{{ none_url }}" data-account-shortcut>Ingen</a></p>
+<p class="account-shortcuts"><a id="accounts-all" href="{{ shortcuts.all_url }}" data-account-shortcut>Alle</a>
+  <a id="accounts-none" href="{{ shortcuts.none_url }}" data-account-shortcut>Ingen</a></p>
 {% for account in accounts %}
 <div class="account-row">
 <label class="account-option">
@@ -34,7 +34,7 @@
     {%- if account.account_id in selected_accounts %} checked{% endif %}>
   <span id="name-{{ account.account_id }}">{{ account.display_name }}</span>
 </label>
-<a class="account-only" id="only-{{ account.account_id }}" href="{{ only_urls[account.account_id] }}"
+<a class="account-only" id="only-{{ account.account_id }}" href="{{ shortcuts.only_urls[account.account_id] }}"
   aria-describedby="name-{{ account.account_id }}" data-account-shortcut>kun</a>
 </div>
 {% endfor %}

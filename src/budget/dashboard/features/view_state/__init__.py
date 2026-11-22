@@ -5,13 +5,20 @@ The view state is the presentation a report is shown in: its mode, tab and
 comparison, carried beside the pinned report context in every address.
 """
 
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Literal
 
 from jinja2 import Environment
 
+from budget.analytics import SelectionOptions
 from budget.dashboard.features import Dashboard, Feature
+from budget.dashboard.features.view_state.display import (
+    account_shortcuts,
+    month_choices,
+)
 
 type DashboardMode = Literal["simple", "advanced"]
 type DashboardTab = Literal["overview", "details"]
@@ -66,6 +73,42 @@ def view_state_controls(templates: Environment, view: ViewState) -> str:
         tab=view.tab,
         comparison=view.comparison,
     )
+
+
+@dataclass(frozen=True)
+class Selection:
+    """What the selection form shows as chosen, under one pinned publication."""
+
+    publication_id: int
+    reference_date: date
+    accounts: Collection[str]
+    month: str
+    view: ViewState
+
+
+def selection_form(
+    options: SelectionOptions,
+    chosen: Selection,
+    selecting: Callable[[Collection[str]], str],
+) -> dict[str, object]:
+    """Return what `view_state/selection.html` renders from.
+
+    `selecting` returns the page's address with the given accounts selected.
+    """
+    return {
+        "publication_id": chosen.publication_id,
+        "reference_date": chosen.reference_date.isoformat(),
+        "accounts": options.accounts,
+        "selected_accounts": chosen.accounts,
+        "months": month_choices(options.first_month, options.last_month),
+        "selected_month": chosen.month,
+        "shortcuts": account_shortcuts(
+            [account.account_id for account in options.accounts], selecting
+        ),
+        "mode": chosen.view.mode,
+        "tab": chosen.view.tab,
+        "comparison": chosen.view.comparison,
+    }
 
 
 def register(_dashboard: Dashboard) -> None:

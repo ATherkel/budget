@@ -66,14 +66,12 @@ from budget.dashboard.features.view_state import (
     DEFAULT_VIEW,
     VIEW_STATE,
     DashboardMode,
+    Selection,
     ViewState,
+    selection_form,
     view_mode,
     view_state,
     view_state_controls,
-)
-from budget.dashboard.features.view_state.display import (
-    account_shortcuts,
-    month_choices,
 )
 from budget.dashboard.passphrase import (
     CredentialSnapshot,
@@ -433,25 +431,17 @@ def _render_overview(dashboard: Dashboard, requested: OverviewRequest) -> str:
             view=requested.view,
         )
 
-    canonical_url = pinned_with(selected_accounts)
-    shortcuts = account_shortcuts(
-        [account.account_id for account in options.accounts], pinned_with
+    chosen = Selection(
+        publication_id,
+        reference_date,
+        selected_accounts,
+        selected_month,
+        requested.view,
     )
     return templates.get_template("overview.html").render(
-        publication_id=publication_id,
-        reference_date=reference_date.isoformat(),
-        canonical_url=canonical_url,
-        accounts=options.accounts,
-        selected_accounts=selected_accounts,
-        only_urls=shortcuts.only_urls,
-        all_url=shortcuts.all_url,
-        none_url=shortcuts.none_url,
-        months=month_choices(options.first_month, options.last_month),
-        selected_month=selected_month,
+        canonical_url=pinned_with(selected_accounts),
         report=report,
-        mode=requested.view.mode,
-        tab=requested.view.tab,
-        comparison=requested.view.comparison,
+        **selection_form(options, chosen, pinned_with),
     )
 
 
