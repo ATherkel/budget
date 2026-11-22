@@ -1,6 +1,7 @@
 # Copyright 2026 Therkel
 """The duplicate CSS check names the existing rule to reuse."""
 
+import re
 from pathlib import Path
 
 import pytest
@@ -269,3 +270,19 @@ def test_css_the_check_cannot_read_is_reported_with_its_line() -> None:
     assert find_duplicates(css) == [
         "`.card` (line 3) holds CSS the check cannot read; fix it so it can"
     ]
+
+
+def test_app_css_with_a_copied_rule_names_the_original() -> None:
+    css = (REPOSITORY / "src/budget/dashboard/static/app.css").read_text("utf-8")
+    original = re.search(r"^\.header-inner \{\n(.*?)^\}", css, re.MULTILINE | re.DOTALL)
+    assert original, "app.css no longer has a `.header-inner` rule to copy"
+    copy = '.copied-header {\n  content: "}";\n' + original.group(1) + "}\n"
+    allowlist = read_allowlist(
+        (REPOSITORY / "css-duplicates-allowlist.txt").read_text("utf-8")
+    )
+
+    messages = find_duplicates(css + "\n" + copy, allowlist)
+
+    assert messages, "the copied rule was not reported"
+    assert messages[0].startswith("`.copied-header` (line "), messages
+    assert messages[0].endswith("reuse `.header-inner`"), messages
