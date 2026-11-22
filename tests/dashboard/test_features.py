@@ -10,6 +10,7 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from budget.dashboard import create_app
@@ -54,6 +55,18 @@ def test_a_feature_left_out_serves_no_page_and_links_no_stylesheet(
             for sheet in STYLESHEET.findall(client.get("/login").text)
         ),
     ) == (404, False)
+
+
+def test_two_features_in_folders_of_one_name_are_refused(tmp_path: Path) -> None:
+    # Both would answer to `sample_feature/` templates and stylesheet addresses.
+    namesake = tmp_path / "elsewhere" / "sample_feature"
+    namesake.mkdir(parents=True)
+    twin = Feature(folder=namesake, register=lambda _dashboard: None)
+
+    with pytest.raises(ValueError, match="sample_feature"):
+        create_app(
+            dashboard_profile(tmp_path), clock=lambda: NOW, features=(SAMPLE, twin)
+        )
 
 
 def test_a_feature_folder_serves_its_stylesheets_and_no_other_file(
