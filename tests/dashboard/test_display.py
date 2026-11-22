@@ -8,6 +8,7 @@ from decimal import Decimal
 import pytest
 
 from budget.analytics import (
+    AccountMonth,
     AccountMonthCoverage,
     ActivityRow,
     BankBalanceObservation,
@@ -156,7 +157,11 @@ def test_a_month_outside_an_accounts_history_lacks_nothing() -> None:
 
 
 def test_account_months_read_as_their_accounts_names_in_a_danish_list() -> None:
-    months = [_month("Lønkonto", "partial"), _month("Budgetkonto", "no_data")]
+    february = ReportingMonth(2026, 2)
+    months = [
+        AccountMonth("acc-1", "Lønkonto", february),
+        AccountMonth("acc-2", "Budgetkonto", february),
+    ]
 
     assert account_names(months) == "Lønkonto og Budgetkonto"
 
