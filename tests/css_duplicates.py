@@ -124,8 +124,12 @@ def find_duplicates(css: str, allowlist: Iterable[tuple[str, str]] = ()) -> list
 def read_allowlist(text: str) -> list[tuple[str, str]]:
     """Return the `rule | earlier rule` pairs of an allowlist file."""
     pairs = []
-    for line in text.splitlines():
-        if line.strip() and not line.lstrip().startswith("#"):
-            rule, _, earlier = line.partition(" | ")
-            pairs.append((rule.strip(), earlier.strip()))
+    for number, line in enumerate(text.splitlines(), start=1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        rule, separator, earlier = line.partition(" | ")
+        if not (separator and rule.strip() and earlier.strip()):
+            message = f"line {number} is not `rule | earlier rule`: {line}"
+            raise ValueError(message)
+        pairs.append((rule.strip(), earlier.strip()))
     return pairs
