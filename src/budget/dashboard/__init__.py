@@ -801,7 +801,7 @@ def _render_explanation(
         return page.render(failure=overview_report)
     return page.render(
         overview=overview_report,
-        incomplete=incomplete_months(overview_report.coverage),
+        incomplete_months=incomplete_months(overview_report.coverage),
         month_label=month_label(overview_report.context.month),
         report_url=_answered_url(overview_report, "/", view),
     )
