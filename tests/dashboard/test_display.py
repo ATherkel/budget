@@ -63,3 +63,7 @@ def test_a_transfer_with_no_other_half_says_it_is_one_sided() -> None:
     row = replace(_row("transfer"), transfer_pairing="one_sided")
 
     assert transaction_kind(row) == "Overførsel, ensidig"
+
+
+def test_a_transaction_of_unknown_type_reads_as_uncategorised() -> None:
+    assert transaction_kind(_row("unknown")) == "Ukategoriseret"
