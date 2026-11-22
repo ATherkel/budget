@@ -122,3 +122,9 @@ def test_a_coverage_note_with_no_data_yet_names_the_accounts() -> None:
     note = coverage_note("no_data", ["Lønkonto", "Opsparing"], "februar 2026")
 
     assert note == "Der er ingen data endnu fra Lønkonto og Opsparing."
+
+
+def test_a_partial_coverage_note_says_what_the_figures_lack() -> None:
+    note = coverage_note("partial", ["Lønkonto"], "februar 2026")
+
+    assert note == "Tallene mangler noget fra Lønkonto."
