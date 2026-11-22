@@ -56,11 +56,12 @@ def close_rule(css: str, block: Block, brace: int, parents: list[Block]) -> Rule
     )
 
 
-def parse_rules(css: str) -> list[Rule]:
-    """Return the rules of `css` in source order."""
+def parse_rules(css: str) -> tuple[list[Rule], list[Block]]:
+    """Return the rules of `css` in source order, and the rules that nest a rule."""
     # Blank each comment but keep its line breaks, so line numbers still hold.
     css = COMMENT.sub(lambda match: re.sub(r"[^\n]", " ", match.group()), css)
     rules = []
+    nesting = []
     stack: list[Block] = []
     # A prelude starts after the last `{`, `}` or `;`.
     start = 0
@@ -73,16 +74,22 @@ def parse_rules(css: str) -> list[Rule]:
             block = stack.pop()
             if not block.has_child:
                 rules.append(close_rule(css, block, index, stack))
+            elif not block.prelude.startswith("@"):
+                nesting.append(block)
         if character in "{};":
             start = index + 1
-    return rules
+    return rules, nesting
 
 
 def find_duplicates(css: str, allowlist: Iterable[tuple[str, str]] = ()) -> list[str]:
     """Return one message per pair of rules sharing 3 or more declarations."""
     allowed = list(dict.fromkeys(allowlist))
-    rules = parse_rules(css)
-    messages = []
+    rules, nesting = parse_rules(css)
+    messages = [
+        f"`{block.prelude}` (line {block.line}) nests a rule;"
+        " write it flat so the check can read it"
+        for block in nesting
+    ]
     found = set()
     for index, rule in enumerate(rules):
         for earlier in rules[:index]:
