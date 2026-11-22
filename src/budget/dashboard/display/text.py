@@ -50,7 +50,11 @@ def incomplete_months(coverage: ReportCoverage) -> list[AccountMonthCoverage]:
 
     Months outside an account's history are never missing anything.
     """
-    return list(coverage.account_months)
+    return [
+        account_month
+        for account_month in coverage.account_months
+        if account_month.status != "outside_history"
+    ]
 
 
 def incomplete_by_account(coverage: ReportCoverage) -> list[str]:
