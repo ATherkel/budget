@@ -12,8 +12,8 @@ from budget.analytics import (
     ReportContext,
 )
 from budget.dashboard.display.months import parse_month
-from budget.dashboard.display.text import selection_problems
 from budget.dashboard.features import Dashboard
+from budget.dashboard.features.errors import failure_fragment
 from budget.gold.store import GoldStore
 
 
@@ -38,10 +38,5 @@ def read_overview(
         )
         with GoldStore(dashboard.profile, read_only=True) as store:
             return HouseholdReports(store).monthly_overview(context)
-    except InvalidSelectionError as error:
-        # A failure is shown, and echoes no context the page could render.
-        return dashboard.templates.get_template("invalid_selection.html").render(
-            problems=selection_problems(error)
-        )
-    except PublicationUnavailableError:
-        return dashboard.templates.get_template("unavailable.html").render()
+    except (InvalidSelectionError, PublicationUnavailableError) as error:
+        return failure_fragment(dashboard, error)

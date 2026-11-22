@@ -21,8 +21,9 @@ from budget.analytics import (
 )
 from budget.dashboard.addresses import answered_address, detail_url, pinned_url
 from budget.dashboard.display.months import parse_month, period_label
-from budget.dashboard.display.text import incomplete_by_account, selection_problems
+from budget.dashboard.display.text import incomplete_by_account
 from budget.dashboard.features import Dashboard, Feature
+from budget.dashboard.features.errors import failure_fragment
 from budget.dashboard.features.view_state import ViewState, parse_view_state
 from budget.gold.store import GoldStore
 
@@ -94,12 +95,8 @@ def _read_detail(
             return HouseholdReports(store).spending_detail(
                 context, request.subject, request.scope
             )
-    except InvalidSelectionError as error:
-        return dashboard.templates.get_template("invalid_selection.html").render(
-            problems=selection_problems(error)
-        )
-    except PublicationUnavailableError:
-        return dashboard.templates.get_template("unavailable.html").render()
+    except (InvalidSelectionError, PublicationUnavailableError) as error:
+        return failure_fragment(dashboard, error)
 
 
 def _render_detail(
