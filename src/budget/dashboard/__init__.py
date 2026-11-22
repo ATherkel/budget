@@ -63,6 +63,7 @@ from budget.dashboard.display.text import (
     transaction_kind,
 )
 from budget.dashboard.features import Dashboard, Feature
+from budget.dashboard.features.view_state import VIEW_STATE
 from budget.dashboard.passphrase import (
     CredentialSnapshot,
     read_credentials,
@@ -95,7 +96,7 @@ class ViewState:
 DEFAULT_VIEW = ViewState()
 
 # The features the dashboard serves, one line each; one left out is off.
-FEATURES: tuple[Feature, ...] = ()
+FEATURES: tuple[Feature, ...] = (VIEW_STATE,)
 
 _STATIC = Path(__file__).parent / "static"
 

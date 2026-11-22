@@ -8,18 +8,18 @@
 .mode-option | .selection-panel, .report-panel
 .account-option | .mode-option
 .button | .brand
-.button | .mode-option
+.mode-option | .button
 .category-row | .header-inner
 .category-row | .section-heading--row
 .category-row | .footer-inner
 .balance-observations div | .selection-panel, .report-panel
-.balance-observations div | .mode-option
+.mode-option | .balance-observations div
 .empty-mark | .brand-mark
 .report-state | .empty-state
 .report-state--error | .notice--error
 .login-panel | .selection-panel, .report-panel
-.login-panel | .mode-option
+.mode-option | .login-panel
 .login-panel | .balance-observations div
-.stack input | select
+select | .stack input
 .footer-inner | .header-inner
 .footer-inner | .section-heading--row
