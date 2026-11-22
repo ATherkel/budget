@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from tests.css_duplicates import find_duplicates, read_allowlist
+from tests.css_duplicates import (
+    find_duplicates,
+    find_duplicates_in_sheets,
+    read_allowlist,
+)
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 
@@ -30,6 +34,35 @@ def test_a_rule_sharing_three_declarations_names_the_rule_to_reuse() -> None:
     assert find_duplicates(CARD_AND_PANEL) == [
         "`.panel` (line 7) shares 3 declarations with `.card` (line 1); reuse `.card`"
     ]
+
+
+def test_a_rule_repeating_one_in_an_earlier_stylesheet_names_both_files() -> None:
+    layout = """\
+a {
+  color: var(--ink);
+}
+
+.card {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+"""
+    forms = """\
+
+.panel {
+  color: var(--ink);
+  padding: 1rem;
+  border: 1px solid var(--line);
+}
+"""
+    sheets = {"layout.css": layout, "forms.css": forms}
+
+    message = (
+        "`.panel` (forms.css line 2) shares 3 declarations with"
+        " `.card` (layout.css line 5); reuse `.card`"
+    )
+    assert find_duplicates_in_sheets(sheets) == [message]
 
 
 def test_rules_sharing_two_declarations_pass() -> None:

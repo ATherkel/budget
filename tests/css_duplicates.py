@@ -1,7 +1,7 @@
 # Copyright 2026 Therkel
 """Find CSS rules that repeat another rule's declarations."""
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 import tinycss2
@@ -138,6 +138,13 @@ def find_duplicates(css: str, allowlist: Iterable[tuple[str, str]] = ()) -> list
         if (rule, earlier) not in found
     )
     return messages
+
+
+def find_duplicates_in_sheets(
+    sheets: Mapping[str, str], allowlist: Iterable[tuple[str, str]] = ()
+) -> list[str]:
+    """Return one message per pair of rules across `sheets`, in cascade order."""
+    return []
 
 
 def read_allowlist(text: str) -> list[tuple[str, str]]:
