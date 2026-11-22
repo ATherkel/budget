@@ -10,9 +10,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from jinja2 import Environment
 
 from budget.dashboard.features import Dashboard, Feature
+from budget.dashboard.features.login.throttle import LoginThrottle
 from budget.dashboard.passphrase import CredentialSnapshot, read_credentials
 from budget.dashboard.session import SESSION_COOKIE
-from budget.dashboard.throttle import LoginThrottle
 
 
 def _refuse_login(
@@ -31,7 +31,7 @@ def _refuse_login(
     if wait:
         notice = f"For mange forkerte forsøg. Prøv igen om {wait} sekunder."
         return HTMLResponse(
-            templates.get_template("login.html").render(message=notice),
+            templates.get_template("login/login.html").render(message=notice),
             status_code=429,
             headers={"Retry-After": str(wait)},
         )
@@ -41,7 +41,7 @@ def _refuse_login(
         if not blank:
             throttle.failed(now)
         return HTMLResponse(
-            templates.get_template("login.html").render(
+            templates.get_template("login/login.html").render(
                 message="Adgangskoden er forkert."
             )
         )
@@ -56,7 +56,8 @@ def _register(dashboard: Dashboard) -> None:
 
     @dashboard.app.get("/login")
     def login_page() -> Response:
-        return HTMLResponse(templates.get_template("login.html").render(message=""))
+        page = templates.get_template("login/login.html")
+        return HTMLResponse(page.render(message=""))
 
     @dashboard.app.post("/login")
     def login(passphrase: Annotated[str, Form()] = "") -> Response:
