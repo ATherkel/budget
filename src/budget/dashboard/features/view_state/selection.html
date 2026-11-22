@@ -1,4 +1,8 @@
-{% from "_macros.html" import mode_option -%}
+{# One way to show the report, checked when it is the current one. #}
+{%- macro mode_option(value, label, current) -%}
+<label class="mode-option"><input type="radio" name="mode" value="{{ value }}" aria-label="{{ label }}"
+  {%- if value == current %} checked{% endif %}> <span>{{ label }}</span></label>
+{%- endmacro -%}
 {# The month, mode and account pickers of the overview's report.
    Without scripts the form reloads the page; htmx swaps only the report, and
    a newer change replaces any request still outstanding. #}
