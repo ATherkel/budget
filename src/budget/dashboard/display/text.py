@@ -62,7 +62,7 @@ def incomplete_months(coverage: ReportCoverage) -> list[AccountMonthCoverage]:
 
 def account_names(months: Sequence[AccountMonth | AccountMonthCoverage]) -> str:
     """Return the accounts of `months` by name, as Danish lists them."""
-    return danish_list([month.account_id for month in months])
+    return danish_list([month.display_name for month in months])
 
 
 def incomplete_by_account(coverage: ReportCoverage) -> list[str]:
