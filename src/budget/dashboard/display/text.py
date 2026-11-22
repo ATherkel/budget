@@ -81,6 +81,9 @@ def balance_observation(
     """Return the balance the bank stated on a date, or `missing` with none."""
     if observation is None:
         return missing
+    on = danish_date(observation.transaction_date)
+    if observation.balance_after is None:
+        return f"Ukendt den {on}"
     return f"{observation} {currency}"
 
 
