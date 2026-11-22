@@ -5,6 +5,8 @@ A sample feature in `sample_feature/` stands in for a real one; the dashboard
 is driven in-process.
 """
 
+import hashlib
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -17,6 +19,7 @@ from tests.dashboard.pages import read
 from tests.dashboard.sample_feature import SAMPLE
 
 NOW = datetime(2026, 5, 14, 9, 0, tzinfo=UTC)
+STYLESHEET = re.compile(r'<link rel="stylesheet" href="([^"]+)">')
 
 
 def logged_in(tmp_path: Path, features: tuple[Feature, ...]) -> TestClient:
@@ -36,4 +39,25 @@ def test_a_registered_feature_serves_its_page(tmp_path: Path) -> None:
     assert (response.status_code, read(response.text).text_of("sample-heading")) == (
         200,
         "Sample feature",
+    )
+
+
+def test_every_page_links_a_registered_features_stylesheet_by_its_content(
+    tmp_path: Path,
+) -> None:
+    # The feature's page and a page the feature never touched share base.html.
+    client = logged_in(tmp_path, (SAMPLE,))
+    sheet = (SAMPLE.folder / "sample.css").read_bytes()
+    address = (
+        f"/static/sample_feature/sample.css?v={hashlib.sha256(sheet).hexdigest()[:12]}"
+    )
+
+    linked = {
+        path: address in STYLESHEET.findall(client.get(path).text)
+        for path in ("/sample", "/login")
+    }
+
+    assert (linked, client.get(address).content) == (
+        {"/sample": True, "/login": True},
+        sheet,
     )
