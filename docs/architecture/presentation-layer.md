@@ -44,8 +44,9 @@ out is off. A feature that serves no page of its own, such as `view_state`
 it include its templates. A feature's templates are named
 `<folder>/<file>.html`, and `base.html` links every stylesheet in its folder,
 so adding a feature with its own page edits no shared file. Helpers more than one feature uses live in the
-`budget.dashboard.display` package, and markup more than one page repeats is a
-macro in `templates/_macros.html`. A template holds no chain of conditions:
+`budget.dashboard.display` package, the pinned address every page links by
+lives in `budget.dashboard.addresses`, and markup more than one page repeats is
+a macro in `templates/_macros.html`. A template holds no chain of conditions:
 wording that turns on several cases comes from a display helper. Moving the
 existing pages into features is pending: [#569](https://github.com/ATherkel/budget/issues/569).
 
