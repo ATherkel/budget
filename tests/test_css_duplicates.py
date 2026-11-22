@@ -45,3 +45,11 @@ def test_rules_sharing_two_declarations_pass() -> None:
 
 def test_an_allowlisted_duplicate_passes() -> None:
     assert find_duplicates(CARD_AND_PANEL, allowlist=[(".panel", ".card")]) == []
+
+
+def test_an_allowlist_entry_that_is_no_longer_a_duplicate_fails() -> None:
+    allowlist = [(".panel", ".card"), (".panel", ".banner")]
+
+    assert find_duplicates(CARD_AND_PANEL, allowlist=allowlist) == [
+        "allowlist entry `.panel` / `.banner` is no longer a duplicate; remove it"
+    ]
