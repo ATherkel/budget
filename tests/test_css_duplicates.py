@@ -25,7 +25,7 @@ CARD_AND_PANEL = """\
 
 def test_a_rule_sharing_three_declarations_names_the_rule_to_reuse() -> None:
     assert find_duplicates(CARD_AND_PANEL) == [
-        "`.panel` shares 3 declarations with `.card` (line 1); reuse `.card`"
+        "`.panel` (line 7) shares 3 declarations with `.card` (line 1); reuse `.card`"
     ]
 
 
@@ -70,7 +70,7 @@ def test_comments_are_not_part_of_a_rule() -> None:
 """
 
     assert find_duplicates(css) == [
-        "`.panel` shares 3 declarations with `.card` (line 3); reuse `.card`"
+        "`.panel` (line 10) shares 3 declarations with `.card` (line 3); reuse `.card`"
     ]
 
 
@@ -92,8 +92,8 @@ def test_a_rule_inside_media_is_named_with_its_media_query() -> None:
 """
 
     message = (
-        "`@media (max-width: 48rem) .panel` shares 3 declarations with `.card`"
-        " (line 1); reuse `.card`"
+        "`@media (max-width: 48rem) .panel` (line 8) shares 3 declarations with"
+        " `.card` (line 1); reuse `.card`"
     )
     assert find_duplicates(css) == [message]
 
@@ -146,7 +146,7 @@ def test_a_rule_after_a_top_level_statement_is_named_by_its_own_selector() -> No
 """
 
     assert find_duplicates(css) == [
-        "`.panel` shares 3 declarations with `.card` (line 2); reuse `.card`"
+        "`.panel` (line 8) shares 3 declarations with `.card` (line 2); reuse `.card`"
     ]
 
 
