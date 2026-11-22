@@ -81,6 +81,14 @@ def parse_rules(css: str) -> tuple[list[Rule], list[Block]]:
     return rules, nesting
 
 
+def most_shared_first(rule: Rule, earlier_rules: list[Rule]) -> list[Rule]:
+    """Return `earlier_rules` by declarations shared with `rule`, most first."""
+    return sorted(
+        earlier_rules,
+        key=lambda earlier: -len(rule.declarations & earlier.declarations),
+    )
+
+
 def find_duplicates(css: str, allowlist: Iterable[tuple[str, str]] = ()) -> list[str]:
     """Return one message per pair of rules sharing 3 or more declarations."""
     allowed = list(dict.fromkeys(allowlist))
@@ -92,7 +100,7 @@ def find_duplicates(css: str, allowlist: Iterable[tuple[str, str]] = ()) -> list
     ]
     found = set()
     for index, rule in enumerate(rules):
-        for earlier in rules[:index]:
+        for earlier in most_shared_first(rule, rules[:index]):
             shared = len(rule.declarations & earlier.declarations)
             pair = (rule.selector, earlier.selector)
             if shared < SHARED_LIMIT:
