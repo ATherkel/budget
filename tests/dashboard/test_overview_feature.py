@@ -11,6 +11,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from budget.dashboard import create_app
+from budget.dashboard.features.report import REPORT
 from budget.dashboard.features.view_state import VIEW_STATE
 from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
 
@@ -36,7 +37,7 @@ def test_without_the_overview_an_empty_report_selection_still_asks_for_an_accoun
     tmp_path: Path,
 ) -> None:
     app = create_app(
-        dashboard_profile(tmp_path), clock=lambda: NOW, features=(VIEW_STATE,)
+        dashboard_profile(tmp_path), clock=lambda: NOW, features=(VIEW_STATE, REPORT)
     )
     client = TestClient(app, follow_redirects=False)
     client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
