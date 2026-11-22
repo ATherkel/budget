@@ -1,6 +1,7 @@
 # Copyright 2026 Therkel
 """The duplicate CSS check names the existing rule to reuse."""
 
+import re
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from tests.css_duplicates import (
 )
 
 REPOSITORY = Path(__file__).resolve().parents[1]
+STATIC = REPOSITORY / "src/budget/dashboard/static"
 
 CARD_AND_PANEL = """\
 .card {
@@ -155,13 +157,27 @@ def test_the_allowlist_holds_one_pair_per_line() -> None:
     ]
 
 
-def test_app_css_repeats_no_rule_outside_the_allowlist() -> None:
-    css = (REPOSITORY / "src/budget/dashboard/static/app.css").read_text("utf-8")
+def linked_stylesheets() -> list[str]:
+    """Return the stylesheets the dashboard's base page links, in cascade order."""
+    base = (REPOSITORY / "src/budget/dashboard/templates/base.html").read_text("utf-8")
+    links = re.finditer(r"""<link rel="stylesheet" href="\{\{ '([^']+)'""", base)
+    return [link.group(1) for link in links]
+
+
+def test_every_dashboard_stylesheet_is_linked_from_the_base_page() -> None:
+    # The guard below reads only the linked stylesheets.
+    shipped = sorted(path.name for path in STATIC.glob("*.css"))
+
+    assert sorted(linked_stylesheets()) == shipped
+
+
+def test_the_dashboard_stylesheets_repeat_no_rule_outside_the_allowlist() -> None:
+    sheets = {name: (STATIC / name).read_text("utf-8") for name in linked_stylesheets()}
     allowlist = read_allowlist(
         (REPOSITORY / "css-duplicates-allowlist.txt").read_text("utf-8")
     )
 
-    messages = find_duplicates(css, allowlist)
+    messages = find_duplicates_in_sheets(sheets, allowlist)
 
     assert not messages, "\n".join(messages)
 
