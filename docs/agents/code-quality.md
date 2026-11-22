@@ -35,7 +35,7 @@ reuse. That rule is a lead, not a drop-in: it may hold more declarations or sit
 in another `@media` context, so reuse it only where all of it fits. It reports
 nested rules and CSS it cannot parse instead of skipping them. It reads the
 stylesheets `base.html` links, in link order, so "earlier" can mean an earlier
-file, and it fails on a stylesheet no page links. Approved duplicates sit
+file, and it fails on a stylesheet in `static/` that `base.html` doesn't link. Approved duplicates sit
 in `css-duplicates-allowlist.txt`, one `rule | earlier rule` pair per line. An
 entry that no longer matches fails the check, so a stale entry cannot linger.
 Dev tools are pinned in `uv.lock`. `.pre-commit-config.yaml` runs djlint and
