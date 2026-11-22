@@ -44,7 +44,10 @@ and `view_state` registered too, and the report links each category to
 `category` and its trust notes to `explanation`. Every page sends a reader
 who is not logged in to `login`, the page that logs in and out; the check
 itself, the session cookie and the passphrase stay in `budget.dashboard`, so a
-dashboard without `login` still refuses every page. A feature that serves no
+dashboard without `login` still refuses every page. Every page shows why its
+figures cannot be shown, or why its address is malformed, from `errors`; a
+dashboard without it answers a malformed address with FastAPI's own JSON. A
+feature that serves no
 page of its own, such as `view_state` (the month, mode and account pickers), adds no routes: the pages that show
 it include its templates. A feature's templates are named
 `<folder>/<file>.html`, and `base.html` links every stylesheet in its folder,
