@@ -68,9 +68,9 @@ from budget.dashboard.features.view_state import (
     DashboardMode,
     Selection,
     ViewState,
+    parse_view_state,
     selection_form,
     view_mode,
-    view_state,
     view_state_controls,
 )
 from budget.dashboard.passphrase import (
@@ -249,7 +249,7 @@ class OverviewAddress(BaseModel):
             ),
             accounts=tuple(self.account) if pinned else None,
             month=self.month,
-            view=view_state(self.mode, self.tab, self.comparison),
+            view=parse_view_state(self.mode, self.tab, self.comparison),
         )
 
 
@@ -276,7 +276,7 @@ class ReportAddress(PinnedQuery):
 
     def asked(self) -> ReportRequest:
         """Return the report request and the presentation state it came from."""
-        view = view_state(self.mode, self.tab, self.comparison)
+        view = parse_view_state(self.mode, self.tab, self.comparison)
         return ReportRequest(
             pin=self.pin(),
             accounts=tuple(self.account),
@@ -322,7 +322,7 @@ class DetailAddress(BaseModel):
             self.month,
             subject,
             self.scope,
-            view_state(self.mode, self.tab, self.comparison),
+            parse_view_state(self.mode, self.tab, self.comparison),
         )
 
 
@@ -753,7 +753,7 @@ def _report_response(
     The address becomes this selection's own page, so back and forward reopen
     each selection the reader made.
     """
-    view = view_state(
+    view = parse_view_state(
         requested.view.mode,
         requested.view.tab,
         requested.view.comparison,
@@ -879,7 +879,7 @@ def create_app(
                     address.pin(),
                     address.account,
                     address.month,
-                    view_state(address.mode, address.tab, address.comparison),
+                    parse_view_state(address.mode, address.tab, address.comparison),
                 )
             ),
         )

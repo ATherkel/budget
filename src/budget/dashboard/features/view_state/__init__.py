@@ -52,7 +52,7 @@ def _comparison(_value: str | None) -> ComparisonMode:
     return "amounts"
 
 
-def view_state(
+def parse_view_state(
     mode: str | None,
     tab: str | None = None,
     comparison: str | None = None,
