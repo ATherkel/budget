@@ -126,7 +126,9 @@ def test_app_css_repeats_no_rule_outside_the_allowlist() -> None:
         (REPOSITORY / "css-duplicates-allowlist.txt").read_text("utf-8")
     )
 
-    assert find_duplicates(css, allowlist) == []
+    messages = find_duplicates(css, allowlist)
+
+    assert not messages, "\n".join(messages)
 
 
 def test_a_rule_after_a_top_level_statement_is_named_by_its_own_selector() -> None:
