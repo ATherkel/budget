@@ -1,7 +1,7 @@
 # Copyright 2026 Therkel
 """Danish sentences and lists the dashboard shows its reader."""
 
-from budget.analytics import InvalidSelectionError, ReportCoverage
+from budget.analytics import ActivityRow, InvalidSelectionError, ReportCoverage
 from budget.dashboard.display.months import month_label
 
 
@@ -39,6 +39,11 @@ def incomplete_by_account(coverage: ReportCoverage) -> list[str]:
         f"{names[account_id]} ({', '.join(labels)})"
         for account_id, labels in months.items()
     ]
+
+
+def transaction_kind(row: ActivityRow) -> str:
+    """Return what kind of transaction `row` is, as the reader reads it."""
+    return row.transaction_type
 
 
 def danish_list(items: list[str]) -> str:
