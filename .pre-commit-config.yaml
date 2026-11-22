@@ -12,5 +12,5 @@ repos:
         name: duplicate CSS rules
         entry: uv run pytest tests/test_css_duplicates.py -q
         language: system
-        files: (\.css|css-duplicates-allowlist\.txt|css_duplicates\.py)$
+        files: (\.css|base\.html|css-duplicates-allowlist\.txt|css_duplicates\.py)$
         pass_filenames: false
