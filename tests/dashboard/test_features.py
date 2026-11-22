@@ -42,6 +42,34 @@ def test_a_registered_feature_serves_its_page(tmp_path: Path) -> None:
     )
 
 
+def test_a_feature_left_out_serves_no_page_and_links_no_stylesheet(
+    tmp_path: Path,
+) -> None:
+    client = logged_in(tmp_path, ())
+
+    assert (
+        client.get("/sample").status_code,
+        any(
+            "sample.css" in sheet
+            for sheet in STYLESHEET.findall(client.get("/login").text)
+        ),
+    ) == (404, False)
+
+
+def test_a_feature_folder_serves_its_stylesheets_and_no_other_file(
+    tmp_path: Path,
+) -> None:
+    # The folder also holds the feature's Python and templates.
+    client = logged_in(tmp_path, (SAMPLE,))
+
+    served = {
+        name: client.get(f"/static/sample_feature/{name}").status_code
+        for name in ("sample.css", "page.html", "__init__.py")
+    }
+
+    assert served == {"sample.css": 200, "page.html": 404, "__init__.py": 404}
+
+
 def test_every_page_links_a_registered_features_stylesheet_by_its_content(
     tmp_path: Path,
 ) -> None:
