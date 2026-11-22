@@ -31,7 +31,7 @@ def copenhagen_date(now: datetime) -> date:
 
 def danish_date(day: date) -> str:
     """Return a date as a Danish reader reads it, such as `03.02.2026`."""
-    return str(day)
+    return day.strftime("%d.%m.%Y")
 
 
 def month_value(month: ReportingMonth) -> str:
