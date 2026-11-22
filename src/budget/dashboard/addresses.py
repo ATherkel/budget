@@ -69,7 +69,7 @@ def pinned_url(
     )
 
 
-def _answered_address(answered: ReportContext) -> PinnedAddress:
+def answered_address(answered: ReportContext) -> PinnedAddress:
     """Return the pinned address of the context a report answered."""
     return PinnedAddress(
         answered.publication_id,
@@ -85,7 +85,7 @@ def answered_url(
     view: ViewState = DEFAULT_VIEW,
 ) -> str:
     """Return the address of `path` for the context `overview_report` answers."""
-    return pinned_url(_answered_address(overview_report.context), path, view=view)
+    return pinned_url(answered_address(overview_report.context), path, view=view)
 
 
 def detail_url(
@@ -97,5 +97,5 @@ def detail_url(
     view: ViewState = DEFAULT_VIEW,
 ) -> str:
     """Return the address of one subject's detail under the pinned `answered`."""
-    page = pinned_url(_answered_address(answered), "/category", view=view)
+    page = pinned_url(answered_address(answered), "/category", view=view)
     return f"{page}&" + urlencode([(kind, subject_id), ("scope", scope)])

@@ -20,6 +20,7 @@ from budget.dashboard.addresses import (
     PinnedAddress,
     PinnedQuery,
     ReportRequest,
+    answered_address,
     answered_url,
     detail_url,
     pinned_url,
@@ -112,12 +113,7 @@ def render_report(
         return activity
     tab_urls = {
         destination: pinned_url(
-            PinnedAddress(
-                answered.publication_id,
-                answered.reference_date,
-                tuple(answered.account_ids),
-                month_value(answered.month),
-            ),
+            answered_address(answered),
             view=ViewState(
                 "advanced",
                 destination,
