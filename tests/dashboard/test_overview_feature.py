@@ -49,7 +49,7 @@ def test_without_the_overview_an_empty_report_selection_still_asks_for_an_accoun
     assert (response.status_code, "Ingen konti valgt" in response.text) == (200, True)
 
 
-def test_every_page_links_the_overview_stylesheet_the_dashboard_serves(
+def test_a_page_links_the_overview_stylesheet_the_dashboard_serves(
     tmp_path: Path,
 ) -> None:
     client = TestClient(create_app(dashboard_profile(tmp_path), clock=lambda: NOW))
