@@ -256,3 +256,16 @@ def test_a_semicolon_inside_a_string_is_part_of_the_value() -> None:
 """
 
     assert find_duplicates(css) == []
+
+
+def test_css_the_check_cannot_read_is_reported_with_its_line() -> None:
+    css = """\
+.card {
+  color: red;
+  12px;
+}
+"""
+
+    assert find_duplicates(css) == [
+        "`.card` (line 3) holds CSS the check cannot read; fix it so it can"
+    ]
