@@ -95,6 +95,8 @@ def coverage_note(status: Coverage, incomplete: list[str], period: str) -> str:
     `incomplete` names each account that lacks something; with none, no
     selected account has history in the period.
     """
+    if not incomplete:
+        return f"Ingen af de valgte konti har historik i {period}."
     return f"{status} {incomplete} {period}"
 
 
