@@ -15,21 +15,27 @@ templates.
 | Types | ty, warnings promoted to errors | `uv run ty check` |
 | Cognitive complexity ≤ 15 per function | complexipy (SonarQube rule `python:S3776`) | `uv run complexipy` |
 | Templates, lines ≤ 120 characters | djlint, lint only | `uv run djlint src --lint` |
+| No CSS rule shares 3 or more declarations with another | `tests/css_duplicates.py` | `uv run pytest tests/test_css_duplicates.py` |
 
 Run them all at once:
 
 ```sh
 uv sync
 uv run ruff check . && uv run ruff format --check . && uv run ty check \
-  && uv run complexipy && uv run djlint src --lint
+  && uv run complexipy && uv run djlint src --lint \
+  && uv run pytest tests/test_css_duplicates.py
 ```
 
 Configuration lives in `pyproject.toml`; djlint's line rule lives in
 `.djlint_rules.yaml`, because its own `max_line_length` only steers the
 formatter. djlint skips a line that holds a comment, so
 `tests/test_template_lint.py` also checks every template line's length.
-Dev tools are pinned in `uv.lock`. `.pre-commit-config.yaml` runs djlint on
-commit once installed with `uvx pre-commit install`.
+The duplicate CSS check runs in the pytest CI job (`.github/workflows/pytest.yml`).
+It names the earlier rule to reuse. Today's duplicates sit in
+`css-duplicates-allowlist.txt`, one `rule | earlier rule` pair per line, and an
+entry that no longer matches fails the check, so the list only shrinks.
+Dev tools are pinned in `uv.lock`. `.pre-commit-config.yaml` runs djlint and
+the duplicate CSS check on commit once installed with `uvx pre-commit install`.
 
 ## Rules for agents
 
@@ -38,7 +44,8 @@ commit once installed with `uvx pre-commit install`.
   list, or add a suppression (`# noqa`, `# type: ignore`, `# ty: ignore`,
   `# complexipy: ignore`, `{# djlint:off #}`) without the owner's explicit
   approval in the task. When approved, the suppression names the exact rule and a
-  comment says why.
+  comment says why. A new line in `css-duplicates-allowlist.txt` counts as a
+  suppression: reuse the rule the check names instead.
 - Treat a complexity failure as a design signal. Split the function by
   responsibility, extract guard clauses, or replace branching with data
   (lookup tables, polymorphism); do not just move nesting into a helper that
