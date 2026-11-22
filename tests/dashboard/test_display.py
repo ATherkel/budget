@@ -8,8 +8,9 @@ from decimal import Decimal
 import pytest
 
 from budget.analytics import ActivityRow
+from budget.analytics.trust import AccountMonthState
 from budget.dashboard.display.months import danish_date
-from budget.dashboard.display.text import transaction_kind
+from budget.dashboard.display.text import coverage_label, transaction_kind
 from budget.gold.models import TransactionType
 
 
@@ -67,3 +68,18 @@ def test_a_transfer_with_no_other_half_says_it_is_one_sided() -> None:
 
 def test_a_transaction_of_unknown_type_reads_as_uncategorised() -> None:
     assert transaction_kind(_row("unknown")) == "Ukategoriseret"
+
+
+@pytest.mark.parametrize(
+    ("state", "label"),
+    [
+        ("complete", "fuldt dækket"),
+        ("partial", "delvist dækket"),
+        ("no_data", "ingen data"),
+        ("outside_history", "uden for historikken"),
+    ],
+)
+def test_an_account_months_coverage_reads_in_danish(
+    state: AccountMonthState, label: str
+) -> None:
+    assert coverage_label(state) == label

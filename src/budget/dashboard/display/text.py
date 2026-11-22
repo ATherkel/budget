@@ -2,6 +2,7 @@
 """Danish sentences and lists the dashboard shows its reader."""
 
 from budget.analytics import ActivityRow, InvalidSelectionError, ReportCoverage
+from budget.analytics.trust import AccountMonthState
 from budget.dashboard.display.months import danish_date, month_label
 
 _TRANSACTION_KINDS = {
@@ -56,6 +57,11 @@ def transaction_kind(row: ActivityRow) -> str:
         counterpart = row.counterpart_account_display_name
         return f"Overførsel, parret med {counterpart} den {danish_date(paired_on)}"
     return _TRANSACTION_KINDS.get(row.transaction_type, "Ukategoriseret")
+
+
+def coverage_label(state: AccountMonthState) -> str:
+    """Return how fully an account-month is covered, such as `delvist dækket`."""
+    return state
 
 
 def danish_list(items: list[str]) -> str:
