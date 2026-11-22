@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import pytest
 
-from budget.analytics import ActivityRow
+from budget.analytics import ActivityRow, BankBalanceObservation
 from budget.analytics.trust import AccountMonthState
 from budget.dashboard.display.months import danish_date
 from budget.dashboard.display.text import (
@@ -93,3 +93,11 @@ def test_a_balance_never_observed_reads_as_the_missing_text() -> None:
     shown = balance_observation(None, "DKK", "Ingen tidligere observation")
 
     assert shown == "Ingen tidligere observation"
+
+
+def test_a_balance_the_bank_left_blank_reads_as_unknown_on_its_date() -> None:
+    observation = BankBalanceObservation(date(2026, 2, 3), balance_after=None)
+
+    shown = balance_observation(observation, "DKK", "Ingen observation i måneden")
+
+    assert shown == "Ukendt den 03.02.2026"
