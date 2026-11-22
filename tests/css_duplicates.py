@@ -3,7 +3,7 @@
 
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
 # Two rules sharing this many declarations repeat each other.
@@ -12,11 +12,12 @@ SHARED_LIMIT = 3
 
 @dataclass(frozen=True)
 class Rule:
-    """One CSS rule: its selector list, first line and declarations."""
+    """One CSS rule: its selector list, first line, declarations and file."""
 
     selector: str
     line: int
     declarations: frozenset[str]
+    sheet: str = ""
 
 
 def declaration(text: str) -> str:
@@ -91,13 +92,35 @@ def most_shared_first(rule: Rule, earlier_rules: list[Rule]) -> list[Rule]:
 
 def find_duplicates(css: str, allowlist: Iterable[tuple[str, str]] = ()) -> list[str]:
     """Return one message per pair of rules sharing 3 or more declarations."""
+    return find_duplicates_in_sheets({"": css}, allowlist)
+
+
+def location(sheet: str, line: int) -> str:
+    """Return where a rule starts: its line, after its file when there is one."""
+    return f"{sheet} line {line}" if sheet else f"line {line}"
+
+
+def read_sheets(sheets: Mapping[str, str]) -> tuple[list[Rule], list[str]]:
+    """Return the rules of `sheets` in cascade order, and one message per nesting."""
+    rules = []
+    messages = []
+    for sheet, css in sheets.items():
+        sheet_rules, nesting = parse_rules(css)
+        rules.extend(replace(rule, sheet=sheet) for rule in sheet_rules)
+        messages.extend(
+            f"`{block.prelude}` ({location(sheet, block.line)}) nests a rule;"
+            " write it flat so the check can read it"
+            for block in nesting
+        )
+    return rules, messages
+
+
+def find_duplicates_in_sheets(
+    sheets: Mapping[str, str], allowlist: Iterable[tuple[str, str]] = ()
+) -> list[str]:
+    """Return one message per pair of rules across `sheets`, in cascade order."""
     allowed = list(dict.fromkeys(allowlist))
-    rules, nesting = parse_rules(css)
-    messages = [
-        f"`{block.prelude}` (line {block.line}) nests a rule;"
-        " write it flat so the check can read it"
-        for block in nesting
-    ]
+    rules, messages = read_sheets(sheets)
     found = set()
     for index, rule in enumerate(rules):
         for earlier in most_shared_first(rule, rules[:index]):
@@ -108,9 +131,9 @@ def find_duplicates(css: str, allowlist: Iterable[tuple[str, str]] = ()) -> list
             found.add(pair)
             if pair not in allowed:
                 messages.append(
-                    f"`{rule.selector}` (line {rule.line})"
+                    f"`{rule.selector}` ({location(rule.sheet, rule.line)})"
                     f" shares {shared} declarations with"
-                    f" `{earlier.selector}` (line {earlier.line});"
+                    f" `{earlier.selector}` ({location(earlier.sheet, earlier.line)});"
                     f" reuse `{earlier.selector}`"
                 )
     messages.extend(
@@ -119,13 +142,6 @@ def find_duplicates(css: str, allowlist: Iterable[tuple[str, str]] = ()) -> list
         if (rule, earlier) not in found
     )
     return messages
-
-
-def find_duplicates_in_sheets(
-    sheets: Mapping[str, str], allowlist: Iterable[tuple[str, str]] = ()
-) -> list[str]:
-    """Return one message per pair of rules across `sheets`, in cascade order."""
-    return []
 
 
 def read_allowlist(text: str) -> list[tuple[str, str]]:
