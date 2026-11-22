@@ -5,7 +5,7 @@ It reads Gold only through analytics, opened read-only from one profile.
 """
 
 import hashlib
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from functools import cache
@@ -47,7 +47,7 @@ from budget.dashboard.display.text import (
     incomplete_by_account,
     selection_problems,
 )
-from budget.dashboard.features import Dashboard
+from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.passphrase import (
     CredentialSnapshot,
     read_credentials,
@@ -78,6 +78,9 @@ class ViewState:
 
 
 DEFAULT_VIEW = ViewState()
+
+# The features the dashboard serves, one line each; one left out is off.
+FEATURES: tuple[Feature, ...] = ()
 
 _STATIC = Path(__file__).parent / "static"
 
@@ -762,7 +765,12 @@ def _report_response(
     return HTMLResponse(fragment + state, headers={"HX-Push-Url": page})
 
 
-def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
+def create_app(
+    profile: Profile,
+    *,
+    clock: Callable[[], datetime],
+    features: Sequence[Feature] = FEATURES,
+) -> FastAPI:
     """Build the dashboard for `profile`, telling time with `clock`.
 
     Raises `PassphraseNotSetError` when no passphrase guards it, and
@@ -775,8 +783,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     # The htmx script ships in the package: nothing is fetched from the internet.
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")
     throttle = LoginThrottle()
-    dashboard = Dashboard(profile, clock, _templates())
-    templates = dashboard.templates
+    templates = _templates()
 
     @app.exception_handler(RequestValidationError)
     def malformed_address(request: Request, _error: RequestValidationError) -> Response:
@@ -815,6 +822,8 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             return _send_to_login(request)
         # Every visit renews the login for another 30 days from now.
         return start_session(respond(), authenticated_as)
+
+    dashboard = Dashboard(profile, clock, templates, app, for_reader)
 
     @app.get("/")
     def overview(
