@@ -6,6 +6,7 @@ HTML is pinned here and must stay identical. The household's Gold holds the
 synthetic worked example; the dashboard is driven in-process at a fixed time.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -45,6 +46,7 @@ def test_the_overview_of_a_fresh_visit_is_unchanged(client: TestClient) -> None:
 
 
 ADVANCED = "&mode=advanced&tab=details&comparison=amounts"
+ADVANCED_OVERVIEW = "&mode=advanced&tab=overview&comparison=amounts"
 
 
 @pytest.mark.parametrize(
@@ -59,6 +61,14 @@ ADVANCED = "&mode=advanced&tab=details&comparison=amounts"
                 f"/category?{PINNED}&month=2026-04&group=housing&scope=year_to_date",
             ),
             ("explanation", f"/explanation?{PINNED}&month=2026-02"),
+            (
+                "overview-advanced",
+                f"/?{PINNED}&month=2026-02{ADVANCED_OVERVIEW}",
+            ),
+            (
+                "overview-no-accounts",
+                "/?publication=1&reference_date=2026-05-14&month=2026-02",
+            ),
         )
     ],
 )
@@ -143,6 +153,27 @@ def test_the_overview_before_anything_is_published_is_unchanged(
 
 # Publication 9 was never published, so its figures are unavailable.
 UNAVAILABLE = f"publication=9&reference_date=2026-05-14&account={CURRENT}&month=2026-02"
+# The household has no account called "closed".
+INVALID_SELECTION = (
+    "publication=1&reference_date=2026-05-14&account=closed&month=2026-02"
+)
+
+
+def test_the_overview_of_a_superseded_publication_is_unchanged(
+    tmp_path: Path,
+) -> None:
+    # Publication 2 replaces 1, so a page pinned to 1 says its figures are old.
+    profile = dashboard_profile(tmp_path)
+    with GoldStore(profile) as store:
+        for publication_id in (1, 2):
+            published = replace(PUBLICATION, publication_id=publication_id)
+            store.publish(GoldResult(published, RECORDS), RECIPE, CONFIGURATION)
+    client = TestClient(create_app(profile, clock=lambda: NOW), follow_redirects=False)
+    client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
+    response = client.get(f"/?{PINNED}&month=2026-02")
+
+    assert response.status_code == 200
+    assert_matches_snapshot("overview-superseded", response.text)
 
 
 @pytest.mark.parametrize(
@@ -154,6 +185,16 @@ UNAVAILABLE = f"publication=9&reference_date=2026-05-14&account={CURRENT}&month=
             ("invalid-address-page", "/?publication=first", 400),
             ("category-unavailable", f"/category?{UNAVAILABLE}&category=rent", 200),
             ("explanation-unavailable", f"/explanation?{UNAVAILABLE}", 200),
+            (
+                "category-invalid-selection",
+                f"/category?{INVALID_SELECTION}&category=rent",
+                200,
+            ),
+            (
+                "explanation-invalid-selection",
+                f"/explanation?{INVALID_SELECTION}",
+                200,
+            ),
         )
     ],
 )
@@ -173,10 +214,7 @@ def test_each_error_page_is_unchanged(
         for name, query in (
             ("report-unavailable", UNAVAILABLE),
             ("report-invalid-address", "publication=first"),
-            (
-                "report-invalid-selection",
-                "publication=1&reference_date=2026-05-14&account=closed&month=2026-02",
-            ),
+            ("report-invalid-selection", INVALID_SELECTION),
         )
     ],
 )
