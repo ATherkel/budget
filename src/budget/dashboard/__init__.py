@@ -12,8 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from jinja2 import (
     ChoiceLoader,
@@ -38,6 +37,7 @@ from budget.dashboard.display.text import (
 )
 from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.category import CATEGORY
+from budget.dashboard.features.errors import ERRORS
 from budget.dashboard.features.explanation import EXPLANATION
 from budget.dashboard.features.login import LOGIN
 from budget.dashboard.features.overview import overview_feature
@@ -179,6 +179,7 @@ def _logged_in(
 
 # The features the dashboard serves, one line each; one left out is off.
 FEATURES: tuple[Feature, ...] = (
+    ERRORS,
     LOGIN,
     VIEW_STATE,
     overview_feature(render_report),
@@ -208,18 +209,6 @@ def create_app(
     # The htmx script ships in the package: nothing is fetched from the internet.
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")
     templates = _templates(features)
-
-    @app.exception_handler(RequestValidationError)
-    def malformed_address(request: Request, _error: RequestValidationError) -> Response:
-        """Explain a malformed address in Danish, never as FastAPI's JSON.
-
-        htmx swaps only a 2xx, so the fragment answers 200 while the page is a 400.
-        """
-        if request.url.path == "/report":
-            fragment = templates.get_template("invalid_address.html").render()
-            return HTMLResponse(fragment)
-        page = templates.get_template("invalid_address_page.html").render()
-        return HTMLResponse(page, status_code=400)
 
     def start_session(response: Response, credentials: CredentialSnapshot) -> Response:
         """Set a session cookie lasting `LOGIN_LIFETIME` from now.
