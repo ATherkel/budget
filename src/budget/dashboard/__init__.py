@@ -134,7 +134,9 @@ def _serve_stylesheets(app: FastAPI, features: Sequence[Feature]) -> None:
     """Serve each stylesheet of `features` at its address, and no other file."""
     for feature in features:
         for address, sheet in _feature_stylesheets(feature).items():
-            app.add_api_route(address.partition("?")[0], _serving(sheet))
+            app.add_api_route(
+                address.partition("?")[0], _serving(sheet), include_in_schema=False
+            )
 
 
 def _add_global(namespace: MutableMapping[str, Any], name: str, value: object) -> None:
