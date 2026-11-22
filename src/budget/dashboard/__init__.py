@@ -32,8 +32,21 @@ from budget.analytics import (
     ReportContext,
     SpendingDetail,
 )
-from budget.dashboard import display, session
-from budget.dashboard.display import copenhagen_date
+from budget.dashboard import session
+from budget.dashboard.display.amounts import amount, signed_amount
+from budget.dashboard.display.months import (
+    copenhagen_date,
+    month_label,
+    month_value,
+    months_between,
+    parse_month,
+    period_label,
+)
+from budget.dashboard.display.text import (
+    danish_list,
+    incomplete_by_account,
+    selection_problems,
+)
 from budget.dashboard.passphrase import (
     CredentialSnapshot,
     read_credentials,
@@ -71,7 +84,7 @@ _TEMPLATES = Environment(
     loader=PackageLoader("budget.dashboard"),
     autoescape=select_autoescape(),
 )
-_TEMPLATES.filters["amount"] = display.amount
+_TEMPLATES.filters["amount"] = amount
 
 
 @cache
@@ -93,8 +106,8 @@ def _static_url(name: str) -> str:
 
 
 _TEMPLATES.filters["static_url"] = _static_url
-_TEMPLATES.filters["signed_amount"] = display.signed_amount
-_TEMPLATES.filters["danish_list"] = display.danish_list
+_TEMPLATES.filters["signed_amount"] = signed_amount
+_TEMPLATES.filters["danish_list"] = danish_list
 _VIEW_STATE_CONTROLS = _TEMPLATES.from_string(
     '<input id="active-mode" type="hidden" name="active_mode" '
     'value="{{ mode }}" hx-swap-oob="true">'
@@ -360,15 +373,13 @@ def _render_overview(
         except PublicationUnavailableError:
             # Offered, never substituted: the reader chooses the current figures.
             return _TEMPLATES.get_template("unavailable_page.html").render()
-    months = display.months_between(options.first_month, options.last_month)
+    months = months_between(options.first_month, options.last_month)
     selected_accounts = (
         {account.account_id for account in options.accounts}
         if fresh
         else set(requested.accounts or ())
     )
-    selected_month = requested.month or display.month_value(
-        ReportingMonth.of(reference_date)
-    )
+    selected_month = requested.month or month_value(ReportingMonth.of(reference_date))
     # The page carries its own report, so back, forward and a page without
     # scripts show what the selection's report says.
     report = (
@@ -408,9 +419,7 @@ def _render_overview(
         },
         all_url=pinned_with([account.account_id for account in options.accounts]),
         none_url=pinned_with([]),
-        months=[
-            (display.month_value(month), display.month_label(month)) for month in months
-        ],
+        months=[(month_value(month), month_label(month)) for month in months],
         selected_month=selected_month,
         report=report,
         mode=requested.view.mode,
@@ -464,7 +473,7 @@ def _read_overview(
     """
     publication_id, reference_date = pin
     try:
-        selected_month = display.parse_month(month)
+        selected_month = parse_month(month)
         context = ReportContext(
             publication_id=publication_id,
             account_ids=frozenset(accounts),
@@ -476,7 +485,7 @@ def _read_overview(
     except InvalidSelectionError as error:
         # A failure is shown, and echoes no context the page could render.
         return _TEMPLATES.get_template("invalid_selection.html").render(
-            problems=display.selection_problems(error)
+            problems=selection_problems(error)
         )
     except PublicationUnavailableError:
         return _TEMPLATES.get_template("unavailable.html").render()
@@ -494,14 +503,14 @@ def _read_activity(
         context = ReportContext(
             publication_id=publication_id,
             account_ids=frozenset(accounts),
-            month=display.parse_month(month),
+            month=parse_month(month),
             reference_date=reference_date,
         )
         with GoldStore(profile, read_only=True) as store:
             return HouseholdReports(store).account_activity(context)
     except InvalidSelectionError as error:
         return _TEMPLATES.get_template("invalid_selection.html").render(
-            problems=display.selection_problems(error)
+            problems=selection_problems(error)
         )
     except PublicationUnavailableError:
         return _TEMPLATES.get_template("unavailable.html").render()
@@ -519,7 +528,7 @@ def _answered_url(
             answered.publication_id,
             answered.reference_date,
             tuple(answered.account_ids),
-            display.month_value(answered.month),
+            month_value(answered.month),
         ),
         path,
         view=view,
@@ -540,7 +549,7 @@ def _detail_url(
             answered.publication_id,
             answered.reference_date,
             tuple(answered.account_ids),
-            display.month_value(answered.month),
+            month_value(answered.month),
         ),
         "/category",
         view=view,
@@ -559,7 +568,7 @@ def _read_detail(
         context = ReportContext(
             publication_id=publication_id,
             account_ids=frozenset(request.accounts),
-            month=display.parse_month(request.month),
+            month=parse_month(request.month),
             reference_date=reference_date,
         )
         with GoldStore(profile, read_only=True) as store:
@@ -568,7 +577,7 @@ def _read_detail(
             )
     except InvalidSelectionError as error:
         return _TEMPLATES.get_template("invalid_selection.html").render(
-            problems=display.selection_problems(error)
+            problems=selection_problems(error)
         )
     except PublicationUnavailableError:
         return _TEMPLATES.get_template("unavailable.html").render()
@@ -587,7 +596,7 @@ def _render_detail(
         )
     answered = detail_report.context
     subject = detail_report.subject
-    period = display.period_label(detail_report.first_month, detail_report.last_month)
+    period = period_label(detail_report.first_month, detail_report.last_month)
     return _TEMPLATES.get_template("category.html").render(
         detail=detail_report,
         title=f"{detail_report.name}, {period}",
@@ -608,13 +617,13 @@ def _render_detail(
             detail_report.scope,
             view=request.view,
         ),
-        incomplete=display.incomplete_by_account(detail_report.coverage),
+        incomplete=incomplete_by_account(detail_report.coverage),
         overview_url=_pinned_url(
             PinnedAddress(
                 answered.publication_id,
                 answered.reference_date,
                 tuple(answered.account_ids),
-                display.month_value(answered.month),
+                month_value(answered.month),
             ),
             view=request.view,
         ),
@@ -653,7 +662,7 @@ def _render_report(
                 answered.publication_id,
                 answered.reference_date,
                 tuple(answered.account_ids),
-                display.month_value(answered.month),
+                month_value(answered.month),
             ),
             view=ViewState(
                 "advanced",
@@ -668,8 +677,8 @@ def _render_report(
         publication_id=answered.publication_id,
         reference_date=answered.reference_date.isoformat(),
         accounts=" ".join(sorted(answered.account_ids)),
-        month=display.month_value(answered.month),
-        month_label=display.month_label(answered.month),
+        month=month_value(answered.month),
+        month_label=month_label(answered.month),
         overview=overview_report,
         activity=activity,
         mode=requested.view.mode,
@@ -708,7 +717,7 @@ def _render_explanation(
         )
     return _TEMPLATES.get_template("explanation.html").render(
         overview=overview_report,
-        month_label=display.month_label(overview_report.context.month),
+        month_label=month_label(overview_report.context.month),
         report_url=_answered_url(overview_report, "/", view),
     )
 
