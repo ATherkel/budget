@@ -124,3 +124,63 @@ def test_the_login_page_of_a_locked_login_is_unchanged(tmp_path: Path) -> None:
 
     assert response.status_code == 429
     assert_matches_snapshot("login-locked", response.text)
+
+
+def test_the_overview_before_anything_is_published_is_unchanged(
+    tmp_path: Path,
+) -> None:
+    profile = dashboard_profile(tmp_path)
+    client = TestClient(create_app(profile, clock=lambda: NOW), follow_redirects=False)
+    client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert_matches_snapshot("nothing-published", response.text)
+
+
+# Publication 9 was never published, so its figures are unavailable.
+UNAVAILABLE = f"publication=9&reference_date=2026-05-14&account={CURRENT}&month=2026-02"
+
+
+@pytest.mark.parametrize(
+    ("name", "address", "status"),
+    [
+        pytest.param(name, address, status, id=name)
+        for name, address, status in (
+            ("unavailable-page", f"/?{UNAVAILABLE}", 200),
+            ("invalid-address-page", "/?publication=first", 400),
+            ("category-unavailable", f"/category?{UNAVAILABLE}&category=rent", 200),
+            ("explanation-unavailable", f"/explanation?{UNAVAILABLE}", 200),
+        )
+    ],
+)
+def test_each_error_page_is_unchanged(
+    client: TestClient, name: str, address: str, status: int
+) -> None:
+    response = client.get(address)
+
+    assert response.status_code == status
+    assert_matches_snapshot(name, response.text)
+
+
+@pytest.mark.parametrize(
+    ("name", "query"),
+    [
+        pytest.param(name, query, id=name)
+        for name, query in (
+            ("report-unavailable", UNAVAILABLE),
+            ("report-invalid-address", "publication=first"),
+            (
+                "report-invalid-selection",
+                "publication=1&reference_date=2026-05-14&account=closed&month=2026-02",
+            ),
+        )
+    ],
+)
+def test_each_error_fragment_is_unchanged(
+    client: TestClient, name: str, query: str
+) -> None:
+    response = client.get(f"/report?{query}", headers={"HX-Request": "true"})
+
+    assert response.status_code == 200
+    assert_matches_snapshot(name, response.text)
