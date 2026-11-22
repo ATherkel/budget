@@ -163,3 +163,33 @@ def test_a_nested_rule_is_reported_as_unreadable() -> None:
     assert find_duplicates(css) == [
         "`.card` (line 1) nests a rule; write it flat so the check can read it"
     ]
+
+
+def test_the_rule_sharing_the_most_declarations_is_named_first() -> None:
+    css = """\
+.card {
+  padding: 1rem;
+  margin: 0;
+  color: var(--ink);
+}
+
+.panel {
+  padding: 1rem;
+  margin: 0;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.new {
+  padding: 1rem;
+  margin: 0;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+"""
+
+    assert find_duplicates(css) == [
+        "`.panel` (line 7) shares 3 declarations with `.card` (line 1); reuse `.card`",
+        "`.new` (line 14) shares 4 declarations with `.panel` (line 7); reuse `.panel`",
+        "`.new` (line 14) shares 3 declarations with `.card` (line 1); reuse `.card`",
+    ]
