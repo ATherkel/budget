@@ -41,7 +41,10 @@ adds its routes to the `Dashboard` it is handed. `FEATURES` in
 `budget.dashboard` lists the registered features one line each; a feature left
 out is off. The overview shows the report and the pickers, so it needs `report`
 and `view_state` registered too, and the report links each category to
-`category` and its trust notes to `explanation`. A feature that serves no
+`category` and its trust notes to `explanation`. Every page sends a reader
+who is not logged in to `login`, the page that logs in and out; the check
+itself, the session cookie and the passphrase stay in `budget.dashboard`, so a
+dashboard without `login` still refuses every page. A feature that serves no
 page of its own, such as `view_state` (the month, mode and account pickers), adds no routes: the pages that show
 it include its templates. A feature's templates are named
 `<folder>/<file>.html`, and `base.html` links every stylesheet in its folder,
