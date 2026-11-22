@@ -9,6 +9,9 @@ import hashlib
 import hmac
 from datetime import datetime, timedelta
 
+# The cookie a login is carried in.
+SESSION_COOKIE = "session"
+
 # A login lasts while it is used: each request renews it for this long.
 LOGIN_LIFETIME = timedelta(days=30)
 
