@@ -2,6 +2,7 @@
 """Find CSS rules that repeat another rule's declarations."""
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 # An innermost block: a selector list and declarations with no nested braces.
@@ -42,8 +43,9 @@ def parse_rules(css: str) -> list[Rule]:
     return rules
 
 
-def find_duplicates(css: str) -> list[str]:
+def find_duplicates(css: str, allowlist: Iterable[tuple[str, str]] = ()) -> list[str]:
     """Return one message per pair of rules sharing 3 or more declarations."""
+    del allowlist  # Stub until the green commit reads it.
     rules = parse_rules(css)
     messages = []
     for index, rule in enumerate(rules):
