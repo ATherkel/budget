@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import date
 from urllib.parse import urlencode
 
+from pydantic import BaseModel
+
 from budget.analytics import MonthlyOverview, ReportContext
 from budget.dashboard.display.months import month_value
 from budget.dashboard.features.view_state import DEFAULT_VIEW, DashboardMode, ViewState
@@ -18,6 +20,22 @@ class PinnedAddress:
     reference_date: date
     accounts: tuple[str, ...]
     month: str
+
+
+class PinnedQuery(BaseModel):
+    """Required query parameters shared by pinned report pages."""
+
+    publication: int
+    reference_date: date
+    month: str
+    account: list[str] = []
+    mode: str = "simple"
+    tab: str = "overview"
+    comparison: str = "amounts"
+
+    def pin(self) -> tuple[int, date]:
+        """Return this address's publication and reference date."""
+        return (self.publication, self.reference_date)
 
 
 @dataclass(frozen=True)

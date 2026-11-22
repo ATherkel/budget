@@ -27,7 +27,6 @@ from jinja2 import (
 from pydantic import BaseModel, model_validator
 
 from budget.analytics import (
-    AccountActivity,
     DetailScope,
     DetailSubject,
     HouseholdReports,
@@ -39,7 +38,7 @@ from budget.analytics import (
 from budget.dashboard import session
 from budget.dashboard.addresses import (
     PinnedAddress,
-    ReportRequest,
+    PinnedQuery,
     answered_url,
     detail_url,
     pinned_url,
@@ -66,12 +65,11 @@ from budget.dashboard.display.text import (
 )
 from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.overview import overview_feature
+from budget.dashboard.features.report import REPORT, render_report
 from budget.dashboard.features.view_state import (
     VIEW_STATE,
     ViewState,
     parse_view_state,
-    view_mode,
-    view_state_controls,
 )
 from budget.dashboard.passphrase import (
     CredentialSnapshot,
@@ -193,41 +191,6 @@ class DetailRequest:
     view: ViewState
 
 
-class PinnedQuery(BaseModel):
-    """Required query parameters shared by pinned report pages."""
-
-    publication: int
-    reference_date: date
-    month: str
-    account: list[str] = []
-    mode: str = "simple"
-    tab: str = "overview"
-    comparison: str = "amounts"
-
-    def pin(self) -> tuple[int, date]:
-        """Return this address's publication and reference date."""
-        return (self.publication, self.reference_date)
-
-
-class ReportAddress(PinnedQuery):
-    """The query string of one in-place report request and its prior mode."""
-
-    active_mode: str | None = None
-
-    def asked(self) -> ReportRequest:
-        """Return the report request and the presentation state it came from."""
-        view = parse_view_state(self.mode, self.tab, self.comparison)
-        return ReportRequest(
-            pin=self.pin(),
-            accounts=tuple(self.account),
-            month=self.month,
-            view=view,
-            active_mode=(
-                view.mode if self.active_mode is None else view_mode(self.active_mode)
-            ),
-        )
-
-
 class DetailAddress(BaseModel):
     """The query string of a detail page: the pin, the selection and the subject."""
 
@@ -328,31 +291,6 @@ def _refuse_login(
     return None
 
 
-def _read_activity(
-    dashboard: Dashboard,
-    pin: tuple[int, date],
-    accounts: Collection[str],
-    month: str,
-) -> AccountActivity | str:
-    """Return account activity for a pinned selection, or a failure fragment."""
-    publication_id, reference_date = pin
-    try:
-        context = ReportContext(
-            publication_id=publication_id,
-            account_ids=frozenset(accounts),
-            month=parse_month(month),
-            reference_date=reference_date,
-        )
-        with GoldStore(dashboard.profile, read_only=True) as store:
-            return HouseholdReports(store).account_activity(context)
-    except InvalidSelectionError as error:
-        return dashboard.templates.get_template("invalid_selection.html").render(
-            problems=selection_problems(error)
-        )
-    except PublicationUnavailableError:
-        return dashboard.templates.get_template("unavailable.html").render()
-
-
 def _read_detail(
     dashboard: Dashboard,
     pin: tuple[int, date],
@@ -426,82 +364,6 @@ def _render_detail(
     )
 
 
-def _render_report(
-    dashboard: Dashboard,
-    requested: ReportRequest,
-) -> str:
-    """Render the report fragment a selection asks for, or why it cannot be shown."""
-    overview_report = read_overview(
-        dashboard,
-        requested.pin,
-        requested.accounts,
-        requested.month,
-    )
-    if isinstance(overview_report, str):
-        return overview_report
-    answered = overview_report.context
-    activity = (
-        _read_activity(
-            dashboard,
-            requested.pin,
-            requested.accounts,
-            requested.month,
-        )
-        if requested.view.mode == "advanced" and requested.view.tab == "details"
-        else None
-    )
-    if isinstance(activity, str):
-        return activity
-    tab_urls = {
-        destination: pinned_url(
-            PinnedAddress(
-                answered.publication_id,
-                answered.reference_date,
-                tuple(answered.account_ids),
-                month_value(answered.month),
-            ),
-            view=ViewState(
-                "advanced",
-                destination,
-                requested.view.comparison,
-            ),
-        )
-        for destination in ("overview", "details")
-    }
-    return dashboard.templates.get_template("report.html").render(
-        is_current=overview_report.publication.is_current,
-        publication_id=answered.publication_id,
-        reference_date=answered.reference_date.isoformat(),
-        accounts=" ".join(sorted(answered.account_ids)),
-        month=month_value(answered.month),
-        month_label=month_label(answered.month),
-        overview=overview_report,
-        incomplete=[
-            account_month.display_name
-            for account_month in incomplete_months(overview_report.coverage)
-        ],
-        activity=activity,
-        mode=requested.view.mode,
-        tab=requested.view.tab,
-        comparison=requested.view.comparison,
-        tab_urls=tab_urls,
-        explanation_url=answered_url(
-            overview_report,
-            "/explanation",
-            requested.view,
-        ),
-        detail_urls={
-            category.category_id: detail_url(
-                answered,
-                "category",
-                category.category_id,
-                view=requested.view,
-            )
-            for category in overview_report.categories
-        },
-    )
-
-
 def _render_explanation(
     dashboard: Dashboard,
     pin: tuple[int, date],
@@ -522,46 +384,12 @@ def _render_explanation(
     )
 
 
-def _report_response(
-    dashboard: Dashboard,
-    requested: ReportRequest,
-) -> Response:
-    """Return the report fragment for one selection, or the empty-selection prompt.
-
-    The address becomes this selection's own page, so back and forward reopen
-    each selection the reader made.
-    """
-    view = parse_view_state(
-        requested.view.mode,
-        requested.view.tab,
-        requested.view.comparison,
-    )
-    if view.mode != requested.active_mode:
-        view = ViewState(view.mode, "overview", view.comparison)
-    page = pinned_url(
-        PinnedAddress(*requested.pin, requested.accounts, requested.month),
-        view=view,
-    )
-    state = view_state_controls(dashboard.templates, view)
-    if not requested.accounts:
-        # An empty selection is a prompt, never a report of nothing.
-        prompt = dashboard.templates.get_template("no_accounts.html").render()
-        return HTMLResponse(prompt + state, headers={"HX-Push-Url": page})
-    fragment = _render_report(
-        dashboard,
-        ReportRequest(
-            requested.pin,
-            requested.accounts,
-            requested.month,
-            view,
-            view.mode,
-        ),
-    )
-    return HTMLResponse(fragment + state, headers={"HX-Push-Url": page})
-
-
 # The features the dashboard serves, one line each; one left out is off.
-FEATURES: tuple[Feature, ...] = (VIEW_STATE, overview_feature(_render_report))
+FEATURES: tuple[Feature, ...] = (
+    VIEW_STATE,
+    overview_feature(render_report),
+    REPORT,
+)
 
 
 def create_app(
@@ -627,16 +455,6 @@ def create_app(
     dashboard = Dashboard(profile, clock, templates, app, for_reader)
     for feature in features:
         feature.register(dashboard)
-
-    @app.get("/report")
-    def report(
-        request: Request,
-        address: Annotated[ReportAddress, Query()],
-    ) -> Response:
-        return for_reader(
-            request,
-            lambda: _report_response(dashboard, address.asked()),
-        )
 
     @app.get("/explanation")
     def explanation(
