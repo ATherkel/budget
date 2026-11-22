@@ -30,7 +30,10 @@ Configuration lives in `pyproject.toml`; djlint's line rule lives in
 `.djlint_rules.yaml`, because its own `max_line_length` only steers the
 formatter. djlint skips a line that holds a comment, so
 `tests/test_template_lint.py` also checks every template line's length.
-The duplicate CSS check names the earlier rule to reuse. Approved duplicates sit
+The duplicate CSS check reads CSS with tinycss2 and names the earlier rule to
+reuse. That rule is a lead, not a drop-in: it may hold more declarations or sit
+in another `@media` context, so reuse it only where all of it fits. It reports
+nested rules and CSS it cannot parse instead of skipping them. Approved duplicates sit
 in `css-duplicates-allowlist.txt`, one `rule | earlier rule` pair per line. An
 entry that no longer matches fails the check, so a stale entry cannot linger.
 Dev tools are pinned in `uv.lock`. `.pre-commit-config.yaml` runs djlint and
