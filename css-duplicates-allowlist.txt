@@ -13,13 +13,13 @@
 .category-row | .section-heading--row
 .category-row | .footer-inner
 .balance-observations div | .selection-panel, .report-panel
-.mode-option | .balance-observations div
+.balance-observations div | .mode-option
 .empty-mark | .brand-mark
 .report-state | .empty-state
 .report-state--error | .notice--error
 .login-panel | .selection-panel, .report-panel
 .mode-option | .login-panel
-.login-panel | .balance-observations div
+.balance-observations div | .login-panel
 select | .stack input
 .footer-inner | .header-inner
 .footer-inner | .section-heading--row
