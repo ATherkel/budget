@@ -43,6 +43,7 @@ from budget.dashboard import session
 from budget.dashboard.display.amounts import amount, signed_amount
 from budget.dashboard.display.months import (
     copenhagen_date,
+    danish_date,
     month_label,
     month_value,
     months_between,
@@ -50,9 +51,16 @@ from budget.dashboard.display.months import (
     period_label,
 )
 from budget.dashboard.display.text import (
+    account_names,
+    balance_observation,
+    coverage_gap,
+    coverage_label,
+    coverage_note,
     danish_list,
     incomplete_by_account,
+    incomplete_months,
     selection_problems,
+    transaction_kind,
 )
 from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.passphrase import (
@@ -169,6 +177,13 @@ def _templates(features: Sequence[Feature]) -> Environment:
     templates.filters["static_url"] = _static_url
     templates.filters["signed_amount"] = signed_amount
     templates.filters["danish_list"] = danish_list
+    templates.filters["danish_date"] = danish_date
+    templates.filters["account_names"] = account_names
+    templates.filters["balance_observation"] = balance_observation
+    templates.filters["coverage_gap"] = coverage_gap
+    templates.filters["coverage_label"] = coverage_label
+    templates.filters["transaction_kind"] = transaction_kind
+    _add_global(templates.globals, "coverage_note", coverage_note)
     addresses = [
         address for feature in features for address in _feature_stylesheets(feature)
     ]
@@ -746,6 +761,10 @@ def _render_report(
         month=month_value(answered.month),
         month_label=month_label(answered.month),
         overview=overview_report,
+        incomplete=[
+            account_month.display_name
+            for account_month in incomplete_months(overview_report.coverage)
+        ],
         activity=activity,
         mode=requested.view.mode,
         tab=requested.view.tab,
@@ -782,6 +801,7 @@ def _render_explanation(
         return page.render(failure=overview_report)
     return page.render(
         overview=overview_report,
+        incomplete=incomplete_months(overview_report.coverage),
         month_label=month_label(overview_report.context.month),
         report_url=_answered_url(overview_report, "/", view),
     )

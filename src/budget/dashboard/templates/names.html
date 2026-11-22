@@ -1,4 +1,0 @@
-{# Account names as Danish lists them: "A", "A og B", "A, B og C". #}
-{% macro names(items) -%}
-{{ items | map(attribute="display_name") | list | danish_list }}
-{%- endmacro %}

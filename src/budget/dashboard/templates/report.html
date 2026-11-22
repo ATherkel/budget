@@ -1,34 +1,23 @@
+{%- from "_macros.html" import newer_figures, provisional_label, switch_link -%}
 <section id="report" class="report-content" data-publication="{{ publication_id }}"
   data-reference-date="{{ reference_date }}" data-accounts="{{ accounts }}" data-month="{{ month }}"
   data-mode="{{ mode }}" data-tab="{{ tab }}" aria-labelledby="report-ready-title">
 {% if mode == "advanced" %}
 <nav id="advanced-tabs" class="scope-switch" aria-label="Avanceret visning">
-  <a id="tab-overview" href="{{ tab_urls['overview'] }}"
-    {%- if tab == "overview" %} aria-current="page"{% endif %}>Overblik</a>
-  <a id="tab-details" href="{{ tab_urls['details'] }}"
-    {%- if tab == "details" %} aria-current="page"{% endif %}>Detaljer</a>
+  {{ switch_link("tab-overview", tab_urls["overview"], "Overblik", tab == "overview") }}
+  {{ switch_link("tab-details", tab_urls["details"], "Detaljer", tab == "details") }}
 </nav>
 {% endif %}
-{% if not is_current %}
-<p class="notice notice--warning">Der findes nyere tal. <a id="newer-figures" href="/">Hent de nyeste tal</a></p>
-{% endif %}
+{{ newer_figures(is_current) }}
 {% if overview.provisional %}
-<p class="trust-note"><span id="provisional-label" class="status-chip status-chip--provisional">Foreløbige tal</span>
+<p class="trust-note">{{ provisional_label() }}
   <a id="provisional-explanation" href="{{ explanation_url }}">Hvorfor tallene er foreløbige</a></p>
 {% endif %}
 {% if overview.coverage.status != "complete" %}
-{% from "names.html" import names %}
-{% set incomplete = overview.coverage.account_months | rejectattr("status", "equalto", "outside_history") | list %}
-{% if not incomplete %}
-{# No selected account contributes: the month lies outside every one's history. #}
-<p id="coverage-note" class="trust-note">Ingen af de valgte konti har historik i {{ month_label }}.
-  <a id="coverage-explanation" href="{{ explanation_url }}">Hvorfor der ingen tal er</a></p>
-{% else %}
-<p id="coverage-note" class="trust-note">
-  {%- if overview.coverage.status == "no_data" %}Der er ingen data endnu fra
-  {%- else %}Tallene mangler noget fra{% endif %} {{ names(incomplete) }}.
-  <a id="coverage-explanation" href="{{ explanation_url }}">Hvorfor tallene er ufuldstændige</a></p>
-{% endif %}
+{# With no account incomplete, the month lies outside every one's history. #}
+<p id="coverage-note" class="trust-note">{{ coverage_note(overview.coverage.status, incomplete, month_label) }}
+  <a id="coverage-explanation" href="{{ explanation_url }}">
+  {%- if incomplete %}Hvorfor tallene er ufuldstændige{% else %}Hvorfor der ingen tal er{% endif %}</a></p>
 {% endif %}
 {% if tab == "overview" %}
 <p class="eyebrow">Rapporten er indlæst</p>
@@ -71,7 +60,7 @@
 {% endfor %}
 </ul>
 {% endif %}
-{% elif tab == "details" %}
+{% else %}
 {% include "activity.html" %}
 {% endif %}
 </section>

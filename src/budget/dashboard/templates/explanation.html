@@ -1,59 +1,46 @@
 {% extends "base.html" %}
+{% from "_macros.html" import failure_notice, newer_figures, page_heading, report_section %}
 {% block title %}Om tallene · Budget{% endblock %}
 {% block content %}
-<div class="page-heading">
-  <div>
-    <p class="eyebrow">Husstandsøkonomi</p>
-    <h1>Om tallene{% if overview %} for {{ month_label }}{% endif %}</h1>
-  </div>
-</div>
+{{ page_heading("Om tallene for " ~ month_label if overview else "Om tallene") }}
 {% if failure %}
-<div role="alert">{{ failure | safe }}</div>
-<p><a id="back-to-overview" href="/">Gå til den nyeste oversigt</a></p>
+{{ failure_notice(failure) }}
 {% else %}
-{% if not overview.publication.is_current %}
-<p class="notice notice--warning">Der findes nyere tal. <a id="newer-figures" href="/">Hent de nyeste tal</a></p>
-{% endif %}
+{{ newer_figures(overview.publication.is_current) }}
 {# Analytics judged everything listed here; the page only says it in words. #}
-{% set incomplete = overview.coverage.account_months | rejectattr("status", "equalto", "outside_history") | list %}
-{% if overview.coverage.status != "complete" and not incomplete %}
-<section class="report-panel" aria-labelledby="coverage-heading">
-<h2 id="coverage-heading">Hvorfor der ingen tal er</h2>
-<p id="explanation-coverage">Ingen af de valgte konti har historik i {{ month_label }},
-  så der er ingen tal for måneden. Vælg en anden måned eller andre konti.</p>
-</section>
-{% elif overview.coverage.status != "complete" %}
-<section class="report-panel" aria-labelledby="coverage-heading">
-<h2 id="coverage-heading">Hvor tallene er ufuldstændige</h2>
+{% if overview.coverage.status != "complete" %}
+{% if incomplete %}
+{% call report_section("coverage", "Hvor tallene er ufuldstændige") -%}
 <ul id="explanation-coverage" class="explanation-list">
 {% for month in incomplete %}
-  <li>{{ month.display_name }}, {{ month_label }}:
-    {% if month.status == "no_data" %}der er ingen data for måneden endnu.
-    {%- else %}kun en del af måneden er dækket.{% endif %}</li>
+  <li>{{ month.display_name }}, {{ month_label }}: {{ month.status | coverage_gap }}</li>
 {% endfor %}
 </ul>
-</section>
+{%- endcall %}
+{% else %}
+{% call report_section("coverage", "Hvorfor der ingen tal er") -%}
+<p id="explanation-coverage">Ingen af de valgte konti har historik i {{ month_label }},
+  så der er ingen tal for måneden. Vælg en anden måned eller andre konti.</p>
+{%- endcall %}
+{% endif %}
 {% endif %}
 {% if overview.provisional %}
-<section class="report-panel" aria-labelledby="provisional-heading">
-<h2 id="provisional-heading">Hvorfor tallene er foreløbige</h2>
+{% call report_section("provisional", "Hvorfor tallene er foreløbige") -%}
 <ul id="explanation-provisional" class="explanation-list">
 {% if "current_month" in overview.provisional.reasons %}
   <li>{{ month_label | capitalize }} er indeværende måned, så der kommer flere posteringer.</li>
 {% endif %}
 {% if "late_bookings_unsettled" in overview.provisional.reasons %}
-{% from "names.html" import names %}
-  <li>Banken kan stadig bogføre sene posteringer på {{ names(overview.provisional.unsettled) }}.</li>
+  <li>Banken kan stadig bogføre sene posteringer på {{ overview.provisional.unsettled | account_names }}.</li>
 {% endif %}
 </ul>
-</section>
+{%- endcall %}
 {% endif %}
 {% if overview.unclassified and overview.unclassified.count > 0 %}
-<section class="report-panel" aria-labelledby="unclassified-heading">
-<h2 id="unclassified-heading">Betalinger uden kategori</h2>
+{% call report_section("unclassified", "Betalinger uden kategori") -%}
 <p id="explanation-unclassified">Nogle betalinger i måneden er endnu ikke placeret i en kategori.
   Penge tilbage medregner dem ikke, så beløbet kan ændre sig, når de bliver placeret.</p>
-</section>
+{%- endcall %}
 {% endif %}
 {% endif %}
 {% if report_url %}

@@ -1,9 +1,3 @@
-{% set coverage_labels = {
-  "complete": "fuldt dækket",
-  "partial": "delvist dækket",
-  "no_data": "ingen data",
-  "outside_history": "uden for historikken",
-} %}
 <p class="eyebrow">Kontobevægelser</p>
 <h3 id="report-ready-title">Kontodetaljer</h3>
 {% for account in activity.accounts %}
@@ -13,37 +7,23 @@
     {% if account.evidence_through is none %}
       Ingen importeret data
     {% else %}
-      Gennem {{ account.evidence_through.strftime("%d.%m.%Y") }}
+      Gennem {{ account.evidence_through | danish_date }}
     {% endif %}
   </p>
   <p id="activity-coverage-{{ account.account_id }}">
-    Dækning for måneden: {{ coverage_labels[account.coverage] }}.
+    Dækning for måneden: {{ account.coverage | coverage_label }}.
   </p>
   <dl class="balance-observations">
     <div>
       <dt>Bankens seneste observation</dt>
       <dd id="activity-dated-balance-{{ account.account_id }}">
-        {% if account.dated_balance is none %}
-          Ingen observation i måneden
-        {% elif account.dated_balance.balance_after is none %}
-          Ukendt den {{ account.dated_balance.transaction_date.strftime("%d.%m.%Y") }}
-        {% else %}
-          {{ account.dated_balance.balance_after | amount(activity.currency) }}
-          den {{ account.dated_balance.transaction_date.strftime("%d.%m.%Y") }}
-        {% endif %}
+        {{ account.dated_balance | balance_observation(activity.currency, "Ingen observation i måneden") }}
       </dd>
     </div>
     <div>
       <dt>Tidligere observation</dt>
       <dd id="activity-earlier-observation-{{ account.account_id }}">
-        {% if account.earlier_observation is none %}
-          Ingen tidligere observation
-        {% elif account.earlier_observation.balance_after is none %}
-          Ukendt den {{ account.earlier_observation.transaction_date.strftime("%d.%m.%Y") }}
-        {% else %}
-          {{ account.earlier_observation.balance_after | amount(activity.currency) }}
-          den {{ account.earlier_observation.transaction_date.strftime("%d.%m.%Y") }}
-        {% endif %}
+        {{ account.earlier_observation | balance_observation(activity.currency, "Ingen tidligere observation") }}
       </dd>
     </div>
     <div>
@@ -55,7 +35,7 @@
           Månedssnapshot:
           Åbning {{ account.monthly_snapshot.opening_balance | amount(activity.currency) }};
           lukning {{ account.monthly_snapshot.closing_balance | amount(activity.currency) }};
-          {{ coverage_labels[account.monthly_snapshot.coverage] }}.
+          {{ account.monthly_snapshot.coverage | coverage_label }}.
         {% endif %}
       </dd>
     </div>
@@ -73,21 +53,10 @@
     <tbody>
     {% for row in activity.transactions if row.account_id == account.account_id %}
       <tr>
-        <td data-label="Dato">{{ row.transaction_date.strftime("%d.%m.%Y") }}</td>
+        <td data-label="Dato">{{ row.transaction_date | danish_date }}</td>
         <td data-label="Tekst">{{ row.description }}</td>
         <td data-label="Type">
-          {% if row.transaction_type == "income" %}Indtægt
-          {% elif row.transaction_type == "expense" %}Udgift
-          {% elif row.transaction_type == "refund" %}Tilbagebetaling
-          {% elif row.transaction_type == "transfer" %}
-            {% if row.transfer_pairing == "paired" %}
-              Overførsel, parret med {{ row.counterpart_account_display_name }}
-              den {{ row.counterpart_transaction_date.strftime("%d.%m.%Y") }}
-            {% else %}
-              Overførsel, ensidig
-            {% endif %}
-          {% elif row.transaction_type == "adjustment" %}Regulering
-          {% else %}Ukategoriseret{% endif %}
+          {{ row | transaction_kind }}
         </td>
         <td data-label="Beløb" class="detail-amount">
           {{ row.amount | signed_amount(activity.currency) }}
