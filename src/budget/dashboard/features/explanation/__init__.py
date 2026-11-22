@@ -26,7 +26,7 @@ def _render_explanation(
 ) -> str:
     """Render the explanation page of one pinned report's trust notes."""
     overview_report = read_overview(dashboard, pin, accounts, month)
-    page = dashboard.templates.get_template("explanation.html")
+    page = dashboard.templates.get_template("explanation/explanation.html")
     if isinstance(overview_report, str):
         return page.render(failure=overview_report)
     return page.render(
