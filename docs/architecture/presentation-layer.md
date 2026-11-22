@@ -44,8 +44,8 @@ out is off. A feature's templates are named `<folder>/<file>.html`, and
 shared file. Helpers more than one feature uses live in the
 `budget.dashboard.display` package, and markup more than one page repeats is a
 macro in `templates/_macros.html`. A template holds no chain of conditions:
-wording that turns on several cases comes from a display helper. Moving the existing pages into features is
-pending: [#569](https://github.com/ATherkel/budget/issues/569).
+wording that turns on several cases comes from a display helper. Moving the
+existing pages into features is pending: [#569](https://github.com/ATherkel/budget/issues/569).
 
 ## Initial Screens
 
