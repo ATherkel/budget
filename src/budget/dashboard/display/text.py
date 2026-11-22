@@ -8,6 +8,7 @@ _TRANSACTION_KINDS = {
     "income": "Indtægt",
     "expense": "Udgift",
     "refund": "Tilbagebetaling",
+    "transfer": "Overførsel, ensidig",
     "adjustment": "Regulering",
 }
 
