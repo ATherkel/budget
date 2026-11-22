@@ -40,6 +40,7 @@ from budget.analytics import (
     SpendingDetail,
 )
 from budget.dashboard import session
+from budget.dashboard.addresses import PinnedAddress, ReportRequest, pinned_url
 from budget.dashboard.display.amounts import amount, signed_amount
 from budget.dashboard.display.months import (
     copenhagen_date,
@@ -65,7 +66,6 @@ from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.view_state import (
     DEFAULT_VIEW,
     VIEW_STATE,
-    DashboardMode,
     Selection,
     ViewState,
     parse_view_state,
@@ -197,16 +197,6 @@ class DetailRequest:
 
 
 @dataclass(frozen=True)
-class PinnedAddress:
-    """The report pin and selection carried by a dashboard address."""
-
-    publication_id: int
-    reference_date: date
-    accounts: tuple[str, ...]
-    month: str
-
-
-@dataclass(frozen=True)
 class OverviewRequest:
     """A complete overview-page request, fresh or pinned."""
 
@@ -214,17 +204,6 @@ class OverviewRequest:
     accounts: tuple[str, ...] | None
     month: str | None
     view: ViewState
-
-
-@dataclass(frozen=True)
-class ReportRequest:
-    """A report request under one pinned presentation state."""
-
-    pin: tuple[int, date]
-    accounts: tuple[str, ...]
-    month: str
-    view: ViewState
-    active_mode: DashboardMode
 
 
 class OverviewAddress(BaseModel):
@@ -354,26 +333,6 @@ def _logged_in(
     )
 
 
-def _pinned_url(
-    address: PinnedAddress,
-    path: str = "/",
-    *,
-    view: ViewState = DEFAULT_VIEW,
-) -> str:
-    """Return the complete address of `path` for one pinned selection."""
-    return f"{path}?" + urlencode(
-        [
-            ("publication", address.publication_id),
-            ("reference_date", address.reference_date.isoformat()),
-            *(("account", account) for account in sorted(address.accounts)),
-            ("month", address.month),
-            ("mode", view.mode),
-            ("tab", view.tab),
-            ("comparison", view.comparison),
-        ]
-    )
-
-
 def _render_overview(dashboard: Dashboard, requested: OverviewRequest) -> str:
     """Render the overview page.
 
@@ -424,7 +383,7 @@ def _render_overview(dashboard: Dashboard, requested: OverviewRequest) -> str:
 
     def pinned_with(accounts: Collection[str]) -> str:
         """Return this page's address with `accounts` selected instead."""
-        return _pinned_url(
+        return pinned_url(
             PinnedAddress(
                 publication_id, reference_date, tuple(accounts), selected_month
             ),
@@ -541,7 +500,7 @@ def _answered_url(
 ) -> str:
     """Return the address of `path` for the context `overview_report` answers."""
     answered = overview_report.context
-    return _pinned_url(
+    return pinned_url(
         PinnedAddress(
             answered.publication_id,
             answered.reference_date,
@@ -562,7 +521,7 @@ def _detail_url(
     view: ViewState = DEFAULT_VIEW,
 ) -> str:
     """Return the address of one subject's detail under the pinned `answered`."""
-    page = _pinned_url(
+    page = pinned_url(
         PinnedAddress(
             answered.publication_id,
             answered.reference_date,
@@ -636,7 +595,7 @@ def _render_detail(
             view=request.view,
         ),
         incomplete=incomplete_by_account(detail_report.coverage),
-        overview_url=_pinned_url(
+        overview_url=pinned_url(
             PinnedAddress(
                 answered.publication_id,
                 answered.reference_date,
@@ -675,7 +634,7 @@ def _render_report(
     if isinstance(activity, str):
         return activity
     tab_urls = {
-        destination: _pinned_url(
+        destination: pinned_url(
             PinnedAddress(
                 answered.publication_id,
                 answered.reference_date,
@@ -760,7 +719,7 @@ def _report_response(
     )
     if view.mode != requested.active_mode:
         view = ViewState(view.mode, "overview", view.comparison)
-    page = _pinned_url(
+    page = pinned_url(
         PinnedAddress(*requested.pin, requested.accounts, requested.month),
         view=view,
     )
