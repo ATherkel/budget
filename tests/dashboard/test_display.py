@@ -57,3 +57,9 @@ def test_a_paired_transfer_names_the_account_and_date_of_its_other_half() -> Non
     )
 
     assert transaction_kind(row) == "Overførsel, parret med Opsparing den 04.02.2026"
+
+
+def test_a_transfer_with_no_other_half_says_it_is_one_sided() -> None:
+    row = replace(_row("transfer"), transfer_pairing="one_sided")
+
+    assert transaction_kind(row) == "Overførsel, ensidig"
