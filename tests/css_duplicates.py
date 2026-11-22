@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 # An innermost block: a selector list and declarations with no nested braces.
 RULE = re.compile(r"([^{}]+)\{([^{}]*)\}")
+COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
 # Two rules sharing this many declarations repeat each other.
 SHARED_LIMIT = 3
 
@@ -28,6 +29,8 @@ def declaration(text: str) -> str:
 
 def parse_rules(css: str) -> list[Rule]:
     """Return the rules of `css` in source order."""
+    # Blank each comment but keep its line breaks, so line numbers still hold.
+    css = COMMENT.sub(lambda match: re.sub(r"[^\n]", " ", match.group()), css)
     rules = []
     for match in RULE.finditer(css):
         prelude = match.group(1)
