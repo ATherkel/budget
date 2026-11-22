@@ -32,6 +32,23 @@ def test_a_dashboard_without_the_overview_feature_serves_no_overview(
     assert client.get("/").status_code == 404
 
 
+def test_without_the_overview_an_empty_report_selection_still_asks_for_an_account(
+    tmp_path: Path,
+) -> None:
+    app = create_app(
+        dashboard_profile(tmp_path), clock=lambda: NOW, features=(VIEW_STATE,)
+    )
+    client = TestClient(app, follow_redirects=False)
+    client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
+
+    response = client.get(
+        "/report",
+        params={"publication": 1, "reference_date": "2026-05-14", "month": "2026-05"},
+    )
+
+    assert (response.status_code, "Ingen konti valgt" in response.text) == (200, True)
+
+
 def test_every_page_links_the_overview_stylesheet_the_dashboard_serves(
     tmp_path: Path,
 ) -> None:
