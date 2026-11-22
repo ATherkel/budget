@@ -126,7 +126,9 @@ def coverage_note(status: Coverage, incomplete: list[str], period: str) -> str:
 
 def coverage_gap(status: AccountMonthStatus) -> str:
     """Return what an incomplete account-month lacks, as a sentence's end."""
-    return status
+    if status == "no_data":
+        return "der er ingen data for måneden endnu."
+    return "kun en del af måneden er dækket."
 
 
 def danish_list(items: list[str]) -> str:
