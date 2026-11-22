@@ -89,14 +89,15 @@ def _render_overview(
             try:
                 publication_id = reports.current_publication().publication_id
             except NothingPublishedError:
-                return templates.get_template("nothing_published.html").render()
+                page = templates.get_template("overview/nothing_published.html")
+                return page.render()
             pin = (publication_id, copenhagen_date(dashboard.clock()))
         publication_id, reference_date = pin
         try:
             options = reports.selection_options(publication_id, reference_date)
         except PublicationUnavailableError:
             # Offered, never substituted: the reader chooses the current figures.
-            return templates.get_template("unavailable_page.html").render()
+            return templates.get_template("overview/unavailable_page.html").render()
     selected_accounts = (
         {account.account_id for account in options.accounts}
         if fresh
@@ -136,7 +137,7 @@ def _render_overview(
         selected_month,
         requested.view,
     )
-    return templates.get_template("overview.html").render(
+    return templates.get_template("overview/overview.html").render(
         canonical_url=pinned_with(selected_accounts),
         report=report,
         **selection_form(options, chosen, pinned_with),

@@ -612,7 +612,7 @@ def _report_response(
     state = view_state_controls(dashboard.templates, view)
     if not requested.accounts:
         # An empty selection is a prompt, never a report of nothing.
-        prompt = dashboard.templates.get_template("no_accounts.html").render()
+        prompt = dashboard.templates.get_template("overview/no_accounts.html").render()
         return HTMLResponse(prompt + state, headers={"HX-Push-Url": page})
     fragment = _render_report(
         dashboard,
