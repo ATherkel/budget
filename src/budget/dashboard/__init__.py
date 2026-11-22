@@ -34,7 +34,6 @@ from budget.analytics import (
     HouseholdReports,
     InvalidSelectionError,
     MonthlyOverview,
-    NothingPublishedError,
     PublicationUnavailableError,
     ReportContext,
     SpendingDetail,
@@ -43,7 +42,6 @@ from budget.dashboard import session
 from budget.dashboard.addresses import PinnedAddress, ReportRequest, pinned_url
 from budget.dashboard.display.amounts import amount, signed_amount
 from budget.dashboard.display.months import (
-    copenhagen_date,
     danish_date,
     month_label,
     month_value,
@@ -63,13 +61,12 @@ from budget.dashboard.display.text import (
     transaction_kind,
 )
 from budget.dashboard.features import Dashboard, Feature
+from budget.dashboard.features.overview import overview_feature
 from budget.dashboard.features.view_state import (
     DEFAULT_VIEW,
     VIEW_STATE,
-    Selection,
     ViewState,
     parse_view_state,
-    selection_form,
     view_mode,
     view_state_controls,
 )
@@ -80,16 +77,12 @@ from budget.dashboard.passphrase import (
     set_passphrase,
 )
 from budget.dashboard.throttle import LoginThrottle
-from budget.gold import ReportingMonth
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
 
 __all__ = ["create_app", "set_passphrase"]
 
 SESSION_COOKIE = "session"
-
-# The features the dashboard serves, one line each; one left out is off.
-FEATURES: tuple[Feature, ...] = (VIEW_STATE,)
 
 _STATIC = Path(__file__).parent / "static"
 
@@ -196,42 +189,6 @@ class DetailRequest:
     view: ViewState
 
 
-@dataclass(frozen=True)
-class OverviewRequest:
-    """A complete overview-page request, fresh or pinned."""
-
-    pin: tuple[int, date] | None
-    accounts: tuple[str, ...] | None
-    month: str | None
-    view: ViewState
-
-
-class OverviewAddress(BaseModel):
-    """Query parameters of a fresh or restored overview."""
-
-    publication: int | None = None
-    reference_date: date | None = None
-    month: str | None = None
-    account: list[str] = []
-    mode: str = "simple"
-    tab: str = "overview"
-    comparison: str = "amounts"
-
-    def asked(self) -> OverviewRequest:
-        """Return the page request without resolving a fresh pin."""
-        pinned = self.publication is not None and self.reference_date is not None
-        return OverviewRequest(
-            pin=(
-                None
-                if self.publication is None or self.reference_date is None
-                else (self.publication, self.reference_date)
-            ),
-            accounts=tuple(self.account) if pinned else None,
-            month=self.month,
-            view=parse_view_state(self.mode, self.tab, self.comparison),
-        )
-
-
 class PinnedQuery(BaseModel):
     """Required query parameters shared by pinned report pages."""
 
@@ -330,77 +287,6 @@ def _logged_in(
         credentials
         if session.is_valid(credentials.session_key, cookie, clock())
         else None
-    )
-
-
-def _render_overview(dashboard: Dashboard, requested: OverviewRequest) -> str:
-    """Render the overview page.
-
-    A pinned page keeps its publication, reference date and selection. A fresh
-    visit resolves the current publication and today's Copenhagen date, with
-    every account and this month selected.
-    """
-    # A pinned address without accounts is an empty selection, not a fresh visit.
-    fresh = requested.pin is None
-    pin = requested.pin
-    templates = dashboard.templates
-    with GoldStore(dashboard.profile, read_only=True) as store:
-        reports = HouseholdReports(store)
-        if pin is None:
-            try:
-                publication_id = reports.current_publication().publication_id
-            except NothingPublishedError:
-                return templates.get_template("nothing_published.html").render()
-            pin = (publication_id, copenhagen_date(dashboard.clock()))
-        publication_id, reference_date = pin
-        try:
-            options = reports.selection_options(publication_id, reference_date)
-        except PublicationUnavailableError:
-            # Offered, never substituted: the reader chooses the current figures.
-            return templates.get_template("unavailable_page.html").render()
-    selected_accounts = (
-        {account.account_id for account in options.accounts}
-        if fresh
-        else set(requested.accounts or ())
-    )
-    selected_month = requested.month or month_value(ReportingMonth.of(reference_date))
-    # The page carries its own report, so back, forward and a page without
-    # scripts show what the selection's report says.
-    report = (
-        _render_report(
-            dashboard,
-            ReportRequest(
-                pin,
-                tuple(selected_accounts),
-                selected_month,
-                requested.view,
-                requested.view.mode,
-            ),
-        )
-        if selected_accounts
-        else None
-    )
-
-    def pinned_with(accounts: Collection[str]) -> str:
-        """Return this page's address with `accounts` selected instead."""
-        return pinned_url(
-            PinnedAddress(
-                publication_id, reference_date, tuple(accounts), selected_month
-            ),
-            view=requested.view,
-        )
-
-    chosen = Selection(
-        publication_id,
-        reference_date,
-        selected_accounts,
-        selected_month,
-        requested.view,
-    )
-    return templates.get_template("overview.html").render(
-        canonical_url=pinned_with(selected_accounts),
-        report=report,
-        **selection_form(options, chosen, pinned_with),
     )
 
 
@@ -741,6 +627,10 @@ def _report_response(
     return HTMLResponse(fragment + state, headers={"HX-Push-Url": page})
 
 
+# The features the dashboard serves, one line each; one left out is off.
+FEATURES: tuple[Feature, ...] = (VIEW_STATE, overview_feature(_render_report))
+
+
 def create_app(
     profile: Profile,
     *,
@@ -804,16 +694,6 @@ def create_app(
     dashboard = Dashboard(profile, clock, templates, app, for_reader)
     for feature in features:
         feature.register(dashboard)
-
-    @app.get("/")
-    def overview(
-        request: Request,
-        address: Annotated[OverviewAddress, Query()],
-    ) -> Response:
-        return for_reader(
-            request,
-            lambda: HTMLResponse(_render_overview(dashboard, address.asked())),
-        )
 
     @app.get("/report")
     def report(
