@@ -223,3 +223,36 @@ def test_declarations_match_across_spacing_and_property_case() -> None:
     assert find_duplicates(css) == [
         "`.panel` (line 7) shares 3 declarations with `.card` (line 1); reuse `.card`"
     ]
+
+
+def test_a_brace_inside_a_string_is_part_of_the_value() -> None:
+    css = """\
+.new-a {
+  color: red;
+  padding: 0;
+  margin: 0;
+  content: "{";
+}
+.new-b {
+  color: red;
+  padding: 0;
+  margin: 0;
+}
+"""
+
+    assert find_duplicates(css) == [
+        "`.new-b` (line 7) shares 3 declarations with `.new-a` (line 1); reuse `.new-a`"
+    ]
+
+
+def test_a_semicolon_inside_a_string_is_part_of_the_value() -> None:
+    css = """\
+.quote-a {
+  content: "a;b;c;d";
+}
+.quote-b {
+  content: "x;b;c;d";
+}
+"""
+
+    assert find_duplicates(css) == []
