@@ -70,6 +70,30 @@ def test_comments_are_not_part_of_a_rule() -> None:
     ]
 
 
+def test_a_rule_inside_media_is_named_with_its_media_query() -> None:
+    css = """\
+.card {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+@media (max-width: 48rem) {
+  .panel {
+    color: var(--ink);
+    padding: 1rem;
+    border: 1px solid var(--line);
+  }
+}
+"""
+
+    message = (
+        "`@media (max-width: 48rem) .panel` shares 3 declarations with `.card`"
+        " (line 1); reuse `.card`"
+    )
+    assert find_duplicates(css) == [message]
+
+
 def test_an_allowlist_entry_that_is_no_longer_a_duplicate_fails() -> None:
     allowlist = [(".panel", ".card"), (".panel", ".banner")]
 
