@@ -101,3 +101,11 @@ def test_a_balance_the_bank_left_blank_reads_as_unknown_on_its_date() -> None:
     shown = balance_observation(observation, "DKK", "Ingen observation i måneden")
 
     assert shown == "Ukendt den 03.02.2026"
+
+
+def test_a_stated_balance_reads_as_its_amount_on_its_date() -> None:
+    observation = BankBalanceObservation(date(2026, 2, 3), Decimal("-1234.50"))
+
+    shown = balance_observation(observation, "DKK", "Ingen observation i måneden")
+
+    assert shown == "\N{MINUS SIGN}1.234,50 kr. den 03.02.2026"
