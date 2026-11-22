@@ -5,17 +5,17 @@ It reads Gold only through analytics, opened read-only from one profile.
 """
 
 import hashlib
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, MutableMapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from functools import cache
 from pathlib import Path
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Literal, Self
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from jinja2 import (
     ChoiceLoader,
@@ -93,12 +93,12 @@ _STATIC = Path(__file__).parent / "static"
 
 
 @cache
-def _static_digest(name: str) -> str:
-    """Return the start of static file `name`'s SHA-256, read once per process.
+def _static_digest(path: Path) -> str:
+    """Return the start of the file at `path`'s SHA-256, read once per process.
 
     An edited file therefore gets its new address after a restart.
     """
-    return hashlib.sha256((_STATIC / name).read_bytes()).hexdigest()[:12]
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
 
 
 def _static_url(name: str) -> str:
@@ -107,7 +107,43 @@ def _static_url(name: str) -> str:
     A browser that cached an older file under a bare address could keep
     running it after a deploy.
     """
-    return f"/static/{name}?v={_static_digest(name)}"
+    return f"/static/{name}?v={_static_digest(_STATIC / name)}"
+
+
+def _feature_stylesheets(feature: Feature) -> dict[str, Path]:
+    """Return the address of each stylesheet in `feature`'s folder, and its file.
+
+    Each is named by its content, as `_static_url` names a shared one.
+    """
+    return {
+        f"/static/{feature.folder.name}/{sheet.name}?v={_static_digest(sheet)}": sheet
+        for sheet in sorted(feature.folder.glob("*.css"))
+    }
+
+
+def _serving(sheet: Path) -> Callable[[], Response]:
+    """Return a route that answers with the stylesheet `sheet` and nothing else."""
+
+    def stylesheet() -> Response:
+        return FileResponse(sheet, media_type="text/css")
+
+    return stylesheet
+
+
+def _serve_stylesheets(app: FastAPI, features: Sequence[Feature]) -> None:
+    """Serve each stylesheet of `features` at its address, and no other file."""
+    for feature in features:
+        for address, sheet in _feature_stylesheets(feature).items():
+            app.add_api_route(address.partition("?")[0], _serving(sheet))
+
+
+def _add_global(namespace: MutableMapping[str, Any], name: str, value: object) -> None:
+    """Add `value` to the names every template sees, as `name`.
+
+    Jinja leaves `Environment.globals` unannotated, so a type checker infers
+    it from the builtins it starts with; any value may join them.
+    """
+    namespace[name] = value
 
 
 def _templates(features: Sequence[Feature]) -> Environment:
@@ -126,6 +162,10 @@ def _templates(features: Sequence[Feature]) -> Environment:
     templates.filters["static_url"] = _static_url
     templates.filters["signed_amount"] = signed_amount
     templates.filters["danish_list"] = danish_list
+    addresses = [
+        address for feature in features for address in _feature_stylesheets(feature)
+    ]
+    _add_global(templates.globals, "feature_stylesheets", addresses)
     return templates
 
 
@@ -793,6 +833,8 @@ def create_app(
     require_passphrase(profile)
     GoldStore(profile, read_only=True).close()
     app = FastAPI()
+    # Ahead of the shared files, which would otherwise answer these addresses.
+    _serve_stylesheets(app, features)
     # The htmx script ships in the package: nothing is fetched from the internet.
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")
     throttle = LoginThrottle()
