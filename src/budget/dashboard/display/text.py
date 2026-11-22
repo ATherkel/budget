@@ -12,6 +12,12 @@ _TRANSACTION_KINDS = {
     "transfer": "Overførsel, ensidig",
     "adjustment": "Regulering",
 }
+_COVERAGE_LABELS = {
+    "complete": "fuldt dækket",
+    "partial": "delvist dækket",
+    "no_data": "ingen data",
+    "outside_history": "uden for historikken",
+}
 
 
 def selection_problems(error: InvalidSelectionError) -> list[str]:
@@ -61,7 +67,7 @@ def transaction_kind(row: ActivityRow) -> str:
 
 def coverage_label(state: AccountMonthState) -> str:
     """Return how fully an account-month is covered, such as `delvist dækket`."""
-    return state
+    return _COVERAGE_LABELS[state]
 
 
 def danish_list(items: list[str]) -> str:
