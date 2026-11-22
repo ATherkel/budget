@@ -19,7 +19,7 @@ SELECTION_SHEET = re.compile(
 )
 
 
-def test_every_page_links_the_selection_stylesheet_the_dashboard_serves(
+def test_a_page_links_the_selection_stylesheet_the_dashboard_serves(
     tmp_path: Path,
 ) -> None:
     client = TestClient(create_app(dashboard_profile(tmp_path), clock=lambda: NOW))
