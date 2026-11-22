@@ -2,6 +2,7 @@
 """Danish sentences and lists the dashboard shows its reader."""
 
 from budget.analytics import (
+    AccountMonthCoverage,
     ActivityRow,
     BankBalanceObservation,
     InvalidSelectionError,
@@ -42,6 +43,14 @@ def selection_problems(error: InvalidSelectionError) -> list[str]:
     if "unknown_category" in error.reasons:
         problems.append("Kategorien findes ikke i disse tal.")
     return problems
+
+
+def incomplete_months(coverage: ReportCoverage) -> list[AccountMonthCoverage]:
+    """Return the account-months that lack something, in the report's order.
+
+    Months outside an account's history are never missing anything.
+    """
+    return list(coverage.account_months)
 
 
 def incomplete_by_account(coverage: ReportCoverage) -> list[str]:

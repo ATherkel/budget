@@ -7,15 +7,23 @@ from decimal import Decimal
 
 import pytest
 
-from budget.analytics import ActivityRow, BankBalanceObservation
+from budget.analytics import (
+    AccountMonthCoverage,
+    ActivityRow,
+    BankBalanceObservation,
+    ReportCoverage,
+)
+from budget.analytics.reports import AccountMonthStatus
 from budget.analytics.trust import AccountMonthState
 from budget.dashboard.display.months import danish_date
 from budget.dashboard.display.text import (
     balance_observation,
     coverage_label,
     coverage_note,
+    incomplete_months,
     transaction_kind,
 )
+from budget.gold import ReportingMonth
 from budget.gold.models import TransactionType
 
 
@@ -128,3 +136,18 @@ def test_a_partial_coverage_note_says_what_the_figures_lack() -> None:
     note = coverage_note("partial", ["Lønkonto"], "februar 2026")
 
     assert note == "Tallene mangler noget fra Lønkonto."
+
+
+def _month(display_name: str, status: AccountMonthStatus) -> AccountMonthCoverage:
+    return AccountMonthCoverage(
+        display_name.lower(), display_name, ReportingMonth(2026, 2), status
+    )
+
+
+def test_a_month_outside_an_accounts_history_lacks_nothing() -> None:
+    current = _month("Lønkonto", "partial")
+    savings = _month("Opsparing", "outside_history")
+    budget = _month("Budgetkonto", "no_data")
+    coverage = ReportCoverage("partial", (current, savings, budget))
+
+    assert incomplete_months(coverage) == [current, budget]
