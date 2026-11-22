@@ -81,7 +81,10 @@ def test_each_page_a_reader_opens_is_unchanged(
                 "report-advanced-details",
                 f"{PINNED}&month=2026-02{ADVANCED}&active_mode=advanced",
             ),
-            ("report-no-accounts", "publication=1&reference_date=2026-05-14&month=2026-02"),
+            (
+                "report-no-accounts",
+                "publication=1&reference_date=2026-05-14&month=2026-02",
+            ),
         )
     ],
 )
