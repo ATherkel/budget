@@ -19,8 +19,8 @@ from budget.analytics import (
     ReportContext,
     SpendingDetail,
 )
-from budget.dashboard.addresses import PinnedAddress, detail_url, pinned_url
-from budget.dashboard.display.months import month_value, parse_month, period_label
+from budget.dashboard.addresses import answered_address, detail_url, pinned_url
+from budget.dashboard.display.months import parse_month, period_label
 from budget.dashboard.display.text import incomplete_by_account, selection_problems
 from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.view_state import ViewState, parse_view_state
@@ -137,15 +137,7 @@ def _render_detail(
             view=request.view,
         ),
         incomplete=incomplete_by_account(detail_report.coverage),
-        overview_url=pinned_url(
-            PinnedAddress(
-                answered.publication_id,
-                answered.reference_date,
-                tuple(answered.account_ids),
-                month_value(answered.month),
-            ),
-            view=request.view,
-        ),
+        overview_url=pinned_url(answered_address(answered), view=request.view),
     )
 
 
