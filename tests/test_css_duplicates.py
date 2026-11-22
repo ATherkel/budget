@@ -2,15 +2,19 @@
 """The duplicate CSS check names the existing rule to reuse."""
 
 import re
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 
+from budget.dashboard import FEATURES
+from budget.dashboard.features import Feature
 from tests.css_duplicates import (
     find_duplicates,
     find_duplicates_in_sheets,
     read_allowlist,
 )
+from tests.dashboard.sample_feature import SAMPLE
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 STATIC = REPOSITORY / "src/budget/dashboard/static"
@@ -184,8 +188,27 @@ def test_every_dashboard_stylesheet_is_linked_from_the_base_page() -> None:
     assert sorted(linked_stylesheets()) == shipped
 
 
-def test_the_dashboard_stylesheets_repeat_no_rule_outside_the_allowlist() -> None:
+def dashboard_stylesheets(features: Sequence[Feature]) -> dict[str, str]:
+    """Return every stylesheet a page links, by name, in cascade order.
+
+    The shared sheets come first, then each registered feature's, as
+    `<folder>/<file>`.
+    """
     sheets = {name: (STATIC / name).read_text("utf-8") for name in linked_stylesheets()}
+    for feature in features:
+        for sheet in sorted(feature.folder.glob("*.css")):
+            sheets[f"{feature.folder.name}/{sheet.name}"] = sheet.read_text("utf-8")
+    return sheets
+
+
+def test_the_guard_reads_each_registered_features_stylesheets_last() -> None:
+    names = list(dashboard_stylesheets((SAMPLE,)))
+
+    assert names == [*linked_stylesheets(), "sample_feature/sample.css"]
+
+
+def test_the_dashboard_stylesheets_repeat_no_rule_outside_the_allowlist() -> None:
+    sheets = dashboard_stylesheets(FEATURES)
     allowlist = read_allowlist(
         (REPOSITORY / "css-duplicates-allowlist.txt").read_text("utf-8")
     )
