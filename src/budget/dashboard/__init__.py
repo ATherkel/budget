@@ -149,11 +149,16 @@ def _add_global(namespace: MutableMapping[str, Any], name: str, value: object) -
 def _templates(features: Sequence[Feature]) -> Environment:
     """Return the templates one dashboard renders its pages from.
 
-    A feature's own templates are named after its folder, as `<folder>/<file>`.
+    A feature's own templates are named after its folder, as `<folder>/<file>`,
+    so two features in folders of one name raise `ValueError`.
     """
     own = {
         feature.folder.name: FileSystemLoader(feature.folder) for feature in features
     }
+    if len(own) < len(features):
+        names = sorted(feature.folder.name for feature in features)
+        message = f"two features share a folder name: {', '.join(names)}"
+        raise ValueError(message)
     templates = Environment(
         loader=ChoiceLoader([PackageLoader("budget.dashboard"), PrefixLoader(own)]),
         autoescape=select_autoescape(),
