@@ -11,6 +11,7 @@
 .button | .mode-option
 .category-row | .header-inner
 .category-row | .section-heading--row
+.category-row | .footer-inner
 .balance-observations div | .selection-panel, .report-panel
 .balance-observations div | .mode-option
 .empty-mark | .brand-mark
@@ -22,4 +23,3 @@
 .stack input | select
 .footer-inner | .header-inner
 .footer-inner | .section-heading--row
-.footer-inner | .category-row
