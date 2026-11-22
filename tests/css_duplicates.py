@@ -5,7 +5,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 import tinycss2
-from tinycss2.ast import AtRule, Declaration, Node, QualifiedRule
+from tinycss2.ast import AtRule, Declaration, Node, ParseError, QualifiedRule
 
 # Two rules sharing this many declarations repeat each other.
 SHARED_LIMIT = 3
@@ -47,6 +47,7 @@ class Parsed:
 
     rules: list[Rule]
     nesting: list[Block]
+    unreadable: list[Block]
 
     def add_rule(self, node: QualifiedRule, context: str) -> None:
         """Add a style rule, or note it when it nests another rule."""
@@ -54,6 +55,10 @@ class Parsed:
         items = tinycss2.parse_blocks_contents(
             node.content, skip_comments=True, skip_whitespace=True
         )
+        errors = [item for item in items if isinstance(item, ParseError)]
+        if errors:
+            self.unreadable.append(Block(selector, errors[0].source_line))
+            return
         if any(not isinstance(item, Declaration) for item in items):
             self.nesting.append(Block(selector, node.source_line))
             return
@@ -80,13 +85,13 @@ class Parsed:
                 self.add_nodes(inner, " ".join(filter(None, [context, prelude])))
 
 
-def parse_rules(css: str) -> tuple[list[Rule], list[Block]]:
-    """Return the rules of `css` in source order, and the rules that nest a rule."""
-    parsed = Parsed(rules=[], nesting=[])
+def parse_rules(css: str) -> Parsed:
+    """Return the rules of `css` in source order, and the rules it cannot read."""
+    parsed = Parsed(rules=[], nesting=[], unreadable=[])
     parsed.add_nodes(
         tinycss2.parse_stylesheet(css, skip_comments=True, skip_whitespace=True)
     )
-    return parsed.rules, parsed.nesting
+    return parsed
 
 
 def most_shared_first(rule: Rule, earlier_rules: list[Rule]) -> list[Rule]:
@@ -100,12 +105,18 @@ def most_shared_first(rule: Rule, earlier_rules: list[Rule]) -> list[Rule]:
 def find_duplicates(css: str, allowlist: Iterable[tuple[str, str]] = ()) -> list[str]:
     """Return one message per pair of rules sharing 3 or more declarations."""
     allowed = list(dict.fromkeys(allowlist))
-    rules, nesting = parse_rules(css)
+    parsed = parse_rules(css)
+    rules = parsed.rules
     messages = [
+        f"`{block.prelude}` (line {block.line}) holds CSS the check cannot read;"
+        " fix it so it can"
+        for block in parsed.unreadable
+    ]
+    messages.extend(
         f"`{block.prelude}` (line {block.line}) nests a rule;"
         " write it flat so the check can read it"
-        for block in nesting
-    ]
+        for block in parsed.nesting
+    )
     found = set()
     for index, rule in enumerate(rules):
         for earlier in most_shared_first(rule, rules[:index]):
