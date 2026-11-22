@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from functools import cache
 from pathlib import Path
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Any, Self
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Query, Request
@@ -63,7 +63,15 @@ from budget.dashboard.display.text import (
     transaction_kind,
 )
 from budget.dashboard.features import Dashboard, Feature
-from budget.dashboard.features.view_state import VIEW_STATE
+from budget.dashboard.features.view_state import (
+    DEFAULT_VIEW,
+    VIEW_STATE,
+    DashboardMode,
+    ViewState,
+    view_mode,
+    view_state,
+    view_state_controls,
+)
 from budget.dashboard.passphrase import (
     CredentialSnapshot,
     read_credentials,
@@ -78,22 +86,6 @@ from budget.profiles import Profile
 __all__ = ["create_app", "set_passphrase"]
 
 SESSION_COOKIE = "session"
-
-type DashboardMode = Literal["simple", "advanced"]
-type DashboardTab = Literal["overview", "details"]
-type ComparisonMode = Literal["amounts"]
-
-
-@dataclass(frozen=True)
-class ViewState:
-    """Presentation state carried beside the pinned report context."""
-
-    mode: DashboardMode = "simple"
-    tab: DashboardTab = "overview"
-    comparison: ComparisonMode = "amounts"
-
-
-DEFAULT_VIEW = ViewState()
 
 # The features the dashboard serves, one line each; one left out is off.
 FEATURES: tuple[Feature, ...] = (VIEW_STATE,)
@@ -192,16 +184,6 @@ def _templates(features: Sequence[Feature]) -> Environment:
     return templates
 
 
-_VIEW_STATE_CONTROLS = Environment(autoescape=select_autoescape()).from_string(
-    '<input id="active-mode" type="hidden" name="active_mode" '
-    'value="{{ mode }}" hx-swap-oob="true">'
-    '<input id="active-tab" type="hidden" name="tab" '
-    'value="{{ tab }}" hx-swap-oob="true">'
-    '<input id="comparison" type="hidden" name="comparison" '
-    'value="{{ comparison }}" hx-swap-oob="true">'
-)
-
-
 @dataclass(frozen=True)
 class DetailRequest:
     """What a detail address asks for, beside the pinned publication and date."""
@@ -266,7 +248,7 @@ class OverviewAddress(BaseModel):
             ),
             accounts=tuple(self.account) if pinned else None,
             month=self.month,
-            view=_view_state(self.mode, self.tab, self.comparison),
+            view=view_state(self.mode, self.tab, self.comparison),
         )
 
 
@@ -293,14 +275,14 @@ class ReportAddress(PinnedQuery):
 
     def asked(self) -> ReportRequest:
         """Return the report request and the presentation state it came from."""
-        view = _view_state(self.mode, self.tab, self.comparison)
+        view = view_state(self.mode, self.tab, self.comparison)
         return ReportRequest(
             pin=self.pin(),
             accounts=tuple(self.account),
             month=self.month,
             view=view,
             active_mode=(
-                view.mode if self.active_mode is None else _mode(self.active_mode)
+                view.mode if self.active_mode is None else view_mode(self.active_mode)
             ),
         )
 
@@ -339,7 +321,7 @@ class DetailAddress(BaseModel):
             self.month,
             subject,
             self.scope,
-            _view_state(self.mode, self.tab, self.comparison),
+            view_state(self.mode, self.tab, self.comparison),
         )
 
 
@@ -388,44 +370,6 @@ def _pinned_url(
             ("tab", view.tab),
             ("comparison", view.comparison),
         ]
-    )
-
-
-def _mode(value: str | None) -> DashboardMode:
-    """Return the supported mode named by `value`, defaulting to Enkel."""
-    return "advanced" if value == "advanced" else "simple"
-
-
-def _tab(value: str | None) -> DashboardTab:
-    """Return a supported tab, defaulting a malformed address to Overblik."""
-    return "details" if value == "details" else "overview"
-
-
-def _comparison(_value: str | None) -> ComparisonMode:
-    """Return the only delivered comparison."""
-    return "amounts"
-
-
-def _view_state(
-    mode: str | None,
-    tab: str | None = None,
-    comparison: str | None = None,
-) -> ViewState:
-    """Return the delivered presentation state a mode and address select."""
-    normalized_mode = _mode(mode)
-    return ViewState(
-        mode=normalized_mode,
-        tab=_tab(tab) if normalized_mode == "advanced" else "overview",
-        comparison=_comparison(comparison),
-    )
-
-
-def _view_state_controls(view: ViewState) -> str:
-    """Render the out-of-band controls every report response keeps current."""
-    return _VIEW_STATE_CONTROLS.render(
-        mode=view.mode,
-        tab=view.tab,
-        comparison=view.comparison,
     )
 
 
@@ -817,7 +761,7 @@ def _report_response(
     The address becomes this selection's own page, so back and forward reopen
     each selection the reader made.
     """
-    view = _view_state(
+    view = view_state(
         requested.view.mode,
         requested.view.tab,
         requested.view.comparison,
@@ -828,7 +772,7 @@ def _report_response(
         PinnedAddress(*requested.pin, requested.accounts, requested.month),
         view=view,
     )
-    state = _view_state_controls(view)
+    state = view_state_controls(dashboard.templates, view)
     if not requested.accounts:
         # An empty selection is a prompt, never a report of nothing.
         prompt = dashboard.templates.get_template("no_accounts.html").render()
@@ -943,7 +887,7 @@ def create_app(
                     address.pin(),
                     address.account,
                     address.month,
-                    _view_state(address.mode, address.tab, address.comparison),
+                    view_state(address.mode, address.tab, address.comparison),
                 )
             ),
         )
