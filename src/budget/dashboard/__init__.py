@@ -11,7 +11,6 @@ from datetime import date, datetime
 from functools import cache
 from pathlib import Path
 from typing import Annotated, Any, Self
-from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -33,13 +32,18 @@ from budget.analytics import (
     DetailSubject,
     HouseholdReports,
     InvalidSelectionError,
-    MonthlyOverview,
     PublicationUnavailableError,
     ReportContext,
     SpendingDetail,
 )
 from budget.dashboard import session
-from budget.dashboard.addresses import PinnedAddress, ReportRequest, pinned_url
+from budget.dashboard.addresses import (
+    PinnedAddress,
+    ReportRequest,
+    answered_url,
+    detail_url,
+    pinned_url,
+)
 from budget.dashboard.display.amounts import amount, signed_amount
 from budget.dashboard.display.months import (
     danish_date,
@@ -63,7 +67,6 @@ from budget.dashboard.display.text import (
 from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.overview import overview_feature
 from budget.dashboard.features.view_state import (
-    DEFAULT_VIEW,
     VIEW_STATE,
     ViewState,
     parse_view_state,
@@ -76,6 +79,7 @@ from budget.dashboard.passphrase import (
     require_passphrase,
     set_passphrase,
 )
+from budget.dashboard.reading import read_overview
 from budget.dashboard.throttle import LoginThrottle
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
@@ -324,36 +328,6 @@ def _refuse_login(
     return None
 
 
-def _read_overview(
-    dashboard: Dashboard,
-    pin: tuple[int, date],
-    accounts: Collection[str],
-    month: str,
-) -> MonthlyOverview | str:
-    """Return the overview a selection asks for, or a fragment saying why not.
-
-    The pinned context is used exactly as the page sent it: never re-resolved.
-    """
-    publication_id, reference_date = pin
-    try:
-        selected_month = parse_month(month)
-        context = ReportContext(
-            publication_id=publication_id,
-            account_ids=frozenset(accounts),
-            month=selected_month,
-            reference_date=reference_date,
-        )
-        with GoldStore(dashboard.profile, read_only=True) as store:
-            return HouseholdReports(store).monthly_overview(context)
-    except InvalidSelectionError as error:
-        # A failure is shown, and echoes no context the page could render.
-        return dashboard.templates.get_template("invalid_selection.html").render(
-            problems=selection_problems(error)
-        )
-    except PublicationUnavailableError:
-        return dashboard.templates.get_template("unavailable.html").render()
-
-
 def _read_activity(
     dashboard: Dashboard,
     pin: tuple[int, date],
@@ -377,47 +351,6 @@ def _read_activity(
         )
     except PublicationUnavailableError:
         return dashboard.templates.get_template("unavailable.html").render()
-
-
-def _answered_url(
-    overview_report: MonthlyOverview,
-    path: str,
-    view: ViewState = DEFAULT_VIEW,
-) -> str:
-    """Return the address of `path` for the context `overview_report` answers."""
-    answered = overview_report.context
-    return pinned_url(
-        PinnedAddress(
-            answered.publication_id,
-            answered.reference_date,
-            tuple(answered.account_ids),
-            month_value(answered.month),
-        ),
-        path,
-        view=view,
-    )
-
-
-def _detail_url(
-    answered: ReportContext,
-    kind: str,
-    subject_id: str,
-    scope: str = "month",
-    *,
-    view: ViewState = DEFAULT_VIEW,
-) -> str:
-    """Return the address of one subject's detail under the pinned `answered`."""
-    page = pinned_url(
-        PinnedAddress(
-            answered.publication_id,
-            answered.reference_date,
-            tuple(answered.account_ids),
-            month_value(answered.month),
-        ),
-        "/category",
-        view=view,
-    )
-    return f"{page}&" + urlencode([(kind, subject_id), ("scope", scope)])
 
 
 def _read_detail(
@@ -464,7 +397,7 @@ def _render_detail(
         detail=detail_report,
         title=f"{detail_report.name}, {period}",
         scope_urls={
-            scope: _detail_url(
+            scope: detail_url(
                 answered,
                 subject.kind,
                 subject.id,
@@ -473,7 +406,7 @@ def _render_detail(
             )
             for scope in ("month", "year_to_date")
         },
-        group_url=_detail_url(
+        group_url=detail_url(
             answered,
             "group",
             detail_report.group_id,
@@ -498,7 +431,7 @@ def _render_report(
     requested: ReportRequest,
 ) -> str:
     """Render the report fragment a selection asks for, or why it cannot be shown."""
-    overview_report = _read_overview(
+    overview_report = read_overview(
         dashboard,
         requested.pin,
         requested.accounts,
@@ -552,13 +485,13 @@ def _render_report(
         tab=requested.view.tab,
         comparison=requested.view.comparison,
         tab_urls=tab_urls,
-        explanation_url=_answered_url(
+        explanation_url=answered_url(
             overview_report,
             "/explanation",
             requested.view,
         ),
         detail_urls={
-            category.category_id: _detail_url(
+            category.category_id: detail_url(
                 answered,
                 "category",
                 category.category_id,
@@ -577,7 +510,7 @@ def _render_explanation(
     view: ViewState,
 ) -> str:
     """Render the explanation page of one pinned report's trust notes."""
-    overview_report = _read_overview(dashboard, pin, accounts, month)
+    overview_report = read_overview(dashboard, pin, accounts, month)
     page = dashboard.templates.get_template("explanation.html")
     if isinstance(overview_report, str):
         return page.render(failure=overview_report)
@@ -585,7 +518,7 @@ def _render_explanation(
         overview=overview_report,
         incomplete_months=incomplete_months(overview_report.coverage),
         month_label=month_label(overview_report.context.month),
-        report_url=_answered_url(overview_report, "/", view),
+        report_url=answered_url(overview_report, "/", view),
     )
 
 

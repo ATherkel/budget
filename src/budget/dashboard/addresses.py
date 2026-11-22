@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import date
 from urllib.parse import urlencode
 
+from budget.analytics import MonthlyOverview, ReportContext
+from budget.dashboard.display.months import month_value
 from budget.dashboard.features.view_state import DEFAULT_VIEW, DashboardMode, ViewState
 
 
@@ -47,3 +49,35 @@ def pinned_url(
             ("comparison", view.comparison),
         ]
     )
+
+
+def _answered_address(answered: ReportContext) -> PinnedAddress:
+    """Return the pinned address of the context a report answered."""
+    return PinnedAddress(
+        answered.publication_id,
+        answered.reference_date,
+        tuple(answered.account_ids),
+        month_value(answered.month),
+    )
+
+
+def answered_url(
+    overview_report: MonthlyOverview,
+    path: str,
+    view: ViewState = DEFAULT_VIEW,
+) -> str:
+    """Return the address of `path` for the context `overview_report` answers."""
+    return pinned_url(_answered_address(overview_report.context), path, view=view)
+
+
+def detail_url(
+    answered: ReportContext,
+    kind: str,
+    subject_id: str,
+    scope: str = "month",
+    *,
+    view: ViewState = DEFAULT_VIEW,
+) -> str:
+    """Return the address of one subject's detail under the pinned `answered`."""
+    page = pinned_url(_answered_address(answered), "/category", view=view)
+    return f"{page}&" + urlencode([(kind, subject_id), ("scope", scope)])
