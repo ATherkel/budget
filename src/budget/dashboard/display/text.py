@@ -10,6 +10,7 @@ from budget.analytics import (
 from budget.analytics.trust import AccountMonthState
 from budget.dashboard.display.amounts import amount
 from budget.dashboard.display.months import danish_date, month_label
+from budget.gold.models import Coverage
 
 _TRANSACTION_KINDS = {
     "income": "Indtægt",
@@ -86,6 +87,15 @@ def balance_observation(
     if observation.balance_after is None:
         return f"Ukendt den {on}"
     return f"{amount(observation.balance_after, currency)} den {on}"
+
+
+def coverage_note(status: Coverage, incomplete: list[str], period: str) -> str:
+    """Return the sentence that says what the figures for `period` lack.
+
+    `incomplete` names each account that lacks something; with none, no
+    selected account has history in the period.
+    """
+    return f"{status} {incomplete} {period}"
 
 
 def danish_list(items: list[str]) -> str:

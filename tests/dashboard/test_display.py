@@ -13,6 +13,7 @@ from budget.dashboard.display.months import danish_date
 from budget.dashboard.display.text import (
     balance_observation,
     coverage_label,
+    coverage_note,
     transaction_kind,
 )
 from budget.gold.models import TransactionType
@@ -109,3 +110,9 @@ def test_a_stated_balance_reads_as_its_amount_on_its_date() -> None:
     shown = balance_observation(observation, "DKK", "Ingen observation i måneden")
 
     assert shown == "\N{MINUS SIGN}1.234,50 kr. den 03.02.2026"
+
+
+def test_a_coverage_note_with_no_account_in_history_says_none_has_history() -> None:
+    note = coverage_note("no_data", [], "februar 2026")
+
+    assert note == "Ingen af de valgte konti har historik i februar 2026."
