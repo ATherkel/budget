@@ -88,3 +88,9 @@ def find_duplicates(css: str, allowlist: Iterable[tuple[str, str]] = ()) -> list
         if (rule, earlier) not in found
     )
     return messages
+
+
+def read_allowlist(text: str) -> list[tuple[str, str]]:
+    """Return the `rule | earlier rule` pairs of an allowlist file."""
+    del text  # Stub until the green commit reads it.
+    return []

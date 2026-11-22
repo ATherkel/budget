@@ -1,7 +1,7 @@
 # Copyright 2026 Therkel
 """The duplicate CSS check names the existing rule to reuse."""
 
-from tests.css_duplicates import find_duplicates
+from tests.css_duplicates import find_duplicates, read_allowlist
 
 CARD_AND_PANEL = """\
 .card {
@@ -99,4 +99,18 @@ def test_an_allowlist_entry_that_is_no_longer_a_duplicate_fails() -> None:
 
     assert find_duplicates(CARD_AND_PANEL, allowlist=allowlist) == [
         "allowlist entry `.panel` / `.banner` is no longer a duplicate; remove it"
+    ]
+
+
+def test_the_allowlist_holds_one_pair_per_line() -> None:
+    text = """\
+# Duplicates the owner has approved.
+
+.panel | .card
+.footer-inner | .page-heading h1, .login-intro h1
+"""
+
+    assert read_allowlist(text) == [
+        (".panel", ".card"),
+        (".footer-inner", ".page-heading h1, .login-intro h1"),
     ]
