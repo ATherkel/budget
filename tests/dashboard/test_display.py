@@ -10,7 +10,11 @@ import pytest
 from budget.analytics import ActivityRow
 from budget.analytics.trust import AccountMonthState
 from budget.dashboard.display.months import danish_date
-from budget.dashboard.display.text import coverage_label, transaction_kind
+from budget.dashboard.display.text import (
+    balance_observation,
+    coverage_label,
+    transaction_kind,
+)
 from budget.gold.models import TransactionType
 
 
@@ -83,3 +87,9 @@ def test_an_account_months_coverage_reads_in_danish(
     state: AccountMonthState, label: str
 ) -> None:
     assert coverage_label(state) == label
+
+
+def test_a_balance_never_observed_reads_as_the_missing_text() -> None:
+    shown = balance_observation(None, "DKK", "Ingen tidligere observation")
+
+    assert shown == "Ingen tidligere observation"

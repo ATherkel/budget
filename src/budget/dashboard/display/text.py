@@ -1,7 +1,12 @@
 # Copyright 2026 Therkel
 """Danish sentences and lists the dashboard shows its reader."""
 
-from budget.analytics import ActivityRow, InvalidSelectionError, ReportCoverage
+from budget.analytics import (
+    ActivityRow,
+    BankBalanceObservation,
+    InvalidSelectionError,
+    ReportCoverage,
+)
 from budget.analytics.trust import AccountMonthState
 from budget.dashboard.display.months import danish_date, month_label
 
@@ -68,6 +73,13 @@ def transaction_kind(row: ActivityRow) -> str:
 def coverage_label(state: AccountMonthState) -> str:
     """Return how fully an account-month is covered, such as `delvist dækket`."""
     return _COVERAGE_LABELS[state]
+
+
+def balance_observation(
+    observation: BankBalanceObservation | None, currency: str, missing: str
+) -> str:
+    """Return the balance the bank stated on a date, or `missing` with none."""
+    return f"{observation} {currency} {missing}"
 
 
 def danish_list(items: list[str]) -> str:
