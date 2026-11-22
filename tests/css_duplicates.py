@@ -27,6 +27,21 @@ def declaration(text: str) -> str:
     return f"{name.strip().lower()}: {' '.join(value.split())}"
 
 
+def enclosing_preludes(css: str, position: int) -> list[str]:
+    """Return the preludes of the blocks still open at `position`, outermost first."""
+    open_blocks: list[str] = []
+    start = 0
+    for index, character in enumerate(css[:position]):
+        if character == "{":
+            open_blocks.append(" ".join(css[start:index].split()))
+            start = index + 1
+        elif character in "};":
+            if character == "}":
+                open_blocks.pop()
+            start = index + 1
+    return open_blocks
+
+
 def parse_rules(css: str) -> list[Rule]:
     """Return the rules of `css` in source order."""
     # Blank each comment but keep its line breaks, so line numbers still hold.
@@ -38,7 +53,9 @@ def parse_rules(css: str) -> list[Rule]:
         body = match.group(2).split(";")
         rules.append(
             Rule(
-                selector=" ".join(prelude.split()),
+                selector=" ".join(
+                    [*enclosing_preludes(css, match.start()), *prelude.split()]
+                ),
                 line=css.count("\n", 0, start) + 1,
                 declarations=frozenset(declaration(d) for d in body if d.strip()),
             )
