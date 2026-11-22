@@ -45,13 +45,14 @@ def parse_rules(css: str) -> list[Rule]:
 
 def find_duplicates(css: str, allowlist: Iterable[tuple[str, str]] = ()) -> list[str]:
     """Return one message per pair of rules sharing 3 or more declarations."""
-    del allowlist  # Stub until the green commit reads it.
+    allowed = set(allowlist)
     rules = parse_rules(css)
     messages = []
     for index, rule in enumerate(rules):
         for earlier in rules[:index]:
             shared = len(rule.declarations & earlier.declarations)
-            if shared >= SHARED_LIMIT:
+            pair = (rule.selector, earlier.selector)
+            if shared >= SHARED_LIMIT and pair not in allowed:
                 messages.append(
                     f"`{rule.selector}` shares {shared} declarations with"
                     f" `{earlier.selector}` (line {earlier.line});"
