@@ -17,7 +17,14 @@ from fastapi import FastAPI, Form, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
-from jinja2 import Environment, PackageLoader, select_autoescape
+from jinja2 import (
+    ChoiceLoader,
+    Environment,
+    FileSystemLoader,
+    PackageLoader,
+    PrefixLoader,
+    select_autoescape,
+)
 from pydantic import BaseModel, model_validator
 
 from budget.analytics import (
@@ -103,10 +110,16 @@ def _static_url(name: str) -> str:
     return f"/static/{name}?v={_static_digest(name)}"
 
 
-def _templates() -> Environment:
-    """Return the templates one dashboard renders its pages from."""
+def _templates(features: Sequence[Feature]) -> Environment:
+    """Return the templates one dashboard renders its pages from.
+
+    A feature's own templates are named after its folder, as `<folder>/<file>`.
+    """
+    own = {
+        feature.folder.name: FileSystemLoader(feature.folder) for feature in features
+    }
     templates = Environment(
-        loader=PackageLoader("budget.dashboard"),
+        loader=ChoiceLoader([PackageLoader("budget.dashboard"), PrefixLoader(own)]),
         autoescape=select_autoescape(),
     )
     templates.filters["amount"] = amount
@@ -783,7 +796,7 @@ def create_app(
     # The htmx script ships in the package: nothing is fetched from the internet.
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")
     throttle = LoginThrottle()
-    templates = _templates()
+    templates = _templates(features)
 
     @app.exception_handler(RequestValidationError)
     def malformed_address(request: Request, _error: RequestValidationError) -> Response:
@@ -824,6 +837,8 @@ def create_app(
         return start_session(respond(), authenticated_as)
 
     dashboard = Dashboard(profile, clock, templates, app, for_reader)
+    for feature in features:
+        feature.register(dashboard)
 
     @app.get("/")
     def overview(
