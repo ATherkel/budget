@@ -1,0 +1,4 @@
+# CSS rules allowed to share 3 or more declarations with an earlier rule.
+# One pair per line: `rule | earlier rule`, selectors as the check prints them.
+# Only the repository owner approves a new entry. Remove an entry when the
+# duplicate goes; the check fails on an entry that no longer matches.

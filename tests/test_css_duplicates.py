@@ -1,7 +1,11 @@
 # Copyright 2026 Therkel
 """The duplicate CSS check names the existing rule to reuse."""
 
+from pathlib import Path
+
 from tests.css_duplicates import find_duplicates, read_allowlist
+
+REPOSITORY = Path(__file__).resolve().parents[1]
 
 CARD_AND_PANEL = """\
 .card {
@@ -114,3 +118,12 @@ def test_the_allowlist_holds_one_pair_per_line() -> None:
         (".panel", ".card"),
         (".footer-inner", ".page-heading h1, .login-intro h1"),
     ]
+
+
+def test_app_css_repeats_no_rule_outside_the_allowlist() -> None:
+    css = (REPOSITORY / "src/budget/dashboard/static/app.css").read_text("utf-8")
+    allowlist = read_allowlist(
+        (REPOSITORY / "css-duplicates-allowlist.txt").read_text("utf-8")
+    )
+
+    assert find_duplicates(css, allowlist) == []
