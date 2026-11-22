@@ -79,7 +79,9 @@ def balance_observation(
     observation: BankBalanceObservation | None, currency: str, missing: str
 ) -> str:
     """Return the balance the bank stated on a date, or `missing` with none."""
-    return f"{observation} {currency} {missing}"
+    if observation is None:
+        return missing
+    return f"{observation} {currency}"
 
 
 def danish_list(items: list[str]) -> str:
