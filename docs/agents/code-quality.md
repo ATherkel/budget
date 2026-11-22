@@ -3,10 +3,10 @@ type: agents
 ---
 # Code Quality Gate
 
-All Python code and templates in this repository must pass these checks. CI
-runs them in `.github/workflows/quality.yml` and blocks the merge when any one
-fails, so run them locally before every commit that touches Python or
-templates.
+All Python code, templates and CSS in this repository must pass these checks.
+CI runs them in `.github/workflows/quality.yml`, and the duplicate CSS check in
+`.github/workflows/pytest.yml`, and blocks the merge when any one fails, so run
+them locally before every commit that touches Python, templates or CSS.
 
 | Check | Tool | Local command |
 | --- | --- | --- |
@@ -30,10 +30,9 @@ Configuration lives in `pyproject.toml`; djlint's line rule lives in
 `.djlint_rules.yaml`, because its own `max_line_length` only steers the
 formatter. djlint skips a line that holds a comment, so
 `tests/test_template_lint.py` also checks every template line's length.
-The duplicate CSS check runs in the pytest CI job (`.github/workflows/pytest.yml`).
-It names the earlier rule to reuse. Today's duplicates sit in
-`css-duplicates-allowlist.txt`, one `rule | earlier rule` pair per line, and an
-entry that no longer matches fails the check, so the list only shrinks.
+The duplicate CSS check names the earlier rule to reuse. Approved duplicates sit
+in `css-duplicates-allowlist.txt`, one `rule | earlier rule` pair per line. An
+entry that no longer matches fails the check, so a stale entry cannot linger.
 Dev tools are pinned in `uv.lock`. `.pre-commit-config.yaml` runs djlint and
 the duplicate CSS check on commit once installed with `uvx pre-commit install`.
 
