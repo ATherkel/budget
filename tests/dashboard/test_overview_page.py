@@ -225,7 +225,11 @@ def test_scripts_and_styles_are_addressed_by_their_content(
 
     assert addressed == {
         name: (hashlib.sha256((shipped / name).read_bytes()).hexdigest()[:12], True)
-        for name in ("app.css", "htmx.min.js", "app.js")
+        for name in (
+            *("base.css", "layout.css", "forms.css", "report.css"),
+            *("tables.css", "states.css", "login.css"),
+            *("htmx.min.js", "app.js"),
+        )
     }
 
 
