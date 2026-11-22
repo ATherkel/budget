@@ -39,7 +39,8 @@ holding its view, its templates, its stylesheets and its own display helpers.
 Its package exports a `Feature`: the folder, and a `register` function that
 adds its routes to the `Dashboard` it is handed. `FEATURES` in
 `budget.dashboard` lists the registered features one line each; a feature left
-out is off. A feature that serves no page of its own, such as `view_state`
+out is off. The overview shows the report and the pickers, so it needs `report`
+and `view_state` registered too. A feature that serves no page of its own, such as `view_state`
 (the month, mode and account pickers), adds no routes: the pages that show
 it include its templates. A feature's templates are named
 `<folder>/<file>.html`, and `base.html` links every stylesheet in its folder,

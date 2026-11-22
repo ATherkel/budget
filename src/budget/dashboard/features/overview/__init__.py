@@ -28,7 +28,8 @@ from budget.dashboard.features.view_state import (
 from budget.gold import ReportingMonth
 from budget.gold.store import GoldStore
 
-# Renders the report fragment one request selects, or why it cannot be shown.
+# Renders the report fragment one request selects, or why it cannot be shown;
+# an empty selection gets the prompt to select an account.
 type ReportRenderer = Callable[[Dashboard, ReportRequest], str]
 
 

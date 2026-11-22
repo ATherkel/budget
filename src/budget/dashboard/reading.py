@@ -1,5 +1,5 @@
 # Copyright 2026 Therkel
-"""Reading the report a pinned selection asks for, which several pages show."""
+"""Reading the overview a pinned selection asks for, which several pages show."""
 
 from collections.abc import Collection
 from datetime import date
