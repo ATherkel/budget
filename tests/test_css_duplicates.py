@@ -127,3 +127,24 @@ def test_app_css_repeats_no_rule_outside_the_allowlist() -> None:
     )
 
     assert find_duplicates(css, allowlist) == []
+
+
+def test_a_rule_after_a_top_level_statement_is_named_by_its_own_selector() -> None:
+    css = """\
+@import url("base.css");
+.card {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.panel {
+  color: var(--ink);
+  padding: 1rem;
+  border: 1px solid var(--line);
+}
+"""
+
+    assert find_duplicates(css) == [
+        "`.panel` shares 3 declarations with `.card` (line 2); reuse `.card`"
+    ]
