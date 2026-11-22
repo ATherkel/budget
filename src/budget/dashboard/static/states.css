@@ -36,18 +36,6 @@
   color: var(--ink-soft);
 }
 
-.empty-mark {
-  display: grid;
-  width: 2.5rem;
-  height: 2.5rem;
-  margin-bottom: 0.85rem;
-  place-items: center;
-  color: var(--primary-strong);
-  background: var(--primary-tint);
-  border-radius: 50%;
-  font-size: 1.5rem;
-}
-
 .report-state {
   display: grid;
   min-height: 18rem;
