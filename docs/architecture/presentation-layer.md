@@ -50,7 +50,8 @@ and category page need it registered to explain a failure, and a dashboard
 without it answers a malformed address with FastAPI's own JSON. `safe_return`
 lets the explanation page link back to the address in its `return_to`, but only
 to the overview or a category page on this dashboard; without it, or for any
-other address, the link goes to the overview. A feature that
+other address, the link goes to the overview. No page passes `return_to` yet;
+that is pending: [#552](https://github.com/ATherkel/budget/issues/552). A feature that
 serves no page of its own, such as `view_state` (the month, mode and account pickers), adds no routes: the pages that show
 it include its templates. A feature's templates are named
 `<folder>/<file>.html`, and `base.html` links every stylesheet in its folder,
