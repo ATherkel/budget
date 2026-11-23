@@ -88,6 +88,41 @@ def test_a_cross_file_overlap_reports_both_locations_and_shared_declarations(
     ]
 
 
+def test_an_overlap_inside_a_media_query_retains_its_grouping_context(
+    tmp_path: Path,
+) -> None:
+    base = tmp_path / "base.css"
+    base.write_text(
+        """\
+.card {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+""",
+        encoding="utf-8",
+    )
+    responsive = tmp_path / "responsive.css"
+    responsive.write_text(
+        """\
+@media (max-width: 48rem) {
+  .panel {
+    color: var(--ink);
+    padding: 1rem;
+    border: 1px solid var(--line);
+  }
+}
+""",
+        encoding="utf-8",
+    )
+
+    report = report_overlaps((base, responsive))
+
+    assert [
+        (finding.earlier.context, finding.later.context) for finding in report.findings
+    ] == [("", "@media (max-width: 48rem)")]
+
+
 def test_rules_sharing_two_declarations_pass() -> None:
     css = """\
 .card {
