@@ -48,27 +48,40 @@ class Report:
     diagnostics: tuple[Diagnostic, ...]
 
 
-def report_overlaps(paths: Iterable[Path]) -> Report:
-    """Report declarations shared by rules in `paths`."""
-    rules: list[tuple[Path, Rule]] = []
-    for path in paths:
-        nodes = tinycss2.parse_stylesheet(
-            path.read_text(encoding="utf-8"),
-            skip_comments=True,
-            skip_whitespace=True,
-        )
-        for node in nodes:
-            if not isinstance(node, QualifiedRule):
-                continue
+@dataclass(frozen=True)
+class Rule:
+    """One CSS rule: its selector list, first line and declarations."""
+
+    selector: str
+    line: int
+    declarations: frozenset[str]
+
+
+@dataclass(frozen=True)
+class _GroupedRule:
+    """A parsed style rule with its stylesheet path and at-rule context."""
+
+    path: Path
+    rule: Rule
+    context: str
+
+
+def _grouped_rules(
+    nodes: Sequence[Node], path: Path, context: str = ""
+) -> list[_GroupedRule]:
+    """Return the style rules in `nodes`, recursively entering media blocks."""
+    rules: list[_GroupedRule] = []
+    for node in nodes:
+        if isinstance(node, QualifiedRule):
             declarations = tinycss2.parse_blocks_contents(
                 node.content,
                 skip_comments=True,
                 skip_whitespace=True,
             )
             rules.append(
-                (
-                    path,
-                    Rule(
+                _GroupedRule(
+                    path=path,
+                    rule=Rule(
                         selector=text(node.prelude),
                         line=node.source_line,
                         declarations=frozenset(
@@ -77,36 +90,65 @@ def report_overlaps(paths: Iterable[Path]) -> Report:
                             if isinstance(item, Declaration)
                         ),
                     ),
+                    context=context,
                 )
             )
+        elif (
+            isinstance(node, AtRule)
+            and node.at_keyword.lower() == "media"
+            and node.content is not None
+        ):
+            inner = tinycss2.parse_rule_list(
+                node.content,
+                skip_comments=True,
+                skip_whitespace=True,
+            )
+            media = f"@{node.at_keyword} {text(node.prelude)}"
+            rules.extend(
+                _grouped_rules(
+                    inner,
+                    path,
+                    " ".join(filter(None, [context, media])),
+                )
+            )
+    return rules
+
+
+def report_overlaps(paths: Iterable[Path]) -> Report:
+    """Report declarations shared by rules in `paths`."""
+    rules: list[_GroupedRule] = []
+    for path in paths:
+        nodes = tinycss2.parse_stylesheet(
+            path.read_text(encoding="utf-8"),
+            skip_comments=True,
+            skip_whitespace=True,
+        )
+        rules.extend(_grouped_rules(nodes, path))
 
     findings: list[Overlap] = []
-    for index, (path, rule) in enumerate(rules):
-        for earlier_path, earlier in rules[:index]:
-            shared = rule.declarations & earlier.declarations
+    for index, grouped in enumerate(rules):
+        for earlier in rules[:index]:
+            shared = grouped.rule.declarations & earlier.rule.declarations
             if len(shared) < SHARED_LIMIT:
                 continue
             findings.append(
                 Overlap(
-                    later=Location(path=path, line=rule.line, selector=rule.selector),
+                    later=Location(
+                        path=grouped.path,
+                        line=grouped.rule.line,
+                        selector=grouped.rule.selector,
+                        context=grouped.context,
+                    ),
                     earlier=Location(
-                        path=earlier_path,
-                        line=earlier.line,
-                        selector=earlier.selector,
+                        path=earlier.path,
+                        line=earlier.rule.line,
+                        selector=earlier.rule.selector,
+                        context=earlier.context,
                     ),
                     declarations=tuple(sorted(shared)),
                 )
             )
     return Report(findings=tuple(findings), diagnostics=())
-
-
-@dataclass(frozen=True)
-class Rule:
-    """One CSS rule: its selector list, first line and declarations."""
-
-    selector: str
-    line: int
-    declarations: frozenset[str]
 
 
 @dataclass(frozen=True)
