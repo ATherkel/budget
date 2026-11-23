@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.css_duplicates import find_duplicates, read_allowlist
+from tests.css_duplicates import find_duplicates, read_allowlist, report_overlaps
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 
@@ -29,6 +29,62 @@ CARD_AND_PANEL = """\
 def test_a_rule_sharing_three_declarations_names_the_rule_to_reuse() -> None:
     assert find_duplicates(CARD_AND_PANEL) == [
         "`.panel` (line 7) shares 3 declarations with `.card` (line 1); reuse `.card`"
+    ]
+
+
+def test_a_cross_file_overlap_reports_both_locations_and_shared_declarations(
+    tmp_path: Path,
+) -> None:
+    base = tmp_path / "base.css"
+    base.write_text(
+        """\
+.card {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+""",
+        encoding="utf-8",
+    )
+    feature = tmp_path / "feature.css"
+    feature.write_text(
+        """\
+.panel {
+  color: var(--ink);
+  padding: 1rem;
+  border: 1px solid var(--line);
+}
+""",
+        encoding="utf-8",
+    )
+
+    report = report_overlaps((base, feature))
+
+    assert [
+        (
+            finding.earlier.path.name,
+            finding.earlier.line,
+            finding.earlier.selector,
+            finding.later.path.name,
+            finding.later.line,
+            finding.later.selector,
+            finding.declarations,
+        )
+        for finding in report.findings
+    ] == [
+        (
+            "base.css",
+            1,
+            ".card",
+            "feature.css",
+            1,
+            ".panel",
+            (
+                "border: 1px solid var(--line)",
+                "color: var(--ink)",
+                "padding: 1rem",
+            ),
+        )
     ]
 
 

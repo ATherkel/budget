@@ -3,12 +3,57 @@
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 import tinycss2
 from tinycss2.ast import AtRule, Declaration, Node, ParseError, QualifiedRule
 
 # Two rules sharing this many declarations repeat each other.
 SHARED_LIMIT = 3
+
+
+@dataclass(frozen=True)
+class Location:
+    """Where a CSS rule starts and how its surrounding at-rules read."""
+
+    path: Path
+    line: int
+    selector: str
+    context: str = ""
+
+
+@dataclass(frozen=True)
+class Overlap:
+    """Two rules and the declarations that they literally share."""
+
+    later: Location
+    earlier: Location
+    declarations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Diagnostic:
+    """A stylesheet that could not be read, parsed, or analyzed."""
+
+    path: Path
+    line: int | None
+    message: str
+
+
+@dataclass(frozen=True)
+class Report:
+    """Advisory overlaps and the failures that prevented a complete report."""
+
+    findings: tuple[Overlap, ...]
+    diagnostics: tuple[Diagnostic, ...]
+
+
+def report_overlaps(paths: Iterable[Path]) -> Report:
+    """Report declarations shared by rules in `paths`."""
+    paths = tuple(paths)
+    if not paths:
+        return Report(findings=(), diagnostics=())
+    return Report(findings=(), diagnostics=())
 
 
 @dataclass(frozen=True)
