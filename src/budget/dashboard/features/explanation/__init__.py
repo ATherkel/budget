@@ -33,7 +33,9 @@ def _render_explanation(
         overview=overview_report,
         incomplete_months=incomplete_months(overview_report.coverage),
         month_label=month_label(overview_report.context.month),
-        report_url=back_url(return_to, answered_url(overview_report, "/", view)),
+        report_url=back_url(
+            dashboard, return_to, answered_url(overview_report, "/", view)
+        ),
     )
 
 
