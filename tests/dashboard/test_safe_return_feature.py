@@ -31,6 +31,12 @@ PINNED = {
     "account": [CURRENT, SAVINGS],
     "month": "2026-03",
 }
+# Where the back link went before safe return: the overview of the same view.
+OVERVIEW_PAGE = (
+    "/?publication=1&reference_date=2026-05-14"
+    f"&account={CURRENT}&account={SAVINGS}&month=2026-03"
+    "&mode=simple&tab=overview&comparison=amounts"
+)
 CATEGORY_PAGE = (
     "/category?publication=1&reference_date=2026-05-14"
     f"&account={CURRENT}&account={SAVINGS}&month=2026-03"
@@ -61,3 +67,11 @@ def test_the_explanation_page_links_back_to_the_page_the_reader_came_from(
     client = _client(tmp_path, (ERRORS, VIEW_STATE, EXPLANATION, SAFE_RETURN))
 
     assert _back_link(client, CATEGORY_PAGE) == CATEGORY_PAGE
+
+
+def test_without_the_safe_return_feature_the_explanation_page_links_to_the_overview(
+    tmp_path: Path,
+) -> None:
+    client = _client(tmp_path, (ERRORS, VIEW_STATE, EXPLANATION))
+
+    assert _back_link(client, CATEGORY_PAGE) == OVERVIEW_PAGE
