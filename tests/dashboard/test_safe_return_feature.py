@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from budget.dashboard import create_app
+from budget.dashboard import FEATURES, create_app
 from budget.dashboard.features import Feature
 from budget.dashboard.features.errors import ERRORS
 from budget.dashboard.features.explanation import EXPLANATION
@@ -50,7 +50,7 @@ def _client(tmp_path: Path, features: Sequence[Feature]) -> TestClient:
     with GoldStore(profile) as store:
         store.publish(GoldResult(PUBLICATION, RECORDS), RECIPE, CONFIGURATION)
     client = TestClient(
-        create_app(profile, clock=lambda: NOW, features=(LOGIN, *features)),
+        create_app(profile, clock=lambda: NOW, features=features),
         follow_redirects=False,
     )
     client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
@@ -65,7 +65,15 @@ def _back_link(client: TestClient, return_to: str) -> str:
 def test_the_explanation_page_links_back_to_the_page_the_reader_came_from(
     tmp_path: Path,
 ) -> None:
-    client = _client(tmp_path, (ERRORS, VIEW_STATE, EXPLANATION, SAFE_RETURN))
+    client = _client(tmp_path, (LOGIN, ERRORS, VIEW_STATE, EXPLANATION, SAFE_RETURN))
+
+    assert _back_link(client, CATEGORY_PAGE) == CATEGORY_PAGE
+
+
+def test_the_dashboard_links_the_explanation_page_back_where_the_reader_was(
+    tmp_path: Path,
+) -> None:
+    client = _client(tmp_path, FEATURES)
 
     assert _back_link(client, CATEGORY_PAGE) == CATEGORY_PAGE
 
@@ -87,7 +95,7 @@ def test_the_explanation_page_never_links_back_off_the_dashboards_own_pages(
     tmp_path: Path,
     return_to: str,
 ) -> None:
-    client = _client(tmp_path, (ERRORS, VIEW_STATE, EXPLANATION, SAFE_RETURN))
+    client = _client(tmp_path, (LOGIN, ERRORS, VIEW_STATE, EXPLANATION, SAFE_RETURN))
 
     assert _back_link(client, return_to) == OVERVIEW_PAGE
 
@@ -95,6 +103,6 @@ def test_the_explanation_page_never_links_back_off_the_dashboards_own_pages(
 def test_without_the_safe_return_feature_the_explanation_page_links_to_the_overview(
     tmp_path: Path,
 ) -> None:
-    client = _client(tmp_path, (ERRORS, VIEW_STATE, EXPLANATION))
+    client = _client(tmp_path, (LOGIN, ERRORS, VIEW_STATE, EXPLANATION))
 
     assert _back_link(client, CATEGORY_PAGE) == OVERVIEW_PAGE
