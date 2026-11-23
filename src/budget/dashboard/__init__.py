@@ -39,6 +39,7 @@ from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.category import CATEGORY
 from budget.dashboard.features.errors import ERRORS
 from budget.dashboard.features.explanation import EXPLANATION
+from budget.dashboard.features.safe_return import SAFE_RETURN
 from budget.dashboard.features.login import LOGIN
 from budget.dashboard.features.overview import overview_feature
 from budget.dashboard.features.report import REPORT, render_report
@@ -186,6 +187,7 @@ FEATURES: tuple[Feature, ...] = (
     REPORT,
     CATEGORY,
     EXPLANATION,
+    SAFE_RETURN,
 )
 
 
