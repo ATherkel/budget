@@ -50,10 +50,54 @@ class Report:
 
 def report_overlaps(paths: Iterable[Path]) -> Report:
     """Report declarations shared by rules in `paths`."""
-    paths = tuple(paths)
-    if not paths:
-        return Report(findings=(), diagnostics=())
-    return Report(findings=(), diagnostics=())
+    rules: list[tuple[Path, Rule]] = []
+    for path in paths:
+        nodes = tinycss2.parse_stylesheet(
+            path.read_text(encoding="utf-8"),
+            skip_comments=True,
+            skip_whitespace=True,
+        )
+        for node in nodes:
+            if not isinstance(node, QualifiedRule):
+                continue
+            declarations = tinycss2.parse_blocks_contents(
+                node.content,
+                skip_comments=True,
+                skip_whitespace=True,
+            )
+            rules.append(
+                (
+                    path,
+                    Rule(
+                        selector=text(node.prelude),
+                        line=node.source_line,
+                        declarations=frozenset(
+                            declaration(item)
+                            for item in declarations
+                            if isinstance(item, Declaration)
+                        ),
+                    ),
+                )
+            )
+
+    findings: list[Overlap] = []
+    for index, (path, rule) in enumerate(rules):
+        for earlier_path, earlier in rules[:index]:
+            shared = rule.declarations & earlier.declarations
+            if len(shared) < SHARED_LIMIT:
+                continue
+            findings.append(
+                Overlap(
+                    later=Location(path=path, line=rule.line, selector=rule.selector),
+                    earlier=Location(
+                        path=earlier_path,
+                        line=earlier.line,
+                        selector=earlier.selector,
+                    ),
+                    declarations=tuple(sorted(shared)),
+                )
+            )
+    return Report(findings=tuple(findings), diagnostics=())
 
 
 @dataclass(frozen=True)
