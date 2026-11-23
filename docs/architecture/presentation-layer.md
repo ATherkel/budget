@@ -47,7 +47,10 @@ itself, the session cookie and the passphrase stay in `budget.dashboard`, so a
 dashboard without `login` still refuses every page. `errors` explains why an
 address is malformed or a page's figures cannot be shown: the overview, report
 and category page need it registered to explain a failure, and a dashboard
-without it answers a malformed address with FastAPI's own JSON. A feature that
+without it answers a malformed address with FastAPI's own JSON. `safe_return`
+lets the explanation page link back to the address in its `return_to`, but only
+to the overview or a category page on this dashboard; without it, or for any
+other address, the link goes to the overview. A feature that
 serves no page of its own, such as `view_state` (the month, mode and account pickers), adds no routes: the pages that show
 it include its templates. A feature's templates are named
 `<folder>/<file>.html`, and `base.html` links every stylesheet in its folder,
