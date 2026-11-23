@@ -70,6 +70,19 @@ def test_the_explanation_page_links_back_to_the_page_the_reader_came_from(
     assert _back_link(client, CATEGORY_PAGE) == CATEGORY_PAGE
 
 
+def test_the_explanation_page_links_back_to_the_overview_view_the_reader_came_from(
+    tmp_path: Path,
+) -> None:
+    client = _client(tmp_path, (LOGIN, ERRORS, VIEW_STATE, EXPLANATION, SAFE_RETURN))
+    advanced_details = (
+        "/?publication=1&reference_date=2026-05-14"
+        f"&account={CURRENT}&month=2026-03"
+        "&mode=advanced&tab=details&comparison=amounts"
+    )
+
+    assert _back_link(client, advanced_details) == advanced_details
+
+
 def test_the_dashboard_links_the_explanation_page_back_where_the_reader_was(
     tmp_path: Path,
 ) -> None:
