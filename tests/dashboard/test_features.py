@@ -7,13 +7,15 @@ is driven in-process.
 
 import hashlib
 import re
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from budget.dashboard import create_app
+import budget.dashboard.features
+from budget.dashboard import FEATURES, create_app
 from budget.dashboard.features import Feature
 from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
 from tests.dashboard.pages import read
@@ -21,6 +23,7 @@ from tests.dashboard.sample_feature import SAMPLE
 
 NOW = datetime(2026, 5, 14, 9, 0, tzinfo=UTC)
 STYLESHEET = re.compile(r'<link rel="stylesheet" href="([^"]+)">')
+FEATURES_FOLDER = Path(budget.dashboard.features.__file__).parent
 
 
 def logged_in(tmp_path: Path, features: tuple[Feature, ...]) -> TestClient:
@@ -81,6 +84,25 @@ def test_a_feature_folder_serves_its_stylesheets_and_no_other_file(
     }
 
     assert served == {"sample.css": 200, "page.html": 404, "__init__.py": 404}
+
+
+def misplaced(features: Sequence[Feature]) -> list[str]:
+    """Return each feature whose folder isn't its own package in `features/`."""
+    return [
+        str(feature.folder)
+        for feature in features
+        if feature.folder.parent != FEATURES_FOLDER
+        or not (feature.folder / "__init__.py").is_file()
+    ]
+
+
+def test_a_feature_outside_the_features_folder_is_reported() -> None:
+    # The sample lives under tests/, so it stands in for a stray feature.
+    assert misplaced((SAMPLE,)) == [str(SAMPLE.folder)]
+
+
+def test_every_registered_feature_is_its_own_package_in_the_features_folder() -> None:
+    assert misplaced(FEATURES) == []
 
 
 def test_every_page_links_a_registered_features_stylesheet_by_its_content(
