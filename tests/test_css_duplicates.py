@@ -165,6 +165,69 @@ def test_declaration_identity_preserves_case_and_string_whitespace_but_normalize
     )
 
 
+def test_parse_and_unsupported_syntax_failures_are_separate_diagnostics(
+    tmp_path: Path,
+) -> None:
+    base = tmp_path / "base.css"
+    base.write_text(
+        """\
+.base {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+""",
+        encoding="utf-8",
+    )
+    copy = tmp_path / "copy.css"
+    copy.write_text(
+        """\
+.copy {
+  color: var(--ink);
+  padding: 1rem;
+  border: 1px solid var(--line);
+}
+""",
+        encoding="utf-8",
+    )
+    broken = tmp_path / "broken.css"
+    broken.write_text(".broken { color red; }\n", encoding="utf-8")
+    nested = tmp_path / "nested.css"
+    nested.write_text(
+        ".outer { color: red; &:hover { color: blue; } }\n",
+        encoding="utf-8",
+    )
+    unknown = tmp_path / "unknown.css"
+    unknown.write_text(
+        "@unknown feature { .child { color: red; } }\n",
+        encoding="utf-8",
+    )
+
+    report = report_overlaps((base, copy, broken, nested, unknown))
+
+    assert (
+        [
+            (finding.earlier.path.name, finding.later.path.name)
+            for finding in report.findings
+        ],
+        [
+            (diagnostic.path.name, diagnostic.line, diagnostic.message)
+            for diagnostic in report.diagnostics
+        ],
+    ) == (
+        [("base.css", "copy.css")],
+        [
+            (
+                "broken.css",
+                1,
+                "parse error: Stop token reached before {} block for a qualified rule.",
+            ),
+            ("nested.css", 1, "unsupported nested rule inside `.outer`"),
+            ("unknown.css", 1, "unsupported at-rule block `@unknown feature`"),
+        ],
+    )
+
+
 def test_rules_sharing_two_declarations_pass() -> None:
     css = """\
 .card {
