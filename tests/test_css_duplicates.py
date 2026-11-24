@@ -536,6 +536,33 @@ def test_an_ordinary_pytest_run_displays_the_overlap_advisory() -> None:
     assert (result.returncode, bool(finding)) == (0, True), result.stdout
 
 
+def test_a_pytest_run_in_github_actions_prints_overlap_warnings() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/test_css_duplicates.py::test_rules_sharing_two_declarations_do_not_form_a_finding",
+            "-q",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPOSITORY,
+        env=explicit_environment(GITHUB_ACTIONS="true"),
+    )
+
+    # Pins a real overlap in app.css; pick another one if a refactor removes it.
+    warning = re.search(
+        r"^::warning file=src/budget/dashboard/static/app\.css,line=\d+,"
+        r"title=CSS declaration overlap::`\.footer-inner` shares 3 declarations "
+        r"with src/budget/dashboard/static/app\.css:\d+ `\.header-inner`%0A",
+        result.stdout,
+        re.MULTILINE,
+    )
+    assert (result.returncode, bool(warning)) == (0, True), result.stdout
+
+
 def test_rules_sharing_two_declarations_do_not_form_a_finding(
     tmp_path: Path,
 ) -> None:
