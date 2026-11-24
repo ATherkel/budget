@@ -23,6 +23,20 @@ from tests.css_duplicates import (
 )
 
 REPOSITORY = Path(__file__).resolve().parents[1]
+STATIC = REPOSITORY / "src/budget/dashboard/static"
+
+
+def linked_stylesheets() -> list[str]:
+    """Return the stylesheets the dashboard's base page links, in link order."""
+    base = (REPOSITORY / "src/budget/dashboard/templates/base.html").read_text("utf-8")
+    links = re.finditer(r"""<link rel="stylesheet" href="\{\{ '([^']+)'""", base)
+    return [link.group(1) for link in links]
+
+
+def test_every_dashboard_stylesheet_is_linked_from_the_base_page() -> None:
+    shipped = sorted(path.name for path in STATIC.glob("*.css"))
+
+    assert sorted(linked_stylesheets()) == shipped
 
 
 def report_css(tmp_path: Path, css: str) -> Report:
@@ -522,10 +536,10 @@ def test_an_ordinary_pytest_run_displays_the_overlap_advisory() -> None:
         env=explicit_environment(),
     )
 
-    # Pins a real overlap in app.css; pick another one if a refactor removes it.
+    # Pins a real overlap in layout.css; pick another one if a refactor removes it.
     finding = re.search(
-        r"^- \S+app\.css:\d+ `\.header-inner`\n"
-        r"  with \S+app\.css:\d+ `\.footer-inner`\n"
+        r"^- \S+layout\.css:\d+ `\.header-inner`\n"
+        r"  with \S+layout\.css:\d+ `\.footer-inner`\n"
         r"  shared declarations:\n"
         r"    display: flex\n"
         r"    gap: 1rem\n"
@@ -552,11 +566,11 @@ def test_a_pytest_run_in_github_actions_prints_overlap_warnings() -> None:
         env=explicit_environment(GITHUB_ACTIONS="true"),
     )
 
-    # Pins a real overlap in app.css; pick another one if a refactor removes it.
+    # Pins a real overlap in layout.css; pick another one if a refactor removes it.
     warning = re.search(
-        r"^::warning file=src/budget/dashboard/static/app\.css,line=\d+,"
+        r"^::warning file=src/budget/dashboard/static/layout\.css,line=\d+,"
         r"title=CSS declaration overlap::`\.footer-inner` shares 3 declarations "
-        r"with src/budget/dashboard/static/app\.css:\d+ `\.header-inner`%0A",
+        r"with src/budget/dashboard/static/layout\.css:\d+ `\.header-inner`%0A",
         result.stdout,
         re.MULTILINE,
     )
@@ -707,11 +721,11 @@ def test_a_semicolon_inside_a_string_is_part_of_the_value(tmp_path: Path) -> Non
     assert report_css(tmp_path, css).findings == ()
 
 
-def test_app_css_with_a_copied_rule_names_the_original(tmp_path: Path) -> None:
-    source = REPOSITORY / "src/budget/dashboard/static/app.css"
-    css = (REPOSITORY / "src/budget/dashboard/static/app.css").read_text("utf-8")
+def test_a_copied_dashboard_rule_names_the_original(tmp_path: Path) -> None:
+    source = STATIC / "layout.css"
+    css = source.read_text("utf-8")
     original = re.search(r"^\.header-inner \{\n(.*?)^\}", css, re.MULTILINE | re.DOTALL)
-    assert original, "app.css no longer has a `.header-inner` rule to copy"
+    assert original, "layout.css no longer has a `.header-inner` rule to copy"
     copy = '.copied-header {\n  content: "}";\n' + original.group(1) + "}\n"
     copied = tmp_path / "copied.css"
     copied.write_text(copy, encoding="utf-8")

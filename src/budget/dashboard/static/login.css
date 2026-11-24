@@ -1,0 +1,28 @@
+/* Login: the passphrase panel and its form. */
+
+.login-panel {
+  padding: 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.stack {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.stack label {
+  font-size: 0.88rem;
+  font-weight: 750;
+}
+
+.stack input {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  color: var(--ink);
+  background: white;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+}
