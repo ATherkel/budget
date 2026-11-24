@@ -38,5 +38,6 @@ def test_only_docs_reading_modules_get_the_docs_marker(
 
     result = pytester.runpytest("-m", "docs", "--collect-only", "-q")
 
-    selected = {line.split("::")[0] for line in result.outlines if "::" in line}
+    # Test ids only: the CSS advisory may also print `::warning` lines in CI.
+    selected = {line.split("::")[0] for line in result.outlines if ".py::" in line}
     assert selected == {f"{name}.py" for name in DOCS_READING_MODULES}
