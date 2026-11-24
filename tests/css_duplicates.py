@@ -337,8 +337,12 @@ def report_overlaps(paths: Iterable[Path]) -> Report:
 
 
 def report_dashboard(root: Path = DASHBOARD_ROOT) -> Report:
-    """Report overlaps across every stylesheet under `root`."""
-    return report_overlaps(discover_stylesheets(root))
+    """Report overlaps under `root`; finding no stylesheet is a diagnostic."""
+    stylesheets = discover_stylesheets(root)
+    if not stylesheets:
+        missing = Diagnostic(path=root, line=None, message="no stylesheets found")
+        return Report(findings=(), diagnostics=(missing,))
+    return report_overlaps(stylesheets)
 
 
 def _read_error(path: Path, error: OSError) -> Diagnostic:
@@ -432,8 +436,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Stylesheets to inspect; defaults to all dashboard CSS.",
     )
     arguments = parser.parse_args(argv)
-    paths = arguments.paths or discover_stylesheets()
-    report = report_overlaps(paths)
+    report = report_overlaps(arguments.paths) if arguments.paths else report_dashboard()
     sys.stdout.write(format_report(report))
     if report.diagnostics:
         sys.stderr.write(format_diagnostics(report))

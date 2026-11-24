@@ -6,12 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.css_duplicates import (
-    discover_stylesheets,
-    format_diagnostics,
-    format_report,
-    report_overlaps,
-)
+from tests.css_duplicates import format_diagnostics, format_report, report_dashboard
 
 # A module that names the docs folder or the README reads documentation, so a
 # docs-only pull request must still run it: CI selects these with `-m docs`.
@@ -34,7 +29,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """Show the CSS overlap advisory and fail the session on analysis errors."""
-    report = report_overlaps(discover_stylesheets())
+    report = report_dashboard()
     reporter = session.config.pluginmanager.get_plugin("terminalreporter")
     if reporter is None:
         return
