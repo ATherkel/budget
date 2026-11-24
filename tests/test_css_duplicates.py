@@ -302,6 +302,46 @@ def test_executable_reports_overlap_and_succeeds(tmp_path: Path) -> None:
     )
 
 
+def test_executable_reports_a_read_failure_and_exits_nonzero(tmp_path: Path) -> None:
+    stylesheet = tmp_path / "styles.css"
+    stylesheet.write_text(
+        """\
+.card {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.copy {
+  color: var(--ink);
+  padding: 1rem;
+  border: 1px solid var(--line);
+}
+""",
+        encoding="utf-8",
+    )
+    missing = tmp_path / "missing.css"
+
+    result = subprocess.run(
+        [sys.executable, "-m", "tests.css_duplicates", str(stylesheet), str(missing)],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPOSITORY,
+        env=explicit_environment(),
+    )
+
+    assert (
+        result.returncode,
+        "CSS declaration overlap advisory: 1 finding" in result.stdout,
+        result.stderr,
+    ) == (
+        1,
+        True,
+        f"CSS analysis error: {missing}: cannot read stylesheet: file not found\n",
+    )
+
+
 def test_rules_sharing_two_declarations_pass() -> None:
     css = """\
 .card {
