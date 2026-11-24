@@ -438,10 +438,17 @@ def test_an_ordinary_pytest_run_displays_the_overlap_advisory() -> None:
         env=explicit_environment(),
     )
 
-    assert (
-        result.returncode,
-        "CSS declaration overlap advisory:" in result.stdout + result.stderr,
-    ) == (0, True)
+    finding = re.search(
+        r"^- \S+app\.css:\d+ `\.header-inner`\n"
+        r"  with \S+app\.css:\d+ `\.footer-inner`\n"
+        r"  shared declarations:\n"
+        r"    display: flex\n"
+        r"    gap: 1rem\n"
+        r"    justify-content: space-between$",
+        result.stdout,
+        re.MULTILINE,
+    )
+    assert (result.returncode, bool(finding)) == (0, True), result.stdout
 
 
 def test_rules_sharing_two_declarations_do_not_form_a_finding(
