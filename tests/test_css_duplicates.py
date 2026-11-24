@@ -242,6 +242,8 @@ def test_parse_and_unsupported_syntax_failures_are_separate_diagnostics(
             ".a] { padding: 1rem; margin: 0; color: red; }",
             "parse error: Unmatched ]",
         ),
+        ("@import url(a b);", "parse error: bad URL token"),
+        ("@layer foo];", "parse error: Unmatched ]"),
     ],
 )
 def test_token_errors_in_preludes_and_value_blocks_are_diagnostics(
