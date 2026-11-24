@@ -33,7 +33,8 @@ rationale is in issue #362.
 
 ## CSS Declaration Overlap Advisory
 
-Read the advisory report in pytest or CI output.
+Read the advisory report in pytest output, or in CI as warnings and the pytest
+log.
 
 - For a material overlap where the styling represents the same responsibility,
   require the author to reuse or extract the shared styling.

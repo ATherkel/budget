@@ -43,7 +43,11 @@ The report names both paths, lines, selectors and grouping contexts, plus the
 declarations the rules share. Overlap alone always exits successfully, and the
 report never recommends a specific selector. Ordinary `uv run pytest` prints the
 same advisory through its terminal reporting, and `.pre-commit-config.yaml` runs
-the command verbosely when relevant files change. Review responsibility is in
+the command verbosely when relevant files change. In GitHub Actions the pytest
+run also prints each finding as a warning annotation at the later rule, so
+findings appear on the run and the PR's changed files. GitHub shows only the
+first annotations of each kind per step, so the log stays the complete report.
+Review responsibility is in
 [Pull Request Reviews](pr-review.md#css-declaration-overlap-advisory).
 
 Read failures, tokenizer/parser errors, unsupported syntax and a dashboard root
