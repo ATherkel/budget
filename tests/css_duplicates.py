@@ -38,7 +38,7 @@ DASHBOARD_ROOT = Path(__file__).resolve().parents[1] / "src" / "budget" / "dashb
 
 def discover_stylesheets(root: Path = DASHBOARD_ROOT) -> tuple[Path, ...]:
     """Return dashboard stylesheets under `root` in deterministic order."""
-    return tuple(root.glob("*.not-css"))
+    return tuple(sorted(root.rglob("*.css"), key=lambda path: path.as_posix()))
 
 
 @dataclass(frozen=True)
