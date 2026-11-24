@@ -415,7 +415,30 @@ def format_report(report: Report) -> str:
 
 def format_annotations(report: Report) -> str:
     """Return one GitHub Actions warning command per finding."""
-    return "".join("" for _ in report.findings)
+    lines = []
+    for finding in report.findings:
+        later = finding.later
+        summary = (
+            f"{selector_text(later)} shares {len(finding.declarations)} "
+            f"declarations with {location_text(finding.earlier)}"
+        )
+        message = "\n".join([summary, *finding.declarations])
+        lines.append(
+            f"::warning file={_escape_property(display_path(later.path))},"
+            f"line={later.line},title=CSS declaration overlap::"
+            f"{_escape_data(message)}"
+        )
+    return "".join(f"{line}\n" for line in lines)
+
+
+def _escape_data(value: str) -> str:
+    """Escape a GitHub Actions workflow command message."""
+    return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def _escape_property(value: str) -> str:
+    """Escape a GitHub Actions workflow command property value."""
+    return _escape_data(value).replace(":", "%3A").replace(",", "%2C")
 
 
 def format_diagnostics(report: Report) -> str:
@@ -433,12 +456,14 @@ def format_diagnostics(report: Report) -> str:
 
 def location_text(location: Location) -> str:
     """Return one location with its path, line, grouping context, and selector."""
-    selector = (
-        f"{location.context} `{location.selector}`"
-        if location.context
-        else f"`{location.selector}`"
-    )
-    return f"{display_path(location.path)}:{location.line} {selector}"
+    return f"{display_path(location.path)}:{location.line} {selector_text(location)}"
+
+
+def selector_text(location: Location) -> str:
+    """Return a location's selector, preceded by its grouping context if any."""
+    if location.context:
+        return f"{location.context} `{location.selector}`"
+    return f"`{location.selector}`"
 
 
 def display_path(path: Path) -> str:
