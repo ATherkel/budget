@@ -310,6 +310,17 @@ def test_dashboard_stylesheet_discovery_is_recursive_and_deterministic(
     ) == ("features/planning/chart.css", "static/app.css")
 
 
+def test_a_stylesheet_given_twice_is_analysed_once(tmp_path: Path) -> None:
+    stylesheet = tmp_path / "styles.css"
+    stylesheet.write_text(
+        ".card { padding: 1rem; margin: 0; color: red; }\n", encoding="utf-8"
+    )
+
+    assert report_overlaps((stylesheet, stylesheet)) == Report(
+        findings=(), diagnostics=()
+    )
+
+
 def test_dashboard_css_analyses_without_errors() -> None:
     report = report_dashboard()
 
