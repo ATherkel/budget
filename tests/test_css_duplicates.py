@@ -321,6 +321,12 @@ def test_a_stylesheet_given_twice_is_analysed_once(tmp_path: Path) -> None:
     )
 
 
+def test_a_report_without_findings_asks_for_no_review() -> None:
+    assert format_report(Report(findings=(), diagnostics=())) == (
+        "CSS declaration overlap advisory: 0 findings\n"
+    )
+
+
 def test_dashboard_css_analyses_without_errors() -> None:
     report = report_dashboard()
 
