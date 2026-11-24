@@ -499,6 +499,7 @@ def test_an_ordinary_pytest_run_displays_the_overlap_advisory() -> None:
         env=explicit_environment(),
     )
 
+    # Pins a real overlap in app.css; pick another one if a refactor removes it.
     finding = re.search(
         r"^- \S+app\.css:\d+ `\.header-inner`\n"
         r"  with \S+app\.css:\d+ `\.footer-inner`\n"
