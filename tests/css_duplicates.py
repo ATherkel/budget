@@ -116,7 +116,7 @@ def _grouped_rules(
             grouped = _style_rule(path, node, diagnostics, context)
             if grouped is not None:
                 rules.append(grouped)
-        elif isinstance(node, AtRule) and node.content is not None:
+        elif isinstance(node, AtRule):
             rules.extend(_at_rule_rules(node, path, diagnostics, context))
     return rules
 
@@ -201,12 +201,10 @@ def _at_rule_rules(
     context: str,
 ) -> list[_GroupedRule]:
     """Return readable rules from a supported block at-rule."""
-    content = node.content
-    if content is None:
-        return []
     prelude_errors = _token_errors(node.prelude)
     diagnostics.extend(_parse_error(path, error) for error in prelude_errors)
-    if prelude_errors:
+    content = node.content
+    if prelude_errors or content is None:
         return []
     keyword = node.at_keyword.lower()
     prelude = text(node.prelude)
