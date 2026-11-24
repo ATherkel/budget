@@ -403,12 +403,13 @@ def format_report(report: Report) -> str:
                 *(f"    {declaration}" for declaration in finding.declarations),
             ]
         )
-    lines.extend(
-        [
-            "",
-            "Review the overlap and decide how these rules should be maintained.",
-        ]
-    )
+    if report.findings:
+        lines.extend(
+            [
+                "",
+                "Review the overlap and decide how these rules should be maintained.",
+            ]
+        )
     return "\n".join(lines) + "\n"
 
 
