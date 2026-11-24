@@ -1,5 +1,4 @@
-# Install with `uvx pre-commit install`. The hook runs the djlint version
-# locked in uv.lock, with the settings in pyproject.toml and .djlint_rules.yaml.
+# Install with `uvx pre-commit install`. The hooks run dev tools locked by uv.
 repos:
   - repo: local
     hooks:
@@ -8,9 +7,10 @@ repos:
         entry: uv run djlint --lint
         language: system
         files: ^src/.*\.html$
-      - id: css-duplicates
-        name: duplicate CSS rules
-        entry: uv run pytest tests/test_css_duplicates.py -q
+      - id: css-overlap-advisory
+        name: CSS declaration overlap advisory
+        entry: uv run python -m tests.css_duplicates
         language: system
-        files: (\.css|base\.html|css-duplicates-allowlist\.txt|css_duplicates\.py)$
+        files: (^src/.*\.css$|^tests/(css_duplicates|test_css_duplicates|conftest)\.py$)
         pass_filenames: false
+        verbose: true
