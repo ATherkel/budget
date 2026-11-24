@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from tests.css_duplicates import find_duplicates, read_allowlist, report_overlaps
+from tests.css_duplicates import (
+    discover_stylesheets,
+    find_duplicates,
+    read_allowlist,
+    report_overlaps,
+)
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 
@@ -226,6 +231,22 @@ def test_parse_and_unsupported_syntax_failures_are_separate_diagnostics(
             ("unknown.css", 1, "unsupported at-rule block `@unknown feature`"),
         ],
     )
+
+
+def test_dashboard_stylesheet_discovery_is_recursive_and_deterministic(
+    tmp_path: Path,
+) -> None:
+    feature = tmp_path / "features" / "planning" / "chart.css"
+    feature.parent.mkdir(parents=True)
+    feature.write_text(".chart { color: red; }\n", encoding="utf-8")
+    component = tmp_path / "static" / "app.css"
+    component.parent.mkdir()
+    component.write_text(".app { color: blue; }\n", encoding="utf-8")
+    (tmp_path / "README.txt").write_text("not CSS\n", encoding="utf-8")
+
+    assert tuple(
+        path.relative_to(tmp_path).as_posix() for path in discover_stylesheets(tmp_path)
+    ) == ("features/planning/chart.css", "static/app.css")
 
 
 def test_rules_sharing_two_declarations_pass() -> None:

@@ -33,6 +33,12 @@ KEYFRAME_AT_RULES: frozenset[str] = frozenset({"keyframes", "-webkit-keyframes"}
 DECLARATION_AT_RULES: frozenset[str] = frozenset(
     {"counter-style", "font-face", "page", "property"}
 )
+DASHBOARD_ROOT = Path(__file__).resolve().parents[1] / "src" / "budget" / "dashboard"
+
+
+def discover_stylesheets(root: Path = DASHBOARD_ROOT) -> tuple[Path, ...]:
+    """Return dashboard stylesheets under `root` in deterministic order."""
+    return tuple(root.glob("*.not-css"))
 
 
 @dataclass(frozen=True)
