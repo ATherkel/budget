@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from tests.cli.processes import explicit_environment
 from tests.css_duplicates import Report, discover_stylesheets, report_overlaps
 
@@ -213,6 +215,71 @@ def test_parse_and_unsupported_syntax_failures_are_separate_diagnostics(
             ("unknown.css", 1, "unsupported at-rule block `@unknown feature`"),
         ],
     )
+
+
+@pytest.mark.parametrize(
+    ("css", "message"),
+    [
+        (
+            ".a { color: red); padding: 1rem; margin: 0; }",
+            "parse error: Unmatched )",
+        ),
+        (
+            ".a { color: var(--x, red]); padding: 1rem; margin: 0; }",
+            "parse error: Unmatched ]",
+        ),
+        (
+            ".a { background: url(a b); padding: 1rem; margin: 0; }",
+            "parse error: bad URL token",
+        ),
+        (
+            ".a] { padding: 1rem; margin: 0; color: red; }",
+            "parse error: Unmatched ]",
+        ),
+    ],
+)
+def test_token_errors_in_preludes_and_value_blocks_are_diagnostics(
+    tmp_path: Path,
+    css: str,
+    message: str,
+) -> None:
+    base = tmp_path / "base.css"
+    base.write_text(
+        """\
+.base {
+  padding: 1rem;
+  margin: 0;
+  color: red;
+}
+""",
+        encoding="utf-8",
+    )
+    copy = tmp_path / "copy.css"
+    copy.write_text(
+        """\
+.copy {
+  color: red;
+  padding: 1rem;
+  margin: 0;
+}
+""",
+        encoding="utf-8",
+    )
+    broken = tmp_path / "broken.css"
+    broken.write_text(css + "\n", encoding="utf-8")
+
+    report = report_overlaps((base, copy, broken))
+
+    assert (
+        [
+            (finding.earlier.path.name, finding.later.path.name)
+            for finding in report.findings
+        ],
+        [
+            (diagnostic.path.name, diagnostic.line, diagnostic.message)
+            for diagnostic in report.diagnostics
+        ],
+    ) == ([("base.css", "copy.css")], [("broken.css", 1, message)])
 
 
 def test_dashboard_stylesheet_discovery_is_recursive_and_deterministic(
