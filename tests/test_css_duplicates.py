@@ -11,8 +11,12 @@ import pytest
 from tests.cli.processes import explicit_environment
 from tests.css_duplicates import (
     Diagnostic,
+    Location,
+    Overlap,
     Report,
     discover_stylesheets,
+    format_diagnostics,
+    format_report,
     report_dashboard,
     report_overlaps,
 )
@@ -304,6 +308,40 @@ def test_dashboard_stylesheet_discovery_is_recursive_and_deterministic(
     assert tuple(
         path.relative_to(tmp_path).as_posix() for path in discover_stylesheets(tmp_path)
     ) == ("features/planning/chart.css", "static/app.css")
+
+
+def test_report_paths_inside_the_repository_are_relative() -> None:
+    stylesheet = REPOSITORY / "src" / "budget" / "dashboard" / "static" / "app.css"
+    report = Report(
+        findings=(
+            Overlap(
+                later=Location(path=stylesheet, line=9, selector=".copy"),
+                earlier=Location(path=stylesheet, line=1, selector=".card"),
+                declarations=("color: red", "margin: 0", "padding: 0"),
+            ),
+        ),
+        diagnostics=(
+            Diagnostic(path=stylesheet, line=4, message="parse error: Unmatched )"),
+        ),
+    )
+
+    assert (format_report(report), format_diagnostics(report)) == (
+        (
+            "CSS declaration overlap advisory: 1 finding\n"
+            "- src/budget/dashboard/static/app.css:1 `.card`\n"
+            "  with src/budget/dashboard/static/app.css:9 `.copy`\n"
+            "  shared declarations:\n"
+            "    color: red\n"
+            "    margin: 0\n"
+            "    padding: 0\n"
+            "\n"
+            "Review the overlap and decide how these rules should be maintained.\n"
+        ),
+        (
+            "CSS analysis error: src/budget/dashboard/static/app.css:4: "
+            "parse error: Unmatched )\n"
+        ),
+    )
 
 
 @pytest.mark.parametrize("property_name", ["--x", "font-family"])
