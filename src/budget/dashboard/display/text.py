@@ -1,0 +1,47 @@
+# Copyright 2026 Therkel
+"""Danish sentences and lists the dashboard shows its reader."""
+
+from budget.analytics import InvalidSelectionError, ReportCoverage
+from budget.dashboard.display.months import month_label
+
+
+def selection_problems(error: InvalidSelectionError) -> list[str]:
+    """Return a Danish sentence for every selection rule `error` names."""
+    problems = [
+        f"Kontoen {account_id} findes ikke i disse tal."
+        for account_id in error.unknown_account_ids
+    ]
+    if "no_accounts" in error.reasons:
+        problems.append("Vælg mindst én konto.")
+    if "mixed_currencies" in error.reasons:
+        problems.append("De valgte konti har forskellig valuta.")
+    if "month_out_of_range" in error.reasons:
+        problems.append("Den valgte måned ligger uden for de måneder, der kan vælges.")
+    if "unknown_category" in error.reasons:
+        problems.append("Kategorien findes ikke i disse tal.")
+    return problems
+
+
+def incomplete_by_account(coverage: ReportCoverage) -> list[str]:
+    """Return each account with incomplete months, as `Konto (januar 2026, …)`.
+
+    Months outside an account's history are never missing anything.
+    """
+    names: dict[str, str] = {}
+    months: dict[str, list[str]] = {}
+    for account_month in coverage.account_months:
+        if account_month.status != "outside_history":
+            names[account_month.account_id] = account_month.display_name
+            months.setdefault(account_month.account_id, []).append(
+                month_label(account_month.month)
+            )
+    return [
+        f"{names[account_id]} ({', '.join(labels)})"
+        for account_id, labels in months.items()
+    ]
+
+
+def danish_list(items: list[str]) -> str:
+    """Return items as Danish lists them: `A`, `A og B`, `A, B og C`."""
+    *rest, last = items or [""]
+    return f"{', '.join(rest)} og {last}" if rest else last

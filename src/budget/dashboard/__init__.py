@@ -5,19 +5,26 @@ It reads Gold only through analytics, opened read-only from one profile.
 """
 
 import hashlib
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, MutableMapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from functools import cache
 from pathlib import Path
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Literal, Self
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
-from jinja2 import Environment, PackageLoader, select_autoescape
+from jinja2 import (
+    ChoiceLoader,
+    Environment,
+    FileSystemLoader,
+    PackageLoader,
+    PrefixLoader,
+    select_autoescape,
+)
 from pydantic import BaseModel, model_validator
 
 from budget.analytics import (
@@ -32,8 +39,22 @@ from budget.analytics import (
     ReportContext,
     SpendingDetail,
 )
-from budget.dashboard import display, session
-from budget.dashboard.display import copenhagen_date
+from budget.dashboard import session
+from budget.dashboard.display.amounts import amount, signed_amount
+from budget.dashboard.display.months import (
+    copenhagen_date,
+    month_label,
+    month_value,
+    months_between,
+    parse_month,
+    period_label,
+)
+from budget.dashboard.display.text import (
+    danish_list,
+    incomplete_by_account,
+    selection_problems,
+)
+from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.passphrase import (
     CredentialSnapshot,
     read_credentials,
@@ -65,22 +86,19 @@ class ViewState:
 
 DEFAULT_VIEW = ViewState()
 
-_STATIC = Path(__file__).parent / "static"
+# The features the dashboard serves, one line each; one left out is off.
+FEATURES: tuple[Feature, ...] = ()
 
-_TEMPLATES = Environment(
-    loader=PackageLoader("budget.dashboard"),
-    autoescape=select_autoescape(),
-)
-_TEMPLATES.filters["amount"] = display.amount
+_STATIC = Path(__file__).parent / "static"
 
 
 @cache
-def _static_digest(name: str) -> str:
-    """Return the start of static file `name`'s SHA-256, read once per process.
+def _static_digest(path: Path) -> str:
+    """Return the start of the file at `path`'s SHA-256, read once per process.
 
     An edited file therefore gets its new address after a restart.
     """
-    return hashlib.sha256((_STATIC / name).read_bytes()).hexdigest()[:12]
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
 
 
 def _static_url(name: str) -> str:
@@ -89,13 +107,76 @@ def _static_url(name: str) -> str:
     A browser that cached an older file under a bare address could keep
     running it after a deploy.
     """
-    return f"/static/{name}?v={_static_digest(name)}"
+    return f"/static/{name}?v={_static_digest(_STATIC / name)}"
 
 
-_TEMPLATES.filters["static_url"] = _static_url
-_TEMPLATES.filters["signed_amount"] = display.signed_amount
-_TEMPLATES.filters["danish_list"] = display.danish_list
-_VIEW_STATE_CONTROLS = _TEMPLATES.from_string(
+def _feature_stylesheets(feature: Feature) -> dict[str, Path]:
+    """Return the address of each stylesheet in `feature`'s folder, and its file.
+
+    Each is named by its content, as `_static_url` names a shared one.
+    """
+    return {
+        f"/static/{feature.folder.name}/{sheet.name}?v={_static_digest(sheet)}": sheet
+        for sheet in sorted(feature.folder.glob("*.css"))
+    }
+
+
+def _serving(sheet: Path) -> Callable[[], Response]:
+    """Return a route that answers with the stylesheet `sheet` and nothing else."""
+
+    def stylesheet() -> Response:
+        return FileResponse(sheet, media_type="text/css")
+
+    return stylesheet
+
+
+def _serve_stylesheets(app: FastAPI, features: Sequence[Feature]) -> None:
+    """Serve each stylesheet of `features` at its address, and no other file."""
+    for feature in features:
+        for address, sheet in _feature_stylesheets(feature).items():
+            app.add_api_route(
+                address.partition("?")[0], _serving(sheet), include_in_schema=False
+            )
+
+
+def _add_global(namespace: MutableMapping[str, Any], name: str, value: object) -> None:
+    """Add `value` to the names every template sees, as `name`.
+
+    Jinja leaves `Environment.globals` unannotated, so a type checker infers
+    it from the builtins it starts with; any value may join them.
+    """
+    namespace[name] = value
+
+
+def _templates(features: Sequence[Feature]) -> Environment:
+    """Return the templates one dashboard renders its pages from.
+
+    A feature's own templates are named after its folder, as `<folder>/<file>`,
+    so two features in folders of one name raise `ValueError`.
+    """
+    own = {
+        feature.folder.name: FileSystemLoader(feature.folder) for feature in features
+    }
+    if len(own) < len(features):
+        names = sorted(feature.folder.name for feature in features)
+        message = f"two features share a folder name: {', '.join(names)}"
+        raise ValueError(message)
+    templates = Environment(
+        loader=ChoiceLoader([PackageLoader("budget.dashboard"), PrefixLoader(own)]),
+        autoescape=select_autoescape(),
+    )
+    templates.filters["amount"] = amount
+    templates.filters["static_url"] = _static_url
+    templates.filters["signed_amount"] = signed_amount
+    templates.filters["danish_list"] = danish_list
+    addresses = [
+        address for feature in features for address in _feature_stylesheets(feature)
+    ]
+    _add_global(templates.globals, "feature_stylesheets", addresses)
+    return templates
+
+
+_VIEW_STATE_CONTROLS = Environment(autoescape=select_autoescape()).from_string(
     '<input id="active-mode" type="hidden" name="active_mode" '
     'value="{{ mode }}" hx-swap-oob="true">'
     '<input id="active-tab" type="hidden" name="tab" '
@@ -332,11 +413,7 @@ def _view_state_controls(view: ViewState) -> str:
     )
 
 
-def _render_overview(
-    profile: Profile,
-    clock: Callable[[], datetime],
-    requested: OverviewRequest,
-) -> str:
+def _render_overview(dashboard: Dashboard, requested: OverviewRequest) -> str:
     """Render the overview page.
 
     A pinned page keeps its publication, reference date and selection. A fresh
@@ -346,34 +423,33 @@ def _render_overview(
     # A pinned address without accounts is an empty selection, not a fresh visit.
     fresh = requested.pin is None
     pin = requested.pin
-    with GoldStore(profile, read_only=True) as store:
+    templates = dashboard.templates
+    with GoldStore(dashboard.profile, read_only=True) as store:
         reports = HouseholdReports(store)
         if pin is None:
             try:
                 publication_id = reports.current_publication().publication_id
             except NothingPublishedError:
-                return _TEMPLATES.get_template("nothing_published.html").render()
-            pin = (publication_id, copenhagen_date(clock()))
+                return templates.get_template("nothing_published.html").render()
+            pin = (publication_id, copenhagen_date(dashboard.clock()))
         publication_id, reference_date = pin
         try:
             options = reports.selection_options(publication_id, reference_date)
         except PublicationUnavailableError:
             # Offered, never substituted: the reader chooses the current figures.
-            return _TEMPLATES.get_template("unavailable_page.html").render()
-    months = display.months_between(options.first_month, options.last_month)
+            return templates.get_template("unavailable_page.html").render()
+    months = months_between(options.first_month, options.last_month)
     selected_accounts = (
         {account.account_id for account in options.accounts}
         if fresh
         else set(requested.accounts or ())
     )
-    selected_month = requested.month or display.month_value(
-        ReportingMonth.of(reference_date)
-    )
+    selected_month = requested.month or month_value(ReportingMonth.of(reference_date))
     # The page carries its own report, so back, forward and a page without
     # scripts show what the selection's report says.
     report = (
         _render_report(
-            profile,
+            dashboard,
             ReportRequest(
                 pin,
                 tuple(selected_accounts),
@@ -396,7 +472,7 @@ def _render_overview(
         )
 
     canonical_url = pinned_with(selected_accounts)
-    return _TEMPLATES.get_template("overview.html").render(
+    return templates.get_template("overview.html").render(
         publication_id=publication_id,
         reference_date=reference_date.isoformat(),
         canonical_url=canonical_url,
@@ -408,9 +484,7 @@ def _render_overview(
         },
         all_url=pinned_with([account.account_id for account in options.accounts]),
         none_url=pinned_with([]),
-        months=[
-            (display.month_value(month), display.month_label(month)) for month in months
-        ],
+        months=[(month_value(month), month_label(month)) for month in months],
         selected_month=selected_month,
         report=report,
         mode=requested.view.mode,
@@ -420,6 +494,7 @@ def _render_overview(
 
 
 def _refuse_login(
+    templates: Environment,
     credentials: CredentialSnapshot,
     throttle: LoginThrottle,
     now: datetime,
@@ -434,7 +509,7 @@ def _refuse_login(
     if wait:
         notice = f"For mange forkerte forsøg. Prøv igen om {wait} sekunder."
         return HTMLResponse(
-            _TEMPLATES.get_template("login.html").render(message=notice),
+            templates.get_template("login.html").render(message=notice),
             status_code=429,
             headers={"Retry-After": str(wait)},
         )
@@ -444,7 +519,7 @@ def _refuse_login(
         if not blank:
             throttle.failed(now)
         return HTMLResponse(
-            _TEMPLATES.get_template("login.html").render(
+            templates.get_template("login.html").render(
                 message="Adgangskoden er forkert."
             )
         )
@@ -453,7 +528,7 @@ def _refuse_login(
 
 
 def _read_overview(
-    profile: Profile,
+    dashboard: Dashboard,
     pin: tuple[int, date],
     accounts: Collection[str],
     month: str,
@@ -464,26 +539,26 @@ def _read_overview(
     """
     publication_id, reference_date = pin
     try:
-        selected_month = display.parse_month(month)
+        selected_month = parse_month(month)
         context = ReportContext(
             publication_id=publication_id,
             account_ids=frozenset(accounts),
             month=selected_month,
             reference_date=reference_date,
         )
-        with GoldStore(profile, read_only=True) as store:
+        with GoldStore(dashboard.profile, read_only=True) as store:
             return HouseholdReports(store).monthly_overview(context)
     except InvalidSelectionError as error:
         # A failure is shown, and echoes no context the page could render.
-        return _TEMPLATES.get_template("invalid_selection.html").render(
-            problems=display.selection_problems(error)
+        return dashboard.templates.get_template("invalid_selection.html").render(
+            problems=selection_problems(error)
         )
     except PublicationUnavailableError:
-        return _TEMPLATES.get_template("unavailable.html").render()
+        return dashboard.templates.get_template("unavailable.html").render()
 
 
 def _read_activity(
-    profile: Profile,
+    dashboard: Dashboard,
     pin: tuple[int, date],
     accounts: Collection[str],
     month: str,
@@ -494,17 +569,17 @@ def _read_activity(
         context = ReportContext(
             publication_id=publication_id,
             account_ids=frozenset(accounts),
-            month=display.parse_month(month),
+            month=parse_month(month),
             reference_date=reference_date,
         )
-        with GoldStore(profile, read_only=True) as store:
+        with GoldStore(dashboard.profile, read_only=True) as store:
             return HouseholdReports(store).account_activity(context)
     except InvalidSelectionError as error:
-        return _TEMPLATES.get_template("invalid_selection.html").render(
-            problems=display.selection_problems(error)
+        return dashboard.templates.get_template("invalid_selection.html").render(
+            problems=selection_problems(error)
         )
     except PublicationUnavailableError:
-        return _TEMPLATES.get_template("unavailable.html").render()
+        return dashboard.templates.get_template("unavailable.html").render()
 
 
 def _answered_url(
@@ -519,7 +594,7 @@ def _answered_url(
             answered.publication_id,
             answered.reference_date,
             tuple(answered.account_ids),
-            display.month_value(answered.month),
+            month_value(answered.month),
         ),
         path,
         view=view,
@@ -540,7 +615,7 @@ def _detail_url(
             answered.publication_id,
             answered.reference_date,
             tuple(answered.account_ids),
-            display.month_value(answered.month),
+            month_value(answered.month),
         ),
         "/category",
         view=view,
@@ -549,7 +624,7 @@ def _detail_url(
 
 
 def _read_detail(
-    profile: Profile,
+    dashboard: Dashboard,
     pin: tuple[int, date],
     request: DetailRequest,
 ) -> SpendingDetail | str:
@@ -559,36 +634,36 @@ def _read_detail(
         context = ReportContext(
             publication_id=publication_id,
             account_ids=frozenset(request.accounts),
-            month=display.parse_month(request.month),
+            month=parse_month(request.month),
             reference_date=reference_date,
         )
-        with GoldStore(profile, read_only=True) as store:
+        with GoldStore(dashboard.profile, read_only=True) as store:
             return HouseholdReports(store).spending_detail(
                 context, request.subject, request.scope
             )
     except InvalidSelectionError as error:
-        return _TEMPLATES.get_template("invalid_selection.html").render(
-            problems=display.selection_problems(error)
+        return dashboard.templates.get_template("invalid_selection.html").render(
+            problems=selection_problems(error)
         )
     except PublicationUnavailableError:
-        return _TEMPLATES.get_template("unavailable.html").render()
+        return dashboard.templates.get_template("unavailable.html").render()
 
 
 def _render_detail(
-    profile: Profile,
+    dashboard: Dashboard,
     pin: tuple[int, date],
     request: DetailRequest,
 ) -> str:
     """Render the detail page of one subject under one pinned selection."""
-    detail_report = _read_detail(profile, pin, request)
+    detail_report = _read_detail(dashboard, pin, request)
     if isinstance(detail_report, str):
-        return _TEMPLATES.get_template("category.html").render(
+        return dashboard.templates.get_template("category.html").render(
             failure=detail_report, title="Udgifter"
         )
     answered = detail_report.context
     subject = detail_report.subject
-    period = display.period_label(detail_report.first_month, detail_report.last_month)
-    return _TEMPLATES.get_template("category.html").render(
+    period = period_label(detail_report.first_month, detail_report.last_month)
+    return dashboard.templates.get_template("category.html").render(
         detail=detail_report,
         title=f"{detail_report.name}, {period}",
         scope_urls={
@@ -608,13 +683,13 @@ def _render_detail(
             detail_report.scope,
             view=request.view,
         ),
-        incomplete=display.incomplete_by_account(detail_report.coverage),
+        incomplete=incomplete_by_account(detail_report.coverage),
         overview_url=_pinned_url(
             PinnedAddress(
                 answered.publication_id,
                 answered.reference_date,
                 tuple(answered.account_ids),
-                display.month_value(answered.month),
+                month_value(answered.month),
             ),
             view=request.view,
         ),
@@ -622,12 +697,12 @@ def _render_detail(
 
 
 def _render_report(
-    profile: Profile,
+    dashboard: Dashboard,
     requested: ReportRequest,
 ) -> str:
     """Render the report fragment a selection asks for, or why it cannot be shown."""
     overview_report = _read_overview(
-        profile,
+        dashboard,
         requested.pin,
         requested.accounts,
         requested.month,
@@ -637,7 +712,7 @@ def _render_report(
     answered = overview_report.context
     activity = (
         _read_activity(
-            profile,
+            dashboard,
             requested.pin,
             requested.accounts,
             requested.month,
@@ -653,7 +728,7 @@ def _render_report(
                 answered.publication_id,
                 answered.reference_date,
                 tuple(answered.account_ids),
-                display.month_value(answered.month),
+                month_value(answered.month),
             ),
             view=ViewState(
                 "advanced",
@@ -663,13 +738,13 @@ def _render_report(
         )
         for destination in ("overview", "details")
     }
-    return _TEMPLATES.get_template("report.html").render(
+    return dashboard.templates.get_template("report.html").render(
         is_current=overview_report.publication.is_current,
         publication_id=answered.publication_id,
         reference_date=answered.reference_date.isoformat(),
         accounts=" ".join(sorted(answered.account_ids)),
-        month=display.month_value(answered.month),
-        month_label=display.month_label(answered.month),
+        month=month_value(answered.month),
+        month_label=month_label(answered.month),
         overview=overview_report,
         activity=activity,
         mode=requested.view.mode,
@@ -694,27 +769,26 @@ def _render_report(
 
 
 def _render_explanation(
-    profile: Profile,
+    dashboard: Dashboard,
     pin: tuple[int, date],
     accounts: Collection[str],
     month: str,
     view: ViewState,
 ) -> str:
     """Render the explanation page of one pinned report's trust notes."""
-    overview_report = _read_overview(profile, pin, accounts, month)
+    overview_report = _read_overview(dashboard, pin, accounts, month)
+    page = dashboard.templates.get_template("explanation.html")
     if isinstance(overview_report, str):
-        return _TEMPLATES.get_template("explanation.html").render(
-            failure=overview_report
-        )
-    return _TEMPLATES.get_template("explanation.html").render(
+        return page.render(failure=overview_report)
+    return page.render(
         overview=overview_report,
-        month_label=display.month_label(overview_report.context.month),
+        month_label=month_label(overview_report.context.month),
         report_url=_answered_url(overview_report, "/", view),
     )
 
 
 def _report_response(
-    profile: Profile,
+    dashboard: Dashboard,
     requested: ReportRequest,
 ) -> Response:
     """Return the report fragment for one selection, or the empty-selection prompt.
@@ -736,10 +810,10 @@ def _report_response(
     state = _view_state_controls(view)
     if not requested.accounts:
         # An empty selection is a prompt, never a report of nothing.
-        prompt = _TEMPLATES.get_template("no_accounts.html").render()
+        prompt = dashboard.templates.get_template("no_accounts.html").render()
         return HTMLResponse(prompt + state, headers={"HX-Push-Url": page})
     fragment = _render_report(
-        profile,
+        dashboard,
         ReportRequest(
             requested.pin,
             requested.accounts,
@@ -751,7 +825,12 @@ def _report_response(
     return HTMLResponse(fragment + state, headers={"HX-Push-Url": page})
 
 
-def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
+def create_app(
+    profile: Profile,
+    *,
+    clock: Callable[[], datetime],
+    features: Sequence[Feature] = FEATURES,
+) -> FastAPI:
     """Build the dashboard for `profile`, telling time with `clock`.
 
     Raises `PassphraseNotSetError` when no passphrase guards it, and
@@ -761,9 +840,12 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     require_passphrase(profile)
     GoldStore(profile, read_only=True).close()
     app = FastAPI()
+    # Ahead of the shared files, which would otherwise answer these addresses.
+    _serve_stylesheets(app, features)
     # The htmx script ships in the package: nothing is fetched from the internet.
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")
     throttle = LoginThrottle()
+    templates = _templates(features)
 
     @app.exception_handler(RequestValidationError)
     def malformed_address(request: Request, _error: RequestValidationError) -> Response:
@@ -772,9 +854,9 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         htmx swaps only a 2xx, so the fragment answers 200 while the page is a 400.
         """
         if request.url.path == "/report":
-            fragment = _TEMPLATES.get_template("invalid_address.html").render()
+            fragment = templates.get_template("invalid_address.html").render()
             return HTMLResponse(fragment)
-        page = _TEMPLATES.get_template("invalid_address_page.html").render()
+        page = templates.get_template("invalid_address_page.html").render()
         return HTMLResponse(page, status_code=400)
 
     def start_session(response: Response, credentials: CredentialSnapshot) -> Response:
@@ -803,6 +885,10 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
         # Every visit renews the login for another 30 days from now.
         return start_session(respond(), authenticated_as)
 
+    dashboard = Dashboard(profile, clock, templates, app, for_reader)
+    for feature in features:
+        feature.register(dashboard)
+
     @app.get("/")
     def overview(
         request: Request,
@@ -810,7 +896,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     ) -> Response:
         return for_reader(
             request,
-            lambda: HTMLResponse(_render_overview(profile, clock, address.asked())),
+            lambda: HTMLResponse(_render_overview(dashboard, address.asked())),
         )
 
     @app.get("/report")
@@ -820,7 +906,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
     ) -> Response:
         return for_reader(
             request,
-            lambda: _report_response(profile, address.asked()),
+            lambda: _report_response(dashboard, address.asked()),
         )
 
     @app.get("/explanation")
@@ -832,7 +918,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             request,
             lambda: HTMLResponse(
                 _render_explanation(
-                    profile,
+                    dashboard,
                     address.pin(),
                     address.account,
                     address.month,
@@ -849,7 +935,7 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
             request,
             lambda: HTMLResponse(
                 _render_detail(
-                    profile,
+                    dashboard,
                     (address.publication, address.reference_date),
                     address.asked(),
                 )
@@ -858,14 +944,16 @@ def create_app(profile: Profile, *, clock: Callable[[], datetime]) -> FastAPI:
 
     @app.get("/login")
     def login_page() -> Response:
-        return HTMLResponse(_TEMPLATES.get_template("login.html").render(message=""))
+        return HTMLResponse(templates.get_template("login.html").render(message=""))
 
     @app.post("/login")
     def login(passphrase: Annotated[str, Form()] = "") -> Response:
         # One login at a time, from the lock check to recording the outcome.
         with throttle.guard:
             credentials = read_credentials(profile)
-            refused = _refuse_login(credentials, throttle, clock(), passphrase)
+            refused = _refuse_login(
+                templates, credentials, throttle, clock(), passphrase
+            )
         if refused is not None:
             return refused
         return start_session(RedirectResponse("/", status_code=303), credentials)

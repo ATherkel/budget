@@ -32,6 +32,19 @@ empty-selection prompt. The rules are in
 This is a direction, not an implementation commitment; a technology change
 must preserve the analytics-facing DTO boundary.
 
+## Feature Modules
+
+Each dashboard feature is a folder under `src/budget/dashboard/features/`
+holding its view, its templates, its stylesheets and its own display helpers.
+Its package exports a `Feature`: the folder, and a `register` function that
+adds its routes to the `Dashboard` it is handed. `FEATURES` in
+`budget.dashboard` lists the registered features one line each; a feature left
+out is off. A feature's templates are named `<folder>/<file>.html`, and
+`base.html` links every stylesheet in its folder, so adding a feature edits no
+shared file. Helpers more than one feature uses live in the
+`budget.dashboard.display` package. Moving the existing pages into features is
+pending: [#569](https://github.com/ATherkel/budget/issues/569).
+
 ## Initial Screens
 
 - Current-month overview: income, expenses, savings, savings rate.
