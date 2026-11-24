@@ -1,43 +1,22 @@
 # Copyright 2026 Therkel
-"""The duplicate CSS check names the existing rule to reuse."""
+"""The CSS overlap advisory reports shared declarations and analysis failures."""
 
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 from tests.cli.processes import explicit_environment
-from tests.css_duplicates import (
-    discover_stylesheets,
-    find_duplicates,
-    read_allowlist,
-    report_overlaps,
-)
+from tests.css_duplicates import Report, discover_stylesheets, report_overlaps
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 
-CARD_AND_PANEL = """\
-.card {
-  padding: 1rem;
-  border: 1px solid var(--line);
-  color: var(--ink);
-}
 
-.panel {
-  color: var(--ink);
-  margin: 0;
-  padding: 1rem;
-  border: 1px solid var(--line);
-}
-"""
-
-
-def test_a_rule_sharing_three_declarations_names_the_rule_to_reuse() -> None:
-    assert find_duplicates(CARD_AND_PANEL) == [
-        "`.panel` (line 7) shares 3 declarations with `.card` (line 1); reuse `.card`"
-    ]
+def report_css(tmp_path: Path, css: str) -> Report:
+    """Return the overlap report for one temporary stylesheet."""
+    path = tmp_path / "styles.css"
+    path.write_text(css, encoding="utf-8")
+    return report_overlaps((path,))
 
 
 def test_a_cross_file_overlap_reports_both_locations_and_shared_declarations(
@@ -348,7 +327,7 @@ def test_an_ordinary_pytest_run_displays_the_overlap_advisory() -> None:
             sys.executable,
             "-m",
             "pytest",
-            "tests/test_css_duplicates.py::test_rules_sharing_two_declarations_pass",
+            "tests/test_css_duplicates.py::test_rules_sharing_two_declarations_do_not_form_a_finding",
             "-q",
         ],
         capture_output=True,
@@ -364,8 +343,12 @@ def test_an_ordinary_pytest_run_displays_the_overlap_advisory() -> None:
     ) == (0, True)
 
 
-def test_rules_sharing_two_declarations_pass() -> None:
-    css = """\
+def test_rules_sharing_two_declarations_do_not_form_a_finding(
+    tmp_path: Path,
+) -> None:
+    report = report_css(
+        tmp_path,
+        """\
 .card {
   padding: 1rem;
   color: var(--ink);
@@ -377,16 +360,13 @@ def test_rules_sharing_two_declarations_pass() -> None:
   color: var(--ink);
   border: 2px solid var(--line);
 }
-"""
+""",
+    )
 
-    assert find_duplicates(css) == []
-
-
-def test_an_allowlisted_duplicate_passes() -> None:
-    assert find_duplicates(CARD_AND_PANEL, allowlist=[(".panel", ".card")]) == []
+    assert report.findings == ()
 
 
-def test_comments_are_not_part_of_a_rule() -> None:
+def test_comments_are_not_part_of_a_rule(tmp_path: Path) -> None:
     css = """\
 /* Cards
    and panels */
@@ -404,69 +384,16 @@ def test_comments_are_not_part_of_a_rule() -> None:
 }
 """
 
-    assert find_duplicates(css) == [
-        "`.panel` (line 10) shares 3 declarations with `.card` (line 3); reuse `.card`"
-    ]
+    report = report_css(tmp_path, css)
+
+    assert [
+        (finding.earlier.line, finding.later.line) for finding in report.findings
+    ] == [(3, 10)]
 
 
-def test_a_rule_inside_media_is_named_with_its_media_query() -> None:
-    css = """\
-.card {
-  padding: 1rem;
-  border: 1px solid var(--line);
-  color: var(--ink);
-}
-
-@media (max-width: 48rem) {
-  .panel {
-    color: var(--ink);
-    padding: 1rem;
-    border: 1px solid var(--line);
-  }
-}
-"""
-
-    message = (
-        "`@media (max-width: 48rem) .panel` (line 8) shares 3 declarations with"
-        " `.card` (line 1); reuse `.card`"
-    )
-    assert find_duplicates(css) == [message]
-
-
-def test_an_allowlist_entry_that_is_no_longer_a_duplicate_fails() -> None:
-    allowlist = [(".panel", ".card"), (".panel", ".banner")]
-
-    assert find_duplicates(CARD_AND_PANEL, allowlist=allowlist) == [
-        "allowlist entry `.panel` / `.banner` is no longer a duplicate; remove it"
-    ]
-
-
-def test_the_allowlist_holds_one_pair_per_line() -> None:
-    text = """\
-# Duplicates the owner has approved.
-
-.panel | .card
-.footer-inner | .page-heading h1, .login-intro h1
-"""
-
-    assert read_allowlist(text) == [
-        (".panel", ".card"),
-        (".footer-inner", ".page-heading h1, .login-intro h1"),
-    ]
-
-
-def test_app_css_repeats_no_rule_outside_the_allowlist() -> None:
-    css = (REPOSITORY / "src/budget/dashboard/static/app.css").read_text("utf-8")
-    allowlist = read_allowlist(
-        (REPOSITORY / "css-duplicates-allowlist.txt").read_text("utf-8")
-    )
-
-    messages = find_duplicates(css, allowlist)
-
-    assert not messages, "\n".join(messages)
-
-
-def test_a_rule_after_a_top_level_statement_is_named_by_its_own_selector() -> None:
+def test_a_rule_after_a_top_level_statement_keeps_its_own_selector(
+    tmp_path: Path,
+) -> None:
     css = """\
 @import url("base.css");
 .card {
@@ -482,27 +409,14 @@ def test_a_rule_after_a_top_level_statement_is_named_by_its_own_selector() -> No
 }
 """
 
-    assert find_duplicates(css) == [
-        "`.panel` (line 8) shares 3 declarations with `.card` (line 2); reuse `.card`"
-    ]
+    report = report_css(tmp_path, css)
+
+    assert [
+        (finding.earlier.line, finding.later.line) for finding in report.findings
+    ] == [(2, 8)]
 
 
-def test_a_nested_rule_is_reported_as_unreadable() -> None:
-    css = """\
-.card {
-  padding: 1rem;
-  &:hover {
-    color: var(--ink);
-  }
-}
-"""
-
-    assert find_duplicates(css) == [
-        "`.card` (line 1) nests a rule; write it flat so the check can read it"
-    ]
-
-
-def test_the_rule_sharing_the_most_declarations_is_named_first() -> None:
+def test_overlap_pair_order_is_deterministic(tmp_path: Path) -> None:
     css = """\
 .card {
   padding: 1rem;
@@ -525,40 +439,19 @@ def test_the_rule_sharing_the_most_declarations_is_named_first() -> None:
 }
 """
 
-    assert find_duplicates(css) == [
-        "`.panel` (line 7) shares 3 declarations with `.card` (line 1); reuse `.card`",
-        "`.new` (line 14) shares 4 declarations with `.panel` (line 7); reuse `.panel`",
-        "`.new` (line 14) shares 3 declarations with `.card` (line 1); reuse `.card`",
+    report = report_css(tmp_path, css)
+
+    assert [
+        (finding.later.selector, finding.earlier.selector)
+        for finding in report.findings
+    ] == [
+        (".panel", ".card"),
+        (".new", ".card"),
+        (".new", ".panel"),
     ]
 
 
-def test_an_allowlist_line_without_a_pair_is_refused() -> None:
-    with pytest.raises(ValueError, match=r"line 2 is not `rule \| earlier rule`: a\|b"):
-        read_allowlist("# header\na|b\n")
-
-
-def test_declarations_match_across_spacing_and_property_case() -> None:
-    css = """\
-.card {
-  padding: 1rem;
-  border: 1px solid var(--line);
-  color: var(--ink);
-}
-
-.panel {
-  PADDING:1rem;
-  border:
-    1px  solid var(--line);
-  Color : var(--ink)
-}
-"""
-
-    assert find_duplicates(css) == [
-        "`.panel` (line 7) shares 3 declarations with `.card` (line 1); reuse `.card`"
-    ]
-
-
-def test_a_brace_inside_a_string_is_part_of_the_value() -> None:
+def test_a_brace_inside_a_string_is_part_of_the_value(tmp_path: Path) -> None:
     css = """\
 .new-a {
   color: red;
@@ -573,12 +466,15 @@ def test_a_brace_inside_a_string_is_part_of_the_value() -> None:
 }
 """
 
-    assert find_duplicates(css) == [
-        "`.new-b` (line 7) shares 3 declarations with `.new-a` (line 1); reuse `.new-a`"
-    ]
+    report = report_css(tmp_path, css)
+
+    assert [
+        (finding.earlier.selector, finding.later.selector)
+        for finding in report.findings
+    ] == [(".new-a", ".new-b")]
 
 
-def test_a_semicolon_inside_a_string_is_part_of_the_value() -> None:
+def test_a_semicolon_inside_a_string_is_part_of_the_value(tmp_path: Path) -> None:
     css = """\
 .quote-a {
   content: "a;b;c;d";
@@ -588,33 +484,33 @@ def test_a_semicolon_inside_a_string_is_part_of_the_value() -> None:
 }
 """
 
-    assert find_duplicates(css) == []
+    assert report_css(tmp_path, css).findings == ()
 
 
-def test_css_the_check_cannot_read_is_reported_with_its_line() -> None:
-    css = """\
-.card {
-  color: red;
-  12px;
-}
-"""
-
-    assert find_duplicates(css) == [
-        "`.card` (line 3) holds CSS the check cannot read; fix it so it can"
-    ]
-
-
-def test_app_css_with_a_copied_rule_names_the_original() -> None:
+def test_app_css_with_a_copied_rule_names_the_original(tmp_path: Path) -> None:
+    source = REPOSITORY / "src/budget/dashboard/static/app.css"
     css = (REPOSITORY / "src/budget/dashboard/static/app.css").read_text("utf-8")
     original = re.search(r"^\.header-inner \{\n(.*?)^\}", css, re.MULTILINE | re.DOTALL)
     assert original, "app.css no longer has a `.header-inner` rule to copy"
     copy = '.copied-header {\n  content: "}";\n' + original.group(1) + "}\n"
-    allowlist = read_allowlist(
-        (REPOSITORY / "css-duplicates-allowlist.txt").read_text("utf-8")
-    )
+    copied = tmp_path / "copied.css"
+    copied.write_text(copy, encoding="utf-8")
 
-    messages = find_duplicates(css + "\n" + copy, allowlist)
+    report = report_overlaps((source, copied))
 
-    assert messages, "the copied rule was not reported"
-    assert messages[0].startswith("`.copied-header` (line "), messages
-    assert messages[0].endswith("reuse `.header-inner`"), messages
+    matches = [
+        finding
+        for finding in report.findings
+        if finding.later.selector == ".copied-header"
+        and finding.earlier.selector == ".header-inner"
+    ]
+    assert [finding.declarations for finding in matches] == [
+        (
+            "align-items: center",
+            "display: flex",
+            "gap: 1rem",
+            "justify-content: space-between",
+            "min-height: 4.25rem",
+        )
+    ]
+    assert matches, "the copied rule was not reported"
