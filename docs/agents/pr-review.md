@@ -27,6 +27,13 @@ rationale is in issue #362.
 - **Re-review**: re-check the fix, the interactions it changes and any
   conflict resolutions. Repeated design-level findings mean replanning, not
   more patches.
+- **CSS declaration overlap advisory**: read the report in pytest or CI output.
+  For each material overlap, require the author either to reuse/extract shared
+  styles or to explain why keeping the rules separate is appropriate. One
+  explanation may cover related matches. Mere overlap is not a required
+  finding, and the report's mention of an earlier selector is not a reuse
+  recommendation. Execution rules and the authoritative threshold are in
+  [Code Quality Gate](code-quality.md#css-declaration-overlap-advisory).
 - **Ready**: a PR is ready for the owner to merge once its contract holds,
   its required findings are fixed with evidence and its checks pass. Agents
   don't merge.
