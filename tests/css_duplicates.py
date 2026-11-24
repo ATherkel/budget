@@ -363,14 +363,14 @@ def text(nodes: Iterable[Node]) -> str:
 def declaration(node: Declaration) -> str:
     """Return a normalized declaration, preserving value-significant text."""
     property_name = node.name if node.name.startswith("--") else node.lower_name
-    parts: list[str] = []
+    tokens: list[Node] = []
     for token in node.value:
-        if isinstance(token, WhitespaceToken):
-            if parts and parts[-1] != " ":
-                parts.append(" ")
-        else:
-            parts.append(tinycss2.serialize([token]))
-    value = "".join(parts).strip()
+        if not isinstance(token, WhitespaceToken):
+            tokens.append(token)
+        elif tokens and not isinstance(tokens[-1], WhitespaceToken):
+            tokens.append(WhitespaceToken(token.source_line, token.source_column, " "))
+    # Serializing the sequence as a whole keeps adjacent tokens apart.
+    value = tinycss2.serialize(tokens).strip()
     if node.important:
         value += " !important"
     return f"{property_name}: {value}"
