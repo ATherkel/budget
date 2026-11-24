@@ -27,15 +27,10 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             item.add_marker(pytest.mark.docs)
 
 
-def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """Show the CSS overlap advisory and fail the session on analysis errors."""
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    """Show the CSS overlap advisory; its errors fail a test in the CSS suite."""
     report = report_dashboard()
-    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
-    if reporter is None:
-        return
-    reporter.write_sep("=", "CSS declaration overlap advisory")
-    reporter.write_line(format_report(report).rstrip())
+    terminalreporter.write_sep("=", "CSS declaration overlap advisory")
+    terminalreporter.write_line(format_report(report).rstrip())
     if report.diagnostics:
-        reporter.write_line(format_diagnostics(report).rstrip())
-        if exitstatus == pytest.ExitCode.OK:
-            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        terminalreporter.write_line(format_diagnostics(report).rstrip())
