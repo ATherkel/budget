@@ -39,7 +39,8 @@ KEYFRAME_AT_RULES: frozenset[str] = frozenset({"keyframes", "-webkit-keyframes"}
 DECLARATION_AT_RULES: frozenset[str] = frozenset(
     {"counter-style", "font-face", "page", "property"}
 )
-DASHBOARD_ROOT = Path(__file__).resolve().parents[1] / "src" / "budget" / "dashboard"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+DASHBOARD_ROOT = REPOSITORY_ROOT / "src" / "budget" / "dashboard"
 
 
 def discover_stylesheets(root: Path = DASHBOARD_ROOT) -> tuple[Path, ...]:
@@ -404,9 +405,9 @@ def format_diagnostics(report: Report) -> str:
     lines = []
     for diagnostic in report.diagnostics:
         location = (
-            f"{diagnostic.path}:{diagnostic.line}"
+            f"{display_path(diagnostic.path)}:{diagnostic.line}"
             if diagnostic.line is not None
-            else str(diagnostic.path)
+            else display_path(diagnostic.path)
         )
         lines.append(f"CSS analysis error: {location}: {diagnostic.message}")
     return "\n".join(lines) + "\n"
@@ -419,7 +420,15 @@ def location_text(location: Location) -> str:
         if location.context
         else f"`{location.selector}`"
     )
-    return f"{location.path}:{location.line} {selector}"
+    return f"{display_path(location.path)}:{location.line} {selector}"
+
+
+def display_path(path: Path) -> str:
+    """Return `path` relative to the repository when it lies inside it."""
+    try:
+        return path.resolve().relative_to(REPOSITORY_ROOT).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
