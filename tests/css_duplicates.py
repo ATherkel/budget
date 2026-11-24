@@ -413,6 +413,11 @@ def format_report(report: Report) -> str:
     return "\n".join(lines) + "\n"
 
 
+def format_annotations(report: Report) -> str:
+    """Return one GitHub Actions warning command per finding."""
+    return "".join("" for _ in report.findings)
+
+
 def format_diagnostics(report: Report) -> str:
     """Return explicit analysis failures for stderr."""
     lines = []

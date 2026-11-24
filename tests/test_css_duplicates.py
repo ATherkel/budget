@@ -15,6 +15,7 @@ from tests.css_duplicates import (
     Overlap,
     Report,
     discover_stylesheets,
+    format_annotations,
     format_diagnostics,
     format_report,
     report_dashboard,
@@ -318,6 +319,28 @@ def test_a_stylesheet_given_twice_is_analysed_once(tmp_path: Path) -> None:
 
     assert report_overlaps((stylesheet, stylesheet)) == Report(
         findings=(), diagnostics=()
+    )
+
+
+def test_each_finding_becomes_a_github_warning_at_the_later_rule() -> None:
+    stylesheet = REPOSITORY / "src" / "budget" / "dashboard" / "static" / "app.css"
+    report = Report(
+        findings=(
+            Overlap(
+                later=Location(path=stylesheet, line=9, selector=".copy"),
+                earlier=Location(path=stylesheet, line=1, selector=".card"),
+                declarations=("color: red", "margin: 0", "width: 100%"),
+            ),
+        ),
+        diagnostics=(),
+    )
+
+    assert format_annotations(report) == (
+        "::warning file=src/budget/dashboard/static/app.css,line=9,"
+        "title=CSS declaration overlap::"
+        "`.copy` shares 3 declarations with "
+        "src/budget/dashboard/static/app.css:1 `.card`"
+        "%0Acolor: red%0Amargin: 0%0Awidth: 100%25\n"
     )
 
 
