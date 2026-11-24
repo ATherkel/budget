@@ -17,6 +17,22 @@ from tinycss2.ast import (
 
 # Two rules sharing this many declarations repeat each other.
 SHARED_LIMIT = 3
+GROUPING_AT_RULES: frozenset[str] = frozenset(
+    {
+        "container",
+        "document",
+        "layer",
+        "media",
+        "scope",
+        "starting-style",
+        "supports",
+        "-moz-document",
+    }
+)
+KEYFRAME_AT_RULES: frozenset[str] = frozenset({"keyframes", "-webkit-keyframes"})
+DECLARATION_AT_RULES: frozenset[str] = frozenset(
+    {"counter-style", "font-face", "page", "property"}
+)
 
 
 @dataclass(frozen=True)
@@ -74,63 +90,169 @@ class _GroupedRule:
 
 
 def _grouped_rules(
-    nodes: Sequence[Node], path: Path, context: str = ""
+    nodes: Sequence[Node],
+    path: Path,
+    diagnostics: list[Diagnostic],
+    context: str = "",
 ) -> list[_GroupedRule]:
-    """Return the style rules in `nodes`, recursively entering media blocks."""
+    """Return style rules in `nodes` and record syntax it cannot analyze."""
     rules: list[_GroupedRule] = []
     for node in nodes:
-        if isinstance(node, QualifiedRule):
-            declarations = tinycss2.parse_blocks_contents(
-                node.content,
-                skip_comments=True,
-                skip_whitespace=True,
-            )
-            rules.append(
-                _GroupedRule(
-                    path=path,
-                    rule=Rule(
-                        selector=text(node.prelude),
-                        line=node.source_line,
-                        declarations=frozenset(
-                            declaration(item)
-                            for item in declarations
-                            if isinstance(item, Declaration)
-                        ),
-                    ),
-                    context=context,
-                )
-            )
-        elif (
-            isinstance(node, AtRule)
-            and node.at_keyword.lower() == "media"
-            and node.content is not None
-        ):
-            inner = tinycss2.parse_rule_list(
-                node.content,
-                skip_comments=True,
-                skip_whitespace=True,
-            )
-            media = f"@{node.at_keyword} {text(node.prelude)}"
-            rules.extend(
-                _grouped_rules(
-                    inner,
-                    path,
-                    " ".join(filter(None, [context, media])),
-                )
-            )
+        if isinstance(node, ParseError):
+            diagnostics.append(_parse_error(path, node))
+        elif isinstance(node, QualifiedRule):
+            grouped = _style_rule(path, node, diagnostics, context)
+            if grouped is not None:
+                rules.append(grouped)
+        elif isinstance(node, AtRule) and node.content is not None:
+            rules.extend(_at_rule_rules(node, path, diagnostics, context))
     return rules
+
+
+def _parse_error(path: Path, error: ParseError) -> Diagnostic:
+    """Return a diagnostic containing tinycss2's parser message."""
+    return Diagnostic(
+        path=path,
+        line=error.source_line,
+        message=f"parse error: {error.message}",
+    )
+
+
+def _style_rule(
+    path: Path,
+    node: QualifiedRule,
+    diagnostics: list[Diagnostic],
+    context: str,
+) -> _GroupedRule | None:
+    """Return one readable style rule, or diagnose unsupported block contents."""
+    selector = text(node.prelude)
+    items = tinycss2.parse_blocks_contents(
+        node.content,
+        skip_comments=True,
+        skip_whitespace=True,
+    )
+    errors = [item for item in items if isinstance(item, ParseError)]
+    diagnostics.extend(_parse_error(path, error) for error in errors)
+    unsupported = [
+        item for item in items if not isinstance(item, (Declaration, ParseError))
+    ]
+    if unsupported:
+        diagnostics.append(
+            Diagnostic(
+                path=path,
+                line=unsupported[0].source_line,
+                message=f"unsupported nested rule inside `{selector}`",
+            )
+        )
+    if errors or unsupported:
+        return None
+    return _GroupedRule(
+        path=path,
+        rule=Rule(
+            selector=selector,
+            line=node.source_line,
+            declarations=frozenset(
+                declaration(item) for item in items if isinstance(item, Declaration)
+            ),
+        ),
+        context=context,
+    )
+
+
+def _at_rule_rules(
+    node: AtRule,
+    path: Path,
+    diagnostics: list[Diagnostic],
+    context: str,
+) -> list[_GroupedRule]:
+    """Return readable rules from a supported block at-rule."""
+    content = node.content
+    if content is None:
+        return []
+    keyword = node.at_keyword.lower()
+    prelude = text(node.prelude)
+    at_rule = f"@{node.at_keyword} {prelude}"
+    if keyword in GROUPING_AT_RULES or keyword in KEYFRAME_AT_RULES:
+        inner = tinycss2.parse_rule_list(
+            content,
+            skip_comments=True,
+            skip_whitespace=True,
+        )
+        return _grouped_rules(
+            inner,
+            path,
+            diagnostics,
+            " ".join(filter(None, [context, at_rule])),
+        )
+    if keyword in DECLARATION_AT_RULES:
+        return _declaration_at_rule(node, path, diagnostics, context, at_rule)
+    diagnostics.append(
+        Diagnostic(
+            path=path,
+            line=node.source_line,
+            message=f"unsupported at-rule block `{at_rule}`",
+        )
+    )
+    return []
+
+
+def _declaration_at_rule(
+    node: AtRule,
+    path: Path,
+    diagnostics: list[Diagnostic],
+    context: str,
+    at_rule: str,
+) -> list[_GroupedRule]:
+    """Return one declaration-style at-rule, or diagnose its block contents."""
+    content = node.content
+    if content is None:
+        return []
+    items = tinycss2.parse_blocks_contents(
+        content,
+        skip_comments=True,
+        skip_whitespace=True,
+    )
+    errors = [item for item in items if isinstance(item, ParseError)]
+    diagnostics.extend(_parse_error(path, error) for error in errors)
+    unsupported = [
+        item for item in items if not isinstance(item, (Declaration, ParseError))
+    ]
+    if unsupported:
+        diagnostics.append(
+            Diagnostic(
+                path=path,
+                line=unsupported[0].source_line,
+                message=f"unsupported nested block inside `{at_rule}`",
+            )
+        )
+    if errors or unsupported:
+        return []
+    return [
+        _GroupedRule(
+            path=path,
+            rule=Rule(
+                selector=at_rule,
+                line=node.source_line,
+                declarations=frozenset(
+                    declaration(item) for item in items if isinstance(item, Declaration)
+                ),
+            ),
+            context=context,
+        )
+    ]
 
 
 def report_overlaps(paths: Iterable[Path]) -> Report:
     """Report declarations shared by rules in `paths`."""
     rules: list[_GroupedRule] = []
+    diagnostics: list[Diagnostic] = []
     for path in paths:
         nodes = tinycss2.parse_stylesheet(
             path.read_text(encoding="utf-8"),
             skip_comments=True,
             skip_whitespace=True,
         )
-        rules.extend(_grouped_rules(nodes, path))
+        rules.extend(_grouped_rules(nodes, path, diagnostics))
 
     findings: list[Overlap] = []
     for index, grouped in enumerate(rules):
@@ -155,7 +277,7 @@ def report_overlaps(paths: Iterable[Path]) -> Report:
                     declarations=tuple(sorted(shared)),
                 )
             )
-    return Report(findings=tuple(findings), diagnostics=())
+    return Report(findings=tuple(findings), diagnostics=tuple(diagnostics))
 
 
 @dataclass(frozen=True)
