@@ -123,6 +123,48 @@ def test_an_overlap_inside_a_media_query_retains_its_grouping_context(
     ] == [("", "@media (max-width: 48rem)")]
 
 
+def test_declaration_identity_preserves_case_and_string_whitespace_but_normalizes_names(
+    tmp_path: Path,
+) -> None:
+    base = tmp_path / "base.css"
+    base.write_text(
+        """\
+.base {
+  color: RED;
+  --Tone: value;
+  content: "a  b";
+  padding: 1rem;
+  border:
+    1px  solid var(--line);
+  display: block;
+}
+""",
+        encoding="utf-8",
+    )
+    variant = tmp_path / "variant.css"
+    variant.write_text(
+        """\
+.variant {
+  COLOR: red;
+  --tone: value;
+  content: "a b";
+  PADDING: 1rem;
+  border: 1px solid var(--line);
+  DISPLAY:block;
+}
+""",
+        encoding="utf-8",
+    )
+
+    report = report_overlaps((base, variant))
+
+    assert report.findings[0].declarations == (
+        "border: 1px solid var(--line)",
+        "display: block",
+        "padding: 1rem",
+    )
+
+
 def test_rules_sharing_two_declarations_pass() -> None:
     css = """\
 .card {
