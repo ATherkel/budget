@@ -1,10 +1,18 @@
 # Copyright 2026 Therkel
 """Shared pytest hooks for the whole test suite."""
 
+import os
 import re
 from pathlib import Path
 
 import pytest
+
+from tests.css_duplicates import (
+    format_annotations,
+    format_diagnostics,
+    format_report,
+    report_dashboard,
+)
 
 # A module that names the docs folder or the README reads documentation, so a
 # docs-only pull request must still run it: CI selects these with `-m docs`.
@@ -23,3 +31,14 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
         if _reads_docs(item.path, cache):
             item.add_marker(pytest.mark.docs)
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    """Show the CSS overlap advisory; its errors fail a test in the CSS suite."""
+    report = report_dashboard()
+    terminalreporter.write_sep("=", "CSS declaration overlap advisory")
+    terminalreporter.write_line(format_report(report).rstrip())
+    if report.diagnostics:
+        terminalreporter.write_line(format_diagnostics(report).rstrip())
+    if os.environ.get("GITHUB_ACTIONS") == "true" and report.findings:
+        terminalreporter.write_line(format_annotations(report).rstrip())
