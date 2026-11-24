@@ -10,14 +10,18 @@ from pathlib import Path
 import tinycss2
 from tinycss2.ast import (
     AtRule,
+    CurlyBracketsBlock,
     Declaration,
+    FunctionBlock,
     Node,
+    ParenthesesBlock,
     ParseError,
     QualifiedRule,
+    SquareBracketsBlock,
     WhitespaceToken,
 )
 
-# Two rules sharing this many declarations repeat each other.
+# Declaration overlap reporting threshold.
 SHARED_LIMIT = 3
 GROUPING_AT_RULES: frozenset[str] = frozenset(
     {
@@ -126,6 +130,29 @@ def _parse_error(path: Path, error: ParseError) -> Diagnostic:
     )
 
 
+def _token_errors(nodes: Sequence[Node]) -> list[ParseError]:
+    """Return every tokenizer error in `nodes` and nested token blocks."""
+    errors: list[ParseError] = []
+    for node in nodes:
+        if isinstance(node, ParseError):
+            errors.append(node)
+            continue
+        if isinstance(node, (AtRule, QualifiedRule)):
+            children = node.prelude
+        elif isinstance(node, Declaration):
+            children = node.value
+        elif isinstance(node, FunctionBlock):
+            children = node.arguments
+        elif isinstance(
+            node, (CurlyBracketsBlock, ParenthesesBlock, SquareBracketsBlock)
+        ):
+            children = node.content
+        else:
+            continue
+        errors.extend(_token_errors(children))
+    return errors
+
+
 def _style_rule(
     path: Path,
     node: QualifiedRule,
@@ -139,12 +166,12 @@ def _style_rule(
         skip_comments=True,
         skip_whitespace=True,
     )
-    errors = [item for item in items if isinstance(item, ParseError)]
+    errors = _token_errors((*node.prelude, *items))
     diagnostics.extend(_parse_error(path, error) for error in errors)
     unsupported = [
         item for item in items if not isinstance(item, (Declaration, ParseError))
     ]
-    if unsupported:
+    if unsupported and not errors:
         diagnostics.append(
             Diagnostic(
                 path=path,
@@ -176,6 +203,10 @@ def _at_rule_rules(
     """Return readable rules from a supported block at-rule."""
     content = node.content
     if content is None:
+        return []
+    prelude_errors = _token_errors(node.prelude)
+    diagnostics.extend(_parse_error(path, error) for error in prelude_errors)
+    if prelude_errors:
         return []
     keyword = node.at_keyword.lower()
     prelude = text(node.prelude)
@@ -220,12 +251,12 @@ def _declaration_at_rule(
         skip_comments=True,
         skip_whitespace=True,
     )
-    errors = [item for item in items if isinstance(item, ParseError)]
+    errors = _token_errors(items)
     diagnostics.extend(_parse_error(path, error) for error in errors)
     unsupported = [
         item for item in items if not isinstance(item, (Declaration, ParseError))
     ]
-    if unsupported:
+    if unsupported and not errors:
         diagnostics.append(
             Diagnostic(
                 path=path,
