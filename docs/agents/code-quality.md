@@ -46,8 +46,9 @@ same advisory through its terminal reporting, and `.pre-commit-config.yaml` runs
 the command verbosely when relevant files change. Review responsibility is in
 [Pull Request Reviews](pr-review.md#css-declaration-overlap-advisory).
 
-Read failures, tokenizer/parser errors, and unsupported syntax are explicit
-diagnostics and make the command or pytest session fail. Dev tools are pinned
+Read failures, tokenizer/parser errors, unsupported syntax and a dashboard root
+with no stylesheets are explicit diagnostics. They make the command exit
+nonzero and fail `test_dashboard_css_analyses_without_errors` in pytest. Dev tools are pinned
 in `uv.lock`; install the hooks with `uvx pre-commit install`.
 
 ## Rules for agents

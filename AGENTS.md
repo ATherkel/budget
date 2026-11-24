@@ -53,8 +53,8 @@ All Python code must pass ruff (lint and format), ty and complexipy (cognitive
 complexity at most 15 per function, mirroring SonarQube rule `python:S3776`).
 Templates must pass the blocking rules configured in
 [`.djlint_rules.yaml`](.djlint_rules.yaml) and guarded by
-[`tests/test_template_lint.py`](tests/test_template_lint.py). Run the local
-checks before every commit, and never loosen the configuration or add a
+[`tests/test_template_lint.py`](tests/test_template_lint.py). CI enforces all
+of them. Run the local checks before every commit, and never loosen the configuration or add a
 suppression without the owner's approval. CSS declaration overlap reports are
 advisory: see the
 [execution and threshold owner](docs/agents/code-quality.md#css-declaration-overlap-advisory)
