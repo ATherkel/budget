@@ -255,8 +255,25 @@ def report_overlaps(paths: Iterable[Path]) -> Report:
     rules: list[_GroupedRule] = []
     diagnostics: list[Diagnostic] = []
     for path in paths:
+        try:
+            css = path.read_text(encoding="utf-8")
+        except OSError as error:
+            diagnostics.append(_read_error(path, error))
+            continue
+        except UnicodeDecodeError as error:
+            diagnostics.append(
+                Diagnostic(
+                    path=path,
+                    line=None,
+                    message=(
+                        "cannot decode stylesheet as UTF-8 at byte "
+                        f"{error.start}: {error.reason}"
+                    ),
+                )
+            )
+            continue
         nodes = tinycss2.parse_stylesheet(
-            path.read_text(encoding="utf-8"),
+            css,
             skip_comments=True,
             skip_whitespace=True,
         )
@@ -286,6 +303,18 @@ def report_overlaps(paths: Iterable[Path]) -> Report:
                 )
             )
     return Report(findings=tuple(findings), diagnostics=tuple(diagnostics))
+
+
+def _read_error(path: Path, error: OSError) -> Diagnostic:
+    """Return a portable diagnostic for a stylesheet read failure."""
+    if isinstance(error, FileNotFoundError):
+        message = "cannot read stylesheet: file not found"
+    elif isinstance(error, PermissionError):
+        message = "cannot read stylesheet: permission denied"
+    else:
+        detail = error.strerror or type(error).__name__
+        message = f"cannot read stylesheet: {detail}"
+    return Diagnostic(path=path, line=None, message=message)
 
 
 @dataclass(frozen=True)
@@ -453,6 +482,19 @@ def format_report(report: Report) -> str:
     return "\n".join(lines) + "\n"
 
 
+def format_diagnostics(report: Report) -> str:
+    """Return explicit analysis failures for stderr."""
+    lines = []
+    for diagnostic in report.diagnostics:
+        location = (
+            f"{diagnostic.path}:{diagnostic.line}"
+            if diagnostic.line is not None
+            else str(diagnostic.path)
+        )
+        lines.append(f"CSS analysis error: {location}: {diagnostic.message}")
+    return "\n".join(lines) + "\n"
+
+
 def location_text(location: Location) -> str:
     """Return one location with its path, line, grouping context, and selector."""
     selector = (
@@ -478,6 +520,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     paths = arguments.paths or discover_stylesheets()
     report = report_overlaps(paths)
     sys.stdout.write(format_report(report))
+    if report.diagnostics:
+        sys.stderr.write(format_diagnostics(report))
     return 1 if report.diagnostics else 0
 
 
