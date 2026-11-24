@@ -48,8 +48,8 @@ the command verbosely when relevant files change. Review responsibility is in
 
 Read failures, tokenizer/parser errors, unsupported syntax and a dashboard root
 with no stylesheets are explicit diagnostics. They make the command exit
-nonzero and fail `test_dashboard_css_analyses_without_errors` in pytest. Dev tools are pinned
-in `uv.lock`; install the hooks with `uvx pre-commit install`.
+nonzero and fail `test_dashboard_css_analyses_without_errors` in pytest. Dev
+tools are pinned in `uv.lock`; install the hooks with `uvx pre-commit install`.
 
 ## Rules for agents
 
