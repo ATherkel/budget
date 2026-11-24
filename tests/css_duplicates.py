@@ -6,7 +6,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import tinycss2
-from tinycss2.ast import AtRule, Declaration, Node, ParseError, QualifiedRule
+from tinycss2.ast import (
+    AtRule,
+    Declaration,
+    Node,
+    ParseError,
+    QualifiedRule,
+    WhitespaceToken,
+)
 
 # Two rules sharing this many declarations repeat each other.
 SHARED_LIMIT = 3
@@ -165,11 +172,19 @@ def text(nodes: Iterable[Node]) -> str:
 
 
 def declaration(node: Declaration) -> str:
-    """Return `property: value` with the property lower-cased."""
-    value = text(node.value)
+    """Return a normalized declaration, preserving value-significant text."""
+    property_name = node.name if node.name.startswith("--") else node.lower_name
+    parts: list[str] = []
+    for token in node.value:
+        if isinstance(token, WhitespaceToken):
+            if parts and parts[-1] != " ":
+                parts.append(" ")
+        else:
+            parts.append(tinycss2.serialize([token]))
+    value = "".join(parts).strip()
     if node.important:
         value += " !important"
-    return f"{node.lower_name}: {value}"
+    return f"{property_name}: {value}"
 
 
 @dataclass
