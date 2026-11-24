@@ -14,7 +14,7 @@ an advisory overlap report described below.
 | Format | ruff formatter | `uv run ruff format --check .` |
 | Types | ty, warnings promoted to errors | `uv run ty check` |
 | Cognitive complexity ≤ 15 per function | complexipy (SonarQube rule `python:S3776`) | `uv run complexipy` |
-| Templates, lines ≤ 120 characters | djlint, lint only | `uv run djlint src --lint` |
+| Templates | djlint plus the repository line rule; authoritative settings are [`.djlint_rules.yaml`](../../.djlint_rules.yaml) and [`tests/test_template_lint.py`](../../tests/test_template_lint.py) | `uv run djlint src --lint`; `uv run pytest tests/test_template_lint.py` |
 
 Run them all at once:
 
@@ -24,10 +24,12 @@ uv run ruff check . && uv run ruff format --check . && uv run ty check \
   && uv run complexipy && uv run djlint src --lint
 ```
 
-Configuration lives in `pyproject.toml`; djlint's line rule lives in
-`.djlint_rules.yaml`, because its own `max_line_length` only steers the
-formatter. djlint skips a line that holds a comment, so
-`tests/test_template_lint.py` also checks every template line's length.
+Configuration lives in `pyproject.toml`. The repository line rule is in
+[`.djlint_rules.yaml`](../../.djlint_rules.yaml), because djlint's own
+`max_line_length` only steers the formatter.
+[`tests/test_template_lint.py`](../../tests/test_template_lint.py) also guards
+the line rule where djlint skips a line that holds a comment. These files are
+authoritative for the configured limit.
 
 ## CSS Declaration Overlap Advisory
 
@@ -38,11 +40,11 @@ The threshold is the `SHARED_LIMIT` value in
 single source of truth.
 
 The report names both paths, lines, selectors and grouping contexts, plus the
-declarations the rules share. Overlap alone always exits successfully. Reuse or
-keeping separate styles is a review judgment; the report never recommends a
-specific selector. Ordinary `uv run pytest` prints the same advisory through
-its terminal reporting, and `.pre-commit-config.yaml` runs the command verbosely
-when relevant files change.
+declarations the rules share. Overlap alone always exits successfully, and the
+report never recommends a specific selector. Ordinary `uv run pytest` prints the
+same advisory through its terminal reporting, and `.pre-commit-config.yaml` runs
+the command verbosely when relevant files change. Review responsibility is in
+[Pull Request Reviews](pr-review.md#css-declaration-overlap-advisory).
 
 Read failures, tokenizer/parser errors, and unsupported syntax are explicit
 diagnostics and make the command or pytest session fail. Dev tools are pinned
@@ -56,9 +58,9 @@ in `uv.lock`; install the hooks with `uvx pre-commit install`.
   `# complexipy: ignore`, `{# djlint:off #}`) without the owner's explicit
   approval in the task. When approved, the suppression names the exact rule and a
   comment says why.
-- Treat CSS declaration overlaps as review leads, not check failures. Do not
-  suppress read, parse, or unsupported-syntax diagnostics. Review responsibility
-  is in [Pull Request Reviews](pr-review.md#css-declaration-overlap-advisory).
+- Do not suppress CSS read, parse, or unsupported-syntax diagnostics. Overlap
+  reporting without diagnostics is advisory; its review responsibility is in
+  [Pull Request Reviews](pr-review.md#css-declaration-overlap-advisory).
 - Treat a complexity failure as a design signal. Split the function by
   responsibility, extract guard clauses, or replace branching with data
   (lookup tables, polymorphism); do not just move nesting into a helper that
