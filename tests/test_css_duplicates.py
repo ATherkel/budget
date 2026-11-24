@@ -306,6 +306,21 @@ def test_dashboard_stylesheet_discovery_is_recursive_and_deterministic(
     ) == ("features/planning/chart.css", "static/app.css")
 
 
+@pytest.mark.parametrize("property_name", ["--x", "font-family"])
+def test_tokens_separated_by_a_comment_are_not_one_value(
+    tmp_path: Path, property_name: str
+) -> None:
+    report = report_css(
+        tmp_path,
+        f"""\
+.split {{ {property_name}: a/**/b; padding: 0; margin: 0; }}
+.joined {{ {property_name}: ab; padding: 0; margin: 0; }}
+""",
+    )
+
+    assert report == Report(findings=(), diagnostics=())
+
+
 def test_a_dashboard_root_without_stylesheets_is_a_diagnostic(tmp_path: Path) -> None:
     root = tmp_path / "moved-dashboard"
 
