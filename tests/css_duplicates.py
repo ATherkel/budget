@@ -284,7 +284,7 @@ def report_overlaps(paths: Iterable[Path]) -> Report:
     """Report declarations shared by rules in `paths`."""
     rules: list[_GroupedRule] = []
     diagnostics: list[Diagnostic] = []
-    for path in paths:
+    for path in _first_of_each(paths):
         try:
             css = path.read_text(encoding="utf-8")
         except OSError as error:
@@ -333,6 +333,18 @@ def report_overlaps(paths: Iterable[Path]) -> Report:
                 )
             )
     return Report(findings=tuple(findings), diagnostics=tuple(diagnostics))
+
+
+def _first_of_each(paths: Iterable[Path]) -> list[Path]:
+    """Return `paths` in order without repeats of the same file."""
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for path in paths:
+        resolved = path.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(path)
+    return unique
 
 
 def report_dashboard(root: Path = DASHBOARD_ROOT) -> Report:
