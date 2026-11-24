@@ -9,7 +9,13 @@ from pathlib import Path
 import pytest
 
 from tests.cli.processes import explicit_environment
-from tests.css_duplicates import Report, discover_stylesheets, report_overlaps
+from tests.css_duplicates import (
+    Diagnostic,
+    Report,
+    discover_stylesheets,
+    report_dashboard,
+    report_overlaps,
+)
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 
@@ -296,6 +302,17 @@ def test_dashboard_stylesheet_discovery_is_recursive_and_deterministic(
     assert tuple(
         path.relative_to(tmp_path).as_posix() for path in discover_stylesheets(tmp_path)
     ) == ("features/planning/chart.css", "static/app.css")
+
+
+def test_a_dashboard_root_without_stylesheets_is_a_diagnostic(tmp_path: Path) -> None:
+    root = tmp_path / "moved-dashboard"
+
+    report = report_dashboard(root)
+
+    assert report == Report(
+        findings=(),
+        diagnostics=(Diagnostic(path=root, line=None, message="no stylesheets found"),),
+    )
 
 
 def test_executable_reports_overlap_and_succeeds(tmp_path: Path) -> None:

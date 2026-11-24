@@ -336,6 +336,11 @@ def report_overlaps(paths: Iterable[Path]) -> Report:
     return Report(findings=tuple(findings), diagnostics=tuple(diagnostics))
 
 
+def report_dashboard(root: Path = DASHBOARD_ROOT) -> Report:
+    """Report overlaps across every stylesheet under `root`."""
+    return report_overlaps(discover_stylesheets(root))
+
+
 def _read_error(path: Path, error: OSError) -> Diagnostic:
     """Return a portable diagnostic for a stylesheet read failure."""
     if isinstance(error, FileNotFoundError):
