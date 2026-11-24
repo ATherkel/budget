@@ -4,9 +4,9 @@ type: agents
 # Code Quality Gate
 
 All Python code and templates in this repository must pass these checks. CI
-runs them in `.github/workflows/quality.yml` and blocks the merge when any one
-fails, so run them locally before every commit that touches Python or
-templates.
+runs them in `.github/workflows/quality.yml` and `.github/workflows/pytest.yml`;
+run them locally before every commit that touches Python or templates. CSS has
+an advisory overlap report described below.
 
 | Check | Tool | Local command |
 | --- | --- | --- |
@@ -14,7 +14,7 @@ templates.
 | Format | ruff formatter | `uv run ruff format --check .` |
 | Types | ty, warnings promoted to errors | `uv run ty check` |
 | Cognitive complexity ≤ 15 per function | complexipy (SonarQube rule `python:S3776`) | `uv run complexipy` |
-| Templates, lines ≤ 120 characters | djlint, lint only | `uv run djlint src --lint` |
+| Templates | djlint plus the repository line rule; authoritative settings are [`.djlint_rules.yaml`](../../.djlint_rules.yaml) and [`tests/test_template_lint.py`](../../tests/test_template_lint.py) | `uv run djlint src --lint`; `uv run pytest tests/test_template_lint.py` |
 
 Run them all at once:
 
@@ -24,12 +24,36 @@ uv run ruff check . && uv run ruff format --check . && uv run ty check \
   && uv run complexipy && uv run djlint src --lint
 ```
 
-Configuration lives in `pyproject.toml`; djlint's line rule lives in
-`.djlint_rules.yaml`, because its own `max_line_length` only steers the
-formatter. djlint skips a line that holds a comment, so
-`tests/test_template_lint.py` also checks every template line's length.
-Dev tools are pinned in `uv.lock`. `.pre-commit-config.yaml` runs djlint on
-commit once installed with `uvx pre-commit install`.
+Configuration lives in `pyproject.toml`. The repository line rule is in
+[`.djlint_rules.yaml`](../../.djlint_rules.yaml), because djlint's own
+`max_line_length` only steers the formatter.
+[`tests/test_template_lint.py`](../../tests/test_template_lint.py) also guards
+the line rule where djlint skips a line that holds a comment. These files are
+authoritative for the configured limit.
+
+## CSS Declaration Overlap Advisory
+
+`uv run python -m tests.css_duplicates` scans the dashboard stylesheet root
+recursively by default. Optional path arguments inspect specific stylesheets.
+The threshold is the `SHARED_LIMIT` value in
+[`tests/css_duplicates.py`](../../tests/css_duplicates.py); that setting is the
+single source of truth.
+
+The report names both paths, lines, selectors and grouping contexts, plus the
+declarations the rules share. Overlap alone always exits successfully, and the
+report never recommends a specific selector. Ordinary `uv run pytest` prints the
+same advisory through its terminal reporting, and `.pre-commit-config.yaml` runs
+the command verbosely when relevant files change. In GitHub Actions the pytest
+run also prints each finding as a warning annotation at the later rule, so
+findings appear on the run and the PR's changed files. GitHub shows only the
+first annotations of each kind per step, so the log stays the complete report.
+Review responsibility is in
+[Pull Request Reviews](pr-review.md#css-declaration-overlap-advisory).
+
+Read failures, tokenizer/parser errors, unsupported syntax and a dashboard root
+with no stylesheets are explicit diagnostics. They make the command exit
+nonzero and fail `test_dashboard_css_analyses_without_errors` in pytest. Dev
+tools are pinned in `uv.lock`; install the hooks with `uvx pre-commit install`.
 
 ## Rules for agents
 
@@ -39,6 +63,9 @@ commit once installed with `uvx pre-commit install`.
   `# complexipy: ignore`, `{# djlint:off #}`) without the owner's explicit
   approval in the task. When approved, the suppression names the exact rule and a
   comment says why.
+- Do not suppress CSS read, parse, or unsupported-syntax diagnostics. Overlap
+  reporting without diagnostics is advisory; its review responsibility is in
+  [Pull Request Reviews](pr-review.md#css-declaration-overlap-advisory).
 - Treat a complexity failure as a design signal. Split the function by
   responsibility, extract guard clauses, or replace branching with data
   (lookup tables, polymorphism); do not just move nesting into a helper that
