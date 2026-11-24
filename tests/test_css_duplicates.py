@@ -2,10 +2,13 @@
 """The duplicate CSS check names the existing rule to reuse."""
 
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
+from tests.cli.processes import explicit_environment
 from tests.css_duplicates import (
     discover_stylesheets,
     find_duplicates,
@@ -247,6 +250,56 @@ def test_dashboard_stylesheet_discovery_is_recursive_and_deterministic(
     assert tuple(
         path.relative_to(tmp_path).as_posix() for path in discover_stylesheets(tmp_path)
     ) == ("features/planning/chart.css", "static/app.css")
+
+
+def test_executable_reports_overlap_and_succeeds(tmp_path: Path) -> None:
+    base = tmp_path / "base.css"
+    base.write_text(
+        """\
+.card {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+""",
+        encoding="utf-8",
+    )
+    feature = tmp_path / "feature.css"
+    feature.write_text(
+        """\
+.panel {
+  color: var(--ink);
+  padding: 1rem;
+  border: 1px solid var(--line);
+}
+""",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-m", "tests.css_duplicates", str(base), str(feature)],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPOSITORY,
+        env=explicit_environment(),
+    )
+
+    assert (result.returncode, result.stdout, result.stderr) == (
+        0,
+        (
+            "CSS declaration overlap advisory: 1 finding\n"
+            f"- {base}:1 `.card`\n"
+            f"  with {feature}:1 `.panel`\n"
+            "  shared declarations:\n"
+            "    border: 1px solid var(--line)\n"
+            "    color: var(--ink)\n"
+            "    padding: 1rem\n"
+            "\n"
+            "Review the overlap and decide how these rules should be maintained.\n"
+        ),
+        "",
+    )
 
 
 def test_rules_sharing_two_declarations_pass() -> None:

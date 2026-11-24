@@ -41,6 +41,17 @@ def discover_stylesheets(root: Path = DASHBOARD_ROOT) -> tuple[Path, ...]:
     return tuple(sorted(root.rglob("*.css"), key=lambda path: path.as_posix()))
 
 
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the CSS overlap advisory command."""
+    if argv is None:
+        return 0
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
 @dataclass(frozen=True)
 class Location:
     """Where a CSS rule starts and how its surrounding at-rules read."""
