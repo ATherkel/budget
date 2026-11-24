@@ -310,6 +310,12 @@ def test_dashboard_stylesheet_discovery_is_recursive_and_deterministic(
     ) == ("features/planning/chart.css", "static/app.css")
 
 
+def test_dashboard_css_analyses_without_errors() -> None:
+    report = report_dashboard()
+
+    assert report.diagnostics == (), format_diagnostics(report)
+
+
 def test_report_paths_inside_the_repository_are_relative() -> None:
     stylesheet = REPOSITORY / "src" / "budget" / "dashboard" / "static" / "app.css"
     report = Report(
