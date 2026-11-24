@@ -1,6 +1,8 @@
 # Copyright 2026 Therkel
 """Find CSS rules that repeat another rule's declarations."""
 
+import argparse
+import sys
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,17 +41,6 @@ DASHBOARD_ROOT = Path(__file__).resolve().parents[1] / "src" / "budget" / "dashb
 def discover_stylesheets(root: Path = DASHBOARD_ROOT) -> tuple[Path, ...]:
     """Return dashboard stylesheets under `root` in deterministic order."""
     return tuple(sorted(root.rglob("*.css"), key=lambda path: path.as_posix()))
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    """Run the CSS overlap advisory command."""
-    if argv is None:
-        return 0
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
 
 
 @dataclass(frozen=True)
@@ -437,3 +428,58 @@ def read_allowlist(text: str) -> list[tuple[str, str]]:
             raise ValueError(message)
         pairs.append((rule.strip(), earlier.strip()))
     return pairs
+
+
+def format_report(report: Report) -> str:
+    """Return the neutral advisory report printed by the executable."""
+    count = len(report.findings)
+    noun = "finding" if count == 1 else "findings"
+    lines = [f"CSS declaration overlap advisory: {count} {noun}"]
+    for finding in report.findings:
+        lines.extend(
+            [
+                f"- {location_text(finding.earlier)}",
+                f"  with {location_text(finding.later)}",
+                "  shared declarations:",
+                *(f"    {declaration}" for declaration in finding.declarations),
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "Review the overlap and decide how these rules should be maintained.",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def location_text(location: Location) -> str:
+    """Return one location with its path, line, grouping context, and selector."""
+    selector = (
+        f"{location.context} `{location.selector}`"
+        if location.context
+        else f"`{location.selector}`"
+    )
+    return f"{location.path}:{location.line} {selector}"
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the CSS overlap advisory command."""
+    parser = argparse.ArgumentParser(
+        description="Report declaration overlaps across dashboard CSS."
+    )
+    parser.add_argument(
+        "paths",
+        nargs="*",
+        type=Path,
+        help="Stylesheets to inspect; defaults to all dashboard CSS.",
+    )
+    arguments = parser.parse_args(argv)
+    paths = arguments.paths or discover_stylesheets()
+    report = report_overlaps(paths)
+    sys.stdout.write(format_report(report))
+    return 1 if report.diagnostics else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
