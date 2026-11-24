@@ -342,6 +342,28 @@ def test_executable_reports_a_read_failure_and_exits_nonzero(tmp_path: Path) -> 
     )
 
 
+def test_an_ordinary_pytest_run_displays_the_overlap_advisory() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/test_css_duplicates.py::test_rules_sharing_two_declarations_pass",
+            "-q",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPOSITORY,
+        env=explicit_environment(),
+    )
+
+    assert (
+        result.returncode,
+        "CSS declaration overlap advisory:" in result.stdout + result.stderr,
+    ) == (0, True)
+
+
 def test_rules_sharing_two_declarations_pass() -> None:
     css = """\
 .card {
