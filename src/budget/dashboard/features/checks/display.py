@@ -57,8 +57,10 @@ class ChecksView:
     # Empty when the figures are settled: the template then prints nothing.
     provisional: list[str]
     evidence: list[EvidenceLine]
-    # Empty when no residual is known to be nonzero: the template prints nothing.
     nonzero_residuals: list[ResidualLink]
+    # The list's heading, or nothing when no residual is known to be nonzero:
+    # the template then prints neither heading nor list.
+    residuals_heading: list[str]
     reconciliations: list[ReconciliationLines]
     reconciliation_note: str
 
@@ -157,6 +159,7 @@ def checks_view(
         f"{month.display_name}, {period}: {coverage_label(month.status)}."
         for month in incomplete_months(diagnostics.coverage)
     ]
+    nonzero_residuals = _nonzero_residuals(diagnostics, view)
     return ChecksView(
         coverage=f"Dækning: {coverage_label(diagnostics.coverage.status)}.",
         incomplete=incomplete or ["Ingen valgte kontomåneder mangler dækning."],
@@ -168,7 +171,8 @@ def checks_view(
             )
             for account in diagnostics.evidence
         ],
-        nonzero_residuals=_nonzero_residuals(diagnostics, view),
+        nonzero_residuals=nonzero_residuals,
+        residuals_heading=["Forskelle at undersøge"] if nonzero_residuals else [],
         reconciliations=[
             _reconciliation_lines(reconciliation, diagnostics.currency, period)
             for reconciliation in diagnostics.reconciliations
