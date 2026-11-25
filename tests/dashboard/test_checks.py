@@ -246,8 +246,8 @@ def test_kontrol_says_a_zero_difference_does_not_prove_the_data_complete(
 ) -> None:
     # Joint current's March difference is 0,00 kr., yet March is only partial.
     assert kontrol(client).text_of("checks-reconciliation-note") == (
-        "En difference på 0,00 kr. beviser ikke, at alle posteringer er "
-        "importeret: manglende posteringer og saldi kan gå lige op."
+        "En forskel på 0,00 kr. beviser ikke, at alle posteringer er "
+        "importeret: saldiene kan bygge på de samme ufuldstændige posteringer."
     )
 
 
