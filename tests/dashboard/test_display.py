@@ -12,6 +12,7 @@ from budget.analytics import (
     AccountMonthCoverage,
     ActivityRow,
     BankBalanceObservation,
+    MonthlyBalanceObservation,
     ReportCoverage,
 )
 from budget.analytics.reports import AccountMonthStatus
@@ -22,8 +23,11 @@ from budget.dashboard.display.text import (
     balance_observation,
     coverage_gap,
     coverage_label,
+    coverage_link_label,
     coverage_note,
+    evidence_line,
     incomplete_months,
+    monthly_snapshot_line,
     transaction_kind,
 )
 from budget.gold import ReportingMonth
@@ -177,3 +181,41 @@ def test_an_incomplete_month_says_what_it_lacks(
     status: AccountMonthStatus, gap: str
 ) -> None:
     assert coverage_gap(status) == gap
+
+
+def test_an_account_with_nothing_imported_says_so() -> None:
+    assert evidence_line(None) == "Ingen importeret data"
+
+
+def test_an_accounts_imported_data_reaches_through_its_last_date() -> None:
+    assert evidence_line(date(2026, 2, 3)) == "Gennem 03.02.2026"
+
+
+def test_a_month_without_a_published_snapshot_says_so() -> None:
+    assert monthly_snapshot_line(None, "DKK") == "Ingen månedssnapshot"
+
+
+def test_a_monthly_snapshot_reads_its_opening_closing_and_coverage() -> None:
+    snapshot = MonthlyBalanceObservation(
+        opening_balance=Decimal("1000.00"),
+        closing_balance=None,
+        coverage="partial",
+        late_bookings_settled=False,
+    )
+
+    assert monthly_snapshot_line(snapshot, "DKK") == (
+        "Månedssnapshot: Åbning 1.000,00 kr.; lukning Ingen data endnu; delvist dækket."
+    )
+
+
+@pytest.mark.parametrize(
+    ("incomplete", "label"),
+    [
+        ([], "Hvorfor der ingen tal er"),
+        (["Lønkonto"], "Hvorfor tallene er ufuldstændige"),
+    ],
+)
+def test_the_coverage_link_names_what_the_note_explains(
+    incomplete: list[str], label: str
+) -> None:
+    assert coverage_link_label(incomplete) == label
