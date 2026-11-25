@@ -23,6 +23,7 @@ from budget.dashboard.display.text import (
     balance_observation,
     coverage_gap,
     coverage_label,
+    coverage_link_label,
     coverage_note,
     evidence_line,
     incomplete_months,
@@ -205,3 +206,16 @@ def test_a_monthly_snapshot_reads_its_opening_closing_and_coverage() -> None:
     assert monthly_snapshot_line(snapshot, "DKK") == (
         "Månedssnapshot: Åbning 1.000,00 kr.; lukning Ingen data endnu; delvist dækket."
     )
+
+
+@pytest.mark.parametrize(
+    ("incomplete", "label"),
+    [
+        ([], "Hvorfor der ingen tal er"),
+        (["Lønkonto"], "Hvorfor tallene er ufuldstændige"),
+    ],
+)
+def test_the_coverage_link_names_what_the_note_explains(
+    incomplete: list[str], label: str
+) -> None:
+    assert coverage_link_label(incomplete) == label

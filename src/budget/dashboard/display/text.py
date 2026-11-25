@@ -152,6 +152,11 @@ def monthly_snapshot_line(
     return f"Månedssnapshot: Åbning {opening}; lukning {closing}; {covered}."
 
 
+def coverage_link_label(incomplete: Sequence[str]) -> str:
+    """Return the text of the link that explains a coverage note."""
+    return ", ".join(incomplete)
+
+
 def danish_list(items: list[str]) -> str:
     """Return items as Danish lists them: `A`, `A og B`, `A, B og C`."""
     *rest, last = items or [""]
