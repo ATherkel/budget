@@ -1,7 +1,8 @@
 <p class="eyebrow">Kontrol</p>
 <h3 id="report-ready-title">{{ month_label }}</h3>
 {% if checks.nonzero_residuals %}
-<ul id="checks-residuals" class="explanation-list">
+<h4 id="checks-residuals-title">Forskelle at undersøge</h4>
+<ul id="checks-residuals" class="explanation-list" aria-labelledby="checks-residuals-title">
 {% for residual in checks.nonzero_residuals %}
   <li><a id="{{ residual.element_id }}" href="{{ residual.url }}">{{ residual.line }}</a></li>
 {% endfor %}
@@ -21,9 +22,10 @@
   <li id="checks-evidence-{{ account.account_id }}">{{ account.line }}</li>
 {% endfor %}
 </ul>
+<h4 id="checks-reconciliation-title">Afstemning</h4>
 <p id="checks-reconciliation-note">{{ checks.reconciliation_note }}</p>
 {% for account in checks.reconciliations %}
-<h4 id="checks-reconciliation-{{ account.account_id }}-title">{{ account.title }}</h4>
+<h5 id="checks-reconciliation-{{ account.account_id }}-title">{{ account.title }}</h5>
 <ul id="checks-reconciliation-{{ account.account_id }}-components" class="explanation-list">
 {% for line in account.components %}
   <li>{{ line }}</li>
