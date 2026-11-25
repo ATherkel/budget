@@ -60,6 +60,24 @@ def kontrol(client: TestClient, **changes: object) -> Page:
     )
 
 
+def test_avanceret_tab_bar_links_kontrol_and_marks_it_current_there(
+    client: TestClient,
+) -> None:
+    overview = kontrol(client, tab="overview")
+    checks = kontrol(client)
+    link = parse_qs(urlsplit(overview.attributes("tab-checks").get("href", "")).query)
+
+    assert (
+        overview.text_of("tab-checks"),
+        overview.attributes("tab-checks").get("aria-current"),
+        link.get("tab"),
+        link.get("account"),
+        link.get("month"),
+        checks.attributes("tab-checks").get("aria-current"),
+        checks.attributes("tab-overview").get("aria-current"),
+    ) == ("Kontrol", None, ["checks"], [CURRENT, SAVINGS], ["2026-03"], "page", None)
+
+
 def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
     client: TestClient,
 ) -> None:
