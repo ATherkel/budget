@@ -85,8 +85,13 @@ restores the recorded mode, tab and applicable detail/comparison state under the
 [navigation contract](report-contract.md#navigation-and-selection-transitions).
 
 The switch and advanced “Overblik”, “Detaljer” and “Kontrol” are available.
-“Kontrol” shows Coverage, provisional reasons, incomplete account-months and
-Evidence through. Both modes retain access to the basic trust explanation.
+“Kontrol” shows Coverage, provisional reasons, incomplete account-months,
+Evidence through and each selected account's
+[reconciliation](report-contract.md#diagnostics). A missing component reads
+“Ukendt”; nonzero residuals come first, each linking to its account in
+“Detaljer”. Each account keeps its own Coverage label, and the page says a zero
+difference does not prove the data complete. Both modes retain access to the
+basic trust explanation.
 
 ## Data Trust Display
 
