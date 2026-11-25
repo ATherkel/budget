@@ -2,6 +2,7 @@
 """Danish sentences and lists the dashboard shows its reader."""
 
 from collections.abc import Sequence
+from datetime import date
 
 from budget.analytics import (
     AccountMonth,
@@ -9,6 +10,7 @@ from budget.analytics import (
     ActivityRow,
     BankBalanceObservation,
     InvalidSelectionError,
+    MonthlyBalanceObservation,
     ReportCoverage,
 )
 from budget.analytics.reports import AccountMonthStatus
@@ -129,6 +131,32 @@ def coverage_gap(status: AccountMonthStatus) -> str:
     if status == "no_data":
         return "der er ingen data for måneden endnu."
     return "kun en del af måneden er dækket."
+
+
+def evidence_line(through: date | None) -> str:
+    """Return how far an account's imported data reaches, in Danish."""
+    if through is None:
+        return "Ingen importeret data"
+    return f"Gennem {danish_date(through)}"
+
+
+def monthly_snapshot_line(
+    snapshot: MonthlyBalanceObservation | None, currency: str
+) -> str:
+    """Return an account-month's published opening and closing balances."""
+    if snapshot is None:
+        return "Ingen månedssnapshot"
+    opening = amount(snapshot.opening_balance, currency)
+    closing = amount(snapshot.closing_balance, currency)
+    covered = coverage_label(snapshot.coverage)
+    return f"Månedssnapshot: Åbning {opening}; lukning {closing}; {covered}."
+
+
+def coverage_link_label(incomplete: Sequence[str]) -> str:
+    """Return the text of the link that explains a coverage note."""
+    if incomplete:
+        return "Hvorfor tallene er ufuldstændige"
+    return "Hvorfor der ingen tal er"
 
 
 def danish_list(items: list[str]) -> str:
