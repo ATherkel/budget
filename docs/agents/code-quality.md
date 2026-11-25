@@ -35,7 +35,7 @@ dashboard's structure rules are in [Presentation Agent Brief](ui-agent.md).
 
 `uv run pytest` runs the suite in parallel with pytest-xdist: the `addopts`
 line in `pyproject.toml` starts one worker per core and keeps each test module
-on one worker. Add `-n0` to run serially, which `--pdb` needs and which starts
+(or test class) on one worker. Add `-n0` to run serially, which `--pdb` needs and which starts
 faster for a single file.
 
 ## CSS Declaration Overlap Advisory

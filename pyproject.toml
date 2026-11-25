@@ -80,8 +80,9 @@ max-complexity = 15
 docstring-code-format = true
 
 [tool.pytest.ini_options]
-# pytest-xdist: one worker per core; loadscope keeps each module on one worker,
-# so a module's tests share its fixtures. Session fixtures run once per worker.
+# pytest-xdist: one worker per core; loadscope keeps each module (or test
+# class) on one worker, so its tests share its fixtures. Session fixtures run
+# once per worker.
 addopts = "-n auto --dist loadscope"
 markers = [
     "docs: reads docs/ or README.md; tests/conftest.py adds it by module",
