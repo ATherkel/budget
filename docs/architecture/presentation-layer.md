@@ -42,8 +42,10 @@ adds its routes to the `Dashboard` it is handed. `FEATURES` in
 out is off. A feature's templates are named `<folder>/<file>.html`, and
 `base.html` links every stylesheet in its folder, so adding a feature edits no
 shared file. Helpers more than one feature uses live in the
-`budget.dashboard.display` package. Moving the existing pages into features is
-pending: [#569](https://github.com/ATherkel/budget/issues/569).
+`budget.dashboard.display` package, and markup more than one page repeats is a
+macro in `templates/_macros.html`. A template holds no chain of conditions:
+wording that turns on several cases comes from a display helper. Moving the
+existing pages into features is pending: [#569](https://github.com/ATherkel/budget/issues/569).
 
 ## Initial Screens
 

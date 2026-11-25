@@ -1,25 +1,16 @@
 {% extends "base.html" %}
+{% from "_macros.html" import failure_notice, newer_figures, page_heading, provisional_label, switch_link %}
 {% block title %}{{ title }} · Budget{% endblock %}
 {% block content %}
-<div class="page-heading">
-  <div>
-    <p class="eyebrow">Husstandsøkonomi</p>
-    <h1 id="detail-title">{{ title }}</h1>
-  </div>
-</div>
+{{ page_heading(title, "detail-title") }}
 {% if failure %}
-<div id="detail-failure" role="alert">{{ failure | safe }}</div>
-<p><a id="back-to-overview" href="/">Gå til den nyeste oversigt</a></p>
+{{ failure_notice(failure, "detail-failure") }}
 {% else %}
 {% set is_group = detail.subject.kind == "group" %}
-{% if not detail.publication.is_current %}
-<p class="notice notice--warning">Der findes nyere tal. <a id="newer-figures" href="/">Hent de nyeste tal</a></p>
-{% endif %}
+{{ newer_figures(detail.publication.is_current) }}
 <nav class="scope-switch" aria-label="Periode">
-  <a id="scope-month" href="{{ scope_urls['month'] }}"
-    {%- if detail.scope == "month" %} aria-current="page"{% endif %}>Måned</a>
-  <a id="scope-year-to-date" href="{{ scope_urls['year_to_date'] }}"
-    {%- if detail.scope == "year_to_date" %} aria-current="page"{% endif %}>År til dato</a>
+  {{ switch_link("scope-month", scope_urls["month"], "Måned", detail.scope == "month") }}
+  {{ switch_link("scope-year-to-date", scope_urls["year_to_date"], "År til dato", detail.scope == "year_to_date") }}
 </nav>
 {% if not is_group %}
 <p><a id="group-link" href="{{ group_url }}">Hele {{ detail.group_name }}</a></p>
@@ -27,15 +18,11 @@
 <section class="report-panel" aria-labelledby="detail-title">
 {% if detail.provisional %}
 <p class="trust-note">
-  <span id="provisional-label" class="status-chip status-chip--provisional">Foreløbige tal</span></p>
+  {{ provisional_label() }}</p>
 {% endif %}
 {% if detail.coverage.status != "complete" %}
 {# Analytics judged each month; the page names them in words. #}
-<p id="coverage-note" class="trust-note">
-  {%- if not incomplete %}Ingen af de valgte konti har historik i perioden.
-  {%- elif detail.coverage.status == "no_data" %}Der er ingen data endnu fra {{ incomplete | danish_list }}.
-  {%- else %}Tallene mangler noget fra {{ incomplete | danish_list }}.
-  {%- endif %}</p>
+<p id="coverage-note" class="trust-note">{{ coverage_note(detail.coverage.status, incomplete, "perioden") }}</p>
 {% endif %}
 <dl class="summary">
   <div class="summary-figure"><dt>Udgifter</dt>
@@ -48,7 +35,7 @@
   <th scope="col" class="detail-amount">Beløb</th></tr></thead>
 <tbody>
 {% for row in detail.rows %}
-<tr><td>{{ row.transaction_date.strftime("%d.%m.%Y") }}</td><td>{{ row.description }}</td>
+<tr><td>{{ row.transaction_date | danish_date }}</td><td>{{ row.description }}</td>
   <td>{{ row.account_display_name }}</td>{% if is_group %}<td>{{ row.category_name }}</td>{% endif %}
   <td class="detail-amount">{{ row.spending | amount(detail.currency) }}</td></tr>
 {% endfor %}
