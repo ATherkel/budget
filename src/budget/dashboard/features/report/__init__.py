@@ -115,6 +115,7 @@ def render_report(
             requested.pin,
             requested.accounts,
             requested.month,
+            requested.view,
         )
         if requested.view.mode == "advanced" and requested.view.tab == "checks"
         else None

@@ -13,7 +13,7 @@ from budget.dashboard.display.text import (
     evidence_line,
     incomplete_months,
 )
-from budget.dashboard.features.view_state import ViewState
+from budget.dashboard.features.view_state import DEFAULT_VIEW, ViewState
 
 RECONCILIATION_NOTE = (
     "En forskel på 0,00 kr. beviser ikke, at alle posteringer er importeret: "
@@ -94,13 +94,14 @@ def _reconciliation_lines(
     )
 
 
-def _nonzero_residuals(diagnostics: Diagnostics) -> list[ResidualLink]:
+def _nonzero_residuals(diagnostics: Diagnostics, view: ViewState) -> list[ResidualLink]:
     """Return a link for each residual that is known and nonzero, by account.
 
     An unknown residual is not listed: it is neither zero nor a known gap.
+    Each link keeps the reader's other view choices, such as the comparison.
     """
     address = answered_address(diagnostics.context)
-    details = ViewState(mode="advanced", tab="details")
+    details = replace(view, mode="advanced", tab="details")
     return [
         ResidualLink(
             f"checks-residual-{reconciliation.account_id}-{kind}",
@@ -145,8 +146,13 @@ def _provisional_lines(provisional: Provisional | None, period: str) -> list[str
     return [f"Foreløbigt: {' '.join(sentences)}"]
 
 
-def checks_view(diagnostics: Diagnostics, period: str) -> ChecksView:
-    """Return Kontrol's lines for `diagnostics` of the month called `period`."""
+def checks_view(
+    diagnostics: Diagnostics, period: str, view: ViewState = DEFAULT_VIEW
+) -> ChecksView:
+    """Return Kontrol's lines for `diagnostics` of the month called `period`.
+
+    `view` is the reader's view state, which Kontrol's links carry on.
+    """
     incomplete = [
         f"{month.display_name}, {period}: {coverage_label(month.status)}."
         for month in incomplete_months(diagnostics.coverage)
@@ -162,7 +168,7 @@ def checks_view(diagnostics: Diagnostics, period: str) -> ChecksView:
             )
             for account in diagnostics.evidence
         ],
-        nonzero_residuals=_nonzero_residuals(diagnostics),
+        nonzero_residuals=_nonzero_residuals(diagnostics, view),
         reconciliations=[
             _reconciliation_lines(reconciliation, diagnostics.currency, period)
             for reconciliation in diagnostics.reconciliations
