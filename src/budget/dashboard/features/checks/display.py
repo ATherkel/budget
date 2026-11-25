@@ -27,6 +27,12 @@ RECONCILIATION_NOTE = (
 )
 
 
+OBSERVED_NOTE = (
+    "Antallene er observerede transaktioner på de valgte konti. "
+    "En overførsel kan tælle to gange, når begge konti er valgt."
+)
+
+
 @dataclass(frozen=True)
 class EvidenceLine:
     """How far one account's imported data reaches, keyed by the account."""
@@ -79,6 +85,8 @@ class ChecksView:
     reconciliations: list[ReconciliationLines]
     reconciliation_note: str
     observed: list[ObservedLines]
+    observed_note: str
+    transfer_pairing: str
 
 
 def _reconciliation_lines(
@@ -179,6 +187,21 @@ def _observed_lines(
     )
 
 
+def _transfer_pairing(transfers: TransferSummary | None) -> str:
+    """Describe selected paired and one-sided legs, keeping unknown counts explicit."""
+    if transfers is None:
+        return (
+            "Parring af overførsler: Ukendt antal parrede ben "
+            "og Ukendt antal ensidige ben."
+        )
+    paired = "parret ben" if transfers.paired_count == 1 else "parrede ben"
+    one_sided = "ensidigt ben" if transfers.one_sided_count == 1 else "ensidige ben"
+    return (
+        f"Parring af overførsler: {transfers.paired_count} {paired} "
+        f"og {transfers.one_sided_count} {one_sided}."
+    )
+
+
 def checks_view(
     diagnostics: Diagnostics, period: str, view: ViewState = DEFAULT_VIEW
 ) -> ChecksView:
@@ -207,6 +230,8 @@ def checks_view(
             for reconciliation in diagnostics.reconciliations
         ],
         reconciliation_note=RECONCILIATION_NOTE,
+        observed_note=OBSERVED_NOTE,
+        transfer_pairing=_transfer_pairing(diagnostics.transfers),
         observed=[
             _observed_lines(kind, title, values, diagnostics.currency)
             for kind, title, values in (
