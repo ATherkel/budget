@@ -50,7 +50,7 @@ def client(profile: Profile) -> TestClient:
     return client
 
 
-def kontrol(client: TestClient, **changes: object) -> Page:
+def kontrol(client: TestClient, **changes: str) -> Page:
     """Return the Kontrol fragment for the worked example, with `changes`."""
     return read(
         client.get(
