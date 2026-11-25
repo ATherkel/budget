@@ -289,6 +289,22 @@ def test_kontrol_lists_a_nonzero_opening_gap_first_linking_to_its_account(
     ) == (line, True, [CURRENT], ["2026-03"], ["advanced"], ["details"], None)
 
 
+def test_a_nonzero_residuals_link_opens_the_full_detaljer_page_for_its_account(
+    client: TestClient,
+) -> None:
+    # A plain link must land on a whole page, not the report fragment.
+    href = kontrol(client).attributes(f"checks-residual-{CURRENT}-opening-gap")["href"]
+    landed = client.get(href)
+    page = read(landed.text)
+
+    assert (
+        landed.status_code,
+        "<html" in landed.text,
+        page.attributes("tab-details").get("aria-current"),
+        page.checked("account"),
+    ) == (200, True, "page", {CURRENT})
+
+
 def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
     client: TestClient,
 ) -> None:
