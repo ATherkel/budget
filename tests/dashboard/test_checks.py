@@ -78,6 +78,14 @@ def test_avanceret_tab_bar_links_kontrol_and_marks_it_current_there(
     ) == ("Kontrol", None, ["checks"], [CURRENT, SAVINGS], ["2026-03"], "page", None)
 
 
+def test_kontrol_shows_the_selections_coverage(client: TestClient) -> None:
+    # March lacks part of Joint current; April is fully covered for both.
+    assert (
+        kontrol(client).text_of("checks-coverage"),
+        kontrol(client, month="2026-04").text_of("checks-coverage"),
+    ) == ("Dækning: delvist dækket.", "Dækning: fuldt dækket.")
+
+
 def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
     client: TestClient,
 ) -> None:
