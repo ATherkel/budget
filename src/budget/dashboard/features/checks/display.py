@@ -27,6 +27,7 @@ class ReconciliationLines:
     """One account-month's reconciliation, keyed by the account."""
 
     account_id: str
+    title: str
     components: list[str]
     residuals: list[str]
 
@@ -48,7 +49,7 @@ class ChecksView:
 
 
 def _reconciliation_lines(
-    reconciliation: Reconciliation, currency: str
+    reconciliation: Reconciliation, currency: str, period: str
 ) -> ReconciliationLines:
     """Return each balance and activity component of one account-month."""
     components = (
@@ -68,6 +69,9 @@ def _reconciliation_lines(
     )
     return ReconciliationLines(
         reconciliation.account_id,
+        # The account-month's own Coverage: arithmetic never upgrades it.
+        f"{reconciliation.display_name}, {period}: "
+        f"{coverage_label(reconciliation.coverage)}",
         [f"{label}: {_figure(value, currency)}" for label, value in components],
         [f"{label}: {_figure(value, currency)}" for label, value in residuals],
     )
@@ -111,7 +115,7 @@ def checks_view(diagnostics: Diagnostics, period: str) -> ChecksView:
             for account in diagnostics.evidence
         ],
         reconciliations=[
-            _reconciliation_lines(reconciliation, diagnostics.currency)
+            _reconciliation_lines(reconciliation, diagnostics.currency, period)
             for reconciliation in diagnostics.reconciliations
         ],
     )

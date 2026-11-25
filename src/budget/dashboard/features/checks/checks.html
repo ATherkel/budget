@@ -16,6 +16,7 @@
 </ul>
 <p id="checks-reconciliation-note">{{ checks.reconciliation_note }}</p>
 {% for account in checks.reconciliations %}
+<h4 id="checks-reconciliation-{{ account.account_id }}-title">{{ account.title }}</h4>
 <ul id="checks-reconciliation-{{ account.account_id }}-components" class="explanation-list">
 {% for line in account.components %}
   <li>{{ line }}</li>
