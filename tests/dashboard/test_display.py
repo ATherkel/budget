@@ -12,6 +12,7 @@ from budget.analytics import (
     AccountMonthCoverage,
     ActivityRow,
     BankBalanceObservation,
+    MonthlyBalanceObservation,
     ReportCoverage,
 )
 from budget.analytics.reports import AccountMonthStatus
@@ -191,3 +192,16 @@ def test_an_accounts_imported_data_reaches_through_its_last_date() -> None:
 
 def test_a_month_without_a_published_snapshot_says_so() -> None:
     assert monthly_snapshot_line(None, "DKK") == "Ingen månedssnapshot"
+
+
+def test_a_monthly_snapshot_reads_its_opening_closing_and_coverage() -> None:
+    snapshot = MonthlyBalanceObservation(
+        opening_balance=Decimal("1000.00"),
+        closing_balance=None,
+        coverage="partial",
+        late_bookings_settled=False,
+    )
+
+    assert monthly_snapshot_line(snapshot, "DKK") == (
+        "Månedssnapshot: Åbning 1.000,00 kr.; lukning Ingen data endnu; delvist dækket."
+    )
