@@ -10,6 +10,8 @@ from datetime import date
 from decimal import Decimal
 from urllib.parse import parse_qs, urlsplit
 
+import pytest
+
 from budget.analytics import (
     AccountMonthCoverage,
     MoneyInOut,
@@ -146,3 +148,35 @@ def test_opposite_observed_amounts_stay_signed_and_never_cancel() -> None:
         ("+23,50 kr.", "\N{MINUS SIGN}23,50 kr.", "4"),
         ("+34,60 kr.", "\N{MINUS SIGN}34,60 kr.", "6"),
     ]
+
+
+@pytest.mark.parametrize(
+    ("transfers", "expected"),
+    [
+        (
+            TransferSummary(Decimal(0), Decimal(0), 0, 0, 0),
+            "Parring af overførsler: 0 parrede ben og 0 ensidige ben.",
+        ),
+        (
+            TransferSummary(Decimal(10), Decimal(-10), 2, 1, 1),
+            "Parring af overførsler: 1 parret ben og 1 ensidigt ben.",
+        ),
+        (
+            TransferSummary(Decimal(20), Decimal(-20), 4, 2, 2),
+            "Parring af overførsler: 2 parrede ben og 2 ensidige ben.",
+        ),
+        (
+            None,
+            (
+                "Parring af overførsler: Ukendt antal parrede ben "
+                "og Ukendt antal ensidige ben."
+            ),
+        ),
+    ],
+)
+def test_transfer_pairing_counts_selected_legs_with_singular_plural_or_unknown(
+    transfers: TransferSummary | None, expected: str
+) -> None:
+    view = checks_view(replace(MARCH_REPORT, transfers=transfers), "marts 2026")
+
+    assert view.transfer_pairing == expected
