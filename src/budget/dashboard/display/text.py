@@ -134,6 +134,8 @@ def coverage_gap(status: AccountMonthStatus) -> str:
 
 def evidence_line(through: date | None) -> str:
     """Return how far an account's imported data reaches, in Danish."""
+    if through is None:
+        return "Ingen importeret data"
     return str(through)
 
 
