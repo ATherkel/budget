@@ -266,6 +266,29 @@ def test_kontrol_heads_each_reconciliation_with_its_own_unupgraded_coverage(
     )
 
 
+def test_kontrol_lists_a_nonzero_opening_gap_first_linking_to_its_account(
+    client: TestClient,
+) -> None:
+    # Only Joint current's March opening gap is nonzero; April has none.
+    page = kontrol(client)
+    line = "Joint current: Åbningsforskel \N{MINUS SIGN}500,00 kr."
+    link = parse_qs(
+        urlsplit(
+            page.attributes(f"checks-residual-{CURRENT}-opening-gap").get("href", "")
+        ).query
+    )
+
+    assert (
+        page.text_of("checks-residuals"),
+        0 <= page.visible().find(line) < page.visible().find("Dækning:"),
+        link.get("account"),
+        link.get("month"),
+        link.get("mode"),
+        link.get("tab"),
+        kontrol(client, month="2026-04").text_of("checks-residuals"),
+    ) == (line, True, [CURRENT], ["2026-03"], ["advanced"], ["details"], None)
+
+
 def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
     client: TestClient,
 ) -> None:
