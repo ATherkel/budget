@@ -5,13 +5,13 @@ It reads Gold only through analytics, opened read-only from one profile.
 """
 
 import hashlib
-from collections.abc import Callable, Collection, MutableMapping, Sequence
-from datetime import date, datetime
+from collections.abc import Callable, MutableMapping, Sequence
+from datetime import datetime
 from functools import cache
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import FastAPI, Form, Query, Request
+from fastapi import FastAPI, Form, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -25,9 +25,8 @@ from jinja2 import (
 )
 
 from budget.dashboard import session
-from budget.dashboard.addresses import PinnedQuery, answered_url
 from budget.dashboard.display.amounts import amount, signed_amount
-from budget.dashboard.display.months import danish_date, month_label
+from budget.dashboard.display.months import danish_date
 from budget.dashboard.display.text import (
     account_names,
     balance_observation,
@@ -37,26 +36,21 @@ from budget.dashboard.display.text import (
     coverage_note,
     danish_list,
     evidence_line,
-    incomplete_months,
     monthly_snapshot_line,
     transaction_kind,
 )
 from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.category import CATEGORY
+from budget.dashboard.features.explanation import EXPLANATION
 from budget.dashboard.features.overview import overview_feature
 from budget.dashboard.features.report import REPORT, render_report
-from budget.dashboard.features.view_state import (
-    VIEW_STATE,
-    ViewState,
-    parse_view_state,
-)
+from budget.dashboard.features.view_state import VIEW_STATE
 from budget.dashboard.passphrase import (
     CredentialSnapshot,
     read_credentials,
     require_passphrase,
     set_passphrase,
 )
-from budget.dashboard.reading import read_overview
 from budget.dashboard.throttle import LoginThrottle
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
@@ -224,32 +218,13 @@ def _refuse_login(
     return None
 
 
-def _render_explanation(
-    dashboard: Dashboard,
-    pin: tuple[int, date],
-    accounts: Collection[str],
-    month: str,
-    view: ViewState,
-) -> str:
-    """Render the explanation page of one pinned report's trust notes."""
-    overview_report = read_overview(dashboard, pin, accounts, month)
-    page = dashboard.templates.get_template("explanation.html")
-    if isinstance(overview_report, str):
-        return page.render(failure=overview_report)
-    return page.render(
-        overview=overview_report,
-        incomplete_months=incomplete_months(overview_report.coverage),
-        month_label=month_label(overview_report.context.month),
-        report_url=answered_url(overview_report, "/", view),
-    )
-
-
 # The features the dashboard serves, one line each; one left out is off.
 FEATURES: tuple[Feature, ...] = (
     VIEW_STATE,
     overview_feature(render_report),
     REPORT,
     CATEGORY,
+    EXPLANATION,
 )
 
 
@@ -316,24 +291,6 @@ def create_app(
     dashboard = Dashboard(profile, clock, templates, app, for_reader)
     for feature in features:
         feature.register(dashboard)
-
-    @app.get("/explanation")
-    def explanation(
-        request: Request,
-        address: Annotated[PinnedQuery, Query()],
-    ) -> Response:
-        return for_reader(
-            request,
-            lambda: HTMLResponse(
-                _render_explanation(
-                    dashboard,
-                    address.pin(),
-                    address.account,
-                    address.month,
-                    parse_view_state(address.mode, address.tab, address.comparison),
-                )
-            ),
-        )
 
     @app.get("/login")
     def login_page() -> Response:

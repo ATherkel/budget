@@ -41,8 +41,8 @@ adds its routes to the `Dashboard` it is handed. `FEATURES` in
 `budget.dashboard` lists the registered features one line each; a feature left
 out is off. The overview shows the report and the pickers, so it needs `report`
 and `view_state` registered too, and the report links each category to
-`category`. A feature that serves no page of its own, such as `view_state`
-(the month, mode and account pickers), adds no routes: the pages that show
+`category` and its trust notes to `explanation`. A feature that serves no
+page of its own, such as `view_state` (the month, mode and account pickers), adds no routes: the pages that show
 it include its templates. A feature's templates are named
 `<folder>/<file>.html`, and `base.html` links every stylesheet in its folder,
 so adding a feature with its own page edits no shared file. Helpers more than one feature uses live in the
