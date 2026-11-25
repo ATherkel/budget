@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from budget.analytics import Diagnostics, Provisional, Reconciliation
 from budget.dashboard.addresses import answered_address, pinned_url
-from budget.dashboard.display.amounts import amount
+from budget.dashboard.display.amounts import amount, signed_amount
 from budget.dashboard.display.text import (
     account_names,
     coverage_label,
@@ -75,18 +75,20 @@ def _reconciliation_lines(
         ("Regulering ud", reconciliation.adjustments_out),
         ("Slutsaldo", reconciliation.closing_balance),
     )
-    residuals = (
-        ("Intern forskel", reconciliation.internal_residual),
-        ("Slutsaldo forrige måned", reconciliation.previous_closing_balance),
-        ("Åbningsforskel", reconciliation.opening_gap),
-    )
+    internal = _difference(reconciliation.internal_residual, currency)
+    previous = _figure(reconciliation.previous_closing_balance, currency)
+    gap = _difference(reconciliation.opening_gap, currency)
     return ReconciliationLines(
         reconciliation.account_id,
         # The account-month's own Coverage: arithmetic never upgrades it.
         f"{reconciliation.display_name}, {period}: "
         f"{coverage_label(reconciliation.coverage)}",
         [f"{label}: {_figure(value, currency)}" for label, value in components],
-        [f"{label}: {_figure(value, currency)}" for label, value in residuals],
+        [
+            f"Intern forskel: {internal}",
+            f"Slutsaldo forrige måned: {previous}",
+            f"Åbningsforskel: {gap}",
+        ],
     )
 
 
@@ -101,7 +103,7 @@ def _nonzero_residuals(diagnostics: Diagnostics) -> list[ResidualLink]:
         ResidualLink(
             f"checks-residual-{reconciliation.account_id}-{kind}",
             f"{reconciliation.display_name}: {label} "
-            f"{amount(value, diagnostics.currency)}",
+            f"{_difference(value, diagnostics.currency)}",
             pinned_url(
                 replace(address, accounts=(reconciliation.account_id,)),
                 view=details,
@@ -119,6 +121,11 @@ def _nonzero_residuals(diagnostics: Diagnostics) -> list[ResidualLink]:
 def _figure(value: Decimal | None, currency: str) -> str:
     """Return a reconciliation figure, with a missing one unknown rather than 0."""
     return "Ukendt" if value is None else amount(value, currency)
+
+
+def _difference(value: Decimal | None, currency: str) -> str:
+    """Return a residual with its direction signed, or unknown rather than 0."""
+    return "Ukendt" if value is None else signed_amount(value, currency)
 
 
 def _provisional_lines(provisional: Provisional | None, period: str) -> list[str]:
