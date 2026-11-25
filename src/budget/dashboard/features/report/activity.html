@@ -4,11 +4,7 @@
 <article id="activity-account-{{ account.account_id }}" class="account-activity">
   <h4>{{ account.display_name }}</h4>
   <p id="activity-evidence-{{ account.account_id }}">
-    {% if account.evidence_through is none %}
-      Ingen importeret data
-    {% else %}
-      Gennem {{ account.evidence_through | danish_date }}
-    {% endif %}
+    {{ account.evidence_through | evidence_line }}
   </p>
   <p id="activity-coverage-{{ account.account_id }}">
     Dækning for måneden: {{ account.coverage | coverage_label }}.
@@ -29,14 +25,7 @@
     <div>
       <dt>Månedssnapshot</dt>
       <dd id="activity-monthly-snapshot-{{ account.account_id }}">
-        {% if account.monthly_snapshot is none %}
-          Ingen månedssnapshot
-        {% else %}
-          Månedssnapshot:
-          Åbning {{ account.monthly_snapshot.opening_balance | amount(activity.currency) }};
-          lukning {{ account.monthly_snapshot.closing_balance | amount(activity.currency) }};
-          {{ account.monthly_snapshot.coverage | coverage_label }}.
-        {% endif %}
+        {{ account.monthly_snapshot | monthly_snapshot_line(activity.currency) }}
       </dd>
     </div>
   </dl>

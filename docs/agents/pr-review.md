@@ -30,3 +30,19 @@ rationale is in issue #362.
 - **Ready**: a PR is ready for the owner to merge once its contract holds,
   its required findings are fixed with evidence and its checks pass. Agents
   don't merge.
+
+## CSS Declaration Overlap Advisory
+
+Read the advisory report in pytest output, or in CI as warnings and the pytest
+log.
+
+- For a material overlap where the styling represents the same responsibility,
+  require the author to reuse or extract the shared styling.
+- For a material overlap caused by separate responsibilities or a coincidental
+  match, accept a concise explanation of why the rules should remain separate.
+- One explanation may cover related material findings. Mere overlap is not
+  itself a required finding, and the report's earlier selector is not an
+  automatic reuse recommendation.
+
+Execution rules and the authoritative threshold are in
+[Code Quality Gate](code-quality.md#css-declaration-overlap-advisory).

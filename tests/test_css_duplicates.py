@@ -1,90 +1,588 @@
 # Copyright 2026 Therkel
-"""The duplicate CSS check names the existing rule to reuse."""
+"""The CSS overlap advisory reports shared declarations and analysis failures."""
 
 import re
-from collections.abc import Sequence
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-from budget.dashboard import FEATURES
-from budget.dashboard.features import Feature
+from tests.cli.processes import explicit_environment
 from tests.css_duplicates import (
-    find_duplicates,
-    find_duplicates_in_sheets,
-    read_allowlist,
+    Diagnostic,
+    Location,
+    Overlap,
+    Report,
+    discover_stylesheets,
+    format_annotations,
+    format_diagnostics,
+    format_report,
+    report_dashboard,
+    report_overlaps,
 )
-from tests.dashboard.sample_feature import SAMPLE
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 STATIC = REPOSITORY / "src/budget/dashboard/static"
 
-CARD_AND_PANEL = """\
+
+def linked_stylesheets() -> list[str]:
+    """Return the stylesheets the dashboard's base page links, in link order."""
+    base = (REPOSITORY / "src/budget/dashboard/templates/base.html").read_text("utf-8")
+    links = re.finditer(r"""<link rel="stylesheet" href="\{\{ '([^']+)'""", base)
+    return [link.group(1) for link in links]
+
+
+def test_every_dashboard_stylesheet_is_linked_from_the_base_page() -> None:
+    shipped = sorted(path.name for path in STATIC.glob("*.css"))
+
+    assert sorted(linked_stylesheets()) == shipped
+
+
+def report_css(tmp_path: Path, css: str) -> Report:
+    """Return the overlap report for one temporary stylesheet."""
+    path = tmp_path / "styles.css"
+    path.write_text(css, encoding="utf-8")
+    return report_overlaps((path,))
+
+
+def test_a_cross_file_overlap_reports_both_locations_and_shared_declarations(
+    tmp_path: Path,
+) -> None:
+    base = tmp_path / "base.css"
+    base.write_text(
+        """\
 .card {
   padding: 1rem;
   border: 1px solid var(--line);
   color: var(--ink);
 }
-
+""",
+        encoding="utf-8",
+    )
+    feature = tmp_path / "feature.css"
+    feature.write_text(
+        """\
 .panel {
   color: var(--ink);
-  margin: 0;
   padding: 1rem;
   border: 1px solid var(--line);
 }
-"""
+""",
+        encoding="utf-8",
+    )
 
+    report = report_overlaps((base, feature))
 
-def test_a_rule_sharing_three_declarations_names_the_rule_to_reuse() -> None:
-    assert find_duplicates(CARD_AND_PANEL) == [
-        "`.panel` (line 7) shares 3 declarations with `.card` (line 1); reuse `.card`"
+    assert [
+        (
+            finding.earlier.path.name,
+            finding.earlier.line,
+            finding.earlier.selector,
+            finding.later.path.name,
+            finding.later.line,
+            finding.later.selector,
+            finding.declarations,
+        )
+        for finding in report.findings
+    ] == [
+        (
+            "base.css",
+            1,
+            ".card",
+            "feature.css",
+            1,
+            ".panel",
+            (
+                "border: 1px solid var(--line)",
+                "color: var(--ink)",
+                "padding: 1rem",
+            ),
+        )
     ]
 
 
-def test_a_rule_repeating_one_in_an_earlier_stylesheet_names_both_files() -> None:
-    layout = """\
-a {
-  color: var(--ink);
-}
-
+def test_an_overlap_inside_a_media_query_retains_its_grouping_context(
+    tmp_path: Path,
+) -> None:
+    base = tmp_path / "base.css"
+    base.write_text(
+        """\
 .card {
   padding: 1rem;
   border: 1px solid var(--line);
   color: var(--ink);
 }
-"""
-    forms = """\
+""",
+        encoding="utf-8",
+    )
+    responsive = tmp_path / "responsive.css"
+    responsive.write_text(
+        """\
+@media (max-width: 48rem) {
+  .panel {
+    color: var(--ink);
+    padding: 1rem;
+    border: 1px solid var(--line);
+  }
+}
+""",
+        encoding="utf-8",
+    )
 
+    report = report_overlaps((base, responsive))
+
+    assert [
+        (finding.earlier.context, finding.later.context) for finding in report.findings
+    ] == [("", "@media (max-width: 48rem)")]
+
+
+def test_declaration_identity_preserves_case_and_string_whitespace_but_normalizes_names(
+    tmp_path: Path,
+) -> None:
+    base = tmp_path / "base.css"
+    base.write_text(
+        """\
+.base {
+  color: RED;
+  --Tone: value;
+  content: "a  b";
+  padding: 1rem;
+  border:
+    1px  solid var(--line);
+  display: block;
+}
+""",
+        encoding="utf-8",
+    )
+    variant = tmp_path / "variant.css"
+    variant.write_text(
+        """\
+.variant {
+  COLOR: red;
+  --tone: value;
+  content: "a b";
+  PADDING: 1rem;
+  border: 1px solid var(--line);
+  DISPLAY:block;
+}
+""",
+        encoding="utf-8",
+    )
+
+    report = report_overlaps((base, variant))
+
+    assert report.findings[0].declarations == (
+        "border: 1px solid var(--line)",
+        "display: block",
+        "padding: 1rem",
+    )
+
+
+def test_parse_and_unsupported_syntax_failures_are_separate_diagnostics(
+    tmp_path: Path,
+) -> None:
+    base = tmp_path / "base.css"
+    base.write_text(
+        """\
+.base {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+""",
+        encoding="utf-8",
+    )
+    copy = tmp_path / "copy.css"
+    copy.write_text(
+        """\
+.copy {
+  color: var(--ink);
+  padding: 1rem;
+  border: 1px solid var(--line);
+}
+""",
+        encoding="utf-8",
+    )
+    broken = tmp_path / "broken.css"
+    broken.write_text(".broken { color red; }\n", encoding="utf-8")
+    nested = tmp_path / "nested.css"
+    nested.write_text(
+        ".outer { color: red; &:hover { color: blue; } }\n",
+        encoding="utf-8",
+    )
+    unknown = tmp_path / "unknown.css"
+    unknown.write_text(
+        "@unknown feature { .child { color: red; } }\n",
+        encoding="utf-8",
+    )
+
+    report = report_overlaps((base, copy, broken, nested, unknown))
+
+    assert (
+        [
+            (finding.earlier.path.name, finding.later.path.name)
+            for finding in report.findings
+        ],
+        [
+            (diagnostic.path.name, diagnostic.line, diagnostic.message)
+            for diagnostic in report.diagnostics
+        ],
+    ) == (
+        [("base.css", "copy.css")],
+        [
+            (
+                "broken.css",
+                1,
+                "parse error: Stop token reached before {} block for a qualified rule.",
+            ),
+            ("nested.css", 1, "unsupported nested rule inside `.outer`"),
+            ("unknown.css", 1, "unsupported at-rule block `@unknown feature`"),
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    ("css", "message"),
+    [
+        (
+            ".a { color: red); padding: 1rem; margin: 0; }",
+            "parse error: Unmatched )",
+        ),
+        (
+            ".a { color: var(--x, red]); padding: 1rem; margin: 0; }",
+            "parse error: Unmatched ]",
+        ),
+        (
+            ".a { background: url(a b); padding: 1rem; margin: 0; }",
+            "parse error: bad URL token",
+        ),
+        (
+            ".a] { padding: 1rem; margin: 0; color: red; }",
+            "parse error: Unmatched ]",
+        ),
+        ("@import url(a b);", "parse error: bad URL token"),
+        ("@layer foo];", "parse error: Unmatched ]"),
+    ],
+)
+def test_token_errors_in_preludes_and_value_blocks_are_diagnostics(
+    tmp_path: Path,
+    css: str,
+    message: str,
+) -> None:
+    base = tmp_path / "base.css"
+    base.write_text(
+        """\
+.base {
+  padding: 1rem;
+  margin: 0;
+  color: red;
+}
+""",
+        encoding="utf-8",
+    )
+    copy = tmp_path / "copy.css"
+    copy.write_text(
+        """\
+.copy {
+  color: red;
+  padding: 1rem;
+  margin: 0;
+}
+""",
+        encoding="utf-8",
+    )
+    broken = tmp_path / "broken.css"
+    broken.write_text(css + "\n", encoding="utf-8")
+
+    report = report_overlaps((base, copy, broken))
+
+    assert (
+        [
+            (finding.earlier.path.name, finding.later.path.name)
+            for finding in report.findings
+        ],
+        [
+            (diagnostic.path.name, diagnostic.line, diagnostic.message)
+            for diagnostic in report.diagnostics
+        ],
+    ) == ([("base.css", "copy.css")], [("broken.css", 1, message)])
+
+
+def test_dashboard_stylesheet_discovery_is_recursive_and_deterministic(
+    tmp_path: Path,
+) -> None:
+    feature = tmp_path / "features" / "planning" / "chart.css"
+    feature.parent.mkdir(parents=True)
+    feature.write_text(".chart { color: red; }\n", encoding="utf-8")
+    component = tmp_path / "static" / "app.css"
+    component.parent.mkdir()
+    component.write_text(".app { color: blue; }\n", encoding="utf-8")
+    (tmp_path / "README.txt").write_text("not CSS\n", encoding="utf-8")
+
+    assert tuple(
+        path.relative_to(tmp_path).as_posix() for path in discover_stylesheets(tmp_path)
+    ) == ("features/planning/chart.css", "static/app.css")
+
+
+def test_a_stylesheet_given_twice_is_analysed_once(tmp_path: Path) -> None:
+    stylesheet = tmp_path / "styles.css"
+    stylesheet.write_text(
+        ".card { padding: 1rem; margin: 0; color: red; }\n", encoding="utf-8"
+    )
+
+    assert report_overlaps((stylesheet, stylesheet)) == Report(
+        findings=(), diagnostics=()
+    )
+
+
+def test_each_finding_becomes_a_github_warning_at_the_later_rule() -> None:
+    stylesheet = REPOSITORY / "src" / "budget" / "dashboard" / "static" / "app.css"
+    report = Report(
+        findings=(
+            Overlap(
+                later=Location(path=stylesheet, line=9, selector=".copy"),
+                earlier=Location(path=stylesheet, line=1, selector=".card"),
+                declarations=("color: red", "margin: 0", "width: 100%"),
+            ),
+        ),
+        diagnostics=(),
+    )
+
+    assert format_annotations(report) == (
+        "::warning file=src/budget/dashboard/static/app.css,line=9,"
+        "title=CSS declaration overlap::"
+        "`.copy` shares 3 declarations with "
+        "src/budget/dashboard/static/app.css:1 `.card`"
+        "%0Acolor: red%0Amargin: 0%0Awidth: 100%25\n"
+    )
+
+
+def test_a_report_without_findings_asks_for_no_review() -> None:
+    assert format_report(Report(findings=(), diagnostics=())) == (
+        "CSS declaration overlap advisory: 0 findings\n"
+    )
+
+
+def test_dashboard_css_analyses_without_errors() -> None:
+    report = report_dashboard()
+
+    assert report.diagnostics == (), format_diagnostics(report)
+
+
+def test_report_paths_inside_the_repository_are_relative() -> None:
+    stylesheet = REPOSITORY / "src" / "budget" / "dashboard" / "static" / "app.css"
+    report = Report(
+        findings=(
+            Overlap(
+                later=Location(path=stylesheet, line=9, selector=".copy"),
+                earlier=Location(path=stylesheet, line=1, selector=".card"),
+                declarations=("color: red", "margin: 0", "padding: 0"),
+            ),
+        ),
+        diagnostics=(
+            Diagnostic(path=stylesheet, line=4, message="parse error: Unmatched )"),
+        ),
+    )
+
+    assert (format_report(report), format_diagnostics(report)) == (
+        (
+            "CSS declaration overlap advisory: 1 finding\n"
+            "- src/budget/dashboard/static/app.css:1 `.card`\n"
+            "  with src/budget/dashboard/static/app.css:9 `.copy`\n"
+            "  shared declarations:\n"
+            "    color: red\n"
+            "    margin: 0\n"
+            "    padding: 0\n"
+            "\n"
+            "Review the overlap and decide how these rules should be maintained.\n"
+        ),
+        (
+            "CSS analysis error: src/budget/dashboard/static/app.css:4: "
+            "parse error: Unmatched )\n"
+        ),
+    )
+
+
+@pytest.mark.parametrize("property_name", ["--x", "font-family"])
+def test_tokens_separated_by_a_comment_are_not_one_value(
+    tmp_path: Path, property_name: str
+) -> None:
+    report = report_css(
+        tmp_path,
+        f"""\
+.split {{ {property_name}: a/**/b; padding: 0; margin: 0; }}
+.joined {{ {property_name}: ab; padding: 0; margin: 0; }}
+""",
+    )
+
+    assert report == Report(findings=(), diagnostics=())
+
+
+def test_a_dashboard_root_without_stylesheets_is_a_diagnostic(tmp_path: Path) -> None:
+    root = tmp_path / "moved-dashboard"
+
+    report = report_dashboard(root)
+
+    assert report == Report(
+        findings=(),
+        diagnostics=(Diagnostic(path=root, line=None, message="no stylesheets found"),),
+    )
+
+
+def test_executable_reports_overlap_and_succeeds(tmp_path: Path) -> None:
+    base = tmp_path / "base.css"
+    base.write_text(
+        """\
+.card {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+""",
+        encoding="utf-8",
+    )
+    feature = tmp_path / "feature.css"
+    feature.write_text(
+        """\
 .panel {
   color: var(--ink);
   padding: 1rem;
   border: 1px solid var(--line);
 }
-"""
-    sheets = {"layout.css": layout, "forms.css": forms}
-
-    message = (
-        "`.panel` (forms.css line 2) shares 3 declarations with"
-        " `.card` (layout.css line 5); reuse `.card`"
+""",
+        encoding="utf-8",
     )
-    assert find_duplicates_in_sheets(sheets) == [message]
 
-
-def test_a_nested_rule_in_a_stylesheet_names_its_file() -> None:
-    sheets = {
-        "base.css": "a {\n  color: red;\n}\n",
-        "forms.css": ".card {\n  &:hover {\n  }\n}\n",
-    }
-
-    message = (
-        "`.card` (forms.css line 1) nests a rule;"
-        " write it flat so the check can read it"
+    result = subprocess.run(
+        [sys.executable, "-m", "tests.css_duplicates", str(base), str(feature)],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPOSITORY,
+        env=explicit_environment(),
     )
-    assert find_duplicates_in_sheets(sheets) == [message]
+
+    assert (result.returncode, result.stdout, result.stderr) == (
+        0,
+        (
+            "CSS declaration overlap advisory: 1 finding\n"
+            f"- {base}:1 `.card`\n"
+            f"  with {feature}:1 `.panel`\n"
+            "  shared declarations:\n"
+            "    border: 1px solid var(--line)\n"
+            "    color: var(--ink)\n"
+            "    padding: 1rem\n"
+            "\n"
+            "Review the overlap and decide how these rules should be maintained.\n"
+        ),
+        "",
+    )
 
 
-def test_rules_sharing_two_declarations_pass() -> None:
-    css = """\
+def test_executable_reports_a_read_failure_and_exits_nonzero(tmp_path: Path) -> None:
+    stylesheet = tmp_path / "styles.css"
+    stylesheet.write_text(
+        """\
+.card {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.copy {
+  color: var(--ink);
+  padding: 1rem;
+  border: 1px solid var(--line);
+}
+""",
+        encoding="utf-8",
+    )
+    missing = tmp_path / "missing.css"
+
+    result = subprocess.run(
+        [sys.executable, "-m", "tests.css_duplicates", str(stylesheet), str(missing)],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPOSITORY,
+        env=explicit_environment(),
+    )
+
+    assert (
+        result.returncode,
+        "CSS declaration overlap advisory: 1 finding" in result.stdout,
+        result.stderr,
+    ) == (
+        1,
+        True,
+        f"CSS analysis error: {missing}: cannot read stylesheet: file not found\n",
+    )
+
+
+def test_an_ordinary_pytest_run_displays_the_overlap_advisory() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/test_css_duplicates.py::test_rules_sharing_two_declarations_do_not_form_a_finding",
+            "-q",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPOSITORY,
+        env=explicit_environment(),
+    )
+
+    # Pins a real overlap in layout.css; pick another one if a refactor removes it.
+    finding = re.search(
+        r"^- \S+layout\.css:\d+ `\.header-inner`\n"
+        r"  with \S+layout\.css:\d+ `\.footer-inner`\n"
+        r"  shared declarations:\n"
+        r"    display: flex\n"
+        r"    gap: 1rem\n"
+        r"    justify-content: space-between$",
+        result.stdout,
+        re.MULTILINE,
+    )
+    assert (result.returncode, bool(finding)) == (0, True), result.stdout
+
+
+def test_a_pytest_run_in_github_actions_prints_overlap_warnings() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/test_css_duplicates.py::test_rules_sharing_two_declarations_do_not_form_a_finding",
+            "-q",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPOSITORY,
+        env=explicit_environment(GITHUB_ACTIONS="true"),
+    )
+
+    # Pins a real overlap in layout.css; pick another one if a refactor removes it.
+    warning = re.search(
+        r"^::warning file=src/budget/dashboard/static/layout\.css,line=\d+,"
+        r"title=CSS declaration overlap::`\.footer-inner` shares 3 declarations "
+        r"with src/budget/dashboard/static/layout\.css:\d+ `\.header-inner`%0A",
+        result.stdout,
+        re.MULTILINE,
+    )
+    assert (result.returncode, bool(warning)) == (0, True), result.stdout
+
+
+def test_rules_sharing_two_declarations_do_not_form_a_finding(
+    tmp_path: Path,
+) -> None:
+    report = report_css(
+        tmp_path,
+        """\
 .card {
   padding: 1rem;
   color: var(--ink);
@@ -96,16 +594,13 @@ def test_rules_sharing_two_declarations_pass() -> None:
   color: var(--ink);
   border: 2px solid var(--line);
 }
-"""
+""",
+    )
 
-    assert find_duplicates(css) == []
-
-
-def test_an_allowlisted_duplicate_passes() -> None:
-    assert find_duplicates(CARD_AND_PANEL, allowlist=[(".panel", ".card")]) == []
+    assert report.findings == ()
 
 
-def test_comments_are_not_part_of_a_rule() -> None:
+def test_comments_are_not_part_of_a_rule(tmp_path: Path) -> None:
     css = """\
 /* Cards
    and panels */
@@ -123,102 +618,16 @@ def test_comments_are_not_part_of_a_rule() -> None:
 }
 """
 
-    assert find_duplicates(css) == [
-        "`.panel` (line 10) shares 3 declarations with `.card` (line 3); reuse `.card`"
-    ]
+    report = report_css(tmp_path, css)
+
+    assert [
+        (finding.earlier.line, finding.later.line) for finding in report.findings
+    ] == [(3, 10)]
 
 
-def test_a_rule_inside_media_is_named_with_its_media_query() -> None:
-    css = """\
-.card {
-  padding: 1rem;
-  border: 1px solid var(--line);
-  color: var(--ink);
-}
-
-@media (max-width: 48rem) {
-  .panel {
-    color: var(--ink);
-    padding: 1rem;
-    border: 1px solid var(--line);
-  }
-}
-"""
-
-    message = (
-        "`@media (max-width: 48rem) .panel` (line 8) shares 3 declarations with"
-        " `.card` (line 1); reuse `.card`"
-    )
-    assert find_duplicates(css) == [message]
-
-
-def test_an_allowlist_entry_that_is_no_longer_a_duplicate_fails() -> None:
-    allowlist = [(".panel", ".card"), (".panel", ".banner")]
-
-    assert find_duplicates(CARD_AND_PANEL, allowlist=allowlist) == [
-        "allowlist entry `.panel` / `.banner` is no longer a duplicate; remove it"
-    ]
-
-
-def test_the_allowlist_holds_one_pair_per_line() -> None:
-    text = """\
-# Duplicates the owner has approved.
-
-.panel | .card
-.footer-inner | .page-heading h1, .login-intro h1
-"""
-
-    assert read_allowlist(text) == [
-        (".panel", ".card"),
-        (".footer-inner", ".page-heading h1, .login-intro h1"),
-    ]
-
-
-def linked_stylesheets() -> list[str]:
-    """Return the stylesheets the dashboard's base page links, in cascade order."""
-    base = (REPOSITORY / "src/budget/dashboard/templates/base.html").read_text("utf-8")
-    links = re.finditer(r"""<link rel="stylesheet" href="\{\{ '([^']+)'""", base)
-    return [link.group(1) for link in links]
-
-
-def test_every_dashboard_stylesheet_is_linked_from_the_base_page() -> None:
-    # The guard below reads only the linked stylesheets.
-    shipped = sorted(path.name for path in STATIC.glob("*.css"))
-
-    assert sorted(linked_stylesheets()) == shipped
-
-
-def dashboard_stylesheets(features: Sequence[Feature]) -> dict[str, str]:
-    """Return every stylesheet a page links, by name, in cascade order.
-
-    The shared sheets come first, then each registered feature's, as
-    `<folder>/<file>`.
-    """
-    sheets = {name: (STATIC / name).read_text("utf-8") for name in linked_stylesheets()}
-    for feature in features:
-        for sheet in sorted(feature.folder.glob("*.css")):
-            sheets[f"{feature.folder.name}/{sheet.name}"] = sheet.read_text("utf-8")
-    return sheets
-
-
-def test_the_guard_reads_each_registered_features_stylesheets_last() -> None:
-    names = list(dashboard_stylesheets((SAMPLE,)))
-
-    assert names == [*linked_stylesheets(), "sample_feature/sample.css"]
-
-
-def test_the_dashboard_stylesheets_repeat_no_rule_outside_the_allowlist() -> None:
-    sheets = dashboard_stylesheets(FEATURES)
-    allowlist = read_allowlist(
-        (REPOSITORY / "css-duplicates-allowlist.txt").read_text("utf-8")
-    )
-
-    messages = find_duplicates_in_sheets(sheets, allowlist)
-
-    assert not messages, "\n".join(messages)
-
-
-def test_a_rule_after_a_top_level_statement_is_named_by_its_own_selector() -> None:
+def test_a_rule_after_a_top_level_statement_keeps_its_own_selector(
+    tmp_path: Path,
+) -> None:
     css = """\
 @import url("base.css");
 .card {
@@ -234,27 +643,14 @@ def test_a_rule_after_a_top_level_statement_is_named_by_its_own_selector() -> No
 }
 """
 
-    assert find_duplicates(css) == [
-        "`.panel` (line 8) shares 3 declarations with `.card` (line 2); reuse `.card`"
-    ]
+    report = report_css(tmp_path, css)
+
+    assert [
+        (finding.earlier.line, finding.later.line) for finding in report.findings
+    ] == [(2, 8)]
 
 
-def test_a_nested_rule_is_reported_as_unreadable() -> None:
-    css = """\
-.card {
-  padding: 1rem;
-  &:hover {
-    color: var(--ink);
-  }
-}
-"""
-
-    assert find_duplicates(css) == [
-        "`.card` (line 1) nests a rule; write it flat so the check can read it"
-    ]
-
-
-def test_the_rule_sharing_the_most_declarations_is_named_first() -> None:
+def test_overlap_pair_order_is_deterministic(tmp_path: Path) -> None:
     css = """\
 .card {
   padding: 1rem;
@@ -277,40 +673,19 @@ def test_the_rule_sharing_the_most_declarations_is_named_first() -> None:
 }
 """
 
-    assert find_duplicates(css) == [
-        "`.panel` (line 7) shares 3 declarations with `.card` (line 1); reuse `.card`",
-        "`.new` (line 14) shares 4 declarations with `.panel` (line 7); reuse `.panel`",
-        "`.new` (line 14) shares 3 declarations with `.card` (line 1); reuse `.card`",
+    report = report_css(tmp_path, css)
+
+    assert [
+        (finding.later.selector, finding.earlier.selector)
+        for finding in report.findings
+    ] == [
+        (".panel", ".card"),
+        (".new", ".card"),
+        (".new", ".panel"),
     ]
 
 
-def test_an_allowlist_line_without_a_pair_is_refused() -> None:
-    with pytest.raises(ValueError, match=r"line 2 is not `rule \| earlier rule`: a\|b"):
-        read_allowlist("# header\na|b\n")
-
-
-def test_declarations_match_across_spacing_and_property_case() -> None:
-    css = """\
-.card {
-  padding: 1rem;
-  border: 1px solid var(--line);
-  color: var(--ink);
-}
-
-.panel {
-  PADDING:1rem;
-  border:
-    1px  solid var(--line);
-  Color : var(--ink)
-}
-"""
-
-    assert find_duplicates(css) == [
-        "`.panel` (line 7) shares 3 declarations with `.card` (line 1); reuse `.card`"
-    ]
-
-
-def test_a_brace_inside_a_string_is_part_of_the_value() -> None:
+def test_a_brace_inside_a_string_is_part_of_the_value(tmp_path: Path) -> None:
     css = """\
 .new-a {
   color: red;
@@ -325,12 +700,15 @@ def test_a_brace_inside_a_string_is_part_of_the_value() -> None:
 }
 """
 
-    assert find_duplicates(css) == [
-        "`.new-b` (line 7) shares 3 declarations with `.new-a` (line 1); reuse `.new-a`"
-    ]
+    report = report_css(tmp_path, css)
+
+    assert [
+        (finding.earlier.selector, finding.later.selector)
+        for finding in report.findings
+    ] == [(".new-a", ".new-b")]
 
 
-def test_a_semicolon_inside_a_string_is_part_of_the_value() -> None:
+def test_a_semicolon_inside_a_string_is_part_of_the_value(tmp_path: Path) -> None:
     css = """\
 .quote-a {
   content: "a;b;c;d";
@@ -340,34 +718,33 @@ def test_a_semicolon_inside_a_string_is_part_of_the_value() -> None:
 }
 """
 
-    assert find_duplicates(css) == []
+    assert report_css(tmp_path, css).findings == ()
 
 
-def test_css_the_check_cannot_read_is_reported_with_its_line() -> None:
-    css = """\
-.card {
-  color: red;
-  12px;
-}
-"""
-
-    assert find_duplicates(css) == [
-        "`.card` (line 3) holds CSS the check cannot read; fix it so it can"
-    ]
-
-
-def test_the_dashboard_stylesheets_with_a_copied_rule_name_the_original() -> None:
-    sheets = {name: (STATIC / name).read_text("utf-8") for name in linked_stylesheets()}
-    pattern = re.compile(r"^\.header-inner \{\n(.*?)^\}", re.MULTILINE | re.DOTALL)
-    original = next(filter(None, map(pattern.search, sheets.values())), None)
-    assert original, "no dashboard stylesheet has a `.header-inner` rule to copy"
+def test_a_copied_dashboard_rule_names_the_original(tmp_path: Path) -> None:
+    source = STATIC / "layout.css"
+    css = source.read_text("utf-8")
+    original = re.search(r"^\.header-inner \{\n(.*?)^\}", css, re.MULTILINE | re.DOTALL)
+    assert original, "layout.css no longer has a `.header-inner` rule to copy"
     copy = '.copied-header {\n  content: "}";\n' + original.group(1) + "}\n"
-    allowlist = read_allowlist(
-        (REPOSITORY / "css-duplicates-allowlist.txt").read_text("utf-8")
-    )
+    copied = tmp_path / "copied.css"
+    copied.write_text(copy, encoding="utf-8")
 
-    messages = find_duplicates_in_sheets({**sheets, "copy.css": copy}, allowlist)
+    report = report_overlaps((source, copied))
 
-    assert messages, "the copied rule was not reported"
-    assert messages[0].startswith("`.copied-header` (copy.css line 1)"), messages
-    assert messages[0].endswith("reuse `.header-inner`"), messages
+    matches = [
+        finding
+        for finding in report.findings
+        if finding.later.selector == ".copied-header"
+        and finding.earlier.selector == ".header-inner"
+    ]
+    assert [finding.declarations for finding in matches] == [
+        (
+            "align-items: center",
+            "display: flex",
+            "gap: 1rem",
+            "justify-content: space-between",
+            "min-height: 4.25rem",
+        )
+    ]
+    assert matches, "the copied rule was not reported"
