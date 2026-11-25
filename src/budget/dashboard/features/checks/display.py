@@ -105,7 +105,7 @@ def _nonzero_residuals(diagnostics: Diagnostics) -> list[ResidualLink]:
         ResidualLink(
             f"checks-residual-{reconciliation.account_id}-{kind}",
             f"{reconciliation.display_name}: {label} "
-            f"{_difference(value, diagnostics.currency)}",
+            f"{_difference(value, diagnostics.currency)} (se Detaljer)",
             pinned_url(
                 replace(address, accounts=(reconciliation.account_id,)),
                 view=details,
