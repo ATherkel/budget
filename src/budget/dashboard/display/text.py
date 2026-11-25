@@ -10,6 +10,7 @@ from budget.analytics import (
     ActivityRow,
     BankBalanceObservation,
     InvalidSelectionError,
+    MonthlyBalanceObservation,
     ReportCoverage,
 )
 from budget.analytics.reports import AccountMonthStatus
@@ -137,6 +138,13 @@ def evidence_line(through: date | None) -> str:
     if through is None:
         return "Ingen importeret data"
     return f"Gennem {danish_date(through)}"
+
+
+def monthly_snapshot_line(
+    snapshot: MonthlyBalanceObservation | None, currency: str
+) -> str:
+    """Return an account-month's published opening and closing balances."""
+    return f"{snapshot} {currency}"
 
 
 def danish_list(items: list[str]) -> str:
