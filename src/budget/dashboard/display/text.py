@@ -146,7 +146,10 @@ def monthly_snapshot_line(
     """Return an account-month's published opening and closing balances."""
     if snapshot is None:
         return "Ingen månedssnapshot"
-    return f"{snapshot} {currency}"
+    opening = amount(snapshot.opening_balance, currency)
+    closing = amount(snapshot.closing_balance, currency)
+    covered = coverage_label(snapshot.coverage)
+    return f"Månedssnapshot: Åbning {opening}; lukning {closing}; {covered}."
 
 
 def danish_list(items: list[str]) -> str:
