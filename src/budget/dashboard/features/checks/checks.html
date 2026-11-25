@@ -25,7 +25,7 @@
 {# An unknown Evidence through says so; it is never shown as a date. #}
 <ul id="checks-evidence" class="checks-list">
 {% for account in diagnostics.evidence %}
-  <li id="checks-evidence-{{ account.account_id }}">{{ account.display_name }}: data gennem
-    {{ "ukendt" if account.evidence_through is none else account.evidence_through | danish_date }}</li>
+  <li id="checks-evidence-{{ account.account_id }}">{{ account.display_name }}:
+    {{ account.evidence_through | evidence_line }}</li>
 {% endfor %}
 </ul>
