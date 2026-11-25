@@ -12,8 +12,10 @@ from urllib.parse import parse_qs, urlsplit
 
 from budget.analytics import (
     AccountMonthCoverage,
+    MoneyInOut,
     ReportContext,
     ReportCoverage,
+    TransferSummary,
     diagnostics,
 )
 from budget.dashboard.features.checks.display import checks_view
@@ -108,4 +110,39 @@ def test_a_positive_residual_shows_its_plus_sign_in_the_accounts_list() -> None:
         "Intern forskel: +12,40 kr.",
         "Slutsaldo forrige måned: 53.000,00 kr.",
         "Åbningsforskel: 0,00 kr.",
+    ]
+
+
+def test_unknown_observed_groups_keep_both_amounts_and_count_unknown() -> None:
+    view = checks_view(
+        replace(MARCH_REPORT, unclassified=None, adjustments=None, transfers=None),
+        "marts 2026",
+    )
+
+    assert [
+        (group.money_in, group.money_out, group.count) for group in view.observed
+    ] == [
+        ("Ukendt", "Ukendt", "Ukendt"),
+        ("Ukendt", "Ukendt", "Ukendt"),
+        ("Ukendt", "Ukendt", "Ukendt"),
+    ]
+
+
+def test_opposite_observed_amounts_stay_signed_and_never_cancel() -> None:
+    view = checks_view(
+        replace(
+            MARCH_REPORT,
+            unclassified=MoneyInOut(Decimal("12.40"), Decimal("-12.40"), 2),
+            adjustments=MoneyInOut(Decimal("23.50"), Decimal("-23.50"), 4),
+            transfers=TransferSummary(Decimal("34.60"), Decimal("-34.60"), 6, 6, 0),
+        ),
+        "marts 2026",
+    )
+
+    assert [
+        (group.money_in, group.money_out, group.count) for group in view.observed
+    ] == [
+        ("+12,40 kr.", "\N{MINUS SIGN}12,40 kr.", "2"),
+        ("+23,50 kr.", "\N{MINUS SIGN}23,50 kr.", "4"),
+        ("+34,60 kr.", "\N{MINUS SIGN}34,60 kr.", "6"),
     ]
