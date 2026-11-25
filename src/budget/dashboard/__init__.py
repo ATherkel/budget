@@ -9,11 +9,10 @@ from collections.abc import Callable, MutableMapping, Sequence
 from datetime import datetime
 from functools import cache
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import FastAPI, Form, Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from jinja2 import (
     ChoiceLoader,
@@ -41,7 +40,9 @@ from budget.dashboard.display.text import (
 )
 from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.category import CATEGORY
+from budget.dashboard.features.errors import ERRORS
 from budget.dashboard.features.explanation import EXPLANATION
+from budget.dashboard.features.login import LOGIN
 from budget.dashboard.features.overview import overview_feature
 from budget.dashboard.features.report import REPORT, render_report
 from budget.dashboard.features.view_state import VIEW_STATE
@@ -51,13 +52,11 @@ from budget.dashboard.passphrase import (
     require_passphrase,
     set_passphrase,
 )
-from budget.dashboard.throttle import LoginThrottle
+from budget.dashboard.session import SESSION_COOKIE
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
 
 __all__ = ["create_app", "set_passphrase"]
-
-SESSION_COOKIE = "session"
 
 _STATIC = Path(__file__).parent / "static"
 
@@ -184,42 +183,10 @@ def _logged_in(
     )
 
 
-def _refuse_login(
-    templates: Environment,
-    credentials: CredentialSnapshot,
-    throttle: LoginThrottle,
-    now: datetime,
-    passphrase: str,
-) -> Response | None:
-    """Return why a login made at `now` is refused, or None when it succeeds.
-
-    The caller holds `throttle.guard`, so the outcome is recorded before the
-    next login is checked.
-    """
-    wait = throttle.seconds_locked(now)
-    if wait:
-        notice = f"For mange forkerte forsøg. Prøv igen om {wait} sekunder."
-        return HTMLResponse(
-            templates.get_template("login.html").render(message=notice),
-            status_code=429,
-            headers={"Retry-After": str(wait)},
-        )
-    # An empty form is not a guess, so it is refused without being counted.
-    blank = not passphrase.strip()
-    if blank or not credentials.matches(passphrase):
-        if not blank:
-            throttle.failed(now)
-        return HTMLResponse(
-            templates.get_template("login.html").render(
-                message="Adgangskoden er forkert."
-            )
-        )
-    throttle.succeeded()
-    return None
-
-
 # The features the dashboard serves, one line each; one left out is off.
 FEATURES: tuple[Feature, ...] = (
+    ERRORS,
+    LOGIN,
     VIEW_STATE,
     overview_feature(render_report),
     REPORT,
@@ -247,20 +214,7 @@ def create_app(
     _serve_stylesheets(app, features)
     # The htmx script ships in the package: nothing is fetched from the internet.
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")
-    throttle = LoginThrottle()
     templates = _templates(features)
-
-    @app.exception_handler(RequestValidationError)
-    def malformed_address(request: Request, _error: RequestValidationError) -> Response:
-        """Explain a malformed address in Danish, never as FastAPI's JSON.
-
-        htmx swaps only a 2xx, so the fragment answers 200 while the page is a 400.
-        """
-        if request.url.path == "/report":
-            fragment = templates.get_template("invalid_address.html").render()
-            return HTMLResponse(fragment)
-        page = templates.get_template("invalid_address_page.html").render()
-        return HTMLResponse(page, status_code=400)
 
     def start_session(response: Response, credentials: CredentialSnapshot) -> Response:
         """Set a session cookie lasting `LOGIN_LIFETIME` from now.
@@ -288,31 +242,8 @@ def create_app(
         # Every visit renews the login for another 30 days from now.
         return start_session(respond(), authenticated_as)
 
-    dashboard = Dashboard(profile, clock, templates, app, for_reader)
+    dashboard = Dashboard(profile, clock, templates, app, for_reader, start_session)
     for feature in features:
         feature.register(dashboard)
-
-    @app.get("/login")
-    def login_page() -> Response:
-        return HTMLResponse(templates.get_template("login.html").render(message=""))
-
-    @app.post("/login")
-    def login(passphrase: Annotated[str, Form()] = "") -> Response:
-        # One login at a time, from the lock check to recording the outcome.
-        with throttle.guard:
-            credentials = read_credentials(profile)
-            refused = _refuse_login(
-                templates, credentials, throttle, clock(), passphrase
-            )
-        if refused is not None:
-            return refused
-        return start_session(RedirectResponse("/", status_code=303), credentials)
-
-    @app.post("/logout")
-    def logout() -> Response:
-        # This browser only; `set-passphrase` logs out every device.
-        response = RedirectResponse("/login", status_code=303)
-        response.delete_cookie(SESSION_COOKIE, httponly=True, samesite="strict")
-        return response
 
     return app

@@ -26,8 +26,9 @@ from budget.dashboard.addresses import (
     pinned_url,
 )
 from budget.dashboard.display.months import month_label, month_value, parse_month
-from budget.dashboard.display.text import incomplete_months, selection_problems
+from budget.dashboard.display.text import incomplete_months
 from budget.dashboard.features import Dashboard, Feature
+from budget.dashboard.features.errors import failure_fragment
 from budget.dashboard.features.view_state import (
     ViewState,
     parse_view_state,
@@ -74,12 +75,8 @@ def _read_activity(
         )
         with GoldStore(dashboard.profile, read_only=True) as store:
             return HouseholdReports(store).account_activity(context)
-    except InvalidSelectionError as error:
-        return dashboard.templates.get_template("invalid_selection.html").render(
-            problems=selection_problems(error)
-        )
-    except PublicationUnavailableError:
-        return dashboard.templates.get_template("unavailable.html").render()
+    except (InvalidSelectionError, PublicationUnavailableError) as error:
+        return failure_fragment(dashboard, error)
 
 
 def render_report(

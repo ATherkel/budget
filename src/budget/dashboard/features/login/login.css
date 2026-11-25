@@ -1,4 +1,21 @@
-/* Login: the passphrase panel and its form. */
+/* Login: the page's layout, the passphrase panel and its form. */
+
+.login-layout {
+  display: grid;
+  max-width: 58rem;
+  align-items: center;
+  grid-template-columns: minmax(0, 1.1fr) minmax(18rem, 0.9fr);
+  gap: clamp(2rem, 8vw, 6rem);
+  padding-block: clamp(2rem, 8vh, 5rem);
+}
+
+@media (max-width: 48rem) {
+  .login-layout {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    padding-block: 1.5rem;
+  }
+}
 
 .login-panel {
   padding: 1.5rem;

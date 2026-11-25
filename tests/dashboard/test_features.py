@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 import budget.dashboard.features
 from budget.dashboard import FEATURES, create_app
 from budget.dashboard.features import Feature
+from budget.dashboard.features.login import LOGIN
 from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
 from tests.dashboard.pages import read
 from tests.dashboard.sample_feature import SAMPLE
@@ -27,8 +28,10 @@ FEATURES_FOLDER = Path(budget.dashboard.features.__file__).parent
 
 
 def logged_in(tmp_path: Path, features: tuple[Feature, ...]) -> TestClient:
-    """Return a logged-in client of a dashboard with `features` registered."""
-    app = create_app(dashboard_profile(tmp_path), clock=lambda: NOW, features=features)
+    """Return a logged-in client of a dashboard with `features` and login registered."""
+    app = create_app(
+        dashboard_profile(tmp_path), clock=lambda: NOW, features=(LOGIN, *features)
+    )
     client = TestClient(app, follow_redirects=False)
     login = client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
     assert login.status_code == 303, "the household passphrase did not log in"

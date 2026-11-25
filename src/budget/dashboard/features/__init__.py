@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request, Response
 from jinja2 import Environment
 
+from budget.dashboard.passphrase import CredentialSnapshot
 from budget.profiles import Profile
 
 
@@ -22,6 +23,8 @@ class Dashboard:
     app: FastAPI
     # Answers a logged-in reader with the response; sends anyone else to log in.
     for_reader: Callable[[Request, Callable[[], Response]], Response]
+    # Logs the response's reader in with the credential, as each visit renews it.
+    start_session: Callable[[Response, CredentialSnapshot], Response]
 
 
 @dataclass(frozen=True)

@@ -142,15 +142,6 @@
   background: var(--warning-tint);
 }
 
-.login-layout {
-  display: grid;
-  max-width: 58rem;
-  align-items: center;
-  grid-template-columns: minmax(0, 1.1fr) minmax(18rem, 0.9fr);
-  gap: clamp(2rem, 8vw, 6rem);
-  padding-block: clamp(2rem, 8vh, 5rem);
-}
-
 .site-footer {
   color: var(--ink-soft);
   border-top: 1px solid var(--line);
@@ -175,12 +166,6 @@
 
   .page-heading {
     display: block;
-  }
-
-  .login-layout {
-    grid-template-columns: 1fr;
-    gap: 1.5rem;
-    padding-block: 1.5rem;
   }
 
   .report-panel {
