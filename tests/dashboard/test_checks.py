@@ -167,6 +167,39 @@ def test_kontrol_shows_each_accounts_evidence_through_and_unknown_is_never_a_dat
     )
 
 
+def test_kontrol_lists_each_accounts_reconciliation_components(
+    client: TestClient,
+) -> None:
+    # The worked example's March, as the report contract states it.
+    page = kontrol(client)
+
+    assert (
+        page.text_of(f"checks-reconciliation-{CURRENT}-components"),
+        page.text_of(f"checks-reconciliation-{SAVINGS}-components"),
+    ) == (
+        (
+            "Åbning: 37.037,50 kr. "
+            "Indtægter minus udgifter: \N{MINUS SIGN}1.000,00 kr. "
+            "Overførsler: 0,00 kr. "
+            "Ukategoriseret ind: 0,00 kr. "
+            "Ukategoriseret ud: \N{MINUS SIGN}450,00 kr. "
+            "Regulering ind: 0,00 kr. "
+            "Regulering ud: 0,00 kr. "
+            "Lukning: 35.587,50 kr."
+        ),
+        (
+            "Åbning: 53.000,00 kr. "
+            "Indtægter minus udgifter: 0,00 kr. "
+            "Overførsler: 0,00 kr. "
+            "Ukategoriseret ind: 0,00 kr. "
+            "Ukategoriseret ud: 0,00 kr. "
+            "Regulering ind: 0,00 kr. "
+            "Regulering ud: 0,00 kr. "
+            "Lukning: 53.000,00 kr."
+        ),
+    )
+
+
 def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
     client: TestClient,
 ) -> None:
