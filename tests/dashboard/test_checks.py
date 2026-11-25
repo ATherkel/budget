@@ -305,6 +305,13 @@ def test_a_nonzero_residuals_link_opens_the_full_detaljer_page_for_its_account(
     ) == (200, True, "page", {CURRENT})
 
 
+def test_kontrol_leaves_an_unknown_residual_out_of_the_top_list(
+    client: TestClient,
+) -> None:
+    # May's residuals are unknown, which is neither zero nor a known gap.
+    assert kontrol(client, month="2026-05").text_of("checks-residuals") is None
+
+
 def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
     client: TestClient,
 ) -> None:
