@@ -18,7 +18,9 @@ uv run pytest
 in editable mode. `uvx pre-commit install` adds the git hooks that
 [code-quality.md](docs/agents/code-quality.md) describes. The real-browser dashboard tests
 launch the installed Google Chrome, so they need Chrome and download no
-browser. `uv build` writes a wheel and an sdist into the ignored `dist/`
+browser. `uv run pytest` runs in parallel; add `-n0` to run serially
+([parallel test runs](docs/agents/code-quality.md#parallel-test-runs)).
+`uv build` writes a wheel and an sdist into the ignored `dist/`
 folder; installing that wheel proves the package works outside the checkout.
 
 Every Python change must pass the quality gate before it is committed, and CI
