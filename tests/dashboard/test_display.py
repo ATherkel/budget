@@ -182,3 +182,7 @@ def test_an_incomplete_month_says_what_it_lacks(
 
 def test_an_account_with_nothing_imported_says_so() -> None:
     assert evidence_line(None) == "Ingen importeret data"
+
+
+def test_an_accounts_imported_data_reaches_through_its_last_date() -> None:
+    assert evidence_line(date(2026, 2, 3)) == "Gennem 03.02.2026"
