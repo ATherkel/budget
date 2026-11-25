@@ -40,6 +40,7 @@ from budget.dashboard.display.text import (
 )
 from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.category import CATEGORY
+from budget.dashboard.features.checks import CHECKS
 from budget.dashboard.features.errors import ERRORS
 from budget.dashboard.features.explanation import EXPLANATION
 from budget.dashboard.features.login import LOGIN
@@ -192,6 +193,7 @@ FEATURES: tuple[Feature, ...] = (
     REPORT,
     CATEGORY,
     EXPLANATION,
+    CHECKS,
 )
 
 

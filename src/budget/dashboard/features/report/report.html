@@ -60,6 +60,8 @@
 {% endfor %}
 </ul>
 {% endif %}
+{% elif tab == "checks" %}
+{% include "checks/checks.html" %}
 {% else %}
 {% include "report/activity.html" %}
 {% endif %}
