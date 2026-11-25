@@ -66,18 +66,18 @@ def _reconciliation_lines(
 ) -> ReconciliationLines:
     """Return each balance and activity component of one account-month."""
     components = (
-        ("Åbning", reconciliation.opening_balance),
+        ("Startsaldo", reconciliation.opening_balance),
         ("Indtægter minus udgifter", reconciliation.income_minus_expenses),
         ("Overførsler", reconciliation.transfers),
         ("Ukategoriseret ind", reconciliation.unclassified_in),
         ("Ukategoriseret ud", reconciliation.unclassified_out),
         ("Regulering ind", reconciliation.adjustments_in),
         ("Regulering ud", reconciliation.adjustments_out),
-        ("Lukning", reconciliation.closing_balance),
+        ("Slutsaldo", reconciliation.closing_balance),
     )
     residuals = (
-        ("Intern difference", reconciliation.internal_residual),
-        ("Lukning forrige måned", reconciliation.previous_closing_balance),
+        ("Intern forskel", reconciliation.internal_residual),
+        ("Slutsaldo forrige måned", reconciliation.previous_closing_balance),
         ("Åbningsforskel", reconciliation.opening_gap),
     )
     return ReconciliationLines(
@@ -110,7 +110,7 @@ def _nonzero_residuals(diagnostics: Diagnostics) -> list[ResidualLink]:
         for reconciliation in diagnostics.reconciliations
         for kind, label, value in (
             ("opening-gap", "Åbningsforskel", reconciliation.opening_gap),
-            ("internal", "Intern difference", reconciliation.internal_residual),
+            ("internal", "Intern forskel", reconciliation.internal_residual),
         )
         if value
     ]
