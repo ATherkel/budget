@@ -21,7 +21,7 @@ from budget.dashboard.features.view_state.display import (
 )
 
 type DashboardMode = Literal["simple", "advanced"]
-type DashboardTab = Literal["overview", "details"]
+type DashboardTab = Literal["overview", "details", "checks"]
 type ComparisonMode = Literal["amounts"]
 
 
@@ -44,7 +44,11 @@ def view_mode(value: str | None) -> DashboardMode:
 
 def _tab(value: str | None) -> DashboardTab:
     """Return a supported tab, defaulting a malformed address to Overblik."""
-    return "details" if value == "details" else "overview"
+    match value:
+        case "details" | "checks":
+            return value
+        case _:
+            return "overview"
 
 
 def _comparison(_value: str | None) -> ComparisonMode:

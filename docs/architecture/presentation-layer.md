@@ -41,7 +41,8 @@ adds its routes to the `Dashboard` it is handed. `FEATURES` in
 `budget.dashboard` lists the registered features one line each; a feature left
 out is off. The overview shows the report and the pickers, so it needs `report`
 and `view_state` registered too, and the report links each category to
-`category` and its trust notes to `explanation`. Every page sends a reader
+`category` and its trust notes to `explanation`. The report needs `checks`
+registered for its Kontrol tab. Every page sends a reader
 who is not logged in to `login`, the page that logs in and out; the check
 itself, the session cookie and the passphrase stay in `budget.dashboard`, so a
 dashboard without `login` still refuses every page. `errors` explains why an
@@ -83,10 +84,9 @@ link opens it with a route back to the originating view. Browser back/forward
 restores the recorded mode, tab and applicable detail/comparison state under the
 [navigation contract](report-contract.md#navigation-and-selection-transitions).
 
-The switch and advanced “Overblik” and “Detaljer” are available. “Kontrol” is
-pending [#552](https://github.com/ATherkel/budget/issues/552); expose no control
-for that undelivered screen. Both modes retain access to the basic trust
-explanation.
+The switch and advanced “Overblik”, “Detaljer” and “Kontrol” are available.
+“Kontrol” shows Coverage, provisional reasons, incomplete account-months and
+Evidence through. Both modes retain access to the basic trust explanation.
 
 ## Data Trust Display
 

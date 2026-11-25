@@ -1,0 +1,16 @@
+<p class="eyebrow">Kontrol</p>
+<h3 id="report-ready-title">{{ month_label }}</h3>
+<p id="checks-coverage">{{ checks.coverage }}</p>
+<ul id="checks-incomplete-months" class="explanation-list">
+{% for line in checks.incomplete %}
+  <li>{{ line }}</li>
+{% endfor %}
+</ul>
+{% for line in checks.provisional %}
+<p id="checks-provisional">{{ line }}</p>
+{% endfor %}
+<ul id="checks-evidence" class="explanation-list">
+{% for account in checks.evidence %}
+  <li id="checks-evidence-{{ account.account_id }}">{{ account.line }}</li>
+{% endfor %}
+</ul>
