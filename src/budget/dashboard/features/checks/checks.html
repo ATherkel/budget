@@ -1,23 +1,16 @@
 <p class="eyebrow">Kontrol</p>
 <h3 id="report-ready-title">{{ month_label }}</h3>
-<p id="checks-coverage">Dækning: {{ diagnostics.coverage.status | coverage_label }}.</p>
-{% set incomplete_account_months = diagnostics.coverage | incomplete_months %}
-{% if incomplete_account_months %}
+<p id="checks-coverage">{{ checks.coverage }}</p>
 <ul id="checks-incomplete-months" class="explanation-list">
-{% for account_month in incomplete_account_months %}
-  <li>{{ account_month.display_name }}, {{ month_label }}: {{ account_month.status | coverage_label }}.</li>
+{% for line in checks.incomplete %}
+  <li>{{ line }}</li>
 {% endfor %}
 </ul>
-{% else %}
-<p id="checks-incomplete-months">Ingen valgte kontomåneder mangler dækning.</p>
-{% endif %}
-{% if diagnostics.provisional %}
-<p id="checks-provisional">Foreløbigt: {{ diagnostics.provisional | provisional_reasons(month_label) }}</p>
-{% endif %}
-{# An unknown Evidence through says so; it is never shown as a date. #}
+{% for line in checks.provisional %}
+<p id="checks-provisional">{{ line }}</p>
+{% endfor %}
 <ul id="checks-evidence" class="explanation-list">
-{% for account in diagnostics.evidence %}
-  <li id="checks-evidence-{{ account.account_id }}">{{ account.display_name }}:
-    {{ account.evidence_through | evidence_line }}</li>
+{% for account in checks.evidence %}
+  <li id="checks-evidence-{{ account.account_id }}">{{ account.line }}</li>
 {% endfor %}
 </ul>

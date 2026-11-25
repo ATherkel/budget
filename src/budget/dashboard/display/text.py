@@ -11,7 +11,6 @@ from budget.analytics import (
     BankBalanceObservation,
     InvalidSelectionError,
     MonthlyBalanceObservation,
-    Provisional,
     ReportCoverage,
 )
 from budget.analytics.reports import AccountMonthStatus
@@ -125,19 +124,6 @@ def coverage_note(status: Coverage, incomplete: list[str], period: str) -> str:
     if status == "no_data":
         return f"Der er ingen data endnu fra {danish_list(incomplete)}."
     return f"Tallene mangler noget fra {danish_list(incomplete)}."
-
-
-def provisional_reasons(provisional: Provisional, period: str) -> str:
-    """Return why the figures for `period` may still change, one sentence a reason."""
-    sentences = []
-    if "current_month" in provisional.reasons:
-        sentences.append(
-            f"{period} er indeværende måned, så der kan stadig komme posteringer."
-        )
-    if "late_bookings_unsettled" in provisional.reasons:
-        names = account_names(provisional.unsettled)
-        sentences.append(f"Sene bogføringer kan stadig komme fra {names}.")
-    return " ".join(sentences)
 
 
 def coverage_gap(status: AccountMonthStatus) -> str:

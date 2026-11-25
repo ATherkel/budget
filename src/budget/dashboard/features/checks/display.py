@@ -1,0 +1,66 @@
+# Copyright 2026 Therkel
+"""What Kontrol prints: each diagnostic of a selection as a ready line."""
+
+from dataclasses import dataclass
+
+from budget.analytics import Diagnostics, Provisional
+from budget.dashboard.display.text import (
+    account_names,
+    coverage_label,
+    evidence_line,
+    incomplete_months,
+)
+
+
+@dataclass(frozen=True)
+class EvidenceLine:
+    """How far one account's imported data reaches, keyed by the account."""
+
+    account_id: str
+    line: str
+
+
+@dataclass(frozen=True)
+class ChecksView:
+    """Kontrol's lines, so its template only loops and prints."""
+
+    coverage: str
+    incomplete: list[str]
+    # Empty when the figures are settled: the template then prints nothing.
+    provisional: list[str]
+    evidence: list[EvidenceLine]
+
+
+def _provisional_lines(provisional: Provisional | None, period: str) -> list[str]:
+    """Return why the figures for `period` may still change, or nothing."""
+    if provisional is None:
+        return []
+    sentences = []
+    if "current_month" in provisional.reasons:
+        sentences.append(
+            f"{period} er indeværende måned, så der kan stadig komme posteringer."
+        )
+    if "late_bookings_unsettled" in provisional.reasons:
+        names = account_names(provisional.unsettled)
+        sentences.append(f"Sene bogføringer kan stadig komme fra {names}.")
+    return [f"Foreløbigt: {' '.join(sentences)}"]
+
+
+def checks_view(diagnostics: Diagnostics, period: str) -> ChecksView:
+    """Return Kontrol's lines for `diagnostics` of the month called `period`."""
+    incomplete = [
+        f"{month.display_name}, {period}: {coverage_label(month.status)}."
+        for month in incomplete_months(diagnostics.coverage)
+    ]
+    return ChecksView(
+        coverage=f"Dækning: {coverage_label(diagnostics.coverage.status)}.",
+        incomplete=incomplete or ["Ingen valgte kontomåneder mangler dækning."],
+        provisional=_provisional_lines(diagnostics.provisional, period),
+        evidence=[
+            EvidenceLine(
+                account.account_id,
+                f"{account.display_name}: {evidence_line(account.evidence_through)}",
+            )
+            for account in diagnostics.evidence
+        ],
+    )
