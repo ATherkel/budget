@@ -1,0 +1,11 @@
+/* Kontrol: the selection's trust diagnostics, one fact per line. */
+
+.checks-list {
+  margin-block: 0.75rem;
+  padding-left: 1.25rem;
+}
+
+.checks-list li {
+  padding-block: 0.2rem;
+  font-variant-numeric: tabular-nums;
+}
