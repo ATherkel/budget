@@ -10,11 +10,13 @@ format.
 
 ```powershell
 uv sync
+uvx pre-commit install
 uv run pytest
 ```
 
 `uv sync` creates `.venv/` and installs the `budget` command from `src/budget`
-in editable mode; that is the whole setup. The real-browser dashboard tests
+in editable mode. `uvx pre-commit install` adds the git hooks that
+[code-quality.md](docs/agents/code-quality.md) describes. The real-browser dashboard tests
 launch the installed Google Chrome, so they need Chrome and download no
 browser. `uv build` writes a wheel and an sdist into the ignored `dist/`
 folder; installing that wheel proves the package works outside the checkout.
