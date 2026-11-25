@@ -200,6 +200,24 @@ def test_kontrol_lists_each_accounts_reconciliation_components(
     )
 
 
+def test_kontrol_reads_a_missing_reconciliation_component_as_unknown_not_zero(
+    client: TestClient,
+) -> None:
+    # May has no monthly snapshot yet, so its balances are missing.
+    assert kontrol(client, month="2026-05").text_of(
+        f"checks-reconciliation-{CURRENT}-components"
+    ) == (
+        "Åbning: Ukendt "
+        "Indtægter minus udgifter: 0,00 kr. "
+        "Overførsler: 0,00 kr. "
+        "Ukategoriseret ind: 0,00 kr. "
+        "Ukategoriseret ud: 0,00 kr. "
+        "Regulering ind: 0,00 kr. "
+        "Regulering ud: 0,00 kr. "
+        "Lukning: Ukendt"
+    )
+
+
 def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
     client: TestClient,
 ) -> None:
