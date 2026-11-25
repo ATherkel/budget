@@ -28,6 +28,7 @@ from budget.dashboard.addresses import (
 from budget.dashboard.display.months import month_label, month_value, parse_month
 from budget.dashboard.display.text import incomplete_months
 from budget.dashboard.features import Dashboard, Feature
+from budget.dashboard.features.checks import read_diagnostics
 from budget.dashboard.features.errors import failure_fragment
 from budget.dashboard.features.view_state import (
     ViewState,
@@ -108,6 +109,18 @@ def render_report(
     )
     if isinstance(activity, str):
         return activity
+    diagnostics = (
+        read_diagnostics(
+            dashboard,
+            requested.pin,
+            requested.accounts,
+            requested.month,
+        )
+        if requested.view.mode == "advanced" and requested.view.tab == "checks"
+        else None
+    )
+    if isinstance(diagnostics, str):
+        return diagnostics
     tab_urls = {
         destination: pinned_url(
             answered_address(answered),
@@ -132,6 +145,7 @@ def render_report(
             for account_month in incomplete_months(overview_report.coverage)
         ],
         activity=activity,
+        diagnostics=diagnostics,
         mode=requested.view.mode,
         tab=requested.view.tab,
         comparison=requested.view.comparison,
