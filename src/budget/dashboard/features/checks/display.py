@@ -3,7 +3,8 @@
 
 from dataclasses import dataclass
 
-from budget.analytics import Diagnostics, Provisional
+from budget.analytics import Diagnostics, Provisional, Reconciliation
+from budget.dashboard.display.amounts import amount
 from budget.dashboard.display.text import (
     account_names,
     coverage_label,
@@ -21,6 +22,14 @@ class EvidenceLine:
 
 
 @dataclass(frozen=True)
+class ReconciliationLines:
+    """One account-month's reconciliation, keyed by the account."""
+
+    account_id: str
+    components: list[str]
+
+
+@dataclass(frozen=True)
 class ChecksView:
     """Kontrol's lines, so its template only loops and prints."""
 
@@ -29,6 +38,27 @@ class ChecksView:
     # Empty when the figures are settled: the template then prints nothing.
     provisional: list[str]
     evidence: list[EvidenceLine]
+    reconciliations: list[ReconciliationLines]
+
+
+def _reconciliation_lines(
+    reconciliation: Reconciliation, currency: str
+) -> ReconciliationLines:
+    """Return each balance and activity component of one account-month."""
+    components = (
+        ("Åbning", reconciliation.opening_balance),
+        ("Indtægter minus udgifter", reconciliation.income_minus_expenses),
+        ("Overførsler", reconciliation.transfers),
+        ("Ukategoriseret ind", reconciliation.unclassified_in),
+        ("Ukategoriseret ud", reconciliation.unclassified_out),
+        ("Regulering ind", reconciliation.adjustments_in),
+        ("Regulering ud", reconciliation.adjustments_out),
+        ("Lukning", reconciliation.closing_balance),
+    )
+    return ReconciliationLines(
+        reconciliation.account_id,
+        [f"{label}: {amount(value, currency)}" for label, value in components],
+    )
 
 
 def _provisional_lines(provisional: Provisional | None, period: str) -> list[str]:
@@ -62,5 +92,9 @@ def checks_view(diagnostics: Diagnostics, period: str) -> ChecksView:
                 f"{account.display_name}: {evidence_line(account.evidence_through)}",
             )
             for account in diagnostics.evidence
+        ],
+        reconciliations=[
+            _reconciliation_lines(reconciliation, diagnostics.currency)
+            for reconciliation in diagnostics.reconciliations
         ],
     )
