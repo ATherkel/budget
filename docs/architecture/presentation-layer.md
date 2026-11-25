@@ -91,7 +91,11 @@ Evidence through and each selected account's
 “Ukendt”; nonzero residuals come first, each linking to its account in
 “Detaljer”. Each account keeps its own Coverage label, and the page says a zero
 difference does not prove the data complete. Both modes retain access to the
-basic trust explanation.
+basic trust explanation. Kontrol also presents Ukategoriseret, Reguleringer and
+Overførsler with separate signed incoming and outgoing amounts, observed counts
+on the selected accounts, and paired versus one-sided Transfer legs. Missing
+amounts and counts read “Ukendt”. Its count explanation says a Transfer can
+count twice when both accounts are selected.
 
 ## Data Trust Display
 
