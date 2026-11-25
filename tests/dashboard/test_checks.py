@@ -125,9 +125,11 @@ def test_kontrol_names_each_reason_the_figures_are_provisional(
         kontrol(client, publication="2", month="2026-04").text_of("checks-provisional"),
         kontrol(client, month="2026-04").text_of("checks-provisional"),
     ) == (
-        "Foreløbigt: maj 2026 er indeværende måned, så der kan stadig komme "
-        "posteringer. Sene bogføringer kan stadig komme fra Joint current og "
-        "Joint savings.",
+        (
+            "Foreløbigt: maj 2026 er indeværende måned, så der kan stadig komme "
+            "posteringer. Sene bogføringer kan stadig komme fra Joint current og "
+            "Joint savings."
+        ),
         "Foreløbigt: Sene bogføringer kan stadig komme fra Joint current.",
         None,
     )
