@@ -86,6 +86,17 @@ def test_kontrol_shows_the_selections_coverage(client: TestClient) -> None:
     ) == ("Dækning: delvist dækket.", "Dækning: fuldt dækket.")
 
 
+def test_kontrol_lists_each_incomplete_account_month(client: TestClient) -> None:
+    # March lacks part of Joint current only; April lacks nothing.
+    assert (
+        kontrol(client).text_of("checks-incomplete-months"),
+        kontrol(client, month="2026-04").text_of("checks-incomplete-months"),
+    ) == (
+        "Joint current, marts 2026: delvist dækket.",
+        "Ingen valgte kontomåneder mangler dækning.",
+    )
+
+
 def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
     client: TestClient,
 ) -> None:
