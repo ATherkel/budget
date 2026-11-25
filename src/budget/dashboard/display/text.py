@@ -136,7 +136,7 @@ def evidence_line(through: date | None) -> str:
     """Return how far an account's imported data reaches, in Danish."""
     if through is None:
         return "Ingen importeret data"
-    return str(through)
+    return f"Gennem {danish_date(through)}"
 
 
 def danish_list(items: list[str]) -> str:
