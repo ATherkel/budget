@@ -237,7 +237,7 @@ def test_scripts_and_styles_are_addressed_by_their_content(
             *("base.css", "layout.css", "forms.css", "report.css"),
             *("tables.css", "states.css", "login/login.css"),
             *("view_state/selection.css",),
-            *("overview/overview.css", "report/report.css", "checks/checks.css"),
+            *("overview/overview.css", "report/report.css"),
             *("htmx.min.js", "app.js"),
         )
     }

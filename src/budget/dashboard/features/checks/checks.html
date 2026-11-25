@@ -3,7 +3,7 @@
 <p id="checks-coverage">Dækning: {{ diagnostics.coverage.status | coverage_label }}.</p>
 {% set incomplete_account_months = diagnostics.coverage | incomplete_months %}
 {% if incomplete_account_months %}
-<ul id="checks-incomplete-months" class="checks-list">
+<ul id="checks-incomplete-months" class="explanation-list">
 {% for account_month in incomplete_account_months %}
   <li>{{ account_month.display_name }}, {{ month_label }}: {{ account_month.status | coverage_label }}.</li>
 {% endfor %}
@@ -15,7 +15,7 @@
 <p id="checks-provisional">Foreløbigt: {{ diagnostics.provisional | provisional_reasons(month_label) }}</p>
 {% endif %}
 {# An unknown Evidence through says so; it is never shown as a date. #}
-<ul id="checks-evidence" class="checks-list">
+<ul id="checks-evidence" class="explanation-list">
 {% for account in diagnostics.evidence %}
   <li id="checks-evidence-{{ account.account_id }}">{{ account.display_name }}:
     {{ account.evidence_through | evidence_line }}</li>
