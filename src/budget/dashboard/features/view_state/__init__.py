@@ -44,9 +44,11 @@ def view_mode(value: str | None) -> DashboardMode:
 
 def _tab(value: str | None) -> DashboardTab:
     """Return a supported tab, defaulting a malformed address to Overblik."""
-    if value == "details" or value == "checks":
-        return value
-    return "overview"
+    match value:
+        case "details" | "checks":
+            return value
+        case _:
+            return "overview"
 
 
 def _comparison(_value: str | None) -> ComparisonMode:
