@@ -1,10 +1,11 @@
 # Copyright 2026 Therkel
 """What Kontrol prints: each diagnostic of a selection as a ready line."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 from budget.analytics import Diagnostics, Provisional, Reconciliation
+from budget.dashboard.addresses import answered_address, pinned_url
 from budget.dashboard.display.amounts import amount
 from budget.dashboard.display.text import (
     account_names,
@@ -12,6 +13,7 @@ from budget.dashboard.display.text import (
     evidence_line,
     incomplete_months,
 )
+from budget.dashboard.features.view_state import ViewState
 
 
 @dataclass(frozen=True)
@@ -33,6 +35,15 @@ class ReconciliationLines:
 
 
 @dataclass(frozen=True)
+class ResidualLink:
+    """One nonzero residual, linking to its account's activity."""
+
+    element_id: str
+    line: str
+    url: str
+
+
+@dataclass(frozen=True)
 class ChecksView:
     """Kontrol's lines, so its template only loops and prints."""
 
@@ -41,6 +52,8 @@ class ChecksView:
     # Empty when the figures are settled: the template then prints nothing.
     provisional: list[str]
     evidence: list[EvidenceLine]
+    # Empty when no residual is known to be nonzero: the template prints nothing.
+    nonzero_residuals: list[ResidualLink]
     reconciliations: list[ReconciliationLines]
     reconciliation_note: str = (
         "En difference på 0,00 kr. beviser ikke, at alle posteringer er "
@@ -75,6 +88,26 @@ def _reconciliation_lines(
         [f"{label}: {_figure(value, currency)}" for label, value in components],
         [f"{label}: {_figure(value, currency)}" for label, value in residuals],
     )
+
+
+def _nonzero_residuals(diagnostics: Diagnostics) -> list[ResidualLink]:
+    """Return a link for each account whose opening gap is known and nonzero."""
+    address = answered_address(diagnostics.context)
+    details = ViewState(mode="advanced", tab="details")
+    return [
+        ResidualLink(
+            f"checks-residual-{reconciliation.account_id}-opening-gap",
+            f"{reconciliation.display_name}: Åbningsforskel "
+            f"{amount(reconciliation.opening_gap, diagnostics.currency)}",
+            pinned_url(
+                replace(address, accounts=(reconciliation.account_id,)),
+                "/report",
+                view=details,
+            ),
+        )
+        for reconciliation in diagnostics.reconciliations
+        if reconciliation.opening_gap
+    ]
 
 
 def _figure(value: Decimal | None, currency: str) -> str:
@@ -114,6 +147,7 @@ def checks_view(diagnostics: Diagnostics, period: str) -> ChecksView:
             )
             for account in diagnostics.evidence
         ],
+        nonzero_residuals=_nonzero_residuals(diagnostics),
         reconciliations=[
             _reconciliation_lines(reconciliation, diagnostics.currency, period)
             for reconciliation in diagnostics.reconciliations

@@ -1,5 +1,12 @@
 <p class="eyebrow">Kontrol</p>
 <h3 id="report-ready-title">{{ month_label }}</h3>
+{% if checks.nonzero_residuals %}
+<ul id="checks-residuals" class="explanation-list">
+{% for residual in checks.nonzero_residuals %}
+  <li><a id="{{ residual.element_id }}" href="{{ residual.url }}">{{ residual.line }}</a></li>
+{% endfor %}
+</ul>
+{% endif %}
 <p id="checks-coverage">{{ checks.coverage }}</p>
 <ul id="checks-incomplete-months" class="explanation-list">
 {% for line in checks.incomplete %}
