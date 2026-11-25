@@ -104,7 +104,6 @@ def _nonzero_residuals(diagnostics: Diagnostics) -> list[ResidualLink]:
             f"{amount(value, diagnostics.currency)}",
             pinned_url(
                 replace(address, accounts=(reconciliation.account_id,)),
-                "/report",
                 view=details,
             ),
         )
