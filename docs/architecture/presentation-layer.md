@@ -86,9 +86,7 @@ restores the recorded mode, tab and applicable detail/comparison state under the
 
 The switch and advanced “Overblik”, “Detaljer” and “Kontrol” are available.
 “Kontrol” shows Coverage, provisional reasons, incomplete account-months and
-Evidence through; reconciliation, observed counts and targeted explanation
-links are pending [#552](https://github.com/ATherkel/budget/issues/552). Both
-modes retain access to the basic trust explanation.
+Evidence through. Both modes retain access to the basic trust explanation.
 
 ## Data Trust Display
 
