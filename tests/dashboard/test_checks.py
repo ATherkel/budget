@@ -202,3 +202,60 @@ def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
         "checks",
         "checks",
     )
+
+
+def test_an_ordinary_kontrol_to_enkel_form_lands_on_enkel_overview(
+    client: TestClient,
+) -> None:
+    # R1: the form sends Kontrol's tab with the new mode.
+    response = client.get(
+        "/report",
+        params={**KONTROL, "mode": "simple", "active_mode": "advanced"},
+        headers={"HX-Request": "true"},
+    )
+    fragment = read(response.text)
+
+    assert (
+        response.status_code,
+        fragment.attributes("report").get("data-mode"),
+        fragment.attributes("report").get("data-tab"),
+        fragment.hidden("tab"),
+        parse_qs(urlsplit(response.headers["hx-push-url"]).query)["tab"],
+    ) == (200, "simple", "overview", "overview", ["overview"])
+
+
+def test_kontrol_cleared_then_enkel_then_avanceret_reselects_into_overblik(
+    client: TestClient,
+) -> None:
+    # R4: each step submits the hidden state the previous response left.
+    def submit(
+        mode: str, accounts: list[str], previous: Page
+    ) -> tuple[Page, dict[str, list[str]]]:
+        response = client.get(
+            "/report",
+            params={
+                **KONTROL,
+                "account": accounts,
+                "mode": mode,
+                "active_mode": previous.hidden("active_mode"),
+                "tab": previous.hidden("tab"),
+            },
+            headers={"HX-Request": "true"},
+        )
+        pushed = parse_qs(urlsplit(response.headers["hx-push-url"]).query)
+        return read(response.text), pushed
+
+    start = kontrol(client, active_mode="advanced")
+    cleared, _ = submit("advanced", [], start)
+    enkel, _ = submit("simple", [], cleared)
+    avanceret, _ = submit("advanced", [], enkel)
+    report, pushed = submit("advanced", [CURRENT], avanceret)
+
+    assert (
+        report.attributes("report").get("data-mode"),
+        report.attributes("report").get("data-tab"),
+        report.hidden("active_mode"),
+        report.hidden("tab"),
+        pushed["mode"],
+        pushed["tab"],
+    ) == ("advanced", "overview", "advanced", "overview", ["advanced"], ["overview"])
