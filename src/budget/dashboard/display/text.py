@@ -154,7 +154,9 @@ def monthly_snapshot_line(
 
 def coverage_link_label(incomplete: Sequence[str]) -> str:
     """Return the text of the link that explains a coverage note."""
-    return ", ".join(incomplete)
+    if incomplete:
+        return "Hvorfor tallene er ufuldstændige"
+    return "Hvorfor der ingen tal er"
 
 
 def danish_list(items: list[str]) -> str:
