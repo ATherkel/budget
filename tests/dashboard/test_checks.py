@@ -161,8 +161,9 @@ def test_kontrol_shows_each_accounts_evidence_through_and_unknown_is_never_a_dat
         page.text_of(f"checks-evidence-{CURRENT}"),
         page.text_of(f"checks-evidence-{SAVINGS}"),
     ) == (
-        "Joint current: data gennem 08.05.2026",
-        "Joint savings: data gennem ukendt",
+        # Worded as Detaljer words it.
+        "Joint current: Gennem 08.05.2026",
+        "Joint savings: Ingen importeret data",
     )
 
 
