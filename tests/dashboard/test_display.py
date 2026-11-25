@@ -23,6 +23,7 @@ from budget.dashboard.display.text import (
     coverage_gap,
     coverage_label,
     coverage_note,
+    evidence_line,
     incomplete_months,
     transaction_kind,
 )
@@ -177,3 +178,7 @@ def test_an_incomplete_month_says_what_it_lacks(
     status: AccountMonthStatus, gap: str
 ) -> None:
     assert coverage_gap(status) == gap
+
+
+def test_an_account_with_nothing_imported_says_so() -> None:
+    assert evidence_line(None) == "Ingen importeret data"

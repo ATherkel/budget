@@ -2,6 +2,7 @@
 """Danish sentences and lists the dashboard shows its reader."""
 
 from collections.abc import Sequence
+from datetime import date
 
 from budget.analytics import (
     AccountMonth,
@@ -129,6 +130,11 @@ def coverage_gap(status: AccountMonthStatus) -> str:
     if status == "no_data":
         return "der er ingen data for måneden endnu."
     return "kun en del af måneden er dækket."
+
+
+def evidence_line(through: date | None) -> str:
+    """Return how far an account's imported data reaches, in Danish."""
+    return str(through)
 
 
 def danish_list(items: list[str]) -> str:
