@@ -52,13 +52,6 @@
   gap: 0.75rem;
 }
 
-.header-link {
-  color: var(--ink-soft);
-  font-size: 0.92rem;
-  font-weight: 650;
-  text-decoration: none;
-}
-
 .header-note {
   color: var(--ink-soft);
   font-size: 0.82rem;
@@ -88,13 +81,6 @@
   line-height: 1.05;
 }
 
-.page-heading-note {
-  max-width: 26rem;
-  margin: 0 0 0.3rem;
-  color: var(--ink-soft);
-  font-size: 0.92rem;
-}
-
 .eyebrow {
   margin: 0 0 0.35rem;
   color: var(--primary-strong);
@@ -109,23 +95,12 @@
   font-size: 1.08rem;
 }
 
-.dashboard-layout {
-  display: grid;
-  align-items: start;
-  grid-template-columns: minmax(17rem, 21rem) minmax(0, 1fr);
-  gap: 1.25rem;
-}
-
 .selection-panel,
 .report-panel {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow);
-}
-
-.selection-panel {
-  padding: 1.35rem;
 }
 
 .report-panel {
@@ -202,16 +177,8 @@
     display: block;
   }
 
-  .page-heading-note {
-    margin-top: 0.8rem;
-  }
-
-  .dashboard-layout,
   .login-layout {
     grid-template-columns: 1fr;
-  }
-
-  .login-layout {
     gap: 1.5rem;
     padding-block: 1.5rem;
   }
@@ -224,10 +191,6 @@
 @media (max-width: 34rem) {
   .header-actions {
     gap: 0.4rem;
-  }
-
-  .header-link {
-    display: none;
   }
 
   .section-heading--row {

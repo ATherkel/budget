@@ -236,7 +236,7 @@ def test_scripts_and_styles_are_addressed_by_their_content(
         for name in (
             *("base.css", "layout.css", "forms.css", "report.css"),
             *("tables.css", "states.css", "login.css", "view_state/selection.css"),
-            *("htmx.min.js", "app.js"),
+            *("overview/overview.css", "htmx.min.js", "app.js"),
         )
     }
 
