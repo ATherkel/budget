@@ -28,7 +28,8 @@ from budget.dashboard.features.view_state import (
 from budget.gold import ReportingMonth
 from budget.gold.store import GoldStore
 
-# Renders the report fragment one request selects, or why it cannot be shown.
+# Renders the report fragment one request selects, or why it cannot be shown;
+# an empty selection gets the prompt to select an account.
 type ReportRenderer = Callable[[Dashboard, ReportRequest], str]
 
 
@@ -106,19 +107,15 @@ def _render_overview(
     selected_month = requested.month or month_value(ReportingMonth.of(reference_date))
     # The page carries its own report, so back, forward and a page without
     # scripts show what the selection's report says.
-    report = (
-        render_report(
-            dashboard,
-            ReportRequest(
-                pin,
-                tuple(selected_accounts),
-                selected_month,
-                requested.view,
-                requested.view.mode,
-            ),
-        )
-        if selected_accounts
-        else None
+    report = render_report(
+        dashboard,
+        ReportRequest(
+            pin,
+            tuple(selected_accounts),
+            selected_month,
+            requested.view,
+            requested.view.mode,
+        ),
     )
 
     def pinned_with(accounts: Collection[str]) -> str:

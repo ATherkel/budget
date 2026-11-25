@@ -1,4 +1,4 @@
-/* Report: figures, category lists and account activity. */
+/* Report figures that the report, detail and explanation pages share. */
 
 .report-content {
   min-height: 21rem;
@@ -44,31 +44,11 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* A direction inside a figure reads as a label, like the figure's name. */
-.summary-direction {
-  color: var(--ink-soft);
-  font-size: 0.85rem;
-  font-weight: 400;
-}
-
 .category-list,
 .explanation-list {
   margin: 0 0 1rem;
   padding: 0;
   list-style: none;
-}
-
-.category-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.category-amount {
-  flex: none;
-  font-variant-numeric: tabular-nums;
 }
 
 .explanation-list li {
@@ -85,40 +65,4 @@
   font-weight: 700;
   color: var(--ink);
   text-decoration: none;
-}
-
-.account-activity {
-  margin-block: 1rem;
-  padding: 1rem;
-  background: var(--surface-muted);
-  border-radius: var(--radius);
-}
-
-.account-activity h4 {
-  margin-block: 0.4rem;
-  font-family: Georgia, "Times New Roman", serif;
-}
-
-.balance-observations {
-  display: grid;
-  gap: 0.65rem;
-  margin-block: 1rem;
-}
-
-.balance-observations div {
-  padding: 0.65rem 0.75rem;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-
-.balance-observations dt {
-  color: var(--ink-soft);
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.balance-observations dd {
-  margin: 0.25rem 0 0;
-  font-variant-numeric: tabular-nums;
 }
