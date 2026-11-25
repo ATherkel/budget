@@ -4,7 +4,13 @@
 from dataclasses import dataclass, replace
 from decimal import Decimal
 
-from budget.analytics import Diagnostics, Provisional, Reconciliation
+from budget.analytics import (
+    Diagnostics,
+    MoneyInOut,
+    Provisional,
+    Reconciliation,
+    TransferSummary,
+)
 from budget.dashboard.addresses import answered_address, pinned_url
 from budget.dashboard.display.amounts import amount, signed_amount
 from budget.dashboard.display.text import (
@@ -49,6 +55,17 @@ class ResidualLink:
 
 
 @dataclass(frozen=True)
+class ObservedLines:
+    """One selected transaction type, with its two directions kept apart."""
+
+    kind: str
+    title: str
+    money_in: str
+    money_out: str
+    count: str
+
+
+@dataclass(frozen=True)
 class ChecksView:
     """Kontrol's lines, so its template only loops and prints."""
 
@@ -61,6 +78,7 @@ class ChecksView:
     nonzero_residuals: list[ResidualLink]
     reconciliations: list[ReconciliationLines]
     reconciliation_note: str
+    observed: list[ObservedLines]
 
 
 def _reconciliation_lines(
@@ -146,6 +164,21 @@ def _provisional_lines(provisional: Provisional | None, period: str) -> list[str
     return [f"Foreløbigt: {' '.join(sentences)}"]
 
 
+def _observed_lines(
+    kind: str, title: str, values: MoneyInOut | TransferSummary | None, currency: str
+) -> ObservedLines:
+    """Format analytics-supplied directions and the observed transaction count."""
+    if values is None:
+        return ObservedLines(kind, title, "Ukendt", "Ukendt", "Ukendt")
+    return ObservedLines(
+        kind,
+        title,
+        signed_amount(values.money_in, currency),
+        signed_amount(values.money_out, currency),
+        str(values.count),
+    )
+
+
 def checks_view(
     diagnostics: Diagnostics, period: str, view: ViewState = DEFAULT_VIEW
 ) -> ChecksView:
@@ -174,4 +207,12 @@ def checks_view(
             for reconciliation in diagnostics.reconciliations
         ],
         reconciliation_note=RECONCILIATION_NOTE,
+        observed=[
+            _observed_lines(kind, title, values, diagnostics.currency)
+            for kind, title, values in (
+                ("unclassified", "Ukategoriseret", diagnostics.unclassified),
+                ("adjustments", "Reguleringer", diagnostics.adjustments),
+                ("transfers", "Overførsler", diagnostics.transfers),
+            )
+        ],
     )
