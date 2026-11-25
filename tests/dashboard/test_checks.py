@@ -422,3 +422,26 @@ def test_kontrol_cleared_then_enkel_then_avanceret_reselects_into_overblik(
         pushed["mode"],
         pushed["tab"],
     ) == ("advanced", "overview", "advanced", "overview", ["advanced"], ["overview"])
+
+
+def test_kontrol_shows_observed_money_and_counts_separately(client: TestClient) -> None:
+    page = kontrol(client)
+
+    assert (
+        page.text_of("checks-unclassified"),
+        page.text_of("checks-adjustments"),
+        page.text_of("checks-transfers"),
+    ) == (
+        (
+            "Ukategoriseret Ind: 0,00 kr. Ud: \N{MINUS SIGN}450,00 kr. "
+            "Observerede transaktioner på de valgte konti: 1"
+        ),
+        (
+            "Reguleringer Ind: 0,00 kr. Ud: 0,00 kr. "
+            "Observerede transaktioner på de valgte konti: 0"
+        ),
+        (
+            "Overførsler Ind: 0,00 kr. Ud: 0,00 kr. "
+            "Observerede transaktioner på de valgte konti: 0"
+        ),
+    )
