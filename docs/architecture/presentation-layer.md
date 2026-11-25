@@ -44,8 +44,11 @@ and `view_state` registered too, and the report links each category to
 `category` and its trust notes to `explanation`. Every page sends a reader
 who is not logged in to `login`, the page that logs in and out; the check
 itself, the session cookie and the passphrase stay in `budget.dashboard`, so a
-dashboard without `login` still refuses every page. A feature that serves no
-page of its own, such as `view_state` (the month, mode and account pickers), adds no routes: the pages that show
+dashboard without `login` still refuses every page. `errors` explains why an
+address is malformed or a page's figures cannot be shown: the overview, report
+and category page need it registered to explain a failure, and a dashboard
+without it answers a malformed address with FastAPI's own JSON. A feature that
+serves no page of its own, such as `view_state` (the month, mode and account pickers), adds no routes: the pages that show
 it include its templates. A feature's templates are named
 `<folder>/<file>.html`, and `base.html` links every stylesheet in its folder,
 so adding a feature with its own page edits no shared file. Helpers more than one feature uses live in the
