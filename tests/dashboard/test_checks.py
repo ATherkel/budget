@@ -122,9 +122,7 @@ def test_kontrol_names_each_reason_the_figures_are_provisional(
 
     assert (
         kontrol(client, month="2026-05").text_of("checks-provisional"),
-        kontrol(client, publication="2", month="2026-04").text_of(
-            "checks-provisional"
-        ),
+        kontrol(client, publication="2", month="2026-04").text_of("checks-provisional"),
         kontrol(client, month="2026-04").text_of("checks-provisional"),
     ) == (
         "Foreløbigt: maj 2026 er indeværende måned, så der kan stadig komme "
@@ -132,6 +130,37 @@ def test_kontrol_names_each_reason_the_figures_are_provisional(
         "Joint savings.",
         "Foreløbigt: Sene bogføringer kan stadig komme fra Joint current.",
         None,
+    )
+
+
+def test_kontrol_shows_each_accounts_evidence_through_and_unknown_is_never_a_date(
+    profile: Profile,
+    client: TestClient,
+) -> None:
+    # Publication 2 knows no Evidence through for Joint savings.
+    accounts = tuple(
+        replace(account, evidence_through=None)
+        if account.account_id == SAVINGS
+        else account
+        for account in RECORDS.accounts
+    )
+    with GoldStore(profile) as store:
+        store.publish(
+            GoldResult(
+                replace(PUBLICATION, publication_id=2),
+                replace(RECORDS, accounts=accounts),
+            ),
+            RECIPE,
+            CONFIGURATION,
+        )
+    page = kontrol(client, publication="2")
+
+    assert (
+        page.text_of(f"checks-evidence-{CURRENT}"),
+        page.text_of(f"checks-evidence-{SAVINGS}"),
+    ) == (
+        "Joint current: data gennem 08.05.2026",
+        "Joint savings: data gennem ukendt",
     )
 
 
