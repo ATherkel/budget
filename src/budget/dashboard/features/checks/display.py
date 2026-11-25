@@ -2,6 +2,7 @@
 """What Kontrol prints: each diagnostic of a selection as a ready line."""
 
 from dataclasses import dataclass
+from decimal import Decimal
 
 from budget.analytics import Diagnostics, Provisional, Reconciliation
 from budget.dashboard.display.amounts import amount
@@ -57,8 +58,13 @@ def _reconciliation_lines(
     )
     return ReconciliationLines(
         reconciliation.account_id,
-        [f"{label}: {amount(value, currency)}" for label, value in components],
+        [f"{label}: {_figure(value, currency)}" for label, value in components],
     )
+
+
+def _figure(value: Decimal | None, currency: str) -> str:
+    """Return a reconciliation figure, with a missing one unknown rather than 0."""
+    return "Ukendt" if value is None else amount(value, currency)
 
 
 def _provisional_lines(provisional: Provisional | None, period: str) -> list[str]:
