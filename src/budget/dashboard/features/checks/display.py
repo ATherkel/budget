@@ -41,6 +41,10 @@ class ChecksView:
     provisional: list[str]
     evidence: list[EvidenceLine]
     reconciliations: list[ReconciliationLines]
+    reconciliation_note: str = (
+        "En difference på 0,00 kr. beviser ikke, at alle posteringer er "
+        "importeret: manglende posteringer og saldi kan gå lige op."
+    )
 
 
 def _reconciliation_lines(

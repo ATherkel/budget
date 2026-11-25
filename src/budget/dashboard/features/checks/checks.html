@@ -14,6 +14,7 @@
   <li id="checks-evidence-{{ account.account_id }}">{{ account.line }}</li>
 {% endfor %}
 </ul>
+<p id="checks-reconciliation-note">{{ checks.reconciliation_note }}</p>
 {% for account in checks.reconciliations %}
 <ul id="checks-reconciliation-{{ account.account_id }}-components" class="explanation-list">
 {% for line in account.components %}
