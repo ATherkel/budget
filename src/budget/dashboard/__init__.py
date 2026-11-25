@@ -35,6 +35,7 @@ from budget.dashboard.display.text import (
     coverage_note,
     danish_list,
     evidence_line,
+    incomplete_months,
     monthly_snapshot_line,
     transaction_kind,
 )
@@ -146,6 +147,7 @@ def _templates(features: Sequence[Feature]) -> Environment:
     templates.filters["coverage_label"] = coverage_label
     templates.filters["coverage_link_label"] = coverage_link_label
     templates.filters["evidence_line"] = evidence_line
+    templates.filters["incomplete_months"] = incomplete_months
     templates.filters["monthly_snapshot_line"] = monthly_snapshot_line
     templates.filters["transaction_kind"] = transaction_kind
     _add_global(templates.globals, "coverage_note", coverage_note)

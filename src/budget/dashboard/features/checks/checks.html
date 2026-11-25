@@ -1,3 +1,13 @@
 <p class="eyebrow">Kontrol</p>
 <h3 id="report-ready-title">{{ month_label }}</h3>
 <p id="checks-coverage">Dækning: {{ diagnostics.coverage.status | coverage_label }}.</p>
+{% set incomplete_account_months = diagnostics.coverage | incomplete_months %}
+{% if incomplete_account_months %}
+<ul id="checks-incomplete-months">
+{% for account_month in incomplete_account_months %}
+  <li>{{ account_month.display_name }}, {{ month_label }}: {{ account_month.status | coverage_label }}.</li>
+{% endfor %}
+</ul>
+{% else %}
+<p id="checks-incomplete-months">Ingen valgte kontomåneder mangler dækning.</p>
+{% endif %}
