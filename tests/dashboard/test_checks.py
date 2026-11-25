@@ -251,6 +251,21 @@ def test_kontrol_says_a_zero_difference_does_not_prove_the_data_complete(
     )
 
 
+def test_kontrol_heads_each_reconciliation_with_its_own_unupgraded_coverage(
+    client: TestClient,
+) -> None:
+    # Joint current's March difference is 0,00 kr. but stays partly covered.
+    page = kontrol(client)
+
+    assert (
+        page.text_of(f"checks-reconciliation-{CURRENT}-title"),
+        page.text_of(f"checks-reconciliation-{SAVINGS}-title"),
+    ) == (
+        "Joint current, marts 2026: delvist dækket",
+        "Joint savings, marts 2026: fuldt dækket",
+    )
+
+
 def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
     client: TestClient,
 ) -> None:
