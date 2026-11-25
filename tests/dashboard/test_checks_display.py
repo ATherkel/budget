@@ -84,7 +84,7 @@ def test_a_nonzero_internal_residual_is_listed_first_beside_opening_gaps() -> No
         ),
         (
             f"checks-residual-{SAVINGS}-internal",
-            "Joint savings: Intern difference 12,40 kr.",
+            "Joint savings: Intern forskel 12,40 kr.",
             [SAVINGS],
         ),
     ]

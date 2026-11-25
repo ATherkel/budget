@@ -178,24 +178,24 @@ def test_kontrol_lists_each_accounts_reconciliation_components(
         page.text_of(f"checks-reconciliation-{SAVINGS}-components"),
     ) == (
         (
-            "Åbning: 37.037,50 kr. "
+            "Startsaldo: 37.037,50 kr. "
             "Indtægter minus udgifter: \N{MINUS SIGN}1.000,00 kr. "
             "Overførsler: 0,00 kr. "
             "Ukategoriseret ind: 0,00 kr. "
             "Ukategoriseret ud: \N{MINUS SIGN}450,00 kr. "
             "Regulering ind: 0,00 kr. "
             "Regulering ud: 0,00 kr. "
-            "Lukning: 35.587,50 kr."
+            "Slutsaldo: 35.587,50 kr."
         ),
         (
-            "Åbning: 53.000,00 kr. "
+            "Startsaldo: 53.000,00 kr. "
             "Indtægter minus udgifter: 0,00 kr. "
             "Overførsler: 0,00 kr. "
             "Ukategoriseret ind: 0,00 kr. "
             "Ukategoriseret ud: 0,00 kr. "
             "Regulering ind: 0,00 kr. "
             "Regulering ud: 0,00 kr. "
-            "Lukning: 53.000,00 kr."
+            "Slutsaldo: 53.000,00 kr."
         ),
     )
 
@@ -207,14 +207,14 @@ def test_kontrol_reads_a_missing_reconciliation_component_as_unknown_not_zero(
     assert kontrol(client, month="2026-05").text_of(
         f"checks-reconciliation-{CURRENT}-components"
     ) == (
-        "Åbning: Ukendt "
+        "Startsaldo: Ukendt "
         "Indtægter minus udgifter: 0,00 kr. "
         "Overførsler: 0,00 kr. "
         "Ukategoriseret ind: 0,00 kr. "
         "Ukategoriseret ud: 0,00 kr. "
         "Regulering ind: 0,00 kr. "
         "Regulering ud: 0,00 kr. "
-        "Lukning: Ukendt"
+        "Slutsaldo: Ukendt"
     )
 
 
@@ -229,13 +229,13 @@ def test_kontrol_shows_each_accounts_internal_residual_and_opening_gap(
         ),
     ) == (
         (
-            "Intern difference: 0,00 kr. "
-            "Lukning forrige måned: 37.537,50 kr. "
+            "Intern forskel: 0,00 kr. "
+            "Slutsaldo forrige måned: 37.537,50 kr. "
             "Åbningsforskel: \N{MINUS SIGN}500,00 kr."
         ),
         (
-            "Intern difference: Ukendt "
-            "Lukning forrige måned: 52.087,50 kr. "
+            "Intern forskel: Ukendt "
+            "Slutsaldo forrige måned: 52.087,50 kr. "
             "Åbningsforskel: Ukendt"
         ),
     )
