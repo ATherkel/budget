@@ -84,7 +84,28 @@ def test_a_nonzero_internal_residual_is_listed_first_beside_opening_gaps() -> No
         ),
         (
             f"checks-residual-{SAVINGS}-internal",
-            "Joint savings: Intern forskel 12,40 kr.",
+            "Joint savings: Intern forskel +12,40 kr.",
             [SAVINGS],
         ),
+    ]
+
+
+def test_a_positive_residual_shows_its_plus_sign_in_the_accounts_list() -> None:
+    # A difference reads with its direction: +12,40 kr., not 12,40 kr.
+    reconciliations = tuple(
+        replace(reconciliation, internal_residual=Decimal("12.40"))
+        if reconciliation.account_id == SAVINGS
+        else reconciliation
+        for reconciliation in MARCH_REPORT.reconciliations
+    )
+    view = checks_view(
+        replace(MARCH_REPORT, reconciliations=reconciliations), "marts 2026"
+    )
+
+    assert {account.account_id: account.residuals for account in view.reconciliations}[
+        SAVINGS
+    ] == [
+        "Intern forskel: +12,40 kr.",
+        "Slutsaldo forrige måned: 53.000,00 kr.",
+        "Åbningsforskel: 0,00 kr.",
     ]
