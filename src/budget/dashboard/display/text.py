@@ -144,6 +144,8 @@ def monthly_snapshot_line(
     snapshot: MonthlyBalanceObservation | None, currency: str
 ) -> str:
     """Return an account-month's published opening and closing balances."""
+    if snapshot is None:
+        return "Ingen månedssnapshot"
     return f"{snapshot} {currency}"
 
 
