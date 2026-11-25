@@ -312,6 +312,21 @@ def test_kontrol_leaves_an_unknown_residual_out_of_the_top_list(
     assert kontrol(client, month="2026-05").text_of("checks-residuals") is None
 
 
+def test_kontrol_heads_the_residual_list_and_the_reconciliation_section(
+    client: TestClient,
+) -> None:
+    # Heading navigation: month, then each section, then accounts below it.
+    html = client.get("/report", params=KONTROL, headers={"HX-Request": "true"}).text
+    page = read(html)
+
+    assert (
+        page.text_of("checks-residuals-title"),
+        page.attributes("checks-residuals").get("aria-labelledby"),
+        page.text_of("checks-reconciliation-title"),
+        f'<h5 id="checks-reconciliation-{CURRENT}-title"' in html,
+    ) == ("Forskelle at undersøge", "checks-residuals-title", "Afstemning", True)
+
+
 def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
     client: TestClient,
 ) -> None:
