@@ -4,6 +4,7 @@
 The dashboard is driven in-process over the synthetic worked example.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -12,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from budget.dashboard import create_app
-from budget.gold import GoldResult
+from budget.gold import GoldResult, ReportingMonth
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
 from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
@@ -94,6 +95,43 @@ def test_kontrol_lists_each_incomplete_account_month(client: TestClient) -> None
     ) == (
         "Joint current, marts 2026: delvist dækket.",
         "Ingen valgte kontomåneder mangler dækning.",
+    )
+
+
+def test_kontrol_names_each_reason_the_figures_are_provisional(
+    profile: Profile,
+    client: TestClient,
+) -> None:
+    # Publication 2 leaves Joint current's April late bookings unsettled.
+    april = ReportingMonth(2026, 4)
+    unsettled = tuple(
+        replace(snapshot, late_bookings_settled=False)
+        if snapshot.account_id == CURRENT and snapshot.month == april
+        else snapshot
+        for snapshot in RECORDS.monthly_balances
+    )
+    with GoldStore(profile) as store:
+        store.publish(
+            GoldResult(
+                replace(PUBLICATION, publication_id=2),
+                replace(RECORDS, monthly_balances=unsettled),
+            ),
+            RECIPE,
+            CONFIGURATION,
+        )
+
+    assert (
+        kontrol(client, month="2026-05").text_of("checks-provisional"),
+        kontrol(client, publication="2", month="2026-04").text_of(
+            "checks-provisional"
+        ),
+        kontrol(client, month="2026-04").text_of("checks-provisional"),
+    ) == (
+        "Foreløbigt: maj 2026 er indeværende måned, så der kan stadig komme "
+        "posteringer. Sene bogføringer kan stadig komme fra Joint current og "
+        "Joint savings.",
+        "Foreløbigt: Sene bogføringer kan stadig komme fra Joint current.",
+        None,
     )
 
 
