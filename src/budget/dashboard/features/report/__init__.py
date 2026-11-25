@@ -117,7 +117,7 @@ def render_report(
                 requested.view.comparison,
             ),
         )
-        for destination in ("overview", "details")
+        for destination in ("overview", "details", "checks")
     }
     return dashboard.templates.get_template("report/report.html").render(
         is_current=overview_report.publication.is_current,

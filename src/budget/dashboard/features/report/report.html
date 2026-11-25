@@ -6,6 +6,7 @@
 <nav id="advanced-tabs" class="scope-switch" aria-label="Avanceret visning">
   {{ switch_link("tab-overview", tab_urls["overview"], "Overblik", tab == "overview") }}
   {{ switch_link("tab-details", tab_urls["details"], "Detaljer", tab == "details") }}
+  {{ switch_link("tab-checks", tab_urls["checks"], "Kontrol", tab == "checks") }}
 </nav>
 {% endif %}
 {{ newer_figures(is_current) }}
