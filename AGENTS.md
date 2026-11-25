@@ -79,8 +79,8 @@ bind every change under `docs/`:
 - Other docs link to the owner doc's section and don't restate it.
 - A topic's human overview is short, about 300 words at most. That is a
   ceiling and not a target. Detail belongs in the owner sections it links to.
-- Docs carry no issue numbers, status or history. The one exception is
-  behaviour that isn't built yet: label it as pending and link its issue.
+- Docs carry no issue numbers, status or history. They describe the accepted
+  design without marking what is built; whether it is built lives in its issue.
 - A docs PR names the owner doc it changed. Any other doc it touches gets a
   link or a one-line summary.
 

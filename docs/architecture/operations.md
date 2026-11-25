@@ -519,7 +519,7 @@ application layer; the dashboard has no route to it.
 | `backup` | Writes and names a backup set of production. Also runs automatically. | The backups folder | No |
 | `restore [<backup set>]` | Restores a set into an empty profile, catches up and records a recovery boundary ([Backup and Restore](#backup-and-restore)). | Every store | Yes, if it caught up |
 | `restore --from-archive` | Last resort: rebuilds Bronze from the archive and import log, then Silver and Gold. | Every store | Yes |
-| `verify` | Checks integrity. Recipe replay is pending: [#259](https://github.com/ATherkel/budget/issues/259). | `scratch/` only | No |
+| `verify` | Checks integrity and replays the current recipe ([Verify](publications.md#verify)). | `scratch/` only | No |
 | `dev refresh [--inputs] [--writable]` | Development only: restores production's newest usable set ([Development](#development-diverges-from-a-stage)). | Development only | No |
 | `serve` | Starts the read-only dashboard. | Nothing | No |
 | `set-passphrase` | Sets the dashboard passphrase, logging out every device. | The passphrase file | No |
@@ -848,7 +848,7 @@ Bronze as a new `repeat` run.
   picks a set and names those it passes over as `restore` does.
 - **`verify`** runs `PRAGMA integrity_check` on every store and checks that the
   import log agrees with Bronze and that the decision-log prefix hashes match.
-  Recipe replay is pending
+  It also replays the current recipe
   ([`publications.md`, *Verify*](publications.md#verify)).
 
 ## Dashboard Access

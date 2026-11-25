@@ -165,8 +165,7 @@ An unpaired leg whose rule result is a transfer claim is `unknown`, with an
 - `no-candidate`: otherwise.
 
 A transfer that loses a fee, such as 1,000.00 out and 995.00 in, never pairs,
-because the amounts do not cancel. Each leg is classified on its own
-(pending: [#47](https://github.com/ATherkel/budget/issues/47)).
+because the amounts do not cancel. Each leg is classified on its own.
 
 A **one-sided transfer**, whose other leg can never be in Gold, comes only
 from a manual decision naming the counterpart Gold account. The transaction
