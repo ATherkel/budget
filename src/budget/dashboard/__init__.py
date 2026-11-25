@@ -37,6 +37,7 @@ from budget.dashboard.display.text import (
     evidence_line,
     incomplete_months,
     monthly_snapshot_line,
+    provisional_reasons,
     transaction_kind,
 )
 from budget.dashboard.features import Dashboard, Feature
@@ -149,6 +150,7 @@ def _templates(features: Sequence[Feature]) -> Environment:
     templates.filters["evidence_line"] = evidence_line
     templates.filters["incomplete_months"] = incomplete_months
     templates.filters["monthly_snapshot_line"] = monthly_snapshot_line
+    templates.filters["provisional_reasons"] = provisional_reasons
     templates.filters["transaction_kind"] = transaction_kind
     _add_global(templates.globals, "coverage_note", coverage_note)
     addresses = [

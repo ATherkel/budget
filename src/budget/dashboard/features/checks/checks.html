@@ -11,16 +11,8 @@
 {% else %}
 <p id="checks-incomplete-months">Ingen valgte kontomåneder mangler dækning.</p>
 {% endif %}
-{% set provisional = diagnostics.provisional %}
-{% if provisional %}
-<p id="checks-provisional">Foreløbigt:
-  {% if "current_month" in provisional.reasons %}
-  {{ month_label }} er indeværende måned, så der kan stadig komme posteringer.
-  {% endif %}
-  {% if "late_bookings_unsettled" in provisional.reasons %}
-  Sene bogføringer kan stadig komme fra {{ provisional.unsettled | account_names }}.
-  {% endif %}
-</p>
+{% if diagnostics.provisional %}
+<p id="checks-provisional">Foreløbigt: {{ diagnostics.provisional | provisional_reasons(month_label) }}</p>
 {% endif %}
 {# An unknown Evidence through says so; it is never shown as a date. #}
 <ul id="checks-evidence" class="checks-list">
