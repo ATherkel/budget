@@ -15,6 +15,11 @@ from budget.dashboard.display.text import (
 )
 from budget.dashboard.features.view_state import ViewState
 
+RECONCILIATION_NOTE = (
+    "En forskel på 0,00 kr. beviser ikke, at alle posteringer er importeret: "
+    "saldiene kan bygge på de samme ufuldstændige posteringer."
+)
+
 
 @dataclass(frozen=True)
 class EvidenceLine:
@@ -55,10 +60,7 @@ class ChecksView:
     # Empty when no residual is known to be nonzero: the template prints nothing.
     nonzero_residuals: list[ResidualLink]
     reconciliations: list[ReconciliationLines]
-    reconciliation_note: str = (
-        "En difference på 0,00 kr. beviser ikke, at alle posteringer er "
-        "importeret: manglende posteringer og saldi kan gå lige op."
-    )
+    reconciliation_note: str
 
 
 def _reconciliation_lines(
@@ -165,4 +167,5 @@ def checks_view(diagnostics: Diagnostics, period: str) -> ChecksView:
             _reconciliation_lines(reconciliation, diagnostics.currency, period)
             for reconciliation in diagnostics.reconciliations
         ],
+        reconciliation_note=RECONCILIATION_NOTE,
     )
