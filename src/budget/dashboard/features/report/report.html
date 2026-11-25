@@ -17,7 +17,7 @@
 {# With no account incomplete, the month lies outside every one's history. #}
 <p id="coverage-note" class="trust-note">{{ coverage_note(overview.coverage.status, incomplete, month_label) }}
   <a id="coverage-explanation" href="{{ explanation_url }}">
-  {%- if incomplete %}Hvorfor tallene er ufuldstændige{% else %}Hvorfor der ingen tal er{% endif %}</a></p>
+  {{- incomplete | coverage_link_label }}</a></p>
 {% endif %}
 {% if tab == "overview" %}
 <p class="eyebrow">Rapporten er indlæst</p>

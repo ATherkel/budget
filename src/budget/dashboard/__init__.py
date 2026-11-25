@@ -31,8 +31,11 @@ from budget.dashboard.display.text import (
     balance_observation,
     coverage_gap,
     coverage_label,
+    coverage_link_label,
     coverage_note,
     danish_list,
+    evidence_line,
+    monthly_snapshot_line,
     transaction_kind,
 )
 from budget.dashboard.features import Dashboard, Feature
@@ -140,6 +143,9 @@ def _templates(features: Sequence[Feature]) -> Environment:
     templates.filters["balance_observation"] = balance_observation
     templates.filters["coverage_gap"] = coverage_gap
     templates.filters["coverage_label"] = coverage_label
+    templates.filters["coverage_link_label"] = coverage_link_label
+    templates.filters["evidence_line"] = evidence_line
+    templates.filters["monthly_snapshot_line"] = monthly_snapshot_line
     templates.filters["transaction_kind"] = transaction_kind
     _add_global(templates.globals, "coverage_note", coverage_note)
     addresses = [
