@@ -91,14 +91,17 @@ def _reconciliation_lines(
 
 
 def _nonzero_residuals(diagnostics: Diagnostics) -> list[ResidualLink]:
-    """Return a link for each account whose opening gap is known and nonzero."""
+    """Return a link for each residual that is known and nonzero, by account.
+
+    An unknown residual is not listed: it is neither zero nor a known gap.
+    """
     address = answered_address(diagnostics.context)
     details = ViewState(mode="advanced", tab="details")
     return [
         ResidualLink(
-            f"checks-residual-{reconciliation.account_id}-opening-gap",
-            f"{reconciliation.display_name}: Åbningsforskel "
-            f"{amount(reconciliation.opening_gap, diagnostics.currency)}",
+            f"checks-residual-{reconciliation.account_id}-{kind}",
+            f"{reconciliation.display_name}: {label} "
+            f"{amount(value, diagnostics.currency)}",
             pinned_url(
                 replace(address, accounts=(reconciliation.account_id,)),
                 "/report",
@@ -106,7 +109,11 @@ def _nonzero_residuals(diagnostics: Diagnostics) -> list[ResidualLink]:
             ),
         )
         for reconciliation in diagnostics.reconciliations
-        if reconciliation.opening_gap
+        for kind, label, value in (
+            ("opening-gap", "Åbningsforskel", reconciliation.opening_gap),
+            ("internal", "Intern difference", reconciliation.internal_residual),
+        )
+        if value
     ]
 
 
