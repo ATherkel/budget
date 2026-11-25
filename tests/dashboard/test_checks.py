@@ -218,6 +218,29 @@ def test_kontrol_reads_a_missing_reconciliation_component_as_unknown_not_zero(
     )
 
 
+def test_kontrol_shows_each_accounts_internal_residual_and_opening_gap(
+    client: TestClient,
+) -> None:
+    # March opens 500 below February's close; May has no balances to compare.
+    assert (
+        kontrol(client).text_of(f"checks-reconciliation-{CURRENT}-residuals"),
+        kontrol(client, month="2026-05").text_of(
+            f"checks-reconciliation-{CURRENT}-residuals"
+        ),
+    ) == (
+        (
+            "Intern difference: 0,00 kr. "
+            "Lukning forrige måned: 37.537,50 kr. "
+            "Åbningsforskel: \N{MINUS SIGN}500,00 kr."
+        ),
+        (
+            "Intern difference: Ukendt "
+            "Lukning forrige måned: 52.087,50 kr. "
+            "Åbningsforskel: Ukendt"
+        ),
+    )
+
+
 def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
     client: TestClient,
 ) -> None:
