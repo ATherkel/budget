@@ -20,4 +20,9 @@
   <li>{{ line }}</li>
 {% endfor %}
 </ul>
+<ul id="checks-reconciliation-{{ account.account_id }}-residuals" class="explanation-list">
+{% for line in account.residuals %}
+  <li>{{ line }}</li>
+{% endfor %}
+</ul>
 {% endfor %}

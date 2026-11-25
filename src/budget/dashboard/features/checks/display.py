@@ -28,6 +28,7 @@ class ReconciliationLines:
 
     account_id: str
     components: list[str]
+    residuals: list[str]
 
 
 @dataclass(frozen=True)
@@ -56,9 +57,15 @@ def _reconciliation_lines(
         ("Regulering ud", reconciliation.adjustments_out),
         ("Lukning", reconciliation.closing_balance),
     )
+    residuals = (
+        ("Intern difference", reconciliation.internal_residual),
+        ("Lukning forrige måned", reconciliation.previous_closing_balance),
+        ("Åbningsforskel", reconciliation.opening_gap),
+    )
     return ReconciliationLines(
         reconciliation.account_id,
         [f"{label}: {_figure(value, currency)}" for label, value in components],
+        [f"{label}: {_figure(value, currency)}" for label, value in residuals],
     )
 
 
