@@ -1,0 +1,48 @@
+{# One way to show the report, checked when it is the current one. #}
+{%- macro mode_option(value, label, current) -%}
+<label class="mode-option"><input type="radio" name="mode" value="{{ value }}" aria-label="{{ label }}"
+  {%- if value == current %} checked{% endif %}> <span>{{ label }}</span></label>
+{%- endmacro -%}
+{# The month, mode and account pickers of the overview's report.
+   Without scripts the form reloads the page; htmx swaps only the report, and
+   a newer change replaces any request still outstanding. #}
+<form id="selection" method="get" action="/" hx-get="/report" hx-target="#report-region" hx-swap="innerHTML"
+  hx-sync="this:replace" hx-trigger="submit, change">
+<input type="hidden" name="publication" value="{{ publication_id }}">
+<input type="hidden" name="reference_date" value="{{ reference_date }}">
+<input id="active-mode" type="hidden" name="active_mode" value="{{ mode }}">
+<input id="active-tab" type="hidden" name="tab" value="{{ tab }}">
+<input id="comparison" type="hidden" name="comparison" value="{{ comparison }}">
+<label class="field-label" for="month">Måned</label>
+<select id="month" name="month">
+{% for value, label in months %}
+<option value="{{ value }}"{% if value == selected_month %} selected{% endif %}>{{ label }}</option>
+{% endfor %}
+</select>
+<fieldset id="mode-control" class="mode-control" role="group" aria-labelledby="mode-heading">
+<legend id="mode-heading">Visning</legend>
+<div class="mode-options">
+{{ mode_option("simple", "Enkel", mode) }}
+{{ mode_option("advanced", "Avanceret", mode) }}
+</div>
+<span id="comparison-choice" class="mode-note">Beløb</span>
+</fieldset>
+<fieldset class="account-fieldset">
+<legend>Konti <span class="legend-note">Vælg mindst én</span></legend>
+<p class="account-shortcuts"><a id="accounts-all" href="{{ shortcuts.all_url }}" data-account-shortcut>Alle</a>
+  <a id="accounts-none" href="{{ shortcuts.none_url }}" data-account-shortcut>Ingen</a></p>
+{% for account in accounts %}
+<div class="account-row">
+<label class="account-option">
+  <input type="checkbox" name="account" value="{{ account.account_id }}"
+    {%- if account.account_id in selected_accounts %} checked{% endif %}>
+  <span id="name-{{ account.account_id }}">{{ account.display_name }}</span>
+</label>
+<a class="account-only" id="only-{{ account.account_id }}" href="{{ shortcuts.only_urls[account.account_id] }}"
+  aria-describedby="name-{{ account.account_id }}" data-account-shortcut>kun</a>
+</div>
+{% endfor %}
+</fieldset>
+<button class="button button--primary" type="submit">Vis rapport</button>
+<p class="field-help">Ændringer opdaterer rapporten med det samme.</p>
+</form>

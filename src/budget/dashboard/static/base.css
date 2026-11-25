@@ -1,0 +1,87 @@
+/* Base: colours, the page canvas and plain elements. */
+
+:root {
+  color-scheme: light;
+  --ink: #1f2925;
+  --ink-soft: #59645f;
+  --canvas: #f3f1eb;
+  --surface: #fffdf8;
+  --surface-muted: #ebe8df;
+  --line: #d7d2c7;
+  --line-strong: #9a968d;
+  --primary: #17665a;
+  --primary-strong: #0d4d44;
+  --primary-tint: #dceee9;
+  --accent: #b74b2d;
+  --danger: #9f2f2f;
+  --danger-tint: #f8e7e2;
+  --warning-tint: #f7edd4;
+  --focus: #005fcc;
+  --radius: 8px;
+  --shadow: 0 12px 32px rgb(31 41 37 / 8%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--canvas);
+}
+
+body {
+  min-width: 18rem;
+  margin: 0;
+  color: var(--ink);
+  background: var(--canvas);
+  font-family: "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+a {
+  color: var(--primary-strong);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+a:hover {
+  color: var(--accent);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button,
+select,
+input[type="password"] {
+  min-height: 2.75rem;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: fixed;
+  inset-block-start: 0.75rem;
+  inset-inline-start: 0.75rem;
+  z-index: 100;
+  padding: 0.65rem 1rem;
+  color: white;
+  background: var(--ink);
+  border-radius: var(--radius);
+  transform: translateY(-180%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}

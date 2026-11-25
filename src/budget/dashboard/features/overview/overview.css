@@ -1,0 +1,42 @@
+/* The overview: the selection panel beside the report. */
+
+.header-link {
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.page-heading-note {
+  max-width: 26rem;
+  margin: 0 0 0.3rem;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+}
+
+.dashboard-layout {
+  display: grid;
+  align-items: start;
+  grid-template-columns: minmax(17rem, 21rem) minmax(0, 1fr);
+  gap: 1.25rem;
+}
+
+.selection-panel {
+  padding: 1.35rem;
+}
+
+@media (max-width: 48rem) {
+  .page-heading-note {
+    margin-top: 0.8rem;
+  }
+
+  .dashboard-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 34rem) {
+  .header-link {
+    display: none;
+  }
+}

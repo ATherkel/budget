@@ -32,6 +32,33 @@ empty-selection prompt. The rules are in
 This is a direction, not an implementation commitment; a technology change
 must preserve the analytics-facing DTO boundary.
 
+## Feature Modules
+
+Each dashboard feature is a folder under `src/budget/dashboard/features/`
+holding its view, its templates, its stylesheets and its own display helpers.
+Its package exports a `Feature`: the folder, and a `register` function that
+adds its routes to the `Dashboard` it is handed. `FEATURES` in
+`budget.dashboard` lists the registered features one line each; a feature left
+out is off. The overview shows the report and the pickers, so it needs `report`
+and `view_state` registered too, and the report links each category to
+`category` and its trust notes to `explanation`. Every page sends a reader
+who is not logged in to `login`, the page that logs in and out; the check
+itself, the session cookie and the passphrase stay in `budget.dashboard`, so a
+dashboard without `login` still refuses every page. `errors` explains why an
+address is malformed or a page's figures cannot be shown: the overview, report
+and category page need it registered to explain a failure, and a dashboard
+without it answers a malformed address with FastAPI's own JSON. A feature that
+serves no page of its own, such as `view_state` (the month, mode and account pickers), adds no routes: the pages that show
+it include its templates. A feature's templates are named
+`<folder>/<file>.html`, and `base.html` links every stylesheet in its folder,
+so adding a feature with its own page edits no shared file. Helpers more than one feature uses live in the
+`budget.dashboard.display` package, the pinned address every page links by
+lives in `budget.dashboard.addresses`, reading the overview several pages show
+lives in `budget.dashboard.reading`, and markup more than one page repeats is
+a macro in `templates/_macros.html`. A template holds no chain of conditions:
+wording that turns on several cases comes from a display helper. Moving the
+existing pages into features is pending: [#569](https://github.com/ATherkel/budget/issues/569).
+
 ## Initial Screens
 
 - Current-month overview: income, expenses, savings, savings rate.

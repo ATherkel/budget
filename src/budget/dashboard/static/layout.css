@@ -1,0 +1,193 @@
+/* Layout: the page frame, headings and the two dashboard panels. */
+
+.shell {
+  width: min(100% - 2rem, 72rem);
+  margin-inline: auto;
+}
+
+.site-header {
+  color: var(--ink);
+  background: rgb(255 253 248 / 92%);
+  border-bottom: 1px solid var(--line);
+}
+
+.header-inner {
+  display: flex;
+  min-height: 4.25rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--ink);
+  font-size: 1.08rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.brand:hover {
+  color: var(--ink);
+}
+
+.brand-mark {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  color: white;
+  background: var(--primary);
+  border-radius: 50%;
+  font-family: Georgia, serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.header-note {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.page {
+  min-height: calc(100vh - 10rem);
+  padding-block: 2.5rem 4rem;
+}
+
+.page-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-bottom: 1.75rem;
+}
+
+.page-heading h1,
+.login-intro h1 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2.15rem, 5vw, 3.4rem);
+  font-weight: 600;
+  line-height: 1.05;
+}
+
+.eyebrow {
+  margin: 0 0 0.35rem;
+  color: var(--primary-strong);
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.lede {
+  max-width: 33rem;
+  color: var(--ink-soft);
+  font-size: 1.08rem;
+}
+
+.selection-panel,
+.report-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.report-panel {
+  min-height: 28rem;
+  padding: 1.5rem;
+}
+
+.section-heading {
+  margin-bottom: 1.25rem;
+}
+
+.section-heading h2 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.section-heading--row {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.status-chip {
+  flex: none;
+  padding: 0.25rem 0.55rem;
+  color: var(--primary-strong);
+  background: var(--primary-tint);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.status-chip--provisional {
+  display: inline-block;
+  color: var(--ink);
+  background: var(--warning-tint);
+}
+
+.site-footer {
+  color: var(--ink-soft);
+  border-top: 1px solid var(--line);
+}
+
+.footer-inner {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 1.15rem;
+  font-size: 0.78rem;
+}
+
+@media (max-width: 48rem) {
+  .shell {
+    width: min(100% - 1.25rem, 72rem);
+  }
+
+  .page {
+    padding-block: 1.4rem 2.5rem;
+  }
+
+  .page-heading {
+    display: block;
+  }
+
+  .report-panel {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 34rem) {
+  .header-actions {
+    gap: 0.4rem;
+  }
+
+  .section-heading--row {
+    display: block;
+  }
+
+  .status-chip {
+    display: inline-block;
+    margin-top: 0.65rem;
+  }
+
+  .footer-inner {
+    display: grid;
+  }
+}

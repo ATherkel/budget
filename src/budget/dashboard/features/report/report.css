@@ -1,0 +1,103 @@
+/* Report: the category list and account activity, stacked as cards on a phone. */
+
+/* A direction inside a figure reads as a label, like the figure's name. */
+.summary-direction {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+.category-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.category-amount {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.account-activity {
+  margin-block: 1rem;
+  padding: 1rem;
+  background: var(--surface-muted);
+  border-radius: var(--radius);
+}
+
+.account-activity h4 {
+  margin-block: 0.4rem;
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.balance-observations {
+  display: grid;
+  gap: 0.65rem;
+  margin-block: 1rem;
+}
+
+.balance-observations div {
+  padding: 0.65rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.balance-observations dt {
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.balance-observations dd {
+  margin: 0.25rem 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-table {
+  margin-top: 0.65rem;
+  background: var(--surface);
+}
+
+@media (max-width: 48rem) {
+  .activity-table,
+  .activity-table tbody,
+  .activity-table tr,
+  .activity-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .activity-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .activity-table tr {
+    padding: 0.55rem 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .activity-table td {
+    padding: 0.15rem 0;
+    border: 0;
+  }
+
+  .activity-table td::before {
+    display: inline-block;
+    width: 4.5rem;
+    color: var(--ink-soft);
+    font-size: 0.78rem;
+    font-weight: 700;
+    content: attr(data-label);
+  }
+
+  .activity-table .detail-amount {
+    text-align: left;
+  }
+}

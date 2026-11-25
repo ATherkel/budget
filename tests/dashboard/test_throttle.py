@@ -3,7 +3,7 @@
 
 from datetime import UTC, datetime, timedelta
 
-from budget.dashboard.throttle import LoginThrottle
+from budget.dashboard.features.login.throttle import LoginThrottle
 
 
 def test_repeated_lockouts_remain_capped_after_the_forty_third_cycle() -> None:

@@ -26,10 +26,12 @@ build-backend = "uv_build"
 dev = [
     "complexipy>=4",
     "coverage>=7.17.2",
+    "djlint>=1.54.0",
     "httpx2>=2.13.1",
     "playwright==1.64.1",
     "pytest>=8",
     "ruff>=0.17.1",
+    "tinycss2>=1.4",
     "ty>=0.0.84",
 ]
 
@@ -85,6 +87,14 @@ markers = [
 [tool.ty.rules]
 # Promote every ty warning to an error so the gate cannot pass with warnings.
 all = "error"
+
+[tool.djlint]
+# Lint only; the templates are never reformatted. The 120-character line limit
+# is the custom rule in .djlint_rules.yaml.
+profile = "jinja"
+# J018 asks for url_for() links; the dashboard renders through a plain Jinja
+# Environment that has no url_for.
+ignore = "J018"
 
 [tool.complexipy]
 # Mirrors SonarQube python:S3776 (cognitive complexity per function <= 15).

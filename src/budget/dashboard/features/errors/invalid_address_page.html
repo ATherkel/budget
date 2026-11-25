@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_heading %}
+{% block title %}Oversigt · Budget{% endblock %}
+{% block content %}
+{{ page_heading("Oversigt") }}
+<div role="alert">{% include "errors/invalid_address.html" %}</div>
+{% endblock %}

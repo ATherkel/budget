@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_heading %}
+{% block title %}Oversigt · Budget{% endblock %}
+{% block head %}
+{# No page snapshots in browser storage: a history miss reloads the page. #}
+<meta name="htmx-config" content='{"historyCacheSize": 0, "refreshOnHistoryMiss": true}'>
+<script src="{{ 'htmx.min.js' | static_url }}" defer></script>
+<script src="{{ 'app.js' | static_url }}" defer></script>
+{% endblock %}
+{% block header_actions %}
+<a class="header-link" href="/">Nyeste data</a>
+{# Logout is a POST so that following a link can never end a login. #}
+<form id="logout" method="post" action="/logout">
+  <button class="button button--quiet" type="submit">Log ud</button></form>
+{% endblock %}
+{% block content %}
+<div id="overview" data-canonical-url="{{ canonical_url }}">
+{% call page_heading("Oversigt") -%}
+<p class="page-heading-note">Alle valg på siden bruger samme offentliggjorte datasæt.</p>
+{%- endcall %}
+<div class="dashboard-layout">
+<aside class="selection-panel" aria-labelledby="selection-heading">
+<div class="section-heading">
+  <p class="eyebrow">Rapportvalg</p>
+  <h2 id="selection-heading">Vælg konti og måned</h2>
+</div>
+{% include "view_state/selection.html" %}
+</aside>
+<section class="report-panel" aria-labelledby="report-heading">
+<div class="section-heading section-heading--row">
+  <div>
+    <p class="eyebrow">Aktuelt datasæt</p>
+    <h2 id="report-heading">Rapport</h2>
+  </div>
+  <span class="status-chip">Kun for husstanden</span>
+</div>
+{# The wrapper stays on the page and htmx swaps only what is inside it: a live
+   region that is replaced along with its content is often not announced. #}
+<div id="report-region" aria-live="polite" aria-busy="false">
+{# With no account selected, the report is the prompt to select one. The blank
+   line after it keeps the page's HTML as it was. #}
+{{ report | safe }}
+
+</div>
+</section>
+</div>
+</div>
+{% endblock %}

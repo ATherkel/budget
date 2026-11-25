@@ -1,0 +1,60 @@
+<p class="eyebrow">Kontobevægelser</p>
+<h3 id="report-ready-title">Kontodetaljer</h3>
+{% for account in activity.accounts %}
+<article id="activity-account-{{ account.account_id }}" class="account-activity">
+  <h4>{{ account.display_name }}</h4>
+  <p id="activity-evidence-{{ account.account_id }}">
+    {{ account.evidence_through | evidence_line }}
+  </p>
+  <p id="activity-coverage-{{ account.account_id }}">
+    Dækning for måneden: {{ account.coverage | coverage_label }}.
+  </p>
+  <dl class="balance-observations">
+    <div>
+      <dt>Bankens seneste observation</dt>
+      <dd id="activity-dated-balance-{{ account.account_id }}">
+        {{ account.dated_balance | balance_observation(activity.currency, "Ingen observation i måneden") }}
+      </dd>
+    </div>
+    <div>
+      <dt>Tidligere observation</dt>
+      <dd id="activity-earlier-observation-{{ account.account_id }}">
+        {{ account.earlier_observation | balance_observation(activity.currency, "Ingen tidligere observation") }}
+      </dd>
+    </div>
+    <div>
+      <dt>Månedssnapshot</dt>
+      <dd id="activity-monthly-snapshot-{{ account.account_id }}">
+        {{ account.monthly_snapshot | monthly_snapshot_line(activity.currency) }}
+      </dd>
+    </div>
+  </dl>
+  <h4>Posteringer</h4>
+  <table class="detail-table activity-table" aria-label="Posteringer for {{ account.display_name }}">
+    <thead>
+      <tr>
+        <th scope="col">Dato</th>
+        <th scope="col">Tekst</th>
+        <th scope="col">Type</th>
+        <th scope="col" class="detail-amount">Beløb</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in activity.transactions if row.account_id == account.account_id %}
+      <tr>
+        <td data-label="Dato">{{ row.transaction_date | danish_date }}</td>
+        <td data-label="Tekst">{{ row.description }}</td>
+        <td data-label="Type">
+          {{ row | transaction_kind }}
+        </td>
+        <td data-label="Beløb" class="detail-amount">
+          {{ row.amount | signed_amount(activity.currency) }}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4">Ingen observerede posteringer i måneden.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</article>
+{% endfor %}
