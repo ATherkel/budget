@@ -241,6 +241,16 @@ def test_kontrol_shows_each_accounts_internal_residual_and_opening_gap(
     )
 
 
+def test_kontrol_says_a_zero_difference_does_not_prove_the_data_complete(
+    client: TestClient,
+) -> None:
+    # Joint current's March difference is 0,00 kr., yet March is only partial.
+    assert kontrol(client).text_of("checks-reconciliation-note") == (
+        "En difference på 0,00 kr. beviser ikke, at alle posteringer er "
+        "importeret: manglende posteringer og saldi kan gå lige op."
+    )
+
+
 def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
     client: TestClient,
 ) -> None:
