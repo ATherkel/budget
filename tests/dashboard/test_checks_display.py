@@ -79,12 +79,12 @@ def test_a_nonzero_internal_residual_is_listed_first_beside_opening_gaps() -> No
     ] == [
         (
             f"checks-residual-{CURRENT}-opening-gap",
-            "Joint current: Åbningsforskel \N{MINUS SIGN}500,00 kr.",
+            "Joint current: Åbningsforskel \N{MINUS SIGN}500,00 kr. (se Detaljer)",
             [CURRENT],
         ),
         (
             f"checks-residual-{SAVINGS}-internal",
-            "Joint savings: Intern forskel +12,40 kr.",
+            "Joint savings: Intern forskel +12,40 kr. (se Detaljer)",
             [SAVINGS],
         ),
     ]

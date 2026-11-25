@@ -271,7 +271,7 @@ def test_kontrol_lists_a_nonzero_opening_gap_first_linking_to_its_account(
 ) -> None:
     # Only Joint current's March opening gap is nonzero; April has none.
     page = kontrol(client)
-    line = "Joint current: Åbningsforskel \N{MINUS SIGN}500,00 kr."
+    line = "Joint current: Åbningsforskel \N{MINUS SIGN}500,00 kr. (se Detaljer)"
     link = parse_qs(
         urlsplit(
             page.attributes(f"checks-residual-{CURRENT}-opening-gap").get("href", "")
