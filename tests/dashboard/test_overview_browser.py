@@ -563,7 +563,7 @@ def test_advanced_mode_is_keyboard_accessible_and_survives_history(
     expect(page.locator("#report")).to_have_attribute("data-mode", "advanced")
     expect(page.locator("#report")).to_have_attribute("data-tab", "overview")
     expect(page.get_by_role("link", name="Detaljer")).to_have_count(1)
-    expect(page.get_by_role("link", name="Kontrol")).to_have_count(0)
+    expect(page.get_by_role("link", name="Kontrol")).to_have_count(1)
     expect(page).to_have_url(
         re.compile(r".*month=2026-04&mode=advanced&tab=overview.*")
     )
