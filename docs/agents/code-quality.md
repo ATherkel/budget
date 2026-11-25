@@ -24,12 +24,12 @@ uv run ruff check . && uv run ruff format --check . && uv run ty check \
   && uv run complexipy && uv run djlint src --lint
 ```
 
-Configuration lives in `pyproject.toml`. The repository line rule is in
-[`.djlint_rules.yaml`](../../.djlint_rules.yaml), because djlint's own
-`max_line_length` only steers the formatter.
-[`tests/test_template_lint.py`](../../tests/test_template_lint.py) also guards
-the line rule where djlint skips a line that holds a comment. These files are
-authoritative for the configured limit.
+Configuration lives in `pyproject.toml`. The template line rule lives in
+[`.djlint_rules.yaml`](../../.djlint_rules.yaml) and is guarded by
+[`tests/test_template_lint.py`](../../tests/test_template_lint.py); both are
+authoritative. The CSS overlap check is advisory:
+[CSS Declaration Overlap Advisory](#css-declaration-overlap-advisory). The
+dashboard's structure rules are in [Presentation Agent Brief](ui-agent.md).
 
 ## CSS Declaration Overlap Advisory
 
