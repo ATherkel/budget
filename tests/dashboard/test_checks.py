@@ -445,3 +445,20 @@ def test_kontrol_shows_observed_money_and_counts_separately(client: TestClient) 
             "Observerede transaktioner på de valgte konti: 0"
         ),
     )
+
+
+def test_kontrol_explains_selected_transfer_legs_and_shows_pairing(
+    client: TestClient,
+) -> None:
+    page = kontrol(client, month="2026-01")
+
+    assert (
+        page.text_of("checks-observed-note"),
+        page.text_of("checks-transfer-pairing"),
+    ) == (
+        (
+            "Antallene er observerede transaktioner på de valgte konti. "
+            "En overførsel kan tælle to gange, når begge konti er valgt."
+        ),
+        "Parring af overførsler: 2 parrede ben og 0 ensidige ben.",
+    )
