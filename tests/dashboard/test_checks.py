@@ -158,86 +158,12 @@ def test_kontrol_shows_each_accounts_evidence_through_and_unknown_is_never_a_dat
     page = kontrol(client, publication="2")
 
     assert (
-        page.text_of(f"checks-evidence-{CURRENT}"),
-        page.text_of(f"checks-evidence-{SAVINGS}"),
+        page.text_of(f"checks-through-{CURRENT}"),
+        page.text_of(f"checks-through-{SAVINGS}"),
     ) == (
         # Worded as Detaljer words it.
-        "Joint current: Data til og med 08.05.2026",
-        "Joint savings: Ingen importeret data",
-    )
-
-
-def test_kontrol_lists_each_accounts_reconciliation_components(
-    client: TestClient,
-) -> None:
-    # The worked example's March, as the report contract states it.
-    page = kontrol(client)
-
-    assert (
-        page.text_of(f"checks-reconciliation-{CURRENT}-components"),
-        page.text_of(f"checks-reconciliation-{SAVINGS}-components"),
-    ) == (
-        (
-            "Startsaldo: 37.037,50 kr. "
-            "Indtægter minus udgifter: \N{MINUS SIGN}1.000,00 kr. "
-            "Overførsler: 0,00 kr. "
-            "Ukategoriseret ind: 0,00 kr. "
-            "Ukategoriseret ud: \N{MINUS SIGN}450,00 kr. "
-            "Regulering ind: 0,00 kr. "
-            "Regulering ud: 0,00 kr. "
-            "Slutsaldo: 35.587,50 kr."
-        ),
-        (
-            "Startsaldo: 53.000,00 kr. "
-            "Indtægter minus udgifter: 0,00 kr. "
-            "Overførsler: 0,00 kr. "
-            "Ukategoriseret ind: 0,00 kr. "
-            "Ukategoriseret ud: 0,00 kr. "
-            "Regulering ind: 0,00 kr. "
-            "Regulering ud: 0,00 kr. "
-            "Slutsaldo: 53.000,00 kr."
-        ),
-    )
-
-
-def test_kontrol_reads_a_missing_reconciliation_component_as_unknown_not_zero(
-    client: TestClient,
-) -> None:
-    # May has no monthly snapshot yet, so its balances are missing.
-    assert kontrol(client, month="2026-05").text_of(
-        f"checks-reconciliation-{CURRENT}-components"
-    ) == (
-        "Startsaldo: Ukendt "
-        "Indtægter minus udgifter: 0,00 kr. "
-        "Overførsler: 0,00 kr. "
-        "Ukategoriseret ind: 0,00 kr. "
-        "Ukategoriseret ud: 0,00 kr. "
-        "Regulering ind: 0,00 kr. "
-        "Regulering ud: 0,00 kr. "
-        "Slutsaldo: Ukendt"
-    )
-
-
-def test_kontrol_shows_each_accounts_internal_residual_and_opening_gap(
-    client: TestClient,
-) -> None:
-    # March opens 500 below February's close; May has no balances to compare.
-    assert (
-        kontrol(client).text_of(f"checks-reconciliation-{CURRENT}-residuals"),
-        kontrol(client, month="2026-05").text_of(
-            f"checks-reconciliation-{CURRENT}-residuals"
-        ),
-    ) == (
-        (
-            "Intern forskel: 0,00 kr. "
-            "Slutsaldo forrige måned: 37.537,50 kr. "
-            "Åbningsforskel: \N{MINUS SIGN}500,00 kr."
-        ),
-        (
-            "Intern forskel: Ukendt "
-            "Slutsaldo forrige måned: 52.087,50 kr. "
-            "Åbningsforskel: Ukendt"
-        ),
+        "Data til og med 08.05.2026",
+        "Ingen importeret data",
     )
 
 
@@ -251,49 +177,11 @@ def test_kontrol_says_a_zero_difference_does_not_prove_the_data_complete(
     )
 
 
-def test_kontrol_heads_each_reconciliation_with_its_own_unupgraded_coverage(
-    client: TestClient,
-) -> None:
-    # Joint current's March difference is 0,00 kr. but stays partly covered.
-    page = kontrol(client)
-
-    assert (
-        page.text_of(f"checks-reconciliation-{CURRENT}-title"),
-        page.text_of(f"checks-reconciliation-{SAVINGS}-title"),
-    ) == (
-        "Joint current, marts 2026: delvist dækket",
-        "Joint savings, marts 2026: fuldt dækket",
-    )
-
-
-def test_kontrol_lists_a_nonzero_opening_gap_first_linking_to_its_account(
-    client: TestClient,
-) -> None:
-    # Only Joint current's March opening gap is nonzero; April has none.
-    page = kontrol(client)
-    line = "Joint current: Åbningsforskel \N{MINUS SIGN}500,00 kr. (se Detaljer)"
-    link = parse_qs(
-        urlsplit(
-            page.attributes(f"checks-residual-{CURRENT}-opening-gap").get("href", "")
-        ).query
-    )
-
-    assert (
-        page.text_of("checks-residuals"),
-        0 <= page.visible().find(line) < page.visible().find("Dækning:"),
-        link.get("account"),
-        link.get("month"),
-        link.get("mode"),
-        link.get("tab"),
-        kontrol(client, month="2026-04").text_of("checks-residuals"),
-    ) == (line, True, [CURRENT], ["2026-03"], ["advanced"], ["details"], None)
-
-
-def test_a_nonzero_residuals_link_opens_the_full_detaljer_page_for_its_account(
+def test_an_accounts_link_opens_the_full_detaljer_page_for_that_account(
     client: TestClient,
 ) -> None:
     # A plain link must land on a whole page, not the report fragment.
-    href = kontrol(client).attributes(f"checks-residual-{CURRENT}-opening-gap")["href"]
+    href = kontrol(client).attributes(f"checks-account-{CURRENT}")["href"]
     landed = client.get(href)
     page = read(landed.text)
 
@@ -305,26 +193,24 @@ def test_a_nonzero_residuals_link_opens_the_full_detaljer_page_for_its_account(
     ) == (200, True, "page", {CURRENT})
 
 
-def test_kontrol_leaves_an_unknown_residual_out_of_the_top_list(
+def test_kontrol_shows_the_reconciliation_once_in_its_table_not_again_as_lists(
     client: TestClient,
 ) -> None:
-    # May's residuals are unknown, which is neither zero nor a known gap.
-    assert kontrol(client, month="2026-05").text_of("checks-residuals") is None
+    # The account table and its waterfalls replace the earlier lists.
+    page = kontrol(client)
 
-
-def test_kontrol_heads_the_residual_list_and_the_reconciliation_section(
-    client: TestClient,
-) -> None:
-    # Heading navigation: month, then each section, then accounts below it.
-    html = client.get("/report", params=KONTROL, headers={"HX-Request": "true"}).text
-    page = read(html)
-
-    assert (
-        page.text_of("checks-residuals-title"),
-        page.attributes("checks-residuals").get("aria-labelledby"),
-        page.text_of("checks-reconciliation-title"),
-        f'<h5 id="checks-reconciliation-{CURRENT}-title"' in html,
-    ) == ("Forskelle at undersøge", "checks-residuals-title", "Afstemning", True)
+    assert [
+        page.text_of(element_id)
+        for element_id in (
+            "checks-residuals",
+            "checks-reconciliation-title",
+            "checks-evidence",
+            f"checks-evidence-{CURRENT}",
+            f"checks-reconciliation-{CURRENT}-title",
+            f"checks-reconciliation-{CURRENT}-components",
+            f"checks-reconciliation-{CURRENT}-residuals",
+        )
+    ] == [None] * 7
 
 
 def test_kontrol_tables_each_account_with_its_verdict_linking_to_detaljer(

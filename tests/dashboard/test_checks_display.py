@@ -8,7 +8,6 @@ the rest through the dashboard.
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
-from urllib.parse import parse_qs, urlsplit
 
 from budget.analytics import (
     AccountMonthCoverage,
@@ -57,7 +56,7 @@ def test_a_month_outside_an_accounts_history_is_not_listed_as_incomplete() -> No
     )
 
 
-def test_a_nonzero_internal_residual_is_listed_first_beside_opening_gaps() -> None:
+def test_a_positive_residual_shows_its_plus_sign_in_the_account_table() -> None:
     # The worked example cannot publish a nonzero internal residual.
     reconciliations = tuple(
         replace(reconciliation, internal_residual=Decimal("12.40"))
@@ -68,47 +67,9 @@ def test_a_nonzero_internal_residual_is_listed_first_beside_opening_gaps() -> No
     view = checks_view(
         replace(MARCH_REPORT, reconciliations=reconciliations), "marts 2026"
     )
+    row = {account.account_id: account for account in view.accounts}[SAVINGS]
 
-    assert [
-        (
-            residual.element_id,
-            residual.line,
-            parse_qs(urlsplit(residual.url).query).get("account"),
-        )
-        for residual in view.nonzero_residuals
-    ] == [
-        (
-            f"checks-residual-{CURRENT}-opening-gap",
-            "Joint current: Åbningsforskel \N{MINUS SIGN}500,00 kr. (se Detaljer)",
-            [CURRENT],
-        ),
-        (
-            f"checks-residual-{SAVINGS}-internal",
-            "Joint savings: Intern forskel +12,40 kr. (se Detaljer)",
-            [SAVINGS],
-        ),
-    ]
-
-
-def test_a_positive_residual_shows_its_plus_sign_in_the_accounts_list() -> None:
-    # A difference reads with its direction: +12,40 kr., not 12,40 kr.
-    reconciliations = tuple(
-        replace(reconciliation, internal_residual=Decimal("12.40"))
-        if reconciliation.account_id == SAVINGS
-        else reconciliation
-        for reconciliation in MARCH_REPORT.reconciliations
-    )
-    view = checks_view(
-        replace(MARCH_REPORT, reconciliations=reconciliations), "marts 2026"
-    )
-
-    assert {account.account_id: account.residuals for account in view.reconciliations}[
-        SAVINGS
-    ] == [
-        "Intern forskel: +12,40 kr.",
-        "Slutsaldo forrige måned: 53.000,00 kr.",
-        "Åbningsforskel: 0,00 kr.",
-    ]
+    assert (row.internal, row.waterfall[-1].amount) == ("+12,40 kr.", "+12,40 kr.")
 
 
 def savings_verdict(**changes: Decimal | None) -> str:
