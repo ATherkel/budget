@@ -146,3 +146,20 @@ def test_a_spot_on_the_allowlist_is_not_reported(tmp_path: Path) -> None:
     listed = allowlist(tmp_path, allowance("cards/card.html", "{% if card.open %}"))
 
     assert gate(ENVIRONMENT, root, listed) == []
+
+
+def test_each_repeat_of_a_spot_needs_its_own_entry(tmp_path: Path) -> None:
+    root = templates(
+        tmp_path,
+        {
+            "page.html": (
+                "{% for row in rows %}{{ row.name }}{% else %}none{% endfor %}\n"
+                "{% for row in more %}{{ row.name }}{% else %}none{% endfor %}\n"
+            )
+        },
+    )
+    listed = allowlist(tmp_path, allowance("page.html", "{% else %}"))
+
+    assert gate(ENVIRONMENT, root, listed) == [
+        "page.html:2: `else` in {% else %} is not on the allowlist",
+    ]
