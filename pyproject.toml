@@ -30,6 +30,7 @@ dev = [
     "httpx2>=2.13.1",
     "playwright==1.64.1",
     "pytest>=8",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.17.1",
     "tinycss2>=1.4",
     "ty>=0.0.84",
@@ -79,6 +80,10 @@ max-complexity = 15
 docstring-code-format = true
 
 [tool.pytest.ini_options]
+# pytest-xdist: one worker per core; loadscope keeps each module (or test
+# class) on one worker, so its tests share its fixtures. Session fixtures run
+# once per worker.
+addopts = "-n auto --dist loadscope"
 markers = [
     "docs: reads docs/ or README.md; tests/conftest.py adds it by module",
     "release: checks the RELEASE_TAG being cut; the Release workflow runs it with `-m release`",

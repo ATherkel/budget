@@ -36,7 +36,8 @@ review stage after the behavior is green.
   or expected behavior is wrong or unclear, return to the user and red phase to
   resolve it.
 - Run the focused test and report the command and result. Then repeat with the
-  next smallest behavior slice.
+  next smallest behavior slice. Add `-n0` to a focused or `--pdb` run; see
+  [parallel test runs](code-quality.md#parallel-test-runs).
 
 ## Review and refactoring
 
