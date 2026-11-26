@@ -353,6 +353,30 @@ def test_kontrol_tables_each_account_with_its_verdict_linking_to_detaljer(
     )
 
 
+def test_kontrol_tables_each_accounts_balances_residuals_and_data_reach(
+    client: TestClient,
+) -> None:
+    # March as the report contract states it; May has no balances yet.
+    page = kontrol(client)
+    may = kontrol(client, month="2026-05")
+
+    assert [
+        page.text_of(f"checks-{column}-{CURRENT}")
+        for column in ("opening", "closing", "internal", "gap", "through")
+    ] + [
+        may.text_of(f"checks-opening-{CURRENT}"),
+        may.text_of(f"checks-gap-{CURRENT}"),
+    ] == [
+        "37.037,50 kr.",
+        "35.587,50 kr.",
+        "0,00 kr.",
+        "\N{MINUS SIGN}500,00 kr.",
+        "Data til og med 08.05.2026",
+        "Ukendt",
+        "Ukendt",
+    ]
+
+
 def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
     client: TestClient,
 ) -> None:
