@@ -135,10 +135,14 @@ def _nonzero_residuals(diagnostics: Diagnostics, view: ViewState) -> list[Residu
     ]
 
 
-def _verdict(reconciliation: Reconciliation) -> str:
+def _verdict(reconciliation: Reconciliation, currency: str) -> str:
     """Return whether one account-month can be trusted, never claiming it adds up."""
     if reconciliation.coverage in ("partial", "no_data"):
         return "Data mangler"
+    # The internal residual is shown first: it is the month's own arithmetic.
+    residual = reconciliation.internal_residual or reconciliation.opening_gap
+    if residual:
+        return f"Går ikke op ({signed_amount(residual, currency)})"
     return "Ingen fundne forskelle"
 
 
@@ -154,7 +158,7 @@ def _account_rows(diagnostics: Diagnostics, view: ViewState) -> list[AccountRow]
                 replace(address, accounts=(reconciliation.account_id,)),
                 view=details,
             ),
-            _verdict(reconciliation),
+            _verdict(reconciliation, diagnostics.currency),
         )
         for reconciliation in diagnostics.reconciliations
     ]
