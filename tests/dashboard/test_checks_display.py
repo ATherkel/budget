@@ -165,13 +165,7 @@ def test_opposite_observed_amounts_stay_signed_and_never_cancel() -> None:
             TransferSummary(Decimal(20), Decimal(-20), 4, 2, 2),
             "Parring af overførsler: 2 parrede ben og 2 ensidige ben.",
         ),
-        (
-            None,
-            (
-                "Parring af overførsler: Ukendt antal parrede ben "
-                "og Ukendt antal ensidige ben."
-            ),
-        ),
+        (None, "Parring af overførsler: Ukendt."),
     ],
 )
 def test_transfer_pairing_counts_selected_legs_with_singular_plural_or_unknown(
