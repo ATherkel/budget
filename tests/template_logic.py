@@ -8,7 +8,7 @@ from pathlib import Path
 from jinja2 import Environment
 
 _ENDS = {"block_begin": "block_end", "variable_begin": "variable_end"}
-_BANNED_TAGS = ("if", "elif", "else")
+_BANNED_TAGS = ("if", "elif", "else", "set")
 
 
 @dataclass
