@@ -190,10 +190,7 @@ def _observed_lines(
 def _transfer_pairing(transfers: TransferSummary | None) -> str:
     """Describe selected paired and one-sided legs, keeping unknown counts explicit."""
     if transfers is None:
-        return (
-            "Parring af overførsler: Ukendt antal parrede ben "
-            "og Ukendt antal ensidige ben."
-        )
+        return "Parring af overførsler: Ukendt."
     paired = "parret ben" if transfers.paired_count == 1 else "parrede ben"
     one_sided = "ensidigt ben" if transfers.one_sided_count == 1 else "ensidige ben"
     return (
