@@ -109,3 +109,25 @@ def test_a_positive_residual_shows_its_plus_sign_in_the_accounts_list() -> None:
         "Slutsaldo forrige måned: 53.000,00 kr.",
         "Åbningsforskel: 0,00 kr.",
     ]
+
+
+def savings_verdict(**changes: Decimal | None) -> str:
+    """Return Joint savings' March verdict with its reconciliation `changes`."""
+    reconciliations = tuple(
+        replace(reconciliation, **changes)
+        if reconciliation.account_id == SAVINGS
+        else reconciliation
+        for reconciliation in MARCH_REPORT.reconciliations
+    )
+    view = checks_view(
+        replace(MARCH_REPORT, reconciliations=reconciliations), "marts 2026"
+    )
+    return {account.account_id: account.verdict for account in view.accounts}[SAVINGS]
+
+
+def test_a_complete_month_with_a_nonzero_residual_does_not_add_up() -> None:
+    # Joint savings is fully covered in March, so only the arithmetic speaks.
+    assert (
+        savings_verdict(internal_residual=Decimal("12.40")),
+        savings_verdict(opening_gap=Decimal("-3.00")),
+    ) == ("Går ikke op (+12,40 kr.)", "Går ikke op (\N{MINUS SIGN}3,00 kr.)")
