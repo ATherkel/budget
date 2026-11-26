@@ -20,12 +20,19 @@ from budget.analytics import (
     SpendingDetail,
 )
 from budget.dashboard.addresses import answered_address, detail_url, pinned_url
+from budget.dashboard.display.links import switch_links
 from budget.dashboard.display.months import parse_month, period_label
 from budget.dashboard.display.text import incomplete_by_account
 from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.errors import failure_fragment
 from budget.dashboard.features.view_state import ViewState, parse_view_state
 from budget.gold.store import GoldStore
+
+# The periods a detail page switches between: scope, link id and label.
+_SCOPES = (
+    ("month", "scope-month", "Måned"),
+    ("year_to_date", "scope-year-to-date", "År til dato"),
+)
 
 
 @dataclass(frozen=True)
@@ -116,16 +123,24 @@ def _render_detail(
     return dashboard.templates.get_template("category/category.html").render(
         detail=detail_report,
         title=f"{detail_report.name}, {period}",
-        scope_urls={
-            scope: detail_url(
-                answered,
-                subject.kind,
-                subject.id,
-                scope,
-                view=request.view,
-            )
-            for scope in ("month", "year_to_date")
-        },
+        scope_links=switch_links(
+            detail_report.scope,
+            (
+                (
+                    scope,
+                    link_id,
+                    detail_url(
+                        answered,
+                        subject.kind,
+                        subject.id,
+                        scope,
+                        view=request.view,
+                    ),
+                    label,
+                )
+                for scope, link_id, label in _SCOPES
+            ),
+        ),
         group_url=detail_url(
             answered,
             "group",

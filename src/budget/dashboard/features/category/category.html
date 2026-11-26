@@ -2,15 +2,16 @@
 {% from "_macros.html" import failure_notice, newer_figures, page_heading, provisional_label, switch_link %}
 {% block title %}{{ title }} · Budget{% endblock %}
 {% block content %}
-{{ page_heading(title, "detail-title") }}
+{{ page_heading(title, {"id": "detail-title"}) }}
 {% if failure %}
-{{ failure_notice(failure, "detail-failure") }}
+{{ failure_notice(failure, {"id": "detail-failure"}) }}
 {% else %}
 {% set is_group = detail.subject.kind == "group" %}
 {{ newer_figures(detail.publication.is_current) }}
 <nav class="scope-switch" aria-label="Periode">
-  {{ switch_link("scope-month", scope_urls["month"], "Måned", detail.scope == "month") }}
-  {{ switch_link("scope-year-to-date", scope_urls["year_to_date"], "År til dato", detail.scope == "year_to_date") }}
+{% for link in scope_links %}
+  {{ switch_link(link) }}
+{% endfor %}
 </nav>
 {% if not is_group %}
 <p><a id="group-link" href="{{ group_url }}">Hele {{ detail.group_name }}</a></p>

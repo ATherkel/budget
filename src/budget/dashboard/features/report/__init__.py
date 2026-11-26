@@ -25,6 +25,7 @@ from budget.dashboard.addresses import (
     detail_url,
     pinned_url,
 )
+from budget.dashboard.display.links import switch_links
 from budget.dashboard.display.months import month_label, month_value, parse_month
 from budget.dashboard.display.text import incomplete_months
 from budget.dashboard.features import Dashboard, Feature
@@ -38,6 +39,9 @@ from budget.dashboard.features.view_state import (
 )
 from budget.dashboard.reading import read_overview
 from budget.gold.store import GoldStore
+
+# The advanced mode's tabs, in the order the report shows them.
+_TABS = (("overview", "Overblik"), ("details", "Detaljer"), ("checks", "Kontrol"))
 
 
 class ReportAddress(PinnedQuery):
@@ -121,17 +125,25 @@ def render_report(
     )
     if isinstance(checks, str):
         return checks
-    tab_urls = {
-        destination: pinned_url(
-            answered_address(answered),
-            view=ViewState(
-                "advanced",
+    tab_links = switch_links(
+        requested.view.tab,
+        (
+            (
                 destination,
-                requested.view.comparison,
-            ),
-        )
-        for destination in ("overview", "details", "checks")
-    }
+                f"tab-{destination}",
+                pinned_url(
+                    answered_address(answered),
+                    view=ViewState(
+                        "advanced",
+                        destination,
+                        requested.view.comparison,
+                    ),
+                ),
+                label,
+            )
+            for destination, label in _TABS
+        ),
+    )
     return dashboard.templates.get_template("report/report.html").render(
         is_current=overview_report.publication.is_current,
         publication_id=answered.publication_id,
@@ -149,7 +161,7 @@ def render_report(
         mode=requested.view.mode,
         tab=requested.view.tab,
         comparison=requested.view.comparison,
-        tab_urls=tab_urls,
+        tab_links=tab_links,
         explanation_url=answered_url(
             overview_report,
             "/explanation",
