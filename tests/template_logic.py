@@ -116,24 +116,43 @@ def _allowed_filters(environment: Environment) -> set[str]:
     return own | {"xmlattr"}
 
 
+@dataclass(frozen=True)
+class _Spot:
+    """A tag that holds logic: its template, line, text and banned constructs."""
+
+    path: str
+    line: int
+    text: str
+    constructs: list[str]
+
+
+def _spots(environment: Environment, root: Path) -> Iterator[_Spot]:
+    """Yield each tag with logic in the templates under `root`, in order."""
+    for page in sorted(root.rglob("*.html")):
+        path = page.relative_to(root).as_posix()
+        for tag in _tags(environment, page.read_text(encoding="utf-8")):
+            constructs = _constructs(environment, tag)
+            if constructs:
+                yield _Spot(path, tag.line, tag.text, constructs)
+
+
 def gate(environment: Environment, root: Path, allowlist: Path) -> list[str]:
     """Return one message for each way the templates under `root` fail the gate."""
     entries = tomllib.loads(allowlist.read_text(encoding="utf-8")).get("allowance", [])
     listed = Counter((entry["path"], entry["tag"]) for entry in entries)
     messages = []
-    for page in sorted(root.rglob("*.html")):
-        name = page.relative_to(root).as_posix()
-        for tag in _tags(environment, page.read_text(encoding="utf-8")):
-            constructs = ", ".join(
-                f"`{word}`" for word in _constructs(environment, tag)
+    for spot in _spots(environment, root):
+        if listed[spot.path, spot.text] > 0:
+            listed[spot.path, spot.text] -= 1
+        else:
+            constructs = ", ".join(f"`{word}`" for word in spot.constructs)
+            messages.append(
+                f"{spot.path}:{spot.line}: {constructs} in {spot.text}"
+                " is not on the allowlist"
             )
-            if not constructs:
-                continue
-            if listed[name, tag.text] > 0:
-                listed[name, tag.text] -= 1
-            else:
-                messages.append(
-                    f"{name}:{tag.line}: {constructs} in {tag.text}"
-                    " is not on the allowlist"
-                )
+    messages.extend(
+        f"allowlist: the entry for {tag} in {path} matches nothing; remove it"
+        for (path, tag), left in listed.items()
+        for _ in range(left)
+    )
     return messages
