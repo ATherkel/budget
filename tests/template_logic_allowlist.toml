@@ -233,24 +233,6 @@ reason = "Optional section or failure branch; becomes a notice list or its own t
 issue = 627
 
 [[allowance]]
-path = "features/view_state/selection.html"
-tag = '{%- if value == current %}'
-reason = "Optional attribute; becomes an xmlattr dict that display.py builds."
-issue = 625
-
-[[allowance]]
-path = "features/view_state/selection.html"
-tag = '{% if value == selected_month %}'
-reason = "Optional attribute; becomes an xmlattr dict that display.py builds."
-issue = 625
-
-[[allowance]]
-path = "features/view_state/selection.html"
-tag = '{%- if account.account_id in selected_accounts %}'
-reason = "Optional attribute; becomes an xmlattr dict that display.py builds."
-issue = 625
-
-[[allowance]]
 path = "templates/_macros.html"
 tag = '{%- if caller %}'
 reason = "Optional section or failure branch; becomes a notice list or its own template."
