@@ -462,3 +462,31 @@ def test_kontrol_explains_selected_transfer_legs_and_shows_pairing(
         ),
         "Parring af overførsler: 2 parrede ben og 0 ensidige ben.",
     )
+
+
+def test_kontrol_heads_the_transaction_types_section_and_its_groups(
+    client: TestClient,
+) -> None:
+    # Heading navigation: the groups sit under their own section, not under
+    # the last reconciled account; the note and pairing line belong to it.
+    html = client.get("/report", params=KONTROL, headers={"HX-Request": "true"}).text
+    page = read(html)
+    section = page.text_of("checks-observed") or ""
+
+    assert (
+        page.text_of("checks-observed-title"),
+        page.attributes("checks-observed").get("aria-labelledby"),
+        '<h5 id="checks-unclassified-title"' in html,
+        '<h5 id="checks-adjustments-title"' in html,
+        '<h5 id="checks-transfers-title"' in html,
+        section.startswith("Transaktionstyper Antallene er observerede"),
+        section.endswith("Parring af overførsler: 0 parrede ben og 0 ensidige ben."),
+    ) == (
+        "Transaktionstyper",
+        "checks-observed-title",
+        True,
+        True,
+        True,
+        True,
+        True,
+    )
