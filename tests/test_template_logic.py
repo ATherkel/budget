@@ -90,3 +90,14 @@ def test_an_expression_with_logic_is_reported(
     assert gate(ENVIRONMENT, root, allowlist(tmp_path)) == [
         f"page.html:1: `{construct}` in {tag} is not on the allowlist",
     ]
+
+
+def test_a_for_that_filters_its_rows_is_reported(tmp_path: Path) -> None:
+    tag = "{% for row in rows if row.open %}"
+    root = templates(
+        tmp_path, {"page.html": f"{tag}{{{{ row.name }}}}{{% endfor %}}\n"}
+    )
+
+    assert gate(ENVIRONMENT, root, allowlist(tmp_path)) == [
+        f"page.html:1: `for ... if` in {tag} is not on the allowlist",
+    ]
