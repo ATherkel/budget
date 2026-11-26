@@ -1,6 +1,12 @@
 {%- from "_macros.html" import newer_figures, provisional_label, switch_link -%}
 {# Every overview summary card, prepared in summary_display.py. #}
 {% macro summary_card(card) -%}
+{% if not card.expandable %}
+<div class="summary-figure"><span class="summary-label">{{ card.label }}</span>
+  <span id="{{ card.headline.element_id }}" class="summary-value">
+    {{- card.headline.value -}}
+  </span></div>
+{% else %}
 <div class="summary-figure summary-card">
   <details class="summary-disclosure">
     <summary{% if card.element_id %} id="{{ card.element_id }}"{% endif %}>
@@ -52,6 +58,7 @@
     </table>
   </details>
 </div>
+{% endif %}
 {%- endmacro %}
 {% macro reconciliation_row(label, value, currency, signed=false) -%}
 <tr>
@@ -162,17 +169,15 @@
 <h3 id="report-ready-title">{{ month_label }}</h3>
 {# With no evidence a figure is unknown, never zero. #}
 <div class="summary">
-  {% for card in summary.movements %}
+  {% for card in summary.before_reconciliations %}
     {{ summary_card(card) }}
   {% endfor %}
   {% for reconciliation in reconciliations %}
     {{ reconciliation_card(reconciliation, overview.currency) }}
   {% endfor %}
-  <div class="summary-figure"><span class="summary-label">Penge tilbage</span>
-    <span id="money-left" class="summary-value">
-      {{- overview.net_cash_flow | amount(overview.currency) -}}
-    </span></div>
-  {{ summary_card(summary.unclassified) }}
+  {% for card in summary.after_reconciliations %}
+    {{ summary_card(card) }}
+  {% endfor %}
 </div>
 {% set unclassified = overview.unclassified %}
 {% if unclassified and unclassified.count > 0 %}

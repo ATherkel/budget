@@ -10,9 +10,12 @@ from datetime import date
 
 from budget.analytics.measures import UNKNOWN, ZERO, Figures, figures
 from budget.analytics.reports import (
+    SUMMARY_GROUPS,
     InvalidSelectionError,
+    MoneyInOut,
     MonthlyOverview,
     OverviewContributor,
+    OverviewGroup,
     OverviewMovements,
     ReportContext,
     ReportPublication,
@@ -20,6 +23,7 @@ from budget.analytics.reports import (
     SelectableOwner,
     SelectionOptions,
     SelectionRule,
+    SummaryGroup,
 )
 from budget.analytics.trust import trust
 from budget.gold import (
@@ -116,21 +120,37 @@ def _contributor_rows(
     )
 
 
+def _overview_group(
+    group: SummaryGroup,
+    transactions: Sequence[GoldTransaction],
+    names: dict[str, str],
+) -> OverviewGroup:
+    """Return one group's rows; Expenses count money out as a positive amount."""
+    rows = _contributor_rows(transactions, names, flip=group == "expenses")
+    amounts = [row.amount for row in rows]
+    return OverviewGroup(
+        group=group,
+        rows=rows,
+        total=sum((row.contribution for row in rows), ZERO),
+        flows=MoneyInOut(
+            money_in=sum((amount for amount in amounts if amount > 0), ZERO),
+            money_out=sum((amount for amount in amounts if amount < 0), ZERO),
+            count=len(amounts),
+        ),
+    )
+
+
 def _movements(
     known: Figures,
     accounts: Sequence[GoldAccount],
 ) -> OverviewMovements:
-    """Return the signed rows behind Income, Expenses and Transfers."""
+    """Return the signed rows behind every summary group, in card order."""
     names = {account.account_id: account.display_name for account in accounts}
     return OverviewMovements(
-        income=_contributor_rows(known.income_transactions, names),
-        expenses=_contributor_rows(known.expense_transactions, names, flip=True),
-        transfers=_contributor_rows(known.transfer_transactions, names),
-        transfer_total=sum(
-            (transaction.amount for transaction in known.transfer_transactions),
-            ZERO,
-        ),
-        unclassified=_contributor_rows(known.unclassified_transactions, names),
+        groups=tuple(
+            _overview_group(group, known.grouped[group], names)
+            for group in SUMMARY_GROUPS
+        )
     )
 
 

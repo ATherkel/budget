@@ -20,6 +20,14 @@ from budget.gold import (
 )
 
 type AccountMonthStatus = Literal["partial", "no_data", "outside_history"]
+# The overview's summary groups, in the order its cards show them.
+type SummaryGroup = Literal["income", "expenses", "transfers", "unclassified"]
+SUMMARY_GROUPS: tuple[SummaryGroup, ...] = (
+    "income",
+    "expenses",
+    "transfers",
+    "unclassified",
+)
 type ProvisionalReason = Literal["current_month", "late_bookings_unsettled"]
 type SelectionRule = Literal[
     "no_accounts",
@@ -105,23 +113,33 @@ class OverviewContributor:
 
 
 @dataclass(frozen=True)
-class OverviewMovements:
-    """The signed transactions behind the monthly overview's summary cards."""
-
-    income: tuple[OverviewContributor, ...]
-    expenses: tuple[OverviewContributor, ...]
-    transfers: tuple[OverviewContributor, ...]
-    transfer_total: Decimal
-    unclassified: tuple[OverviewContributor, ...]
-
-
-@dataclass(frozen=True)
 class MoneyInOut:
     """Money in and money out, never netted, and how many transactions."""
 
     money_in: Decimal
     money_out: Decimal
     count: int
+
+
+@dataclass(frozen=True)
+class OverviewGroup:
+    """One summary group's rows, their summed contribution and money in and out."""
+
+    group: SummaryGroup
+    rows: tuple[OverviewContributor, ...]
+    total: Decimal
+    flows: MoneyInOut
+
+
+@dataclass(frozen=True)
+class OverviewMovements:
+    """The signed transactions behind the monthly overview's summary cards."""
+
+    groups: tuple[OverviewGroup, ...]
+
+    def group(self, group: SummaryGroup) -> OverviewGroup:
+        """Return one summary group."""
+        return next(found for found in self.groups if found.group == group)
 
 
 @dataclass(frozen=True)

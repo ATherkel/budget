@@ -174,8 +174,9 @@ other cards, money in before money out. The count belongs to
 Kontrol; the explanation shows neither amounts nor count. Adjustments carry no
 note.
 
-`OverviewMovements` holds each card's rows (`income`, `expenses`, `transfers`,
-`unclassified`) and `transfer_total`. An `OverviewContributor` keeps the signed
+`OverviewMovements` holds one `OverviewGroup` per summary group (`income`,
+`expenses`, `transfers`, `unclassified`), each with its rows, their summed
+`total` and its `flows` as `MoneyInOut`. An `OverviewContributor` keeps the signed
 bank `amount` and adds `contribution`, its signed effect on the card's total:
 expenses flip the sign, and both legs of a selected transfer add to zero. Rows
 follow the headline's classification, newest first by date, account ID and

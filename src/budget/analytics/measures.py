@@ -10,7 +10,12 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
-from budget.analytics.reports import CategorySpending, MoneyInOut
+from budget.analytics.reports import (
+    SUMMARY_GROUPS,
+    CategorySpending,
+    MoneyInOut,
+    SummaryGroup,
+)
 from budget.gold import (
     CategoryDirection,
     GoldCategory,
@@ -34,10 +39,7 @@ class Figures:
     categories: tuple[CategorySpending, ...]
     unclassified: MoneyInOut | None
     adjustments: MoneyInOut | None
-    income_transactions: tuple[GoldTransaction, ...]
-    expense_transactions: tuple[GoldTransaction, ...]
-    transfer_transactions: tuple[GoldTransaction, ...]
-    unclassified_transactions: tuple[GoldTransaction, ...]
+    grouped: dict[SummaryGroup, tuple[GoldTransaction, ...]]
 
 
 # With no evidence a figure is unknown, never zero (report-contract.md).
@@ -49,10 +51,7 @@ UNKNOWN = Figures(
     categories=(),
     unclassified=None,
     adjustments=None,
-    income_transactions=(),
-    expense_transactions=(),
-    transfer_transactions=(),
-    unclassified_transactions=(),
+    grouped={},
 )
 
 
@@ -72,16 +71,26 @@ def _money_in_out(
     )
 
 
-def _measure(
+def _group(
     transaction: GoldTransaction,
     refund_directions: dict[str, CategoryDirection],
-) -> CategoryDirection | None:
-    """Return the measure a transaction counts toward; a Refund takes its category's."""
+) -> SummaryGroup | None:
+    """Return the summary group a transaction counts toward, if any.
+
+    A Refund takes its category's direction; Adjustments belong to no group.
+    """
     match transaction.transaction_type:
         case "refund":
-            return refund_directions[transaction.transaction_id]
-        case ("income" | "expense") as measure:
-            return measure
+            direction = refund_directions[transaction.transaction_id]
+            return "income" if direction == "income" else "expenses"
+        case "income":
+            return "income"
+        case "expense":
+            return "expenses"
+        case "transfer":
+            return "transfers"
+        case "unknown":
+            return "unclassified"
         case _:
             return None
 
@@ -124,20 +133,17 @@ def figures(
         allocation.transaction_id: by_id[allocation.category_id].direction
         for allocation in allocations
     }
-    measured = [(_measure(t, refund_directions), t) for t in transactions]
-    income_transactions = tuple(
-        transaction for measure, transaction in measured if measure == "income"
-    )
-    expense_transactions = tuple(
-        transaction for measure, transaction in measured if measure == "expense"
-    )
-    transfer_transactions = tuple(
-        transaction
-        for transaction in transactions
-        if transaction.transaction_type == "transfer"
-    )
-    income = _total(transaction.amount for transaction in income_transactions)
-    expenses = ZERO - _total(transaction.amount for transaction in expense_transactions)
+    groups = [_group(t, refund_directions) for t in transactions]
+    grouped = {
+        group: tuple(
+            transaction
+            for transaction, found in zip(transactions, groups, strict=True)
+            if found == group
+        )
+        for group in SUMMARY_GROUPS
+    }
+    income = _total(transaction.amount for transaction in grouped["income"])
+    expenses = ZERO - _total(transaction.amount for transaction in grouped["expenses"])
     net_cash_flow = income - expenses
     return Figures(
         income=income,
@@ -147,12 +153,5 @@ def figures(
         categories=_category_spending(allocations, by_id),
         unclassified=_money_in_out(transactions, "unknown"),
         adjustments=_money_in_out(transactions, "adjustment"),
-        income_transactions=income_transactions,
-        expense_transactions=expense_transactions,
-        transfer_transactions=transfer_transactions,
-        unclassified_transactions=tuple(
-            transaction
-            for transaction in transactions
-            if transaction.transaction_type == "unknown"
-        ),
+        grouped=grouped,
     )

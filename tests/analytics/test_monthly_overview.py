@@ -17,11 +17,13 @@ from budget.analytics import (
     MoneyInOut,
     MonthlyOverview,
     OverviewContributor,
+    OverviewGroup,
     OverviewMovements,
     Provisional,
     ReportContext,
     ReportCoverage,
     ReportPublication,
+    SummaryGroup,
     monthly_overview,
 )
 from budget.gold import (
@@ -146,15 +148,30 @@ def _movements(
     income: tuple[OverviewContributor, ...] = (),
     expenses: tuple[OverviewContributor, ...] = (),
     transfers: tuple[OverviewContributor, ...] = (),
-    transfer_total: Decimal = ZERO,
     unclassified: tuple[OverviewContributor, ...] = (),
 ) -> OverviewMovements:
+    def group(
+        name: SummaryGroup, rows: tuple[OverviewContributor, ...]
+    ) -> OverviewGroup:
+        amounts = [row.amount for row in rows]
+        return OverviewGroup(
+            group=name,
+            rows=rows,
+            total=sum((row.contribution for row in rows), ZERO),
+            flows=MoneyInOut(
+                sum((a for a in amounts if a > 0), ZERO),
+                sum((a for a in amounts if a < 0), ZERO),
+                len(rows),
+            ),
+        )
+
     return OverviewMovements(
-        income=income,
-        expenses=expenses,
-        transfers=transfers,
-        transfer_total=transfer_total,
-        unclassified=unclassified,
+        groups=(
+            group("income", income),
+            group("expenses", expenses),
+            group("transfers", transfers),
+            group("unclassified", unclassified),
+        )
     )
 
 
