@@ -101,3 +101,27 @@ def test_a_for_that_filters_its_rows_is_reported(tmp_path: Path) -> None:
     assert gate(ENVIRONMENT, root, allowlist(tmp_path)) == [
         f"page.html:1: `for ... if` in {tag} is not on the allowlist",
     ]
+
+
+@pytest.mark.parametrize(
+    ("tag", "closing", "name"),
+    [
+        ("{{ note | safe }}", "", "safe"),
+        ("{{ row.kind | capitalize }}", "", "capitalize"),
+        ("{{ row.name | default('-') }}", "", "default"),
+        ("{% for row in rows | sort %}", "{% endfor %}", "sort"),
+        ("{% filter upper %}", "{% endfilter %}", "upper"),
+    ],
+)
+def test_a_filter_other_than_budgets_own_or_xmlattr_is_reported(
+    tmp_path: Path, tag: str, closing: str, name: str
+) -> None:
+    allowed = (
+        "<p{{ card.attributes | xmlattr }}>{{ row.amount | amount }}</p>"
+        "<p>{{ row.day | danish_date }}</p>"
+    )
+    root = templates(tmp_path, {"page.html": f"{allowed}\n{tag}x{closing}\n"})
+
+    assert gate(ENVIRONMENT, root, allowlist(tmp_path)) == [
+        f"page.html:2: `filter {name}` in {tag} is not on the allowlist",
+    ]
