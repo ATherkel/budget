@@ -163,3 +163,13 @@ def test_each_repeat_of_a_spot_needs_its_own_entry(tmp_path: Path) -> None:
     assert gate(ENVIRONMENT, root, listed) == [
         "page.html:2: `else` in {% else %} is not on the allowlist",
     ]
+
+
+def test_an_entry_that_matches_nothing_is_reported_as_stale(tmp_path: Path) -> None:
+    root = templates(tmp_path, {"cards/card.html": "<p>{{ card.title }}</p>\n"})
+    listed = allowlist(tmp_path, allowance("cards/card.html", "{% if card.open %}"))
+
+    assert gate(ENVIRONMENT, root, listed) == [
+        "allowlist: the entry for {% if card.open %} in cards/card.html"
+        " matches nothing; remove it",
+    ]
