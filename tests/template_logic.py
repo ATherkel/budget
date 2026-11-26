@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from jinja2 import Environment, TemplateSyntaxError, nodes
+from jinja2.defaults import DEFAULT_FILTERS
 
 _ENDS = {"block_begin": "block_end", "variable_begin": "variable_end"}
 _BANNED_TAGS = ("if", "elif", "else", "set")
@@ -91,7 +92,26 @@ def _constructs(environment: Environment, tag: _Tag) -> list[str]:
         )
         kinds = tuple(kind for kind, _ in _BANNED_NODES)
         found.extend(_node_name(node) for node in tree.find_all(kinds))
+        allowed = _allowed_filters(environment)
+        found.extend(
+            f"filter {used.name}"
+            for used in tree.find_all(nodes.Filter)
+            if used.name not in allowed
+        )
     return list(dict.fromkeys(found))
+
+
+def _allowed_filters(environment: Environment) -> set[str]:
+    """Return the filters a template may use: budget's own, and `xmlattr`.
+
+    Budget's own are those registered on `environment` over Jinja's defaults.
+    """
+    own = {
+        name
+        for name, function in environment.filters.items()
+        if DEFAULT_FILTERS.get(name) is not function
+    }
+    return own | {"xmlattr"}
 
 
 def gate(environment: Environment, root: Path, allowlist: Path) -> list[str]:
