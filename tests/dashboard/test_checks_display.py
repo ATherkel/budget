@@ -131,3 +131,11 @@ def test_a_complete_month_with_a_nonzero_residual_does_not_add_up() -> None:
         savings_verdict(internal_residual=Decimal("12.40")),
         savings_verdict(opening_gap=Decimal("-3.00")),
     ) == ("Går ikke op (+12,40 kr.)", "Går ikke op (\N{MINUS SIGN}3,00 kr.)")
+
+
+def test_a_complete_month_with_a_missing_balance_is_unknown() -> None:
+    # Without both balances the arithmetic cannot be checked either way.
+    assert (
+        savings_verdict(closing_balance=None, internal_residual=None),
+        savings_verdict(opening_balance=None, internal_residual=None, opening_gap=None),
+    ) == ("Ukendt", "Ukendt")
