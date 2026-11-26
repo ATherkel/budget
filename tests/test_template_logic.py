@@ -3,6 +3,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from budget.dashboard import FEATURES, jinja_environment
 from tests.template_logic import gate
 
@@ -57,4 +59,34 @@ def test_a_set_is_reported(tmp_path: Path) -> None:
 
     assert gate(ENVIRONMENT, root, allowlist(tmp_path)) == [
         "page.html:1: `set` in {% set label = card.title %} is not on the allowlist",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("tag", "construct"),
+    [
+        ("{{ rows == 0 }}", "comparison"),
+        ("{{ row.kind not in kinds }}", "comparison"),
+        ("{{ row.open and row.late }}", "and"),
+        ("{{ row.open or row.late }}", "or"),
+        ("{{ not row.open }}", "not"),
+        ("{{ row.amount + 1 }}", "arithmetic"),
+        ("{{ row.amount * 2 }}", "arithmetic"),
+        ("{{ -row.amount }}", "arithmetic"),
+        ("{{ row.name ~ ':' }}", "~"),
+        ("{{ row.name if row.open else '' }}", "inline if"),
+        ("{{ row.name is defined }}", "is"),
+        ("{{ row_card(row.amount > 0) }}", "comparison"),
+        ("{% for row in rows + extra %}", "arithmetic"),
+        ("{% include 'cards/' ~ row.kind %}", "~"),
+    ],
+)
+def test_an_expression_with_logic_is_reported(
+    tmp_path: Path, tag: str, construct: str
+) -> None:
+    closing = "{% endfor %}" if tag.startswith("{% for") else ""
+    root = templates(tmp_path, {"page.html": f"<p>{tag}</p>{closing}\n"})
+
+    assert gate(ENVIRONMENT, root, allowlist(tmp_path)) == [
+        f"page.html:1: `{construct}` in {tag} is not on the allowlist",
     ]
