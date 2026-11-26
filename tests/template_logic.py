@@ -136,11 +136,22 @@ def _spots(environment: Environment, root: Path) -> Iterator[_Spot]:
                 yield _Spot(path, tag.line, tag.text, constructs)
 
 
+def _names_issue(entry: dict[str, object]) -> bool:
+    """Return whether `entry` names the issue that removes it, as its number."""
+    issue = entry.get("issue")
+    return isinstance(issue, int) and not isinstance(issue, bool) and issue > 0
+
+
 def gate(environment: Environment, root: Path, allowlist: Path) -> list[str]:
     """Return one message for each way the templates under `root` fail the gate."""
     entries = tomllib.loads(allowlist.read_text(encoding="utf-8")).get("allowance", [])
     listed = Counter((entry["path"], entry["tag"]) for entry in entries)
-    messages = []
+    messages = [
+        f"allowlist: the entry for {entry['tag']} in {entry['path']}"
+        " names no issue that removes it"
+        for entry in entries
+        if not _names_issue(entry)
+    ]
     for spot in _spots(environment, root):
         if listed[spot.path, spot.text] > 0:
             listed[spot.path, spot.text] -= 1
