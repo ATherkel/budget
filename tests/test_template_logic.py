@@ -125,3 +125,24 @@ def test_a_filter_other_than_budgets_own_or_xmlattr_is_reported(
     assert gate(ENVIRONMENT, root, allowlist(tmp_path)) == [
         f"page.html:2: `filter {name}` in {tag} is not on the allowlist",
     ]
+
+
+def allowance(path: str, tag: str, issue: str = "issue = 627\n") -> str:
+    """Return one allowlist entry for `tag` in `path`."""
+    return (
+        "\n[[allowance]]\n"
+        f"path = {path!r}\n"
+        f"tag = {tag!r}\n"
+        "reason = 'Moves into Python with the notices.'\n"
+        f"{issue}"
+    )
+
+
+def test_a_spot_on_the_allowlist_is_not_reported(tmp_path: Path) -> None:
+    root = templates(
+        tmp_path,
+        {"cards/card.html": "{% if card.open %}\n  open\n{%   endif %}\n"},
+    )
+    listed = allowlist(tmp_path, allowance("cards/card.html", "{% if card.open %}"))
+
+    assert gate(ENVIRONMENT, root, listed) == []
