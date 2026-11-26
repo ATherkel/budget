@@ -422,3 +422,62 @@ def test_kontrol_cleared_then_enkel_then_avanceret_reselects_into_overblik(
         pushed["mode"],
         pushed["tab"],
     ) == ("advanced", "overview", "advanced", "overview", ["advanced"], ["overview"])
+
+
+def test_kontrol_shows_observed_money_and_counts_separately(client: TestClient) -> None:
+    page = kontrol(client)
+
+    assert (
+        page.text_of("checks-unclassified"),
+        page.text_of("checks-adjustments"),
+        page.text_of("checks-transfers"),
+    ) == (
+        "Ukategoriseret Ind: 0,00 kr. Ud: \N{MINUS SIGN}450,00 kr. Antal: 1",
+        "Reguleringer Ind: 0,00 kr. Ud: 0,00 kr. Antal: 0",
+        "Overførsler Ind: 0,00 kr. Ud: 0,00 kr. Antal: 0",
+    )
+
+
+def test_kontrol_explains_selected_transfer_legs_and_shows_pairing(
+    client: TestClient,
+) -> None:
+    page = kontrol(client, month="2026-01")
+
+    assert (
+        page.text_of("checks-observed-note"),
+        page.text_of("checks-transfer-pairing"),
+    ) == (
+        (
+            "Antallene er observerede transaktioner på de valgte konti. "
+            "En overførsel kan tælle to gange, når begge konti er valgt."
+        ),
+        "Parring af overførsler: 2 parrede ben og 0 ensidige ben.",
+    )
+
+
+def test_kontrol_heads_the_transaction_types_section_and_its_groups(
+    client: TestClient,
+) -> None:
+    # Heading navigation: the groups sit under their own section, not under
+    # the last reconciled account; the note and pairing line belong to it.
+    html = client.get("/report", params=KONTROL, headers={"HX-Request": "true"}).text
+    page = read(html)
+    section = page.text_of("checks-observed") or ""
+
+    assert (
+        page.text_of("checks-observed-title"),
+        page.attributes("checks-observed").get("aria-labelledby"),
+        '<h5 id="checks-unclassified-title"' in html,
+        '<h5 id="checks-adjustments-title"' in html,
+        '<h5 id="checks-transfers-title"' in html,
+        section.startswith("Transaktionstyper Antallene er observerede"),
+        section.endswith("Parring af overførsler: 0 parrede ben og 0 ensidige ben."),
+    ) == (
+        "Transaktionstyper",
+        "checks-observed-title",
+        True,
+        True,
+        True,
+        True,
+        True,
+    )

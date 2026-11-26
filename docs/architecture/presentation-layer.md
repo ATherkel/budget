@@ -5,148 +5,105 @@ type: architecture
 
 ## Purpose
 
-Render household financial information for phone and desktop browsers. The
-dashboard is in Danish, supports keyboard use, and shows loading, empty,
-unavailable and request-failure states.
+The household dashboard, in Danish, for phone and desktop browsers. It
+supports keyboard use and shows loading, empty, unavailable and
+request-failure states.
 
 ## Boundary
 
-Presentation consumes analytics reports only, as defined in
-[`report-contract.md`](report-contract.md). It does not classify
-transactions, calculate financial totals, or access source data. It never
-reads Gold either: it names the publication in the report context, and
-analytics opens it.
+Presentation reads analytics reports only
+([`report-contract.md`](report-contract.md)). It never classifies, totals, or
+reads source data or Gold: it names the publication in the report context and
+analytics opens it. It owns the interaction around a report: pinning the
+context, ignoring stale responses, back/forward restore and the
+empty-selection prompt
+([navigation contract](report-contract.md#navigation-and-selection-transitions)).
 
-Presentation owns the interaction around a report: pinning the resolved
-context on the page, keeping a response eligible only for the activity that
-asked for it, restoring the selection on browser back and forward, and the
-empty-selection prompt. The rules are in
-[`report-contract.md`](report-contract.md#navigation-and-selection-transitions).
+## Technology
 
-## Initial Technology Direction
-
-- FastAPI for the HTTP application.
-- Jinja templates and HTMX for server-rendered interactions.
-- Plotly for charts where a chart improves comprehension.
-
-This is a direction, not an implementation commitment; a technology change
-must preserve the analytics-facing DTO boundary.
+FastAPI, Jinja templates with HTMX, and Plotly where a chart helps. A change
+of technology keeps the analytics-facing DTO boundary.
 
 ## Feature Modules
 
-Each dashboard feature is a folder under `src/budget/dashboard/features/`
-holding its view, its templates, its stylesheets and its own display helpers.
-Its package exports a `Feature`: the folder, and a `register` function that
-adds its routes to the `Dashboard` it is handed. `FEATURES` in
-`budget.dashboard` lists the registered features one line each; a feature left
-out is off. The overview shows the report and the pickers, so it needs `report`
-and `view_state` registered too, and the report links each category to
-`category` and its trust notes to `explanation`. The report needs `checks`
-registered for its Kontrol tab. Every page sends a reader
-who is not logged in to `login`, the page that logs in and out; the check
-itself, the session cookie and the passphrase stay in `budget.dashboard`, so a
-dashboard without `login` still refuses every page. `errors` explains why an
-address is malformed or a page's figures cannot be shown: the overview, report
-and category page need it registered to explain a failure, and a dashboard
-without it answers a malformed address with FastAPI's own JSON. A feature that
-serves no page of its own, such as `view_state` (the month, mode and account pickers), adds no routes: the pages that show
-it include its templates. A feature's templates are named
-`<folder>/<file>.html`, and `base.html` links every stylesheet in its folder,
-so adding a feature with its own page edits no shared file. Helpers more than one feature uses live in the
-`budget.dashboard.display` package, the pinned address every page links by
-lives in `budget.dashboard.addresses`, reading the overview several pages show
-lives in `budget.dashboard.reading`, and markup more than one page repeats is
-a macro in `templates/_macros.html`. A template holds no chain of conditions:
-wording that turns on several cases comes from a display helper.
+Each feature is a folder under `src/budget/dashboard/features/` with its view,
+templates (named `<folder>/<file>.html`), stylesheets and display helpers. Its
+package exports a `Feature` whose `register` adds its routes. `FEATURES` in
+`budget.dashboard` lists one feature per line; a feature left out is off.
+`base.html` links every feature's stylesheets, so a new feature edits no
+shared file. A feature without a page of its own, such as `view_state` (the
+pickers), adds no routes; the pages that show it include its templates.
 
-## Initial Screens
+- The overview needs `report` and `view_state`. The report links to
+  `category`, `explanation` and `checks` (“Kontrol”).
+- `errors` explains malformed addresses and figures that cannot be shown.
+  Without it, a malformed address gets FastAPI's JSON.
+- `login` is the log-in page. The check itself stays in `budget.dashboard`, so
+  a dashboard without `login` still refuses every page.
 
-- Current-month overview: income, expenses, savings, savings rate.
-- Category view: current month and year-to-date spending.
-- Account activity: balances and transfer activity.
-- Trend view: month-over-month totals.
+Shared helpers live in `budget.dashboard.display`, pinned addresses in
+`budget.dashboard.addresses`, the shared overview read in
+`budget.dashboard.reading`, and repeated markup as macros in
+`templates/_macros.html`. A template holds no chain of conditions: wording
+that depends on several cases comes from a display helper.
 
 ## “Enkel” and “Avanceret”
 
 “Enkel” is the calm monthly overview, with category investigation on demand.
-“Avanceret” adds independently navigable **“Overblik”**, **“Detaljer”** (account
-activity) and **“Kontrol”** (trust diagnostics and reconciliation). Mode is a
-presentation preference available to every authenticated household reader.
-Both summaries use the same [monthly report](report-contract.md#monthlyoverview);
-changing mode never changes financial values or their trust semantics.
+“Avanceret” adds the tabs “Overblik”, “Detaljer” (account activity) and
+“Kontrol” (trust diagnostics). Every logged-in reader can switch. Both modes
+use the same [monthly report](report-contract.md#monthlyoverview) and reach
+the basic trust explanation, so mode never changes figures or trust.
 
-A fresh visit starts in “Enkel” and “Beløb”. Mode persists during the active visit,
-not as a lasting preference. An explicit switch closes detail overlays and
-returns to the destination mode's overview, preserving the shared report context
-and “Beløb”/“Mod budget” choice. Once “Kontrol” ships, a targeted explanation
-link opens it with a route back to the originating view. Browser back/forward
-restores the recorded mode, tab and applicable detail/comparison state under the
+A visit starts in “Enkel” and “Beløb”, and mode lasts for the visit only.
+Switching mode closes overlays and opens that mode's overview, keeping the
+report context and “Beløb”/“Mod budget”. An explanation link can open
+“Kontrol” with a way back. Back and forward follow the
 [navigation contract](report-contract.md#navigation-and-selection-transitions).
 
-The switch and advanced “Overblik”, “Detaljer” and “Kontrol” are available.
-“Kontrol” shows Coverage, provisional reasons, incomplete account-months,
-Evidence through and each selected account's
-[reconciliation](report-contract.md#diagnostics). A missing component reads
-“Ukendt”; nonzero residuals come first, each linking to its account in
-“Detaljer”. Each account keeps its own Coverage label, and the page says a zero
-difference does not prove the data complete. Both modes retain access to the
-basic trust explanation.
+“Kontrol” shows the selected accounts' [diagnostics](report-contract.md#diagnostics):
+Coverage per account, provisional reasons, incomplete account-months, Evidence
+through, reconciliation with nonzero residuals first (each linking to
+“Detaljer”), and Ukategoriseret, Reguleringer and Overførsler with Ind and Ud
+apart, observed counts and Transfer pairing. Anything missing reads “Ukendt”.
+The page says a zero difference does not prove the data complete, and that a
+Transfer counts twice when both its accounts are selected.
 
 ## Data Trust Display
 
-- Any report period that includes the current, still-accumulating calendar
-  month always carries a visible provisional/month-to-date label at the point
-  of display — not just a documented caveat, and with no exception. Which month
-  is current is decided from today's date in Europe/Copenhagen;
-  `transaction_date` itself is never converted. A household that is behind on
-  its imports has *more* reason to see the label, not less, so no coverage
-  status withholds it here.
-- A period that is already closed carries the same label until, for every
-  account in the report and *every month* in the period, one of the exports
-  counted in the account's evidence ranges was produced at least the
-  late-booking window (7 days unless the profile sets another) after
-  that month ended *and* its range covers that month's last day. Late bookings
-  land on their transaction date, so an export starting after a month cannot
-  show them, however late it was produced. Checking every month, not only the
-  period's last, keeps a year-to-date total provisional while one of its
-  months can still change. Gold publishes the per-account, per-month
-  half of this rule as `MonthlyBalanceSnapshot.late_bookings_settled`;
-  analytics adds the current month and returns the label with the report.
-  This bullet and the one above are the only statement of the rule; other
-  documents cite them.
-- Exactly one account is exempt from holding the label on a closed period: one
-  that has never been imported, meaning its `GoldAccount.evidence_through` is
-  null. It already reports `no_data` on its own line, and no export of it is
-  outstanding, so it cannot be what the period is waiting for. The exemption is
-  written on `evidence_through`, never on the period's coverage status: an
-  account that *has* been imported reads `no_data` for any period its evidence
-  does not reach, and a later export can still reach back and change that
-  period — which is precisely what the label warns about.
-- Known first-release limitation: an imported account with no booked
-  transaction yet has no managed period, so no snapshot rows carry its flag
-  and it cannot hold the label either. Its first booked transaction creates
-  its rows, and reports restate.
-- Every screen reads exactly one Gold publication, and all requests from one
-  page read the same one. A screen showing any publication other than the
-  current one carries a visible banner naming it (its label, and whether it is
-  an as-was or as-known-at view). A past view takes the provisional label as
-  of the publication's `known_at`, not today
-  ([`publications.md`](publications.md)).
-- A page opened on the current publication keeps reading it after a newer
-  build becomes current, so its parts never mix two publications. That is a
-  superseded page, not a past view: instead of the banner, it says that newer
-  figures exist and offers a reload. When its result is no longer retained,
-  the page offers the current publication explicitly and never substitutes it
-  ([`report-contract.md`](report-contract.md#reportpublication)).
-- Account and balance views must reflect each account's coverage status from
-  analytics; a `partial` or `no_data` account must never render as if its
-  balance or totals are complete.
-- Every screen that shows a household-level measure (overview, category, and
-  trend views) must display the coverage the report carries for it. A
-  `partial` total names the accounts that are not complete.
+- **Provisional label.** A period that includes the current month always shows
+  a provisional label where its figures are shown, whatever its coverage. The
+  current month follows today's date in Europe/Copenhagen; `transaction_date`
+  is never converted. A closed period keeps the label until, for every account
+  and every month in it, a counted export was produced at least the
+  late-booking window (7 days unless the profile sets another) after that
+  month ended and covers its last day. Checking every month keeps a
+  year-to-date total provisional while any of its months can change. Gold
+  publishes the per-account-month half as
+  `MonthlyBalanceSnapshot.late_bookings_settled`; analytics adds the current
+  month. This bullet is the rule's only statement; other documents cite it.
+- **Never-imported accounts.** On a closed period, an account whose
+  `GoldAccount.evidence_through` is null cannot hold the label: it shows
+  `no_data` and has no export outstanding. The exemption keys on
+  `evidence_through`, never on coverage, because an imported account's
+  `no_data` period can still change.
+- **Limitation.** An imported account with no booked transaction has no
+  snapshot rows, so it cannot hold the label until its first transaction
+  restates the reports.
+- **One publication per page.** Every request from a page reads the same Gold
+  publication. A past view shows a banner with its label and whether it is
+  as-was or as-known-at, and takes the provisional label as of its `known_at`
+  ([`publications.md`](publications.md)). A page left on a superseded
+  publication keeps reading it, says newer figures exist and offers a reload;
+  once that result is gone, it offers the current publication and never swaps
+  it in silently ([`report-contract.md`](report-contract.md#reportpublication)).
+- **Coverage.** Account and balance views show each account's coverage, and a
+  `partial` or `no_data` account never looks complete. Household measures
+  (overview and category) show their coverage, and a `partial` total names the
+  accounts that are not complete.
 
 ## Non-Responsibilities
 
 - Importing or editing raw bank data.
 - Making categorization decisions.
-- Using browser-stored financial data as a system of record.
+- Keeping financial data in the browser as a system of record.

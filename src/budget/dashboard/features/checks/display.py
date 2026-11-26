@@ -4,7 +4,13 @@
 from dataclasses import dataclass, replace
 from decimal import Decimal
 
-from budget.analytics import Diagnostics, Provisional, Reconciliation
+from budget.analytics import (
+    Diagnostics,
+    MoneyInOut,
+    Provisional,
+    Reconciliation,
+    TransferSummary,
+)
 from budget.dashboard.addresses import answered_address, pinned_url
 from budget.dashboard.display.amounts import amount, signed_amount
 from budget.dashboard.display.text import (
@@ -18,6 +24,12 @@ from budget.dashboard.features.view_state import DEFAULT_VIEW, ViewState
 RECONCILIATION_NOTE = (
     "En forskel på 0,00 kr. beviser ikke, at alle posteringer er importeret: "
     "saldiene kan bygge på de samme ufuldstændige posteringer."
+)
+
+
+OBSERVED_NOTE = (
+    "Antallene er observerede transaktioner på de valgte konti. "
+    "En overførsel kan tælle to gange, når begge konti er valgt."
 )
 
 
@@ -49,6 +61,17 @@ class ResidualLink:
 
 
 @dataclass(frozen=True)
+class ObservedLines:
+    """One selected transaction type, with its two directions kept apart."""
+
+    kind: str
+    title: str
+    money_in: str
+    money_out: str
+    count: str
+
+
+@dataclass(frozen=True)
 class ChecksView:
     """Kontrol's lines, so its template only loops and prints."""
 
@@ -63,6 +86,9 @@ class ChecksView:
     residuals_heading: list[str]
     reconciliations: list[ReconciliationLines]
     reconciliation_note: str
+    observed: list[ObservedLines]
+    observed_note: str
+    transfer_pairing: str
 
 
 def _reconciliation_lines(
@@ -148,6 +174,33 @@ def _provisional_lines(provisional: Provisional | None, period: str) -> list[str
     return [f"Foreløbigt: {' '.join(sentences)}"]
 
 
+def _observed_lines(
+    kind: str, title: str, values: MoneyInOut | TransferSummary | None, currency: str
+) -> ObservedLines:
+    """Format analytics-supplied directions and the observed transaction count."""
+    if values is None:
+        return ObservedLines(kind, title, "Ukendt", "Ukendt", "Ukendt")
+    return ObservedLines(
+        kind,
+        title,
+        signed_amount(values.money_in, currency),
+        signed_amount(values.money_out, currency),
+        str(values.count),
+    )
+
+
+def _transfer_pairing(transfers: TransferSummary | None) -> str:
+    """Describe selected paired and one-sided legs, keeping unknown counts explicit."""
+    if transfers is None:
+        return "Parring af overførsler: Ukendt."
+    paired = "parret ben" if transfers.paired_count == 1 else "parrede ben"
+    one_sided = "ensidigt ben" if transfers.one_sided_count == 1 else "ensidige ben"
+    return (
+        f"Parring af overførsler: {transfers.paired_count} {paired} "
+        f"og {transfers.one_sided_count} {one_sided}."
+    )
+
+
 def checks_view(
     diagnostics: Diagnostics, period: str, view: ViewState = DEFAULT_VIEW
 ) -> ChecksView:
@@ -178,4 +231,14 @@ def checks_view(
             for reconciliation in diagnostics.reconciliations
         ],
         reconciliation_note=RECONCILIATION_NOTE,
+        observed_note=OBSERVED_NOTE,
+        transfer_pairing=_transfer_pairing(diagnostics.transfers),
+        observed=[
+            _observed_lines(kind, title, values, diagnostics.currency)
+            for kind, title, values in (
+                ("unclassified", "Ukategoriseret", diagnostics.unclassified),
+                ("adjustments", "Reguleringer", diagnostics.adjustments),
+                ("transfers", "Overførsler", diagnostics.transfers),
+            )
+        ],
     )

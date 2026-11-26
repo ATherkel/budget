@@ -37,3 +37,19 @@
 {% endfor %}
 </ul>
 {% endfor %}
+
+<section id="checks-observed" aria-labelledby="checks-observed-title">
+  <h4 id="checks-observed-title">Transaktionstyper</h4>
+  <p id="checks-observed-note">{{ checks.observed_note }}</p>
+{% for group in checks.observed %}
+  <section id="checks-{{ group.kind }}" aria-labelledby="checks-{{ group.kind }}-title">
+    <h5 id="checks-{{ group.kind }}-title">{{ group.title }}</h5>
+    <ul class="explanation-list">
+      <li>Ind: {{ group.money_in }}</li>
+      <li>Ud: {{ group.money_out }}</li>
+      <li>Antal: {{ group.count }}</li>
+    </ul>
+  </section>
+{% endfor %}
+  <p id="checks-transfer-pairing">{{ checks.transfer_pairing }}</p>
+</section>

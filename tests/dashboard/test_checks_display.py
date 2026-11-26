@@ -10,10 +10,14 @@ from datetime import date
 from decimal import Decimal
 from urllib.parse import parse_qs, urlsplit
 
+import pytest
+
 from budget.analytics import (
     AccountMonthCoverage,
+    MoneyInOut,
     ReportContext,
     ReportCoverage,
+    TransferSummary,
     diagnostics,
 )
 from budget.dashboard.features.checks.display import checks_view
@@ -109,3 +113,64 @@ def test_a_positive_residual_shows_its_plus_sign_in_the_accounts_list() -> None:
         "Slutsaldo forrige måned: 53.000,00 kr.",
         "Åbningsforskel: 0,00 kr.",
     ]
+
+
+def test_unknown_observed_groups_keep_both_amounts_and_count_unknown() -> None:
+    view = checks_view(
+        replace(MARCH_REPORT, unclassified=None, adjustments=None, transfers=None),
+        "marts 2026",
+    )
+
+    assert [
+        (group.money_in, group.money_out, group.count) for group in view.observed
+    ] == [
+        ("Ukendt", "Ukendt", "Ukendt"),
+        ("Ukendt", "Ukendt", "Ukendt"),
+        ("Ukendt", "Ukendt", "Ukendt"),
+    ]
+
+
+def test_opposite_observed_amounts_stay_signed_and_never_cancel() -> None:
+    view = checks_view(
+        replace(
+            MARCH_REPORT,
+            unclassified=MoneyInOut(Decimal("12.40"), Decimal("-12.40"), 2),
+            adjustments=MoneyInOut(Decimal("23.50"), Decimal("-23.50"), 4),
+            transfers=TransferSummary(Decimal("34.60"), Decimal("-34.60"), 6, 6, 0),
+        ),
+        "marts 2026",
+    )
+
+    assert [
+        (group.money_in, group.money_out, group.count) for group in view.observed
+    ] == [
+        ("+12,40 kr.", "\N{MINUS SIGN}12,40 kr.", "2"),
+        ("+23,50 kr.", "\N{MINUS SIGN}23,50 kr.", "4"),
+        ("+34,60 kr.", "\N{MINUS SIGN}34,60 kr.", "6"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("transfers", "expected"),
+    [
+        (
+            TransferSummary(Decimal(0), Decimal(0), 0, 0, 0),
+            "Parring af overførsler: 0 parrede ben og 0 ensidige ben.",
+        ),
+        (
+            TransferSummary(Decimal(10), Decimal(-10), 2, 1, 1),
+            "Parring af overførsler: 1 parret ben og 1 ensidigt ben.",
+        ),
+        (
+            TransferSummary(Decimal(20), Decimal(-20), 4, 2, 2),
+            "Parring af overførsler: 2 parrede ben og 2 ensidige ben.",
+        ),
+        (None, "Parring af overførsler: Ukendt."),
+    ],
+)
+def test_transfer_pairing_counts_selected_legs_with_singular_plural_or_unknown(
+    transfers: TransferSummary | None, expected: str
+) -> None:
+    view = checks_view(replace(MARCH_REPORT, transfers=transfers), "marts 2026")
+
+    assert view.transfer_pairing == expected
