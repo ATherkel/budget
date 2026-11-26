@@ -396,6 +396,25 @@ def test_kontrol_walks_each_accounts_month_from_start_to_end_balance(
     )
 
 
+def test_kontrol_keeps_a_running_total_unknown_from_a_missing_balance(
+    client: TestClient,
+) -> None:
+    # May has no start balance, so no step after it may print a total.
+    assert kontrol(client, month="2026-05").text_of(f"checks-waterfall-{CURRENT}") == (
+        "Trin Beløb Løbende saldo "
+        "Startsaldo Ukendt Ukendt "
+        "Indtægter minus udgifter 0,00 kr. Ukendt "
+        "Overførsler 0,00 kr. Ukendt "
+        "Ukategoriseret ind 0,00 kr. Ukendt "
+        "Ukategoriseret ud 0,00 kr. Ukendt "
+        "Regulering ind 0,00 kr. Ukendt "
+        "Regulering ud 0,00 kr. Ukendt "
+        "Beregnet slutsaldo Ukendt "
+        "Bankens slutsaldo Ukendt "
+        "Forskel Ukendt"
+    )
+
+
 def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
     client: TestClient,
 ) -> None:
