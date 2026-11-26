@@ -432,18 +432,9 @@ def test_kontrol_shows_observed_money_and_counts_separately(client: TestClient) 
         page.text_of("checks-adjustments"),
         page.text_of("checks-transfers"),
     ) == (
-        (
-            "Ukategoriseret Ind: 0,00 kr. Ud: \N{MINUS SIGN}450,00 kr. "
-            "Observerede transaktioner på de valgte konti: 1"
-        ),
-        (
-            "Reguleringer Ind: 0,00 kr. Ud: 0,00 kr. "
-            "Observerede transaktioner på de valgte konti: 0"
-        ),
-        (
-            "Overførsler Ind: 0,00 kr. Ud: 0,00 kr. "
-            "Observerede transaktioner på de valgte konti: 0"
-        ),
+        "Ukategoriseret Ind: 0,00 kr. Ud: \N{MINUS SIGN}450,00 kr. Antal: 1",
+        "Reguleringer Ind: 0,00 kr. Ud: 0,00 kr. Antal: 0",
+        "Overførsler Ind: 0,00 kr. Ud: 0,00 kr. Antal: 0",
     )
 
 
