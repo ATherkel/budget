@@ -173,3 +173,18 @@ def test_an_entry_that_matches_nothing_is_reported_as_stale(tmp_path: Path) -> N
         "allowlist: the entry for {% if card.open %} in cards/card.html"
         " matches nothing; remove it",
     ]
+
+
+@pytest.mark.parametrize("issue", ["", "issue = 'soon'\n", "issue = 0\n"])
+def test_an_entry_without_an_issue_number_is_reported(
+    tmp_path: Path, issue: str
+) -> None:
+    root = templates(tmp_path, {"cards/card.html": "{% if card.open %}x{% endif %}\n"})
+    listed = allowlist(
+        tmp_path, allowance("cards/card.html", "{% if card.open %}", issue)
+    )
+
+    assert gate(ENVIRONMENT, root, listed) == [
+        "allowlist: the entry for {% if card.open %} in cards/card.html"
+        " names no issue that removes it",
+    ]
