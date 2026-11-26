@@ -15,3 +15,303 @@
 #
 # A tag that appears twice in one file needs two entries. The gate fails on an
 # entry that matches nothing, so remove an entry with the logic it allowed.
+
+[[allowance]]
+path = "features/category/category.html"
+tag = '{% if failure %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/category/category.html"
+tag = '{% else %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/category/category.html"
+tag = '{% set is_group = detail.subject.kind == "group" %}'
+reason = "A set in the template; Python passes the value."
+issue = 626
+
+[[allowance]]
+path = "features/category/category.html"
+tag = '{{ switch_link("scope-month", scope_urls["month"], "Måned", detail.scope == "month") }}'
+reason = "An expression in the template; Python computes the value."
+issue = 626
+
+[[allowance]]
+path = "features/category/category.html"
+tag = '{{ switch_link("scope-year-to-date", scope_urls["year_to_date"], "År til dato", detail.scope == "year_to_date") }}'
+reason = "An expression in the template; Python computes the value."
+issue = 626
+
+[[allowance]]
+path = "features/category/category.html"
+tag = '{% if not is_group %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/category/category.html"
+tag = '{% if detail.provisional %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/category/category.html"
+tag = '{% if detail.coverage.status != "complete" %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/category/category.html"
+tag = '{%- if is_group %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/category/category.html"
+tag = '{% if is_group %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/explanation/explanation.html"
+tag = '{{ page_heading("Om tallene for " ~ month_label if overview else "Om tallene") }}'
+reason = "An expression in the template; Python computes the value."
+issue = 626
+
+[[allowance]]
+path = "features/explanation/explanation.html"
+tag = '{% if failure %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/explanation/explanation.html"
+tag = '{% else %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/explanation/explanation.html"
+tag = '{% if overview.coverage.status != "complete" %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/explanation/explanation.html"
+tag = '{% if incomplete_months %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/explanation/explanation.html"
+tag = '{% else %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/explanation/explanation.html"
+tag = '{% if overview.provisional %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/explanation/explanation.html"
+tag = '{% if "current_month" in overview.provisional.reasons %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/explanation/explanation.html"
+tag = '{{ month_label | capitalize }}'
+reason = "Built-in filter; Python returns the finished text or Markup."
+issue = 626
+
+[[allowance]]
+path = "features/explanation/explanation.html"
+tag = '{% if "late_bookings_unsettled" in overview.provisional.reasons %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/explanation/explanation.html"
+tag = '{% if overview.unclassified and overview.unclassified.count > 0 %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/explanation/explanation.html"
+tag = '{% if report_url %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/login/login.html"
+tag = '{% set page_title = "Log ind" %}'
+reason = "A set in the template; Python passes the value."
+issue = 626
+
+[[allowance]]
+path = "features/login/login.html"
+tag = '{% if message %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/overview/overview.html"
+tag = '{{ report | safe }}'
+reason = "Built-in filter; Python returns the finished text or Markup."
+issue = 626
+
+[[allowance]]
+path = "features/report/activity.html"
+tag = '{% for row in activity.transactions if row.account_id == account.account_id %}'
+reason = "A loop that filters its rows; Python groups the rows per account."
+issue = 626
+
+[[allowance]]
+path = "features/report/activity.html"
+tag = '{% else %}'
+reason = "The empty branch of the filtered loop; goes with its per-account rows."
+issue = 626
+
+[[allowance]]
+path = "features/report/report.html"
+tag = '{% if mode == "advanced" %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/report/report.html"
+tag = '{{ switch_link("tab-overview", tab_urls["overview"], "Overblik", tab == "overview") }}'
+reason = "An expression in the template; Python computes the value."
+issue = 626
+
+[[allowance]]
+path = "features/report/report.html"
+tag = '{{ switch_link("tab-details", tab_urls["details"], "Detaljer", tab == "details") }}'
+reason = "An expression in the template; Python computes the value."
+issue = 626
+
+[[allowance]]
+path = "features/report/report.html"
+tag = '{{ switch_link("tab-checks", tab_urls["checks"], "Kontrol", tab == "checks") }}'
+reason = "An expression in the template; Python computes the value."
+issue = 626
+
+[[allowance]]
+path = "features/report/report.html"
+tag = '{% if overview.provisional %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/report/report.html"
+tag = '{% if overview.coverage.status != "complete" %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/report/report.html"
+tag = '{% if tab == "overview" %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/report/report.html"
+tag = '{% set unclassified = overview.unclassified %}'
+reason = "A set in the template; Python passes the value."
+issue = 626
+
+[[allowance]]
+path = "features/report/report.html"
+tag = '{{- (unclassified.money_in if unclassified else none) | signed_amount(overview.currency) -}}'
+reason = "An expression in the template; Python computes the value."
+issue = 626
+
+[[allowance]]
+path = "features/report/report.html"
+tag = '{{- (unclassified.money_out if unclassified else none) | signed_amount(overview.currency) -}}'
+reason = "An expression in the template; Python computes the value."
+issue = 626
+
+[[allowance]]
+path = "features/report/report.html"
+tag = '{% if unclassified and unclassified.count > 0 %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/report/report.html"
+tag = '{% if overview.categories %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/report/report.html"
+tag = '{% elif tab == "checks" %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/report/report.html"
+tag = '{% else %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "features/view_state/selection.html"
+tag = '{%- if value == current %}'
+reason = "Optional attribute; becomes an xmlattr dict that display.py builds."
+issue = 625
+
+[[allowance]]
+path = "features/view_state/selection.html"
+tag = '{% if value == selected_month %}'
+reason = "Optional attribute; becomes an xmlattr dict that display.py builds."
+issue = 625
+
+[[allowance]]
+path = "features/view_state/selection.html"
+tag = '{%- if account.account_id in selected_accounts %}'
+reason = "Optional attribute; becomes an xmlattr dict that display.py builds."
+issue = 625
+
+[[allowance]]
+path = "templates/_macros.html"
+tag = '{% if title_id %}'
+reason = "Optional attribute; becomes an xmlattr dict that display.py builds."
+issue = 625
+
+[[allowance]]
+path = "templates/_macros.html"
+tag = '{%- if caller %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "templates/_macros.html"
+tag = '{% if not is_current %}'
+reason = "Optional section or failure branch; becomes a notice list or its own template."
+issue = 627
+
+[[allowance]]
+path = "templates/_macros.html"
+tag = '{% if notice_id %}'
+reason = "Optional attribute; becomes an xmlattr dict that display.py builds."
+issue = 625
+
+[[allowance]]
+path = "templates/_macros.html"
+tag = '{{ failure | safe }}'
+reason = "Built-in filter; Python returns the finished text or Markup."
+issue = 626
+
+[[allowance]]
+path = "templates/_macros.html"
+tag = '{% if current %}'
+reason = "Optional attribute; becomes an xmlattr dict that display.py builds."
+issue = 625
