@@ -5,6 +5,11 @@
     <tr>
       <th scope="col">Konto</th>
       <th scope="col">Vurdering</th>
+      <th scope="col" class="detail-amount">Startsaldo</th>
+      <th scope="col" class="detail-amount">Slutsaldo</th>
+      <th scope="col" class="detail-amount">Intern forskel</th>
+      <th scope="col" class="detail-amount">Åbningsforskel</th>
+      <th scope="col">Data til og med</th>
     </tr>
   </thead>
   <tbody>
@@ -14,6 +19,19 @@
         <a id="checks-account-{{ account.account_id }}" href="{{ account.url }}">{{ account.name }}</a>
       </th>
       <td id="checks-verdict-{{ account.account_id }}" data-label="Vurdering">{{ account.verdict }}</td>
+      <td id="checks-opening-{{ account.account_id }}" data-label="Startsaldo" class="detail-amount">
+        {{ account.opening }}
+      </td>
+      <td id="checks-closing-{{ account.account_id }}" data-label="Slutsaldo" class="detail-amount">
+        {{ account.closing }}
+      </td>
+      <td id="checks-internal-{{ account.account_id }}" data-label="Intern forskel" class="detail-amount">
+        {{ account.internal }}
+      </td>
+      <td id="checks-gap-{{ account.account_id }}" data-label="Åbningsforskel" class="detail-amount">
+        {{ account.gap }}
+      </td>
+      <td id="checks-through-{{ account.account_id }}" data-label="Data til og med">{{ account.through }}</td>
     </tr>
   {% endfor %}
   </tbody>

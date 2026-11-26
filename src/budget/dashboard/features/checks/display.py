@@ -57,6 +57,11 @@ class AccountRow:
     # The account's own "Detaljer" for the same month.
     url: str
     verdict: str
+    opening: str
+    closing: str
+    internal: str
+    gap: str
+    through: str
 
 
 @dataclass(frozen=True)
@@ -154,6 +159,11 @@ def _account_rows(diagnostics: Diagnostics, view: ViewState) -> list[AccountRow]
     """Return each selected account's row, linking to its own "Detaljer"."""
     address = answered_address(diagnostics.context)
     details = replace(view, mode="advanced", tab="details")
+    currency = diagnostics.currency
+    through = {
+        account.account_id: evidence_line(account.evidence_through)
+        for account in diagnostics.evidence
+    }
     return [
         AccountRow(
             reconciliation.account_id,
@@ -162,7 +172,12 @@ def _account_rows(diagnostics: Diagnostics, view: ViewState) -> list[AccountRow]
                 replace(address, accounts=(reconciliation.account_id,)),
                 view=details,
             ),
-            _verdict(reconciliation, diagnostics.currency),
+            _verdict(reconciliation, currency),
+            _figure(reconciliation.opening_balance, currency),
+            _figure(reconciliation.closing_balance, currency),
+            _difference(reconciliation.internal_residual, currency),
+            _difference(reconciliation.opening_gap, currency),
+            through.get(reconciliation.account_id, "Ukendt"),
         )
         for reconciliation in diagnostics.reconciliations
     ]
