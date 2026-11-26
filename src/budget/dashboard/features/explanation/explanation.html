@@ -2,7 +2,7 @@
 {% from "_macros.html" import failure_notice, newer_figures, page_heading, report_section %}
 {% block title %}Om tallene · Budget{% endblock %}
 {% block content %}
-{{ page_heading("Om tallene for " ~ month_label if overview else "Om tallene") }}
+{{ page_heading(heading) }}
 {% if failure %}
 {{ failure_notice(failure) }}
 {% else %}
@@ -28,7 +28,7 @@
 {% call report_section("provisional", "Hvorfor tallene er foreløbige") -%}
 <ul id="explanation-provisional" class="explanation-list">
 {% if "current_month" in overview.provisional.reasons %}
-  <li>{{ month_label | capitalize }} er indeværende måned, så der kommer flere posteringer.</li>
+  <li>{{ capitalized_month }} er indeværende måned, så der kommer flere posteringer.</li>
 {% endif %}
 {% if "late_bookings_unsettled" in overview.provisional.reasons %}
   <li>Banken kan stadig bogføre sene posteringer på {{ overview.provisional.unsettled | account_names }}.</li>

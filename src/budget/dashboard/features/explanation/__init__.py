@@ -29,11 +29,15 @@ def _render_explanation(
     overview_report = read_overview(dashboard, pin, accounts, month)
     page = dashboard.templates.get_template("explanation/explanation.html")
     if isinstance(overview_report, TemplateModule):
-        return page.render(failure=overview_report)
+        return page.render(heading="Om tallene", failure=overview_report)
+    label = month_label(overview_report.context.month)
     return page.render(
+        heading=f"Om tallene for {label}",
         overview=overview_report,
         incomplete_months=incomplete_months(overview_report.coverage),
-        month_label=month_label(overview_report.context.month),
+        month_label=label,
+        # The month opens a sentence.
+        capitalized_month=label.capitalize(),
         report_url=answered_url(overview_report, "/", view),
     )
 
