@@ -36,18 +36,6 @@ issue = 626
 
 [[allowance]]
 path = "features/category/category.html"
-tag = '{{ switch_link("scope-month", scope_urls["month"], "Måned", detail.scope == "month") }}'
-reason = "An expression in the template; Python computes the value."
-issue = 626
-
-[[allowance]]
-path = "features/category/category.html"
-tag = '{{ switch_link("scope-year-to-date", scope_urls["year_to_date"], "År til dato", detail.scope == "year_to_date") }}'
-reason = "An expression in the template; Python computes the value."
-issue = 626
-
-[[allowance]]
-path = "features/category/category.html"
 tag = '{% if not is_group %}'
 reason = "Optional section or failure branch; becomes a notice list or its own template."
 issue = 627
@@ -186,24 +174,6 @@ issue = 627
 
 [[allowance]]
 path = "features/report/report.html"
-tag = '{{ switch_link("tab-overview", tab_urls["overview"], "Overblik", tab == "overview") }}'
-reason = "An expression in the template; Python computes the value."
-issue = 626
-
-[[allowance]]
-path = "features/report/report.html"
-tag = '{{ switch_link("tab-details", tab_urls["details"], "Detaljer", tab == "details") }}'
-reason = "An expression in the template; Python computes the value."
-issue = 626
-
-[[allowance]]
-path = "features/report/report.html"
-tag = '{{ switch_link("tab-checks", tab_urls["checks"], "Kontrol", tab == "checks") }}'
-reason = "An expression in the template; Python computes the value."
-issue = 626
-
-[[allowance]]
-path = "features/report/report.html"
 tag = '{% if overview.provisional %}'
 reason = "Optional section or failure branch; becomes a notice list or its own template."
 issue = 627
@@ -282,12 +252,6 @@ issue = 625
 
 [[allowance]]
 path = "templates/_macros.html"
-tag = '{% if title_id %}'
-reason = "Optional attribute; becomes an xmlattr dict that display.py builds."
-issue = 625
-
-[[allowance]]
-path = "templates/_macros.html"
 tag = '{%- if caller %}'
 reason = "Optional section or failure branch; becomes a notice list or its own template."
 issue = 627
@@ -300,18 +264,6 @@ issue = 627
 
 [[allowance]]
 path = "templates/_macros.html"
-tag = '{% if notice_id %}'
-reason = "Optional attribute; becomes an xmlattr dict that display.py builds."
-issue = 625
-
-[[allowance]]
-path = "templates/_macros.html"
 tag = '{{ failure | safe }}'
 reason = "Built-in filter; Python returns the finished text or Markup."
 issue = 626
-
-[[allowance]]
-path = "templates/_macros.html"
-tag = '{% if current %}'
-reason = "Optional attribute; becomes an xmlattr dict that display.py builds."
-issue = 625
