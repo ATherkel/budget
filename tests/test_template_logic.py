@@ -51,6 +51,36 @@ def test_each_branch_of_an_if_is_reported_with_its_file_and_line(
     ]
 
 
+def test_templates_without_logic_pass_with_an_allowlist_of_only_comments(
+    tmp_path: Path,
+) -> None:
+    root = templates(
+        tmp_path,
+        {
+            "_parts.html": (
+                "{# A card. #}\n"
+                "{% macro card(title, rows) -%}\n"
+                "<h2>{{ title }}</h2>\n"
+                "{% for row in rows %}<p>{{ row.name }}</p>{% endfor %}\n"
+                "{%- endmacro %}\n"
+            ),
+            "page.html": (
+                '{% extends "base.html" %}\n'
+                '{% from "_parts.html" import card %}\n'
+                '{% import "_macros.html" as macros %}\n'
+                "{% block main %}\n"
+                '<a href="{{ urls["overview"] }}">{{ page.title }}</a>\n'
+                "{{ card(page.title, page.rows) }}\n"
+                "{% call macros.page_heading(page.title) %}x{% endcall %}\n"
+                '{% include "notice.html" %}\n'
+                "{% endblock %}\n"
+            ),
+        },
+    )
+
+    assert gate(ENVIRONMENT, root, allowlist(tmp_path)) == []
+
+
 def test_a_set_is_reported(tmp_path: Path) -> None:
     root = templates(
         tmp_path,
