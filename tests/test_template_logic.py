@@ -47,3 +47,14 @@ def test_each_branch_of_an_if_is_reported_with_its_file_and_line(
         "cards/card.html:3: `elif` in {% elif card.closed %} is not on the allowlist",
         "cards/card.html:4: `else` in {% else %} is not on the allowlist",
     ]
+
+
+def test_a_set_is_reported(tmp_path: Path) -> None:
+    root = templates(
+        tmp_path,
+        {"page.html": "{% set label = card.title %}\n<p>{{ label }}</p>\n"},
+    )
+
+    assert gate(ENVIRONMENT, root, allowlist(tmp_path)) == [
+        "page.html:1: `set` in {% set label = card.title %} is not on the allowlist",
+    ]
