@@ -49,6 +49,17 @@ class ResidualLink:
 
 
 @dataclass(frozen=True)
+class WaterfallStep:
+    """One line of an account's month, from its start to its end balance."""
+
+    label: str
+    # Empty where the line has no amount of its own, such as the computed close.
+    amount: str
+    # Empty where the line is not part of the running total.
+    total: str
+
+
+@dataclass(frozen=True)
 class AccountRow:
     """One account's row in Kontrol's table: its verdict for the month."""
 
@@ -62,6 +73,7 @@ class AccountRow:
     internal: str
     gap: str
     through: str
+    waterfall: list[WaterfallStep]
 
 
 @dataclass(frozen=True)
@@ -155,6 +167,36 @@ def _verdict(reconciliation: Reconciliation, currency: str) -> str:
     return "Ingen fundne forskelle"
 
 
+def _waterfall(reconciliation: Reconciliation, currency: str) -> list[WaterfallStep]:
+    """Return the month's steps with a running total, unknown from a missing step."""
+    flows = (
+        ("Indtægter minus udgifter", reconciliation.income_minus_expenses),
+        ("Overførsler", reconciliation.transfers),
+        ("Ukategoriseret ind", reconciliation.unclassified_in),
+        ("Ukategoriseret ud", reconciliation.unclassified_out),
+        ("Regulering ind", reconciliation.adjustments_in),
+        ("Regulering ud", reconciliation.adjustments_out),
+    )
+    total = reconciliation.opening_balance
+    opening = _figure(total, currency)
+    steps = [WaterfallStep("Startsaldo", opening, opening)]
+    for label, value in flows:
+        total = None if total is None or value is None else total + value
+        steps.append(
+            WaterfallStep(label, _difference(value, currency), _figure(total, currency))
+        )
+    return [
+        *steps,
+        WaterfallStep("Beregnet slutsaldo", "", _figure(total, currency)),
+        WaterfallStep(
+            "Bankens slutsaldo", _figure(reconciliation.closing_balance, currency), ""
+        ),
+        WaterfallStep(
+            "Forskel", _difference(reconciliation.internal_residual, currency), ""
+        ),
+    ]
+
+
 def _account_rows(diagnostics: Diagnostics, view: ViewState) -> list[AccountRow]:
     """Return each selected account's row, linking to its own "Detaljer"."""
     address = answered_address(diagnostics.context)
@@ -178,6 +220,7 @@ def _account_rows(diagnostics: Diagnostics, view: ViewState) -> list[AccountRow]
             _difference(reconciliation.internal_residual, currency),
             _difference(reconciliation.opening_gap, currency),
             through.get(reconciliation.account_id, "Ukendt"),
+            _waterfall(reconciliation, currency),
         )
         for reconciliation in diagnostics.reconciliations
     ]

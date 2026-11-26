@@ -33,6 +33,33 @@
       </td>
       <td id="checks-through-{{ account.account_id }}" data-label="Data til og med">{{ account.through }}</td>
     </tr>
+    <tr>
+      <td colspan="7">
+        <details>
+          <summary>Beregning for {{ account.name }}</summary>
+          <table id="checks-waterfall-{{ account.account_id }}"
+                 class="detail-table"
+                 aria-label="Beregning for {{ account.name }}">
+            <thead>
+              <tr>
+                <th scope="col">Trin</th>
+                <th scope="col" class="detail-amount">Beløb</th>
+                <th scope="col" class="detail-amount">Løbende saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+            {% for step in account.waterfall %}
+              <tr>
+                <th scope="row">{{ step.label }}</th>
+                <td data-label="Beløb" class="detail-amount">{{ step.amount }}</td>
+                <td data-label="Løbende saldo" class="detail-amount">{{ step.total }}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </details>
+      </td>
+    </tr>
   {% endfor %}
   </tbody>
 </table>
