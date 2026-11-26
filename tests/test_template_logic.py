@@ -200,8 +200,10 @@ def test_an_entry_that_matches_nothing_is_reported_as_stale(tmp_path: Path) -> N
     listed = allowlist(tmp_path, allowance("cards/card.html", "{% if card.open %}"))
 
     assert gate(ENVIRONMENT, root, listed) == [
-        "allowlist: the entry for {% if card.open %} in cards/card.html"
-        " matches nothing; remove it",
+        (
+            "allowlist: the entry for {% if card.open %} in cards/card.html"
+            " matches nothing; remove it"
+        ),
     ]
 
 
@@ -215,8 +217,10 @@ def test_an_entry_without_an_issue_number_is_reported(
     )
 
     assert gate(ENVIRONMENT, root, listed) == [
-        "allowlist: the entry for {% if card.open %} in cards/card.html"
-        " names no issue that removes it",
+        (
+            "allowlist: the entry for {% if card.open %} in cards/card.html"
+            " names no issue that removes it"
+        ),
     ]
 
 
