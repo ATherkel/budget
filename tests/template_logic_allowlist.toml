@@ -66,12 +66,6 @@ issue = 627
 
 [[allowance]]
 path = "features/explanation/explanation.html"
-tag = '{{ page_heading("Om tallene for " ~ month_label if overview else "Om tallene") }}'
-reason = "An expression in the template; Python computes the value."
-issue = 626
-
-[[allowance]]
-path = "features/explanation/explanation.html"
 tag = '{% if failure %}'
 reason = "Optional section or failure branch; becomes a notice list or its own template."
 issue = 627
@@ -111,12 +105,6 @@ path = "features/explanation/explanation.html"
 tag = '{% if "current_month" in overview.provisional.reasons %}'
 reason = "Optional section or failure branch; becomes a notice list or its own template."
 issue = 627
-
-[[allowance]]
-path = "features/explanation/explanation.html"
-tag = '{{ month_label | capitalize }}'
-reason = "Built-in filter; Python returns the finished text or Markup."
-issue = 626
 
 [[allowance]]
 path = "features/explanation/explanation.html"
