@@ -1,5 +1,23 @@
 <p class="eyebrow">Kontrol</p>
 <h3 id="report-ready-title">{{ month_label }}</h3>
+<table id="checks-accounts" class="detail-table" aria-label="Konti i {{ month_label }}">
+  <thead>
+    <tr>
+      <th scope="col">Konto</th>
+      <th scope="col">Vurdering</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for account in checks.accounts %}
+    <tr>
+      <th scope="row">
+        <a id="checks-account-{{ account.account_id }}" href="{{ account.url }}">{{ account.name }}</a>
+      </th>
+      <td id="checks-verdict-{{ account.account_id }}" data-label="Vurdering">{{ account.verdict }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
 {% for heading in checks.residuals_heading %}
 <h4 id="checks-residuals-title">{{ heading }}</h4>
 <ul id="checks-residuals" class="explanation-list" aria-labelledby="checks-residuals-title">

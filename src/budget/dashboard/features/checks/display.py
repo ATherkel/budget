@@ -49,9 +49,21 @@ class ResidualLink:
 
 
 @dataclass(frozen=True)
+class AccountRow:
+    """One account's row in Kontrol's table: its verdict for the month."""
+
+    account_id: str
+    name: str
+    # The account's own "Detaljer" for the same month.
+    url: str
+    verdict: str
+
+
+@dataclass(frozen=True)
 class ChecksView:
     """Kontrol's lines, so its template only loops and prints."""
 
+    accounts: list[AccountRow]
     coverage: str
     incomplete: list[str]
     # Empty when the figures are settled: the template then prints nothing.
@@ -123,6 +135,31 @@ def _nonzero_residuals(diagnostics: Diagnostics, view: ViewState) -> list[Residu
     ]
 
 
+def _verdict(reconciliation: Reconciliation) -> str:
+    """Return whether one account-month can be trusted, never claiming it adds up."""
+    if reconciliation.coverage in ("partial", "no_data"):
+        return "Data mangler"
+    return "Ingen fundne forskelle"
+
+
+def _account_rows(diagnostics: Diagnostics, view: ViewState) -> list[AccountRow]:
+    """Return each selected account's row, linking to its own "Detaljer"."""
+    address = answered_address(diagnostics.context)
+    details = replace(view, mode="advanced", tab="details")
+    return [
+        AccountRow(
+            reconciliation.account_id,
+            reconciliation.display_name,
+            pinned_url(
+                replace(address, accounts=(reconciliation.account_id,)),
+                view=details,
+            ),
+            _verdict(reconciliation),
+        )
+        for reconciliation in diagnostics.reconciliations
+    ]
+
+
 def _figure(value: Decimal | None, currency: str) -> str:
     """Return a reconciliation figure, with a missing one unknown rather than 0."""
     return "Ukendt" if value is None else amount(value, currency)
@@ -161,6 +198,7 @@ def checks_view(
     ]
     nonzero_residuals = _nonzero_residuals(diagnostics, view)
     return ChecksView(
+        accounts=_account_rows(diagnostics, view),
         coverage=f"Dækning: {coverage_label(diagnostics.coverage.status)}.",
         incomplete=incomplete or ["Ingen valgte kontomåneder mangler dækning."],
         provisional=_provisional_lines(diagnostics.provisional, period),
