@@ -1,0 +1,17 @@
+# Temporary allowances for the template logic gate, `tests/test_template_logic.py`.
+#
+# The gate fails on any logic in a template under `src/budget/dashboard`; see
+# docs/architecture/presentation-layer.md for what it bans and allows. An entry
+# here lets one tag through for now. Add one only when the logic cannot move
+# into Python in the same change, and name the issue that removes it.
+#
+# Each entry is one occurrence of one tag:
+#
+#   [[allowance]]
+#   path = "features/report/report.html"   # relative to src/budget/dashboard
+#   tag = "{% if report.empty %}"          # the tag's source, whitespace collapsed
+#   reason = "Why the logic is still here."
+#   issue = 123                            # the issue that removes it
+#
+# A tag that appears twice in one file needs two entries. The gate fails on an
+# entry that matches nothing, so remove an entry with the logic it allowed.

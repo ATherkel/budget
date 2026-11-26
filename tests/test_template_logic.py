@@ -188,3 +188,11 @@ def test_an_entry_without_an_issue_number_is_reported(
         "allowlist: the entry for {% if card.open %} in cards/card.html"
         " names no issue that removes it",
     ]
+
+
+DASHBOARD = Path(__file__).resolve().parents[1] / "src" / "budget" / "dashboard"
+ALLOWLIST = Path(__file__).with_name("template_logic_allowlist.toml")
+
+
+def test_the_dashboard_templates_pass_the_gate() -> None:
+    assert gate(ENVIRONMENT, DASHBOARD, ALLOWLIST) == []
