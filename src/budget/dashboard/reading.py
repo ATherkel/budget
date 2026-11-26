@@ -4,6 +4,8 @@
 from collections.abc import Collection
 from datetime import date
 
+from jinja2.environment import TemplateModule
+
 from budget.analytics import (
     HouseholdReports,
     InvalidSelectionError,
@@ -22,7 +24,7 @@ def read_overview(
     pin: tuple[int, date],
     accounts: Collection[str],
     month: str,
-) -> MonthlyOverview | str:
+) -> MonthlyOverview | TemplateModule:
     """Return the overview a selection asks for, or a fragment saying why not.
 
     The pinned context is used exactly as the page sent it: never re-resolved.

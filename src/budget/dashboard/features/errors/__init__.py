@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse
+from jinja2.environment import TemplateModule
 
 from budget.analytics import InvalidSelectionError, PublicationUnavailableError
 from budget.dashboard.display.text import selection_problems
@@ -15,15 +16,16 @@ from budget.dashboard.features import Dashboard, Feature
 def failure_fragment(
     dashboard: Dashboard,
     error: InvalidSelectionError | PublicationUnavailableError,
-) -> str:
+) -> TemplateModule:
     """Return the fragment saying why a selection's figures cannot be shown.
 
-    A failure is shown, and echoes no context the page could render.
+    A failure is shown, and echoes no context the page could render. A page
+    that embeds the rendered fragment shows it as markup, never escaped again.
     """
     if isinstance(error, InvalidSelectionError):
         page = dashboard.templates.get_template("errors/invalid_selection.html")
-        return page.render(problems=selection_problems(error))
-    return dashboard.templates.get_template("errors/unavailable.html").render()
+        return page.make_module({"problems": selection_problems(error)})
+    return dashboard.templates.get_template("errors/unavailable.html").make_module()
 
 
 def _register(dashboard: Dashboard) -> None:

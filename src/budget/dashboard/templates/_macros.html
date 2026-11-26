@@ -20,7 +20,7 @@
 {%- endmacro %}
 {# Why a page cannot be shown, and the way back to the newest overview. #}
 {% macro failure_notice(failure, notice_attributes={}) -%}
-<div{{ notice_attributes | xmlattr }} role="alert">{{ failure | safe }}</div>
+<div{{ notice_attributes | xmlattr }} role="alert">{{ failure }}</div>
 <p><a id="back-to-overview" href="/">Gå til den nyeste oversigt</a></p>
 {%- endmacro %}
 {# One choice in a row of links where the current one is marked; Python

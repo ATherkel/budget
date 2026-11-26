@@ -8,6 +8,8 @@ from collections.abc import Collection
 from datetime import date
 from pathlib import Path
 
+from jinja2.environment import TemplateModule
+
 from budget.analytics import (
     HouseholdReports,
     InvalidSelectionError,
@@ -26,7 +28,7 @@ def read_checks(
     pin: tuple[int, date],
     accounts: Collection[str],
     month: str,
-) -> ChecksView | str:
+) -> ChecksView | TemplateModule:
     """Return Kontrol's lines for a pinned selection, or a failure fragment."""
     publication_id, reference_date = pin
     try:

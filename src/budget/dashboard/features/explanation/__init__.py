@@ -8,6 +8,7 @@ from typing import Annotated
 
 from fastapi import Query, Request, Response
 from fastapi.responses import HTMLResponse
+from jinja2.environment import TemplateModule
 
 from budget.dashboard.addresses import PinnedQuery, answered_url
 from budget.dashboard.display.months import month_label
@@ -27,7 +28,7 @@ def _render_explanation(
     """Render the explanation page of one pinned report's trust notes."""
     overview_report = read_overview(dashboard, pin, accounts, month)
     page = dashboard.templates.get_template("explanation/explanation.html")
-    if isinstance(overview_report, str):
+    if isinstance(overview_report, TemplateModule):
         return page.render(failure=overview_report)
     return page.render(
         overview=overview_report,

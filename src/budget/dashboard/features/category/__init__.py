@@ -8,6 +8,7 @@ from typing import Annotated, Self
 
 from fastapi import Query, Request, Response
 from fastapi.responses import HTMLResponse
+from jinja2.environment import TemplateModule
 from pydantic import BaseModel, model_validator
 
 from budget.analytics import (
@@ -88,7 +89,7 @@ def _read_detail(
     dashboard: Dashboard,
     pin: tuple[int, date],
     request: DetailRequest,
-) -> SpendingDetail | str:
+) -> SpendingDetail | TemplateModule:
     """Return the detail `request` asks for, or a fragment saying why not."""
     publication_id, reference_date = pin
     try:
@@ -113,7 +114,7 @@ def _render_detail(
 ) -> str:
     """Render the detail page of one subject under one pinned selection."""
     detail_report = _read_detail(dashboard, pin, request)
-    if isinstance(detail_report, str):
+    if isinstance(detail_report, TemplateModule):
         return dashboard.templates.get_template("category/category.html").render(
             failure=detail_report, title="Udgifter"
         )

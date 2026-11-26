@@ -9,6 +9,7 @@ from typing import Annotated
 
 from fastapi import Query, Request, Response
 from fastapi.responses import HTMLResponse
+from jinja2.environment import TemplateModule
 from pydantic import BaseModel
 
 from budget.analytics import (
@@ -30,7 +31,7 @@ from budget.gold.store import GoldStore
 
 # Renders the report fragment one request selects, or why it cannot be shown;
 # an empty selection gets the prompt to select an account.
-type ReportRenderer = Callable[[Dashboard, ReportRequest], str]
+type ReportRenderer = Callable[[Dashboard, ReportRequest], TemplateModule]
 
 
 @dataclass(frozen=True)
