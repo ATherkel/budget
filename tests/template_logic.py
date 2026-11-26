@@ -66,9 +66,7 @@ def _parsed(environment: Environment, tag: _Tag) -> nodes.Template | None:
     A tag that only continues or ends a block parses to nothing.
     """
     name = tag.words[0]
-    if tag.end == "block_end" and (
-        name in _UNPARSED_TAGS or name.startswith("end")
-    ):
+    if tag.end == "block_end" and (name in _UNPARSED_TAGS or name.startswith("end")):
         return None
     try:
         return environment.parse(tag.source)
@@ -88,6 +86,9 @@ def _constructs(environment: Environment, tag: _Tag) -> list[str]:
         found.append(tag.words[0])
     tree = _parsed(environment, tag)
     if tree is not None:
+        found.extend(
+            "for ... if" for loop in tree.find_all(nodes.For) if loop.test is not None
+        )
         kinds = tuple(kind for kind, _ in _BANNED_NODES)
         found.extend(_node_name(node) for node in tree.find_all(kinds))
     return list(dict.fromkeys(found))
