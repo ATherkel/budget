@@ -108,7 +108,7 @@ def test_details_render_dated_balances_snapshots_and_public_transfer_evidence(
         "advanced",
         "details",
         "page",
-        "Gennem 08.05.2026",
+        "Data til og med 08.05.2026",
         "21.557,50 kr. den 28.01.2026",
         ("Månedssnapshot: Åbning 400,00 kr.; lukning 21.557,50 kr.; delvist dækket."),
         True,
