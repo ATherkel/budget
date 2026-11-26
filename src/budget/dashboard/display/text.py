@@ -137,7 +137,7 @@ def evidence_line(through: date | None) -> str:
     """Return how far an account's imported data reaches, in Danish."""
     if through is None:
         return "Ingen importeret data"
-    return f"Gennem {danish_date(through)}"
+    return f"Data til og med {danish_date(through)}"
 
 
 def monthly_snapshot_line(
