@@ -1,6 +1,7 @@
 # Copyright 2026 Therkel
 """The gate that keeps logic out of the dashboard's templates."""
 
+import tomllib
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -116,7 +117,8 @@ def _allowed_filters(environment: Environment) -> set[str]:
 
 def gate(environment: Environment, root: Path, allowlist: Path) -> list[str]:
     """Return one message for each way the templates under `root` fail the gate."""
-    del allowlist
+    entries = tomllib.loads(allowlist.read_text(encoding="utf-8")).get("allowance", [])
+    listed = {(entry["path"], entry["tag"]) for entry in entries}
     messages = []
     for page in sorted(root.rglob("*.html")):
         name = page.relative_to(root).as_posix()
@@ -124,7 +126,7 @@ def gate(environment: Environment, root: Path, allowlist: Path) -> list[str]:
             constructs = ", ".join(
                 f"`{word}`" for word in _constructs(environment, tag)
             )
-            if constructs:
+            if constructs and (name, tag.text) not in listed:
                 messages.append(
                     f"{name}:{tag.line}: {constructs} in {tag.text}"
                     " is not on the allowlist"
