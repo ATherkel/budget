@@ -162,18 +162,6 @@ issue = 627
 
 [[allowance]]
 path = "features/report/report.html"
-tag = '{{- (unclassified.money_in if unclassified else none) | signed_amount(overview.currency) -}}'
-reason = "An expression in the template; Python computes the value."
-issue = 626
-
-[[allowance]]
-path = "features/report/report.html"
-tag = '{{- (unclassified.money_out if unclassified else none) | signed_amount(overview.currency) -}}'
-reason = "An expression in the template; Python computes the value."
-issue = 626
-
-[[allowance]]
-path = "features/report/report.html"
 tag = '{% if unclassified and unclassified.count > 0 %}'
 reason = "Optional section or failure branch; becomes a notice list or its own template."
 issue = 627
