@@ -192,7 +192,7 @@ restored store holds (1,000,000 for none), so an id written down before the
 restore never names a publication built after it. A never-restored store
 numbers 1, 2, 3, …. A second restore of the same or an older set jumps from
 that set's highest id again, so it can reuse ids that builds between the two
-restores took (pending: [#414](https://github.com/ATherkel/budget/issues/414)).
+restores took.
 
 ### Past views
 
@@ -211,9 +211,8 @@ current.
 
 ### Verify
 
-Recipe replay by `verify` is pending
-([#259](https://github.com/ATherkel/budget/issues/259)). It will replay
-[from exact inputs](#what-reproducible-promises) and compare the fingerprint
+`verify` replays the current recipe
+[from exact inputs](#what-reproducible-promises) and compares the fingerprint
 without publishing; a mismatch once the prerequisites hold is a defect.
 
 ### Scratch stores
@@ -359,7 +358,7 @@ Import run-1 starts on 2026-03-03, from an export covering through
 | 5 | 04-12 | `undo` | P3 current again | as step 3 | 3,349.00 | 0.00 |
 | 6 | 04-12 | Delete `r-net` from the rules file | Nothing published: the recipe equals P3's | as step 3 | 3,349.00 | 0.00 |
 | 7 | 05-02 | **Dimension change.** Rename `streaming` to "Subscriptions" and move it from `leisure` to `housing`; logged in `category-changes.md` | P5 current | as step 3 | 3,349.00 | 0.00 |
-| 8 | 05-03 | **Gold recipe verification (pending)** | Nothing published when the exact-input replay matches | as step 3 | 3,349.00 | 0.00 |
+| 8 | 05-03 | **Gold recipe verification** | Nothing published when the exact-input replay matches | as step 3 | 3,349.00 | 0.00 |
 | 9 | 06-01 | New code version, with no change in behavior | P6 current, same result fingerprint as P5 | as step 3 | 3,349.00 | 0.00 |
 
 - **Step 3.** 2,400.00 moves between categories, so Expenses hold. The decision
@@ -383,12 +382,12 @@ Pointer history after step 9: P1, P2, P3, P4, P3, P5, P6. Results kept: P6
 
 ### Views, on 2026-06-15
 
-V1 depends on the pending replay in [Verify](#verify): an unretained P1 is
+V1 depends on the replay in [Verify](#verify): an unretained P1 is
 available only with its exact replay inputs.
 
 | # | Request | Publication read | February: groceries / household-goods / gifts / streaming (name, group) | Expenses |
 | --- | --- | --- | --- | --- |
-| V1 | `view --as-was 2026-03-05 --label "March review"` | P1, using the pending exact-input replay | 520.00 / 2,400.00 / 0.00 / 129.00 ("Streaming", `leisure`) | 3,049.00 |
+| V1 | `view --as-was 2026-03-05 --label "March review"` | P1, using the exact-input replay | 520.00 / 2,400.00 / 0.00 / 129.00 ("Streaming", `leisure`) | 3,049.00 |
 | V2 | `view --known-at 2026-03-05 --label "Known 5 March"` | P7, kind `as_known_at`: run-1 only, today's interpretation | 520.00 / 0.00 / 2,400.00 / 129.00 ("Subscriptions", `housing`) | 3,049.00 |
 | V3 | the dashboard, default | P6 | 820.00 / 0.00 / 2,400.00 / 129.00 ("Subscriptions", `housing`) | 3,349.00 |
 
