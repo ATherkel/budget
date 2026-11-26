@@ -5,7 +5,7 @@ Expected values are the worked examples in `report-contract.md`, over the
 synthetic worked-example publication; the dashboard is driven in-process.
 """
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -14,7 +14,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from budget.dashboard import create_app
-from budget.gold import GoldResult, GoldTransaction
+from budget.gold import (
+    GoldCategoryAllocation,
+    GoldRecords,
+    GoldResult,
+    GoldTransaction,
+    TransactionType,
+)
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
 from tests.analytics.test_monthly_overview import LATER_GOLD, PERSON
@@ -68,6 +74,128 @@ def report(
     return read(response.text)
 
 
+@dataclass(frozen=True)
+class _SummaryMovement:
+    transaction_id: str
+    account_id: str
+    transaction_date: date
+    account_sequence: int
+    amount: str
+    description: str
+    transaction_type: TransactionType
+    category_id: str | None = None
+    transfer_group_id: str | None = None
+
+
+def _summary_transaction(movement: _SummaryMovement) -> GoldTransaction:
+    return GoldTransaction(
+        transaction_id=movement.transaction_id,
+        account_id=movement.account_id,
+        transaction_date=movement.transaction_date,
+        account_sequence=movement.account_sequence,
+        amount=Decimal(movement.amount),
+        description=movement.description,
+        transaction_type=movement.transaction_type,
+        transfer_group_id=movement.transfer_group_id,
+        balance_after=None,
+        balance_check="missing_balance",
+    )
+
+
+def _summary_allocation(movement: _SummaryMovement) -> GoldCategoryAllocation:
+    assert movement.category_id is not None
+    return GoldCategoryAllocation(
+        allocation_id=f"{movement.transaction_id}/{movement.category_id}",
+        transaction_id=movement.transaction_id,
+        account_id=movement.account_id,
+        transaction_date=movement.transaction_date,
+        category_id=movement.category_id,
+        amount=Decimal(movement.amount),
+    )
+
+
+def _mixed_summary_records() -> GoldRecords:
+    movements = (
+        _SummaryMovement(
+            "income-base",
+            CURRENT,
+            date(2026, 2, 1),
+            1,
+            "30000.00",
+            "INCOME BASE",
+            "income",
+            "salary",
+        ),
+        _SummaryMovement(
+            "income-extra",
+            CURRENT,
+            date(2026, 2, 2),
+            2,
+            "10000.00",
+            "INCOME EXTRA",
+            "income",
+            "salary",
+        ),
+        _SummaryMovement(
+            "income-reversal",
+            CURRENT,
+            date(2026, 2, 3),
+            3,
+            "-5000.00",
+            "INCOME REVERSAL",
+            "refund",
+            "salary",
+        ),
+        _SummaryMovement(
+            "expense-base",
+            CURRENT,
+            date(2026, 2, 4),
+            4,
+            "-1000.00",
+            "EXPENSE BASE",
+            "expense",
+            "rent",
+        ),
+        _SummaryMovement(
+            "expense-refund",
+            CURRENT,
+            date(2026, 2, 5),
+            5,
+            "200.00",
+            "EXPENSE REFUND",
+            "refund",
+            "rent",
+        ),
+        _SummaryMovement(
+            "transfer-out",
+            CURRENT,
+            date(2026, 2, 6),
+            6,
+            "-2000.00",
+            "TRANSFER OUT",
+            "transfer",
+            transfer_group_id="T-summary",
+        ),
+        _SummaryMovement(
+            "transfer-in",
+            SAVINGS,
+            date(2026, 2, 6),
+            1,
+            "2000.00",
+            "TRANSFER IN",
+            "transfer",
+            transfer_group_id="T-summary",
+        ),
+    )
+    return replace(
+        RECORDS,
+        transactions=tuple(_summary_transaction(row) for row in movements),
+        category_allocations=tuple(
+            _summary_allocation(row) for row in movements if row.category_id is not None
+        ),
+    )
+
+
 def test_the_report_shows_income_expenses_and_money_left_in_danish_kroner(
     client: TestClient,
 ) -> None:
@@ -79,6 +207,153 @@ def test_the_report_shows_income_expenses_and_money_left_in_danish_kroner(
         february.text_of("expenses"),
         february.text_of("money-left"),
     ) == ("25.000,00 kr.", "9.020,00 kr.", "15.980,00 kr.")
+
+
+@pytest.mark.parametrize("mode", ["simple", "advanced"])
+@pytest.mark.parametrize(
+    "accounts",
+    [(CURRENT,), (CURRENT, SAVINGS)],
+    ids=["selected-leg", "both-legs"],
+)
+def test_overview_summaries_disclose_reconciling_signed_contributors(
+    profile: Profile,
+    client: TestClient,
+    mode: str,
+    accounts: tuple[str, ...],
+) -> None:
+    with GoldStore(profile) as store:
+        store.publish(
+            GoldResult(
+                replace(PUBLICATION, publication_id=2),
+                _mixed_summary_records(),
+            ),
+            RECIPE,
+            CONFIGURATION,
+        )
+
+    response = client.get(
+        "/report",
+        params={
+            "publication": "2",
+            "reference_date": REFERENCE_DATE,
+            "account": list(accounts),
+            "month": "2026-02",
+            "mode": mode,
+            "tab": "overview",
+            "comparison": "amounts",
+        },
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200, response.text
+    page = read(response.text)
+
+    assert (
+        page.attributes("report").get("data-mode"),
+        page.attributes("report").get("data-publication"),
+        page.attributes("report").get("data-reference-date"),
+        page.attributes("report").get("data-accounts"),
+        page.attributes("report").get("data-month"),
+        page.hidden("tab"),
+        page.text_of("income"),
+        page.text_of("expenses"),
+    ) == (
+        mode,
+        "2",
+        REFERENCE_DATE,
+        " ".join(accounts),
+        "2026-02",
+        "overview",
+        "35.000,00 kr.",
+        "800,00 kr.",
+    )
+    movements = [
+        disclosure
+        for disclosure in page.disclosures
+        if not disclosure.summary.startswith("Afstemning for ")
+    ]
+    reconciliations = [
+        disclosure
+        for disclosure in page.disclosures
+        if disclosure.summary.startswith("Afstemning for ")
+    ]
+    assert [disclosure.summary for disclosure in movements] == [
+        "Indtægter 35.000,00 kr.",
+        "Udgifter 800,00 kr.",
+        (
+            "Overførsler \N{MINUS SIGN}2.000,00 kr."
+            if accounts == (CURRENT,)
+            else "Overførsler 0,00 kr."
+        ),
+    ]
+    income, expenses, transfers = movements
+    assert [disclosure.summary for disclosure in reconciliations] == (
+        ["Afstemning for Joint current", "Afstemning for Joint savings"]
+        if SAVINGS in accounts
+        else ["Afstemning for Joint current"]
+    )
+    headers = ("Dato", "Tekst", "Bankbeløb", "Bidrag")
+    assert (income.open, expenses.open, transfers.open) == (
+        False,
+        False,
+        False,
+    )
+    assert (income.rows[0], expenses.rows[0], transfers.rows[0]) == (
+        headers,
+        headers,
+        headers,
+    )
+    assert set(income.rows[1:]) == {
+        (
+            "03.02.2026",
+            "INCOME REVERSAL",
+            "\N{MINUS SIGN}5.000,00 kr.",
+            "\N{MINUS SIGN}5.000,00 kr.",
+        ),
+        (
+            "02.02.2026",
+            "INCOME EXTRA",
+            "+10.000,00 kr.",
+            "+10.000,00 kr.",
+        ),
+        (
+            "01.02.2026",
+            "INCOME BASE",
+            "+30.000,00 kr.",
+            "+30.000,00 kr.",
+        ),
+    }
+    expected_transfers = {
+        (
+            "06.02.2026",
+            "TRANSFER OUT",
+            "\N{MINUS SIGN}2.000,00 kr.",
+            "\N{MINUS SIGN}2.000,00 kr.",
+        )
+    }
+    if SAVINGS in accounts:
+        expected_transfers.add(
+            (
+                "06.02.2026",
+                "TRANSFER IN",
+                "+2.000,00 kr.",
+                "+2.000,00 kr.",
+            )
+        )
+    assert set(transfers.rows[1:]) == expected_transfers
+    assert set(expenses.rows[1:]) == {
+        (
+            "05.02.2026",
+            "EXPENSE REFUND",
+            "+200,00 kr.",
+            "\N{MINUS SIGN}200,00 kr.",
+        ),
+        (
+            "04.02.2026",
+            "EXPENSE BASE",
+            "\N{MINUS SIGN}1.000,00 kr.",
+            "+1.000,00 kr.",
+        ),
+    }
 
 
 def test_every_category_is_listed_in_the_order_the_report_gives(
@@ -358,6 +633,54 @@ def test_a_month_without_data_shows_its_figures_as_unknown_never_as_zero(
         june.text_of("money-left"),
         "0,00" in june.visible(),
     ) == ("Ingen data endnu", "Ingen data endnu", "Ingen data endnu", False)
+    assert [
+        (disclosure.summary, disclosure.rows[1])
+        for disclosure in june.disclosures
+        if not disclosure.summary.startswith("Afstemning for ")
+    ] == [
+        (
+            "Indtægter Ingen data endnu",
+            ("Ingen data endnu; bidrag kan ikke vises.",),
+        ),
+        (
+            "Udgifter Ingen data endnu",
+            ("Ingen data endnu; bidrag kan ikke vises.",),
+        ),
+        (
+            "Overførsler Ingen data endnu",
+            ("Ingen data endnu; bidrag kan ikke vises.",),
+        ),
+    ]
+    reconciliations = [
+        disclosure
+        for disclosure in june.disclosures
+        if disclosure.summary.startswith("Afstemning for ")
+    ]
+    assert [disclosure.summary for disclosure in reconciliations] == [
+        "Afstemning for Joint current",
+        "Afstemning for Joint savings",
+    ]
+    assert all(disclosure.open is False for disclosure in reconciliations)
+    assert all(
+        disclosure.rows[0] == ("Post", "Beløb") for disclosure in reconciliations
+    )
+    expected_unknown = {
+        "Åbning": "Ingen data endnu",
+        "Indtægter minus udgifter": "Ingen data endnu",
+        "Nettooverførsler": "Ingen data endnu",
+        "Ukategoriseret ind": "Ingen data endnu",
+        "Ukategoriseret ud": "Ingen data endnu",
+        "Reguleringer ind": "Ingen data endnu",
+        "Reguleringer ud": "Ingen data endnu",
+        "Forventet lukning": "Ingen data endnu",
+        "Observeret lukning": "Ingen data endnu",
+        "Uforklaret forskel": "Ikke mulig at afstemme",
+        "Åbningsafvigelse": "Ingen data endnu",
+    }
+    assert all(
+        {row[0]: row[1] for row in disclosure.rows[1:]} == expected_unknown
+        for disclosure in reconciliations
+    )
 
 
 def test_a_confirmed_quiet_month_shows_zero_without_a_trust_note(
@@ -374,6 +697,15 @@ def test_a_confirmed_quiet_month_shows_zero_without_a_trust_note(
         quiet.text_of("coverage-note"),
         quiet.text_of("unclassified-note"),
     ) == ("0,00 kr.", "0,00 kr.", "0,00 kr.", None, None)
+    assert [
+        (disclosure.summary, disclosure.rows[1])
+        for disclosure in quiet.disclosures
+        if not disclosure.summary.startswith("Afstemning for ")
+    ] == [
+        ("Indtægter 0,00 kr.", ("Ingen indtægter i måneden.",)),
+        ("Udgifter 0,00 kr.", ("Ingen udgifter i måneden.",)),
+        ("Overførsler 0,00 kr.", ("Ingen overførsler i måneden.",)),
+    ]
 
 
 def test_a_report_without_data_names_its_accounts_and_links_the_explanation(

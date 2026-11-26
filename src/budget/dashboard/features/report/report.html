@@ -1,4 +1,138 @@
 {%- from "_macros.html" import newer_figures, provisional_label, switch_link -%}
+{% macro movement_card(element_id, label, total, rows, currency, empty, signed_total=false) -%}
+<div class="summary-figure summary-card">
+  <details class="summary-disclosure">
+    <summary>
+      <span class="summary-card-title">
+        <span>{{ label }}</span>
+        <span id="{{ element_id }}">
+          {{- (total | signed_amount(currency)) if signed_total
+              else (total | amount(currency)) -}}
+        </span>
+      </span>
+    </summary>
+    <table class="detail-table activity-table summary-contributors"
+      aria-label="Bidrag til {{ label | lower }}">
+      <thead>
+        <tr>
+          <th scope="col">Dato</th>
+          <th scope="col">Tekst</th>
+          <th scope="col" class="detail-amount">Bankbeløb</th>
+          <th scope="col" class="detail-amount">Bidrag</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in rows %}
+        <tr>
+          <td data-label="Dato">{{ row.transaction_date | danish_date }}</td>
+          <td data-label="Tekst" data-account="{{ row.account_display_name }}"
+            title="{{ row.account_display_name }}">
+            {{- row.description -}}
+          </td>
+          <td data-label="Bankbeløb" class="detail-amount">
+            {{ row.amount | signed_amount(currency) }}
+          </td>
+          <td data-label="Bidrag" class="detail-amount">
+            {{ row.contribution | signed_amount(currency) }}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4">
+          {%- if total is none -%}
+            Ingen data endnu; bidrag kan ikke vises.
+          {%- else -%}
+            {{ empty }}
+          {%- endif -%}
+        </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
+</div>
+{%- endmacro %}
+{% macro reconciliation_row(label, value, currency, signed=false) -%}
+<tr>
+  <td data-label="Post">{{ label }}</td>
+  <td data-label="Beløb" class="detail-amount">
+    {{- (value | signed_amount(currency)) if signed
+        else (value | amount(currency)) -}}
+  </td>
+</tr>
+{%- endmacro %}
+{% macro reconciliation_card(reconciliation, currency) -%}
+<div class="summary-figure summary-card reconciliation-card">
+  <details class="summary-disclosure">
+    <summary>
+      <span class="summary-card-title">
+        <span>Afstemning for {{ reconciliation.display_name }}</span>
+      </span>
+    </summary>
+    <table class="detail-table activity-table reconciliation-table"
+      aria-label="Afstemning for {{ reconciliation.display_name }}">
+      <thead>
+        <tr><th scope="col">Post</th><th scope="col" class="detail-amount">Beløb</th></tr>
+      </thead>
+      <tbody>
+        {{ reconciliation_row("Åbning", reconciliation.opening_balance, currency) }}
+        {{ reconciliation_row(
+          "Indtægter minus udgifter",
+          reconciliation.income_minus_expenses,
+          currency,
+          signed=true,
+        ) }}
+        {{ reconciliation_row(
+          "Nettooverførsler",
+          reconciliation.transfers,
+          currency,
+          signed=true,
+        ) }}
+        {{ reconciliation_row(
+          "Ukategoriseret ind",
+          reconciliation.unclassified_in,
+          currency,
+          signed=true,
+        ) }}
+        {{ reconciliation_row(
+          "Ukategoriseret ud",
+          reconciliation.unclassified_out,
+          currency,
+          signed=true,
+        ) }}
+        {{ reconciliation_row(
+          "Reguleringer ind",
+          reconciliation.adjustments_in,
+          currency,
+          signed=true,
+        ) }}
+        {{ reconciliation_row(
+          "Reguleringer ud",
+          reconciliation.adjustments_out,
+          currency,
+          signed=true,
+        ) }}
+        {{ reconciliation_row("Forventet lukning", reconciliation.expected_closing, currency) }}
+        {{ reconciliation_row("Observeret lukning", reconciliation.closing_balance, currency) }}
+        <tr>
+          <td data-label="Post">Uforklaret forskel</td>
+          <td data-label="Beløb" class="detail-amount">
+            {%- if reconciliation.internal_residual is none -%}
+              Ikke mulig at afstemme
+            {%- else -%}
+              {{ reconciliation.internal_residual | signed_amount(currency) }}
+            {%- endif -%}
+          </td>
+        </tr>
+        {{ reconciliation_row(
+          "Åbningsafvigelse",
+          reconciliation.opening_gap,
+          currency,
+          signed=true,
+        ) }}
+      </tbody>
+    </table>
+  </details>
+</div>
+{%- endmacro %}
 <section id="report" class="report-content" data-publication="{{ publication_id }}"
   data-reference-date="{{ reference_date }}" data-accounts="{{ accounts }}" data-month="{{ month }}"
   data-mode="{{ mode }}" data-tab="{{ tab }}" aria-labelledby="report-ready-title">
@@ -24,25 +158,54 @@
 <p class="eyebrow">Rapporten er indlæst</p>
 <h3 id="report-ready-title">{{ month_label }}</h3>
 {# With no evidence a figure is unknown, never zero. #}
-<dl class="summary">
-  <div class="summary-figure"><dt>Indtægter</dt>
-    <dd id="income">{{ overview.income | amount(overview.currency) }}</dd></div>
-  <div class="summary-figure"><dt>Udgifter</dt>
-    <dd id="expenses">{{ overview.expenses | amount(overview.currency) }}</dd></div>
-  <div class="summary-figure"><dt>Penge tilbage</dt>
-    <dd id="money-left">{{ overview.net_cash_flow | amount(overview.currency) }}</dd></div>
+<div class="summary">
+  {% set movements = overview.movements %}
+  {{ movement_card(
+    "income",
+    "Indtægter",
+    overview.income,
+    movements.income if movements else (),
+    overview.currency,
+    "Ingen indtægter i måneden.",
+  ) }}
+  {{ movement_card(
+    "expenses",
+    "Udgifter",
+    overview.expenses,
+    movements.expenses if movements else (),
+    overview.currency,
+    "Ingen udgifter i måneden.",
+  ) }}
+  {{ movement_card(
+    "transfers-summary",
+    "Overførsler",
+    movements.transfer_total if movements else none,
+    movements.transfers if movements else (),
+    overview.currency,
+    "Ingen overførsler i måneden.",
+    signed_total=true,
+  ) }}
+  {% for reconciliation in reconciliations %}
+    {{ reconciliation_card(reconciliation, overview.currency) }}
+  {% endfor %}
+  <div class="summary-figure"><span class="summary-label">Penge tilbage</span>
+    <span id="money-left" class="summary-value">
+      {{- overview.net_cash_flow | amount(overview.currency) -}}
+    </span></div>
   {% set unclassified = overview.unclassified %}
   {# Money in and out side by side, never netted, each named in words. #}
-  <div id="unclassified" class="summary-figure"><dt>Ukategoriseret</dt>
-    <dd id="unclassified-in-row"><span class="summary-direction">Ind</span>
-      <span id="unclassified-in">
+  <div id="unclassified" class="summary-figure"><span class="summary-label">Ukategoriseret</span>
+    <div id="unclassified-in-row" class="summary-direction-row">
+      <span class="summary-direction">Ind</span>
+      <span id="unclassified-in" class="summary-inline-value">
         {{- (unclassified.money_in if unclassified else none) | signed_amount(overview.currency) -}}
-      </span></dd>
-    <dd id="unclassified-out-row"><span class="summary-direction">Ud</span>
-      <span id="unclassified-out">
+      </span></div>
+    <div id="unclassified-out-row" class="summary-direction-row">
+      <span class="summary-direction">Ud</span>
+      <span id="unclassified-out" class="summary-inline-value">
         {{- (unclassified.money_out if unclassified else none) | signed_amount(overview.currency) -}}
-      </span></dd></div>
-</dl>
+      </span></div></div>
+</div>
 {% if unclassified and unclassified.count > 0 %}
 {# Quiet, without the count, which belongs to Kontrol; the amounts are in the summary. #}
 <p id="unclassified-note" class="trust-note">Nogle betalinger er endnu ikke placeret i en kategori,

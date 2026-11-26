@@ -136,6 +136,7 @@ rather than substituting it.
 | `categories` | list of `CategorySpending` | One row per expense-direction Category with at least one allocation in the month, ordered by `spending`, largest first, and then by `category_id`. Empty when `coverage.status` is `no_data`. |
 | `unclassified` | `MoneyInOut`/null | Unclassified money: `unknown` transactions. |
 | `adjustments` | `MoneyInOut`/null | `adjustment` transactions, which carry no allocation. |
+| `movements` | `OverviewMovements`/null | Signed transactions behind the Income, Expenses and Transfers summary cards; null exactly when Coverage is `no_data`. |
 | `coverage` | `ReportCoverage` | Coverage of every figure above. |
 | `provisional` | `Provisional`/null | Why the month is provisional; null when it is not. |
 
@@ -171,6 +172,17 @@ with a plus sign when positive, and `money_out` as Ud with its minus sign. A
 known zero reads 0,00 kr. and a null reads as unknown. The count belongs to
 Kontrol; the explanation shows neither amounts nor count. Adjustments carry no
 note.
+
+`OverviewMovements` carries the rows behind Income, Expenses and Transfers:
+`income`, `expenses`, `transfers`, and `transfer_total`. Every
+`OverviewContributor` preserves the signed original bank `amount` and adds
+`contribution`, its signed effect on the displayed total. Income rows use the
+same Income and income-direction Refund classification as the headline; expense
+rows use the same Expenses and expense-direction Refund classification with
+the contribution sign flipped. Transfer rows preserve selected legs by sign, so
+selecting one leg contributes that amount and selecting both legs adds to zero.
+Rows are newest first by date, account ID and account sequence, and carry the
+human account display name. Transfers never enter Income or Expenses.
 
 ### Coverage
 
@@ -227,9 +239,12 @@ internal_residual = closing_balance - (opening_balance + income_minus_expenses
 opening_gap = opening_balance - previous_closing_balance
 ```
 
-Either result is unknown if any of its inputs is missing. Arithmetic agreement
-never upgrades Coverage: the synthetic March example has internal residual
-`0.00`, opening gap `-500.00` and Coverage `partial`.
+`expected_closing` is the parenthesized sum above, calculated once from the
+same components. `internal_residual` is the observed closing less that value.
+Either closing result is unknown if any required endpoint or component is
+missing; `opening_gap` is unknown without both opening endpoints. Arithmetic
+agreement never upgrades Coverage: the synthetic March example has internal
+residual `0.00`, opening gap `-500.00` and Coverage `partial`.
 
 ### `SpendingDetail`
 

@@ -93,6 +93,28 @@ class CategorySpending:
 
 
 @dataclass(frozen=True)
+class OverviewContributor:
+    """One transaction behind an overview summary, with its displayed contribution."""
+
+    transaction_date: date
+    description: str
+    account_id: str
+    account_display_name: str
+    amount: Decimal
+    contribution: Decimal
+
+
+@dataclass(frozen=True)
+class OverviewMovements:
+    """The signed transactions behind the monthly overview's summary cards."""
+
+    income: tuple[OverviewContributor, ...]
+    expenses: tuple[OverviewContributor, ...]
+    transfers: tuple[OverviewContributor, ...]
+    transfer_total: Decimal
+
+
+@dataclass(frozen=True)
 class MoneyInOut:
     """Money in and money out, never netted, and how many transactions."""
 
@@ -150,6 +172,7 @@ class MonthlyOverview:
     categories: tuple[CategorySpending, ...]
     unclassified: MoneyInOut | None
     adjustments: MoneyInOut | None
+    movements: OverviewMovements | None
     coverage: ReportCoverage
     provisional: Provisional | None
 
@@ -295,6 +318,7 @@ class Reconciliation:
     unclassified_out: Decimal | None
     adjustments_in: Decimal | None
     adjustments_out: Decimal | None
+    expected_closing: Decimal | None
     closing_balance: Decimal | None
     internal_residual: Decimal | None
     previous_closing_balance: Decimal | None

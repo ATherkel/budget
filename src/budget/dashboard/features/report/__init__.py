@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse
 
 from budget.analytics import (
     AccountActivity,
+    Diagnostics,
     HouseholdReports,
     InvalidSelectionError,
     PublicationUnavailableError,
@@ -30,6 +31,7 @@ from budget.dashboard.display.text import incomplete_months
 from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.checks import read_checks
 from budget.dashboard.features.errors import failure_fragment
+from budget.dashboard.features.report.activity_display import activity_view
 from budget.dashboard.features.view_state import (
     ViewState,
     parse_view_state,
@@ -80,6 +82,27 @@ def _read_activity(
         return failure_fragment(dashboard, error)
 
 
+def _read_diagnostics(
+    dashboard: Dashboard,
+    pin: tuple[int, date],
+    accounts: Collection[str],
+    month: str,
+) -> Diagnostics | str:
+    """Return diagnostics for a pinned selection, or a failure fragment."""
+    publication_id, reference_date = pin
+    try:
+        context = ReportContext(
+            publication_id=publication_id,
+            account_ids=frozenset(accounts),
+            month=parse_month(month),
+            reference_date=reference_date,
+        )
+        with GoldStore(dashboard.profile, read_only=True) as store:
+            return HouseholdReports(store).diagnostics(context)
+    except (InvalidSelectionError, PublicationUnavailableError) as error:
+        return failure_fragment(dashboard, error)
+
+
 def render_report(
     dashboard: Dashboard,
     requested: ReportRequest,
@@ -97,7 +120,7 @@ def render_report(
     if isinstance(overview_report, str):
         return overview_report
     answered = overview_report.context
-    activity = (
+    activity_report = (
         _read_activity(
             dashboard,
             requested.pin,
@@ -107,8 +130,21 @@ def render_report(
         if requested.view.mode == "advanced" and requested.view.tab == "details"
         else None
     )
-    if isinstance(activity, str):
-        return activity
+    if isinstance(activity_report, str):
+        return activity_report
+    activity = activity_view(activity_report) if activity_report is not None else None
+    diagnostics = (
+        _read_diagnostics(
+            dashboard,
+            requested.pin,
+            requested.accounts,
+            requested.month,
+        )
+        if requested.view.tab == "overview"
+        else None
+    )
+    if isinstance(diagnostics, str):
+        return diagnostics
     checks = (
         read_checks(
             dashboard,
@@ -146,6 +182,7 @@ def render_report(
         ],
         activity=activity,
         checks=checks,
+        reconciliations=diagnostics.reconciliations if diagnostics else (),
         mode=requested.view.mode,
         tab=requested.view.tab,
         comparison=requested.view.comparison,

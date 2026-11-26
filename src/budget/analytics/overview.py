@@ -8,10 +8,12 @@ never decides which publication a page reads.
 from collections.abc import Collection, Sequence
 from datetime import date
 
-from budget.analytics.measures import UNKNOWN, Figures, figures
+from budget.analytics.measures import UNKNOWN, ZERO, Figures, figures
 from budget.analytics.reports import (
     InvalidSelectionError,
     MonthlyOverview,
+    OverviewContributor,
+    OverviewMovements,
     ReportContext,
     ReportPublication,
     SelectableAccount,
@@ -23,6 +25,7 @@ from budget.analytics.trust import trust
 from budget.gold import (
     GoldAccount,
     GoldRepository,
+    GoldTransaction,
     MonthlyBalanceSnapshot,
     ReportingMonth,
     first_day,
@@ -81,6 +84,52 @@ def _figures(
             start_date=start, end_date=end, account_ids=account_ids
         ),
         gold.categories(),
+    )
+
+
+def _contributor_rows(
+    transactions: Sequence[GoldTransaction],
+    names: dict[str, str],
+    *,
+    flip: bool = False,
+) -> tuple[OverviewContributor, ...]:
+    """Return overview contributors newest first, with their displayed contribution."""
+    ordered = sorted(
+        transactions,
+        key=lambda transaction: (
+            transaction.transaction_date,
+            transaction.account_id,
+            transaction.account_sequence,
+        ),
+        reverse=True,
+    )
+    return tuple(
+        OverviewContributor(
+            transaction_date=transaction.transaction_date,
+            description=transaction.description,
+            account_id=transaction.account_id,
+            account_display_name=names[transaction.account_id],
+            amount=transaction.amount,
+            contribution=-transaction.amount if flip else transaction.amount,
+        )
+        for transaction in ordered
+    )
+
+
+def _movements(
+    known: Figures,
+    accounts: Sequence[GoldAccount],
+) -> OverviewMovements:
+    """Return the signed rows behind Income, Expenses and Transfers."""
+    names = {account.account_id: account.display_name for account in accounts}
+    return OverviewMovements(
+        income=_contributor_rows(known.income_transactions, names),
+        expenses=_contributor_rows(known.expense_transactions, names, flip=True),
+        transfers=_contributor_rows(known.transfer_transactions, names),
+        transfer_total=sum(
+            (transaction.amount for transaction in known.transfer_transactions),
+            ZERO,
+        ),
     )
 
 
@@ -151,6 +200,9 @@ def monthly_overview(
         categories=known.categories,
         unclassified=known.unclassified,
         adjustments=known.adjustments,
+        movements=(
+            None if judged.coverage.status == "no_data" else _movements(known, accounts)
+        ),
         coverage=judged.coverage,
         provisional=judged.provisional,
     )

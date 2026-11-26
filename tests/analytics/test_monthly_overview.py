@@ -16,6 +16,8 @@ from budget.analytics import (
     CategorySpending,
     MoneyInOut,
     MonthlyOverview,
+    OverviewContributor,
+    OverviewMovements,
     Provisional,
     ReportContext,
     ReportCoverage,
@@ -118,7 +120,40 @@ P1 = ReportPublication(
     known_at=PUBLICATION.known_at,
     is_current=True,
 )
-NONE = MoneyInOut(Decimal("0.00"), Decimal("0.00"), 0)
+ZERO = Decimal("0.00")
+NONE = MoneyInOut(ZERO, ZERO, 0)
+
+
+def _contributor(
+    transaction_date: date,
+    description: str,
+    amount: Decimal,
+    contribution: Decimal,
+    account: str = "Joint current",
+) -> OverviewContributor:
+    return OverviewContributor(
+        transaction_date=transaction_date,
+        description=description,
+        account_id=CURRENT,
+        account_display_name=account,
+        amount=amount,
+        contribution=contribution,
+    )
+
+
+def _movements(
+    *,
+    income: tuple[OverviewContributor, ...] = (),
+    expenses: tuple[OverviewContributor, ...] = (),
+    transfers: tuple[OverviewContributor, ...] = (),
+    transfer_total: Decimal = ZERO,
+) -> OverviewMovements:
+    return OverviewMovements(
+        income=income,
+        expenses=expenses,
+        transfers=transfers,
+        transfer_total=transfer_total,
+    )
 
 
 def _context(
@@ -155,6 +190,36 @@ def test_february_nets_the_refund_and_names_the_partial_account() -> None:
         ),
         unclassified=NONE,
         adjustments=NONE,
+        movements=_movements(
+            income=(
+                _contributor(
+                    date(2026, 2, 25),
+                    "SALARY",
+                    Decimal("25000.00"),
+                    Decimal("25000.00"),
+                ),
+            ),
+            expenses=(
+                _contributor(
+                    date(2026, 2, 12),
+                    "GROCERIES",
+                    Decimal("120.00"),
+                    Decimal("-120.00"),
+                ),
+                _contributor(
+                    date(2026, 2, 2),
+                    "GROCERIES",
+                    Decimal("-640.00"),
+                    Decimal("640.00"),
+                ),
+                _contributor(
+                    date(2026, 2, 2),
+                    "RENT",
+                    Decimal("-8500.00"),
+                    Decimal("8500.00"),
+                ),
+            ),
+        ),
         coverage=ReportCoverage(
             status="partial",
             account_months=(
@@ -262,6 +327,7 @@ def test_a_month_with_no_evidence_reports_every_figure_as_unknown() -> None:
         categories=(),
         unclassified=None,
         adjustments=None,
+        movements=None,
         coverage=ReportCoverage(
             status="no_data",
             account_months=(
@@ -292,6 +358,7 @@ def _zero_report(context: ReportContext, coverage: ReportCoverage) -> MonthlyOve
         categories=(),
         unclassified=NONE,
         adjustments=NONE,
+        movements=_movements(),
         coverage=coverage,
         provisional=None,
     )
@@ -316,6 +383,16 @@ def test_march_reports_unclassified_money_and_no_rate_without_income() -> None:
         ),
         unclassified=MoneyInOut(Decimal("0.00"), Decimal("-450.00"), 1),
         adjustments=NONE,
+        movements=_movements(
+            expenses=(
+                _contributor(
+                    date(2026, 3, 20),
+                    "UTILITIES",
+                    Decimal("-1000.00"),
+                    Decimal("1000.00"),
+                ),
+            ),
+        ),
         coverage=ReportCoverage(
             status="partial",
             account_months=(_month(CURRENT, "Joint current", 3, "partial"),),

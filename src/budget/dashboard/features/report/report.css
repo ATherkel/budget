@@ -7,8 +7,95 @@
   font-weight: 400;
 }
 
+.summary {
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.summary-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.summary-card:has(.summary-disclosure[open]) {
+  grid-column: 1 / -1;
+}
+
+.summary-disclosure summary {
+  min-height: 4.5rem;
+  padding: 0.85rem 1rem;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-card-title {
+  align-items: baseline;
+}
+
+.summary-label,
+.summary-card-title > :first-child {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.summary-value,
+.summary-card-title > :last-child {
+  font-size: 1.25rem;
+  font-weight: 750;
+}
+
+.summary-value {
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.summary-direction-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+
+.summary-inline-value {
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-disclosure[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.summary-disclosure .activity-table {
+  margin: 0;
+}
+
+.summary-contributors {
+  font-size: 0.9rem;
+}
+
+.summary-contributors td:first-child,
+.summary-contributors .detail-amount {
+  white-space: nowrap;
+}
+
+.summary-contributors td[data-account]::after {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  content: attr(data-account);
+}
+
+.reconciliation-card .summary-card-title > :last-child {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.reconciliation-table td:last-child {
+  white-space: nowrap;
+}
+
 .category-row,
-.account-flow-summary {
+.account-flow-summary,
+.summary-card-title {
   display: flex;
   justify-content: space-between;
   gap: 1rem;

@@ -34,6 +34,9 @@ class Figures:
     categories: tuple[CategorySpending, ...]
     unclassified: MoneyInOut | None
     adjustments: MoneyInOut | None
+    income_transactions: tuple[GoldTransaction, ...]
+    expense_transactions: tuple[GoldTransaction, ...]
+    transfer_transactions: tuple[GoldTransaction, ...]
 
 
 # With no evidence a figure is unknown, never zero (report-contract.md).
@@ -45,6 +48,9 @@ UNKNOWN = Figures(
     categories=(),
     unclassified=None,
     adjustments=None,
+    income_transactions=(),
+    expense_transactions=(),
+    transfer_transactions=(),
 )
 
 
@@ -116,11 +122,20 @@ def figures(
         allocation.transaction_id: by_id[allocation.category_id].direction
         for allocation in allocations
     }
-    measured = [(_measure(t, refund_directions), t.amount) for t in transactions]
-    income = _total(amount for measure, amount in measured if measure == "income")
-    expenses = ZERO - _total(
-        amount for measure, amount in measured if measure == "expense"
+    measured = [(_measure(t, refund_directions), t) for t in transactions]
+    income_transactions = tuple(
+        transaction for measure, transaction in measured if measure == "income"
     )
+    expense_transactions = tuple(
+        transaction for measure, transaction in measured if measure == "expense"
+    )
+    transfer_transactions = tuple(
+        transaction
+        for transaction in transactions
+        if transaction.transaction_type == "transfer"
+    )
+    income = _total(transaction.amount for transaction in income_transactions)
+    expenses = ZERO - _total(transaction.amount for transaction in expense_transactions)
     net_cash_flow = income - expenses
     return Figures(
         income=income,
@@ -130,4 +145,7 @@ def figures(
         categories=_category_spending(allocations, by_id),
         unclassified=_money_in_out(transactions, "unknown"),
         adjustments=_money_in_out(transactions, "adjustment"),
+        income_transactions=income_transactions,
+        expense_transactions=expense_transactions,
+        transfer_transactions=transfer_transactions,
     )

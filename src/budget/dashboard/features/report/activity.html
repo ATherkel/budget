@@ -1,134 +1,72 @@
+{% macro transaction_table(table) -%}
+<table class="detail-table activity-table" aria-label="{{ table.aria_label }}">
+  <thead>
+    <tr>
+      <th scope="col">Dato</th>
+      <th scope="col">Tekst</th>
+      <th scope="col">Type</th>
+      <th scope="col" class="detail-amount">Beløb</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for row in table.rows %}
+    <tr>
+      <td data-label="Dato">{{ row.transaction_date }}</td>
+      <td data-label="Tekst">{{ row.description }}</td>
+      <td data-label="Type">{{ row.transaction_type }}</td>
+      <td data-label="Beløb" class="detail-amount">{{ row.amount }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="4">{{ table.empty_message }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{%- endmacro %}
 <p class="eyebrow">Kontobevægelser</p>
 <h3 id="report-ready-title">Kontodetaljer</h3>
 {% for account in activity.accounts %}
 <article id="activity-account-{{ account.account_id }}" class="account-activity">
   <h4>{{ account.display_name }}</h4>
   <p id="activity-evidence-{{ account.account_id }}">
-    {{ account.evidence_through | evidence_line }}
+    {{ account.evidence }}
   </p>
   <p id="activity-coverage-{{ account.account_id }}">
-    Dækning for måneden: {{ account.coverage | coverage_label }}.
+    {{ account.coverage }}
   </p>
   <dl class="balance-observations">
     <div>
       <dt>Bankens seneste observation</dt>
       <dd id="activity-dated-balance-{{ account.account_id }}">
-        {{ account.dated_balance | balance_observation(activity.currency, "Ingen observation i måneden") }}
+        {{ account.dated_balance }}
       </dd>
     </div>
     <div>
       <dt>Tidligere observation</dt>
       <dd id="activity-earlier-observation-{{ account.account_id }}">
-        {{ account.earlier_observation | balance_observation(activity.currency, "Ingen tidligere observation") }}
+        {{ account.earlier_observation }}
       </dd>
     </div>
     <div>
       <dt>Månedssnapshot</dt>
       <dd id="activity-monthly-snapshot-{{ account.account_id }}">
-        {{ account.monthly_snapshot | monthly_snapshot_line(activity.currency) }}
+        {{ account.monthly_snapshot }}
       </dd>
     </div>
   </dl>
   <div class="account-flow-disclosures">
+  {% for flow in account.flows %}
     <details class="account-flow">
       <summary>
         <span class="account-flow-summary">
-          <span>Ind</span>
-          <span>
-            {{- (account.money_in_out.money_in if account.money_in_out else none)
-                | signed_amount(activity.currency) -}}
-          </span>
+          <span>{{ flow.label }}</span>
+          <span>{{ flow.total }}</span>
         </span>
       </summary>
-      <table class="detail-table activity-table" aria-label="Indgående posteringer for {{ account.display_name }}">
-        <thead>
-          <tr>
-            <th scope="col">Dato</th>
-            <th scope="col">Tekst</th>
-            <th scope="col">Type</th>
-            <th scope="col" class="detail-amount">Beløb</th>
-          </tr>
-        </thead>
-        <tbody>
-        {% for row in activity.transactions
-          if account.money_in_out and row.account_id == account.account_id and row.amount > 0 %}
-          <tr>
-            <td data-label="Dato">{{ row.transaction_date | danish_date }}</td>
-            <td data-label="Tekst">{{ row.description }}</td>
-            <td data-label="Type">{{ row | transaction_kind }}</td>
-            <td data-label="Beløb" class="detail-amount">
-              {{ row.amount | signed_amount(activity.currency) }}
-            </td>
-          </tr>
-        {% else %}
-          <tr><td colspan="4">Ingen observerede indgående posteringer i måneden.</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
+      {{ transaction_table(flow.table) }}
     </details>
-    <details class="account-flow">
-      <summary>
-        <span class="account-flow-summary">
-          <span>Ud</span>
-          <span>
-            {{- (account.money_in_out.money_out if account.money_in_out else none)
-                | signed_amount(activity.currency) -}}
-          </span>
-        </span>
-      </summary>
-      <table class="detail-table activity-table" aria-label="Udgående posteringer for {{ account.display_name }}">
-        <thead>
-          <tr>
-            <th scope="col">Dato</th>
-            <th scope="col">Tekst</th>
-            <th scope="col">Type</th>
-            <th scope="col" class="detail-amount">Beløb</th>
-          </tr>
-        </thead>
-        <tbody>
-        {% for row in activity.transactions
-          if account.money_in_out and row.account_id == account.account_id and row.amount < 0 %}
-          <tr>
-            <td data-label="Dato">{{ row.transaction_date | danish_date }}</td>
-            <td data-label="Tekst">{{ row.description }}</td>
-            <td data-label="Type">{{ row | transaction_kind }}</td>
-            <td data-label="Beløb" class="detail-amount">
-              {{ row.amount | signed_amount(activity.currency) }}
-            </td>
-          </tr>
-        {% else %}
-          <tr><td colspan="4">Ingen observerede udgående posteringer i måneden.</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </details>
+  {% endfor %}
   </div>
   <h4>Posteringer</h4>
-  <table class="detail-table activity-table" aria-label="Posteringer for {{ account.display_name }}">
-    <thead>
-      <tr>
-        <th scope="col">Dato</th>
-        <th scope="col">Tekst</th>
-        <th scope="col">Type</th>
-        <th scope="col" class="detail-amount">Beløb</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for row in activity.transactions if row.account_id == account.account_id %}
-      <tr>
-        <td data-label="Dato">{{ row.transaction_date | danish_date }}</td>
-        <td data-label="Tekst">{{ row.description }}</td>
-        <td data-label="Type">
-          {{ row | transaction_kind }}
-        </td>
-        <td data-label="Beløb" class="detail-amount">
-          {{ row.amount | signed_amount(activity.currency) }}
-        </td>
-      </tr>
-    {% else %}
-      <tr><td colspan="4">Ingen observerede posteringer i måneden.</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  {{ transaction_table(account.transactions) }}
 </article>
 {% endfor %}
