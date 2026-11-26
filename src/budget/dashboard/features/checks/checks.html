@@ -63,14 +63,7 @@
   {% endfor %}
   </tbody>
 </table>
-{% for heading in checks.residuals_heading %}
-<h4 id="checks-residuals-title">{{ heading }}</h4>
-<ul id="checks-residuals" class="explanation-list" aria-labelledby="checks-residuals-title">
-{% for residual in checks.nonzero_residuals %}
-  <li><a id="{{ residual.element_id }}" href="{{ residual.url }}">{{ residual.line }}</a></li>
-{% endfor %}
-</ul>
-{% endfor %}
+<p id="checks-reconciliation-note">{{ checks.reconciliation_note }}</p>
 <p id="checks-coverage">{{ checks.coverage }}</p>
 <ul id="checks-incomplete-months" class="explanation-list">
 {% for line in checks.incomplete %}
@@ -79,24 +72,4 @@
 </ul>
 {% for line in checks.provisional %}
 <p id="checks-provisional">{{ line }}</p>
-{% endfor %}
-<ul id="checks-evidence" class="explanation-list">
-{% for account in checks.evidence %}
-  <li id="checks-evidence-{{ account.account_id }}">{{ account.line }}</li>
-{% endfor %}
-</ul>
-<h4 id="checks-reconciliation-title">Afstemning</h4>
-<p id="checks-reconciliation-note">{{ checks.reconciliation_note }}</p>
-{% for account in checks.reconciliations %}
-<h5 id="checks-reconciliation-{{ account.account_id }}-title">{{ account.title }}</h5>
-<ul id="checks-reconciliation-{{ account.account_id }}-components" class="explanation-list">
-{% for line in account.components %}
-  <li>{{ line }}</li>
-{% endfor %}
-</ul>
-<ul id="checks-reconciliation-{{ account.account_id }}-residuals" class="explanation-list">
-{% for line in account.residuals %}
-  <li>{{ line }}</li>
-{% endfor %}
-</ul>
 {% endfor %}
