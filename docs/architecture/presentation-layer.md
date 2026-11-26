@@ -85,13 +85,18 @@ restores the recorded mode, tab and applicable detail/comparison state under the
 [navigation contract](report-contract.md#navigation-and-selection-transitions).
 
 The switch and advanced “Overblik”, “Detaljer” and “Kontrol” are available.
-“Kontrol” shows Coverage, provisional reasons, incomplete account-months,
-Evidence through and each selected account's
-[reconciliation](report-contract.md#diagnostics). A missing component reads
-“Ukendt”; nonzero residuals come first, each linking to its account in
-“Detaljer”. Each account keeps its own Coverage label, and the page says a zero
-difference does not prove the data complete. Both modes retain access to the
-basic trust explanation.
+“Kontrol” answers whether each selected account's month can be trusted. It
+opens with a table of accounts: a verdict, the start and end balances, both
+[residuals](report-contract.md#diagnostics) and Evidence through (“Data til og
+med”), each account linking to its “Detaljer”. The verdict is “Ingen fundne
+forskelle” only for a fully covered month whose residuals are both zero, “Data
+mangler” for partial Coverage, “Går ikke op” with the amount for a nonzero
+residual and “Ukendt” for a missing balance; it never says the month adds up.
+Under each account a waterfall walks from the start balance through each
+component to the computed and the bank's end balance; a missing step leaves the
+running total “Ukendt”. The page also shows Coverage, provisional reasons and
+incomplete account-months, and says a zero difference does not prove the data
+complete. Both modes retain access to the basic trust explanation.
 
 ## Data Trust Display
 
