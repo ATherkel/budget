@@ -149,12 +149,6 @@ reason = "Optional section or failure branch; becomes a notice list or its own t
 issue = 627
 
 [[allowance]]
-path = "features/overview/overview.html"
-tag = '{{ report | safe }}'
-reason = "Built-in filter; Python returns the finished text or Markup."
-issue = 626
-
-[[allowance]]
 path = "features/report/activity.html"
 tag = '{% for row in activity.transactions if row.account_id == account.account_id %}'
 reason = "A loop that filters its rows; Python groups the rows per account."
@@ -243,9 +237,3 @@ path = "templates/_macros.html"
 tag = '{% if not is_current %}'
 reason = "Optional section or failure branch; becomes a notice list or its own template."
 issue = 627
-
-[[allowance]]
-path = "templates/_macros.html"
-tag = '{{ failure | safe }}'
-reason = "Built-in filter; Python returns the finished text or Markup."
-issue = 626
