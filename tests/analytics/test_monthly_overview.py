@@ -147,12 +147,14 @@ def _movements(
     expenses: tuple[OverviewContributor, ...] = (),
     transfers: tuple[OverviewContributor, ...] = (),
     transfer_total: Decimal = ZERO,
+    unclassified: tuple[OverviewContributor, ...] = (),
 ) -> OverviewMovements:
     return OverviewMovements(
         income=income,
         expenses=expenses,
         transfers=transfers,
         transfer_total=transfer_total,
+        unclassified=unclassified,
     )
 
 
@@ -390,6 +392,14 @@ def test_march_reports_unclassified_money_and_no_rate_without_income() -> None:
                     "UTILITIES",
                     Decimal("-1000.00"),
                     Decimal("1000.00"),
+                ),
+            ),
+            unclassified=(
+                _contributor(
+                    date(2026, 3, 2),
+                    "UNKNOWN",
+                    Decimal("-450.00"),
+                    Decimal("-450.00"),
                 ),
             ),
         ),

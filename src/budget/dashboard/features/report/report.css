@@ -32,13 +32,13 @@
 }
 
 .summary-label,
-.summary-card-title > :first-child {
+.summary-card-label {
   color: var(--ink-soft);
   font-size: 0.85rem;
 }
 
 .summary-value,
-.summary-card-title > :last-child {
+.summary-card-value {
   font-size: 1.25rem;
   font-weight: 750;
 }
@@ -84,7 +84,7 @@
   content: attr(data-account);
 }
 
-.reconciliation-card .summary-card-title > :last-child {
+.reconciliation-card .summary-card-title > span {
   font-size: 0.95rem;
   font-weight: 700;
 }

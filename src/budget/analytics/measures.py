@@ -37,6 +37,7 @@ class Figures:
     income_transactions: tuple[GoldTransaction, ...]
     expense_transactions: tuple[GoldTransaction, ...]
     transfer_transactions: tuple[GoldTransaction, ...]
+    unclassified_transactions: tuple[GoldTransaction, ...]
 
 
 # With no evidence a figure is unknown, never zero (report-contract.md).
@@ -51,6 +52,7 @@ UNKNOWN = Figures(
     income_transactions=(),
     expense_transactions=(),
     transfer_transactions=(),
+    unclassified_transactions=(),
 )
 
 
@@ -148,4 +150,9 @@ def figures(
         income_transactions=income_transactions,
         expense_transactions=expense_transactions,
         transfer_transactions=transfer_transactions,
+        unclassified_transactions=tuple(
+            transaction
+            for transaction in transactions
+            if transaction.transaction_type == "unknown"
+        ),
     )

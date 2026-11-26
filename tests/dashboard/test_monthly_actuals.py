@@ -186,6 +186,42 @@ def _mixed_summary_records() -> GoldRecords:
             "transfer",
             transfer_group_id="T-summary",
         ),
+        _SummaryMovement(
+            "unknown-in",
+            CURRENT,
+            date(2026, 2, 7),
+            7,
+            "450.00",
+            "UNKNOWN IN",
+            "unknown",
+        ),
+        _SummaryMovement(
+            "unknown-out",
+            CURRENT,
+            date(2026, 2, 8),
+            8,
+            "-450.00",
+            "UNKNOWN OUT",
+            "unknown",
+        ),
+        _SummaryMovement(
+            "adjustment-in",
+            CURRENT,
+            date(2026, 2, 9),
+            9,
+            "25.00",
+            "ADJUSTMENT IN",
+            "adjustment",
+        ),
+        _SummaryMovement(
+            "adjustment-out",
+            CURRENT,
+            date(2026, 2, 10),
+            10,
+            "-25.00",
+            "ADJUSTMENT OUT",
+            "adjustment",
+        ),
     )
     return replace(
         RECORDS,
@@ -266,10 +302,11 @@ def test_overview_summaries_disclose_reconciling_signed_contributors(
         "35.000,00 kr.",
         "800,00 kr.",
     )
+    # Ukategoriseret has its own test below.
     movements = [
         disclosure
         for disclosure in page.disclosures
-        if not disclosure.summary.startswith("Afstemning for ")
+        if not disclosure.summary.startswith(("Afstemning for ", "Ukategoriseret"))
     ]
     reconciliations = [
         disclosure
@@ -354,6 +391,94 @@ def test_overview_summaries_disclose_reconciling_signed_contributors(
             "+1.000,00 kr.",
         ),
     }
+
+
+@pytest.mark.parametrize("mode", ["simple", "advanced"])
+def test_unclassified_summary_discloses_each_signed_unknown_with_its_account(
+    profile: Profile,
+    client: TestClient,
+    mode: str,
+) -> None:
+    with GoldStore(profile) as store:
+        store.publish(
+            GoldResult(
+                replace(PUBLICATION, publication_id=2),
+                _mixed_summary_records(),
+            ),
+            RECIPE,
+            CONFIGURATION,
+        )
+
+    response = client.get(
+        "/report",
+        params={
+            "publication": "2",
+            "reference_date": REFERENCE_DATE,
+            "account": [CURRENT],
+            "month": "2026-02",
+            "mode": mode,
+            "tab": "overview",
+            "comparison": "amounts",
+        },
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200, response.text
+    page = read(response.text)
+
+    assert (
+        page.attributes("report").get("data-mode"),
+        page.attributes("report").get("data-publication"),
+        page.attributes("report").get("data-accounts"),
+        page.attributes("report").get("data-month"),
+        page.text_of("unclassified"),
+        page.text_of("unclassified-in"),
+        page.text_of("unclassified-out"),
+    ) == (
+        mode,
+        "2",
+        CURRENT,
+        "2026-02",
+        ("Ukategoriseret Ind +450,00 kr. Ud \N{MINUS SIGN}450,00 kr."),
+        "+450,00 kr.",
+        "\N{MINUS SIGN}450,00 kr.",
+    )
+    cards = [
+        disclosure
+        for disclosure in page.disclosures
+        if disclosure.summary.startswith("Ukategoriseret")
+    ]
+    assert [card.summary for card in cards] == [
+        "Ukategoriseret Ind +450,00 kr. Ud \N{MINUS SIGN}450,00 kr."
+    ]
+    [unclassified] = cards
+    assert unclassified.open is False
+
+    rows = [" ".join(row) for row in unclassified.rows]
+    incoming = next(row for row in rows if "UNKNOWN IN" in row)
+    outgoing = next(row for row in rows if "UNKNOWN OUT" in row)
+    assert (
+        "Ind" in incoming.split(),
+        "Ud" in outgoing.split(),
+        "Joint current" in incoming,
+        "Joint current" in outgoing,
+        "+450,00 kr." in incoming,
+        "\N{MINUS SIGN}450,00 kr." in outgoing,
+    ) == (True, True, True, True, True, True)
+    assert {
+        phrase
+        for phrase in (
+            "INCOME BASE",
+            "INCOME EXTRA",
+            "INCOME REVERSAL",
+            "EXPENSE BASE",
+            "EXPENSE REFUND",
+            "TRANSFER OUT",
+            "TRANSFER IN",
+            "ADJUSTMENT IN",
+            "ADJUSTMENT OUT",
+        )
+        if any(phrase in row for row in rows)
+    } == set()
 
 
 def test_every_category_is_listed_in_the_order_the_report_gives(
@@ -650,6 +775,10 @@ def test_a_month_without_data_shows_its_figures_as_unknown_never_as_zero(
             "Overførsler Ingen data endnu",
             ("Ingen data endnu; bidrag kan ikke vises.",),
         ),
+        (
+            "Ukategoriseret Ind Ingen data endnu Ud Ingen data endnu",
+            ("Ingen data endnu; bidrag kan ikke vises.",),
+        ),
     ]
     reconciliations = [
         disclosure
@@ -705,6 +834,10 @@ def test_a_confirmed_quiet_month_shows_zero_without_a_trust_note(
         ("Indtægter 0,00 kr.", ("Ingen indtægter i måneden.",)),
         ("Udgifter 0,00 kr.", ("Ingen udgifter i måneden.",)),
         ("Overførsler 0,00 kr.", ("Ingen overførsler i måneden.",)),
+        (
+            "Ukategoriseret Ind 0,00 kr. Ud 0,00 kr.",
+            ("Ingen ukategoriserede posteringer i måneden.",),
+        ),
     ]
 
 

@@ -32,6 +32,7 @@ from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.checks import read_checks
 from budget.dashboard.features.errors import failure_fragment
 from budget.dashboard.features.report.activity_display import activity_view
+from budget.dashboard.features.report.summary_display import summary_view
 from budget.dashboard.features.view_state import (
     ViewState,
     parse_view_state,
@@ -176,6 +177,7 @@ def render_report(
         month=month_value(answered.month),
         month_label=month_label(answered.month),
         overview=overview_report,
+        summary=summary_view(overview_report),
         incomplete=[
             account_month.display_name
             for account_month in incomplete_months(overview_report.coverage)

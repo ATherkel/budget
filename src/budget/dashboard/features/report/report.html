@@ -1,49 +1,52 @@
 {%- from "_macros.html" import newer_figures, provisional_label, switch_link -%}
-{% macro movement_card(element_id, label, total, rows, currency, empty, signed_total=false) -%}
+{# Every overview summary card, prepared in summary_display.py. #}
+{% macro summary_card(card) -%}
 <div class="summary-figure summary-card">
   <details class="summary-disclosure">
-    <summary>
+    <summary{% if card.element_id %} id="{{ card.element_id }}"{% endif %}>
       <span class="summary-card-title">
-        <span>{{ label }}</span>
-        <span id="{{ element_id }}">
-          {{- (total | signed_amount(currency)) if signed_total
-              else (total | amount(currency)) -}}
+        <span class="summary-card-label">{{ card.label }}</span>
+        {% if card.headline %}
+        <span id="{{ card.headline.element_id }}" class="summary-card-value">
+          {{- card.headline.value -}}
+        </span>
+        {% endif %}
+      </span>
+      {# Money in and out side by side, never netted, each named in words. #}
+      {% for total in card.directions %}
+      <span id="{{ total.row_id }}" class="summary-direction-row">
+        <span class="summary-direction">{{ total.direction }}</span>
+        <span id="{{ total.element_id }}" class="summary-inline-value">
+          {{- total.value -}}
         </span>
       </span>
+      {% endfor %}
     </summary>
     <table class="detail-table activity-table summary-contributors"
-      aria-label="Bidrag til {{ label | lower }}">
+      aria-label="Bidrag til {{ card.label | lower }}">
       <thead>
         <tr>
-          <th scope="col">Dato</th>
-          <th scope="col">Tekst</th>
-          <th scope="col" class="detail-amount">Bankbeløb</th>
-          <th scope="col" class="detail-amount">Bidrag</th>
+        {% for column in card.columns %}
+          <th scope="col"{% if column.numeric %} class="detail-amount"{% endif %}>
+            {{- column.label -}}
+          </th>
+        {% endfor %}
         </tr>
       </thead>
       <tbody>
-      {% for row in rows %}
+      {% for row in card.rows %}
         <tr>
-          <td data-label="Dato">{{ row.transaction_date | danish_date }}</td>
-          <td data-label="Tekst" data-account="{{ row.account_display_name }}"
-            title="{{ row.account_display_name }}">
-            {{- row.description -}}
+        {% for cell in row %}
+          <td data-label="{{ cell.label }}"
+            {%- if cell.numeric %} class="detail-amount"{% endif %}
+            {%- if cell.account %} data-account="{{ cell.account }}"
+              title="{{ cell.account }}"{% endif %}>
+            {{- cell.text -}}
           </td>
-          <td data-label="Bankbeløb" class="detail-amount">
-            {{ row.amount | signed_amount(currency) }}
-          </td>
-          <td data-label="Bidrag" class="detail-amount">
-            {{ row.contribution | signed_amount(currency) }}
-          </td>
+        {% endfor %}
         </tr>
       {% else %}
-        <tr><td colspan="4">
-          {%- if total is none -%}
-            Ingen data endnu; bidrag kan ikke vises.
-          {%- else -%}
-            {{ empty }}
-          {%- endif -%}
-        </td></tr>
+        <tr><td colspan="{{ card.columns | length }}">{{ card.empty_message }}</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -159,32 +162,9 @@
 <h3 id="report-ready-title">{{ month_label }}</h3>
 {# With no evidence a figure is unknown, never zero. #}
 <div class="summary">
-  {% set movements = overview.movements %}
-  {{ movement_card(
-    "income",
-    "Indtægter",
-    overview.income,
-    movements.income if movements else (),
-    overview.currency,
-    "Ingen indtægter i måneden.",
-  ) }}
-  {{ movement_card(
-    "expenses",
-    "Udgifter",
-    overview.expenses,
-    movements.expenses if movements else (),
-    overview.currency,
-    "Ingen udgifter i måneden.",
-  ) }}
-  {{ movement_card(
-    "transfers-summary",
-    "Overførsler",
-    movements.transfer_total if movements else none,
-    movements.transfers if movements else (),
-    overview.currency,
-    "Ingen overførsler i måneden.",
-    signed_total=true,
-  ) }}
+  {% for card in summary.movements %}
+    {{ summary_card(card) }}
+  {% endfor %}
   {% for reconciliation in reconciliations %}
     {{ reconciliation_card(reconciliation, overview.currency) }}
   {% endfor %}
@@ -192,20 +172,9 @@
     <span id="money-left" class="summary-value">
       {{- overview.net_cash_flow | amount(overview.currency) -}}
     </span></div>
-  {% set unclassified = overview.unclassified %}
-  {# Money in and out side by side, never netted, each named in words. #}
-  <div id="unclassified" class="summary-figure"><span class="summary-label">Ukategoriseret</span>
-    <div id="unclassified-in-row" class="summary-direction-row">
-      <span class="summary-direction">Ind</span>
-      <span id="unclassified-in" class="summary-inline-value">
-        {{- (unclassified.money_in if unclassified else none) | signed_amount(overview.currency) -}}
-      </span></div>
-    <div id="unclassified-out-row" class="summary-direction-row">
-      <span class="summary-direction">Ud</span>
-      <span id="unclassified-out" class="summary-inline-value">
-        {{- (unclassified.money_out if unclassified else none) | signed_amount(overview.currency) -}}
-      </span></div></div>
+  {{ summary_card(summary.unclassified) }}
 </div>
+{% set unclassified = overview.unclassified %}
 {% if unclassified and unclassified.count > 0 %}
 {# Quiet, without the count, which belongs to Kontrol; the amounts are in the summary. #}
 <p id="unclassified-note" class="trust-note">Nogle betalinger er endnu ikke placeret i en kategori,

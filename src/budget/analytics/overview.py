@@ -130,6 +130,7 @@ def _movements(
             (transaction.amount for transaction in known.transfer_transactions),
             ZERO,
         ),
+        unclassified=_contributor_rows(known.unclassified_transactions, names),
     )
 
 

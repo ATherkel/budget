@@ -112,6 +112,7 @@ class OverviewMovements:
     expenses: tuple[OverviewContributor, ...]
     transfers: tuple[OverviewContributor, ...]
     transfer_total: Decimal
+    unclassified: tuple[OverviewContributor, ...]
 
 
 @dataclass(frozen=True)

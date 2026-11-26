@@ -136,7 +136,7 @@ rather than substituting it.
 | `categories` | list of `CategorySpending` | One row per expense-direction Category with at least one allocation in the month, ordered by `spending`, largest first, and then by `category_id`. Empty when `coverage.status` is `no_data`. |
 | `unclassified` | `MoneyInOut`/null | Unclassified money: `unknown` transactions. |
 | `adjustments` | `MoneyInOut`/null | `adjustment` transactions, which carry no allocation. |
-| `movements` | `OverviewMovements`/null | Signed transactions behind the Income, Expenses and Transfers summary cards; null exactly when Coverage is `no_data`. |
+| `movements` | `OverviewMovements`/null | Signed transactions behind the Income, Expenses, Transfers and Unclassified summary cards; null exactly when Coverage is `no_data`. |
 | `coverage` | `ReportCoverage` | Coverage of every figure above. |
 | `provisional` | `Provisional`/null | Why the month is provisional; null when it is not. |
 
@@ -169,12 +169,15 @@ and may be off by up to that amount. When `unclassified.count` > 0, Enkel says
 so quietly, linking to the [explanation](#navigation-and-selection-transitions).
 Enkel always shows a fourth summary figure, Ukategoriseret: `money_in` as Ind,
 with a plus sign when positive, and `money_out` as Ud with its minus sign. A
-known zero reads 0,00 kr. and a null reads as unknown. The count belongs to
+known zero reads 0,00 kr. and a null reads as unknown. Like the other summary
+cards it expands, listing each unclassified row with its account and
+direction, money in before money out. The count belongs to
 Kontrol; the explanation shows neither amounts nor count. Adjustments carry no
 note.
 
-`OverviewMovements` carries the rows behind Income, Expenses and Transfers:
-`income`, `expenses`, `transfers`, and `transfer_total`. Every
+`OverviewMovements` carries the rows behind Income, Expenses, Transfers and
+Unclassified: `income`, `expenses`, `transfers`, `transfer_total` and
+`unclassified`, the `unknown` transactions behind `unclassified`. Every
 `OverviewContributor` preserves the signed original bank `amount` and adds
 `contribution`, its signed effect on the displayed total. Income rows use the
 same Income and income-direction Refund classification as the headline; expense
