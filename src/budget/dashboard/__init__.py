@@ -57,7 +57,7 @@ from budget.dashboard.session import SESSION_COOKIE
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
 
-__all__ = ["create_app", "set_passphrase"]
+__all__ = ["create_app", "jinja_environment", "set_passphrase"]
 
 _STATIC = Path(__file__).parent / "static"
 
@@ -118,7 +118,7 @@ def _add_global(namespace: MutableMapping[str, Any], name: str, value: object) -
     namespace[name] = value
 
 
-def _templates(features: Sequence[Feature]) -> Environment:
+def jinja_environment(features: Sequence[Feature]) -> Environment:
     """Return the templates one dashboard renders its pages from.
 
     A feature's own templates are named after its folder, as `<folder>/<file>`,
@@ -216,7 +216,7 @@ def create_app(
     _serve_stylesheets(app, features)
     # The htmx script ships in the package: nothing is fetched from the internet.
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")
-    templates = _templates(features)
+    templates = jinja_environment(features)
 
     def start_session(response: Response, credentials: CredentialSnapshot) -> Response:
         """Set a session cookie lasting `LOGIN_LIFETIME` from now.
