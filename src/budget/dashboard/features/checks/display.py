@@ -139,6 +139,8 @@ def _verdict(reconciliation: Reconciliation, currency: str) -> str:
     """Return whether one account-month can be trusted, never claiming it adds up."""
     if reconciliation.coverage in ("partial", "no_data"):
         return "Data mangler"
+    if reconciliation.coverage == "outside_history":
+        return "Uden for historikken"
     if None in (reconciliation.opening_balance, reconciliation.closing_balance):
         return "Ukendt"
     # The internal residual is shown first: it is the month's own arithmetic.
