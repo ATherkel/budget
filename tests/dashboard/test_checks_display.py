@@ -139,3 +139,21 @@ def test_a_complete_month_with_a_missing_balance_is_unknown() -> None:
         savings_verdict(closing_balance=None, internal_residual=None),
         savings_verdict(opening_balance=None, internal_residual=None, opening_gap=None),
     ) == ("Ukendt", "Ukendt")
+
+
+def test_a_month_outside_an_accounts_history_says_so_rather_than_finding_nothing() -> (
+    None
+):
+    reconciliations = tuple(
+        replace(reconciliation, coverage="outside_history")
+        if reconciliation.account_id == SAVINGS
+        else reconciliation
+        for reconciliation in MARCH_REPORT.reconciliations
+    )
+    view = checks_view(
+        replace(MARCH_REPORT, reconciliations=reconciliations), "marts 2026"
+    )
+
+    assert {account.account_id: account.verdict for account in view.accounts}[
+        SAVINGS
+    ] == "Uden for historikken"
