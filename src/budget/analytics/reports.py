@@ -229,6 +229,7 @@ class AccountActivitySnapshot:
     monthly_snapshot: MonthlyBalanceObservation | None
     evidence_through: date | None
     coverage: Coverage | Literal["outside_history"]
+    money_in_out: MoneyInOut | None
 
 
 @dataclass(frozen=True)

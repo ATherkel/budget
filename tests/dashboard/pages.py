@@ -7,6 +7,7 @@ from typing import override
 
 # Elements that never have an end tag, so they hold no text.
 _VOID = frozenset({"area", "br", "col", "hr", "img", "input", "link", "meta", "wbr"})
+_DISCLOSURE_TAGS = frozenset({"details", "summary", "tr", "td", "th"})
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,15 @@ class Option:
 
 
 @dataclass
+class Disclosure:
+    """One native disclosure's summary and table cells."""
+
+    open: bool
+    summary: str = ""
+    rows: list[tuple[str, ...]] = field(default_factory=list)
+
+
+@dataclass
 class Page(HTMLParser):
     """The visible text of a page and the form controls on it."""
 
@@ -38,11 +48,16 @@ class Page(HTMLParser):
     options: list[Option] = field(default_factory=list)
     elements: dict[str, dict[str, str]] = field(default_factory=dict)
     element_text: dict[str, str] = field(default_factory=dict)
+    disclosures: list[Disclosure] = field(default_factory=list)
     _hidden_depth: int = 0
     # Every open element, innermost last, with its id when it has one.
     _open: list[tuple[str, str | None]] = field(default_factory=list)
     _select: str | None = None
     _option: Option | None = None
+    _disclosure_stack: list[Disclosure] = field(default_factory=list)
+    _summary_parts: list[str] | None = None
+    _row: list[str] | None = None
+    _cell_parts: list[str] | None = None
 
     def __post_init__(self) -> None:
         super().__init__()
@@ -58,6 +73,8 @@ class Page(HTMLParser):
             self._open.append((tag, element_id))
         if tag in {"script", "style", "title"}:
             self._hidden_depth += 1
+        elif tag in _DISCLOSURE_TAGS:
+            self._start_disclosure_element(tag, is_open="open" in values)
         elif tag == "input":
             self.fields.append(
                 Field(
@@ -77,6 +94,24 @@ class Page(HTMLParser):
             )
             self.options.append(self._option)
 
+    def _start_disclosure_element(
+        self,
+        tag: str,
+        *,
+        is_open: bool,
+    ) -> None:
+        match tag:
+            case "details":
+                disclosure = Disclosure(open=is_open)
+                self.disclosures.append(disclosure)
+                self._disclosure_stack.append(disclosure)
+            case "summary" if self._disclosure_stack:
+                self._summary_parts = []
+            case "tr" if self._disclosure_stack:
+                self._row = []
+            case "td" | "th" if self._row is not None:
+                self._cell_parts = []
+
     @override
     def handle_endtag(self, tag: str) -> None:
         # Close the innermost open element of this name, and any left open in it.
@@ -84,12 +119,29 @@ class Page(HTMLParser):
             if self._open[depth][0] == tag:
                 del self._open[depth:]
                 break
+        if tag in _DISCLOSURE_TAGS:
+            self._end_disclosure_element(tag)
         if tag in {"script", "style", "title"}:
             self._hidden_depth -= 1
         elif tag == "select":
             self._select = None
         elif tag == "option":
             self._option = None
+
+    def _end_disclosure_element(self, tag: str) -> None:
+        match tag:
+            case "summary" if self._summary_parts is not None:
+                self._disclosure_stack[-1].summary = " ".join(self._summary_parts)
+                self._summary_parts = None
+            case "td" | "th" if self._cell_parts is not None:
+                if self._row is not None:
+                    self._row.append(" ".join(self._cell_parts))
+                self._cell_parts = None
+            case "tr" if self._row is not None:
+                self._disclosure_stack[-1].rows.append(tuple(self._row))
+                self._row = None
+            case "details" if self._disclosure_stack:
+                self._disclosure_stack.pop()
 
     @override
     def handle_data(self, data: str) -> None:
@@ -102,6 +154,10 @@ class Page(HTMLParser):
                 self.element_text[element_id] = (
                     f"{self.element_text[element_id]} {words}".strip()
                 )
+        if self._summary_parts is not None:
+            self._summary_parts.append(words)
+        if self._cell_parts is not None:
+            self._cell_parts.append(words)
         if self._option is not None:
             self._option.text = f"{self._option.text} {words}".strip()
 

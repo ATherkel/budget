@@ -341,6 +341,16 @@ selected accounts' balance evidence under the same pinned context,
 Rows preserve the published date, description, signed amount and transaction
 type, newest first by date, account ID and account sequence.
 
+Each `AccountActivitySnapshot` carries `money_in_out`: a [`MoneyInOut`](#monthlyoverview)
+over every selected movement for that account, regardless of transaction type.
+Its `money_in` is the sum of positive amounts and `money_out` the sum of
+negative amounts; a zero amount contributes to neither. Transfers, Refunds,
+Adjustments and Unclassified movements therefore contribute by sign here,
+without changing the household Income and Expenses measures. `money_in_out`
+is null exactly when the account's Coverage is `no_data`; an `outside_history`
+month is a known zero because it cannot be missing evidence. A `partial`
+account keeps the known totals and its separate Coverage warning.
+
 A dated balance is the account month's last transaction's
 [`balance_after`](gold-contract.md#goldtransaction), ordered by
 `account_sequence`. It is not the month-end balance. Monthly opening and

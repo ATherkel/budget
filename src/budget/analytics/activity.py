@@ -1,8 +1,10 @@
 # Copyright 2026 Therkel
 """Account activity and its public Transfer evidence."""
 
+from collections.abc import Sequence
 from datetime import date, timedelta
 
+from budget.analytics.measures import ZERO
 from budget.analytics.overview import (
     every_row,
     report_publication,
@@ -13,6 +15,7 @@ from budget.analytics.reports import (
     AccountActivitySnapshot,
     ActivityRow,
     BankBalanceObservation,
+    MoneyInOut,
     MonthlyBalanceObservation,
     ReportContext,
     TransferPairing,
@@ -145,6 +148,16 @@ def _activity_rows(
     return tuple(row(transaction) for transaction in ordered)
 
 
+def _money_in_out(rows: Sequence[ActivityRow]) -> MoneyInOut:
+    """Sum every signed movement without netting opposite directions."""
+    amounts = tuple(row.amount for row in rows)
+    return MoneyInOut(
+        money_in=sum((amount for amount in amounts if amount > 0), ZERO),
+        money_out=sum((amount for amount in amounts if amount < 0), ZERO),
+        count=len(amounts),
+    )
+
+
 def account_activity(
     gold: GoldRepository,
     context: ReportContext,
@@ -171,12 +184,21 @@ def account_activity(
     month_end = last_day(context.month)
     snapshots = {row.account_id: row for row in rows if row.month == context.month}
     incomplete = {row.account_id: row.status for row in judged.coverage.account_months}
+    transactions = _activity_rows(gold, context)
+    by_account: dict[str, list[ActivityRow]] = {}
+    for transaction in transactions:
+        by_account.setdefault(transaction.account_id, []).append(transaction)
 
     def account(
         account: GoldAccount,
     ) -> AccountActivitySnapshot:
         snapshot = snapshots.get(account.account_id)
         earlier_end = month_start - timedelta(days=1)
+        coverage = (
+            snapshot.coverage
+            if snapshot is not None
+            else incomplete.get(account.account_id, "complete")
+        )
         return AccountActivitySnapshot(
             account_id=account.account_id,
             display_name=account.display_name,
@@ -198,10 +220,11 @@ def account_activity(
             ),
             monthly_snapshot=_monthly_snapshot(snapshot),
             evidence_through=account.evidence_through,
-            coverage=(
-                snapshot.coverage
-                if snapshot is not None
-                else incomplete.get(account.account_id, "complete")
+            coverage=coverage,
+            money_in_out=(
+                None
+                if coverage == "no_data"
+                else _money_in_out(by_account.get(account.account_id, []))
             ),
         )
 
@@ -212,5 +235,5 @@ def account_activity(
         accounts=tuple(account(a) for a in accounts),
         coverage=judged.coverage,
         provisional=judged.provisional,
-        transactions=_activity_rows(gold, context),
+        transactions=transactions,
     )

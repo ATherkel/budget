@@ -7,10 +7,14 @@
   font-weight: 400;
 }
 
-.category-row {
+.category-row,
+.account-flow-summary {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.category-row {
   padding: 0.5rem 0;
   border-bottom: 1px solid var(--line);
 }
@@ -38,11 +42,15 @@
   margin-block: 1rem;
 }
 
-.balance-observations div {
-  padding: 0.65rem 0.75rem;
+.balance-observations div,
+.account-flow {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+}
+
+.balance-observations div {
+  padding: 0.65rem 0.75rem;
 }
 
 .balance-observations dt {
@@ -54,6 +62,32 @@
 .balance-observations dd {
   margin: 0.25rem 0 0;
   font-variant-numeric: tabular-nums;
+}
+
+.account-flow-disclosures {
+  display: grid;
+  gap: 0.5rem;
+  margin-block: 1rem;
+}
+
+.account-flow summary {
+  min-height: 2.75rem;
+  padding: 0.65rem 0.75rem;
+  cursor: pointer;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.account-flow-summary {
+  align-items: center;
+}
+
+.account-flow[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.account-flow .activity-table {
+  margin: 0;
 }
 
 .activity-table {

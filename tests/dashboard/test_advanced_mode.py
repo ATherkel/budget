@@ -14,7 +14,7 @@ from budget.gold import GoldResult, ReportingMonth
 from budget.gold.store import GoldStore
 from budget.profiles import Profile
 from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
-from tests.dashboard.pages import Page, read
+from tests.dashboard.pages import Disclosure, Page, read
 from tests.gold.publishing import CONFIGURATION, RECIPE
 from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
 
@@ -114,6 +114,73 @@ def test_details_render_dated_balances_snapshots_and_public_transfer_evidence(
         True,
         {},
     )
+
+
+def test_account_details_disclose_ind_and_ud_contributors_without_changing_totals(
+    client: TestClient,
+) -> None:
+    params = {
+        **PINNED,
+        "account": [CURRENT],
+        "month": "2026-01",
+        "mode": "advanced",
+    }
+    overview = read(
+        client.get(
+            "/report",
+            params={**params, "tab": "overview"},
+            headers={"HX-Request": "true"},
+        ).text
+    )
+    details = read(
+        client.get(
+            "/report",
+            params={**params, "tab": "details"},
+            headers={"HX-Request": "true"},
+        ).text
+    )
+
+    assert (
+        overview.text_of("income"),
+        overview.text_of("expenses"),
+    ) == ("25.000,00 kr.", "842,50 kr.")
+    assert (
+        details.attributes("report").get("data-publication"),
+        details.attributes("report").get("data-reference-date"),
+        details.attributes("report").get("data-accounts"),
+        details.attributes("report").get("data-month"),
+        details.hidden("tab"),
+    ) == (
+        "1",
+        "2026-05-14",
+        CURRENT,
+        "2026-01",
+        "details",
+    )
+    assert details.disclosures == [
+        Disclosure(
+            open=False,
+            summary="Ind +25.000,00 kr.",
+            rows=[
+                ("Dato", "Tekst", "Type", "Beløb"),
+                ("14.01.2026", "SALARY", "Indtægt", "+25.000,00 kr."),
+            ],
+        ),
+        Disclosure(
+            open=False,
+            summary="Ud \N{MINUS SIGN}3.842,50 kr.",
+            rows=[
+                ("Dato", "Tekst", "Type", "Beløb"),
+                ("28.01.2026", "GROCERIES", "Udgift", "\N{MINUS SIGN}842,50 kr."),
+                (
+                    "20.01.2026",
+                    "TRANSFER",
+                    "Overførsel, parret med Joint savings den 20.01.2026",
+                    "\N{MINUS SIGN}3.000,00 kr.",
+                ),
+            ],
+        ),
+    ]
 
 
 def test_details_keep_a_null_dated_balance_separate_from_unknown_snapshot_value(
