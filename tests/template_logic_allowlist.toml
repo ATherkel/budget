@@ -30,12 +30,6 @@ issue = 627
 
 [[allowance]]
 path = "features/category/category.html"
-tag = '{% set is_group = detail.subject.kind == "group" %}'
-reason = "A set in the template; Python passes the value."
-issue = 626
-
-[[allowance]]
-path = "features/category/category.html"
 tag = '{% if not is_group %}'
 reason = "Optional section or failure branch; becomes a notice list or its own template."
 issue = 627
@@ -126,12 +120,6 @@ issue = 627
 
 [[allowance]]
 path = "features/login/login.html"
-tag = '{% set page_title = "Log ind" %}'
-reason = "A set in the template; Python passes the value."
-issue = 626
-
-[[allowance]]
-path = "features/login/login.html"
 tag = '{% if message %}'
 reason = "Optional section or failure branch; becomes a notice list or its own template."
 issue = 627
@@ -171,12 +159,6 @@ path = "features/report/report.html"
 tag = '{% if tab == "overview" %}'
 reason = "Optional section or failure branch; becomes a notice list or its own template."
 issue = 627
-
-[[allowance]]
-path = "features/report/report.html"
-tag = '{% set unclassified = overview.unclassified %}'
-reason = "A set in the template; Python passes the value."
-issue = 626
 
 [[allowance]]
 path = "features/report/report.html"
