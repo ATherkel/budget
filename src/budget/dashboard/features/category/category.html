@@ -6,7 +6,6 @@
 {% if failure %}
 {{ failure_notice(failure, {"id": "detail-failure"}) }}
 {% else %}
-{% set is_group = detail.subject.kind == "group" %}
 {{ newer_figures(detail.publication.is_current) }}
 <nav class="scope-switch" aria-label="Periode">
 {% for link in scope_links %}

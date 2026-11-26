@@ -123,6 +123,7 @@ def _render_detail(
     period = period_label(detail_report.first_month, detail_report.last_month)
     return dashboard.templates.get_template("category/category.html").render(
         detail=detail_report,
+        is_group=subject.kind == "group",
         title=f"{detail_report.name}, {period}",
         scope_links=switch_links(
             detail_report.scope,

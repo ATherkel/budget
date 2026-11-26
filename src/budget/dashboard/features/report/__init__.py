@@ -155,6 +155,7 @@ def render_report(
             "month": month_value(answered.month),
             "month_label": month_label(answered.month),
             "overview": overview_report,
+            "unclassified": overview_report.unclassified,
             "incomplete": [
                 account_month.display_name
                 for account_month in incomplete_months(overview_report.coverage)
