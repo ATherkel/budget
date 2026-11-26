@@ -169,23 +169,17 @@ and may be off by up to that amount. When `unclassified.count` > 0, Enkel says
 so quietly, linking to the [explanation](#navigation-and-selection-transitions).
 Enkel always shows a fourth summary figure, Ukategoriseret: `money_in` as Ind,
 with a plus sign when positive, and `money_out` as Ud with its minus sign. A
-known zero reads 0,00 kr. and a null reads as unknown. Like the other summary
-cards it expands, listing each unclassified row with its account and
-direction, money in before money out. The count belongs to
+known zero reads 0,00 kr. and a null reads as unknown. It expands like the
+other cards, money in before money out. The count belongs to
 Kontrol; the explanation shows neither amounts nor count. Adjustments carry no
 note.
 
-`OverviewMovements` carries the rows behind Income, Expenses, Transfers and
-Unclassified: `income`, `expenses`, `transfers`, `transfer_total` and
-`unclassified`, the `unknown` transactions behind `unclassified`. Every
-`OverviewContributor` preserves the signed original bank `amount` and adds
-`contribution`, its signed effect on the displayed total. Income rows use the
-same Income and income-direction Refund classification as the headline; expense
-rows use the same Expenses and expense-direction Refund classification with
-the contribution sign flipped. Transfer rows preserve selected legs by sign, so
-selecting one leg contributes that amount and selecting both legs adds to zero.
-Rows are newest first by date, account ID and account sequence, and carry the
-human account display name. Transfers never enter Income or Expenses.
+`OverviewMovements` holds each card's rows (`income`, `expenses`, `transfers`,
+`unclassified`) and `transfer_total`. An `OverviewContributor` keeps the signed
+bank `amount` and adds `contribution`, its signed effect on the card's total:
+expenses flip the sign, and both legs of a selected transfer add to zero. Rows
+follow the headline's classification, newest first by date, account ID and
+account sequence.
 
 ### Coverage
 
@@ -242,12 +236,10 @@ internal_residual = closing_balance - (opening_balance + income_minus_expenses
 opening_gap = opening_balance - previous_closing_balance
 ```
 
-`expected_closing` is the parenthesized sum above, calculated once from the
-same components. `internal_residual` is the observed closing less that value.
-Either closing result is unknown if any required endpoint or component is
-missing; `opening_gap` is unknown without both opening endpoints. Arithmetic
-agreement never upgrades Coverage: the synthetic March example has internal
-residual `0.00`, opening gap `-500.00` and Coverage `partial`.
+`expected_closing` is the parenthesized sum above. Each result is unknown if
+any of its inputs is missing. Arithmetic agreement never upgrades Coverage: the
+synthetic March example has internal residual `0.00`, opening gap `-500.00` and
+Coverage `partial`.
 
 ### `SpendingDetail`
 
@@ -359,15 +351,10 @@ selected accounts' balance evidence under the same pinned context,
 Rows preserve the published date, description, signed amount and transaction
 type, newest first by date, account ID and account sequence.
 
-Each `AccountActivitySnapshot` carries `money_in_out`: a [`MoneyInOut`](#monthlyoverview)
-over every selected movement for that account, regardless of transaction type.
-Its `money_in` is the sum of positive amounts and `money_out` the sum of
-negative amounts; a zero amount contributes to neither. Transfers, Refunds,
-Adjustments and Unclassified movements therefore contribute by sign here,
-without changing the household Income and Expenses measures. `money_in_out`
-is null exactly when the account's Coverage is `no_data`; an `outside_history`
-month is a known zero because it cannot be missing evidence. A `partial`
-account keeps the known totals and its separate Coverage warning.
+Each `AccountActivitySnapshot` carries `money_in_out`, a
+[`MoneyInOut`](#monthlyoverview) of the account's movements of every type, by
+sign. It leaves the household measures unchanged, is null exactly when the
+account's Coverage is `no_data`, and is a known zero for `outside_history`.
 
 A dated balance is the account month's last transaction's
 [`balance_after`](gold-contract.md#goldtransaction), ordered by
