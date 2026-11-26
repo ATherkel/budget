@@ -327,6 +327,32 @@ def test_kontrol_heads_the_residual_list_and_the_reconciliation_section(
     ) == ("Forskelle at undersøge", "checks-residuals-title", "Afstemning", True)
 
 
+def test_kontrol_tables_each_account_with_its_verdict_linking_to_detaljer(
+    client: TestClient,
+) -> None:
+    # March: Joint current is partly covered; Joint savings is complete and adds up.
+    page = kontrol(client)
+    link = urlsplit(page.attributes(f"checks-account-{SAVINGS}").get("href", ""))
+
+    assert (
+        page.text_of(f"checks-account-{CURRENT}"),
+        page.text_of(f"checks-verdict-{CURRENT}"),
+        page.text_of(f"checks-verdict-{SAVINGS}"),
+        kontrol(client, month="2026-04").text_of(f"checks-verdict-{CURRENT}"),
+        link.path,
+        parse_qs(link.query).get("account"),
+        parse_qs(link.query).get("tab"),
+    ) == (
+        "Joint current",
+        "Data mangler",
+        "Ingen fundne forskelle",
+        "Ingen fundne forskelle",
+        "/",
+        [SAVINGS],
+        ["details"],
+    )
+
+
 def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
     client: TestClient,
 ) -> None:
