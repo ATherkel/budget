@@ -119,12 +119,6 @@ reason = "Optional section or failure branch; becomes a notice list or its own t
 issue = 627
 
 [[allowance]]
-path = "features/login/login.html"
-tag = '{% if message %}'
-reason = "Optional section or failure branch; becomes a notice list or its own template."
-issue = 627
-
-[[allowance]]
 path = "features/report/report.html"
 tag = '{% if mode == "advanced" %}'
 reason = "Optional section or failure branch; becomes a notice list or its own template."
