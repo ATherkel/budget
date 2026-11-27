@@ -136,6 +136,7 @@ rather than substituting it.
 | `categories` | list of `CategorySpending` | One row per expense-direction Category with at least one allocation in the month, ordered by `spending`, largest first, and then by `category_id`. Empty when `coverage.status` is `no_data`. |
 | `unclassified` | `MoneyInOut`/null | Unclassified money: `unknown` transactions. |
 | `adjustments` | `MoneyInOut`/null | `adjustment` transactions, which carry no allocation. |
+| `movements` | list of `MovementGroup`/null | The transactions behind each summary group, below. Null exactly when `coverage.status` is `no_data`. |
 | `coverage` | `ReportCoverage` | Coverage of every figure above. |
 | `provisional` | `Provisional`/null | Why the month is provisional; null when it is not. |
 
@@ -153,7 +154,7 @@ Category is a known zero only when coverage is `complete`.
 `spending`, the Category's net spending as Money: −(Σ allocations of `expense`
 transactions + Σ allocations of `refund` transactions), negative when Refunds
 exceed purchases. The overview carries no Category group totals and no
-transaction rows; reports that need them add them.
+transaction rows besides `movements`; reports that need them add them.
 
 Enkel shows every row in the given order, neither reordered nor truncated, so
 the list adds up to Expenses with no remainder line; a net Refund Category
@@ -171,6 +172,14 @@ with a plus sign when positive, and `money_out` as Ud with its minus sign. A
 known zero reads 0,00 kr. and a null reads as unknown. The count belongs to
 Kontrol; the explanation shows neither amounts nor count. Adjustments carry no
 note.
+
+`MovementGroup`: `group` (`income`, `expenses`, `transfers` or
+`unclassified`, in card order), `rows`, `total` (Σ `contribution`) and `flows`
+(`MoneyInOut`). Rows are grouped by the same rule as the figures above, and
+adjustments belong to no group. A `MovementRow` keeps the signed bank `amount`
+and adds `contribution`: Expenses flip the sign, so a Refund reduces them, and
+both legs of a selected Transfer add to zero. Rows are newest first by date,
+account ID and account sequence. Show Unclassified by its `flows`.
 
 ### Coverage
 

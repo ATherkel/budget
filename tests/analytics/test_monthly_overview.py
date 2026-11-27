@@ -8,6 +8,7 @@ derived from the code under test.
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
+from unittest.mock import ANY
 
 from budget.analytics import (
     AccountMonth,
@@ -155,6 +156,8 @@ def test_february_nets_the_refund_and_names_the_partial_account() -> None:
         ),
         unclassified=NONE,
         adjustments=NONE,
+        # test_overview_movements.py pins the movements.
+        movements=ANY,
         coverage=ReportCoverage(
             status="partial",
             account_months=(
@@ -262,6 +265,7 @@ def test_a_month_with_no_evidence_reports_every_figure_as_unknown() -> None:
         categories=(),
         unclassified=None,
         adjustments=None,
+        movements=None,
         coverage=ReportCoverage(
             status="no_data",
             account_months=(
@@ -292,6 +296,7 @@ def _zero_report(context: ReportContext, coverage: ReportCoverage) -> MonthlyOve
         categories=(),
         unclassified=NONE,
         adjustments=NONE,
+        movements=ANY,
         coverage=coverage,
         provisional=None,
     )
@@ -316,6 +321,7 @@ def test_march_reports_unclassified_money_and_no_rate_without_income() -> None:
         ),
         unclassified=MoneyInOut(Decimal("0.00"), Decimal("-450.00"), 1),
         adjustments=NONE,
+        movements=ANY,
         coverage=ReportCoverage(
             status="partial",
             account_months=(_month(CURRENT, "Joint current", 3, "partial"),),

@@ -9,6 +9,7 @@ from collections.abc import Collection, Sequence
 from datetime import date
 
 from budget.analytics.measures import UNKNOWN, Figures, figures
+from budget.analytics.movements import movements
 from budget.analytics.reports import (
     InvalidSelectionError,
     MonthlyOverview,
@@ -151,6 +152,9 @@ def monthly_overview(
         categories=known.categories,
         unclassified=known.unclassified,
         adjustments=known.adjustments,
+        movements=movements(
+            known.grouped, {a.account_id: a.display_name for a in accounts}
+        ),
         coverage=judged.coverage,
         provisional=judged.provisional,
     )

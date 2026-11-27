@@ -9,18 +9,27 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Literal
 
-from budget.analytics.reports import CategorySpending, MoneyInOut
+from budget.analytics.reports import CategorySpending, MoneyInOut, SummaryGroup
 from budget.gold import (
     CategoryDirection,
     GoldCategory,
     GoldCategoryAllocation,
     GoldTransaction,
-    TransactionType,
 )
 
 # DKK, the only first-release currency, has two minor-unit places.
 ZERO = Decimal("0.00")
+
+# The overview's summary groups in card order, each with the sign its rows'
+# bank amounts contribute with: Expenses count money out as positive.
+SUMMARY_GROUPS: dict[SummaryGroup, Literal[1, -1]] = {
+    "income": 1,
+    "expenses": -1,
+    "transfers": 1,
+    "unclassified": 1,
+}
 
 
 @dataclass(frozen=True)
@@ -34,6 +43,7 @@ class Figures:
     categories: tuple[CategorySpending, ...]
     unclassified: MoneyInOut | None
     adjustments: MoneyInOut | None
+    grouped: dict[SummaryGroup, tuple[GoldTransaction, ...]] | None
 
 
 # With no evidence a figure is unknown, never zero (report-contract.md).
@@ -45,6 +55,7 @@ UNKNOWN = Figures(
     categories=(),
     unclassified=None,
     adjustments=None,
+    grouped=None,
 )
 
 
@@ -52,11 +63,9 @@ def _total(amounts: Iterable[Decimal]) -> Decimal:
     return sum(amounts, ZERO)
 
 
-def _money_in_out(
-    transactions: Sequence[GoldTransaction], transaction_type: TransactionType
-) -> MoneyInOut:
-    """Money in and money out of one transaction type, never netted."""
-    amounts = [t.amount for t in transactions if t.transaction_type == transaction_type]
+def money_in_out(transactions: Iterable[GoldTransaction]) -> MoneyInOut:
+    """Money in and money out of `transactions`, never netted."""
+    amounts = [t.amount for t in transactions]
     return MoneyInOut(
         money_in=_total(a for a in amounts if a > 0),
         money_out=_total(a for a in amounts if a < 0),
@@ -64,16 +73,26 @@ def _money_in_out(
     )
 
 
-def _measure(
+def _group(
     transaction: GoldTransaction,
     refund_directions: dict[str, CategoryDirection],
-) -> CategoryDirection | None:
-    """Return the measure a transaction counts toward; a Refund takes its category's."""
+) -> SummaryGroup | None:
+    """Return the summary group a transaction counts toward; the one grouping rule.
+
+    A Refund takes its category's direction.
+    """
     match transaction.transaction_type:
         case "refund":
-            return refund_directions[transaction.transaction_id]
-        case ("income" | "expense") as measure:
-            return measure
+            direction = refund_directions[transaction.transaction_id]
+            return "income" if direction == "income" else "expenses"
+        case "income":
+            return "income"
+        case "expense":
+            return "expenses"
+        case "transfer":
+            return "transfers"
+        case "unknown":
+            return "unclassified"
         case _:
             return None
 
@@ -116,11 +135,12 @@ def figures(
         allocation.transaction_id: by_id[allocation.category_id].direction
         for allocation in allocations
     }
-    measured = [(_measure(t, refund_directions), t.amount) for t in transactions]
-    income = _total(amount for measure, amount in measured if measure == "income")
-    expenses = ZERO - _total(
-        amount for measure, amount in measured if measure == "expense"
-    )
+    found = [(_group(t, refund_directions), t) for t in transactions]
+    grouped = {
+        name: tuple(t for group, t in found if group == name) for name in SUMMARY_GROUPS
+    }
+    income = _total(t.amount for t in grouped["income"])
+    expenses = ZERO - _total(t.amount for t in grouped["expenses"])
     net_cash_flow = income - expenses
     return Figures(
         income=income,
@@ -128,6 +148,9 @@ def figures(
         net_cash_flow=net_cash_flow,
         savings_rate=net_cash_flow / income if income > 0 else None,
         categories=_category_spending(allocations, by_id),
-        unclassified=_money_in_out(transactions, "unknown"),
-        adjustments=_money_in_out(transactions, "adjustment"),
+        unclassified=money_in_out(grouped["unclassified"]),
+        adjustments=money_in_out(
+            t for t in transactions if t.transaction_type == "adjustment"
+        ),
+        grouped=grouped,
     )
