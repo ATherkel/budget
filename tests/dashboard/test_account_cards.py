@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from tests.dashboard.pages import Disclosure, Page, read
 from tests.dashboard.test_summary_cards import _logged_in
-from tests.gold.worked_example import CURRENT, PUBLICATION
+from tests.gold.worked_example import CURRENT, PUBLICATION, SAVINGS
 
 
 @pytest.fixture
@@ -65,5 +65,22 @@ def test_each_account_shows_its_ind_and_ud_as_cards_of_their_rows(
                     "\N{MINUS SIGN}3.000,00 kr.",
                 ),
             ],
+        ),
+    )
+
+
+def test_a_quiet_month_says_so_in_each_card(client: TestClient) -> None:
+    # report-contract.md, "March, joint-savings only: a confirmed quiet month".
+    page = _details(client, "2026-03", SAVINGS)
+
+    assert (
+        page.disclosures.get(f"activity-in-{SAVINGS}-card"),
+        page.disclosures.get(f"activity-out-{SAVINGS}-card"),
+    ) == (
+        Disclosure(
+            open=False, summary="Ind 0,00 kr.", rows=[("Ingen penge ind i måneden.",)]
+        ),
+        Disclosure(
+            open=False, summary="Ud 0,00 kr.", rows=[("Ingen penge ud i måneden.",)]
         ),
     )
