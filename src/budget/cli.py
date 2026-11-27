@@ -144,6 +144,7 @@ from budget.reviewing import (
 )
 from budget.silver.storage import SILVER_STAGE
 from budget.silver.store import SilverStore
+from budget.sorting import sort_unknowns
 from budget.suggesting import (
     RULES_DRAFT_NAME,
     TAXONOMY_DRAFT_NAME,
@@ -405,6 +406,9 @@ def _parser() -> argparse.ArgumentParser:
         "--out",
         type=Path,
         help="also write taxonomy-draft.toml and rules-draft.toml to this folder",
+    )
+    commands.add_parser(
+        "sort", help="sort unknown transactions into categories, one group at a time"
     )
     decide = commands.add_parser(
         "decide", help="record a manual decision, then rebuild from what it affects"
@@ -1086,6 +1090,7 @@ _PROFILE_ONLY_COMMANDS: Final[Mapping[str, Callable[[Profile], None]]] = {
     "undo": _undo,
     "set-passphrase": _set_passphrase,
     "serve": _serve,
+    "sort": sort_unknowns,
 }
 
 
