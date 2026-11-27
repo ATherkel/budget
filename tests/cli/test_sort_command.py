@@ -21,6 +21,8 @@ from tests.importing.households import drop
 
 EXIT_OK = 0
 _NOW = datetime(2026, 4, 1, tzinfo=UTC)
+# The question after each group, which stdout holds without the answer typed.
+_ASKED = "Category, t (transfer), n (new category), s (skip) or q (quit): "
 _HEADER = '"Dato","Kategori","Underkategori","Tekst","Beløb","Saldo","Status","Afstemt"'
 
 type Row = tuple[str, str, str]
@@ -87,4 +89,20 @@ class ShowingAGroupTests(unittest.TestCase):
                 "  2026-03-02  joint-current  -45.00  NETTO 1234 KBH",
                 "  2026-03-05  joint-current  -55.00  NETTO 5678 KBH",
                 "  2026-03-09  joint-current  -60.00  Netto 91 KBH",
+            ]
+
+    def test_skipping_shows_each_next_group_until_none_is_left(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+
+            status, stdout, stderr = sort(profile_file, "s\ns\ns\ns\n")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            headings = [block.splitlines()[0] for block in stdout.split("\n\n")]
+            assert headings == [
+                "netto kbh",
+                _ASKED + "fra lønkonto",
+                _ASKED + "løn marts",
+                _ASKED + "til opsparing",
+                _ASKED + "No group is left to sort.",
             ]
