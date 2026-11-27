@@ -146,3 +146,17 @@ class AnsweringACategoryTests(unittest.TestCase):
                 "Løn marts 2026": "unknown",
                 "Fra lønkonto": "unknown",
             }
+
+    def test_each_answer_shows_the_month_totals_with_unknown_shrunk(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+            _write_input(profile_file, "taxonomy.toml", TAXONOMY)
+
+            _, stdout, _ = sort(profile_file, "groceries\nq\n")
+
+            totals = stdout.split("\n\n")[1].splitlines()
+            assert totals == [
+                _ASKED + "Month totals",
+                "  2026-03  in 0.00 DKK, out -200.00 DKK, transfer 0.00 DKK, "
+                "unknown 20000.00 DKK (3 transactions)",
+            ]
