@@ -321,6 +321,7 @@ class Reconciliation:
     unclassified_out: Decimal | None
     adjustments_in: Decimal | None
     adjustments_out: Decimal | None
+    expected_closing: Decimal | None
     closing_balance: Decimal | None
     internal_residual: Decimal | None
     previous_closing_balance: Decimal | None

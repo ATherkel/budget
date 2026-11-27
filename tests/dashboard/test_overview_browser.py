@@ -193,7 +193,7 @@ def test_only_ticks_only_its_account_and_updates_the_report_in_place(
 ) -> None:
     log_in(page, dashboard)
     # Start with savings unticked, so "kun" has to tick it as well.
-    page.get_by_label("Joint savings").uncheck()
+    page.get_by_label("Joint savings", exact=True).uncheck()
     page.wait_for_function("!location.search.includes('account=joint-savings')")
     # A full page load would forget this mark.
     page.evaluate("window.stillThisPage = true")
@@ -201,8 +201,8 @@ def test_only_ticks_only_its_account_and_updates_the_report_in_place(
     page.locator("#only-joint-savings").click()
 
     expect(page.locator("#report")).to_have_attribute("data-accounts", "joint-savings")
-    expect(page.get_by_label("Joint current")).not_to_be_checked()
-    expect(page.get_by_label("Joint savings")).to_be_checked()
+    expect(page.get_by_label("Joint current", exact=True)).not_to_be_checked()
+    expect(page.get_by_label("Joint savings", exact=True)).to_be_checked()
     expect(page).to_have_url(
         re.compile(
             r"/\?publication=2&reference_date=2026-06-01"
@@ -223,8 +223,8 @@ def test_none_and_all_change_every_box_in_place_and_move_the_address(
 
     page.locator("#accounts-none").click()
     expect(page.locator("#report-region")).to_contain_text("Vælg mindst én konto.")
-    expect(page.get_by_label("Joint current")).not_to_be_checked()
-    expect(page.get_by_label("Joint savings")).not_to_be_checked()
+    expect(page.get_by_label("Joint current", exact=True)).not_to_be_checked()
+    expect(page.get_by_label("Joint savings", exact=True)).not_to_be_checked()
     expect(page).to_have_url(
         re.compile(
             r"/\?publication=2&reference_date=2026-06-01&month=2026-06"
@@ -236,8 +236,8 @@ def test_none_and_all_change_every_box_in_place_and_move_the_address(
     expect(page.locator("#report")).to_have_attribute(
         "data-accounts", "joint-current joint-savings"
     )
-    expect(page.get_by_label("Joint current")).to_be_checked()
-    expect(page.get_by_label("Joint savings")).to_be_checked()
+    expect(page.get_by_label("Joint current", exact=True)).to_be_checked()
+    expect(page.get_by_label("Joint savings", exact=True)).to_be_checked()
     expect(page).to_have_url(
         re.compile(
             r"/\?publication=2&reference_date=2026-06-01"
@@ -258,8 +258,8 @@ def test_a_shortcut_opened_in_a_new_tab_leaves_this_page_as_it_was(
         page.locator("#only-joint-savings").click(modifiers=["Control"])
 
     expect(opened.value).to_have_url(re.compile(r"&account=joint-savings&month="))
-    expect(page.get_by_label("Joint current")).to_be_checked()
-    expect(page.get_by_label("Joint savings")).to_be_checked()
+    expect(page.get_by_label("Joint current", exact=True)).to_be_checked()
+    expect(page.get_by_label("Joint savings", exact=True)).to_be_checked()
 
 
 def test_a_shortcut_names_the_month_shown_after_the_month_changes(
@@ -299,7 +299,7 @@ def test_active_request_failure_is_visible_accessible_and_retryable(
     log_in(page, dashboard)
     page.route("**/report?*", lambda route: route.abort("failed"))
 
-    page.get_by_label("Joint savings").uncheck()
+    page.get_by_label("Joint savings", exact=True).uncheck()
 
     alert = page.get_by_role("alert")
     expect(alert).to_be_visible()
@@ -424,7 +424,7 @@ def test_login_and_account_selection_work_from_the_keyboard(
     page.keyboard.press("Enter")
     expect(page.get_by_role("heading", name="Oversigt")).to_be_visible()
 
-    current = page.get_by_label("Joint current")
+    current = page.get_by_label("Joint current", exact=True)
     current.focus()
     page.keyboard.press("Space")
     expect(current).not_to_be_checked()
@@ -437,7 +437,7 @@ def test_login_and_account_selection_work_from_the_keyboard(
     page.keyboard.press("Tab")
     expect(page.locator("#only-joint-current")).to_be_focused()
     page.keyboard.press("Tab")
-    savings = page.get_by_label("Joint savings")
+    savings = page.get_by_label("Joint savings", exact=True)
     expect(savings).to_be_focused()
     page.keyboard.press("Space")
     expect(savings).not_to_be_checked()
@@ -718,8 +718,8 @@ def test_empty_switches_and_basic_explanation_restore_the_pinned_advanced_view(
     expect(advanced).to_be_checked()
     expect(page.get_by_label("Måned", exact=True)).to_have_value("2026-03")
 
-    page.get_by_label("Joint current").uncheck()
-    page.get_by_label("Joint savings").uncheck()
+    page.get_by_label("Joint current", exact=True).uncheck()
+    page.get_by_label("Joint savings", exact=True).uncheck()
     page.wait_for_function("!location.search.includes('account=')")
     expect(page.locator("#report-region")).to_contain_text("Vælg mindst én konto.")
 
@@ -736,7 +736,7 @@ def test_empty_switches_and_basic_explanation_restore_the_pinned_advanced_view(
         re.compile(r".*month=2026-03&mode=advanced&tab=overview.*")
     )
 
-    page.get_by_label("Joint current").check()
+    page.get_by_label("Joint current", exact=True).check()
     page.wait_for_function("location.search.includes('account=joint-current')")
     expect(page.get_by_role("radio", name="Avanceret")).to_be_checked()
     expect(page.locator("#report")).to_have_attribute("data-mode", "advanced")

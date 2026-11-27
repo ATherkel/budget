@@ -112,6 +112,11 @@ tilbage” has no rows, so it doesn't open. Every card is one view model,
 [`report/card.py`](../../src/budget/dashboard/features/report/card.py), and one
 macro; a new group is one `GroupCard` in
 [`summary_cards.py`](../../src/budget/dashboard/features/report/summary_cards.py).
+Below them, each selected account gets an “Afstemning” card: its
+[reconciliation](report-contract.md#diagnostics) line by line and its Coverage,
+headed by the unexplained difference, or “Ikke mulig at afstemme” when an input
+is missing
+([`reconciliation_cards.py`](../../src/budget/dashboard/features/report/reconciliation_cards.py)).
 “Detaljer” gives each account an “Ind” and an “Ud” card from its
 [`money_in_out`](report-contract.md#account-activity), specified in
 [`account_cards.py`](../../src/budget/dashboard/features/report/account_cards.py).

@@ -231,12 +231,13 @@ including null. Transfer counts count selected legs, not pairs.
 For each selected account-month:
 
 ```text
-internal_residual = closing_balance - (opening_balance + income_minus_expenses
-    + transfers + unclassified_in + unclassified_out + adjustments_in + adjustments_out)
+expected_closing = opening_balance + income_minus_expenses + transfers
+    + unclassified_in + unclassified_out + adjustments_in + adjustments_out
+internal_residual = closing_balance - expected_closing
 opening_gap = opening_balance - previous_closing_balance
 ```
 
-Either result is unknown if any of its inputs is missing. Arithmetic agreement
+Each result is unknown if any of its inputs is missing. Arithmetic agreement
 never upgrades Coverage: the synthetic March example has internal residual
 `0.00`, opening gap `-500.00` and Coverage `partial`.
 
