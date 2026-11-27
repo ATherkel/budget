@@ -49,14 +49,15 @@ def _movement_group(
 
 
 def movements(
-    grouped: Mapping[SummaryGroup, Sequence[GoldTransaction]],
+    grouped: Mapping[SummaryGroup, Sequence[GoldTransaction]] | None,
     names: Mapping[str, str],
-) -> tuple[MovementGroup, ...]:
-    """Return one group per summary group, in card order.
+) -> tuple[MovementGroup, ...] | None:
+    """Return one group per summary group, in card order; null without evidence.
 
     `names` maps each selected account ID to its display name.
     """
+    if grouped is None:
+        return None
     return tuple(
-        _movement_group(group, grouped.get(group, ()), names)
-        for group in SUMMARY_GROUPS
+        _movement_group(group, grouped[group], names) for group in SUMMARY_GROUPS
     )

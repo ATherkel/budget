@@ -44,7 +44,7 @@ class Figures:
     categories: tuple[CategorySpending, ...]
     unclassified: MoneyInOut | None
     adjustments: MoneyInOut | None
-    grouped: dict[SummaryGroup, tuple[GoldTransaction, ...]]
+    grouped: dict[SummaryGroup, tuple[GoldTransaction, ...]] | None
 
 
 # With no evidence a figure is unknown, never zero (report-contract.md).
@@ -56,7 +56,7 @@ UNKNOWN = Figures(
     categories=(),
     unclassified=None,
     adjustments=None,
-    grouped={},
+    grouped=None,
 )
 
 
