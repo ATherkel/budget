@@ -30,13 +30,17 @@ from budget.dashboard.display.links import switch_links
 from budget.dashboard.display.months import month_label, month_value, parse_month
 from budget.dashboard.display.text import incomplete_months
 from budget.dashboard.features import Dashboard, Feature
-from budget.dashboard.features.checks import read_checks
+from budget.dashboard.features.checks import read_diagnostics
+from budget.dashboard.features.checks.display import checks_view
 from budget.dashboard.features.errors import failure_fragment
 from budget.dashboard.features.report.display import (
     account_rows,
     overview_notices,
     report_notices,
     tab_template,
+)
+from budget.dashboard.features.report.reconciliation_cards import (
+    reconciliation_cards,
 )
 from budget.dashboard.features.report.summary_cards import summary_cards
 from budget.dashboard.features.view_state import (
@@ -121,19 +125,11 @@ def render_report(
     )
     if isinstance(activity, TemplateModule):
         return activity
-    checks = (
-        read_checks(
-            dashboard,
-            requested.pin,
-            requested.accounts,
-            requested.month,
-            requested.view,
-        )
-        if requested.view.mode == "advanced" and requested.view.tab == "checks"
-        else None
+    diagnostics = read_diagnostics(
+        dashboard, requested.pin, requested.accounts, requested.month
     )
-    if isinstance(checks, TemplateModule):
-        return checks
+    if isinstance(diagnostics, TemplateModule):
+        return diagnostics
     tab_links = switch_links(
         requested.view.tab,
         (
@@ -172,7 +168,10 @@ def render_report(
             ],
             "activity": activity,
             "activity_accounts": account_rows(activity),
-            "checks": checks,
+            "checks": checks_view(
+                diagnostics, month_label(answered.month), requested.view
+            ),
+            "reconciliation_cards": reconciliation_cards(diagnostics),
             "mode": requested.view.mode,
             "tab": requested.view.tab,
             "comparison": requested.view.comparison,

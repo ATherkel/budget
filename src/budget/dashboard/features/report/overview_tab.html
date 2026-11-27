@@ -9,3 +9,8 @@
 {% for notice in overview_notices %}
 {% include notice.template %}
 {% endfor %}
+<div class="summary">
+{% for card in reconciliation_cards %}
+{{ summary_card(card) }}
+{% endfor %}
+</div>
