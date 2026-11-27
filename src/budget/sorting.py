@@ -257,18 +257,23 @@ def _converse(profile: Profile) -> None:
                 _say(line)
             _say("")
             continue
-        writes: dict[Path, str] = {}
-        if answer == "n":
-            taxonomy = profile.input_file(TAXONOMY_FILE_NAME)
-            category_id, writes[taxonomy] = _with_category(taxonomy, group)
-            then = f"then.category = {toml_string(category_id)}"
-        elif answer == "t":
-            then = "then.transfer_claim = true"
-        else:
-            then = f"then.category = {toml_string(answer)}"
-        rules = profile.input_file(RULES_FILE_NAME)
-        writes[rules] = _with_rule(rules, group, then)
-        _write_checked(profile, writes)
+        _classify(profile, group, answer)
+
+
+def _classify(profile: Profile, group: UnknownGroup, answer: str) -> None:
+    """Turn a category, `t` or `n` into the files' new text, then write it."""
+    writes: dict[Path, str] = {}
+    if answer == "n":
+        taxonomy = profile.input_file(TAXONOMY_FILE_NAME)
+        category_id, writes[taxonomy] = _with_category(taxonomy, group)
+        then = f"then.category = {toml_string(category_id)}"
+    elif answer == "t":
+        then = "then.transfer_claim = true"
+    else:
+        then = f"then.category = {toml_string(answer)}"
+    rules = profile.input_file(RULES_FILE_NAME)
+    writes[rules] = _with_rule(rules, group, then)
+    _write_checked(profile, writes)
 
 
 def _by_number(answer: str, categories: Sequence[tuple[str, Sequence[str]]]) -> str:
