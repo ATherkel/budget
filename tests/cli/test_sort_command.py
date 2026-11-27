@@ -28,7 +28,10 @@ EXIT_OK = 0
 EXIT_REFUSED_ENVIRONMENT = 4
 _NOW = datetime(2026, 4, 1, tzinfo=UTC)
 # The question after each group, which stdout holds without the answer typed.
-_ASKED = "Category, t (transfer), n (new category), s (skip) or q (quit): "
+_ASKED = (
+    "Category (number or ID), t (transfer), n (new category), s (skip), "
+    "m (months) or q (quit): "
+)
 _HEADER = '"Dato","Kategori","Underkategori","Tekst","Beløb","Saldo","Status","Afstemt"'
 
 type Row = tuple[str, str, str]
@@ -279,6 +282,23 @@ class RefusedAnswerTests(unittest.TestCase):
             assert "groceries" in blocks[1]
             assert "Nothing was written." in blocks[1]
             assert blocks[2].splitlines()[0] == "netto kbh"
+
+
+class MonthTableTests(unittest.TestCase):
+    def test_m_shows_each_month_in_columns_with_unknown_in_and_out(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+            _write_input(profile_file, "taxonomy.toml", TAXONOMY)
+
+            _, stdout, _ = sort(profile_file, "groceries\nm\nq\n")
+
+            lines = stdout.splitlines()
+            start = next(i for i, line in enumerate(lines) if "Month  " in line)
+            assert lines[start : start + 2] == [
+                _ASKED
+                + "Month    Currency    In      Out  Transfer  Unknown in  Unknown out",
+                "2026-03  DKK       0.00  -200.00      0.00    20500.00      -500.00",
+            ]
 
 
 class AnsweringATransferTests(unittest.TestCase):
