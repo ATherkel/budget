@@ -10,7 +10,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
-from budget.analytics.reports import CategorySpending, MoneyInOut
+from budget.analytics.reports import CategorySpending, MoneyInOut, SummaryGroup
 from budget.gold import (
     CategoryDirection,
     GoldCategory,
@@ -21,6 +21,14 @@ from budget.gold import (
 
 # DKK, the only first-release currency, has two minor-unit places.
 ZERO = Decimal("0.00")
+
+# The overview's summary groups, in card order.
+SUMMARY_GROUPS: tuple[SummaryGroup, ...] = (
+    "income",
+    "expenses",
+    "transfers",
+    "unclassified",
+)
 
 
 @dataclass(frozen=True)
