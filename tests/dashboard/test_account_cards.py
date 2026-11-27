@@ -13,7 +13,6 @@ from fastapi.testclient import TestClient
 
 from budget.analytics import ReportContext, account_activity
 from budget.dashboard.features.report.account_cards import account_cards
-from budget.dashboard.features.report.summary_cards import NO_DATA
 from budget.gold import ReportingMonth
 from tests.analytics.test_monthly_overview import LATER_GOLD, NEW
 from tests.dashboard.pages import Disclosure, Page, read
@@ -107,6 +106,10 @@ def test_an_account_without_data_reads_unknown_in_each_card() -> None:
         page.disclosures.get(f"activity-in-{NEW}-card"),
         page.disclosures.get(f"activity-out-{NEW}-card"),
     ) == (
-        Disclosure(open=False, summary="Ind Ingen data endnu", rows=[(NO_DATA,)]),
-        Disclosure(open=False, summary="Ud Ingen data endnu", rows=[(NO_DATA,)]),
+        Disclosure(
+            open=False, summary="Ind Ingen data endnu", rows=[("Ingen data endnu.",)]
+        ),
+        Disclosure(
+            open=False, summary="Ud Ingen data endnu", rows=[("Ingen data endnu.",)]
+        ),
     )
