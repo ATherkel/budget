@@ -6,6 +6,7 @@ Silver and published to Gold, with an empty taxonomy and no rules. Every
 account, text and amount is invented.
 """
 
+import tomllib
 import unittest
 from collections.abc import Sequence
 from datetime import UTC, date, datetime
@@ -162,6 +163,31 @@ class AnsweringATransferTests(unittest.TestCase):
             )
 
 
+class AnsweringANewCategoryTests(unittest.TestCase):
+    def test_a_new_category_in_a_new_group_is_added_and_classifies_the_group(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+
+            # Name, then a group not yet in the taxonomy, then Enter for the
+            # direction the group's negative sum suggests.
+            status, _, stderr = sort(profile_file, "n\nDagligvarer\nMad\n\nq\n")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            taxonomy = tomllib.loads(
+                load_profile_file(profile_file)
+                .input_file("taxonomy.toml")
+                .read_text(encoding="utf-8")
+            )
+            assert taxonomy == {
+                "format": 1,
+                "group": {"mad": {"name": "Mad", "direction": "expense"}},
+                "category": {"dagligvarer": {"name": "Dagligvarer", "group": "mad"}},
+            }
+            assert _types(profile_file)["NETTO 1234 KBH"] == "expense"
+
+
 class AnsweringACategoryTests(unittest.TestCase):
     def test_a_category_id_classifies_the_whole_group_and_publishes_it(self) -> None:
         with TemporaryDirectory() as directory:
@@ -191,6 +217,8 @@ class AnsweringACategoryTests(unittest.TestCase):
             totals = stdout.split("\n\n")[1].splitlines()
             assert totals == [
                 _ASKED + "Month totals",
-                "  2026-03  in 0.00 DKK, out -200.00 DKK, transfer 0.00 DKK, "
-                "unknown 20000.00 DKK (3 transactions)",
+                (
+                    "  2026-03  in 0.00 DKK, out -200.00 DKK, transfer 0.00 DKK, "
+                    "unknown 20000.00 DKK (3 transactions)"
+                ),
             ]
