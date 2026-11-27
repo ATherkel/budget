@@ -84,19 +84,20 @@ restores the recorded mode, tab and applicable detail/comparison state under the
 [navigation contract](report-contract.md#navigation-and-selection-transitions).
 
 The switch and advanced “Overblik”, “Detaljer” and “Kontrol” are available.
-“Kontrol” answers whether each selected account's month can be trusted. It
-opens with a table of accounts: a verdict, the start and end balances, both
-[residuals](report-contract.md#diagnostics) and Evidence through (“Data til og
-med”), each account linking to its “Detaljer”. The verdict is “Ingen fundne
-forskelle” only for a fully covered month whose residuals are both zero, “Data
-mangler” for partial or no Coverage, “Uden for historikken” for a month outside
-the account's history, “Ukendt” for a missing balance or residual, and “Går ikke
-op” with the amount for a nonzero residual; it never says the month adds up.
-Under each account a waterfall walks from the start balance through each
-component to the computed end balance, with the bank's end balance beneath it
-and the difference; a missing step leaves the running total “Ukendt”. The page also shows Coverage, provisional reasons and
-incomplete account-months, and says a zero difference does not prove the data
-complete. Both modes retain access to the basic trust explanation.
+“Kontrol” gives each selected account a verdict on its
+[reconciliation](report-contract.md#diagnostics), with a waterfall as evidence
+([`checks/display.py`](../../src/budget/dashboard/features/checks/display.py)).
+It never says a month adds up.
+
+| Verdict | When |
+|---------|------|
+| “Data mangler” | partial or no Coverage |
+| “Uden for historikken” | the month is outside the account's history |
+| “Ukendt” | a balance or residual is missing |
+| “Går ikke op (±N kr.)” | a residual is nonzero |
+| “Ingen fundne forskelle” | otherwise |
+
+Both modes retain access to the basic trust explanation.
 
 ## Data Trust Display
 
