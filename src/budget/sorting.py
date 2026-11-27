@@ -48,6 +48,54 @@ class UnknownGroup:
 
 def unknown_groups(profile: Profile) -> tuple[UnknownGroup, ...]:
     """Return the current publication's unknowns by group, the biggest first."""
+    transactions, currencies = _published(profile)
+    grouped: defaultdict[str, list[GoldTransaction]] = defaultdict(list)
+    for transaction in transactions:
+        if transaction.transaction_type == "unknown":
+            grouped[group_key(transaction.description)].append(transaction)
+    groups = [_group(key, members, currencies) for key, members in grouped.items()]
+    return tuple(
+        sorted(groups, key=lambda group: (-len(group.transactions), group.key))
+    )
+
+
+# Each column of the month totals, and the transaction types it adds up.
+_COLUMNS: Final = (
+    ("in", frozenset({"income"})),
+    ("out", frozenset({"expense", "refund"})),
+    ("transfer", frozenset({"transfer"})),
+    ("unknown", frozenset({"unknown"})),
+)
+
+
+def month_totals(profile: Profile) -> tuple[str, ...]:
+    """Return one line per month and currency: in, out, transfer and unknown."""
+    transactions, currencies = _published(profile)
+    sums: defaultdict[tuple[str, str], defaultdict[str, Decimal]] = defaultdict(
+        lambda: defaultdict(lambda: Decimal("0.00"))
+    )
+    unknowns: defaultdict[tuple[str, str], int] = defaultdict(int)
+    for transaction in transactions:
+        month = transaction.transaction_date.strftime("%Y-%m")
+        row = (month, currencies[transaction.account_id])
+        sums[row][transaction.transaction_type] += transaction.amount
+        unknowns[row] += transaction.transaction_type == "unknown"
+    lines = []
+    for (month, currency), by_type in sorted(sums.items()):
+        columns = ", ".join(
+            f"{name} {sum(by_type[kind] for kind in kinds)} {currency}"
+            for name, kinds in _COLUMNS
+        )
+        count = unknowns[month, currency]
+        noun = "transaction" if count == 1 else "transactions"
+        lines.append(f"{month}  {columns} ({count} {noun})")
+    return tuple(lines)
+
+
+def _published(
+    profile: Profile,
+) -> tuple[tuple[GoldTransaction, ...], Mapping[str, str]]:
+    """Return the current publication's transactions and each account's currency."""
     if not profile.gold_store.exists():
         raise NothingPublishedError
     with GoldStore(profile, read_only=True) as store:
@@ -61,14 +109,7 @@ def unknown_groups(profile: Profile) -> tuple[UnknownGroup, ...]:
         currencies = {
             account.account_id: account.currency for account in gold.accounts()
         }
-    grouped: defaultdict[str, list[GoldTransaction]] = defaultdict(list)
-    for transaction in transactions:
-        if transaction.transaction_type == "unknown":
-            grouped[group_key(transaction.description)].append(transaction)
-    groups = [_group(key, members, currencies) for key, members in grouped.items()]
-    return tuple(
-        sorted(groups, key=lambda group: (-len(group.transactions), group.key))
-    )
+    return tuple(transactions), currencies
 
 
 def _group(
@@ -127,6 +168,10 @@ def sort_unknowns(profile: Profile) -> None:
         _append_rule(profile, group, f"then.category = {toml_string(answer)}")
         with writer_lock(profile) as lock:
             rebuild_from_gold(lock, now=datetime.now(UTC))
+        _say("Month totals")
+        for line in month_totals(profile):
+            _say(f"{_INDENT}{line}")
+        _say("")
 
 
 # What may stand between two words of a group's text: whitespace, numbers and
