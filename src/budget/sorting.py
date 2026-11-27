@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import tomllib
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
@@ -39,10 +40,7 @@ from budget.suggesting import slug, toml_string, unique_id
 _NUMBERS: Final = re.compile(r"\d+(?:[./:-]\d+)*")
 _EXAMPLES: Final = 3
 _INDENT: Final = "  "
-_ASK: Final = (
-    "Category (number or ID), t (transfer), n (new category), s (skip), "
-    "m (months) or q (quit): "
-)
+_ASK: Final = "t, n, s, m, q, ? or a word to search: "
 
 
 def group_key(description: str) -> str:
@@ -176,11 +174,8 @@ def _say(line: str) -> None:
     sys.stdout.write(f"{line}\n")
 
 
-def _show(group: UnknownGroup, categories: Sequence[tuple[str, Sequence[str]]]) -> None:
-    """Show a group: its text, size, sum and first examples, then the categories.
-
-    The categories are numbered across every group, so a number can answer.
-    """
+def _show(group: UnknownGroup) -> None:
+    """Show a group: its text, its size and sum, and its first examples."""
     count = len(group.transactions)
     noun = "transaction" if count == 1 else "transactions"
     sums = ", ".join(
@@ -193,16 +188,31 @@ def _show(group: UnknownGroup, categories: Sequence[tuple[str, Sequence[str]]]) 
             f"{_INDENT}{example.transaction_date}  {example.account_id}  "
             f"{example.amount}  {example.description}"
         )
+    _say("")
+
+
+type _Listed = tuple[tuple[str, tuple[tuple[str, str], ...]], ...]
+
+CATEGORY_LIST_NAME: Final = "budget-categories.md"
+
+
+def _open_category_list(categories: _Listed) -> None:
+    """Write the categories to a temporary file and open it, or say there are none.
+
+    Each group's name heads its categories, each with its name and ID, so the
+    list is read beside the terminal instead of filling it.
+    """
     if not categories:
         _say("No categories yet: type n to add one")
-    number = 0
-    for name, category_ids in categories:
-        numbered = []
-        for category_id in category_ids:
-            number += 1
-            numbered.append(f"{number} {category_id}")
-        _say(f"{name}: {', '.join(numbered)}")
-    _say("")
+        return
+    lines = ["# Categories"]
+    for group_name, members in categories:
+        lines += ["", f"## {group_name}", ""]
+        lines += [f"- {name} ({category_id})" for category_id, name in members]
+    path = Path(tempfile.gettempdir()) / CATEGORY_LIST_NAME
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    open_in_default_app(path)
+    _say("Opened the category list in your editor. Type a word to search, or an id.")
 
 
 def _taxonomy(profile: Profile) -> dict[str, Any]:
@@ -217,20 +227,24 @@ def _taxonomy(profile: Profile) -> dict[str, Any]:
         return {}
 
 
-def _categories(document: Mapping[str, Any]) -> tuple[tuple[str, tuple[str, ...]], ...]:
-    """Return each group's name and its category IDs, both in file order."""
+def _name(table: object, default: str) -> str:
+    """Return a taxonomy table's `name`, or `default` when it has none."""
+    return str(table.get("name", default)) if isinstance(table, dict) else default
+
+
+def _categories(document: Mapping[str, Any]) -> _Listed:
+    """Return each group's name and its categories' IDs and names, in file order."""
     groups = document.get("group", {})
     categories = document.get("category", {})
     listed = []
     for group_id, group in groups.items():
-        ids = tuple(
-            str(category_id)
+        members = tuple(
+            (str(category_id), _name(category, str(category_id)))
             for category_id, category in categories.items()
             if isinstance(category, dict) and category.get("group") == group_id
         )
-        if ids:
-            name = group.get("name", group_id) if isinstance(group, dict) else group_id
-            listed.append((str(name), ids))
+        if members:
+            listed.append((_name(group, str(group_id)), members))
     return tuple(listed)
 
 
@@ -259,19 +273,29 @@ def _converse(profile: Profile) -> None:
             _say("No group is left to sort.")
             return
         categories = _categories(_taxonomy(profile))
-        _show(group, categories)
+        _show(group)
         answer = _by_number(input(_ASK).strip(), categories)
         if answer == "q":
             return
         if answer == "s":
             skipped.add(group.key)
-            continue
-        if answer == "m":
-            for line in month_table(profile):
-                _say(line)
-            _say("")
-            continue
+        else:
+            _answer(profile, group, answer, categories)
+
+
+def _answer(
+    profile: Profile, group: UnknownGroup, answer: str, categories: _Listed
+) -> None:
+    """Show the list or the month table asked for, or classify the group."""
+    if answer == "?":
+        _open_category_list(categories)
+    elif answer == "m":
+        for line in month_table(profile):
+            _say(line)
+    else:
         _classify(profile, group, answer)
+        return
+    _say("")
 
 
 def _classify(profile: Profile, group: UnknownGroup, answer: str) -> None:
@@ -290,9 +314,9 @@ def _classify(profile: Profile, group: UnknownGroup, answer: str) -> None:
     _write_checked(profile, writes)
 
 
-def _by_number(answer: str, categories: Sequence[tuple[str, Sequence[str]]]) -> str:
+def _by_number(answer: str, categories: _Listed) -> str:
     """Return the category a listed number names, or the answer as typed."""
-    listed = [category_id for _, ids in categories for category_id in ids]
+    listed = [category_id for _, members in categories for category_id, _ in members]
     if answer.isdecimal() and 1 <= int(answer) <= len(listed):
         return listed[int(answer) - 1]
     return answer
