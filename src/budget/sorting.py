@@ -18,11 +18,17 @@ from typing import Final
 
 from budget import checking
 from budget.analytics import NothingPublishedError
+from budget.backups import back_up
 from budget.gold.models import GoldTransaction
 from budget.gold.store import GoldStore
 from budget.inputs.rules import fold
 from budget.locking import writer_lock
-from budget.profiles import RULES_FILE_NAME, TAXONOMY_FILE_NAME, Profile
+from budget.profiles import (
+    PRODUCTION_PROFILE_NAME,
+    RULES_FILE_NAME,
+    TAXONOMY_FILE_NAME,
+    Profile,
+)
 from budget.rebuilding import rebuild_from_gold
 from budget.suggesting import slug, toml_string, unique_id
 
@@ -250,7 +256,12 @@ def _write_checked(profile: Profile, writes: Mapping[Path, str]) -> None:
         _say("")
         return
     with writer_lock(profile) as lock:
-        rebuild_from_gold(lock, now=datetime.now(UTC))
+        rebuilt = rebuild_from_gold(lock, now=datetime.now(UTC))
+        # Every production write is followed by a set covering it, as for
+        # `budget rebuild`.
+        if profile.name == PRODUCTION_PROFILE_NAME and rebuilt.published:
+            written = back_up(lock, now=datetime.now(UTC))
+            _say(f"Backup   backup set {written.name} written")
     _say("Month totals")
     for line in month_totals(profile):
         _say(f"{_INDENT}{line}")
