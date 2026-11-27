@@ -67,7 +67,13 @@ def _verdict(reconciliation: Reconciliation, currency: str) -> str:
         return "Data mangler"
     if reconciliation.coverage == "outside_history":
         return "Uden for historikken"
-    if None in (reconciliation.opening_balance, reconciliation.closing_balance):
+    unknown = None in (
+        reconciliation.opening_balance,
+        reconciliation.closing_balance,
+        reconciliation.internal_residual,
+        reconciliation.opening_gap,
+    )
+    if unknown:
         return "Ukendt"
     # The internal residual is shown first: it is the month's own arithmetic.
     residual = reconciliation.internal_residual or reconciliation.opening_gap
