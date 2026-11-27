@@ -127,6 +127,28 @@ def month_table(profile: Profile) -> tuple[str, ...]:
     return tuple(line(cells) for cells in [header, *rows])
 
 
+# The review kinds of a transaction a claim marks as a transfer, though it
+# found no single leg to pair with.
+_UNPAIRED: Final = frozenset({"unmatched-transfer", "ambiguous-transfer"})
+
+
+def unpaired_claims(profile: Profile) -> frozenset[str]:
+    """Return the transactions marked as transfer but not paired yet.
+
+    Answering them again changes nothing: only the other leg can pair them.
+    """
+    with GoldStore(profile, read_only=True) as store:
+        published = store.classification_reviews()
+    if published is None:
+        raise NothingPublishedError
+    return frozenset(
+        transaction_id
+        for item in published.items
+        if item.kind in _UNPAIRED
+        for transaction_id in item.transaction_ids
+    )
+
+
 def _published(
     profile: Profile,
 ) -> tuple[tuple[GoldTransaction, ...], Mapping[str, str]]:
@@ -269,6 +291,13 @@ def sort_unknowns(profile: Profile) -> None:
         _converse(profile)
     except EOFError:
         _say("")
+    unpaired = len(unpaired_claims(profile))
+    if unpaired:
+        _say(
+            f"{unpaired} transactions are marked as transfer but not paired yet: "
+            "run budget review --kind unmatched-transfer (or ambiguous-transfer) "
+            "to see why."
+        )
 
 
 def _converse(profile: Profile) -> None:
@@ -279,8 +308,15 @@ def _converse(profile: Profile) -> None:
     # The category IDs of the last search, which a number picks from.
     picks: list[str] = []
     while True:
+        unpaired = unpaired_claims(profile)
         group = next(
-            (each for each in unknown_groups(profile) if each.key not in skipped), None
+            (
+                each
+                for each in unknown_groups(profile)
+                if each.key not in skipped
+                and not {t.transaction_id for t in each.transactions} <= unpaired
+            ),
+            None,
         )
         if group is None:
             _say("No group is left to sort.")
