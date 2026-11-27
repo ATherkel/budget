@@ -3,6 +3,7 @@
 
 from datetime import date, timedelta
 
+from budget.analytics.measures import money_in_out
 from budget.analytics.overview import (
     every_row,
     report_publication,
@@ -203,7 +204,13 @@ def account_activity(
                 if snapshot is not None
                 else incomplete.get(account.account_id, "complete")
             ),
-            money_in_out=None,
+            money_in_out=money_in_out(
+                gold.transactions(
+                    start_date=month_start,
+                    end_date=month_end,
+                    account_ids={account.account_id},
+                )
+            ),
         )
 
     return AccountActivity(
