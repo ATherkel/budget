@@ -27,6 +27,7 @@ from budget.gold import (
     ReportingMonth,
     TransactionType,
 )
+from tests.analytics.test_monthly_overview import LATER_GOLD, NEW, PERSON
 from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
 
 GOLD = GoldResult(PUBLICATION, RECORDS)
@@ -469,3 +470,23 @@ def test_money_in_and_out_count_every_transaction_type_by_its_sign() -> None:
     assert account.money_in_out == MoneyInOut(
         money_in=Decimal("25420.00"), money_out=Decimal("-9147.50"), count=7
     )
+
+
+@pytest.mark.parametrize(
+    ("month", "account_id", "expected"),
+    [
+        # report-contract.md: new-current was never imported, so no evidence.
+        (3, NEW, None),
+        # "A later account: outside_history": a known, quiet zero.
+        (2, PERSON, MoneyInOut(Decimal("0.00"), Decimal("0.00"), 0)),
+    ],
+)
+def test_money_in_and_out_are_unknown_exactly_when_the_account_has_no_data(
+    month: int, account_id: str, expected: MoneyInOut | None
+) -> None:
+    report = account_activity(
+        LATER_GOLD, _context(month, SAVINGS, account_id), is_current=True
+    )
+
+    [account] = (a for a in report.accounts if a.account_id == account_id)
+    assert account.money_in_out == expected
