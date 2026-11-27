@@ -6,6 +6,9 @@ A card is a label and its figures and, when it expands, the table behind them.
 
 from dataclasses import dataclass
 
+# The line a card's table shows in place of rows when there is no evidence.
+NO_DATA = "Ingen data endnu."
+
 
 @dataclass(frozen=True)
 class Figure:

@@ -112,6 +112,9 @@ tilbage” has no rows, so it doesn't open. Every card is one view model,
 [`report/card.py`](../../src/budget/dashboard/features/report/card.py), and one
 macro; a new group is one `GroupCard` in
 [`summary_cards.py`](../../src/budget/dashboard/features/report/summary_cards.py).
+“Detaljer” gives each account an “Ind” and an “Ud” card from its
+[`money_in_out`](report-contract.md#account-activity), specified in
+[`account_cards.py`](../../src/budget/dashboard/features/report/account_cards.py).
 
 A fresh visit starts in “Enkel” and “Beløb”. Mode persists during the active visit,
 not as a lasting preference. An explicit switch closes detail overlays and

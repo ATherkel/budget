@@ -3,6 +3,7 @@
 
 from datetime import date, timedelta
 
+from budget.analytics.measures import money_in_out
 from budget.analytics.overview import (
     every_row,
     report_publication,
@@ -177,6 +178,16 @@ def account_activity(
     ) -> AccountActivitySnapshot:
         snapshot = snapshots.get(account.account_id)
         earlier_end = month_start - timedelta(days=1)
+        coverage = (
+            snapshot.coverage
+            if snapshot is not None
+            else incomplete.get(account.account_id, "complete")
+        )
+        transactions = gold.transactions(
+            start_date=month_start,
+            end_date=month_end,
+            account_ids={account.account_id},
+        )
         return AccountActivitySnapshot(
             account_id=account.account_id,
             display_name=account.display_name,
@@ -198,11 +209,9 @@ def account_activity(
             ),
             monthly_snapshot=_monthly_snapshot(snapshot),
             evidence_through=account.evidence_through,
-            coverage=(
-                snapshot.coverage
-                if snapshot is not None
-                else incomplete.get(account.account_id, "complete")
-            ),
+            coverage=coverage,
+            # With no evidence the totals are unknown, never zero.
+            money_in_out=None if coverage == "no_data" else money_in_out(transactions),
         )
 
     return AccountActivity(

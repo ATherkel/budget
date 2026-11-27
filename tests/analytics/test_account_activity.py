@@ -4,6 +4,7 @@
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
+from unittest.mock import ANY
 
 import pytest
 
@@ -12,6 +13,7 @@ from budget.analytics import (
     ActivityRow,
     BankBalanceObservation,
     InvalidSelectionError,
+    MoneyInOut,
     MonthlyBalanceObservation,
     ReportContext,
     ReportCoverage,
@@ -23,7 +25,9 @@ from budget.gold import (
     GoldResult,
     GoldTransaction,
     ReportingMonth,
+    TransactionType,
 )
+from tests.analytics.test_monthly_overview import LATER_GOLD, NEW, PERSON
 from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
 
 GOLD = GoldResult(PUBLICATION, RECORDS)
@@ -84,6 +88,8 @@ def test_dated_observation_and_monthly_snapshot_remain_separate_values() -> None
                 ),
                 evidence_through=date(2026, 5, 8),
                 coverage="complete",
+                # The money_in_out tests below pin it.
+                money_in_out=ANY,
             ),
         ),
         ReportCoverage(status="complete", account_months=()),
@@ -427,3 +433,60 @@ def test_missing_snapshot_status_is_not_coerced_to_complete() -> None:
     report = account_activity(gold, _context(2, SAVINGS), is_current=True)
 
     assert report.accounts[0].coverage == "no_data"
+
+
+def _booked(
+    seq: int, amount: str, transaction_type: TransactionType
+) -> GoldTransaction:
+    return GoldTransaction(
+        transaction_id=f"current-{seq:02d}",
+        account_id=CURRENT,
+        transaction_date=date(2026, 2, 27),
+        account_sequence=seq,
+        amount=Decimal(amount),
+        description=transaction_type.upper(),
+        transaction_type=transaction_type,
+        transfer_group_id=None,
+        balance_after=None,
+        balance_check="consistent",
+    )
+
+
+def test_money_in_and_out_count_every_transaction_type_by_its_sign() -> None:
+    # February's current rows: -8,500.00 rent, -640.00 groceries, +120.00 refund
+    # and +25,000.00 salary, plus a transfer in, an adjustment out and a zero.
+    extra = (
+        _booked(20, "300.00", "transfer"),
+        _booked(21, "-7.50", "adjustment"),
+        _booked(22, "0.00", "unknown"),
+    )
+    gold = GoldResult(
+        PUBLICATION,
+        replace(RECORDS, transactions=(*RECORDS.transactions, *extra)),
+    )
+
+    [account] = account_activity(gold, _context(2), is_current=True).accounts
+
+    assert account.money_in_out == MoneyInOut(
+        money_in=Decimal("25420.00"), money_out=Decimal("-9147.50"), count=7
+    )
+
+
+@pytest.mark.parametrize(
+    ("month", "account_id", "expected"),
+    [
+        # report-contract.md: new-current was never imported, so no evidence.
+        (3, NEW, None),
+        # "A later account: outside_history": a known, quiet zero.
+        (2, PERSON, MoneyInOut(Decimal("0.00"), Decimal("0.00"), 0)),
+    ],
+)
+def test_money_in_and_out_are_unknown_exactly_when_the_account_has_no_data(
+    month: int, account_id: str, expected: MoneyInOut | None
+) -> None:
+    report = account_activity(
+        LATER_GOLD, _context(month, SAVINGS, account_id), is_current=True
+    )
+
+    [account] = (a for a in report.accounts if a.account_id == account_id)
+    assert account.money_in_out == expected

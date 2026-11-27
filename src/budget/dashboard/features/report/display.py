@@ -6,10 +6,14 @@ from typing import NamedTuple
 from budget.analytics import (
     AccountActivity,
     AccountActivitySnapshot,
-    ActivityRow,
     MonthlyOverview,
 )
 from budget.dashboard.display.notices import Notice, newer_figures, shown
+from budget.dashboard.features.report.account_cards import (
+    account_cards,
+    activity_table,
+)
+from budget.dashboard.features.report.card import Card, Table
 from budget.dashboard.features.view_state import ViewState
 
 _NO_ROWS = "Ingen observerede posteringer i måneden."
@@ -25,9 +29,8 @@ class AccountRows(NamedTuple):
     """One account in Detaljer: its observations and its own transactions."""
 
     account: AccountActivitySnapshot
-    rows: tuple[ActivityRow, ...]
-    # The one line shown in place of rows when there are none, else empty.
-    no_rows: tuple[str, ...]
+    table: Table
+    cards: tuple[Card, ...]
 
 
 def report_notices(view: ViewState, overview: MonthlyOverview) -> tuple[Notice, ...]:
@@ -74,5 +77,16 @@ def account_rows(activity: AccountActivity | None) -> tuple[AccountRows, ...]:
         rows = tuple(
             row for row in activity.transactions if row.account_id == account.account_id
         )
-        grouped.append(AccountRows(account, rows, () if rows else (_NO_ROWS,)))
+        grouped.append(
+            AccountRows(
+                account,
+                activity_table(
+                    f"Posteringer for {account.display_name}",
+                    rows,
+                    activity.currency,
+                    _NO_ROWS,
+                ),
+                account_cards(account, rows, activity.currency),
+            )
+        )
     return tuple(grouped)
