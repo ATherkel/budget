@@ -18,18 +18,6 @@
 
 [[allowance]]
 path = "features/category/category.html"
-tag = '{% if failure %}'
-reason = "Optional section or failure branch; becomes a notice list or its own template."
-issue = 627
-
-[[allowance]]
-path = "features/category/category.html"
-tag = '{% else %}'
-reason = "Optional section or failure branch; becomes a notice list or its own template."
-issue = 627
-
-[[allowance]]
-path = "features/category/category.html"
 tag = '{% if not is_group %}'
 reason = "Optional section or failure branch; becomes a notice list or its own template."
 issue = 627
