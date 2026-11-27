@@ -301,6 +301,18 @@ def test_kontrol_keeps_a_running_total_unknown_from_a_missing_balance(
     )
 
 
+def test_kontrol_captions_its_account_table_with_the_month(
+    client: TestClient,
+) -> None:
+    # A visible caption names the table for every reader, not only screen readers.
+    page = kontrol(client)
+
+    assert (
+        page.text_of("checks-accounts-caption"),
+        page.attributes("checks-accounts").get("aria-label"),
+    ) == ("Vurdering pr. konto, marts 2026", None)
+
+
 def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
     client: TestClient,
 ) -> None:
