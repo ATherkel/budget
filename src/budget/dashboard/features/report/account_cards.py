@@ -12,8 +12,14 @@ from budget.analytics import AccountActivitySnapshot, ActivityRow, MoneyInOut
 from budget.dashboard.display.amounts import signed_amount
 from budget.dashboard.display.months import danish_date
 from budget.dashboard.display.text import transaction_kind
-from budget.dashboard.features.report.card import Card, Cell, Column, Figure, Table
-from budget.dashboard.features.report.summary_cards import NO_DATA
+from budget.dashboard.features.report.card import (
+    NO_DATA,
+    Card,
+    Cell,
+    Column,
+    Figure,
+    Table,
+)
 
 DATE = Column("Dato")
 TEXT = Column("Tekst")
@@ -21,13 +27,24 @@ KIND = Column("Type")
 AMOUNT = Column("Beløb", numeric=True)
 
 
-def activity_cells(row: ActivityRow, currency: str) -> tuple[Cell, ...]:
-    """Return one transaction of an account as the cells of its table row."""
+def _cells(row: ActivityRow, currency: str) -> tuple[Cell, ...]:
     return (
         Cell(DATE, danish_date(row.transaction_date)),
         Cell(TEXT, row.description),
         Cell(KIND, transaction_kind(row)),
         Cell(AMOUNT, signed_amount(row.amount, currency)),
+    )
+
+
+def activity_table(
+    label: str, rows: tuple[ActivityRow, ...], currency: str, empty: str
+) -> Table:
+    """Return an account's transactions as a table: date, text, type and amount."""
+    return Table(
+        label=label,
+        columns=(DATE, TEXT, KIND, AMOUNT),
+        rows=tuple(_cells(row, currency) for row in rows),
+        empty=empty,
     )
 
 
@@ -49,7 +66,6 @@ class FlowCard:
     ) -> Card:
         """Return the card of `account` in this direction."""
         flows = account.money_in_out
-        kept = tuple(row for row in rows if self.keeps(row.amount))
         return Card(
             name=f"activity-{self.name}-{account.account_id}",
             label=self.label,
@@ -60,11 +76,11 @@ class FlowCard:
                 ),
             ),
             tables=(
-                Table(
-                    label=f"{self.label} for {account.display_name}",
-                    columns=(DATE, TEXT, KIND, AMOUNT),
-                    rows=tuple(activity_cells(row, currency) for row in kept),
-                    empty=self.empty if flows else NO_DATA,
+                activity_table(
+                    f"{self.label} for {account.display_name}",
+                    tuple(row for row in rows if self.keeps(row.amount)),
+                    currency,
+                    self.empty if flows else NO_DATA,
                 ),
             ),
         )

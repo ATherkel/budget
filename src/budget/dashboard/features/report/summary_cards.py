@@ -11,9 +11,14 @@ from typing import Protocol
 from budget.analytics import MonthlyOverview, MovementGroup, MovementRow, SummaryGroup
 from budget.dashboard.display.amounts import amount, signed_amount
 from budget.dashboard.display.months import danish_date
-from budget.dashboard.features.report.card import Card, Cell, Column, Figure, Table
-
-NO_DATA = "Ingen data endnu."
+from budget.dashboard.features.report.card import (
+    NO_DATA,
+    Card,
+    Cell,
+    Column,
+    Figure,
+    Table,
+)
 
 
 class CardSpec(Protocol):
