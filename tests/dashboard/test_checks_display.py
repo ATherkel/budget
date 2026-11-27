@@ -162,3 +162,22 @@ def test_a_missing_step_after_a_known_start_leaves_later_totals_unknown() -> Non
         ("Regulering ud", "0,00 kr.", "Ukendt"),
         ("Beregnet slutsaldo", "", "Ukendt"),
     ]
+
+
+def test_the_waterfall_sets_the_computed_and_the_banks_close_in_one_column() -> None:
+    # The two closes the reader compares sit one under the other; the start
+    # balance is printed once, as the first running total.
+    waterfall = {
+        account.account_id: account
+        for account in checks_view(MARCH_REPORT, "marts 2026").accounts
+    }[CURRENT].waterfall
+
+    assert [
+        (step.label, step.amount, step.total)
+        for step in (waterfall[0], *waterfall[-3:])
+    ] == [
+        ("Startsaldo", "", "37.037,50 kr."),
+        ("Beregnet slutsaldo", "", "35.587,50 kr."),
+        ("Bankens slutsaldo", "", "35.587,50 kr."),
+        ("Forskel", "0,00 kr.", ""),
+    ]

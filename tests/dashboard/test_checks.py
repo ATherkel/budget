@@ -269,7 +269,7 @@ def test_kontrol_walks_each_accounts_month_from_start_to_end_balance(
     # 37.037,50 - 1.000,00 - 450,00 = 35.587,50, which is the bank's own close.
     assert kontrol(client).text_of(f"checks-waterfall-{CURRENT}") == (
         "Trin Beløb Løbende saldo "
-        "Startsaldo 37.037,50 kr. 37.037,50 kr. "
+        "Startsaldo 37.037,50 kr. "
         "Indtægter minus udgifter \N{MINUS SIGN}1.000,00 kr. 36.037,50 kr. "
         "Overførsler 0,00 kr. 36.037,50 kr. "
         "Ukategoriseret ind 0,00 kr. 36.037,50 kr. "
@@ -288,7 +288,7 @@ def test_kontrol_keeps_a_running_total_unknown_from_a_missing_balance(
     # May has no start balance, so no step after it may print a total.
     assert kontrol(client, month="2026-05").text_of(f"checks-waterfall-{CURRENT}") == (
         "Trin Beløb Løbende saldo "
-        "Startsaldo Ukendt Ukendt "
+        "Startsaldo Ukendt "
         "Indtægter minus udgifter 0,00 kr. Ukendt "
         "Overførsler 0,00 kr. Ukendt "
         "Ukategoriseret ind 0,00 kr. Ukendt "
