@@ -6,6 +6,7 @@ Silver and published to Gold, with an empty taxonomy and no rules. Every
 account, text and amount is invented.
 """
 
+import tempfile
 import tomllib
 import unittest
 from collections.abc import Sequence
@@ -28,10 +29,7 @@ EXIT_OK = 0
 EXIT_REFUSED_ENVIRONMENT = 4
 _NOW = datetime(2026, 4, 1, tzinfo=UTC)
 # The question after each group, which stdout holds without the answer typed.
-_ASKED = (
-    "Category (number or ID), t (transfer), n (new category), s (skip), "
-    "m (months) or q (quit): "
-)
+_ASKED = "t, n, s, m, q, ? or a word to search: "
 _HEADER = '"Dato","Kategori","Underkategori","Tekst","Beløb","Saldo","Status","Afstemt"'
 
 type Row = tuple[str, str, str]
@@ -109,9 +107,8 @@ class ShowingAGroupTests(unittest.TestCase):
             status, stdout, stderr = sort(profile_file, "q\n")
 
             assert (status, stderr) == (EXIT_OK, "")
-            # The categories follow; `CategoryListTests` pins them.
             first = stdout.split("\n\n")[0].splitlines()
-            assert first[:5] == [
+            assert first == [
                 "netto kbh",
                 "  4 transactions, -200.00 DKK",
                 "  2026-03-02  joint-current  -45.00  NETTO 1234 KBH",
@@ -230,24 +227,60 @@ group = "food"
 
 
 class CategoryListTests(unittest.TestCase):
-    def test_each_group_ends_with_the_categories_numbered_by_group(self) -> None:
+    def test_a_group_lists_no_category_unless_asked(self) -> None:
         with TemporaryDirectory() as directory:
             profile_file = _sortable(Path(directory))
             _write_input(profile_file, "taxonomy.toml", TWO_GROUPS)
 
             _, stdout, _ = sort(profile_file, "q\n")
 
-            first = stdout.split("\n\n")[0].splitlines()
-            assert first[-2:] == ["Food: 1 groceries, 2 eating-out", "Home: 3 rent"]
+            assert stdout.split("\n\n")[0].splitlines() == [
+                "netto kbh",
+                "  4 transactions, -200.00 DKK",
+                "  2026-03-02  joint-current  -45.00  NETTO 1234 KBH",
+                "  2026-03-05  joint-current  -55.00  NETTO 5678 KBH",
+                "  2026-03-09  joint-current  -60.00  Netto 91 KBH",
+            ]
 
-    def test_with_no_category_yet_it_says_to_add_one(self) -> None:
+    def test_a_question_mark_opens_the_category_list_in_the_default_app(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+            _write_input(profile_file, "taxonomy.toml", TWO_GROUPS)
+            opened: list[str] = []
+
+            # The default app is the system boundary: record what it is given.
+            with (
+                mock.patch.object(tempfile, "tempdir", directory),
+                mock.patch(
+                    "budget.sorting.open_in_default_app",
+                    side_effect=lambda path: opened.append(
+                        path.read_text(encoding="utf-8")
+                    ),
+                ),
+            ):
+                _, stdout, _ = sort(profile_file, "?\nq\n")
+
+            listed = (
+                "# Categories\n"
+                "\n## Food\n\n- Groceries (groceries)\n- Eating out (eating-out)\n"
+                "\n## Home\n\n- Rent (rent)\n"
+            )
+            assert opened == [listed]
+            assert stdout.split("\n\n")[1].splitlines() == [
+                _ASKED + "Opened the category list in your editor. "
+                "Type a word to search, or an id."
+            ]
+
+    def test_with_no_category_yet_a_question_mark_says_to_add_one(self) -> None:
         with TemporaryDirectory() as directory:
             profile_file = _sortable(Path(directory))
 
-            _, stdout, _ = sort(profile_file, "q\n")
+            _, stdout, _ = sort(profile_file, "?\nq\n")
 
-            first = stdout.split("\n\n")[0].splitlines()
-            assert first[-1] == "No categories yet: type n to add one"
+            listed = stdout.split("\n\n")[1].splitlines()
+            assert listed == [_ASKED + "No categories yet: type n to add one"]
 
     def test_a_listed_number_answers_as_its_category(self) -> None:
         with TemporaryDirectory() as directory:

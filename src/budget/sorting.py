@@ -5,7 +5,9 @@ The current publication's unknowns are grouped by their normalised
 description, so one answer can classify every transaction a group holds.
 """
 
+import os
 import re
+import subprocess
 import sys
 import tomllib
 from collections import defaultdict
@@ -155,6 +157,18 @@ def _group(
         key=lambda t: (t.transaction_date, t.account_id, t.account_sequence),
     )
     return UnknownGroup(key=key, transactions=tuple(ordered), sums=dict(sums))
+
+
+def open_in_default_app(path: Path) -> None:
+    """Open a file in the operating system's default app for it.
+
+    The one place `sort` reaches outside the terminal, so tests replace it.
+    """
+    if sys.platform == "win32":
+        os.startfile(path)  # noqa: S606 - the household's own file, its own app
+    else:
+        opener = "open" if sys.platform == "darwin" else "xdg-open"
+        subprocess.run([opener, str(path)], check=False)  # noqa: S603
 
 
 def _say(line: str) -> None:
