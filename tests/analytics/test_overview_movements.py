@@ -6,8 +6,17 @@ issue's worked examples, not from the code under test.
 """
 
 from datetime import date
+from decimal import Decimal
 
-from budget.analytics import MonthlyOverview, ReportContext, monthly_overview
+from budget.analytics import (
+    MoneyInOut,
+    MonthlyOverview,
+    MovementGroup,
+    MovementRow,
+    ReportContext,
+    SummaryGroup,
+    monthly_overview,
+)
 from budget.gold import GoldResult, ReportingMonth
 from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
 
@@ -35,3 +44,26 @@ def test_the_summary_groups_come_in_card_order() -> None:
         "transfers",
         "unclassified",
     ]
+
+
+def _group(overview: MonthlyOverview, name: SummaryGroup) -> MovementGroup:
+    return next(group for group in overview.movements or () if group.group == name)
+
+
+def test_an_income_row_carries_its_bank_amount_and_contribution() -> None:
+    # February's salary, current-07 in the worked example.
+    assert _group(_overview(2), "income") == MovementGroup(
+        group="income",
+        rows=(
+            MovementRow(
+                transaction_date=date(2026, 2, 25),
+                description="SALARY",
+                account_id=CURRENT,
+                account_display_name="Joint current",
+                amount=Decimal("25000.00"),
+                contribution=Decimal("25000.00"),
+            ),
+        ),
+        total=Decimal("25000.00"),
+        flows=MoneyInOut(Decimal("25000.00"), Decimal("0.00"), 1),
+    )
