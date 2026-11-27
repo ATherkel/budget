@@ -2,6 +2,7 @@
 """Overblik's Afstemning: one card per selected account, the same view model."""
 
 from budget.analytics import Diagnostics, Reconciliation
+from budget.dashboard.display.amounts import signed_amount
 from budget.dashboard.display.reconciliation import (
     flows,
     known_amount,
@@ -20,6 +21,14 @@ ITEM = Column("Post")
 AMOUNT = Column("Beløb", numeric=True)
 
 
+def _unexplained(reconciliation: Reconciliation, currency: str) -> str:
+    """Return the unexplained difference, or say a missing input rules it out."""
+    residual = reconciliation.internal_residual
+    if residual is None:
+        return "Ikke mulig at afstemme"
+    return signed_amount(residual, currency)
+
+
 def _lines(
     reconciliation: Reconciliation, currency: str
 ) -> tuple[tuple[str, str], ...]:
@@ -32,10 +41,7 @@ def _lines(
         ),
         ("Beregnet slutsaldo", known_amount(reconciliation.expected_closing, currency)),
         ("Bankens slutsaldo", known_amount(reconciliation.closing_balance, currency)),
-        (
-            "Uforklaret forskel",
-            known_difference(reconciliation.internal_residual, currency),
-        ),
+        ("Uforklaret forskel", _unexplained(reconciliation, currency)),
         ("Åbningsforskel", known_difference(reconciliation.opening_gap, currency)),
     )
 
@@ -46,9 +52,7 @@ def reconciliation_card(reconciliation: Reconciliation, currency: str) -> Card:
     return Card(
         name=name,
         label=f"Afstemning, {reconciliation.display_name}",
-        figures=(
-            Figure(name, known_difference(reconciliation.internal_residual, currency)),
-        ),
+        figures=(Figure(name, _unexplained(reconciliation, currency)),),
         tables=(
             Table(
                 label=f"Afstemning for {reconciliation.display_name}",
