@@ -295,31 +295,44 @@ uv run budget sort
 ```
 
 Expect the biggest group first: its text without case, numbers or dates, its
-count and sum, and up to three examples, then the question:
+count and sum, up to three examples and your categories, numbered by group,
+then the question:
 
 ```text
 netto kbh
   4 transactions, -200.00 DKK
   2026-03-02  joint-current  -45.00  NETTO 1234 KBH
   ...
+Food: 1 groceries, 2 eating-out
+Home: 3 rent
 
-Category, t (transfer), n (new category), s (skip) or q (quit):
+Category (number or ID), t (transfer), n (new category), s (skip), m (months) or q (quit):
 ```
+
+With no category yet, the list is `No categories yet: type n to add one`.
 
 | Answer | Expect |
 | --- | --- |
-| A category ID from `taxonomy.toml`, such as `groceries` | A `# sorted: <text>` rule appended to `rules.toml`, then `Month totals` with unknown smaller, then the next group |
-| `t` | A `then.transfer_claim = true` rule; the group becomes a transfer once both legs are claimed |
+| A listed number or category ID, such as `1` or `groceries` | A `# sorted: <text>` rule appended to `rules.toml`, the progress line, then the next group |
+| `t` | A `then.transfer_claim = true` rule. A claim on one leg is enough: the group becomes a transfer where it pairs with the opposite leg on another account ([pairing](../architecture/classification.md)) |
 | `n` | Asks `name`, then `group`. A group ID not in the taxonomy is a new group: it asks `direction`, offering the one the sum suggests (Enter takes it) |
 | `s` | The next group; this one is asked again in a later run |
+| `m` | The month table, then the same group again |
 | `q`, or Ctrl+Z then Enter | Quits; every rule already written stays |
 | An ID the taxonomy lacks | `check`'s problem, then `Nothing was written.`, and the same group again |
 
-Each published answer prints one line per month and currency:
+Each published answer prints one progress line. Unknown money in and out are
+summed apart, never netted:
 
 ```text
-Month totals
-  2026-03  in 0.00 DKK, out -200.00 DKK, transfer 0.00 DKK, unknown 20000.00 DKK (3 transactions)
+Sorted 4 of 7 (57%), 3 unknown left: in 20500.00 DKK, out -500.00 DKK
+```
+
+`m` prints one row per month and currency:
+
+```text
+Month    Currency    In      Out  Transfer  Unknown in  Unknown out
+2026-03  DKK       0.00  -200.00      0.00    20500.00      -500.00
 ```
 
 When every group is answered or skipped it ends with `No group is left to
