@@ -92,6 +92,8 @@ def _group(
             return "income"
         case "expense":
             return "expenses"
+        case "transfer":
+            return "transfers"
         case _:
             return None
 
