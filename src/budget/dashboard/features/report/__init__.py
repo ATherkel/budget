@@ -32,7 +32,10 @@ from budget.dashboard.display.text import incomplete_months
 from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.checks import read_checks
 from budget.dashboard.features.errors import failure_fragment
-from budget.dashboard.features.report.display import unclassified_amounts
+from budget.dashboard.features.report.display import (
+    account_rows,
+    unclassified_amounts,
+)
 from budget.dashboard.features.view_state import (
     ViewState,
     parse_view_state,
@@ -167,6 +170,7 @@ def render_report(
                 for account_month in incomplete_months(overview_report.coverage)
             ],
             "activity": activity,
+            "activity_accounts": account_rows(activity),
             "checks": checks,
             "mode": requested.view.mode,
             "tab": requested.view.tab,

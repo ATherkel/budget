@@ -2,8 +2,25 @@
 """What the report prints, prepared so its templates only loop and print."""
 
 from decimal import Decimal
+from typing import NamedTuple
 
-from budget.analytics import MoneyInOut
+from budget.analytics import (
+    AccountActivity,
+    AccountActivitySnapshot,
+    ActivityRow,
+    MoneyInOut,
+)
+
+_NO_ROWS = "Ingen observerede posteringer i måneden."
+
+
+class AccountRows(NamedTuple):
+    """One account in Detaljer: its observations and its own transactions."""
+
+    account: AccountActivitySnapshot
+    rows: tuple[ActivityRow, ...]
+    # The one line shown in place of rows when there are none, else empty.
+    no_rows: tuple[str, ...]
 
 
 def unclassified_amounts(
@@ -13,3 +30,19 @@ def unclassified_amounts(
     if unclassified is None:
         return None, None
     return unclassified.money_in, unclassified.money_out
+
+
+def account_rows(activity: AccountActivity | None) -> tuple[AccountRows, ...]:
+    """Return each account of `activity` with its own rows, in their order.
+
+    Without activity, as on a tab other than Detaljer, there are no accounts.
+    """
+    if activity is None:
+        return ()
+    grouped = []
+    for account in activity.accounts:
+        rows = tuple(
+            row for row in activity.transactions if row.account_id == account.account_id
+        )
+        grouped.append(AccountRows(account, rows, () if rows else (_NO_ROWS,)))
+    return tuple(grouped)
