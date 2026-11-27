@@ -5,14 +5,20 @@ Expected values are the Gold worked example's tables in
 `tests/gold/worked_example.py`; the dashboard is driven in-process.
 """
 
+from datetime import date
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from budget.analytics import ReportContext, diagnostics
+from budget.dashboard.features.report.reconciliation_cards import (
+    reconciliation_cards,
+)
+from budget.gold import GoldResult, ReportingMonth
 from tests.dashboard.pages import Disclosure, Page, read
-from tests.dashboard.test_summary_cards import _logged_in
-from tests.gold.worked_example import CURRENT, PUBLICATION
+from tests.dashboard.test_summary_cards import CARDS, _logged_in
+from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS
 
 MINUS = "\N{MINUS SIGN}"
 
@@ -60,5 +66,35 @@ def test_overblik_shows_a_closed_afstemning_card_for_each_account(
             ("Bankens slutsaldo", "35.587,50 kr."),
             ("Uforklaret forskel", "0,00 kr."),
             ("Åbningsforskel", f"{MINUS}500,00 kr."),
+        ],
+    )
+
+
+def test_a_month_without_evidence_reads_unknown_and_cannot_be_reconciled() -> None:
+    # June is after the latest published month, so nothing about it is known.
+    context = ReportContext(
+        publication_id=PUBLICATION.publication_id,
+        account_ids=frozenset((CURRENT,)),
+        month=ReportingMonth(2026, 6),
+        reference_date=date(2026, 6, 3),
+    )
+    report = diagnostics(GoldResult(PUBLICATION, RECORDS), context, is_current=True)
+    page = read(CARDS.render(cards=reconciliation_cards(report)))
+
+    assert page.disclosures.get(f"reconciliation-{CURRENT}-card") == Disclosure(
+        open=False,
+        summary="Afstemning, Joint current Ikke mulig at afstemme",
+        rows=[
+            ("Startsaldo", "Ukendt"),
+            ("Indtægter minus udgifter", "Ukendt"),
+            ("Overførsler", "Ukendt"),
+            ("Ukategoriseret ind", "Ukendt"),
+            ("Ukategoriseret ud", "Ukendt"),
+            ("Regulering ind", "Ukendt"),
+            ("Regulering ud", "Ukendt"),
+            ("Beregnet slutsaldo", "Ukendt"),
+            ("Bankens slutsaldo", "Ukendt"),
+            ("Uforklaret forskel", "Ikke mulig at afstemme"),
+            ("Åbningsforskel", "Ukendt"),
         ],
     )
