@@ -482,6 +482,35 @@ class UnpairedTransferTests(unittest.TestCase):
             )
 
 
+class RuleIdTests(unittest.TestCase):
+    def test_a_rule_id_already_taken_gets_a_suffix(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+            _write_input(profile_file, "taxonomy.toml", TAXONOMY)
+            # A hand-written rule already holds the ID; it matches nothing here.
+            _write_input(
+                profile_file,
+                "rules.toml",
+                'format = 1\n\n[[rule]]\nid = "r-sort-netto-kbh"\n'
+                'when.description_contains = "no such shop"\n'
+                'then.category = "groceries"\n',
+            )
+
+            status, _, stderr = sort(profile_file, "groceries\nq\n")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            rules = tomllib.loads(
+                load_profile_file(profile_file)
+                .input_file("rules.toml")
+                .read_text(encoding="utf-8")
+            )
+            assert [rule["id"] for rule in rules["rule"]] == [
+                "r-sort-netto-kbh",
+                "r-sort-netto-kbh-2",
+            ]
+            assert _types(profile_file)["NETTO 1234 KBH"] == "expense"
+
+
 class AnsweringANewCategoryTests(unittest.TestCase):
     def test_a_new_category_in_a_new_group_is_added_and_classifies_the_group(
         self,
