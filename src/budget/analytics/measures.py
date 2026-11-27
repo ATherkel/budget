@@ -17,7 +17,6 @@ from budget.gold import (
     GoldCategory,
     GoldCategoryAllocation,
     GoldTransaction,
-    TransactionType,
 )
 
 # DKK, the only first-release currency, has two minor-unit places.
@@ -64,11 +63,9 @@ def _total(amounts: Iterable[Decimal]) -> Decimal:
     return sum(amounts, ZERO)
 
 
-def _money_in_out(
-    transactions: Sequence[GoldTransaction], transaction_type: TransactionType
-) -> MoneyInOut:
-    """Money in and money out of one transaction type, never netted."""
-    amounts = [t.amount for t in transactions if t.transaction_type == transaction_type]
+def money_in_out(transactions: Iterable[GoldTransaction]) -> MoneyInOut:
+    """Money in and money out of `transactions`, never netted."""
+    amounts = [t.amount for t in transactions]
     return MoneyInOut(
         money_in=_total(a for a in amounts if a > 0),
         money_out=_total(a for a in amounts if a < 0),
@@ -138,10 +135,9 @@ def figures(
         allocation.transaction_id: by_id[allocation.category_id].direction
         for allocation in allocations
     }
-    groups = [_group(t, refund_directions) for t in transactions]
+    found = [(_group(t, refund_directions), t) for t in transactions]
     grouped = {
-        name: tuple(t for t, group in zip(transactions, groups, strict=True) if group == name)
-        for name in SUMMARY_GROUPS
+        name: tuple(t for group, t in found if group == name) for name in SUMMARY_GROUPS
     }
     income = _total(t.amount for t in grouped["income"])
     expenses = ZERO - _total(t.amount for t in grouped["expenses"])
@@ -152,7 +148,9 @@ def figures(
         net_cash_flow=net_cash_flow,
         savings_rate=net_cash_flow / income if income > 0 else None,
         categories=_category_spending(allocations, by_id),
-        unclassified=_money_in_out(transactions, "unknown"),
-        adjustments=_money_in_out(transactions, "adjustment"),
+        unclassified=money_in_out(grouped["unclassified"]),
+        adjustments=money_in_out(
+            t for t in transactions if t.transaction_type == "adjustment"
+        ),
         grouped=grouped,
     )

@@ -3,13 +3,8 @@
 
 from collections.abc import Mapping, Sequence
 
-from budget.analytics.measures import SUMMARY_GROUPS, ZERO
-from budget.analytics.reports import (
-    MoneyInOut,
-    MovementGroup,
-    MovementRow,
-    SummaryGroup,
-)
+from budget.analytics.measures import SUMMARY_GROUPS, ZERO, money_in_out
+from budget.analytics.reports import MovementGroup, MovementRow, SummaryGroup
 from budget.gold import GoldTransaction
 
 
@@ -35,16 +30,11 @@ def _movement_group(
         )
         for t in newest_first
     )
-    amounts = [row.amount for row in rows]
     return MovementGroup(
         group=group,
         rows=rows,
         total=sum((row.contribution for row in rows), ZERO),
-        flows=MoneyInOut(
-            money_in=sum((a for a in amounts if a > 0), ZERO),
-            money_out=sum((a for a in amounts if a < 0), ZERO),
-            count=len(amounts),
-        ),
+        flows=money_in_out(transactions),
     )
 
 
