@@ -146,3 +146,38 @@ def test_a_month_without_expenses_says_so_in_udgifter(client: TestClient) -> Non
     assert may.disclosures.get("expenses-card") == Disclosure(
         open=False, summary="Udgifter 0,00 kr.", rows=[("Ingen udgifter i måneden.",)]
     )
+
+
+def test_overfoersler_lists_both_legs_of_a_transfer(client: TestClient) -> None:
+    # January: 3,000.00 moves from Joint current to Joint savings on 20 January.
+    january = report(client, "2026-01")
+
+    assert january.disclosures.get("transfers-card") == Disclosure(
+        open=False,
+        summary="Overførsler 0,00 kr.",
+        rows=[
+            ("20.01.2026", "TRANSFER", "+3.000,00 kr.", "+3.000,00 kr."),
+            (
+                "20.01.2026",
+                "TRANSFER",
+                "\N{MINUS SIGN}3.000,00 kr.",
+                "\N{MINUS SIGN}3.000,00 kr.",
+            ),
+        ],
+    )
+
+
+def test_overfoersler_into_the_selection_carry_a_plus_sign(client: TestClient) -> None:
+    january = report(client, "2026-01", accounts=(SAVINGS,))
+
+    assert january.text_of("transfers") == "+3.000,00 kr."
+
+
+def test_a_month_without_transfers_says_so_in_overfoersler(client: TestClient) -> None:
+    may = report(client, "2026-05")
+
+    assert may.disclosures.get("transfers-card") == Disclosure(
+        open=False,
+        summary="Overførsler 0,00 kr.",
+        rows=[("Ingen overførsler i måneden.",)],
+    )
