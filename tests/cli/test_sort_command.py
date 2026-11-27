@@ -20,11 +20,12 @@ from budget.locking import writer_lock
 from budget.profiles import load_profile_file
 from budget.rebuilding import rebuild_from_gold, rebuild_from_silver
 from tests.cli.commands import check, sort
-from tests.cli.imports import clean_checkout
+from tests.cli.imports import clean_checkout, clean_git
 from tests.cli.pipelines import TAXONOMY, prepared
 from tests.importing.households import drop
 
 EXIT_OK = 0
+EXIT_REFUSED_ENVIRONMENT = 4
 _NOW = datetime(2026, 4, 1, tzinfo=UTC)
 # The question after each group, which stdout holds without the answer typed.
 _ASKED = "Category, t (transfer), n (new category), s (skip) or q (quit): "
@@ -171,6 +172,19 @@ class ProductionTests(unittest.TestCase):
             totals = stdout.split("\n\n")[1].splitlines()
             assert totals[0].startswith(_ASKED + "Backup   backup set ")
             assert totals[0].endswith(" written")
+
+    def test_uncommitted_code_is_refused_before_anything_is_asked(self) -> None:
+        with TemporaryDirectory() as directory:
+            with mock.patch("subprocess.run", side_effect=clean_checkout):
+                profile_file = _sortable(Path(directory), name="production")
+            dirty = clean_git()
+            dirty.stdout = " M src/budget/sorting.py\n"
+
+            with mock.patch("subprocess.run", return_value=dirty):
+                status, stdout, stderr = sort(profile_file, "groceries\nq\n")
+
+            assert (status, stdout) == (EXIT_REFUSED_ENVIRONMENT, "")
+            assert "uncommitted" in stderr
 
 
 class QuittingTests(unittest.TestCase):
