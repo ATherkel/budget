@@ -741,3 +741,21 @@ def test_empty_switches_and_basic_explanation_restore_the_pinned_advanced_view(
     expect(page.get_by_role("radio", name="Avanceret")).to_be_checked()
     expect(page.locator("#report")).to_have_attribute("data-mode", "advanced")
     expect(page.locator("#report")).to_have_attribute("data-tab", "overview")
+
+
+def test_kontrol_and_its_waterfall_are_readable_at_phone_width(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(
+        f"{dashboard.url}/?publication=2&reference_date=2026-05-31"
+        "&account=joint-current&account=joint-savings&month=2026-03"
+        "&mode=advanced&tab=checks"
+    )
+    page.get_by_text("Beregning for Joint current").click()
+
+    expect(page.locator("#checks-verdict-joint-current")).to_have_text("Data mangler")
+    expect(page.locator("#checks-waterfall-joint-current")).to_be_visible()
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
