@@ -106,8 +106,15 @@ def _show(group: UnknownGroup) -> None:
 
 def sort_unknowns(profile: Profile) -> None:
     """Hold the sorting conversation over the current publication's unknowns."""
-    groups = unknown_groups(profile)
-    if not groups:
-        return
-    _show(groups[0])
-    input(_ASK)
+    skipped: set[str] = set()
+    while True:
+        group = next(
+            (each for each in unknown_groups(profile) if each.key not in skipped), None
+        )
+        if group is None:
+            _say("No group is left to sort.")
+            return
+        _show(group)
+        if input(_ASK).strip() == "q":
+            return
+        skipped.add(group.key)
