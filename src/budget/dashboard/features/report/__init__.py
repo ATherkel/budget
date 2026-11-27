@@ -34,7 +34,9 @@ from budget.dashboard.features.checks import read_checks
 from budget.dashboard.features.errors import failure_fragment
 from budget.dashboard.features.report.display import (
     account_rows,
+    overview_notices,
     report_notices,
+    tab_template,
     unclassified_amounts,
 )
 from budget.dashboard.features.view_state import (
@@ -157,6 +159,8 @@ def render_report(
     return page.make_module(
         {
             "notices": report_notices(requested.view, overview_report),
+            "tab_template": tab_template(requested.view),
+            "overview_notices": overview_notices(overview_report),
             "publication_id": answered.publication_id,
             "reference_date": answered.reference_date.isoformat(),
             "accounts": " ".join(sorted(answered.account_ids)),

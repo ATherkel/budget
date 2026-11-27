@@ -15,6 +15,12 @@ from budget.dashboard.display.notices import Notice, newer_figures, shown
 from budget.dashboard.features.view_state import ViewState
 
 _NO_ROWS = "Ingen observerede posteringer i måneden."
+# Each tab of the advanced mode and the template that shows it.
+_TAB_TEMPLATES = {
+    "overview": "report/overview_tab.html",
+    "details": "report/activity.html",
+    "checks": "checks/checks.html",
+}
 
 
 class AccountRows(NamedTuple):
@@ -38,6 +44,23 @@ def report_notices(view: ViewState, overview: MonthlyOverview) -> tuple[Notice, 
                 Notice("report/coverage_note.html"),
             ),
         ),
+    )
+
+
+def tab_template(view: ViewState) -> str:
+    """Return the template of the tab `view` shows; the simple mode's is Overblik."""
+    return _TAB_TEMPLATES[view.tab]
+
+
+def overview_notices(overview: MonthlyOverview) -> tuple[Notice, ...]:
+    """Return the parts of Overblik below its summary that apply, in order."""
+    unclassified = overview.unclassified
+    return shown(
+        (
+            unclassified is not None and unclassified.count > 0,
+            Notice("report/unclassified_note.html"),
+        ),
+        (bool(overview.categories), Notice("report/categories.html")),
     )
 
 

@@ -1,0 +1,24 @@
+<p class="eyebrow">Rapporten er indlæst</p>
+<h3 id="report-ready-title">{{ month_label }}</h3>
+{# With no evidence a figure is unknown, never zero. #}
+<dl class="summary">
+  <div class="summary-figure"><dt>Indtægter</dt>
+    <dd id="income">{{ overview.income | amount(overview.currency) }}</dd></div>
+  <div class="summary-figure"><dt>Udgifter</dt>
+    <dd id="expenses">{{ overview.expenses | amount(overview.currency) }}</dd></div>
+  <div class="summary-figure"><dt>Penge tilbage</dt>
+    <dd id="money-left">{{ overview.net_cash_flow | amount(overview.currency) }}</dd></div>
+  {# Money in and out side by side, never netted, each named in words. #}
+  <div id="unclassified" class="summary-figure"><dt>Ukategoriseret</dt>
+    <dd id="unclassified-in-row"><span class="summary-direction">Ind</span>
+      <span id="unclassified-in">
+        {{- unclassified_in | signed_amount(overview.currency) -}}
+      </span></dd>
+    <dd id="unclassified-out-row"><span class="summary-direction">Ud</span>
+      <span id="unclassified-out">
+        {{- unclassified_out | signed_amount(overview.currency) -}}
+      </span></dd></div>
+</dl>
+{% for notice in overview_notices %}
+{% include notice.template %}
+{% endfor %}

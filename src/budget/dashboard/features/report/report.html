@@ -4,49 +4,6 @@
 {% for notice in notices %}
 {% include notice.template %}
 {% endfor %}
-{% if tab == "overview" %}
-<p class="eyebrow">Rapporten er indlæst</p>
-<h3 id="report-ready-title">{{ month_label }}</h3>
-{# With no evidence a figure is unknown, never zero. #}
-<dl class="summary">
-  <div class="summary-figure"><dt>Indtægter</dt>
-    <dd id="income">{{ overview.income | amount(overview.currency) }}</dd></div>
-  <div class="summary-figure"><dt>Udgifter</dt>
-    <dd id="expenses">{{ overview.expenses | amount(overview.currency) }}</dd></div>
-  <div class="summary-figure"><dt>Penge tilbage</dt>
-    <dd id="money-left">{{ overview.net_cash_flow | amount(overview.currency) }}</dd></div>
-  {# Money in and out side by side, never netted, each named in words. #}
-  <div id="unclassified" class="summary-figure"><dt>Ukategoriseret</dt>
-    <dd id="unclassified-in-row"><span class="summary-direction">Ind</span>
-      <span id="unclassified-in">
-        {{- unclassified_in | signed_amount(overview.currency) -}}
-      </span></dd>
-    <dd id="unclassified-out-row"><span class="summary-direction">Ud</span>
-      <span id="unclassified-out">
-        {{- unclassified_out | signed_amount(overview.currency) -}}
-      </span></dd></div>
-</dl>
-{% if unclassified and unclassified.count > 0 %}
-{# Quiet, without the count, which belongs to Kontrol; the amounts are in the summary. #}
-<p id="unclassified-note" class="trust-note">Nogle betalinger er endnu ikke placeret i en kategori,
-  så penge tilbage kan ændre sig.
-  <a id="unclassified-explanation" href="{{ explanation_url }}">Om betalinger uden kategori</a></p>
-{% endif %}
-{% if overview.categories %}
-<h4 id="categories-heading">Udgifter fordelt på kategorier</h4>
-{# Every row, in the report's order, so the list adds up to Expenses. #}
-<ul id="categories" class="category-list" aria-labelledby="categories-heading">
-{% for category in overview.categories %}
-  <li class="category-row">
-    <a id="category-link-{{ category.category_id }}"
-      href="{{ detail_urls[category.category_id] }}">{{ category.name }}</a>
-    <span class="category-amount">{{ category.spending | amount(overview.currency) }}</span></li>
-{% endfor %}
-</ul>
-{% endif %}
-{% elif tab == "checks" %}
-{% include "checks/checks.html" %}
-{% else %}
-{% include "report/activity.html" %}
-{% endif %}
+{# The route picks the tab's template. #}
+{% include tab_template %}
 </section>
