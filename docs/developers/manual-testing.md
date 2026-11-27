@@ -310,7 +310,8 @@ Suggested: Supermarked (Dagligvarer / Supermarked)
 [Enter] Supermarked  [t] transfer  [n] new category  [s] skip  [m] months  [?] category list  [q] quit  or type a word to search:
 ```
 
-Without a suggestion, the `Suggested` line and `[Enter]` are left out.
+Without a suggestion, the `Suggested` line and `[Enter]` are left out. The
+bank's own `Ukategoriseret` label never suggests one.
 
 | Answer | Expect |
 | --- | --- |
@@ -319,7 +320,7 @@ Without a suggestion, the `Suggested` line and `[Enter]` are left out.
 | A word, such as `super` | `Matches for "super":` and up to 8 numbered categories, with `and N more` past 8, or `No category matches "super".` Then the same group again |
 | A number | The category with that number in the last search |
 | `?` | Opens `budget-categories.md` from your temp folder in its default app: each group's name, then its categories' names and IDs. With no category yet, `No categories yet: type n to add one` |
-| `t` | A `then.transfer_claim = true` rule. A claim on one leg is enough: the group becomes a transfer where it pairs with the opposite leg on another account ([pairing](../architecture/classification.md)) |
+| `t` | A `then.transfer_claim = true` rule. A claim on one leg is enough: the group becomes a transfer where it pairs with the opposite leg on another account ([pairing](../architecture/classification.md)). A group left wholly unpaired is not asked again |
 | `n` | Asks `name`, then `group`. A group ID not in the taxonomy is a new group: it asks `direction`, offering the one the sum suggests (Enter takes it) |
 | `s` | The next group; this one is asked again in a later run |
 | `m` | The month table, then the same group again |
@@ -341,7 +342,9 @@ Month    Currency    In      Out  Transfer  Unknown in  Unknown out
 ```
 
 When every group is answered or skipped it ends with `No group is left to
-sort.` Then `uv run budget check` prints `No problems found.` and
+sort.` On quitting either way, claimed transfers that found no leg are counted:
+`<n> transactions are marked as transfer but not paired yet: run budget review
+--kind unmatched-transfer (or ambiguous-transfer) to see why.` Then `uv run budget check` prints `No problems found.` and
 `uv run budget review --kind unclassified` lists only the skipped groups.
 In production, each answer also prints `Backup   backup set <name> written`.
 
