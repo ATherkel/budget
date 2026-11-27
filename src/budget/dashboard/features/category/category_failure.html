@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% from "_macros.html" import failure_notice, page_heading %}
+{# A detail page whose figures cannot be shown says why. #}
+{% block title %}Udgifter · Budget{% endblock %}
+{% block content %}
+{{ page_heading("Udgifter", {"id": "detail-title"}) }}
+{{ failure_notice(failure, {"id": "detail-failure"}) }}
+{% endblock %}

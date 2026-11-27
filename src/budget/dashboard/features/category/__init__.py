@@ -116,9 +116,8 @@ def _render_detail(
     """Render the detail page of one subject under one pinned selection."""
     detail_report = _read_detail(dashboard, pin, request)
     if isinstance(detail_report, TemplateModule):
-        return dashboard.templates.get_template("category/category.html").render(
-            failure=detail_report, title="Udgifter"
-        )
+        page = dashboard.templates.get_template("category/category_failure.html")
+        return page.render(failure=detail_report)
     answered = detail_report.context
     subject = detail_report.subject
     period = period_label(detail_report.first_month, detail_report.last_month)

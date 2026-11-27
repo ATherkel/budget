@@ -1,11 +1,8 @@
 {% extends "base.html" %}
-{% from "_macros.html" import failure_notice, page_heading, provisional_label, switch_link %}
+{% from "_macros.html" import page_heading, provisional_label, switch_link %}
 {% block title %}{{ title }} · Budget{% endblock %}
 {% block content %}
 {{ page_heading(title, {"id": "detail-title"}) }}
-{% if failure %}
-{{ failure_notice(failure, {"id": "detail-failure"}) }}
-{% else %}
 {% for notice in notices %}
 {% include notice.template %}
 {% endfor %}
@@ -45,5 +42,4 @@
 </table>
 </section>
 <p><a id="back-to-overview" href="{{ overview_url }}">Tilbage til oversigten</a></p>
-{% endif %}
 {% endblock %}
