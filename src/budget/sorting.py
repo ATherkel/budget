@@ -483,6 +483,17 @@ def _resolve(answer: str, categories: _Listed, picks: list[str]) -> str | None:
     return None
 
 
+def _existing_group(answer: str, groups: Mapping[str, Any]) -> str | None:
+    """Return the ID of the group the answer names by its ID or name, ignoring case.
+
+    `?` shows groups by name, so a name must find its group, not start a new one.
+    """
+    for group_id, table in groups.items():
+        if fold(answer) in {fold(str(group_id)), fold(_name(table, str(group_id)))}:
+            return str(group_id)
+    return None
+
+
 def _with_category(path: Path, group: UnknownGroup) -> tuple[str, str]:
     """Ask a new category's name and group; return its ID and the new taxonomy.
 
@@ -498,8 +509,8 @@ def _with_category(path: Path, group: UnknownGroup) -> tuple[str, str]:
     group_answer = input(f"{_INDENT}group: ").strip()
     tables: list[str] = []
     groups = document.get("group", {})
-    group_id = group_answer
-    if group_answer not in groups:
+    group_id = _existing_group(group_answer, groups)
+    if group_id is None:
         group_id = unique_id(slug(group_answer), set(groups))
         offered = "income" if all(s > 0 for s in group.sums.values()) else "expense"
         direction = input(f"{_INDENT}direction [{offered}]: ").strip() or offered
