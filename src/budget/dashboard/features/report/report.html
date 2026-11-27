@@ -1,4 +1,4 @@
-{%- from "_macros.html" import newer_figures, provisional_label, switch_link -%}
+{%- from "_macros.html" import provisional_label, switch_link -%}
 <section id="report" class="report-content" data-publication="{{ publication_id }}"
   data-reference-date="{{ reference_date }}" data-accounts="{{ accounts }}" data-month="{{ month }}"
   data-mode="{{ mode }}" data-tab="{{ tab }}" aria-labelledby="report-ready-title">
@@ -9,7 +9,9 @@
 {% endfor %}
 </nav>
 {% endif %}
-{{ newer_figures(is_current) }}
+{% for notice in notices %}
+{% include notice.template %}
+{% endfor %}
 {% if overview.provisional %}
 <p class="trust-note">{{ provisional_label() }}
   <a id="provisional-explanation" href="{{ explanation_url }}">Hvorfor tallene er foreløbige</a></p>

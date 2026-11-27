@@ -23,6 +23,7 @@ from budget.analytics import (
 from budget.dashboard.addresses import answered_address, detail_url, pinned_url
 from budget.dashboard.display.links import switch_links
 from budget.dashboard.display.months import parse_month, period_label
+from budget.dashboard.display.notices import newer_figures
 from budget.dashboard.display.text import incomplete_by_account
 from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.errors import failure_fragment
@@ -123,6 +124,7 @@ def _render_detail(
     period = period_label(detail_report.first_month, detail_report.last_month)
     return dashboard.templates.get_template("category/category.html").render(
         detail=detail_report,
+        notices=newer_figures(detail_report.publication.is_current),
         is_group=subject.kind == "group",
         title=f"{detail_report.name}, {period}",
         scope_links=switch_links(

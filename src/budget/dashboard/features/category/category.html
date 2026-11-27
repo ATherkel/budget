@@ -1,12 +1,14 @@
 {% extends "base.html" %}
-{% from "_macros.html" import failure_notice, newer_figures, page_heading, provisional_label, switch_link %}
+{% from "_macros.html" import failure_notice, page_heading, provisional_label, switch_link %}
 {% block title %}{{ title }} · Budget{% endblock %}
 {% block content %}
 {{ page_heading(title, {"id": "detail-title"}) }}
 {% if failure %}
 {{ failure_notice(failure, {"id": "detail-failure"}) }}
 {% else %}
-{{ newer_figures(detail.publication.is_current) }}
+{% for notice in notices %}
+{% include notice.template %}
+{% endfor %}
 <nav class="scope-switch" aria-label="Periode">
 {% for link in scope_links %}
   {{ switch_link(link) }}

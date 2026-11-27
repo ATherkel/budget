@@ -28,6 +28,7 @@ from budget.dashboard.addresses import (
 )
 from budget.dashboard.display.links import switch_links
 from budget.dashboard.display.months import month_label, month_value, parse_month
+from budget.dashboard.display.notices import newer_figures
 from budget.dashboard.display.text import incomplete_months
 from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.checks import read_checks
@@ -155,7 +156,7 @@ def render_report(
     page = dashboard.templates.get_template("report/report.html")
     return page.make_module(
         {
-            "is_current": overview_report.publication.is_current,
+            "notices": newer_figures(overview_report.publication.is_current),
             "publication_id": answered.publication_id,
             "reference_date": answered.reference_date.isoformat(),
             "accounts": " ".join(sorted(answered.account_ids)),

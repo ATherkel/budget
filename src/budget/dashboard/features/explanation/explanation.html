@@ -1,12 +1,14 @@
 {% extends "base.html" %}
-{% from "_macros.html" import failure_notice, newer_figures, page_heading, report_section %}
+{% from "_macros.html" import failure_notice, page_heading, report_section %}
 {% block title %}Om tallene · Budget{% endblock %}
 {% block content %}
 {{ page_heading(heading) }}
 {% if failure %}
 {{ failure_notice(failure) }}
 {% else %}
-{{ newer_figures(overview.publication.is_current) }}
+{% for notice in notices %}
+{% include notice.template %}
+{% endfor %}
 {# Analytics judged everything listed here; the page only says it in words. #}
 {% if overview.coverage.status != "complete" %}
 {% if incomplete_months %}
