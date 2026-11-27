@@ -1,7 +1,7 @@
-{%- from "report/card.html" import summary_card -%}
+{%- from "report/card.html" import detail_table, summary_card -%}
 <p class="eyebrow">Kontobevægelser</p>
 <h3 id="report-ready-title">Kontodetaljer</h3>
-{% for account, rows, no_rows, cards in activity_accounts %}
+{% for account, table, cards in activity_accounts %}
 <article id="activity-account-{{ account.account_id }}" class="account-activity">
   <h4>{{ account.display_name }}</h4>
   <p id="activity-evidence-{{ account.account_id }}">
@@ -36,32 +36,6 @@
   {% endfor %}
   </div>
   <h4>Posteringer</h4>
-  <table class="detail-table activity-table" aria-label="Posteringer for {{ account.display_name }}">
-    <thead>
-      <tr>
-        <th scope="col">Dato</th>
-        <th scope="col">Tekst</th>
-        <th scope="col">Type</th>
-        <th scope="col" class="detail-amount">Beløb</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for row in rows %}
-      <tr>
-        <td data-label="Dato">{{ row.transaction_date | danish_date }}</td>
-        <td data-label="Tekst">{{ row.description }}</td>
-        <td data-label="Type">
-          {{ row | transaction_kind }}
-        </td>
-        <td data-label="Beløb" class="detail-amount">
-          {{ row.amount | signed_amount(activity.currency) }}
-        </td>
-      </tr>
-    {% endfor %}
-    {% for line in no_rows %}
-      <tr><td colspan="4">{{ line }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  {{ detail_table(table) }}
 </article>
 {% endfor %}
