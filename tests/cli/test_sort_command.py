@@ -18,7 +18,7 @@ from budget.importing import Coverage, import_inbox_file
 from budget.locking import writer_lock
 from budget.profiles import load_profile_file
 from budget.rebuilding import rebuild_from_gold, rebuild_from_silver
-from tests.cli.commands import sort
+from tests.cli.commands import check, sort
 from tests.cli.pipelines import TAXONOMY, prepared
 from tests.importing.households import drop
 
@@ -127,6 +127,31 @@ class ShowingAGroupTests(unittest.TestCase):
                 _ASKED + "til opsparing",
                 _ASKED + "No group is left to sort.",
             ]
+
+
+class SortingEverythingTests(unittest.TestCase):
+    def test_a_session_from_blank_inputs_leaves_nothing_unknown_and_passes_check(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+            answers = [
+                *("n", "Dagligvarer", "Mad", ""),  # netto kbh, a new group
+                "t",  # fra lønkonto
+                *("n", "Løn", "Indkomst", ""),  # løn marts, offered income
+                "t",  # til opsparing, the other leg
+            ]
+
+            status, stdout, stderr = sort(profile_file, "\n".join(answers) + "\n")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert set(_types(profile_file).values()) == {
+                "expense",
+                "income",
+                "transfer",
+            }
+            assert stdout.endswith("No group is left to sort.\n")
+            assert check(profile_file) == (EXIT_OK, "No problems found.\n", "")
 
 
 class QuittingTests(unittest.TestCase):
