@@ -373,6 +373,11 @@ The selected account carries [`GoldAccount.evidence_through`](gold-contract.md#g
 directly, including null and gaps between Evidence ranges. It is not inferred
 from a transaction, export date or Coverage status.
 
+Each account's `money_in_out` is a [`MoneyInOut`](#monthlyoverview) over its
+month's transactions of every type, Transfers included; the household's
+Income and Expenses don't change. It is null exactly when the account's
+Coverage is `no_data`, and a known zero when it is `outside_history`.
+
 ## Worked Examples (synthetic)
 
 All examples read the publication of the worked example in
