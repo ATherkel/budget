@@ -1,27 +1,9 @@
-{%- from "_macros.html" import provisional_label, switch_link -%}
 <section id="report" class="report-content" data-publication="{{ publication_id }}"
   data-reference-date="{{ reference_date }}" data-accounts="{{ accounts }}" data-month="{{ month }}"
   data-mode="{{ mode }}" data-tab="{{ tab }}" aria-labelledby="report-ready-title">
-{% if mode == "advanced" %}
-<nav id="advanced-tabs" class="scope-switch" aria-label="Avanceret visning">
-{% for link in tab_links %}
-  {{ switch_link(link) }}
-{% endfor %}
-</nav>
-{% endif %}
 {% for notice in notices %}
 {% include notice.template %}
 {% endfor %}
-{% if overview.provisional %}
-<p class="trust-note">{{ provisional_label() }}
-  <a id="provisional-explanation" href="{{ explanation_url }}">Hvorfor tallene er foreløbige</a></p>
-{% endif %}
-{% if overview.coverage.status != "complete" %}
-{# With no account incomplete, the month lies outside every one's history. #}
-<p id="coverage-note" class="trust-note">{{ coverage_note(overview.coverage.status, incomplete, month_label) }}
-  <a id="coverage-explanation" href="{{ explanation_url }}">
-  {{- incomplete | coverage_link_label }}</a></p>
-{% endif %}
 {% if tab == "overview" %}
 <p class="eyebrow">Rapporten er indlæst</p>
 <h3 id="report-ready-title">{{ month_label }}</h3>

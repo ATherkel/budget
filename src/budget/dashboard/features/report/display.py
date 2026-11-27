@@ -9,7 +9,10 @@ from budget.analytics import (
     AccountActivitySnapshot,
     ActivityRow,
     MoneyInOut,
+    MonthlyOverview,
 )
+from budget.dashboard.display.notices import Notice, newer_figures, shown
+from budget.dashboard.features.view_state import ViewState
 
 _NO_ROWS = "Ingen observerede posteringer i måneden."
 
@@ -21,6 +24,21 @@ class AccountRows(NamedTuple):
     rows: tuple[ActivityRow, ...]
     # The one line shown in place of rows when there are none, else empty.
     no_rows: tuple[str, ...]
+
+
+def report_notices(view: ViewState, overview: MonthlyOverview) -> tuple[Notice, ...]:
+    """Return the notes above the report's tab, in the order the report shows them."""
+    return (
+        *shown((view.mode == "advanced", Notice("report/advanced_tabs.html"))),
+        *newer_figures(overview.publication.is_current),
+        *shown(
+            (overview.provisional is not None, Notice("report/provisional_note.html")),
+            (
+                overview.coverage.status != "complete",
+                Notice("report/coverage_note.html"),
+            ),
+        ),
+    )
 
 
 def unclassified_amounts(

@@ -1,0 +1,7 @@
+{%- from "_macros.html" import switch_link -%}
+{# The advanced mode's tabs; the simple mode lists no such notice. #}
+<nav id="advanced-tabs" class="scope-switch" aria-label="Avanceret visning">
+{% for link in tab_links %}
+  {{ switch_link(link) }}
+{% endfor %}
+</nav>
