@@ -106,8 +106,9 @@ class ShowingAGroupTests(unittest.TestCase):
             status, stdout, stderr = sort(profile_file, "q\n")
 
             assert (status, stderr) == (EXIT_OK, "")
+            # The categories follow; `CategoryListTests` pins them.
             first = stdout.split("\n\n")[0].splitlines()
-            assert first == [
+            assert first[:5] == [
                 "netto kbh",
                 "  4 transactions, -200.00 DKK",
                 "  2026-03-02  joint-current  -45.00  NETTO 1234 KBH",
@@ -235,6 +236,15 @@ class CategoryListTests(unittest.TestCase):
 
             first = stdout.split("\n\n")[0].splitlines()
             assert first[-2:] == ["Food: 1 groceries, 2 eating-out", "Home: 3 rent"]
+
+    def test_with_no_category_yet_it_says_to_add_one(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+
+            _, stdout, _ = sort(profile_file, "q\n")
+
+            first = stdout.split("\n\n")[0].splitlines()
+            assert first[-1] == "No categories yet: type n to add one"
 
 
 class RefusedAnswerTests(unittest.TestCase):
