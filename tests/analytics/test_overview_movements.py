@@ -157,3 +157,16 @@ def test_an_income_refund_reduces_income() -> None:
         ("MARCH 3", Decimal("-5000.00"), Decimal("-5000.00")),
     }
     assert income.total == Decimal("35000.00")
+
+
+def test_a_selected_transfer_leg_contributes_its_amount_and_both_legs_cancel() -> None:
+    # January's transfer T1: current-02 out, savings-01 in.
+    one_leg = _group(_overview(1, CURRENT), "transfers")
+    both_legs = _group(_overview(1), "transfers")
+
+    assert _contributions(one_leg) == {
+        ("TRANSFER", Decimal("-3000.00"), Decimal("-3000.00")),
+    }
+    assert one_leg.total == Decimal("-3000.00")
+    assert both_legs.total == Decimal("0.00")
+    assert both_legs.flows == MoneyInOut(Decimal("3000.00"), Decimal("-3000.00"), 2)
