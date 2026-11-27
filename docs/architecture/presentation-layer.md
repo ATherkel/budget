@@ -76,8 +76,11 @@ A template may place plain values such as `{{ a.b }}` and `{{ urls["key"] }}`,
 loop with `for` over rows Python prepared, define macros and call them with
 plain arguments, and use `include`, `extends`, `import` and `block`. An
 optional attribute is an `xmlattr` dict, which leaves out a value of None. An
-optional section is a `for` over a list of notices Python built. A failure is
-a template of its own that the route renders.
+optional section is a `for` over a list of notices Python built, each rendered
+with `{% include notice.template %}`. A notice of the shared shape, a titled
+section of paragraphs, goes through the one `notice_section` macro; any other
+names a template of its own. A failure is a template of its own that the route
+renders.
 
 The allowlist, `tests/template_logic_allowlist.toml`, lets a tag through for
 now. Each entry names the template, the tag's text, a reason and the issue that
