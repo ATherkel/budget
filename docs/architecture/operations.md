@@ -52,7 +52,8 @@ Rules for every store:
   previous publication current.
 - **One writing command at a time.** A writing command holds `budget.lock` in
   the stores folder for its whole run, its backup set included. A second one
-  exits 4 at once with "another command is running". `status`, `review`,
+  exits 4 at once with "another command is running". `sort` waits on a
+  person between answers, so it holds the lock for each answer only. `status`, `review`,
   `check`, `serve` and `suggest-rules` only read and take no lock.
 
 ### Publishing a Gold build
@@ -510,6 +511,7 @@ application layer; the dashboard has no route to it.
 | `rebuild [--from bronze\|silver\|gold]` | Rebuilds from a stage; `gold` by default. Never creates an import run or log entry. | Stages from `--from` on | Yes, if the recipe changed |
 | `review [--kind <kind>] [--account <id>]` | Lists open review items, Silver's and Gold's, then quarantined import runs no item shows. | Nothing | No |
 | `suggest-rules [--out <folder>]` | Lists Silver's bank category pairs with count, sum and any rule covering it. `--out` also writes `taxonomy-draft.toml` and `rules-draft.toml` to edit and copy into `inputs`. | The two drafts, none when Silver has no pair | No |
+| `sort` | Shows the current publication's unknowns grouped by description, ignoring case, numbers and dates, the biggest group first. Each answer (a category, `t` for a transfer claim, `n` for a new category, `s` to skip, `q` to quit) appends one rule matching the group, which `check` must accept, then publishes and prints each month's in, out, transfer and unknown. Takes the writer lock for each answer only. | `rules.toml`, `taxonomy.toml` for `n`, Gold | After each answer |
 | `decide <kind> <targets…> [options] --reason <text>` | Proposes a manual decision to the boundary, then rebuilds from the stage it affects. | The decision log, then stores | Yes |
 | `status` | Shows [completeness](#completeness-outputs). | Nothing | No |
 | `find <text> [--month YYYY-MM] [--account <id>]` | Searches the current publication's transactions, ignoring case, printing each one's handle and category or `category unclassified`. Refused whole when a match is absent from current Silver, as after an `undo`; `rebuild` fixes that. | Nothing | No |
