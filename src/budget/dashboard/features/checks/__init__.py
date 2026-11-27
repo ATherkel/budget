@@ -20,6 +20,7 @@ from budget.dashboard.display.months import month_label, parse_month
 from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.checks.display import ChecksView, checks_view
 from budget.dashboard.features.errors import failure_fragment
+from budget.dashboard.features.view_state import ViewState
 from budget.gold.store import GoldStore
 
 
@@ -28,6 +29,7 @@ def read_checks(
     pin: tuple[int, date],
     accounts: Collection[str],
     month: str,
+    view: ViewState,
 ) -> ChecksView | TemplateModule:
     """Return Kontrol's lines for a pinned selection, or a failure fragment."""
     publication_id, reference_date = pin
@@ -43,7 +45,7 @@ def read_checks(
             diagnostics = HouseholdReports(store).diagnostics(context)
     except (InvalidSelectionError, PublicationUnavailableError) as error:
         return failure_fragment(dashboard, error)
-    return checks_view(diagnostics, month_label(selected_month))
+    return checks_view(diagnostics, month_label(selected_month), view)
 
 
 def _register(_dashboard: Dashboard) -> None:

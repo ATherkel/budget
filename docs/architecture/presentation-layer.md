@@ -114,8 +114,20 @@ restores the recorded mode, tab and applicable detail/comparison state under the
 [navigation contract](report-contract.md#navigation-and-selection-transitions).
 
 The switch and advanced “Overblik”, “Detaljer” and “Kontrol” are available.
-“Kontrol” shows Coverage, provisional reasons, incomplete account-months and
-Evidence through. Both modes retain access to the basic trust explanation.
+“Kontrol” gives each selected account a verdict on its
+[reconciliation](report-contract.md#diagnostics), with a waterfall as evidence
+([`checks/display.py`](../../src/budget/dashboard/features/checks/display.py)).
+It never says a month adds up.
+
+| Verdict | When |
+|---------|------|
+| “Data mangler” | partial or no Coverage |
+| “Uden for historikken” | the month is outside the account's history |
+| “Ukendt” | a balance or residual is missing |
+| “Går ikke op (±N kr.)” | a residual is nonzero |
+| “Ingen fundne forskelle” | otherwise |
+
+Both modes retain access to the basic trust explanation.
 
 ## Data Trust Display
 

@@ -158,13 +158,159 @@ def test_kontrol_shows_each_accounts_evidence_through_and_unknown_is_never_a_dat
     page = kontrol(client, publication="2")
 
     assert (
-        page.text_of(f"checks-evidence-{CURRENT}"),
-        page.text_of(f"checks-evidence-{SAVINGS}"),
+        page.text_of(f"checks-through-{CURRENT}"),
+        page.text_of(f"checks-through-{SAVINGS}"),
     ) == (
-        # Worded as Detaljer words it.
-        "Joint current: Gennem 08.05.2026",
-        "Joint savings: Ingen importeret data",
+        # The column is headed "Data til og med", so a cell holds the date only.
+        "08.05.2026",
+        "Ingen importeret data",
     )
+
+
+def test_kontrol_says_a_zero_difference_does_not_prove_the_data_complete(
+    client: TestClient,
+) -> None:
+    # Joint current's March difference is 0,00 kr., yet March is only partial.
+    assert kontrol(client).text_of("checks-reconciliation-note") == (
+        "En forskel på 0,00 kr. beviser ikke, at alle posteringer er "
+        "importeret: saldiene kan bygge på de samme ufuldstændige posteringer."
+    )
+
+
+def test_an_accounts_link_opens_the_full_detaljer_page_for_that_account(
+    client: TestClient,
+) -> None:
+    # A plain link must land on a whole page, not the report fragment.
+    href = kontrol(client).attributes(f"checks-account-{CURRENT}")["href"]
+    landed = client.get(href)
+    page = read(landed.text)
+
+    assert (
+        landed.status_code,
+        "<html" in landed.text,
+        page.attributes("tab-details").get("aria-current"),
+        page.checked("account"),
+    ) == (200, True, "page", {CURRENT})
+
+
+def test_kontrol_shows_the_reconciliation_once_in_its_table_not_again_as_lists(
+    client: TestClient,
+) -> None:
+    # The account table and its waterfalls replace the earlier lists.
+    page = kontrol(client)
+
+    assert [
+        page.text_of(element_id)
+        for element_id in (
+            "checks-residuals",
+            "checks-reconciliation-title",
+            "checks-evidence",
+            f"checks-evidence-{CURRENT}",
+            f"checks-reconciliation-{CURRENT}-title",
+            f"checks-reconciliation-{CURRENT}-components",
+            f"checks-reconciliation-{CURRENT}-residuals",
+        )
+    ] == [None] * 7
+
+
+def test_kontrol_tables_each_account_with_its_verdict_linking_to_detaljer(
+    client: TestClient,
+) -> None:
+    # March: Joint current is partly covered; Joint savings is complete and adds up.
+    page = kontrol(client)
+    link = urlsplit(page.attributes(f"checks-account-{SAVINGS}").get("href", ""))
+
+    assert (
+        page.text_of(f"checks-account-{CURRENT}"),
+        page.text_of(f"checks-verdict-{CURRENT}"),
+        page.text_of(f"checks-verdict-{SAVINGS}"),
+        kontrol(client, month="2026-04").text_of(f"checks-verdict-{CURRENT}"),
+        link.path,
+        parse_qs(link.query).get("account"),
+        parse_qs(link.query).get("tab"),
+    ) == (
+        "Joint current",
+        "Data mangler",
+        "Ingen fundne forskelle",
+        "Ingen fundne forskelle",
+        "/",
+        [SAVINGS],
+        ["details"],
+    )
+
+
+def test_kontrol_tables_each_accounts_balances_residuals_and_data_reach(
+    client: TestClient,
+) -> None:
+    # March as the report contract states it; May has no balances yet.
+    page = kontrol(client)
+    may = kontrol(client, month="2026-05")
+
+    assert [
+        page.text_of(f"checks-{column}-{CURRENT}")
+        for column in ("opening", "closing", "internal", "gap", "through")
+    ] + [
+        may.text_of(f"checks-opening-{CURRENT}"),
+        may.text_of(f"checks-gap-{CURRENT}"),
+    ] == [
+        "37.037,50 kr.",
+        "35.587,50 kr.",
+        "0,00 kr.",
+        "\N{MINUS SIGN}500,00 kr.",
+        "08.05.2026",
+        "Ukendt",
+        "Ukendt",
+    ]
+
+
+def test_kontrol_walks_each_accounts_month_from_start_to_end_balance(
+    client: TestClient,
+) -> None:
+    # 37.037,50 - 1.000,00 - 450,00 = 35.587,50, which is the bank's own close.
+    assert kontrol(client).text_of(f"checks-waterfall-{CURRENT}") == (
+        "Trin Beløb Løbende saldo "
+        "Startsaldo 37.037,50 kr. "
+        "Indtægter minus udgifter \N{MINUS SIGN}1.000,00 kr. 36.037,50 kr. "
+        "Overførsler 0,00 kr. 36.037,50 kr. "
+        "Ukategoriseret ind 0,00 kr. 36.037,50 kr. "
+        "Ukategoriseret ud \N{MINUS SIGN}450,00 kr. 35.587,50 kr. "
+        "Regulering ind 0,00 kr. 35.587,50 kr. "
+        "Regulering ud 0,00 kr. 35.587,50 kr. "
+        "Beregnet slutsaldo 35.587,50 kr. "
+        "Bankens slutsaldo 35.587,50 kr. "
+        "Forskel 0,00 kr."
+    )
+
+
+def test_kontrol_keeps_a_running_total_unknown_from_a_missing_balance(
+    client: TestClient,
+) -> None:
+    # May has no start balance, so no step after it may print a total.
+    assert kontrol(client, month="2026-05").text_of(f"checks-waterfall-{CURRENT}") == (
+        "Trin Beløb Løbende saldo "
+        "Startsaldo Ukendt "
+        "Indtægter minus udgifter 0,00 kr. Ukendt "
+        "Overførsler 0,00 kr. Ukendt "
+        "Ukategoriseret ind 0,00 kr. Ukendt "
+        "Ukategoriseret ud 0,00 kr. Ukendt "
+        "Regulering ind 0,00 kr. Ukendt "
+        "Regulering ud 0,00 kr. Ukendt "
+        "Beregnet slutsaldo Ukendt "
+        "Bankens slutsaldo Ukendt "
+        "Forskel Ukendt"
+    )
+
+
+def test_kontrol_captions_its_account_table_with_the_month(
+    client: TestClient,
+) -> None:
+    # A visible caption names the table for every reader, not only screen readers.
+    page = kontrol(client)
+
+    assert (
+        page.text_of("checks-accounts-caption"),
+        page.attributes("checks-accounts").get("aria-label"),
+    ) == ("Vurdering pr. konto, marts 2026", None)
 
 
 def test_changing_account_or_month_inside_kontrol_stays_on_kontrol(
