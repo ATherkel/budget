@@ -165,9 +165,3 @@ path = "features/report/report.html"
 tag = '{% else %}'
 reason = "Optional section or failure branch; becomes a notice list or its own template."
 issue = 627
-
-[[allowance]]
-path = "templates/_macros.html"
-tag = '{% if not is_current %}'
-reason = "Optional section or failure branch; becomes a notice list or its own template."
-issue = 627
