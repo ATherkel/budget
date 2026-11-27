@@ -103,6 +103,7 @@ class MoneyLeft:
 # Every summary card, in the order Overblik shows them.
 CARDS: tuple[CardSpec, ...] = (
     GroupCard("income", "Indtægter", "Ingen indtægter i måneden."),
+    GroupCard("expenses", "Udgifter", "Ingen udgifter i måneden."),
     MoneyLeft(),
 )
 
