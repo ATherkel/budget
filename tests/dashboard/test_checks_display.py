@@ -137,3 +137,28 @@ def test_with_both_residuals_nonzero_the_internal_one_names_the_gap() -> None:
         )
         == "Går ikke op (+12,40 kr.)"
     )
+
+
+def test_a_missing_step_after_a_known_start_leaves_later_totals_unknown() -> None:
+    reconciliations = tuple(
+        replace(reconciliation, income_minus_expenses=None, internal_residual=None)
+        if reconciliation.account_id == SAVINGS
+        else reconciliation
+        for reconciliation in MARCH_REPORT.reconciliations
+    )
+    view = checks_view(
+        replace(MARCH_REPORT, reconciliations=reconciliations), "marts 2026"
+    )
+    waterfall = {account.account_id: account for account in view.accounts}[
+        SAVINGS
+    ].waterfall
+
+    assert [(step.label, step.amount, step.total) for step in waterfall[1:8]] == [
+        ("Indtægter minus udgifter", "Ukendt", "Ukendt"),
+        ("Overførsler", "0,00 kr.", "Ukendt"),
+        ("Ukategoriseret ind", "0,00 kr.", "Ukendt"),
+        ("Ukategoriseret ud", "0,00 kr.", "Ukendt"),
+        ("Regulering ind", "0,00 kr.", "Ukendt"),
+        ("Regulering ud", "0,00 kr.", "Ukendt"),
+        ("Beregnet slutsaldo", "", "Ukendt"),
+    ]
