@@ -203,6 +203,7 @@ def account_activity(
                 if snapshot is not None
                 else incomplete.get(account.account_id, "complete")
             ),
+            money_in_out=None,
         )
 
     return AccountActivity(
