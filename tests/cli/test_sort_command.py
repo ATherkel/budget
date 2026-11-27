@@ -29,7 +29,10 @@ EXIT_OK = 0
 EXIT_REFUSED_ENVIRONMENT = 4
 _NOW = datetime(2026, 4, 1, tzinfo=UTC)
 # The question after each group, which stdout holds without the answer typed.
-_ASKED = "t, n, s, m, q, ? or a word to search: "
+_ASKED = (
+    "[t] transfer  [n] new category  [s] skip  [m] months  [?] category list  "
+    "[q] quit  or type a word to search: "
+)
 _HEADER = '"Dato","Kategori","Underkategori","Tekst","Beløb","Saldo","Status","Afstemt"'
 
 type Row = tuple[str, str, str]
