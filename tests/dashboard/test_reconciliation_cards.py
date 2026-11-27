@@ -5,7 +5,9 @@ Expected values are the Gold worked example's tables in
 `tests/gold/worked_example.py`; the dashboard is driven in-process.
 """
 
+from dataclasses import replace
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -84,6 +86,34 @@ def test_a_zero_difference_never_upgrades_the_accounts_coverage(
     assert [(card.summary, card.rows[-1]) for card in cards] == [
         ("Afstemning, Joint current 0,00 kr.", ("Dækning", "delvist dækket")),
         ("Afstemning, Joint savings 0,00 kr.", ("Dækning", "fuldt dækket")),
+    ]
+
+
+def test_opposing_differences_on_two_accounts_never_cancel_out() -> None:
+    # The worked example cannot publish a nonzero difference, so March's two
+    # accounts are given +100.00 and -100.00 by hand.
+    context = ReportContext(
+        publication_id=PUBLICATION.publication_id,
+        account_ids=frozenset((CURRENT, SAVINGS)),
+        month=ReportingMonth(2026, 3),
+        reference_date=date(2026, 5, 14),
+    )
+    report = diagnostics(GoldResult(PUBLICATION, RECORDS), context, is_current=True)
+    residuals = {CURRENT: Decimal("100.00"), SAVINGS: Decimal("-100.00")}
+    report = replace(
+        report,
+        reconciliations=tuple(
+            replace(r, internal_residual=residuals[r.account_id])
+            for r in report.reconciliations
+        ),
+    )
+    page = read(CARDS.render(cards=reconciliation_cards(report)))
+
+    assert [
+        page.disclosures[f"reconciliation-{a}-card"].summary for a in residuals
+    ] == [
+        "Afstemning, Joint current +100,00 kr.",
+        f"Afstemning, Joint savings {MINUS}100,00 kr.",
     ]
 
 
