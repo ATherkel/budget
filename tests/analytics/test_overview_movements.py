@@ -183,3 +183,21 @@ def test_unclassified_money_in_and_out_never_net_to_nothing() -> None:
         ("MARCH 1", Decimal("450.00"), Decimal("450.00")),
     }
     assert unclassified.flows == MoneyInOut(Decimal("450.00"), Decimal("-450.00"), 2)
+
+
+def _order(group: MovementGroup) -> list[tuple[date, str, Decimal]]:
+    return [(row.transaction_date, row.account_id, row.amount) for row in group.rows]
+
+
+def test_rows_are_newest_first_by_date_account_and_sequence() -> None:
+    # February's two 2026-02-02 bookings are current-04 then current-05;
+    # January's two 2026-01-20 transfer legs sit on different accounts.
+    assert _order(_group(_overview(2), "expenses")) == [
+        (date(2026, 2, 12), CURRENT, Decimal("120.00")),
+        (date(2026, 2, 2), CURRENT, Decimal("-640.00")),
+        (date(2026, 2, 2), CURRENT, Decimal("-8500.00")),
+    ]
+    assert _order(_group(_overview(1), "transfers")) == [
+        (date(2026, 1, 20), SAVINGS, Decimal("3000.00")),
+        (date(2026, 1, 20), CURRENT, Decimal("-3000.00")),
+    ]
