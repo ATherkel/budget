@@ -1,0 +1,8 @@
+{%- from "_macros.html" import report_section -%}
+{% call report_section("provisional", "Hvorfor tallene er foreløbige") -%}
+<ul id="explanation-provisional" class="explanation-list">
+{% for reason in provisional_reasons %}
+  <li>{{ reason }}</li>
+{% endfor %}
+</ul>
+{%- endcall %}

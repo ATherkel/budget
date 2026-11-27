@@ -1,49 +1,11 @@
 {% extends "base.html" %}
-{% from "_macros.html" import failure_notice, newer_figures, page_heading, report_section %}
+{% from "_macros.html" import page_heading %}
 {% block title %}Om tallene · Budget{% endblock %}
 {% block content %}
-{{ page_heading("Om tallene for " ~ month_label if overview else "Om tallene") }}
-{% if failure %}
-{{ failure_notice(failure) }}
-{% else %}
-{{ newer_figures(overview.publication.is_current) }}
+{{ page_heading(heading) }}
 {# Analytics judged everything listed here; the page only says it in words. #}
-{% if overview.coverage.status != "complete" %}
-{% if incomplete_months %}
-{% call report_section("coverage", "Hvor tallene er ufuldstændige") -%}
-<ul id="explanation-coverage" class="explanation-list">
-{% for month in incomplete_months %}
-  <li>{{ month.display_name }}, {{ month_label }}: {{ month.status | coverage_gap }}</li>
+{% for notice in notices %}
+{% include notice.template %}
 {% endfor %}
-</ul>
-{%- endcall %}
-{% else %}
-{% call report_section("coverage", "Hvorfor der ingen tal er") -%}
-<p id="explanation-coverage">Ingen af de valgte konti har historik i {{ month_label }},
-  så der er ingen tal for måneden. Vælg en anden måned eller andre konti.</p>
-{%- endcall %}
-{% endif %}
-{% endif %}
-{% if overview.provisional %}
-{% call report_section("provisional", "Hvorfor tallene er foreløbige") -%}
-<ul id="explanation-provisional" class="explanation-list">
-{% if "current_month" in overview.provisional.reasons %}
-  <li>{{ month_label | capitalize }} er indeværende måned, så der kommer flere posteringer.</li>
-{% endif %}
-{% if "late_bookings_unsettled" in overview.provisional.reasons %}
-  <li>Banken kan stadig bogføre sene posteringer på {{ overview.provisional.unsettled | account_names }}.</li>
-{% endif %}
-</ul>
-{%- endcall %}
-{% endif %}
-{% if overview.unclassified and overview.unclassified.count > 0 %}
-{% call report_section("unclassified", "Betalinger uden kategori") -%}
-<p id="explanation-unclassified">Nogle betalinger i måneden er endnu ikke placeret i en kategori.
-  Penge tilbage medregner dem ikke, så beløbet kan ændre sig, når de bliver placeret.</p>
-{%- endcall %}
-{% endif %}
-{% endif %}
-{% if report_url %}
 <p><a id="back-to-report" href="{{ report_url }}">Tilbage til oversigten</a></p>
-{% endif %}
 {% endblock %}

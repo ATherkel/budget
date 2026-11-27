@@ -8,6 +8,7 @@ from typing import Annotated
 
 from fastapi import Query, Request, Response
 from fastapi.responses import HTMLResponse
+from jinja2.environment import TemplateModule
 
 from budget.analytics import (
     AccountActivity,
@@ -25,11 +26,19 @@ from budget.dashboard.addresses import (
     detail_url,
     pinned_url,
 )
+from budget.dashboard.display.links import switch_links
 from budget.dashboard.display.months import month_label, month_value, parse_month
 from budget.dashboard.display.text import incomplete_months
 from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.checks import read_checks
 from budget.dashboard.features.errors import failure_fragment
+from budget.dashboard.features.report.display import (
+    account_rows,
+    overview_notices,
+    report_notices,
+    tab_template,
+    unclassified_amounts,
+)
 from budget.dashboard.features.view_state import (
     ViewState,
     parse_view_state,
@@ -38,6 +47,9 @@ from budget.dashboard.features.view_state import (
 )
 from budget.dashboard.reading import read_overview
 from budget.gold.store import GoldStore
+
+# The advanced mode's tabs, in the order the report shows them.
+_TABS = (("overview", "Overblik"), ("details", "Detaljer"), ("checks", "Kontrol"))
 
 
 class ReportAddress(PinnedQuery):
@@ -64,7 +76,7 @@ def _read_activity(
     pin: tuple[int, date],
     accounts: Collection[str],
     month: str,
-) -> AccountActivity | str:
+) -> AccountActivity | TemplateModule:
     """Return account activity for a pinned selection, or a failure fragment."""
     publication_id, reference_date = pin
     try:
@@ -83,18 +95,18 @@ def _read_activity(
 def render_report(
     dashboard: Dashboard,
     requested: ReportRequest,
-) -> str:
+) -> TemplateModule:
     """Render the report fragment a selection asks for, or why it cannot be shown."""
     if not requested.accounts:
         # An empty selection is a prompt, never a report of nothing.
-        return dashboard.templates.get_template("report/no_accounts.html").render()
+        return dashboard.templates.get_template("report/no_accounts.html").make_module()
     overview_report = read_overview(
         dashboard,
         requested.pin,
         requested.accounts,
         requested.month,
     )
-    if isinstance(overview_report, str):
+    if isinstance(overview_report, TemplateModule):
         return overview_report
     answered = overview_report.context
     activity = (
@@ -107,7 +119,7 @@ def render_report(
         if requested.view.mode == "advanced" and requested.view.tab == "details"
         else None
     )
-    if isinstance(activity, str):
+    if isinstance(activity, TemplateModule):
         return activity
     checks = (
         read_checks(
@@ -120,51 +132,71 @@ def render_report(
         if requested.view.mode == "advanced" and requested.view.tab == "checks"
         else None
     )
-    if isinstance(checks, str):
+    if isinstance(checks, TemplateModule):
         return checks
-    tab_urls = {
-        destination: pinned_url(
-            answered_address(answered),
-            view=ViewState(
-                "advanced",
+    tab_links = switch_links(
+        requested.view.tab,
+        (
+            (
                 destination,
-                requested.view.comparison,
-            ),
-        )
-        for destination in ("overview", "details", "checks")
-    }
-    return dashboard.templates.get_template("report/report.html").render(
-        is_current=overview_report.publication.is_current,
-        publication_id=answered.publication_id,
-        reference_date=answered.reference_date.isoformat(),
-        accounts=" ".join(sorted(answered.account_ids)),
-        month=month_value(answered.month),
-        month_label=month_label(answered.month),
-        overview=overview_report,
-        incomplete=[
-            account_month.display_name
-            for account_month in incomplete_months(overview_report.coverage)
-        ],
-        activity=activity,
-        checks=checks,
-        mode=requested.view.mode,
-        tab=requested.view.tab,
-        comparison=requested.view.comparison,
-        tab_urls=tab_urls,
-        explanation_url=answered_url(
-            overview_report,
-            "/explanation",
-            requested.view,
-        ),
-        detail_urls={
-            category.category_id: detail_url(
-                answered,
-                "category",
-                category.category_id,
-                view=requested.view,
+                f"tab-{destination}",
+                pinned_url(
+                    answered_address(answered),
+                    view=ViewState(
+                        "advanced",
+                        destination,
+                        requested.view.comparison,
+                    ),
+                ),
+                label,
             )
-            for category in overview_report.categories
-        },
+            for destination, label in _TABS
+        ),
+    )
+    unclassified_in, unclassified_out = unclassified_amounts(
+        overview_report.unclassified
+    )
+    page = dashboard.templates.get_template("report/report.html")
+    return page.make_module(
+        {
+            "notices": report_notices(requested.view, overview_report),
+            "tab_template": tab_template(requested.view),
+            "overview_notices": overview_notices(overview_report),
+            "publication_id": answered.publication_id,
+            "reference_date": answered.reference_date.isoformat(),
+            "accounts": " ".join(sorted(answered.account_ids)),
+            "month": month_value(answered.month),
+            "month_label": month_label(answered.month),
+            "overview": overview_report,
+            "unclassified": overview_report.unclassified,
+            "unclassified_in": unclassified_in,
+            "unclassified_out": unclassified_out,
+            "incomplete": [
+                account_month.display_name
+                for account_month in incomplete_months(overview_report.coverage)
+            ],
+            "activity": activity,
+            "activity_accounts": account_rows(activity),
+            "checks": checks,
+            "mode": requested.view.mode,
+            "tab": requested.view.tab,
+            "comparison": requested.view.comparison,
+            "tab_links": tab_links,
+            "explanation_url": answered_url(
+                overview_report,
+                "/explanation",
+                requested.view,
+            ),
+            "detail_urls": {
+                category.category_id: detail_url(
+                    answered,
+                    "category",
+                    category.category_id,
+                    view=requested.view,
+                )
+                for category in overview_report.categories
+            },
+        }
     )
 
 
@@ -199,7 +231,7 @@ def _report_response(
             view.mode,
         ),
     )
-    return HTMLResponse(fragment + state, headers={"HX-Push-Url": page})
+    return HTMLResponse(str(fragment) + state, headers={"HX-Push-Url": page})
 
 
 def _register(dashboard: Dashboard) -> None:

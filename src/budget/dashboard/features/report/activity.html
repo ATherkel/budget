@@ -1,6 +1,6 @@
 <p class="eyebrow">Kontobevægelser</p>
 <h3 id="report-ready-title">Kontodetaljer</h3>
-{% for account in activity.accounts %}
+{% for account, rows, no_rows in activity_accounts %}
 <article id="activity-account-{{ account.account_id }}" class="account-activity">
   <h4>{{ account.display_name }}</h4>
   <p id="activity-evidence-{{ account.account_id }}">
@@ -40,7 +40,7 @@
       </tr>
     </thead>
     <tbody>
-    {% for row in activity.transactions if row.account_id == account.account_id %}
+    {% for row in rows %}
       <tr>
         <td data-label="Dato">{{ row.transaction_date | danish_date }}</td>
         <td data-label="Tekst">{{ row.description }}</td>
@@ -51,8 +51,9 @@
           {{ row.amount | signed_amount(activity.currency) }}
         </td>
       </tr>
-    {% else %}
-      <tr><td colspan="4">Ingen observerede posteringer i måneden.</td></tr>
+    {% endfor %}
+    {% for line in no_rows %}
+      <tr><td colspan="4">{{ line }}</td></tr>
     {% endfor %}
     </tbody>
   </table>

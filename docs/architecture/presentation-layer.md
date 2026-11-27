@@ -56,8 +56,38 @@ so adding a feature with its own page edits no shared file. Helpers more than on
 `budget.dashboard.display` package, the pinned address every page links by
 lives in `budget.dashboard.addresses`, reading the overview several pages show
 lives in `budget.dashboard.reading`, and markup more than one page repeats is
-a macro in `templates/_macros.html`. A template holds no chain of conditions:
-wording that turns on several cases comes from a display helper.
+a macro in `templates/_macros.html`. Wording that turns on several cases comes
+from a display helper, because [templates hold no logic](#templates-hold-no-logic).
+
+## Templates Hold No Logic
+
+A template only places values that Python prepared. The gate,
+`tests/test_template_logic.py`, parses every template under
+`src/budget/dashboard` with Jinja's parser and fails on:
+
+- `if`, `elif`, `else` and `set` tags;
+- comparisons, `and`, `or`, `not`, `is` tests, arithmetic, `~` and inline
+  `x if y else z`;
+- `for … if`;
+- any filter but budget's own, those `jinja_environment` in `budget.dashboard`
+  registers, and `xmlattr`.
+
+A template may place plain values such as `{{ a.b }}` and `{{ urls["key"] }}`,
+loop with `for` over rows Python prepared, define macros and call them with
+plain arguments, and use `include`, `extends`, `import` and `block`. An
+optional attribute is an `xmlattr` dict, which leaves out a value of None. An
+optional section is a `for` over a list of notices Python built, each rendered
+with `{% include notice.template %}`. A notice of the shared shape, a titled
+section of paragraphs, goes through the one `notice_section` macro; any other
+names a template of its own. A failure is a template of its own that the route
+renders.
+
+The allowlist, `tests/template_logic_allowlist.toml`, lets a tag through for
+now. Each entry names the template, the tag's text, a reason and the issue that
+removes it, one entry per occurrence; its opening comments give the format. The
+gate also fails on an entry that matches nothing or names no issue, so the list
+only shrinks. A pre-commit hook runs the gate when a template or the gate
+changes.
 
 ## Initial Screens
 

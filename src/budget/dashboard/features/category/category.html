@@ -1,29 +1,23 @@
 {% extends "base.html" %}
-{% from "_macros.html" import failure_notice, newer_figures, page_heading, provisional_label, switch_link %}
+{% from "_macros.html" import page_heading, switch_link %}
 {% block title %}{{ title }} · Budget{% endblock %}
 {% block content %}
-{{ page_heading(title, "detail-title") }}
-{% if failure %}
-{{ failure_notice(failure, "detail-failure") }}
-{% else %}
-{% set is_group = detail.subject.kind == "group" %}
-{{ newer_figures(detail.publication.is_current) }}
+{{ page_heading(title, {"id": "detail-title"}) }}
+{% for notice in notices %}
+{% include notice.template %}
+{% endfor %}
 <nav class="scope-switch" aria-label="Periode">
-  {{ switch_link("scope-month", scope_urls["month"], "Måned", detail.scope == "month") }}
-  {{ switch_link("scope-year-to-date", scope_urls["year_to_date"], "År til dato", detail.scope == "year_to_date") }}
+{% for link in scope_links %}
+  {{ switch_link(link) }}
+{% endfor %}
 </nav>
-{% if not is_group %}
-<p><a id="group-link" href="{{ group_url }}">Hele {{ detail.group_name }}</a></p>
-{% endif %}
+{% for notice in subject_notices %}
+{% include notice.template %}
+{% endfor %}
 <section class="report-panel" aria-labelledby="detail-title">
-{% if detail.provisional %}
-<p class="trust-note">
-  {{ provisional_label() }}</p>
-{% endif %}
-{% if detail.coverage.status != "complete" %}
-{# Analytics judged each month; the page names them in words. #}
-<p id="coverage-note" class="trust-note">{{ coverage_note(detail.coverage.status, incomplete, "perioden") }}</p>
-{% endif %}
+{% for notice in trust_notices %}
+{% include notice.template %}
+{% endfor %}
 <dl class="summary">
   <div class="summary-figure"><dt>Udgifter</dt>
     <dd id="detail-spending">{{ detail.spending | amount(detail.currency) }}</dd></div>
@@ -31,17 +25,17 @@
 {# The report's rows in its order; their amounts add up to the figure above. #}
 <table id="detail-rows" class="detail-table" aria-label="Posteringer bag udgifterne">
 <thead><tr><th scope="col">Dato</th><th scope="col">Tekst</th><th scope="col">Konto</th>
-  {%- if is_group %}<th scope="col">Kategori</th>{% endif %}
+  {%- for heading in category_column %}<th scope="col">{{ heading }}</th>{% endfor %}
   <th scope="col" class="detail-amount">Beløb</th></tr></thead>
 <tbody>
-{% for row in detail.rows %}
-<tr><td>{{ row.transaction_date | danish_date }}</td><td>{{ row.description }}</td>
-  <td>{{ row.account_display_name }}</td>{% if is_group %}<td>{{ row.category_name }}</td>{% endif %}
-  <td class="detail-amount">{{ row.spending | amount(detail.currency) }}</td></tr>
+{% for detail_row in rows %}
+<tr><td>{{ detail_row.row.transaction_date | danish_date }}</td><td>{{ detail_row.row.description }}</td>
+  <td>{{ detail_row.row.account_display_name }}</td>
+  {%- for cell in detail_row.category_cells %}<td>{{ cell }}</td>{% endfor %}
+  <td class="detail-amount">{{ detail_row.row.spending | amount(detail.currency) }}</td></tr>
 {% endfor %}
 </tbody>
 </table>
 </section>
 <p><a id="back-to-overview" href="{{ overview_url }}">Tilbage til oversigten</a></p>
-{% endif %}
 {% endblock %}
