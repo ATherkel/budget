@@ -5,6 +5,7 @@ Expected values are the Gold worked example's tables in
 `tests/gold/worked_example.py`; the dashboard is driven in-process.
 """
 
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -14,11 +15,11 @@ from fastapi.testclient import TestClient
 from budget.analytics import MonthlyOverview, ReportContext, monthly_overview
 from budget.dashboard import FEATURES, create_app, jinja_environment
 from budget.dashboard.features.report.summary_cards import GroupCard, summary_cards
-from budget.gold import GoldResult, ReportingMonth
+from budget.gold import GoldRecords, GoldResult, ReportingMonth
 from budget.gold.store import GoldStore
 from tests.dashboard.households import HOUSEHOLD_PHRASE, dashboard_profile
 from tests.dashboard.pages import Disclosure, Page, read
-from tests.dashboard.test_monthly_actuals import report
+from tests.dashboard.test_monthly_actuals import OFFSETTING, report
 from tests.gold.publishing import CONFIGURATION, RECIPE
 from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
 
@@ -30,17 +31,21 @@ CARDS = jinja_environment(FEATURES).from_string(
 TRIAL = GroupCard("income", "Prøve", "Ingen prøver i måneden.")
 
 
-@pytest.fixture
-def client(tmp_path: Path) -> TestClient:
-    profile = dashboard_profile(tmp_path)
+def _logged_in(root: Path, records: GoldRecords = RECORDS) -> TestClient:
+    profile = dashboard_profile(root)
     with GoldStore(profile) as store:
-        store.publish(GoldResult(PUBLICATION, RECORDS), RECIPE, CONFIGURATION)
+        store.publish(GoldResult(PUBLICATION, records), RECIPE, CONFIGURATION)
     client = TestClient(
         create_app(profile, clock=lambda: datetime(2026, 5, 14, 10, tzinfo=UTC)),
         follow_redirects=False,
     )
     client.post("/login", data={"passphrase": HOUSEHOLD_PHRASE})
     return client
+
+
+@pytest.fixture
+def client(tmp_path: Path) -> TestClient:
+    return _logged_in(tmp_path)
 
 
 def _overview(month: int, reference_date: date = date(2026, 5, 14)) -> MonthlyOverview:
@@ -180,4 +185,56 @@ def test_a_month_without_transfers_says_so_in_overfoersler(client: TestClient) -
         open=False,
         summary="Overførsler 0,00 kr.",
         rows=[("Ingen overførsler i måneden.",)],
+    )
+
+
+def test_ukategoriseret_names_account_and_direction_money_in_first(
+    tmp_path: Path,
+) -> None:
+    # April on Joint current: +1,000.00 in, then -600.00 and -400.00 out.
+    records = replace(RECORDS, transactions=(*RECORDS.transactions, *OFFSETTING))
+    april = report(_logged_in(tmp_path, records), "2026-04", accounts=(CURRENT,))
+    minus = "\N{MINUS SIGN}"
+
+    assert april.disclosures.get("unclassified-card") == Disclosure(
+        open=False,
+        summary=f"Ukategoriseret Ind +1.000,00 kr. Ud {minus}1.000,00 kr.",
+        rows=[
+            (
+                "10.04.2026",
+                "UNKNOWN",
+                "Joint current",
+                "Ind",
+                "+1.000,00 kr.",
+                "+1.000,00 kr.",
+            ),
+            (
+                "10.04.2026",
+                "UNKNOWN",
+                "Joint current",
+                "Ud",
+                f"{minus}400,00 kr.",
+                f"{minus}400,00 kr.",
+            ),
+            (
+                "10.04.2026",
+                "UNKNOWN",
+                "Joint current",
+                "Ud",
+                f"{minus}600,00 kr.",
+                f"{minus}600,00 kr.",
+            ),
+        ],
+    )
+
+
+def test_a_month_without_unclassified_money_says_so_in_ukategoriseret(
+    client: TestClient,
+) -> None:
+    february = report(client, "2026-02")
+
+    assert february.disclosures.get("unclassified-card") == Disclosure(
+        open=False,
+        summary="Ukategoriseret Ind 0,00 kr. Ud 0,00 kr.",
+        rows=[("Ingen ukategoriserede posteringer i måneden.",)],
     )
