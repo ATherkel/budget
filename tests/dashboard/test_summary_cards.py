@@ -123,3 +123,26 @@ def test_a_month_without_income_says_so_in_indtaegter(client: TestClient) -> Non
     assert may.disclosures.get("income-card") == Disclosure(
         open=False, summary="Indtægter 0,00 kr.", rows=[("Ingen indtægter i måneden.",)]
     )
+
+
+def test_udgifter_counts_a_refund_against_its_purchases(client: TestClient) -> None:
+    # February: rent 8,500.00 and groceries 640.00, less a 120.00 grocery Refund.
+    february = report(client, "2026-02")
+
+    assert february.disclosures.get("expenses-card") == Disclosure(
+        open=False,
+        summary="Udgifter 9.020,00 kr.",
+        rows=[
+            ("12.02.2026", "GROCERIES", "+120,00 kr.", "\N{MINUS SIGN}120,00 kr."),
+            ("02.02.2026", "GROCERIES", "\N{MINUS SIGN}640,00 kr.", "+640,00 kr."),
+            ("02.02.2026", "RENT", "\N{MINUS SIGN}8.500,00 kr.", "+8.500,00 kr."),
+        ],
+    )
+
+
+def test_a_month_without_expenses_says_so_in_udgifter(client: TestClient) -> None:
+    may = report(client, "2026-05")
+
+    assert may.disclosures.get("expenses-card") == Disclosure(
+        open=False, summary="Udgifter 0,00 kr.", rows=[("Ingen udgifter i måneden.",)]
+    )
