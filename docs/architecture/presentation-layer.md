@@ -105,6 +105,14 @@ presentation preference available to every authenticated household reader.
 Both summaries use the same [monthly report](report-contract.md#monthlyoverview);
 changing mode never changes financial values or their trust semantics.
 
+“Overblik” shows one card per figure: “Indtægter”, “Udgifter”, “Penge tilbage”,
+“Overførsler” and “Ukategoriseret”. A group's card starts closed and opens to
+the [rows behind its total](report-contract.md#monthlyoverview); “Penge
+tilbage” has no rows, so it doesn't open. Every card is one view model,
+[`report/card.py`](../../src/budget/dashboard/features/report/card.py), and one
+macro; a new group is one `GroupCard` in
+[`summary_cards.py`](../../src/budget/dashboard/features/report/summary_cards.py).
+
 A fresh visit starts in “Enkel” and “Beløb”. Mode persists during the active visit,
 not as a lasting preference. An explicit switch closes detail overlays and
 returns to the destination mode's overview, preserving the shared report context
