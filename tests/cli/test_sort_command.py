@@ -109,8 +109,9 @@ class ShowingAGroupTests(unittest.TestCase):
             assert (status, stderr) == (EXIT_OK, "")
             first = stdout.split("\n\n")[0].splitlines()
             assert first == [
-                "netto kbh",
-                "  4 transactions, -200.00 DKK",
+                '"netto kbh": 4 transactions, -200.00 DKK in total',
+                "Your answer applies to all 4, and to future ones with this text.",
+                "For example:",
                 "  2026-03-02  joint-current  -45.00  NETTO 1234 KBH",
                 "  2026-03-05  joint-current  -55.00  NETTO 5678 KBH",
                 "  2026-03-09  joint-current  -60.00  Netto 91 KBH",
@@ -123,14 +124,17 @@ class ShowingAGroupTests(unittest.TestCase):
             status, stdout, stderr = sort(profile_file, "s\ns\ns\ns\n")
 
             assert (status, stderr) == (EXIT_OK, "")
-            headings = [block.splitlines()[0] for block in stdout.split("\n\n")]
-            assert headings == [
-                "netto kbh",
-                _ASKED + "fra lønkonto",
-                _ASKED + "løn marts",
-                _ASKED + "til opsparing",
+            blocks = [block.splitlines() for block in stdout.split("\n\n")]
+            assert [block[0] for block in blocks] == [
+                '"netto kbh": 4 transactions, -200.00 DKK in total',
+                _ASKED + '"fra lønkonto": 1 transaction, 500.00 DKK in total',
+                _ASKED + '"løn marts": 1 transaction, 20,000.00 DKK in total',
+                _ASKED + '"til opsparing": 1 transaction, -500.00 DKK in total',
                 _ASKED + "No group is left to sort.",
             ]
+            assert blocks[1][1] == (
+                "Your answer applies to this one, and to future ones with this text."
+            )
 
 
 class SortingEverythingTests(unittest.TestCase):
@@ -234,13 +238,10 @@ class CategoryListTests(unittest.TestCase):
 
             _, stdout, _ = sort(profile_file, "q\n")
 
-            assert stdout.split("\n\n")[0].splitlines() == [
-                "netto kbh",
-                "  4 transactions, -200.00 DKK",
-                "  2026-03-02  joint-current  -45.00  NETTO 1234 KBH",
-                "  2026-03-05  joint-current  -55.00  NETTO 5678 KBH",
-                "  2026-03-09  joint-current  -60.00  Netto 91 KBH",
-            ]
+            # The group's own lines end with its examples: no category follows.
+            assert stdout.split("\n\n")[0].splitlines()[-1] == (
+                "  2026-03-09  joint-current  -60.00  Netto 91 KBH"
+            )
 
     def test_a_question_mark_opens_the_category_list_in_the_default_app(
         self,
@@ -314,7 +315,7 @@ class RefusedAnswerTests(unittest.TestCase):
             blocks = stdout.split("\n\n")
             assert "groceries" in blocks[1]
             assert "Nothing was written." in blocks[1]
-            assert blocks[2].splitlines()[0] == "netto kbh"
+            assert blocks[2].splitlines()[0].startswith('"netto kbh": ')
 
 
 class MonthTableTests(unittest.TestCase):
