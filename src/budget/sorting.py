@@ -386,6 +386,10 @@ def _classify(profile: Profile, group: UnknownGroup, answer: str) -> None:
 
 type _Labels = tuple[str, str | None]
 
+# The bank categories that say the bank itself did not categorise, folded.
+# They name no category, so they never suggest one.
+_BANK_UNCATEGORISED: Final = frozenset({"ukategoriseret"})
+
 
 @dataclass(frozen=True)
 class _Suggestion:
@@ -424,6 +428,7 @@ def _suggest(
         labels[t.transaction_id]
         for t in group.transactions
         if t.transaction_id in labels
+        and fold(labels[t.transaction_id][0]) not in _BANK_UNCATEGORISED
     )
     if not counts:
         return None
