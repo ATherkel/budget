@@ -284,6 +284,49 @@ Expect `Wrote taxonomy-draft.toml and rules-draft.toml to <folder>`, then
 
 Remove the scratch folder when done: `Remove-Item $drafts -Recurse`.
 
+## Sort unknowns
+
+`sort` asks about the current publication's unknown transactions, one group
+at a time, and turns each answer into a rule in `$inputs`.
+[Clean up](#clean-up) puts your own inputs back.
+
+```powershell
+uv run budget sort
+```
+
+Expect the biggest group first: its text without case, numbers or dates, its
+count and sum, and up to three examples, then the question:
+
+```text
+netto kbh
+  4 transactions, -200.00 DKK
+  2026-03-02  joint-current  -45.00  NETTO 1234 KBH
+  ...
+
+Category, t (transfer), n (new category), s (skip) or q (quit):
+```
+
+| Answer | Expect |
+| --- | --- |
+| A category ID from `taxonomy.toml`, such as `groceries` | A `# sorted: <text>` rule appended to `rules.toml`, then `Month totals` with unknown smaller, then the next group |
+| `t` | A `then.transfer_claim = true` rule; the group becomes a transfer once both legs are claimed |
+| `n` | Asks `name`, then `group`. A group ID not in the taxonomy is a new group: it asks `direction`, offering the one the sum suggests (Enter takes it) |
+| `s` | The next group; this one is asked again in a later run |
+| `q`, or Ctrl+Z then Enter | Quits; every rule already written stays |
+| An ID the taxonomy lacks | `check`'s problem, then `Nothing was written.`, and the same group again |
+
+Each published answer prints one line per month and currency:
+
+```text
+Month totals
+  2026-03  in 0.00 DKK, out -200.00 DKK, transfer 0.00 DKK, unknown 20000.00 DKK (3 transactions)
+```
+
+When every group is answered or skipped it ends with `No group is left to
+sort.` Then `uv run budget check` prints `No problems found.` and
+`uv run budget review --kind unclassified` lists only the skipped groups.
+In production, each answer also prints `Backup   backup set <name> written`.
+
 ## Dashboard
 
 Your dev profile needs `[dashboard]` and a passphrase
