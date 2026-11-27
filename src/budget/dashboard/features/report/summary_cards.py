@@ -101,7 +101,10 @@ class MoneyLeft:
 
 
 # Every summary card, in the order Overblik shows them.
-CARDS: tuple[CardSpec, ...] = (MoneyLeft(),)
+CARDS: tuple[CardSpec, ...] = (
+    GroupCard("income", "Indtægter", "Ingen indtægter i måneden."),
+    MoneyLeft(),
+)
 
 
 def summary_cards(
