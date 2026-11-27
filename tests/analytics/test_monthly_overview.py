@@ -265,7 +265,7 @@ def test_a_month_with_no_evidence_reports_every_figure_as_unknown() -> None:
         categories=(),
         unclassified=None,
         adjustments=None,
-        movements=ANY,
+        movements=None,
         coverage=ReportCoverage(
             status="no_data",
             account_months=(
