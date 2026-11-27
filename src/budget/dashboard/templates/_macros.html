@@ -1,35 +1,41 @@
 {# Markup more than one page shows. A page imports what it uses:
    {% from "_macros.html" import page_heading %} #}
-{# A page's heading; a call block adds a note beside the title. #}
-{% macro page_heading(title, title_id="") -%}
+{# A page's heading with a note beside the title, which the call block holds. #}
+{% macro page_heading_with_note(title, title_attributes={}) -%}
 <div class="page-heading">
   <div>
     <p class="eyebrow">Husstandsøkonomi</p>
-    <h1{% if title_id %} id="{{ title_id }}"{% endif %}>{{ title }}</h1>
+    <h1{{ title_attributes | xmlattr }}>{{ title }}</h1>
   </div>
-{%- if caller %}
   {{ caller() }}
-{%- endif %}
 </div>
 {%- endmacro %}
-{# Figures from a superseded publication say so, linking to the newest. #}
-{% macro newer_figures(is_current) -%}
-{% if not is_current %}
-<p class="notice notice--warning">Der findes nyere tal. <a id="newer-figures" href="/">Hent de nyeste tal</a></p>
-{% endif %}
+{# A page's heading alone. #}
+{% macro page_heading(title, title_attributes={}) -%}
+{% call page_heading_with_note(title, title_attributes) %}{% endcall %}
 {%- endmacro %}
 {# Why a page cannot be shown, and the way back to the newest overview. #}
-{% macro failure_notice(failure, notice_id="") -%}
-<div{% if notice_id %} id="{{ notice_id }}"{% endif %} role="alert">{{ failure | safe }}</div>
+{% macro failure_notice(failure, notice_attributes={}) -%}
+<div{{ notice_attributes | xmlattr }} role="alert">{{ failure }}</div>
 <p><a id="back-to-overview" href="/">Gå til den nyeste oversigt</a></p>
 {%- endmacro %}
-{# One choice in a row of links where the current one is marked. #}
-{% macro switch_link(link_id, href, label, current) -%}
-<a id="{{ link_id }}" href="{{ href }}"{% if current %} aria-current="page"{% endif %}>{{ label }}</a>
+{# One choice in a row of links where the current one is marked; Python
+   builds the link, see budget.dashboard.display.links. #}
+{% macro switch_link(link) -%}
+<a{{ link.attributes | xmlattr }}>{{ link.label }}</a>
 {%- endmacro %}
 {# The chip that marks figures that may still change. #}
 {% macro provisional_label() -%}
 <span id="provisional-label" class="status-chip status-chip--provisional">Foreløbige tal</span>
+{%- endmacro %}
+{# A notice of the shared shape, a titled panel of paragraphs; Python builds
+   it, see budget.dashboard.display.notices. #}
+{% macro notice_section(notice) -%}
+{% call report_section(notice.name, notice.heading) -%}
+{% for paragraph in notice.paragraphs %}
+<p{{ paragraph.attributes | xmlattr }}>{{ paragraph.text }}</p>
+{% endfor %}
+{%- endcall %}
 {%- endmacro %}
 {# One titled panel; the call block holds its content. #}
 {% macro report_section(name, heading) -%}

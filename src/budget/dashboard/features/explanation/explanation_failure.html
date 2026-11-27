@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% from "_macros.html" import failure_notice, page_heading %}
+{# An explanation whose report cannot be read says why. #}
+{% block title %}Om tallene · Budget{% endblock %}
+{% block content %}
+{{ page_heading("Om tallene") }}
+{{ failure_notice(failure) }}
+{% endblock %}

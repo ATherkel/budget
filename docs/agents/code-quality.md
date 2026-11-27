@@ -15,6 +15,7 @@ an advisory overlap report described below.
 | Types | ty, warnings promoted to errors | `uv run ty check` |
 | Cognitive complexity ≤ 15 per function | complexipy (SonarQube rule `python:S3776`) | `uv run complexipy` |
 | Templates | djlint plus the repository line rule; authoritative settings are [`.djlint_rules.yaml`](../../.djlint_rules.yaml) and [`tests/test_template_lint.py`](../../tests/test_template_lint.py) | `uv run djlint src --lint`; `uv run pytest tests/test_template_lint.py` |
+| No logic in dashboard templates | the template logic gate; the rule is [Templates Hold No Logic](../architecture/presentation-layer.md#templates-hold-no-logic) | `uv run pytest tests/test_template_logic.py -n0` |
 
 Run them all at once:
 

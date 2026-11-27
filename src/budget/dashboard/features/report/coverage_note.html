@@ -1,0 +1,4 @@
+{# With no account incomplete, the month lies outside every one's history. #}
+<p id="coverage-note" class="trust-note">{{ coverage_note(overview.coverage.status, incomplete, month_label) }}
+  <a id="coverage-explanation" href="{{ explanation_url }}">
+  {{- incomplete | coverage_link_label }}</a></p>

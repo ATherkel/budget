@@ -16,8 +16,10 @@ from jinja2 import Environment
 from budget.analytics import SelectionOptions
 from budget.dashboard.features import Dashboard, Feature
 from budget.dashboard.features.view_state.display import (
+    account_inputs,
     account_shortcuts,
-    month_choices,
+    mode_options,
+    month_options,
 )
 
 type DashboardMode = Literal["simple", "advanced"]
@@ -99,17 +101,18 @@ def selection_form(
 
     `selecting` returns the page's address with the given accounts selected.
     """
+    account_ids = [account.account_id for account in options.accounts]
     return {
         "publication_id": chosen.publication_id,
         "reference_date": chosen.reference_date.isoformat(),
         "accounts": options.accounts,
-        "selected_accounts": chosen.accounts,
-        "months": month_choices(options.first_month, options.last_month),
-        "selected_month": chosen.month,
-        "shortcuts": account_shortcuts(
-            [account.account_id for account in options.accounts], selecting
+        "account_inputs": account_inputs(account_ids, chosen.accounts),
+        "month_options": month_options(
+            options.first_month, options.last_month, chosen.month
         ),
+        "shortcuts": account_shortcuts(account_ids, selecting),
         "mode": chosen.view.mode,
+        "mode_options": mode_options(chosen.view.mode),
         "tab": chosen.view.tab,
         "comparison": chosen.view.comparison,
     }

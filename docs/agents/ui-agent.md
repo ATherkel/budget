@@ -24,7 +24,8 @@ Build a responsive, accessible dashboard from analytics report DTOs.
 - Wiring a feature into a shared place (router, navigation, base layout) takes
   one to three lines.
 - Reuse existing CSS before adding any.
-- Templates hold no logic; compute values before rendering.
+- Templates hold no logic; compute values before rendering. A gate enforces
+  it: [Templates Hold No Logic](../architecture/presentation-layer.md#templates-hold-no-logic).
 - One concern per PR. Split by concern, not by line count.
 
 The checks that enforce these are linked from

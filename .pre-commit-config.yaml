@@ -7,6 +7,12 @@ repos:
         entry: uv run djlint --lint
         language: system
         files: ^src/.*\.html$
+      - id: template-logic-gate
+        name: template logic gate
+        entry: uv run pytest tests/test_template_logic.py -n0 -q
+        language: system
+        files: (^src/budget/dashboard/.*\.html$|^tests/(template_logic\.py|template_logic_allowlist\.toml|test_template_logic\.py)$)
+        pass_filenames: false
       - id: css-overlap-advisory
         name: CSS declaration overlap advisory
         entry: uv run python -m tests.css_duplicates

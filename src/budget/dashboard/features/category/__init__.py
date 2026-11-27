@@ -8,6 +8,7 @@ from typing import Annotated, Self
 
 from fastapi import Query, Request, Response
 from fastapi.responses import HTMLResponse
+from jinja2.environment import TemplateModule
 from pydantic import BaseModel, model_validator
 
 from budget.analytics import (
@@ -20,12 +21,26 @@ from budget.analytics import (
     SpendingDetail,
 )
 from budget.dashboard.addresses import answered_address, detail_url, pinned_url
+from budget.dashboard.display.links import switch_links
 from budget.dashboard.display.months import parse_month, period_label
+from budget.dashboard.display.notices import newer_figures
 from budget.dashboard.display.text import incomplete_by_account
 from budget.dashboard.features import Dashboard, Feature
+from budget.dashboard.features.category.display import (
+    category_column,
+    detail_rows,
+    subject_notices,
+    trust_notices,
+)
 from budget.dashboard.features.errors import failure_fragment
 from budget.dashboard.features.view_state import ViewState, parse_view_state
 from budget.gold.store import GoldStore
+
+# The periods a detail page switches between: scope, link id and label.
+_SCOPES = (
+    ("month", "scope-month", "Måned"),
+    ("year_to_date", "scope-year-to-date", "År til dato"),
+)
 
 
 @dataclass(frozen=True)
@@ -81,7 +96,7 @@ def _read_detail(
     dashboard: Dashboard,
     pin: tuple[int, date],
     request: DetailRequest,
-) -> SpendingDetail | str:
+) -> SpendingDetail | TemplateModule:
     """Return the detail `request` asks for, or a fragment saying why not."""
     publication_id, reference_date = pin
     try:
@@ -106,26 +121,38 @@ def _render_detail(
 ) -> str:
     """Render the detail page of one subject under one pinned selection."""
     detail_report = _read_detail(dashboard, pin, request)
-    if isinstance(detail_report, str):
-        return dashboard.templates.get_template("category/category.html").render(
-            failure=detail_report, title="Udgifter"
-        )
+    if isinstance(detail_report, TemplateModule):
+        page = dashboard.templates.get_template("category/category_failure.html")
+        return page.render(failure=detail_report)
     answered = detail_report.context
     subject = detail_report.subject
     period = period_label(detail_report.first_month, detail_report.last_month)
     return dashboard.templates.get_template("category/category.html").render(
         detail=detail_report,
+        notices=newer_figures(detail_report.publication),
+        subject_notices=subject_notices(detail_report),
+        trust_notices=trust_notices(detail_report),
+        category_column=category_column(detail_report),
+        rows=detail_rows(detail_report),
         title=f"{detail_report.name}, {period}",
-        scope_urls={
-            scope: detail_url(
-                answered,
-                subject.kind,
-                subject.id,
-                scope,
-                view=request.view,
-            )
-            for scope in ("month", "year_to_date")
-        },
+        scope_links=switch_links(
+            detail_report.scope,
+            (
+                (
+                    scope,
+                    link_id,
+                    detail_url(
+                        answered,
+                        subject.kind,
+                        subject.id,
+                        scope,
+                        view=request.view,
+                    ),
+                    label,
+                )
+                for scope, link_id, label in _SCOPES
+            ),
+        ),
         group_url=detail_url(
             answered,
             "group",

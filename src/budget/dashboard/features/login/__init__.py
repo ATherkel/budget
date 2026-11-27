@@ -31,7 +31,7 @@ def _refuse_login(
     if wait:
         notice = f"For mange forkerte forsøg. Prøv igen om {wait} sekunder."
         return HTMLResponse(
-            templates.get_template("login/login.html").render(message=notice),
+            templates.get_template("login/login.html").render(messages=(notice,)),
             status_code=429,
             headers={"Retry-After": str(wait)},
         )
@@ -42,7 +42,7 @@ def _refuse_login(
             throttle.failed(now)
         return HTMLResponse(
             templates.get_template("login/login.html").render(
-                message="Adgangskoden er forkert."
+                messages=("Adgangskoden er forkert.",)
             )
         )
     throttle.succeeded()
@@ -57,7 +57,7 @@ def _register(dashboard: Dashboard) -> None:
     @dashboard.app.get("/login")
     def login_page() -> Response:
         page = templates.get_template("login/login.html")
-        return HTMLResponse(page.render(message=""))
+        return HTMLResponse(page.render(messages=()))
 
     @dashboard.app.post("/login")
     def login(passphrase: Annotated[str, Form()] = "") -> Response:
