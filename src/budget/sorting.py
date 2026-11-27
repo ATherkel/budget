@@ -19,6 +19,7 @@ from typing import Final
 from budget import checking
 from budget.analytics import NothingPublishedError
 from budget.backups import back_up
+from budget.codeversion import require_committed_code
 from budget.gold.models import GoldTransaction
 from budget.gold.store import GoldStore
 from budget.inputs.rules import fold
@@ -161,8 +162,10 @@ def sort_unknowns(profile: Profile) -> None:
     """Hold the sorting conversation over the current publication's unknowns.
 
     The input ending quits, as `q` does: every answer is published as it is
-    given, so nothing is left to undo.
+    given, so nothing is left to undo. Production refuses uncommitted code
+    before anything is asked, as `budget rebuild` does.
     """
+    require_committed_code(profile)
     try:
         _converse(profile)
     except EOFError:
