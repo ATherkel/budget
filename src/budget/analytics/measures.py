@@ -9,6 +9,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Literal
 
 from budget.analytics.reports import CategorySpending, MoneyInOut, SummaryGroup
 from budget.gold import (
@@ -22,13 +23,14 @@ from budget.gold import (
 # DKK, the only first-release currency, has two minor-unit places.
 ZERO = Decimal("0.00")
 
-# The overview's summary groups, in card order.
-SUMMARY_GROUPS: tuple[SummaryGroup, ...] = (
-    "income",
-    "expenses",
-    "transfers",
-    "unclassified",
-)
+# The overview's summary groups in card order, each with the sign its rows'
+# bank amounts contribute with: Expenses count money out as positive.
+SUMMARY_GROUPS: dict[SummaryGroup, Literal[1, -1]] = {
+    "income": 1,
+    "expenses": -1,
+    "transfers": 1,
+    "unclassified": 1,
+}
 
 
 @dataclass(frozen=True)

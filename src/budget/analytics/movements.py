@@ -25,7 +25,7 @@ def _movement_group(
             account_id=t.account_id,
             account_display_name=names[t.account_id],
             amount=t.amount,
-            contribution=t.amount,
+            contribution=t.amount * SUMMARY_GROUPS[group],
         )
         for t in transactions
     )
