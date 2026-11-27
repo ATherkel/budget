@@ -1,11 +1,8 @@
 {% extends "base.html" %}
-{% from "_macros.html" import failure_notice, page_heading, report_section %}
+{% from "_macros.html" import page_heading, report_section %}
 {% block title %}Om tallene · Budget{% endblock %}
 {% block content %}
 {{ page_heading(heading) }}
-{% if failure %}
-{{ failure_notice(failure) }}
-{% else %}
 {% for notice in notices %}
 {% include notice.template %}
 {% endfor %}
@@ -44,8 +41,5 @@
   Penge tilbage medregner dem ikke, så beløbet kan ændre sig, når de bliver placeret.</p>
 {%- endcall %}
 {% endif %}
-{% endif %}
-{% if report_url %}
 <p><a id="back-to-report" href="{{ report_url }}">Tilbage til oversigten</a></p>
-{% endif %}
 {% endblock %}

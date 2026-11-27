@@ -28,9 +28,11 @@ def _render_explanation(
 ) -> str:
     """Render the explanation page of one pinned report's trust notes."""
     overview_report = read_overview(dashboard, pin, accounts, month)
-    page = dashboard.templates.get_template("explanation/explanation.html")
+    templates = dashboard.templates
     if isinstance(overview_report, TemplateModule):
-        return page.render(heading="Om tallene", failure=overview_report)
+        failure = templates.get_template("explanation/explanation_failure.html")
+        return failure.render(failure=overview_report)
+    page = templates.get_template("explanation/explanation.html")
     label = month_label(overview_report.context.month)
     return page.render(
         heading=f"Om tallene for {label}",
