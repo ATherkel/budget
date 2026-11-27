@@ -246,6 +246,22 @@ class CategoryListTests(unittest.TestCase):
             first = stdout.split("\n\n")[0].splitlines()
             assert first[-1] == "No categories yet: type n to add one"
 
+    def test_a_listed_number_answers_as_its_category(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+            _write_input(profile_file, "taxonomy.toml", TWO_GROUPS)
+
+            # 3 is rent, the last listed: numbering follows the groups.
+            status, _, stderr = sort(profile_file, "3\nq\n")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            rules = tomllib.loads(
+                load_profile_file(profile_file)
+                .input_file("rules.toml")
+                .read_text(encoding="utf-8")
+            )
+            assert [rule["then"] for rule in rules["rule"]] == [{"category": "rent"}]
+
 
 class RefusedAnswerTests(unittest.TestCase):
     def test_an_answer_check_refuses_writes_nothing_and_asks_again(self) -> None:
