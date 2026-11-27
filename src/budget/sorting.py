@@ -175,14 +175,20 @@ def _say(line: str) -> None:
 
 
 def _show(group: UnknownGroup) -> None:
-    """Show a group: its text, its size and sum, and its first examples."""
+    """Show a group: its text, size and sum, what an answer covers, and examples.
+
+    The answer becomes a rule, so it also covers later transactions that
+    normalise to the same text.
+    """
     count = len(group.transactions)
     noun = "transaction" if count == 1 else "transactions"
-    sums = ", ".join(
-        f"{total} {currency}" for currency, total in sorted(group.sums.items())
+    sums = " and ".join(
+        f"{total:,} {currency}" for currency, total in sorted(group.sums.items())
     )
-    _say(group.key)
-    _say(f"{_INDENT}{count} {noun}, {sums}")
+    covers = "this one" if count == 1 else f"all {count}"
+    _say(f'"{group.key}": {count} {noun}, {sums} in total')
+    _say(f"Your answer applies to {covers}, and to future ones with this text.")
+    _say("For example:")
     for example in group.transactions[:_EXAMPLES]:
         _say(
             f"{_INDENT}{example.transaction_date}  {example.account_id}  "
