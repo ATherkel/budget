@@ -593,13 +593,26 @@ def group_pattern(key: str) -> str:
 
 
 def _with_rule(path: Path, group: UnknownGroup, then: str) -> str:
-    """Return `rules.toml` with one more rule, matching the group's text."""
+    """Return `rules.toml` with one more rule, matching the group's text.
+
+    Its ID is suffixed past every ID the file already holds.
+    """
     text = path.read_text(encoding="utf-8") if path.exists() else "format = 1\n"
+    try:
+        entries = tomllib.loads(text).get("rule", [])
+    except tomllib.TOMLDecodeError:
+        entries = []
+    taken = {
+        str(entry["id"])
+        for entry in entries
+        if isinstance(entry, dict) and "id" in entry
+    }
+    rule_id = unique_id("r-sort-" + slug(group.key), taken)
     block = "\n".join(
         [
             f"# sorted: {group.key}",
             "[[rule]]",
-            f"id = {toml_string('r-sort-' + slug(group.key))}",
+            f"id = {toml_string(rule_id)}",
             f"when.description_regex = {toml_string(group_pattern(group.key))}",
             then,
         ]
