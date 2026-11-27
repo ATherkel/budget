@@ -40,7 +40,10 @@ from budget.suggesting import slug, toml_string, unique_id
 _NUMBERS: Final = re.compile(r"\d+(?:[./:-]\d+)*")
 _EXAMPLES: Final = 3
 _INDENT: Final = "  "
-_ASK: Final = "t, n, s, m, q, ? or a word to search: "
+_ASK: Final = (
+    "[t] transfer  [n] new category  [s] skip  [m] months  [?] category list  "
+    "[q] quit  or type a word to search: "
+)
 
 
 def group_key(description: str) -> str:
