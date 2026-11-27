@@ -462,6 +462,26 @@ class AnsweringATransferTests(unittest.TestCase):
             )
 
 
+class UnpairedTransferTests(unittest.TestCase):
+    def test_a_claimed_group_left_unpaired_is_not_asked_again_and_is_counted(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+
+            # No other account holds a leg the groceries could pair with.
+            status, stdout, stderr = sort(profile_file, "t\nq\n")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            blocks = stdout.split("\n\n")
+            assert blocks[2].splitlines()[0].startswith('"fra lønkonto": ')
+            assert stdout.endswith(
+                "4 transactions are marked as transfer but not paired yet: run "
+                "budget review --kind unmatched-transfer (or ambiguous-transfer) "
+                "to see why.\n"
+            )
+
+
 class AnsweringANewCategoryTests(unittest.TestCase):
     def test_a_new_category_in_a_new_group_is_added_and_classifies_the_group(
         self,
