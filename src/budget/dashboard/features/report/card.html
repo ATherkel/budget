@@ -1,2 +1,37 @@
+{# One card; Python builds it, see features/report/card.py. A card with a
+   table is a disclosure, closed until the reader opens it. #}
 {% macro summary_card(card) -%}
+<{{ card.element }}{{ card.attributes | xmlattr }} class="summary-figure summary-card">
+  <{{ card.head }}{{ card.head_attributes | xmlattr }} class="summary-head">
+    <span class="summary-label">{{ card.label }}</span>
+    {% for figure in card.figures %}
+    <span{{ figure.row_attributes | xmlattr }} class="summary-value">
+      <span class="summary-direction">{{ figure.direction }}</span>
+      <span{{ figure.attributes | xmlattr }}>{{ figure.value }}</span></span>
+    {% endfor %}
+  </{{ card.head }}>
+  {% for table in card.tables %}
+  <table class="detail-table activity-table" aria-label="{{ table.label }}">
+    <thead>
+      <tr>
+      {% for column in table.columns %}
+        <th scope="col"{{ column.attributes | xmlattr }}>{{ column.label }}</th>
+      {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in table.rows %}
+      <tr>
+      {% for cell in row %}
+        <td{{ cell.attributes | xmlattr }}>{{ cell.text }}</td>
+      {% endfor %}
+      </tr>
+    {% endfor %}
+    {% for line in table.no_rows %}
+      <tr><td colspan="{{ table.width }}">{{ line }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endfor %}
+</{{ card.element }}>
 {%- endmacro %}

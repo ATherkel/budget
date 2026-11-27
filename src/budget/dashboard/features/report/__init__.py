@@ -39,6 +39,7 @@ from budget.dashboard.features.report.display import (
     tab_template,
     unclassified_amounts,
 )
+from budget.dashboard.features.report.summary_cards import summary_cards
 from budget.dashboard.features.view_state import (
     ViewState,
     parse_view_state,
@@ -162,6 +163,7 @@ def render_report(
             "notices": report_notices(requested.view, overview_report),
             "tab_template": tab_template(requested.view),
             "overview_notices": overview_notices(overview_report),
+            "summary_cards": summary_cards(overview_report),
             "publication_id": answered.publication_id,
             "reference_date": answered.reference_date.isoformat(),
             "accounts": " ".join(sorted(answered.account_ids)),

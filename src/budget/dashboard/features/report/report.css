@@ -7,6 +7,29 @@
   font-weight: 400;
 }
 
+/* A summary card's head reads like a figure: its label, then each value. */
+.summary-label {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.summary-value {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 1.25rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+summary.summary-head {
+  cursor: pointer;
+}
+
+/* An open card takes the whole row, so its table has room. */
+.summary-card[open] {
+  grid-column: 1 / -1;
+}
+
 .category-row {
   display: flex;
   justify-content: space-between;
