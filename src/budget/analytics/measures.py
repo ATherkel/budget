@@ -94,6 +94,8 @@ def _group(
             return "expenses"
         case "transfer":
             return "transfers"
+        case "unknown":
+            return "unclassified"
         case _:
             return None
 
