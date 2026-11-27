@@ -17,36 +17,6 @@
 # entry that matches nothing, so remove an entry with the logic it allowed.
 
 [[allowance]]
-path = "features/category/category.html"
-tag = '{% if not is_group %}'
-reason = "Optional section or failure branch; becomes a notice list or its own template."
-issue = 627
-
-[[allowance]]
-path = "features/category/category.html"
-tag = '{% if detail.provisional %}'
-reason = "Optional section or failure branch; becomes a notice list or its own template."
-issue = 627
-
-[[allowance]]
-path = "features/category/category.html"
-tag = '{% if detail.coverage.status != "complete" %}'
-reason = "Optional section or failure branch; becomes a notice list or its own template."
-issue = 627
-
-[[allowance]]
-path = "features/category/category.html"
-tag = '{%- if is_group %}'
-reason = "Optional section or failure branch; becomes a notice list or its own template."
-issue = 627
-
-[[allowance]]
-path = "features/category/category.html"
-tag = '{% if is_group %}'
-reason = "Optional section or failure branch; becomes a notice list or its own template."
-issue = 627
-
-[[allowance]]
 path = "features/explanation/explanation.html"
 tag = '{% if failure %}'
 reason = "Optional section or failure branch; becomes a notice list or its own template."
