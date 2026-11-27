@@ -2,15 +2,16 @@
 """What Kontrol prints: each diagnostic of a selection as a ready line."""
 
 from dataclasses import dataclass, replace
+from datetime import date
 from decimal import Decimal
 
 from budget.analytics import Diagnostics, Provisional, Reconciliation
 from budget.dashboard.addresses import answered_address, pinned_url
 from budget.dashboard.display.amounts import amount, signed_amount
+from budget.dashboard.display.months import danish_date
 from budget.dashboard.display.text import (
     account_names,
     coverage_label,
-    evidence_line,
     incomplete_months,
 )
 from budget.dashboard.features.view_state import DEFAULT_VIEW, ViewState
@@ -118,7 +119,7 @@ def _account_rows(diagnostics: Diagnostics, view: ViewState) -> list[AccountRow]
     details = replace(view, mode="advanced", tab="details")
     currency = diagnostics.currency
     through = {
-        account.account_id: evidence_line(account.evidence_through)
+        account.account_id: _data_reach(account.evidence_through)
         for account in diagnostics.evidence
     }
     return [
@@ -139,6 +140,11 @@ def _account_rows(diagnostics: Diagnostics, view: ViewState) -> list[AccountRow]
         )
         for reconciliation in diagnostics.reconciliations
     ]
+
+
+def _data_reach(through: date | None) -> str:
+    """Return the date under "Data til og med", or say nothing was imported."""
+    return "Ingen importeret data" if through is None else danish_date(through)
 
 
 def _figure(value: Decimal | None, currency: str) -> str:
