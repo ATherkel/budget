@@ -173,18 +173,13 @@ known zero reads 0,00 kr. and a null reads as unknown. The count belongs to
 Kontrol; the explanation shows neither amounts nor count. Adjustments carry no
 note.
 
-`movements` holds one `MovementGroup` per summary group, in card order:
-`income`, `expenses`, `transfers`, `unclassified`. Analytics assigns each
-transaction to a group by one rule, the same one behind `income`, `expenses`
-and `unclassified`: a Refund follows its Category's direction, and adjustments
-belong to no group. A group carries its `rows`, `total` (Σ `contribution`) and
-`flows` (`MoneyInOut` of the rows' amounts). A `MovementRow` holds
-`transaction_date`, `description`, `account_id`, `account_display_name`, the
-signed bank `amount` and `contribution`, its signed effect on the group's
-total. Expenses flip the sign, so a Refund reduces Expenses; a selected
-Transfer leg contributes its amount, so both legs add to zero. Read
-Unclassified by its `flows`, never its total. Rows are newest first by date,
-account ID and account sequence.
+`MovementGroup`: `group` (`income`, `expenses`, `transfers` or
+`unclassified`, in card order), `rows`, `total` (Σ `contribution`) and `flows`
+(`MoneyInOut`). Rows are grouped by the same rule as the figures above, and
+adjustments belong to no group. A `MovementRow` keeps the signed bank `amount`
+and adds `contribution`: Expenses flip the sign, so a Refund reduces them, and
+both legs of a selected Transfer add to zero. Rows are newest first by date,
+account ID and account sequence. Show Unclassified by its `flows`.
 
 ### Coverage
 
