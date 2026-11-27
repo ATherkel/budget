@@ -271,6 +271,8 @@ def sort_unknowns(profile: Profile) -> None:
 def _converse(profile: Profile) -> None:
     """Ask about each group, the biggest first, until none is left or `q`."""
     skipped: set[str] = set()
+    # The category IDs of the last search, which a number picks from.
+    picks: list[str] = []
     while True:
         group = next(
             (each for each in unknown_groups(profile) if each.key not in skipped), None
@@ -280,7 +282,10 @@ def _converse(profile: Profile) -> None:
             return
         categories = _categories(_taxonomy(profile))
         _show(group)
-        answer = _by_number(input(_ASK).strip(), categories)
+        answer = _resolve(input(_ASK).strip(), categories, picks)
+        if answer is None:
+            _say("")
+            continue
         if answer == "q":
             return
         if answer == "s":
@@ -320,12 +325,34 @@ def _classify(profile: Profile, group: UnknownGroup, answer: str) -> None:
     _write_checked(profile, writes)
 
 
-def _by_number(answer: str, categories: _Listed) -> str:
-    """Return the category a listed number names, or the answer as typed."""
-    listed = [category_id for _, members in categories for category_id, _ in members]
-    if answer.isdecimal() and 1 <= int(answer) <= len(listed):
-        return listed[int(answer) - 1]
-    return answer
+_COMMANDS: Final = frozenset({"q", "s", "m", "?", "t", "n"})
+
+
+def _resolve(answer: str, categories: _Listed, picks: list[str]) -> str | None:
+    """Return the command or category ID an answer names, or `None` after a search.
+
+    A number picks from the last search; any other text that is no command
+    and no category ID searches, and its matches become what a number picks.
+    """
+    ids = {category_id for _, members in categories for category_id, _ in members}
+    if answer in _COMMANDS or answer in ids:
+        return answer
+    if answer.isdecimal() and 1 <= int(answer) <= len(picks):
+        return picks[int(answer) - 1]
+    matches = [
+        (category_id, name)
+        for _, members in categories
+        for category_id, name in members
+        if fold(answer) in fold(category_id) or fold(answer) in fold(name)
+    ]
+    picks[:] = [category_id for category_id, _ in matches]
+    if not matches:
+        _say(f'No category matches "{answer}".')
+        return None
+    _say(f'Matches for "{answer}":')
+    for number, (category_id, name) in enumerate(matches, start=1):
+        _say(f"{_INDENT}{number} {name} ({category_id})")
+    return None
 
 
 def _with_category(path: Path, group: UnknownGroup) -> tuple[str, str]:
