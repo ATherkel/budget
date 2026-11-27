@@ -10,7 +10,7 @@ import sys
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Final
 
@@ -18,7 +18,10 @@ from budget.analytics import NothingPublishedError
 from budget.gold.models import GoldTransaction
 from budget.gold.store import GoldStore
 from budget.inputs.rules import fold
-from budget.profiles import Profile
+from budget.locking import writer_lock
+from budget.profiles import RULES_FILE_NAME, Profile
+from budget.rebuilding import rebuild_from_gold
+from budget.suggesting import slug, toml_string
 
 # A run of digits, with the separators a date or a number carries between them.
 _NUMBERS: Final = re.compile(r"\d+(?:[./:-]\d+)*")
@@ -115,6 +118,43 @@ def sort_unknowns(profile: Profile) -> None:
             _say("No group is left to sort.")
             return
         _show(group)
-        if input(_ASK).strip() == "q":
+        answer = input(_ASK).strip()
+        if answer == "q":
             return
-        skipped.add(group.key)
+        if answer == "s":
+            skipped.add(group.key)
+            continue
+        _append_rule(profile, group, f"then.category = {toml_string(answer)}")
+        with writer_lock(profile) as lock:
+            rebuild_from_gold(lock, now=datetime.now(UTC))
+
+
+# What may stand between two words of a group's text: whitespace, numbers and
+# dates, which the normalised text leaves out.
+_GAP: Final = r"(?:\s|\d+(?:[./:-]\d+)*)"
+
+
+def group_pattern(key: str) -> str:
+    """Return a regex matching exactly the descriptions normalised to `key`.
+
+    Rules match a regex ignoring case, as `fold` ignores it.
+    """
+    words = f"{_GAP}+".join(map(re.escape, key.split()))
+    return f"^{_GAP}*{words}{_GAP}*$"
+
+
+def _append_rule(profile: Profile, group: UnknownGroup, then: str) -> None:
+    """Append one rule matching the group's text to `rules.toml`."""
+    path = profile.input_file(RULES_FILE_NAME)
+    text = path.read_text(encoding="utf-8") if path.exists() else "format = 1\n"
+    block = "\n".join(
+        [
+            f"# sorted: {group.key}",
+            "[[rule]]",
+            f"id = {toml_string('r-sort-' + slug(group.key))}",
+            f"when.description_regex = {toml_string(group_pattern(group.key))}",
+            then,
+        ]
+    )
+    separator = "" if text.endswith("\n") else "\n"
+    path.write_text(f"{text}{separator}\n{block}\n", encoding="utf-8", newline="\n")

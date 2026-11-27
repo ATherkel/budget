@@ -169,22 +169,22 @@ def write_drafts(labels: BankLabels, out: Path) -> None:
         folded = fold(pair.category)
         if folded not in groups:
             name = _group_name(labels, folded)
-            groups[folded] = _unique(_slug(name), set(groups.values()))
+            groups[folded] = _unique(slug(name), set(groups.values()))
             group = [
                 f"[group.{groups[folded]}]",
-                f"name = {_toml_string(name)}",
+                f"name = {toml_string(name)}",
                 f'direction = "{_direction(labels, folded)}"',
             ]
             taxonomy += [*_unless_covered(group, _group_covering(labels, folded)), ""]
         group_id = groups[folded]
         category_id = _unique(
-            f"{group_id}-{_slug(pair.subcategory or 'other')}", taken_categories
+            f"{group_id}-{slug(pair.subcategory or 'other')}", taken_categories
         )
         taken_categories.add(category_id)
         category = [
             f"[category.{category_id}]",
-            f"name = {_toml_string(pair.subcategory or pair.category)}",
-            f"group = {_toml_string(group_id)}",
+            f"name = {toml_string(pair.subcategory or pair.category)}",
+            f"group = {toml_string(group_id)}",
         ]
         taxonomy += [
             _size_comment(pair),
@@ -209,13 +209,13 @@ def _rule(pair: BankLabelPair, category_id: str) -> list[str]:
     """
     lines = [
         "[[rule]]",
-        f"id = {_toml_string('r-bank-' + category_id)}",
+        f"id = {toml_string('r-bank-' + category_id)}",
         "priority = -10" if pair.subcategory else "priority = -20",
-        f"when.bank_category = {_toml_string(pair.category)}",
+        f"when.bank_category = {toml_string(pair.category)}",
     ]
     if pair.subcategory is not None:
-        lines.append(f"when.bank_subcategory = {_toml_string(pair.subcategory)}")
-    lines.append(f"then.category = {_toml_string(category_id)}")
+        lines.append(f"when.bank_subcategory = {toml_string(pair.subcategory)}")
+    lines.append(f"then.category = {toml_string(category_id)}")
     return lines
 
 
@@ -272,7 +272,7 @@ def _size_comment(pair: BankLabelPair) -> str:
     return f"# {pair.transactions} {noun}, {sums}"
 
 
-def _slug(text: str) -> str:
+def slug(text: str) -> str:
     """Make a durable ASCII ID from a label: lower case, words joined by `-`.
 
     æ, ø and å spell out as Danish does; other letters lose their accents.
@@ -295,7 +295,7 @@ def _unique(wanted: str, taken: set[str]) -> str:
     return candidate
 
 
-def _toml_string(text: str) -> str:
+def toml_string(text: str) -> str:
     """Quote `text` as a TOML basic string.
 
     A JSON string is one, but JSON leaves DEL raw, which TOML refuses.
