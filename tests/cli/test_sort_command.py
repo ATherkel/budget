@@ -555,6 +555,31 @@ class AnsweringANewCategoryTests(unittest.TestCase):
             assert _types(profile_file)["NETTO 1234 KBH"] == "expense"
 
 
+class AnsweringANewCategoryInAnExistingGroupTests(unittest.TestCase):
+    def test_n_into_an_existing_group_typed_by_its_name_adds_no_group(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+            _write_input(
+                profile_file,
+                "taxonomy.toml",
+                TWO_GROUPS.replace('name = "Food"', 'name = "Mad"'),
+            )
+
+            # The group's ID is "food"; the person types its name, in any case.
+            status, _, stderr = sort(profile_file, "n\nSnacks\nmAD\nq\n")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            taxonomy = tomllib.loads(
+                load_profile_file(profile_file)
+                .input_file("taxonomy.toml")
+                .read_text(encoding="utf-8")
+            )
+            assert list(taxonomy["group"]) == ["food", "home"]
+            assert taxonomy["category"]["snacks"] == {"name": "Snacks", "group": "food"}
+
+
 class AnsweringACategoryTests(unittest.TestCase):
     def test_a_category_id_classifies_the_whole_group_and_publishes_it(self) -> None:
         with TemporaryDirectory() as directory:
