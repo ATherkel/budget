@@ -129,6 +129,19 @@ class ShowingAGroupTests(unittest.TestCase):
             ]
 
 
+class QuittingTests(unittest.TestCase):
+    def test_input_ending_quits_and_keeps_every_rule_written(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+            _write_input(profile_file, "taxonomy.toml", TAXONOMY)
+
+            # No `q`: the input ends at the next question.
+            status, _, stderr = sort(profile_file, "groceries\n")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert _types(profile_file)["NETTO 2 KBH"] == "expense"
+
+
 class RefusedAnswerTests(unittest.TestCase):
     def test_an_answer_check_refuses_writes_nothing_and_asks_again(self) -> None:
         with TemporaryDirectory() as directory:
