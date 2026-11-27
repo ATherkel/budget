@@ -54,6 +54,7 @@ class AccountRow:
 class ChecksView:
     """Kontrol's lines, so its template only loops and prints."""
 
+    accounts_caption: str
     accounts: list[AccountRow]
     coverage: str
     incomplete: list[str]
@@ -184,6 +185,7 @@ def checks_view(
         for month in incomplete_months(diagnostics.coverage)
     ]
     return ChecksView(
+        accounts_caption=f"Vurdering pr. konto, {period}",
         accounts=_account_rows(diagnostics, view),
         coverage=f"Dækning: {coverage_label(diagnostics.coverage.status)}.",
         incomplete=incomplete or ["Ingen valgte kontomåneder mangler dækning."],
