@@ -101,6 +101,31 @@ class MoneyInOut:
     count: int
 
 
+type SummaryGroup = Literal["income", "expenses", "transfers", "unclassified"]
+
+
+@dataclass(frozen=True)
+class MovementRow:
+    """One transaction behind a summary group: its bank amount and signed effect."""
+
+    transaction_date: date
+    description: str
+    account_id: str
+    account_display_name: str
+    amount: Decimal
+    contribution: Decimal
+
+
+@dataclass(frozen=True)
+class MovementGroup:
+    """One summary group's rows, their summed contribution and money in and out."""
+
+    group: SummaryGroup
+    rows: tuple[MovementRow, ...]
+    total: Decimal
+    flows: MoneyInOut
+
+
 @dataclass(frozen=True)
 class AccountMonth:
     """One selected account in one month."""
@@ -150,6 +175,7 @@ class MonthlyOverview:
     categories: tuple[CategorySpending, ...]
     unclassified: MoneyInOut | None
     adjustments: MoneyInOut | None
+    movements: tuple[MovementGroup, ...] | None
     coverage: ReportCoverage
     provisional: Provisional | None
 

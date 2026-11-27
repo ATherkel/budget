@@ -151,6 +151,7 @@ def monthly_overview(
         categories=known.categories,
         unclassified=known.unclassified,
         adjustments=known.adjustments,
+        movements=(),
         coverage=judged.coverage,
         provisional=judged.provisional,
     )
