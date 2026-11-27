@@ -200,6 +200,43 @@ class QuittingTests(unittest.TestCase):
             assert _types(profile_file)["NETTO 2 KBH"] == "expense"
 
 
+TWO_GROUPS = """\
+format = 1
+
+[group.food]
+name = "Food"
+direction = "expense"
+
+[group.home]
+name = "Home"
+direction = "expense"
+
+[category.groceries]
+name = "Groceries"
+group = "food"
+
+[category.rent]
+name = "Rent"
+group = "home"
+
+[category.eating-out]
+name = "Eating out"
+group = "food"
+"""
+
+
+class CategoryListTests(unittest.TestCase):
+    def test_each_group_ends_with_the_categories_numbered_by_group(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+            _write_input(profile_file, "taxonomy.toml", TWO_GROUPS)
+
+            _, stdout, _ = sort(profile_file, "q\n")
+
+            first = stdout.split("\n\n")[0].splitlines()
+            assert first[-2:] == ["Food: 1 groceries, 2 eating-out", "Home: 3 rent"]
+
+
 class RefusedAnswerTests(unittest.TestCase):
     def test_an_answer_check_refuses_writes_nothing_and_asks_again(self) -> None:
         with TemporaryDirectory() as directory:
