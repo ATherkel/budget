@@ -9,12 +9,12 @@ import re
 import sys
 import tomllib
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 from budget import checking
 from budget.analytics import NothingPublishedError
@@ -141,8 +141,11 @@ def _say(line: str) -> None:
     sys.stdout.write(f"{line}\n")
 
 
-def _show(group: UnknownGroup) -> None:
-    """Show a group: its text, its size and sum, and its first examples."""
+def _show(group: UnknownGroup, categories: Sequence[tuple[str, Sequence[str]]]) -> None:
+    """Show a group: its text, size, sum and first examples, then the categories.
+
+    The categories are numbered across every group, so a number can answer.
+    """
     count = len(group.transactions)
     noun = "transaction" if count == 1 else "transactions"
     sums = ", ".join(
@@ -155,7 +158,43 @@ def _show(group: UnknownGroup) -> None:
             f"{_INDENT}{example.transaction_date}  {example.account_id}  "
             f"{example.amount}  {example.description}"
         )
+    number = 0
+    for name, category_ids in categories:
+        numbered = []
+        for category_id in category_ids:
+            number += 1
+            numbered.append(f"{number} {category_id}")
+        _say(f"{name}: {', '.join(numbered)}")
     _say("")
+
+
+def _taxonomy(profile: Profile) -> dict[str, Any]:
+    """Read `taxonomy.toml` as TOML, or nothing when it is missing or unreadable.
+
+    `check` judges the file; this only needs what it can read of it.
+    """
+    path = profile.input_file(TAXONOMY_FILE_NAME)
+    try:
+        return tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+
+
+def _categories(document: Mapping[str, Any]) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Return each group's name and its category IDs, both in file order."""
+    groups = document.get("group", {})
+    categories = document.get("category", {})
+    listed = []
+    for group_id, group in groups.items():
+        ids = tuple(
+            str(category_id)
+            for category_id, category in categories.items()
+            if isinstance(category, dict) and category.get("group") == group_id
+        )
+        if ids:
+            name = group.get("name", group_id) if isinstance(group, dict) else group_id
+            listed.append((str(name), ids))
+    return tuple(listed)
 
 
 def sort_unknowns(profile: Profile) -> None:
@@ -182,7 +221,7 @@ def _converse(profile: Profile) -> None:
         if group is None:
             _say("No group is left to sort.")
             return
-        _show(group)
+        _show(group, _categories(_taxonomy(profile)))
         answer = input(_ASK).strip()
         if answer == "q":
             return
