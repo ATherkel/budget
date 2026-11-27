@@ -759,3 +759,27 @@ def test_kontrol_and_its_waterfall_are_readable_at_phone_width(
     expect(page.locator("#checks-verdict-joint-current")).to_have_text("Data mangler")
     expect(page.locator("#checks-waterfall-joint-current")).to_be_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+
+def test_a_summary_card_opens_by_click_and_by_keyboard_and_fits_a_phone(
+    page: Page,
+    dashboard: BrowserDashboard,
+) -> None:
+    log_in(page, dashboard)
+    page.get_by_label("Måned", exact=True).select_option("2026-04")
+    page.wait_for_function("location.search.includes('month=2026-04')")
+    card = page.locator("#income-card")
+    head = card.locator("summary")
+    expect(card).not_to_have_attribute("open", "")
+
+    head.click()
+    expect(card).to_have_attribute("open", "")
+    head.click()
+    expect(card).not_to_have_attribute("open", "")
+    head.focus()
+    page.keyboard.press("Enter")
+    expect(card).to_have_attribute("open", "")
+    expect(card).to_contain_text("SALARY")
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")

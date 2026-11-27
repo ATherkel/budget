@@ -99,3 +99,27 @@ def test_money_left_is_a_card_that_never_expands(client: TestClient) -> None:
         february.text_of("money-left-card"),
         "money-left-card" in february.disclosures,
     ) == ("Penge tilbage 15.980,00 kr.", False)
+
+
+def test_indtaegter_lists_each_income_with_its_bank_amount_and_contribution(
+    client: TestClient,
+) -> None:
+    # April: a salary of 25,000.00 on 24 April and interest of 12.40 on 30 April.
+    april = report(client, "2026-04")
+
+    assert april.disclosures.get("income-card") == Disclosure(
+        open=False,
+        summary="Indtægter 25.012,40 kr.",
+        rows=[
+            ("30.04.2026", "INTEREST", "+12,40 kr.", "+12,40 kr."),
+            ("24.04.2026", "SALARY", "+25.000,00 kr.", "+25.000,00 kr."),
+        ],
+    )
+
+
+def test_a_month_without_income_says_so_in_indtaegter(client: TestClient) -> None:
+    may = report(client, "2026-05")
+
+    assert may.disclosures.get("income-card") == Disclosure(
+        open=False, summary="Indtægter 0,00 kr.", rows=[("Ingen indtægter i måneden.",)]
+    )
