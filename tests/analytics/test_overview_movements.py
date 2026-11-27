@@ -5,6 +5,7 @@ Expected values come from the Gold worked example's tables and the parent
 issue's worked examples, not from the code under test.
 """
 
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
@@ -17,7 +18,13 @@ from budget.analytics import (
     SummaryGroup,
     monthly_overview,
 )
-from budget.gold import GoldResult, ReportingMonth
+from budget.gold import (
+    GoldCategoryAllocation,
+    GoldResult,
+    GoldTransaction,
+    ReportingMonth,
+    TransactionType,
+)
 from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
 
 GOLD = GoldResult(PUBLICATION, RECORDS)
@@ -83,3 +90,70 @@ def test_expenses_count_money_out_as_positive_and_a_refund_reduces_them() -> Non
         ("GROCERIES", Decimal("120.00"), Decimal("-120.00")),
     }
     assert expenses.total == Decimal("9020.00")
+
+
+def _booked(
+    seq: int, amount: str, transaction_type: TransactionType, category_id: str | None
+) -> tuple[GoldTransaction, tuple[GoldCategoryAllocation, ...]]:
+    """One synthetic March booking on joint-current, after the example's rows."""
+    transaction = GoldTransaction(
+        transaction_id=f"march-{seq:02d}",
+        account_id=CURRENT,
+        transaction_date=date(2026, 3, 10),
+        account_sequence=100 + seq,
+        amount=Decimal(amount),
+        description=f"MARCH {seq}",
+        transaction_type=transaction_type,
+        transfer_group_id=None,
+        balance_after=None,
+        balance_check="consistent",
+    )
+    allocations = (
+        ()
+        if category_id is None
+        else (
+            GoldCategoryAllocation(
+                allocation_id=f"march-{seq:02d}/{category_id}",
+                transaction_id=transaction.transaction_id,
+                account_id=CURRENT,
+                transaction_date=transaction.transaction_date,
+                category_id=category_id,
+                amount=transaction.amount,
+            ),
+        )
+    )
+    return transaction, allocations
+
+
+def _with(
+    *bookings: tuple[GoldTransaction, tuple[GoldCategoryAllocation, ...]],
+) -> GoldResult:
+    return GoldResult(
+        PUBLICATION,
+        replace(
+            RECORDS,
+            transactions=(*RECORDS.transactions, *(t for t, _ in bookings)),
+            category_allocations=(
+                *RECORDS.category_allocations,
+                *(a for _, allocations in bookings for a in allocations),
+            ),
+        ),
+    )
+
+
+def test_an_income_refund_reduces_income() -> None:
+    # #628: income of +30.000, +10.000 and a -5.000 salary Refund is 35.000.
+    gold = _with(
+        _booked(1, "30000.00", "income", "salary"),
+        _booked(2, "10000.00", "income", "interest"),
+        _booked(3, "-5000.00", "refund", "salary"),
+    )
+
+    income = _group(_overview(3, gold=gold), "income")
+
+    assert _contributions(income) == {
+        ("MARCH 1", Decimal("30000.00"), Decimal("30000.00")),
+        ("MARCH 2", Decimal("10000.00"), Decimal("10000.00")),
+        ("MARCH 3", Decimal("-5000.00"), Decimal("-5000.00")),
+    }
+    assert income.total == Decimal("35000.00")
