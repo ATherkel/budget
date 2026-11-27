@@ -283,21 +283,41 @@ class CategoryListTests(unittest.TestCase):
             listed = stdout.split("\n\n")[1].splitlines()
             assert listed == [_ASKED + "No categories yet: type n to add one"]
 
-    def test_a_listed_number_answers_as_its_category(self) -> None:
+    def test_a_word_lists_the_matching_categories_and_a_number_picks_one(
+        self,
+    ) -> None:
         with TemporaryDirectory() as directory:
             profile_file = _sortable(Path(directory))
             _write_input(profile_file, "taxonomy.toml", TWO_GROUPS)
 
-            # 3 is rent, the last listed: numbering follows the groups.
-            status, _, stderr = sort(profile_file, "3\nq\n")
+            # "r" is in groceries and rent, not in eating out.
+            status, stdout, stderr = sort(profile_file, "r\n2\nq\n")
 
             assert (status, stderr) == (EXIT_OK, "")
+            assert stdout.split("\n\n")[1].splitlines() == [
+                _ASKED + 'Matches for "r":',
+                "  1 Groceries (groceries)",
+                "  2 Rent (rent)",
+            ]
             rules = tomllib.loads(
                 load_profile_file(profile_file)
                 .input_file("rules.toml")
                 .read_text(encoding="utf-8")
             )
             assert [rule["then"] for rule in rules["rule"]] == [{"category": "rent"}]
+
+    def test_a_word_no_category_matches_says_so_and_writes_nothing(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+            rules = load_profile_file(profile_file).input_file("rules.toml")
+            before = rules.read_bytes()
+
+            _, stdout, _ = sort(profile_file, "groceries\nq\n")
+
+            assert rules.read_bytes() == before
+            assert stdout.split("\n\n")[1].splitlines() == [
+                _ASKED + 'No category matches "groceries".'
+            ]
 
 
 class RefusedAnswerTests(unittest.TestCase):
@@ -307,13 +327,20 @@ class RefusedAnswerTests(unittest.TestCase):
             rules = load_profile_file(profile_file).input_file("rules.toml")
             before = rules.read_bytes()
 
-            # The taxonomy is empty, so `groceries` names no category.
-            status, stdout, stderr = sort(profile_file, "groceries\nq\n")
+            # A category in a group the taxonomy lacks: `check` refuses it all.
+            _write_input(
+                profile_file,
+                "taxonomy.toml",
+                'format = 1\n\n[category.groceries]\nname = "Groceries"\n'
+                'group = "food"\n',
+            )
+
+            status, stdout, stderr = sort(profile_file, "t\nq\n")
 
             assert (status, stderr) == (EXIT_OK, "")
             assert rules.read_bytes() == before
             blocks = stdout.split("\n\n")
-            assert "groceries" in blocks[1]
+            assert "food" in blocks[1]
             assert "Nothing was written." in blocks[1]
             assert blocks[2].splitlines()[0].startswith('"netto kbh": ')
 
