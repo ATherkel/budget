@@ -128,6 +128,24 @@ class ShowingAGroupTests(unittest.TestCase):
             ]
 
 
+class RefusedAnswerTests(unittest.TestCase):
+    def test_an_answer_check_refuses_writes_nothing_and_asks_again(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+            rules = load_profile_file(profile_file).input_file("rules.toml")
+            before = rules.read_bytes()
+
+            # The taxonomy is empty, so `groceries` names no category.
+            status, stdout, stderr = sort(profile_file, "groceries\nq\n")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert rules.read_bytes() == before
+            blocks = stdout.split("\n\n")
+            assert "groceries" in blocks[1]
+            assert "Nothing was written." in blocks[1]
+            assert blocks[2].splitlines()[0] == "netto kbh"
+
+
 class AnsweringATransferTests(unittest.TestCase):
     def test_claiming_both_legs_publishes_them_as_one_transfer(self) -> None:
         with TemporaryDirectory() as directory:
