@@ -1,16 +1,18 @@
 {# Markup more than one page shows. A page imports what it uses:
    {% from "_macros.html" import page_heading %} #}
-{# A page's heading; a call block adds a note beside the title. #}
-{% macro page_heading(title, title_attributes={}) -%}
+{# A page's heading with a note beside the title, which the call block holds. #}
+{% macro page_heading_with_note(title, title_attributes={}) -%}
 <div class="page-heading">
   <div>
     <p class="eyebrow">Husstandsøkonomi</p>
     <h1{{ title_attributes | xmlattr }}>{{ title }}</h1>
   </div>
-{%- if caller %}
   {{ caller() }}
-{%- endif %}
 </div>
+{%- endmacro %}
+{# A page's heading alone. #}
+{% macro page_heading(title, title_attributes={}) -%}
+{% call page_heading_with_note(title, title_attributes) %}{% endcall %}
 {%- endmacro %}
 {# Figures from a superseded publication say so, linking to the newest. #}
 {% macro newer_figures(is_current) -%}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_heading %}
+{% from "_macros.html" import page_heading_with_note %}
 {% block title %}Oversigt · Budget{% endblock %}
 {% block head %}
 {# No page snapshots in browser storage: a history miss reloads the page. #}
@@ -15,7 +15,7 @@
 {% endblock %}
 {% block content %}
 <div id="overview" data-canonical-url="{{ canonical_url }}">
-{% call page_heading("Oversigt") -%}
+{% call page_heading_with_note("Oversigt") -%}
 <p class="page-heading-note">Alle valg på siden bruger samme offentliggjorte datasæt.</p>
 {%- endcall %}
 <div class="dashboard-layout">
