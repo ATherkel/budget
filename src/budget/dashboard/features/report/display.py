@@ -10,6 +10,8 @@ from budget.analytics import (
     MonthlyOverview,
 )
 from budget.dashboard.display.notices import Notice, newer_figures, shown
+from budget.dashboard.features.report.account_cards import account_cards
+from budget.dashboard.features.report.card import Card
 from budget.dashboard.features.view_state import ViewState
 
 _NO_ROWS = "Ingen observerede posteringer i måneden."
@@ -28,6 +30,7 @@ class AccountRows(NamedTuple):
     rows: tuple[ActivityRow, ...]
     # The one line shown in place of rows when there are none, else empty.
     no_rows: tuple[str, ...]
+    cards: tuple[Card, ...]
 
 
 def report_notices(view: ViewState, overview: MonthlyOverview) -> tuple[Notice, ...]:
@@ -74,5 +77,12 @@ def account_rows(activity: AccountActivity | None) -> tuple[AccountRows, ...]:
         rows = tuple(
             row for row in activity.transactions if row.account_id == account.account_id
         )
-        grouped.append(AccountRows(account, rows, () if rows else (_NO_ROWS,)))
+        grouped.append(
+            AccountRows(
+                account,
+                rows,
+                () if rows else (_NO_ROWS,),
+                account_cards(account, rows, activity.currency),
+            )
+        )
     return tuple(grouped)

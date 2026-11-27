@@ -1,6 +1,7 @@
+{%- from "report/card.html" import summary_card -%}
 <p class="eyebrow">Kontobevægelser</p>
 <h3 id="report-ready-title">Kontodetaljer</h3>
-{% for account, rows, no_rows in activity_accounts %}
+{% for account, rows, no_rows, cards in activity_accounts %}
 <article id="activity-account-{{ account.account_id }}" class="account-activity">
   <h4>{{ account.display_name }}</h4>
   <p id="activity-evidence-{{ account.account_id }}">
@@ -29,6 +30,11 @@
       </dd>
     </div>
   </dl>
+  <div class="summary">
+  {% for card in cards %}
+  {{ summary_card(card) }}
+  {% endfor %}
+  </div>
   <h4>Posteringer</h4>
   <table class="detail-table activity-table" aria-label="Posteringer for {{ account.display_name }}">
     <thead>
