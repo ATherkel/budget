@@ -128,6 +128,22 @@ class ShowingAGroupTests(unittest.TestCase):
             ]
 
 
+class AnsweringATransferTests(unittest.TestCase):
+    def test_claiming_both_legs_publishes_them_as_one_transfer(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+
+            # Skip the groceries and the salary; claim the two transfer legs.
+            status, _, stderr = sort(profile_file, "s\nt\ns\nt\nq\n")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            types = _types(profile_file)
+            assert (types["Til opsparing"], types["Fra lønkonto"]) == (
+                "transfer",
+                "transfer",
+            )
+
+
 class AnsweringACategoryTests(unittest.TestCase):
     def test_a_category_id_classifies_the_whole_group_and_publishes_it(self) -> None:
         with TemporaryDirectory() as directory:
