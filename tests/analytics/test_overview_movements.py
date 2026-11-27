@@ -170,3 +170,16 @@ def test_a_selected_transfer_leg_contributes_its_amount_and_both_legs_cancel() -
     assert one_leg.total == Decimal("-3000.00")
     assert both_legs.total == Decimal("0.00")
     assert both_legs.flows == MoneyInOut(Decimal("3000.00"), Decimal("-3000.00"), 2)
+
+
+def test_unclassified_money_in_and_out_never_net_to_nothing() -> None:
+    # March's unknown -450.00 (current-08) beside a synthetic unknown +450.00.
+    gold = _with(_booked(1, "450.00", "unknown", None))
+
+    unclassified = _group(_overview(3, gold=gold), "unclassified")
+
+    assert _contributions(unclassified) == {
+        ("UNKNOWN", Decimal("-450.00"), Decimal("-450.00")),
+        ("MARCH 1", Decimal("450.00"), Decimal("450.00")),
+    }
+    assert unclassified.flows == MoneyInOut(Decimal("450.00"), Decimal("-450.00"), 2)
