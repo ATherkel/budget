@@ -7,6 +7,7 @@ description, so one answer can classify every transaction a group holds.
 
 import re
 import sys
+import tomllib
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -21,9 +22,9 @@ from budget.gold.models import GoldTransaction
 from budget.gold.store import GoldStore
 from budget.inputs.rules import fold
 from budget.locking import writer_lock
-from budget.profiles import RULES_FILE_NAME, Profile
+from budget.profiles import RULES_FILE_NAME, TAXONOMY_FILE_NAME, Profile
 from budget.rebuilding import rebuild_from_gold
-from budget.suggesting import slug, toml_string
+from budget.suggesting import slug, toml_string, unique_id
 
 # A run of digits, with the separators a date or a number carries between them.
 _NUMBERS: Final = re.compile(r"\d+(?:[./:-]\d+)*")
@@ -167,13 +168,51 @@ def sort_unknowns(profile: Profile) -> None:
         if answer == "s":
             skipped.add(group.key)
             continue
-        then = (
-            "then.transfer_claim = true"
-            if answer == "t"
-            else f"then.category = {toml_string(answer)}"
-        )
+        writes: dict[Path, str] = {}
+        if answer == "n":
+            taxonomy = profile.input_file(TAXONOMY_FILE_NAME)
+            category_id, writes[taxonomy] = _with_category(taxonomy, group)
+            then = f"then.category = {toml_string(category_id)}"
+        elif answer == "t":
+            then = "then.transfer_claim = true"
+        else:
+            then = f"then.category = {toml_string(answer)}"
         rules = profile.input_file(RULES_FILE_NAME)
-        _write_checked(profile, {rules: _with_rule(rules, group, then)})
+        writes[rules] = _with_rule(rules, group, then)
+        _write_checked(profile, writes)
+
+
+def _with_category(path: Path, group: UnknownGroup) -> tuple[str, str]:
+    """Ask a new category's name and group; return its ID and the new taxonomy.
+
+    A group the taxonomy does not hold yet is added, and its direction asked,
+    offering the one the group's sum suggests.
+    """
+    text = path.read_text(encoding="utf-8") if path.exists() else "format = 1\n"
+    try:
+        document = tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        document = {}
+    name = input(f"{_INDENT}name: ").strip()
+    group_answer = input(f"{_INDENT}group: ").strip()
+    tables: list[str] = []
+    groups = document.get("group", {})
+    group_id = group_answer
+    if group_answer not in groups:
+        group_id = unique_id(slug(group_answer), set(groups))
+        offered = "income" if all(s > 0 for s in group.sums.values()) else "expense"
+        direction = input(f"{_INDENT}direction [{offered}]: ").strip() or offered
+        tables.append(
+            f"[group.{group_id}]\nname = {toml_string(group_answer)}\n"
+            f"direction = {toml_string(direction)}\n"
+        )
+    category_id = unique_id(slug(name), set(document.get("category", {})))
+    tables.append(
+        f"[category.{category_id}]\nname = {toml_string(name)}\n"
+        f"group = {toml_string(group_id)}\n"
+    )
+    separator = "" if text.endswith("\n") else "\n"
+    return category_id, text + separator + "".join(f"\n{table}" for table in tables)
 
 
 def _write_checked(profile: Profile, writes: Mapping[Path, str]) -> None:

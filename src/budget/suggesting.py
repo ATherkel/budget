@@ -169,7 +169,7 @@ def write_drafts(labels: BankLabels, out: Path) -> None:
         folded = fold(pair.category)
         if folded not in groups:
             name = _group_name(labels, folded)
-            groups[folded] = _unique(slug(name), set(groups.values()))
+            groups[folded] = unique_id(slug(name), set(groups.values()))
             group = [
                 f"[group.{groups[folded]}]",
                 f"name = {toml_string(name)}",
@@ -177,7 +177,7 @@ def write_drafts(labels: BankLabels, out: Path) -> None:
             ]
             taxonomy += [*_unless_covered(group, _group_covering(labels, folded)), ""]
         group_id = groups[folded]
-        category_id = _unique(
+        category_id = unique_id(
             f"{group_id}-{slug(pair.subcategory or 'other')}", taken_categories
         )
         taken_categories.add(category_id)
@@ -287,7 +287,7 @@ def slug(text: str) -> str:
     return "-".join(words) or "x"
 
 
-def _unique(wanted: str, taken: set[str]) -> str:
+def unique_id(wanted: str, taken: set[str]) -> str:
     """Return `wanted`, suffixed `-2`, `-3`… past any taken or reserved ID."""
     candidate, n = wanted, 2
     while candidate in taken or candidate in _UNCATEGORISED_TYPES:
