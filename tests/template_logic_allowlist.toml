@@ -18,18 +18,6 @@
 
 [[allowance]]
 path = "features/explanation/explanation.html"
-tag = '{% if failure %}'
-reason = "Optional section or failure branch; becomes a notice list or its own template."
-issue = 627
-
-[[allowance]]
-path = "features/explanation/explanation.html"
-tag = '{% else %}'
-reason = "Optional section or failure branch; becomes a notice list or its own template."
-issue = 627
-
-[[allowance]]
-path = "features/explanation/explanation.html"
 tag = '{% if overview.coverage.status != "complete" %}'
 reason = "Optional section or failure branch; becomes a notice list or its own template."
 issue = 627
@@ -67,11 +55,5 @@ issue = 627
 [[allowance]]
 path = "features/explanation/explanation.html"
 tag = '{% if overview.unclassified and overview.unclassified.count > 0 %}'
-reason = "Optional section or failure branch; becomes a notice list or its own template."
-issue = 627
-
-[[allowance]]
-path = "features/explanation/explanation.html"
-tag = '{% if report_url %}'
 reason = "Optional section or failure branch; becomes a notice list or its own template."
 issue = 627
