@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -34,6 +34,7 @@ from budget.profiles import (
     Profile,
 )
 from budget.rebuilding import rebuild_from_gold
+from budget.silver import SilverStore
 from budget.suggesting import slug, toml_string, unique_id
 
 # A run of digits, with the separators a date or a number carries between them.
@@ -197,7 +198,6 @@ def _show(group: UnknownGroup) -> None:
             f"{_INDENT}{example.transaction_date}  {example.account_id}  "
             f"{example.amount}  {example.description}"
         )
-    _say("")
 
 
 type _Listed = tuple[tuple[str, tuple[tuple[str, str], ...]], ...]
@@ -274,6 +274,8 @@ def sort_unknowns(profile: Profile) -> None:
 def _converse(profile: Profile) -> None:
     """Ask about each group, the biggest first, until none is left or `q`."""
     skipped: set[str] = set()
+    # Silver never changes while sorting: only rules and Gold do.
+    labels = _bank_labels(profile)
     # The category IDs of the last search, which a number picks from.
     picks: list[str] = []
     while True:
@@ -285,7 +287,7 @@ def _converse(profile: Profile) -> None:
             return
         categories = _categories(_taxonomy(profile))
         _show(group)
-        answer = _resolve(input(_ASK).strip(), categories, picks)
+        answer = _ask(_suggest(group, labels, categories), categories, picks)
         if answer is None:
             _say("")
             continue
@@ -295,6 +297,24 @@ def _converse(profile: Profile) -> None:
             skipped.add(group.key)
         else:
             _answer(profile, group, answer, categories)
+
+
+def _ask(
+    suggestion: "_Suggestion | None", categories: _Listed, picks: list[str]
+) -> str | None:
+    """Offer the suggestion, if any, ask once, and return what the answer names.
+
+    An empty answer takes the suggestion; with none, it asks again.
+    """
+    asked = _ASK
+    if suggestion is not None:
+        _say(f"Suggested: {suggestion.name} ({suggestion.label})")
+        asked = f"[Enter] {suggestion.name}  {_ASK}"
+    _say("")
+    typed = input(asked).strip()
+    if not typed and suggestion is not None:
+        return suggestion.category_id
+    return _resolve(typed, categories, picks)
 
 
 def _answer(
@@ -328,6 +348,62 @@ def _classify(profile: Profile, group: UnknownGroup, answer: str) -> None:
     _write_checked(profile, writes)
 
 
+type _Labels = tuple[str, str | None]
+
+
+@dataclass(frozen=True)
+class _Suggestion:
+    """The category the group's commonest bank label names."""
+
+    category_id: str
+    name: str
+    # The bank's label as shown: its category, and subcategory if any.
+    label: str
+
+
+def _bank_labels(profile: Profile) -> Mapping[str, _Labels]:
+    """Return each Silver transaction's bank labels by ID; none before a build.
+
+    Gold carries no bank labels, and shares its transaction IDs with Silver.
+    """
+    with SilverStore(profile, read_only=True) as store:
+        transactions = store.read().transactions if store.is_built() else ()
+    return {
+        t.transaction_id: (t.bank_category, t.bank_subcategory)
+        for t in transactions
+        if t.bank_category is not None
+    }
+
+
+def _suggest(
+    group: UnknownGroup, labels: Mapping[str, _Labels], categories: _Listed
+) -> _Suggestion | None:
+    """Suggest the category the group's commonest bank label pair names.
+
+    It names one when the category's ID is the one `suggest-rules` drafts for
+    the pair, or its name is the pair's subcategory (its category, without
+    one), ignoring case. A tie goes to the pair first in order.
+    """
+    counts = Counter(
+        labels[t.transaction_id]
+        for t in group.transactions
+        if t.transaction_id in labels
+    )
+    if not counts:
+        return None
+    category, subcategory = min(
+        counts, key=lambda pair: (-counts[pair], pair[0], pair[1] or "")
+    )
+    wanted_id = f"{slug(category)}-{slug(subcategory or 'other')}"
+    wanted_name = fold(subcategory or category)
+    label = category if subcategory is None else f"{category} / {subcategory}"
+    for _, members in categories:
+        for category_id, name in members:
+            if category_id == wanted_id or fold(name) == wanted_name:
+                return _Suggestion(category_id, name, label)
+    return None
+
+
 _COMMANDS: Final = frozenset({"q", "s", "m", "?", "t", "n"})
 # A search shows no more matches than one can read at a glance.
 _MATCHES: Final = 8
@@ -342,6 +418,8 @@ def _resolve(answer: str, categories: _Listed, picks: list[str]) -> str | None:
     ids = {category_id for _, members in categories for category_id, _ in members}
     if answer in _COMMANDS or answer in ids:
         return answer
+    if not answer:
+        return None
     if answer.isdecimal() and 1 <= int(answer) <= len(picks):
         return picks[int(answer) - 1]
     matches = [
