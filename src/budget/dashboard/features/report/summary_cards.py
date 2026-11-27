@@ -42,6 +42,8 @@ CONTRIBUTION = Field(
     Column("Bidrag", numeric=True),
     lambda row, currency: signed_amount(row.contribution, currency),
 )
+ACCOUNT = Field(Column("Konto"), lambda row, _: row.account_display_name)
+DIRECTION = Field(Column("Retning"), lambda row, _: "Ind" if row.amount > 0 else "Ud")
 
 type Figures = Callable[[str, MovementGroup | None, str], tuple[Figure, ...]]
 
@@ -58,6 +60,35 @@ def signed_total(
     return (Figure(name, signed_amount(group.total if group else None, currency)),)
 
 
+def in_and_out(
+    name: str, group: MovementGroup | None, currency: str
+) -> tuple[Figure, Figure]:
+    """Return money in and money out apart, so they never net to nothing."""
+    flows = group.flows if group else None
+    return (
+        Figure(
+            f"{name}-in",
+            signed_amount(flows.money_in if flows else None, currency),
+            "Ind",
+        ),
+        Figure(
+            f"{name}-out",
+            signed_amount(flows.money_out if flows else None, currency),
+            "Ud",
+        ),
+    )
+
+
+def as_given(rows: tuple[MovementRow, ...]) -> tuple[MovementRow, ...]:
+    """Return the rows newest first, as analytics gives them."""
+    return rows
+
+
+def money_in_first(rows: tuple[MovementRow, ...]) -> tuple[MovementRow, ...]:
+    """Return money in before money out, each newest first."""
+    return tuple(sorted(rows, key=lambda row: row.amount <= 0))
+
+
 @dataclass(frozen=True)
 class GroupCard:
     """The card of one summary group: what sets it apart from the others."""
@@ -67,13 +98,14 @@ class GroupCard:
     empty: str
     figures: Figures = total
     fields: tuple[Field, ...] = (DATE, TEXT, BANK_AMOUNT, CONTRIBUTION)
+    order: Callable[[tuple[MovementRow, ...]], tuple[MovementRow, ...]] = as_given
 
     def card(self, overview: MonthlyOverview) -> Card:
         """Return the group's card; without data it says so."""
         group = next(
             (g for g in overview.movements or () if g.group == self.group), None
         )
-        rows = group.rows if group else ()
+        rows = self.order(group.rows) if group else ()
         return Card(
             name=self.group,
             label=self.label,
@@ -113,6 +145,14 @@ CARDS: tuple[CardSpec, ...] = (
     GroupCard("expenses", "Udgifter", "Ingen udgifter i måneden."),
     MoneyLeft(),
     GroupCard("transfers", "Overførsler", "Ingen overførsler i måneden.", signed_total),
+    GroupCard(
+        "unclassified",
+        "Ukategoriseret",
+        "Ingen ukategoriserede posteringer i måneden.",
+        in_and_out,
+        (DATE, TEXT, ACCOUNT, DIRECTION, BANK_AMOUNT, CONTRIBUTION),
+        money_in_first,
+    ),
 )
 
 
