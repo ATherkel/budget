@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 from budget.gold.store import GoldStore
 from budget.importing import Coverage, import_inbox_file
@@ -19,6 +20,7 @@ from budget.locking import writer_lock
 from budget.profiles import load_profile_file
 from budget.rebuilding import rebuild_from_gold, rebuild_from_silver
 from tests.cli.commands import check, sort
+from tests.cli.imports import clean_checkout
 from tests.cli.pipelines import TAXONOMY, prepared
 from tests.importing.households import drop
 
@@ -52,9 +54,9 @@ def _export(rows: Sequence[Row], opening: int) -> bytes:
     return "\r\n".join(lines).encode("cp1252")
 
 
-def _sortable(folder: Path) -> Path:
+def _sortable(folder: Path, *, name: str = "development") -> Path:
     """Publish the household's March with nothing classified; return its profile."""
-    base = prepared(folder)
+    base = prepared(folder, name=name)
     profile = base.profile
     profile.input_file("taxonomy.toml").write_text("format = 1\n", encoding="utf-8")
     exports = (
@@ -152,6 +154,23 @@ class SortingEverythingTests(unittest.TestCase):
             }
             assert stdout.endswith("No group is left to sort.\n")
             assert check(profile_file) == (EXIT_OK, "No problems found.\n", "")
+
+
+class ProductionTests(unittest.TestCase):
+    def test_each_published_answer_writes_a_backup_set(self) -> None:
+        with (
+            TemporaryDirectory() as directory,
+            mock.patch("subprocess.run", side_effect=clean_checkout),
+        ):
+            profile_file = _sortable(Path(directory), name="production")
+            _write_input(profile_file, "taxonomy.toml", TAXONOMY)
+
+            status, stdout, stderr = sort(profile_file, "groceries\nq\n")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            totals = stdout.split("\n\n")[1].splitlines()
+            assert totals[0].startswith(_ASKED + "Backup   backup set ")
+            assert totals[0].endswith(" written")
 
 
 class QuittingTests(unittest.TestCase):
