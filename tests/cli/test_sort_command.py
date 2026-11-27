@@ -341,18 +341,19 @@ class AnsweringACategoryTests(unittest.TestCase):
                 "Fra lønkonto": "unknown",
             }
 
-    def test_each_answer_shows_the_month_totals_with_unknown_shrunk(self) -> None:
+    def test_each_answer_shows_one_progress_line_with_unknown_in_and_out(
+        self,
+    ) -> None:
         with TemporaryDirectory() as directory:
             profile_file = _sortable(Path(directory))
             _write_input(profile_file, "taxonomy.toml", TAXONOMY)
 
             _, stdout, _ = sort(profile_file, "groceries\nq\n")
 
-            totals = stdout.split("\n\n")[1].splitlines()
-            assert totals == [
-                _ASKED + "Month totals",
-                (
-                    "  2026-03  in 0.00 DKK, out -200.00 DKK, transfer 0.00 DKK, "
-                    "unknown 20000.00 DKK (3 transactions)"
-                ),
+            # 4 of the 7 are groceries; the salary and both transfer legs are
+            # left, 20000.00 + 500.00 in and 500.00 out, never netted.
+            progress = stdout.split("\n\n")[1].splitlines()
+            assert progress == [
+                _ASKED + "Sorted 4 of 7 (57%), 3 unknown left: "
+                "in 20500.00 DKK, out -500.00 DKK",
             ]
