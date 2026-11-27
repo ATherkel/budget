@@ -141,7 +141,12 @@ def test_with_both_residuals_nonzero_the_internal_one_names_the_gap() -> None:
 
 def test_a_missing_step_after_a_known_start_leaves_later_totals_unknown() -> None:
     reconciliations = tuple(
-        replace(reconciliation, income_minus_expenses=None, internal_residual=None)
+        replace(
+            reconciliation,
+            income_minus_expenses=None,
+            expected_closing=None,
+            internal_residual=None,
+        )
         if reconciliation.account_id == SAVINGS
         else reconciliation
         for reconciliation in MARCH_REPORT.reconciliations
