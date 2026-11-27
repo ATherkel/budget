@@ -405,6 +405,7 @@ def test_reconciliation_keeps_components_and_reports_zero_and_opening_gap() -> N
             unclassified_out=Decimal("-450.00"),
             adjustments_in=ZERO,
             adjustments_out=ZERO,
+            expected_closing=Decimal("35587.50"),
             closing_balance=Decimal("35587.50"),
             internal_residual=ZERO,
             previous_closing_balance=Decimal("37537.50"),
@@ -475,6 +476,7 @@ def test_complete_reconciliation_keeps_every_approved_component() -> None:
             unclassified_out=Decimal("-450.00"),
             adjustments_in=Decimal("20.00"),
             adjustments_out=ZERO,
+            expected_closing=Decimal("1220.00"),
             closing_balance=Decimal("1220.00"),
             internal_residual=ZERO,
             previous_closing_balance=None,
@@ -485,16 +487,17 @@ def test_complete_reconciliation_keeps_every_approved_component() -> None:
 
 
 @pytest.mark.parametrize(
-    ("opening", "closing", "internal_residual", "opening_gap"),
+    ("opening", "closing", "expected_closing", "internal_residual", "opening_gap"),
     [
-        ("37037.50", None, None, Decimal("-500.00")),
-        (None, "35587.50", None, None),
-        (None, None, None, None),
+        ("37037.50", None, Decimal("35587.50"), None, Decimal("-500.00")),
+        (None, "35587.50", None, None, None),
+        (None, None, None, None, None),
     ],
 )
 def test_each_missing_balance_endpoint_makes_its_residual_or_gap_unknown(
     opening: str | None,
     closing: str | None,
+    expected_closing: Decimal | None,
     internal_residual: Decimal | None,
     opening_gap: Decimal | None,
 ) -> None:
@@ -510,9 +513,10 @@ def test_each_missing_balance_endpoint_makes_its_residual_or_gap_unknown(
     ).reconciliations[0]
 
     assert (
+        reconciliation.expected_closing,
         reconciliation.internal_residual,
         reconciliation.opening_gap,
-    ) == (internal_residual, opening_gap)
+    ) == (expected_closing, internal_residual, opening_gap)
     assert (
         reconciliation.income_minus_expenses,
         reconciliation.transfers,
@@ -573,6 +577,7 @@ def test_a_no_data_reconciliation_keeps_components_unknown() -> None:
             unclassified_out=None,
             adjustments_in=None,
             adjustments_out=None,
+            expected_closing=None,
             closing_balance=None,
             internal_residual=None,
             previous_closing_balance=None,

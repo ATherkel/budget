@@ -209,6 +209,7 @@ def _reconciliation(data: _ReconciliationInput) -> Reconciliation:
         unclassified_out=components.unclassified_out,
         adjustments_in=components.adjustments_in,
         adjustments_out=components.adjustments_out,
+        expected_closing=None,
         closing_balance=closing,
         internal_residual=_internal_residual(opening, components, closing),
         previous_closing_balance=previous_closing,
