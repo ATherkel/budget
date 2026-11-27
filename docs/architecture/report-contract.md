@@ -136,6 +136,7 @@ rather than substituting it.
 | `categories` | list of `CategorySpending` | One row per expense-direction Category with at least one allocation in the month, ordered by `spending`, largest first, and then by `category_id`. Empty when `coverage.status` is `no_data`. |
 | `unclassified` | `MoneyInOut`/null | Unclassified money: `unknown` transactions. |
 | `adjustments` | `MoneyInOut`/null | `adjustment` transactions, which carry no allocation. |
+| `movements` | list of `MovementGroup`/null | The transactions behind each summary group, below. Null exactly when `coverage.status` is `no_data`. |
 | `coverage` | `ReportCoverage` | Coverage of every figure above. |
 | `provisional` | `Provisional`/null | Why the month is provisional; null when it is not. |
 
@@ -153,7 +154,7 @@ Category is a known zero only when coverage is `complete`.
 `spending`, the Category's net spending as Money: −(Σ allocations of `expense`
 transactions + Σ allocations of `refund` transactions), negative when Refunds
 exceed purchases. The overview carries no Category group totals and no
-transaction rows; reports that need them add them.
+transaction rows besides `movements`; reports that need them add them.
 
 Enkel shows every row in the given order, neither reordered nor truncated, so
 the list adds up to Expenses with no remainder line; a net Refund Category
@@ -171,6 +172,19 @@ with a plus sign when positive, and `money_out` as Ud with its minus sign. A
 known zero reads 0,00 kr. and a null reads as unknown. The count belongs to
 Kontrol; the explanation shows neither amounts nor count. Adjustments carry no
 note.
+
+`movements` holds one `MovementGroup` per summary group, in card order:
+`income`, `expenses`, `transfers`, `unclassified`. Analytics assigns each
+transaction to a group by one rule, the same one behind `income`, `expenses`
+and `unclassified`: a Refund follows its Category's direction, and adjustments
+belong to no group. A group carries its `rows`, `total` (Σ `contribution`) and
+`flows` (`MoneyInOut` of the rows' amounts). A `MovementRow` holds
+`transaction_date`, `description`, `account_id`, `account_display_name`, the
+signed bank `amount` and `contribution`, its signed effect on the group's
+total. Expenses flip the sign, so a Refund reduces Expenses; a selected
+Transfer leg contributes its amount, so both legs add to zero. Read
+Unclassified by its `flows`, never its total. Rows are newest first by date,
+account ID and account sequence.
 
 ### Coverage
 
