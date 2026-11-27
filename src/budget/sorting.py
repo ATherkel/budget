@@ -12,8 +12,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import Final
 
+from budget import checking
 from budget.analytics import NothingPublishedError
 from budget.gold.models import GoldTransaction
 from budget.gold.store import GoldStore
@@ -170,13 +172,38 @@ def sort_unknowns(profile: Profile) -> None:
             if answer == "t"
             else f"then.category = {toml_string(answer)}"
         )
-        _append_rule(profile, group, then)
-        with writer_lock(profile) as lock:
-            rebuild_from_gold(lock, now=datetime.now(UTC))
-        _say("Month totals")
-        for line in month_totals(profile):
-            _say(f"{_INDENT}{line}")
+        rules = profile.input_file(RULES_FILE_NAME)
+        _write_checked(profile, {rules: _with_rule(rules, group, then)})
+
+
+def _write_checked(profile: Profile, writes: Mapping[Path, str]) -> None:
+    """Write the files, then publish them, or put them back if `check` refuses.
+
+    A refusal is shown with every problem `check` names, and nothing is left
+    written, so the same group is asked again.
+    """
+    before = {path: path.read_bytes() if path.exists() else None for path in writes}
+    for path, text in writes.items():
+        path.write_text(text, encoding="utf-8", newline="\n")
+    found = checking.check(profile)
+    problems = (*found.problems, *found.mismatches)
+    if problems:
+        for path, content in before.items():
+            if content is None:
+                path.unlink()
+            else:
+                path.write_bytes(content)
+        for problem in problems:
+            _say(problem)
+        _say("Nothing was written.")
         _say("")
+        return
+    with writer_lock(profile) as lock:
+        rebuild_from_gold(lock, now=datetime.now(UTC))
+    _say("Month totals")
+    for line in month_totals(profile):
+        _say(f"{_INDENT}{line}")
+    _say("")
 
 
 # What may stand between two words of a group's text: whitespace, numbers and
@@ -193,9 +220,8 @@ def group_pattern(key: str) -> str:
     return f"^{_GAP}*{words}{_GAP}*$"
 
 
-def _append_rule(profile: Profile, group: UnknownGroup, then: str) -> None:
-    """Append one rule matching the group's text to `rules.toml`."""
-    path = profile.input_file(RULES_FILE_NAME)
+def _with_rule(path: Path, group: UnknownGroup, then: str) -> str:
+    """Return `rules.toml` with one more rule, matching the group's text."""
     text = path.read_text(encoding="utf-8") if path.exists() else "format = 1\n"
     block = "\n".join(
         [
@@ -207,4 +233,4 @@ def _append_rule(profile: Profile, group: UnknownGroup, then: str) -> None:
         ]
     )
     separator = "" if text.endswith("\n") else "\n"
-    path.write_text(f"{text}{separator}\n{block}\n", encoding="utf-8", newline="\n")
+    return f"{text}{separator}\n{block}\n"
