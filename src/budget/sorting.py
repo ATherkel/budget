@@ -326,6 +326,8 @@ def _classify(profile: Profile, group: UnknownGroup, answer: str) -> None:
 
 
 _COMMANDS: Final = frozenset({"q", "s", "m", "?", "t", "n"})
+# A search shows no more matches than one can read at a glance.
+_MATCHES: Final = 8
 
 
 def _resolve(answer: str, categories: _Listed, picks: list[str]) -> str | None:
@@ -345,6 +347,8 @@ def _resolve(answer: str, categories: _Listed, picks: list[str]) -> str | None:
         for category_id, name in members
         if fold(answer) in fold(category_id) or fold(answer) in fold(name)
     ]
+    more = len(matches) - _MATCHES
+    matches = matches[:_MATCHES]
     picks[:] = [category_id for category_id, _ in matches]
     if not matches:
         _say(f'No category matches "{answer}".')
@@ -352,6 +356,8 @@ def _resolve(answer: str, categories: _Listed, picks: list[str]) -> str | None:
     _say(f'Matches for "{answer}":')
     for number, (category_id, name) in enumerate(matches, start=1):
         _say(f"{_INDENT}{number} {name} ({category_id})")
+    if more > 0:
+        _say(f"{_INDENT}and {more} more: type more of the word")
     return None
 
 
