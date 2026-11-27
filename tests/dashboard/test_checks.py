@@ -161,8 +161,8 @@ def test_kontrol_shows_each_accounts_evidence_through_and_unknown_is_never_a_dat
         page.text_of(f"checks-through-{CURRENT}"),
         page.text_of(f"checks-through-{SAVINGS}"),
     ) == (
-        # Worded as Detaljer words it.
-        "Data til og med 08.05.2026",
+        # The column is headed "Data til og med", so a cell holds the date only.
+        "08.05.2026",
         "Ingen importeret data",
     )
 
@@ -257,7 +257,7 @@ def test_kontrol_tables_each_accounts_balances_residuals_and_data_reach(
         "35.587,50 kr.",
         "0,00 kr.",
         "\N{MINUS SIGN}500,00 kr.",
-        "Data til og med 08.05.2026",
+        "08.05.2026",
         "Ukendt",
         "Ukendt",
     ]
