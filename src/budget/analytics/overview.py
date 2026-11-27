@@ -152,7 +152,9 @@ def monthly_overview(
         categories=known.categories,
         unclassified=known.unclassified,
         adjustments=known.adjustments,
-        movements=movements(),
+        movements=movements(
+            known.grouped, {a.account_id: a.display_name for a in accounts}
+        ),
         coverage=judged.coverage,
         provisional=judged.provisional,
     )

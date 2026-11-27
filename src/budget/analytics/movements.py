@@ -1,13 +1,56 @@
 # Copyright 2026 Therkel
 """The rows behind the monthly overview's summary groups."""
 
+from collections.abc import Mapping, Sequence
+
 from budget.analytics.measures import SUMMARY_GROUPS, ZERO
-from budget.analytics.reports import MoneyInOut, MovementGroup
+from budget.analytics.reports import (
+    MoneyInOut,
+    MovementGroup,
+    MovementRow,
+    SummaryGroup,
+)
+from budget.gold import GoldTransaction
 
 
-def movements() -> tuple[MovementGroup, ...]:
-    """Return one group per summary group, in card order."""
+def _movement_group(
+    group: SummaryGroup,
+    transactions: Sequence[GoldTransaction],
+    names: Mapping[str, str],
+) -> MovementGroup:
+    rows = tuple(
+        MovementRow(
+            transaction_date=t.transaction_date,
+            description=t.description,
+            account_id=t.account_id,
+            account_display_name=names[t.account_id],
+            amount=t.amount,
+            contribution=t.amount,
+        )
+        for t in transactions
+    )
+    amounts = [row.amount for row in rows]
+    return MovementGroup(
+        group=group,
+        rows=rows,
+        total=sum((row.contribution for row in rows), ZERO),
+        flows=MoneyInOut(
+            money_in=sum((a for a in amounts if a > 0), ZERO),
+            money_out=sum((a for a in amounts if a < 0), ZERO),
+            count=len(amounts),
+        ),
+    )
+
+
+def movements(
+    grouped: Mapping[SummaryGroup, Sequence[GoldTransaction]],
+    names: Mapping[str, str],
+) -> tuple[MovementGroup, ...]:
+    """Return one group per summary group, in card order.
+
+    `names` maps each selected account ID to its display name.
+    """
     return tuple(
-        MovementGroup(group, (), ZERO, MoneyInOut(ZERO, ZERO, 0))
+        _movement_group(group, grouped.get(group, ()), names)
         for group in SUMMARY_GROUPS
     )

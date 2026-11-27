@@ -42,6 +42,7 @@ class Figures:
     categories: tuple[CategorySpending, ...]
     unclassified: MoneyInOut | None
     adjustments: MoneyInOut | None
+    grouped: dict[SummaryGroup, tuple[GoldTransaction, ...]]
 
 
 # With no evidence a figure is unknown, never zero (report-contract.md).
@@ -53,6 +54,7 @@ UNKNOWN = Figures(
     categories=(),
     unclassified=None,
     adjustments=None,
+    grouped={},
 )
 
 
@@ -72,16 +74,22 @@ def _money_in_out(
     )
 
 
-def _measure(
+def _group(
     transaction: GoldTransaction,
     refund_directions: dict[str, CategoryDirection],
-) -> CategoryDirection | None:
-    """Return the measure a transaction counts toward; a Refund takes its category's."""
+) -> SummaryGroup | None:
+    """Return the summary group a transaction counts toward; the one grouping rule.
+
+    A Refund takes its category's direction.
+    """
     match transaction.transaction_type:
         case "refund":
-            return refund_directions[transaction.transaction_id]
-        case ("income" | "expense") as measure:
-            return measure
+            direction = refund_directions[transaction.transaction_id]
+            return "income" if direction == "income" else "expenses"
+        case "income":
+            return "income"
+        case "expense":
+            return "expenses"
         case _:
             return None
 
@@ -124,11 +132,13 @@ def figures(
         allocation.transaction_id: by_id[allocation.category_id].direction
         for allocation in allocations
     }
-    measured = [(_measure(t, refund_directions), t.amount) for t in transactions]
-    income = _total(amount for measure, amount in measured if measure == "income")
-    expenses = ZERO - _total(
-        amount for measure, amount in measured if measure == "expense"
-    )
+    groups = [_group(t, refund_directions) for t in transactions]
+    grouped = {
+        name: tuple(t for t, group in zip(transactions, groups, strict=True) if group == name)
+        for name in SUMMARY_GROUPS
+    }
+    income = _total(t.amount for t in grouped["income"])
+    expenses = ZERO - _total(t.amount for t in grouped["expenses"])
     net_cash_flow = income - expenses
     return Figures(
         income=income,
@@ -138,4 +148,5 @@ def figures(
         categories=_category_spending(allocations, by_id),
         unclassified=_money_in_out(transactions, "unknown"),
         adjustments=_money_in_out(transactions, "adjustment"),
+        grouped=grouped,
     )
