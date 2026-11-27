@@ -1,14 +1,12 @@
 # Copyright 2026 Therkel
 """What the report prints, prepared so its templates only loop and print."""
 
-from decimal import Decimal
 from typing import NamedTuple
 
 from budget.analytics import (
     AccountActivity,
     AccountActivitySnapshot,
     ActivityRow,
-    MoneyInOut,
     MonthlyOverview,
 )
 from budget.dashboard.display.notices import Notice, newer_figures, shown
@@ -62,15 +60,6 @@ def overview_notices(overview: MonthlyOverview) -> tuple[Notice, ...]:
         ),
         (bool(overview.categories), Notice("report/categories.html")),
     )
-
-
-def unclassified_amounts(
-    unclassified: MoneyInOut | None,
-) -> tuple[Decimal | None, Decimal | None]:
-    """Return the unclassified money in and out; both unknown without figures."""
-    if unclassified is None:
-        return None, None
-    return unclassified.money_in, unclassified.money_out
 
 
 def account_rows(activity: AccountActivity | None) -> tuple[AccountRows, ...]:

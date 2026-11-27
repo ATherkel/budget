@@ -30,6 +30,18 @@ class Option:
 
 
 @dataclass
+class Disclosure:
+    """One `details` element: whether it starts open, its summary and its rows.
+
+    Each row is the text of its `td` cells; a row of headings has none.
+    """
+
+    open: bool
+    summary: str = ""
+    rows: list[tuple[str, ...]] = field(default_factory=list)
+
+
+@dataclass
 class Page(HTMLParser):
     """The visible text of a page and the form controls on it."""
 
@@ -38,11 +50,17 @@ class Page(HTMLParser):
     options: list[Option] = field(default_factory=list)
     elements: dict[str, dict[str, str]] = field(default_factory=dict)
     element_text: dict[str, str] = field(default_factory=dict)
+    # Every `details` element with an id, by its id.
+    disclosures: dict[str, Disclosure] = field(default_factory=dict)
     _hidden_depth: int = 0
     # Every open element, innermost last, with its id when it has one.
     _open: list[tuple[str, str | None]] = field(default_factory=list)
     _select: str | None = None
     _option: Option | None = None
+    _disclosure: Disclosure | None = None
+    _summary: list[str] | None = None
+    _row: list[str] | None = None
+    _cell: list[str] | None = None
 
     def __post_init__(self) -> None:
         super().__init__()
@@ -56,6 +74,7 @@ class Page(HTMLParser):
             self.element_text[element_id] = ""
         if tag not in _VOID:
             self._open.append((tag, element_id))
+        self._start_disclosure_part(tag, values)
         if tag in {"script", "style", "title"}:
             self._hidden_depth += 1
         elif tag == "input":
@@ -77,6 +96,32 @@ class Page(HTMLParser):
             )
             self.options.append(self._option)
 
+    def _start_disclosure_part(self, tag: str, values: dict[str, str | None]) -> None:
+        match tag:
+            case "details" if values.get("id"):
+                self._disclosure = Disclosure(open="open" in values)
+                self.disclosures[values["id"] or ""] = self._disclosure
+            case "summary" if self._disclosure is not None:
+                self._summary = []
+            case "tr" if self._disclosure is not None:
+                self._row = []
+            case "td" if self._row is not None:
+                self._cell = []
+
+    def _end_disclosure_part(self, tag: str) -> None:
+        match tag:
+            case "details":
+                self._disclosure = None
+            case "summary" if self._disclosure and self._summary is not None:
+                self._disclosure.summary = " ".join(self._summary)
+                self._summary = None
+            case "tr" if self._disclosure and self._row:
+                self._disclosure.rows.append(tuple(self._row))
+                self._row = None
+            case "td" if self._row is not None and self._cell is not None:
+                self._row.append(" ".join(self._cell))
+                self._cell = None
+
     @override
     def handle_endtag(self, tag: str) -> None:
         # Close the innermost open element of this name, and any left open in it.
@@ -84,6 +129,7 @@ class Page(HTMLParser):
             if self._open[depth][0] == tag:
                 del self._open[depth:]
                 break
+        self._end_disclosure_part(tag)
         if tag in {"script", "style", "title"}:
             self._hidden_depth -= 1
         elif tag == "select":
@@ -102,6 +148,9 @@ class Page(HTMLParser):
                 self.element_text[element_id] = (
                     f"{self.element_text[element_id]} {words}".strip()
                 )
+        for part in (self._summary, self._cell):
+            if part is not None:
+                part.append(words)
         if self._option is not None:
             self._option.text = f"{self._option.text} {words}".strip()
 

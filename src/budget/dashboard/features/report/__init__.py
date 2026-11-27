@@ -37,8 +37,8 @@ from budget.dashboard.features.report.display import (
     overview_notices,
     report_notices,
     tab_template,
-    unclassified_amounts,
 )
+from budget.dashboard.features.report.summary_cards import summary_cards
 from budget.dashboard.features.view_state import (
     ViewState,
     parse_view_state,
@@ -153,24 +153,19 @@ def render_report(
             for destination, label in _TABS
         ),
     )
-    unclassified_in, unclassified_out = unclassified_amounts(
-        overview_report.unclassified
-    )
     page = dashboard.templates.get_template("report/report.html")
     return page.make_module(
         {
             "notices": report_notices(requested.view, overview_report),
             "tab_template": tab_template(requested.view),
             "overview_notices": overview_notices(overview_report),
+            "summary_cards": summary_cards(overview_report),
             "publication_id": answered.publication_id,
             "reference_date": answered.reference_date.isoformat(),
             "accounts": " ".join(sorted(answered.account_ids)),
             "month": month_value(answered.month),
             "month_label": month_label(answered.month),
             "overview": overview_report,
-            "unclassified": overview_report.unclassified,
-            "unclassified_in": unclassified_in,
-            "unclassified_out": unclassified_out,
             "incomplete": [
                 account_month.display_name
                 for account_month in incomplete_months(overview_report.coverage)
