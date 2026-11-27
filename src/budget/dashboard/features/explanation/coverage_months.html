@@ -1,0 +1,9 @@
+{%- from "_macros.html" import report_section -%}
+{# Analytics judged everything listed here; the page only says it in words. #}
+{% call report_section("coverage", "Hvor tallene er ufuldstændige") -%}
+<ul id="explanation-coverage" class="explanation-list">
+{% for month in incomplete_months %}
+  <li>{{ month.display_name }}, {{ month_label }}: {{ month.status | coverage_gap }}</li>
+{% endfor %}
+</ul>
+{%- endcall %}

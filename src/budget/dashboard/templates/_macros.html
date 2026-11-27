@@ -28,6 +28,15 @@
 {% macro provisional_label() -%}
 <span id="provisional-label" class="status-chip status-chip--provisional">Foreløbige tal</span>
 {%- endmacro %}
+{# A notice of the shared shape, a titled panel of paragraphs; Python builds
+   it, see budget.dashboard.display.notices. #}
+{% macro notice_section(notice) -%}
+{% call report_section(notice.name, notice.heading) -%}
+{% for paragraph in notice.paragraphs %}
+<p{{ paragraph.attributes | xmlattr }}>{{ paragraph.text }}</p>
+{% endfor %}
+{%- endcall %}
+{%- endmacro %}
 {# One titled panel; the call block holds its content. #}
 {% macro report_section(name, heading) -%}
 <section class="report-panel" aria-labelledby="{{ name }}-heading">

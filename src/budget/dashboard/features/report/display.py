@@ -36,7 +36,7 @@ def report_notices(view: ViewState, overview: MonthlyOverview) -> tuple[Notice, 
     """Return the notes above the report's tab, in the order the report shows them."""
     return (
         *shown((view.mode == "advanced", Notice("report/advanced_tabs.html"))),
-        *newer_figures(overview.publication.is_current),
+        *newer_figures(overview.publication),
         *shown(
             (overview.provisional is not None, Notice("report/provisional_note.html")),
             (

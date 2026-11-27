@@ -129,7 +129,7 @@ def _render_detail(
     period = period_label(detail_report.first_month, detail_report.last_month)
     return dashboard.templates.get_template("category/category.html").render(
         detail=detail_report,
-        notices=newer_figures(detail_report.publication.is_current),
+        notices=newer_figures(detail_report.publication),
         subject_notices=subject_notices(detail_report),
         trust_notices=trust_notices(detail_report),
         category_column=category_column(detail_report),
