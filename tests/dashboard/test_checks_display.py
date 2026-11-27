@@ -102,6 +102,15 @@ def test_a_complete_month_with_a_missing_balance_is_unknown() -> None:
     ) == ("Ukendt", "Ukendt")
 
 
+def test_a_complete_month_with_an_unknown_residual_is_unknown() -> None:
+    # A first imported month has no previous close; unknown arithmetic proves nothing.
+    assert (
+        savings_verdict(opening_gap=None),
+        savings_verdict(internal_residual=None),
+        savings_verdict(internal_residual=None, opening_gap=Decimal("-3.00")),
+    ) == ("Ukendt", "Ukendt", "Ukendt")
+
+
 def test_a_month_outside_an_accounts_history_says_so_rather_than_finding_nothing() -> (
     None
 ):
