@@ -140,13 +140,11 @@ def _known_sum(values: Sequence[Decimal | None]) -> Decimal | None:
     return total
 
 
-def _internal_residual(
-    opening: Decimal | None,
-    components: _ResidualComponents,
-    closing: Decimal | None,
+def _expected_closing(
+    opening: Decimal | None, components: _ResidualComponents
 ) -> Decimal | None:
-    """Return closing less every explicit component, or unknown with an endpoint."""
-    expected = _known_sum(
+    """Return opening plus every explicit component, or unknown with one missing."""
+    return _known_sum(
         (
             opening,
             components.income_minus_expenses,
@@ -157,9 +155,6 @@ def _internal_residual(
             components.adjustments_out,
         )
     )
-    if expected is None or closing is None:
-        return None
-    return closing - expected
 
 
 def _reconciliation(data: _ReconciliationInput) -> Reconciliation:
@@ -198,6 +193,7 @@ def _reconciliation(data: _ReconciliationInput) -> Reconciliation:
         adjustments_in=adjustments.money_in if known else None,
         adjustments_out=adjustments.money_out if known else None,
     )
+    expected = _expected_closing(opening, components)
     return Reconciliation(
         account_id=data.account_id,
         display_name=data.display_name,
@@ -209,9 +205,11 @@ def _reconciliation(data: _ReconciliationInput) -> Reconciliation:
         unclassified_out=components.unclassified_out,
         adjustments_in=components.adjustments_in,
         adjustments_out=components.adjustments_out,
-        expected_closing=None,
+        expected_closing=expected,
         closing_balance=closing,
-        internal_residual=_internal_residual(opening, components, closing),
+        internal_residual=(
+            closing - expected if closing is not None and expected is not None else None
+        ),
         previous_closing_balance=previous_closing,
         opening_gap=(
             opening - previous_closing
