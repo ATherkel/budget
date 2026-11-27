@@ -158,6 +158,8 @@ def _show(group: UnknownGroup, categories: Sequence[tuple[str, Sequence[str]]]) 
             f"{_INDENT}{example.transaction_date}  {example.account_id}  "
             f"{example.amount}  {example.description}"
         )
+    if not categories:
+        _say("No categories yet: type n to add one")
     number = 0
     for name, category_ids in categories:
         numbered = []
