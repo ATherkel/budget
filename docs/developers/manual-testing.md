@@ -295,31 +295,36 @@ uv run budget sort
 ```
 
 Expect the biggest group first: its text without case, numbers or dates, its
-count and sum, up to three examples and your categories, numbered by group,
-then the question:
+count and sum, what an answer covers, up to three examples, and a suggestion
+when the group's commonest bank label names one of your categories (by the ID
+`suggest-rules` drafts, or by its name), then the question:
 
 ```text
-netto kbh
-  4 transactions, -200.00 DKK
+"netto kbh": 4 transactions, -200.00 DKK in total
+Your answer applies to all 4, and to future ones with this text.
+For example:
   2026-03-02  joint-current  -45.00  NETTO 1234 KBH
   ...
-Food: 1 groceries, 2 eating-out
-Home: 3 rent
+Suggested: Supermarked (Dagligvarer / Supermarked)
 
-Category (number or ID), t (transfer), n (new category), s (skip), m (months) or q (quit):
+[Enter] Supermarked  [t] transfer  [n] new category  [s] skip  [m] months  [?] category list  [q] quit  or type a word to search:
 ```
 
-With no category yet, the list is `No categories yet: type n to add one`.
+Without a suggestion, the `Suggested` line and `[Enter]` are left out.
 
 | Answer | Expect |
 | --- | --- |
-| A listed number or category ID, such as `1` or `groceries` | A `# sorted: <text>` rule appended to `rules.toml`, the progress line, then the next group |
+| Enter | The suggestion: a `# sorted: <text>` rule appended to `rules.toml`, the progress line, then the next group |
+| A category ID, such as `dagligvarer-supermarked` | The same, for that category |
+| A word, such as `super` | `Matches for "super":` and up to 8 numbered categories, with `and N more` past 8, or `No category matches "super".` Then the same group again |
+| A number | The category with that number in the last search |
+| `?` | Opens `budget-categories.md` from your temp folder in its default app: each group's name, then its categories' names and IDs. With no category yet, `No categories yet: type n to add one` |
 | `t` | A `then.transfer_claim = true` rule. A claim on one leg is enough: the group becomes a transfer where it pairs with the opposite leg on another account ([pairing](../architecture/classification.md)) |
 | `n` | Asks `name`, then `group`. A group ID not in the taxonomy is a new group: it asks `direction`, offering the one the sum suggests (Enter takes it) |
 | `s` | The next group; this one is asked again in a later run |
 | `m` | The month table, then the same group again |
 | `q`, or Ctrl+Z then Enter | Quits; every rule already written stays |
-| An ID the taxonomy lacks | `check`'s problem, then `Nothing was written.`, and the same group again |
+| An answer `check` refuses | `check`'s problem, then `Nothing was written.`, and the same group again |
 
 Each published answer prints one progress line. Unknown money in and out are
 summed apart, never netted:
