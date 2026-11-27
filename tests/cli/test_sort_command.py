@@ -306,6 +306,28 @@ class CategoryListTests(unittest.TestCase):
             )
             assert [rule["then"] for rule in rules["rule"]] == [{"category": "rent"}]
 
+    def test_a_search_shows_at_most_eight_matches(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+            tables = "".join(
+                f'\n[category.kind-{n}]\nname = "Kind {n}"\ngroup = "home"\n'
+                for n in range(1, 11)
+            )
+            _write_input(
+                profile_file,
+                "taxonomy.toml",
+                'format = 1\n\n[group.home]\nname = "Home"\ndirection = "expense"\n'
+                + tables,
+            )
+
+            _, stdout, _ = sort(profile_file, "kind\nq\n")
+
+            listed = stdout.split("\n\n")[1].splitlines()
+            assert listed[1:] == [
+                *(f"  {n} Kind {n} (kind-{n})" for n in range(1, 9)),
+                "  and 2 more: type more of the word",
+            ]
+
     def test_a_word_no_category_matches_says_so_and_writes_nothing(self) -> None:
         with TemporaryDirectory() as directory:
             profile_file = _sortable(Path(directory))
