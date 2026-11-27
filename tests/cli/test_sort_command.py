@@ -12,11 +12,13 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from budget.gold.store import GoldStore
 from budget.importing import Coverage, import_inbox_file
 from budget.locking import writer_lock
+from budget.profiles import load_profile_file
 from budget.rebuilding import rebuild_from_gold, rebuild_from_silver
 from tests.cli.commands import sort
-from tests.cli.pipelines import prepared
+from tests.cli.pipelines import TAXONOMY, prepared
 from tests.importing.households import drop
 
 EXIT_OK = 0
@@ -72,6 +74,24 @@ def _sortable(folder: Path) -> Path:
     return base.profile_file
 
 
+def _types(profile_file: Path) -> dict[str, str]:
+    """Each published description's transaction type, in the current publication."""
+    profile = load_profile_file(profile_file)
+    with GoldStore(profile, read_only=True) as store:
+        current = store.current()
+        assert current is not None
+        gold = store.open(current.publication_id)
+        transactions = gold.transactions(
+            start_date=date.min, end_date=date.max, account_ids=None
+        )
+    return {each.description: each.transaction_type for each in transactions}
+
+
+def _write_input(profile_file: Path, name: str, text: str) -> None:
+    """Replace one of the household's input files."""
+    load_profile_file(profile_file).input_file(name).write_text(text, encoding="utf-8")
+
+
 class ShowingAGroupTests(unittest.TestCase):
     def test_the_biggest_group_comes_first_with_its_count_sum_and_three_examples(
         self,
@@ -106,3 +126,23 @@ class ShowingAGroupTests(unittest.TestCase):
                 _ASKED + "til opsparing",
                 _ASKED + "No group is left to sort.",
             ]
+
+
+class AnsweringACategoryTests(unittest.TestCase):
+    def test_a_category_id_classifies_the_whole_group_and_publishes_it(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+            _write_input(profile_file, "taxonomy.toml", TAXONOMY)
+
+            status, _, stderr = sort(profile_file, "groceries\nq\n")
+
+            assert (status, stderr) == (EXIT_OK, "")
+            assert _types(profile_file) == {
+                "NETTO 1234 KBH": "expense",
+                "NETTO 5678 KBH": "expense",
+                "Netto 91 KBH": "expense",
+                "NETTO 2 KBH": "expense",
+                "Til opsparing": "unknown",
+                "Løn marts 2026": "unknown",
+                "Fra lønkonto": "unknown",
+            }
