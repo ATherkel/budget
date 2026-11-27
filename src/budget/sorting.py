@@ -37,7 +37,10 @@ from budget.suggesting import slug, toml_string, unique_id
 _NUMBERS: Final = re.compile(r"\d+(?:[./:-]\d+)*")
 _EXAMPLES: Final = 3
 _INDENT: Final = "  "
-_ASK: Final = "Category, t (transfer), n (new category), s (skip) or q (quit): "
+_ASK: Final = (
+    "Category (number or ID), t (transfer), n (new category), s (skip), "
+    "m (months) or q (quit): "
+)
 
 
 def group_key(description: str) -> str:
@@ -69,37 +72,55 @@ def unknown_groups(profile: Profile) -> tuple[UnknownGroup, ...]:
     )
 
 
-# Each column of the month totals, and the transaction types it adds up.
+# Each money column of the month table, and the kinds it adds up. Unknown is
+# split by sign, so money in and out never net to a settled-looking month.
 _COLUMNS: Final = (
-    ("in", frozenset({"income"})),
-    ("out", frozenset({"expense", "refund"})),
-    ("transfer", frozenset({"transfer"})),
-    ("unknown", frozenset({"unknown"})),
+    ("In", frozenset({"income"})),
+    ("Out", frozenset({"expense", "refund"})),
+    ("Transfer", frozenset({"transfer"})),
+    ("Unknown in", frozenset({"unknown in"})),
+    ("Unknown out", frozenset({"unknown out"})),
 )
 
 
-def month_totals(profile: Profile) -> tuple[str, ...]:
-    """Return one line per month and currency: in, out, transfer and unknown."""
+def _kind(transaction: GoldTransaction) -> str:
+    """Name the column kind of a transaction: its type, or unknown in or out."""
+    if transaction.transaction_type != "unknown":
+        return transaction.transaction_type
+    return "unknown in" if transaction.amount > 0 else "unknown out"
+
+
+def month_table(profile: Profile) -> tuple[str, ...]:
+    """Return the month table: a header, then one row per month and currency.
+
+    Month and currency are aligned left, every amount right.
+    """
     transactions, currencies = _published(profile)
     sums: defaultdict[tuple[str, str], defaultdict[str, Decimal]] = defaultdict(
         lambda: defaultdict(lambda: Decimal("0.00"))
     )
-    unknowns: defaultdict[tuple[str, str], int] = defaultdict(int)
     for transaction in transactions:
         month = transaction.transaction_date.strftime("%Y-%m")
         row = (month, currencies[transaction.account_id])
-        sums[row][transaction.transaction_type] += transaction.amount
-        unknowns[row] += transaction.transaction_type == "unknown"
-    lines = []
-    for (month, currency), by_type in sorted(sums.items()):
-        columns = ", ".join(
-            f"{name} {sum(by_type[kind] for kind in kinds)} {currency}"
-            for name, kinds in _COLUMNS
-        )
-        count = unknowns[month, currency]
-        noun = "transaction" if count == 1 else "transactions"
-        lines.append(f"{month}  {columns} ({count} {noun})")
-    return tuple(lines)
+        sums[row][_kind(transaction)] += transaction.amount
+    rows = [
+        [month, currency]
+        + [str(sum(by_kind[kind] for kind in kinds)) for _, kinds in _COLUMNS]
+        for (month, currency), by_kind in sorted(sums.items())
+    ]
+    header = ["Month", "Currency", *(name for name, _ in _COLUMNS)]
+    widths = [max(len(row[i]) for row in [header, *rows]) for i in range(len(header))]
+
+    def line(cells: Sequence[str]) -> str:
+        left = [
+            cell.ljust(width) for cell, width in zip(cells[:2], widths[:2], strict=True)
+        ]
+        right = [
+            cell.rjust(width) for cell, width in zip(cells[2:], widths[2:], strict=True)
+        ]
+        return "  ".join([*left, *right])
+
+    return tuple(line(cells) for cells in [header, *rows])
 
 
 def _published(
@@ -230,6 +251,11 @@ def _converse(profile: Profile) -> None:
             return
         if answer == "s":
             skipped.add(group.key)
+            continue
+        if answer == "m":
+            for line in month_table(profile):
+                _say(line)
+            _say("")
             continue
         writes: dict[Path, str] = {}
         if answer == "n":
