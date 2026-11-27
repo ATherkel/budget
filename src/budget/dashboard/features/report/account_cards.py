@@ -36,6 +36,7 @@ class FlowCard:
 
     name: str
     label: str
+    empty: str
     total: Callable[[MoneyInOut], Decimal]
     keeps: Callable[[Decimal], bool]
 
@@ -62,7 +63,7 @@ class FlowCard:
                     label=f"{self.label} for {account.display_name}",
                     columns=(DATE, TEXT, KIND, AMOUNT),
                     rows=tuple(activity_cells(row, currency) for row in kept),
-                    empty="",
+                    empty=self.empty,
                 ),
             ),
         )
@@ -70,8 +71,20 @@ class FlowCard:
 
 # Each account's cards, in the order Detaljer shows them.
 CARDS = (
-    FlowCard("in", "Ind", lambda flows: flows.money_in, lambda amount: amount > 0),
-    FlowCard("out", "Ud", lambda flows: flows.money_out, lambda amount: amount < 0),
+    FlowCard(
+        "in",
+        "Ind",
+        "Ingen penge ind i måneden.",
+        lambda flows: flows.money_in,
+        lambda amount: amount > 0,
+    ),
+    FlowCard(
+        "out",
+        "Ud",
+        "Ingen penge ud i måneden.",
+        lambda flows: flows.money_out,
+        lambda amount: amount < 0,
+    ),
 )
 
 
