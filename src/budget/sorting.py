@@ -152,7 +152,19 @@ def _show(group: UnknownGroup) -> None:
 
 
 def sort_unknowns(profile: Profile) -> None:
-    """Hold the sorting conversation over the current publication's unknowns."""
+    """Hold the sorting conversation over the current publication's unknowns.
+
+    The input ending quits, as `q` does: every answer is published as it is
+    given, so nothing is left to undo.
+    """
+    try:
+        _converse(profile)
+    except EOFError:
+        _say("")
+
+
+def _converse(profile: Profile) -> None:
+    """Ask about each group, the biggest first, until none is left or `q`."""
     skipped: set[str] = set()
     while True:
         group = next(
