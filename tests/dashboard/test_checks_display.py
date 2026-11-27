@@ -127,3 +127,13 @@ def test_a_month_outside_an_accounts_history_says_so_rather_than_finding_nothing
     assert {account.account_id: account.verdict for account in view.accounts}[
         SAVINGS
     ] == "Uden for historikken"
+
+
+def test_with_both_residuals_nonzero_the_internal_one_names_the_gap() -> None:
+    # The month's own arithmetic comes before its link to the previous close.
+    assert (
+        savings_verdict(
+            internal_residual=Decimal("12.40"), opening_gap=Decimal("-3.00")
+        )
+        == "Går ikke op (+12,40 kr.)"
+    )
