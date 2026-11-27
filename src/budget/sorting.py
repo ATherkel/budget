@@ -248,16 +248,26 @@ def _write_checked(profile: Profile, writes: Mapping[Path, str]) -> None:
     found = checking.check(profile)
     problems = (*found.problems, *found.mismatches)
     if problems:
-        for path, content in before.items():
-            if content is None:
-                path.unlink()
-            else:
-                path.write_bytes(content)
+        _put_back(before)
         for problem in problems:
             _say(problem)
         _say("Nothing was written.")
         _say("")
         return
+    _publish(profile)
+
+
+def _put_back(before: Mapping[Path, bytes | None]) -> None:
+    """Return each file to what it held, removing one that did not exist."""
+    for path, content in before.items():
+        if content is None:
+            path.unlink()
+        else:
+            path.write_bytes(content)
+
+
+def _publish(profile: Profile) -> None:
+    """Publish Gold from the written files, then show the month totals."""
     with writer_lock(profile) as lock:
         rebuilt = rebuild_from_gold(lock, now=datetime.now(UTC))
         # Every production write is followed by a set covering it, as for
