@@ -51,6 +51,13 @@ def total(name: str, group: MovementGroup | None, currency: str) -> tuple[Figure
     return (Figure(name, amount(group.total if group else None, currency)),)
 
 
+def signed_total(
+    name: str, group: MovementGroup | None, currency: str
+) -> tuple[Figure]:
+    """Return `total` with its sign: plus when money came into the selection."""
+    return (Figure(name, signed_amount(group.total if group else None, currency)),)
+
+
 @dataclass(frozen=True)
 class GroupCard:
     """The card of one summary group: what sets it apart from the others."""
@@ -105,6 +112,7 @@ CARDS: tuple[CardSpec, ...] = (
     GroupCard("income", "Indtægter", "Ingen indtægter i måneden."),
     GroupCard("expenses", "Udgifter", "Ingen udgifter i måneden."),
     MoneyLeft(),
+    GroupCard("transfers", "Overførsler", "Ingen overførsler i måneden.", signed_total),
 )
 
 
