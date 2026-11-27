@@ -5,13 +5,19 @@ Expected values are the Gold worked example's tables in
 `tests/gold/worked_example.py`; the dashboard is driven in-process.
 """
 
+from datetime import date
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from budget.analytics import ReportContext, account_activity
+from budget.dashboard.features.report.account_cards import account_cards
+from budget.dashboard.features.report.summary_cards import NO_DATA
+from budget.gold import ReportingMonth
+from tests.analytics.test_monthly_overview import LATER_GOLD, NEW
 from tests.dashboard.pages import Disclosure, Page, read
-from tests.dashboard.test_summary_cards import _logged_in
+from tests.dashboard.test_summary_cards import CARDS, _logged_in
 from tests.gold.worked_example import CURRENT, PUBLICATION, SAVINGS
 
 
@@ -83,4 +89,24 @@ def test_a_quiet_month_says_so_in_each_card(client: TestClient) -> None:
         Disclosure(
             open=False, summary="Ud 0,00 kr.", rows=[("Ingen penge ud i måneden.",)]
         ),
+    )
+
+
+def test_an_account_without_data_reads_unknown_in_each_card() -> None:
+    # new-current was never imported: its March has no evidence at all.
+    context = ReportContext(
+        publication_id=PUBLICATION.publication_id,
+        account_ids=frozenset((NEW,)),
+        month=ReportingMonth(2026, 3),
+        reference_date=date(2026, 5, 14),
+    )
+    [account] = account_activity(LATER_GOLD, context, is_current=True).accounts
+    page = read(CARDS.render(cards=account_cards(account, (), "DKK")))
+
+    assert (
+        page.disclosures.get(f"activity-in-{NEW}-card"),
+        page.disclosures.get(f"activity-out-{NEW}-card"),
+    ) == (
+        Disclosure(open=False, summary="Ind Ingen data endnu", rows=[(NO_DATA,)]),
+        Disclosure(open=False, summary="Ud Ingen data endnu", rows=[(NO_DATA,)]),
     )
