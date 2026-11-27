@@ -165,7 +165,12 @@ def sort_unknowns(profile: Profile) -> None:
         if answer == "s":
             skipped.add(group.key)
             continue
-        _append_rule(profile, group, f"then.category = {toml_string(answer)}")
+        then = (
+            "then.transfer_claim = true"
+            if answer == "t"
+            else f"then.category = {toml_string(answer)}"
+        )
+        _append_rule(profile, group, then)
         with writer_lock(profile) as lock:
             rebuild_from_gold(lock, now=datetime.now(UTC))
         _say("Month totals")
