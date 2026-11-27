@@ -46,6 +46,13 @@ CURRENT_ROWS: tuple[Row, ...] = (
     ("10.03.2026", "Løn marts 2026", "20000,00"),
 )
 SAVINGS_ROWS: tuple[Row, ...] = (("06.03.2026", "Fra lønkonto", "500,00"),)
+# The bank's own labels: most groceries say supermarket, one says baker.
+LABELS: dict[str, tuple[str, str]] = {
+    "NETTO 1234 KBH": ("Dagligvarer", "Supermarked"),
+    "NETTO 5678 KBH": ("Dagligvarer", "Supermarked"),
+    "Netto 91 KBH": ("Dagligvarer", "Bager"),
+    "NETTO 2 KBH": ("Dagligvarer", "Supermarked"),
+}
 
 
 def _export(rows: Sequence[Row], opening: int) -> bytes:
@@ -55,7 +62,11 @@ def _export(rows: Sequence[Row], opening: int) -> bytes:
     for dato, text, amount in sorted(rows, key=lambda row: row[0][:2]):
         balance += int(amount.replace(",", ""))
         saldo = f"{balance // 100},{balance % 100:02d}"
-        lines.append(f'"{dato}","","","{text}","{amount}","{saldo}","Udført","Nej"')
+        category, subcategory = LABELS.get(text, ("", ""))
+        lines.append(
+            f'"{dato}","{category}","{subcategory}","{text}","{amount}","{saldo}",'
+            '"Udført","Nej"'
+        )
     return "\r\n".join(lines).encode("cp1252")
 
 
@@ -342,6 +353,54 @@ class CategoryListTests(unittest.TestCase):
             assert rules.read_bytes() == before
             assert stdout.split("\n\n")[1].splitlines() == [
                 _ASKED + 'No category matches "groceries".'
+            ]
+
+
+BANK_NAMED = """\
+format = 1
+
+[group.dagligvarer]
+name = "Dagligvarer"
+direction = "expense"
+
+[category.dagligvarer-bager]
+name = "Bager"
+group = "dagligvarer"
+
+[category.dagligvarer-supermarked]
+name = "Supermarked"
+group = "dagligvarer"
+"""
+
+
+class SuggestionTests(unittest.TestCase):
+    def test_the_category_named_for_the_commonest_bank_label_is_suggested(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+            _write_input(profile_file, "taxonomy.toml", BANK_NAMED)
+
+            _, stdout, _ = sort(profile_file, "q\n")
+
+            first = stdout.split("\n\n")[0].splitlines()
+            assert first[-1] == "Suggested: Supermarked (Dagligvarer / Supermarked)"
+            assert stdout.split("\n\n")[1].startswith("[Enter] Supermarked  " + _ASKED)
+
+    def test_enter_accepts_the_suggestion(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+            _write_input(profile_file, "taxonomy.toml", BANK_NAMED)
+
+            sort(profile_file, "\nq\n")
+
+            rules = tomllib.loads(
+                load_profile_file(profile_file)
+                .input_file("rules.toml")
+                .read_text(encoding="utf-8")
+            )
+            assert [rule["then"] for rule in rules["rule"]] == [
+                {"category": "dagligvarer-supermarked"}
             ]
 
 
