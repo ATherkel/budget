@@ -67,3 +67,19 @@ def test_an_income_row_carries_its_bank_amount_and_contribution() -> None:
         total=Decimal("25000.00"),
         flows=MoneyInOut(Decimal("25000.00"), Decimal("0.00"), 1),
     )
+
+
+def _contributions(group: MovementGroup) -> set[tuple[str, Decimal, Decimal]]:
+    return {(row.description, row.amount, row.contribution) for row in group.rows}
+
+
+def test_expenses_count_money_out_as_positive_and_a_refund_reduces_them() -> None:
+    # February: rent and groceries, less the groceries Refund; Expenses 9020.00.
+    expenses = _group(_overview(2), "expenses")
+
+    assert _contributions(expenses) == {
+        ("RENT", Decimal("-8500.00"), Decimal("8500.00")),
+        ("GROCERIES", Decimal("-640.00"), Decimal("640.00")),
+        ("GROCERIES", Decimal("120.00"), Decimal("-120.00")),
+    }
+    assert expenses.total == Decimal("9020.00")
