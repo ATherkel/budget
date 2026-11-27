@@ -13,6 +13,7 @@ from budget.dashboard.display.amounts import signed_amount
 from budget.dashboard.display.months import danish_date
 from budget.dashboard.display.text import transaction_kind
 from budget.dashboard.features.report.card import Card, Cell, Column, Figure, Table
+from budget.dashboard.features.report.summary_cards import NO_DATA
 
 DATE = Column("Dato")
 TEXT = Column("Tekst")
@@ -63,7 +64,7 @@ class FlowCard:
                     label=f"{self.label} for {account.display_name}",
                     columns=(DATE, TEXT, KIND, AMOUNT),
                     rows=tuple(activity_cells(row, currency) for row in kept),
-                    empty=self.empty,
+                    empty=self.empty if flows else NO_DATA,
                 ),
             ),
         )
