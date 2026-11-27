@@ -3,12 +3,16 @@
 
 from dataclasses import dataclass, replace
 from datetime import date
-from decimal import Decimal
 
 from budget.analytics import Diagnostics, Provisional, Reconciliation
 from budget.dashboard.addresses import answered_address, pinned_url
-from budget.dashboard.display.amounts import amount, signed_amount
+from budget.dashboard.display.amounts import signed_amount
 from budget.dashboard.display.months import danish_date
+from budget.dashboard.display.reconciliation import (
+    flows,
+    known_amount,
+    known_difference,
+)
 from budget.dashboard.display.text import (
     account_names,
     coverage_label,
@@ -86,30 +90,32 @@ def _verdict(reconciliation: Reconciliation, currency: str) -> str:
 
 def _waterfall(reconciliation: Reconciliation, currency: str) -> list[WaterfallStep]:
     """Return the month's steps with a running total, unknown from a missing step."""
-    flows = (
-        ("Indtægter minus udgifter", reconciliation.income_minus_expenses),
-        ("Overførsler", reconciliation.transfers),
-        ("Ukategoriseret ind", reconciliation.unclassified_in),
-        ("Ukategoriseret ud", reconciliation.unclassified_out),
-        ("Regulering ind", reconciliation.adjustments_in),
-        ("Regulering ud", reconciliation.adjustments_out),
-    )
     total = reconciliation.opening_balance
-    steps = [WaterfallStep("Startsaldo", "", _figure(total, currency))]
-    for label, value in flows:
+    steps = [WaterfallStep("Startsaldo", "", known_amount(total, currency))]
+    for label, value in flows(reconciliation):
         total = None if total is None or value is None else total + value
         steps.append(
-            WaterfallStep(label, _difference(value, currency), _figure(total, currency))
+            WaterfallStep(
+                label,
+                known_difference(value, currency),
+                known_amount(total, currency),
+            )
         )
     return [
         *steps,
-        WaterfallStep("Beregnet slutsaldo", "", _figure(total, currency)),
+        WaterfallStep(
+            "Beregnet slutsaldo",
+            "",
+            known_amount(reconciliation.expected_closing, currency),
+        ),
         # Under the computed close, so the two closes compare in one column.
         WaterfallStep(
-            "Bankens slutsaldo", "", _figure(reconciliation.closing_balance, currency)
+            "Bankens slutsaldo",
+            "",
+            known_amount(reconciliation.closing_balance, currency),
         ),
         WaterfallStep(
-            "Forskel", _difference(reconciliation.internal_residual, currency), ""
+            "Forskel", known_difference(reconciliation.internal_residual, currency), ""
         ),
     ]
 
@@ -132,10 +138,10 @@ def _account_rows(diagnostics: Diagnostics, view: ViewState) -> list[AccountRow]
                 view=details,
             ),
             _verdict(reconciliation, currency),
-            _figure(reconciliation.opening_balance, currency),
-            _figure(reconciliation.closing_balance, currency),
-            _difference(reconciliation.internal_residual, currency),
-            _difference(reconciliation.opening_gap, currency),
+            known_amount(reconciliation.opening_balance, currency),
+            known_amount(reconciliation.closing_balance, currency),
+            known_difference(reconciliation.internal_residual, currency),
+            known_difference(reconciliation.opening_gap, currency),
             through.get(reconciliation.account_id, "Ukendt"),
             _waterfall(reconciliation, currency),
         )
@@ -146,16 +152,6 @@ def _account_rows(diagnostics: Diagnostics, view: ViewState) -> list[AccountRow]
 def _data_reach(through: date | None) -> str:
     """Return the date under "Data til og med", or say nothing was imported."""
     return "Ingen importeret data" if through is None else danish_date(through)
-
-
-def _figure(value: Decimal | None, currency: str) -> str:
-    """Return a reconciliation figure, with a missing one unknown rather than 0."""
-    return "Ukendt" if value is None else amount(value, currency)
-
-
-def _difference(value: Decimal | None, currency: str) -> str:
-    """Return a residual with its direction signed, or unknown rather than 0."""
-    return "Ukendt" if value is None else signed_amount(value, currency)
 
 
 def _provisional_lines(provisional: Provisional | None, period: str) -> list[str]:
