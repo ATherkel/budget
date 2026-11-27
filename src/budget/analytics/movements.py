@@ -18,6 +18,12 @@ def _movement_group(
     transactions: Sequence[GoldTransaction],
     names: Mapping[str, str],
 ) -> MovementGroup:
+    # Newest first: by date, then account, then booking sequence, descending.
+    newest_first = sorted(
+        transactions,
+        key=lambda t: (t.transaction_date, t.account_id, t.account_sequence),
+        reverse=True,
+    )
     rows = tuple(
         MovementRow(
             transaction_date=t.transaction_date,
@@ -27,7 +33,7 @@ def _movement_group(
             amount=t.amount,
             contribution=t.amount * SUMMARY_GROUPS[group],
         )
-        for t in transactions
+        for t in newest_first
     )
     amounts = [row.amount for row in rows]
     return MovementGroup(
