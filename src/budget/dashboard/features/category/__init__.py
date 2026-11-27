@@ -26,6 +26,12 @@ from budget.dashboard.display.months import parse_month, period_label
 from budget.dashboard.display.notices import newer_figures
 from budget.dashboard.display.text import incomplete_by_account
 from budget.dashboard.features import Dashboard, Feature
+from budget.dashboard.features.category.display import (
+    category_column,
+    detail_rows,
+    subject_notices,
+    trust_notices,
+)
 from budget.dashboard.features.errors import failure_fragment
 from budget.dashboard.features.view_state import ViewState, parse_view_state
 from budget.gold.store import GoldStore
@@ -124,7 +130,10 @@ def _render_detail(
     return dashboard.templates.get_template("category/category.html").render(
         detail=detail_report,
         notices=newer_figures(detail_report.publication.is_current),
-        is_group=subject.kind == "group",
+        subject_notices=subject_notices(detail_report),
+        trust_notices=trust_notices(detail_report),
+        category_column=category_column(detail_report),
+        rows=detail_rows(detail_report),
         title=f"{detail_report.name}, {period}",
         scope_links=switch_links(
             detail_report.scope,
