@@ -325,10 +325,32 @@ def _publish(profile: Profile) -> None:
         if profile.name == PRODUCTION_PROFILE_NAME and rebuilt.published:
             written = back_up(lock, now=datetime.now(UTC))
             _say(f"Backup   backup set {written.name} written")
-    _say("Month totals")
-    for line in month_totals(profile):
-        _say(f"{_INDENT}{line}")
+    _say(progress(profile))
     _say("")
+
+
+def progress(profile: Profile) -> str:
+    """Say how much of the publication is sorted, and the unknown money left.
+
+    Unknown money in and out are summed apart in each currency, never netted,
+    so a month of both does not look settled.
+    """
+    transactions, currencies = _published(profile)
+    unknown = [t for t in transactions if t.transaction_type == "unknown"]
+    money_in: defaultdict[str, Decimal] = defaultdict(lambda: Decimal("0.00"))
+    money_out: defaultdict[str, Decimal] = defaultdict(lambda: Decimal("0.00"))
+    for transaction in unknown:
+        side = money_in if transaction.amount > 0 else money_out
+        side[currencies[transaction.account_id]] += transaction.amount
+    sides = ", ".join(
+        f"in {money_in[currency]} {currency}, out {money_out[currency]} {currency}"
+        for currency in sorted({*money_in, *money_out})
+    )
+    total = len(transactions)
+    sorted_count = total - len(unknown)
+    percent = round(100 * sorted_count / total) if total else 100
+    left = f"{len(unknown)} unknown left" + (f": {sides}" if sides else "")
+    return f"Sorted {sorted_count} of {total} ({percent}%), {left}"
 
 
 # What may stand between two words of a group's text: whitespace, numbers and
