@@ -223,8 +223,9 @@ def _converse(profile: Profile) -> None:
         if group is None:
             _say("No group is left to sort.")
             return
-        _show(group, _categories(_taxonomy(profile)))
-        answer = input(_ASK).strip()
+        categories = _categories(_taxonomy(profile))
+        _show(group, categories)
+        answer = _by_number(input(_ASK).strip(), categories)
         if answer == "q":
             return
         if answer == "s":
@@ -242,6 +243,14 @@ def _converse(profile: Profile) -> None:
         rules = profile.input_file(RULES_FILE_NAME)
         writes[rules] = _with_rule(rules, group, then)
         _write_checked(profile, writes)
+
+
+def _by_number(answer: str, categories: Sequence[tuple[str, Sequence[str]]]) -> str:
+    """Return the category a listed number names, or the answer as typed."""
+    listed = [category_id for _, ids in categories for category_id in ids]
+    if answer.isdecimal() and 1 <= int(answer) <= len(listed):
+        return listed[int(answer) - 1]
+    return answer
 
 
 def _with_category(path: Path, group: UnknownGroup) -> tuple[str, str]:
