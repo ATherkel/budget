@@ -284,6 +284,70 @@ Expect `Wrote taxonomy-draft.toml and rules-draft.toml to <folder>`, then
 
 Remove the scratch folder when done: `Remove-Item $drafts -Recurse`.
 
+## Sort unknowns
+
+`sort` asks about the current publication's unknown transactions, one group
+at a time, and turns each answer into a rule in `$inputs`.
+[Clean up](#clean-up) puts your own inputs back.
+
+```powershell
+uv run budget sort
+```
+
+Expect the biggest group first: its text without case, numbers or dates, its
+count and sum, what an answer covers, up to three examples, and a suggestion
+when the group's commonest bank label names one of your categories (by the ID
+`suggest-rules` drafts, or by its name), then the question:
+
+```text
+"netto kbh": 4 transactions, -200.00 DKK in total
+Your answer applies to all 4, and to future ones with this text.
+For example:
+  2026-03-02  joint-current  -45.00  NETTO 1234 KBH
+  ...
+Suggested: Supermarked (Dagligvarer / Supermarked)
+
+[Enter] Supermarked  [t] transfer  [n] new category  [s] skip  [m] months  [?] category list  [q] quit  or type a word to search:
+```
+
+Without a suggestion, the `Suggested` line and `[Enter]` are left out. The
+bank's own `Ukategoriseret` label never suggests one.
+
+| Answer | Expect |
+| --- | --- |
+| Enter | The suggestion: a `# sorted: <text>` rule appended to `rules.toml`, the progress line, then the next group |
+| A category ID, such as `dagligvarer-supermarked` | The same, for that category |
+| A word, such as `super` | `Matches for "super":` and up to 8 numbered categories, with `and N more` past 8, or `No category matches "super".` Then the same group again |
+| A number | The category with that number in the last search |
+| `?` | Opens `budget-categories.md` from your temp folder in its default app: each group's name, then its categories' names and IDs. With no category yet, `No categories yet: type n to add one` |
+| `t` | A `then.transfer_claim = true` rule. A claim on one leg is enough: the group becomes a transfer where it pairs with the opposite leg on another account ([pairing](../architecture/classification.md)). A group left wholly unpaired is not asked again |
+| `n` | Asks `name`, then `group`. A group ID not in the taxonomy is a new group: it asks `direction`, offering the one the sum suggests (Enter takes it) |
+| `s` | The next group; this one is asked again in a later run |
+| `m` | The month table, then the same group again |
+| `q`, or Ctrl+Z then Enter | Quits; every rule already written stays |
+| An answer `check` refuses | `check`'s problem, then `Nothing was written.`, and the same group again |
+
+Each published answer prints one progress line. Unknown money in and out are
+summed apart, never netted:
+
+```text
+Sorted 4 of 7 (57%), 3 unknown left: in 20500.00 DKK, out -500.00 DKK
+```
+
+`m` prints one row per month and currency:
+
+```text
+Month    Currency    In      Out  Transfer  Unknown in  Unknown out
+2026-03  DKK       0.00  -200.00      0.00    20500.00      -500.00
+```
+
+When every group is answered or skipped it ends with `No group is left to
+sort.` On quitting either way, claimed transfers that found no leg are counted:
+`<n> transactions are marked as transfer but not paired yet: run budget review
+--kind unmatched-transfer (or ambiguous-transfer) to see why.` Then `uv run budget check` prints `No problems found.` and
+`uv run budget review --kind unclassified` lists only the skipped groups.
+In production, each answer also prints `Backup   backup set <name> written`.
+
 ## Dashboard
 
 Your dev profile needs `[dashboard]` and a passphrase
