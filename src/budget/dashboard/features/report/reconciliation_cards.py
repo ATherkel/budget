@@ -8,6 +8,7 @@ from budget.dashboard.display.reconciliation import (
     known_amount,
     known_difference,
 )
+from budget.dashboard.display.text import coverage_label
 from budget.dashboard.features.report.card import (
     NO_DATA,
     Card,
@@ -43,6 +44,8 @@ def _lines(
         ("Bankens slutsaldo", known_amount(reconciliation.closing_balance, currency)),
         ("Uforklaret forskel", _unexplained(reconciliation, currency)),
         ("Åbningsforskel", known_difference(reconciliation.opening_gap, currency)),
+        # Last, since arithmetic that agrees never makes the month better covered.
+        ("Dækning", coverage_label(reconciliation.coverage)),
     )
 
 
