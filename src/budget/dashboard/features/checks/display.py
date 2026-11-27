@@ -93,8 +93,7 @@ def _waterfall(reconciliation: Reconciliation, currency: str) -> list[WaterfallS
         ("Regulering ud", reconciliation.adjustments_out),
     )
     total = reconciliation.opening_balance
-    opening = _figure(total, currency)
-    steps = [WaterfallStep("Startsaldo", opening, opening)]
+    steps = [WaterfallStep("Startsaldo", "", _figure(total, currency))]
     for label, value in flows:
         total = None if total is None or value is None else total + value
         steps.append(
@@ -103,8 +102,9 @@ def _waterfall(reconciliation: Reconciliation, currency: str) -> list[WaterfallS
     return [
         *steps,
         WaterfallStep("Beregnet slutsaldo", "", _figure(total, currency)),
+        # Under the computed close, so the two closes compare in one column.
         WaterfallStep(
-            "Bankens slutsaldo", _figure(reconciliation.closing_balance, currency), ""
+            "Bankens slutsaldo", "", _figure(reconciliation.closing_balance, currency)
         ),
         WaterfallStep(
             "Forskel", _difference(reconciliation.internal_residual, currency), ""
