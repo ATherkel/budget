@@ -18,7 +18,7 @@ from budget.dashboard.features.report.reconciliation_cards import (
 from budget.gold import GoldResult, ReportingMonth
 from tests.dashboard.pages import Disclosure, Page, read
 from tests.dashboard.test_summary_cards import CARDS, _logged_in
-from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS
+from tests.gold.worked_example import CURRENT, PUBLICATION, RECORDS, SAVINGS
 
 MINUS = "\N{MINUS SIGN}"
 
@@ -66,8 +66,25 @@ def test_overblik_shows_a_closed_afstemning_card_for_each_account(
             ("Bankens slutsaldo", "35.587,50 kr."),
             ("Uforklaret forskel", "0,00 kr."),
             ("Åbningsforskel", f"{MINUS}500,00 kr."),
+            ("Dækning", "delvist dækket"),
         ],
     )
+
+
+def test_a_zero_difference_never_upgrades_the_accounts_coverage(
+    client: TestClient,
+) -> None:
+    # March: both accounts' differences are 0.00, but only savings is complete.
+    page = _overview(client, "2026-03", [CURRENT, SAVINGS])
+    cards = (
+        page.disclosures[f"reconciliation-{CURRENT}-card"],
+        page.disclosures[f"reconciliation-{SAVINGS}-card"],
+    )
+
+    assert [(card.summary, card.rows[-1]) for card in cards] == [
+        ("Afstemning, Joint current 0,00 kr.", ("Dækning", "delvist dækket")),
+        ("Afstemning, Joint savings 0,00 kr.", ("Dækning", "fuldt dækket")),
+    ]
 
 
 def test_a_month_without_evidence_reads_unknown_and_cannot_be_reconciled() -> None:
@@ -96,5 +113,6 @@ def test_a_month_without_evidence_reads_unknown_and_cannot_be_reconciled() -> No
             ("Bankens slutsaldo", "Ukendt"),
             ("Uforklaret forskel", "Ikke mulig at afstemme"),
             ("Åbningsforskel", "Ukendt"),
+            ("Dækning", "ingen data"),
         ],
     )
