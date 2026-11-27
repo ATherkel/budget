@@ -52,6 +52,8 @@ LABELS: dict[str, tuple[str, str]] = {
     "NETTO 5678 KBH": ("Dagligvarer", "Supermarked"),
     "Netto 91 KBH": ("Dagligvarer", "Bager"),
     "NETTO 2 KBH": ("Dagligvarer", "Supermarked"),
+    # The bank's own label for "no category".
+    "Fra lønkonto": ("Ukategoriseret", "Ukategoriseret"),
 }
 
 
@@ -386,6 +388,23 @@ class SuggestionTests(unittest.TestCase):
             first = stdout.split("\n\n")[0].splitlines()
             assert first[-1] == "Suggested: Supermarked (Dagligvarer / Supermarked)"
             assert stdout.split("\n\n")[1].startswith("[Enter] Supermarked  " + _ASKED)
+
+    def test_the_banks_uncategorised_label_suggests_nothing(self) -> None:
+        with TemporaryDirectory() as directory:
+            profile_file = _sortable(Path(directory))
+            _write_input(
+                profile_file,
+                "taxonomy.toml",
+                BANK_NAMED + "\n[category.ukategoriseret-ukategoriseret]\n"
+                'name = "Ukategoriseret"\ngroup = "dagligvarer"\n',
+            )
+
+            # Skip the groceries; the transfer leg carries the bank's label.
+            _, stdout, _ = sort(profile_file, "s\nq\n")
+
+            leg = stdout.split("\n\n")[1].splitlines()
+            assert leg[0].endswith('"fra lønkonto": 1 transaction, 500.00 DKK in total')
+            assert not any(line.startswith("Suggested:") for line in leg)
 
     def test_enter_accepts_the_suggestion(self) -> None:
         with TemporaryDirectory() as directory:
