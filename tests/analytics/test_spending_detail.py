@@ -18,10 +18,12 @@ from budget.analytics import (
     HouseholdReports,
     InvalidSelectionError,
     ReportContext,
+    RowClassification,
     SpendingDetail,
     SpendingDetailRow,
 )
 from budget.gold import (
+    Classification,
     GoldCategoryAllocation,
     GoldResult,
     GoldTransaction,
@@ -85,6 +87,32 @@ def test_a_row_names_its_date_text_account_and_category_but_no_identifiers(
         category_name="Groceries",
         spending=Decimal("-120.00"),
     )
+
+
+def test_a_detail_row_names_what_classified_it_and_its_category_and_group(
+    tmp_path: Path,
+) -> None:
+    # February's grocery refund, current-06, decided by the rule r-netto.
+    by_rule = Classification("rule", rule_ids=("r-netto",))
+    records = replace(
+        RECORDS,
+        transactions=tuple(
+            replace(t, classification=by_rule)
+            if t.transaction_id == "current-06"
+            else t
+            for t in RECORDS.transactions
+        ),
+    )
+    profile = make_test_profile(tmp_path)
+    migrate_gold(profile)
+    with GoldStore(profile) as store:
+        store.publish(GoldResult(PUBLICATION, records), RECIPE, CONFIGURATION)
+        detail = HouseholdReports(store).spending_detail(
+            _context(2), _category("groceries"), "month"
+        )
+
+    [refund] = [row for row in detail.rows if row.spending == Decimal("-120.00")]
+    assert refund.classification == RowClassification(by_rule, "Groceries", "Food")
 
 
 def _grocery(

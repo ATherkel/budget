@@ -218,6 +218,7 @@ class SpendingDetailRow:
     category_id: str
     category_name: str
     spending: Decimal
+    classification: RowClassification = UNCLASSIFIED_ROW
 
 
 @dataclass(frozen=True)
