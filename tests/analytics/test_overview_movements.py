@@ -15,10 +15,12 @@ from budget.analytics import (
     MovementGroup,
     MovementRow,
     ReportContext,
+    RowClassification,
     SummaryGroup,
     monthly_overview,
 )
 from budget.gold import (
+    Classification,
     GoldCategoryAllocation,
     GoldResult,
     GoldTransaction,
@@ -74,6 +76,27 @@ def test_an_income_row_carries_its_bank_amount_and_contribution() -> None:
         total=Decimal("25000.00"),
         flows=MoneyInOut(Decimal("25000.00"), Decimal("0.00"), 1),
     )
+
+
+def test_a_row_names_what_classified_it_and_its_category_and_group() -> None:
+    # February's salary, current-07, decided by the rule r-salary.
+    by_rule = Classification("rule", rule_ids=("r-salary",))
+    gold = GoldResult(
+        PUBLICATION,
+        replace(
+            RECORDS,
+            transactions=tuple(
+                replace(t, classification=by_rule)
+                if t.transaction_id == "current-07"
+                else t
+                for t in RECORDS.transactions
+            ),
+        ),
+    )
+
+    [salary] = _group(_overview(2, gold=gold), "income").rows
+
+    assert salary.classification == RowClassification(by_rule, "Salary", "Income")
 
 
 def _contributions(group: MovementGroup) -> set[tuple[str, Decimal, Decimal]]:
