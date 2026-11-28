@@ -165,7 +165,7 @@ class BackUpTests(unittest.TestCase):
             assert written["stores"] == {
                 "bronze": {"path": "bronze.db", "schema_version": 2},
                 "silver": {"path": "silver.db", "schema_version": 2},
-                "gold": {"path": "gold.db", "schema_version": 2},
+                "gold": {"path": "gold.db", "schema_version": 3},
             }
             assert complete_backup_sets(profile) == (backup,)
 

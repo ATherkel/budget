@@ -22,6 +22,7 @@ import pytest
 
 from budget import sqlstore
 from budget.gold import (
+    Classification,
     GoldOwner,
     GoldPublication,
     GoldPublications,
@@ -298,6 +299,34 @@ def test_a_stored_publication_reads_back_its_owners(store: GoldStore) -> None:
         SAVINGS: "alex",
     }
     assert list(stored.owners()) == list(owned.owners)
+
+
+def test_a_stored_publication_reads_back_what_classified_each_transaction(
+    store: GoldStore,
+) -> None:
+    sources = (
+        Classification("rule", rule_ids=("r-netto", "r-shop")),
+        Classification("manual", rule_ids=("r-home",), decision_id="d-0001"),
+        Classification("transfer_match", rule_ids=("r-savings-transfer",)),
+        Classification("unclassified"),
+    )
+    transactions = RECORDS.transactions[: len(sources)]
+    classified = replace(
+        RECORDS,
+        transactions=(
+            *(
+                replace(t, classification=c)
+                for t, c in zip(transactions, sources, strict=True)
+            ),
+            *RECORDS.transactions[len(sources) :],
+        ),
+    )
+    store.publish(GoldResult(publication(1), classified), RECIPE, CONFIGURATION)
+
+    stored = store.open(1).transactions(start_date=date.min, end_date=date.max)
+
+    read_back = {t.transaction_id: t.classification for t in stored}
+    assert [read_back[t.transaction_id] for t in transactions] == list(sources)
 
 
 def test_an_account_published_before_owners_existed_is_legacy_unrecorded(

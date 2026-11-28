@@ -86,6 +86,15 @@ class GoldCategory:
 
 
 @dataclass(frozen=True)
+class Classification:
+    """What decided a transaction's type: its source, rules and decision."""
+
+    source: ClassificationSource
+    rule_ids: tuple[str, ...] = ()
+    decision_id: str | None = None
+
+
+@dataclass(frozen=True)
 class GoldTransaction:
     """One booked transaction on one account; it carries no category."""
 
@@ -99,6 +108,7 @@ class GoldTransaction:
     transfer_group_id: str | None
     balance_after: Decimal | None
     balance_check: BalanceCheck
+    classification: Classification = Classification("unclassified")
 
 
 @dataclass(frozen=True)
