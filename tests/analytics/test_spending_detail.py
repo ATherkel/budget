@@ -86,6 +86,9 @@ def test_a_row_names_its_date_text_account_and_category_but_no_identifiers(
         category_id="groceries",
         category_name="Groceries",
         spending=Decimal("-120.00"),
+        classification=RowClassification(
+            Classification("unclassified"), "Groceries", "Food"
+        ),
     )
 
 
