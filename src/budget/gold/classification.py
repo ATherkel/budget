@@ -26,6 +26,7 @@ from budget.gold.decisions import (
 )
 from budget.gold.models import (
     CategoryDirection,
+    Classification,
     ClassificationReviewItem,
     ClassificationReviewKind,
     ClassificationSource,
@@ -146,6 +147,9 @@ def classify(
                 t,
                 transaction_type=o.transaction_type,
                 transfer_group_id=o.transfer_group_id,
+                classification=Classification(
+                    _source(o), rule_ids=o.rule_ids, decision_id=o.decision_id
+                ),
             )
             for t, o in outcomes
         ),
@@ -398,20 +402,12 @@ def _lineage(
 ) -> GoldTransactionLineage:
     """Record which rules, decision and review items stand behind one type.
 
-    The rules decided only when they gave the transaction a type, and no
-    applicable decision did. Of `review_items`, lineage keeps those that name
-    this transaction.
+    Of `review_items`, lineage keeps those that name this transaction.
     """
-    decided = bool(outcome.rule_ids) and outcome.transaction_type != "unknown"
-    source: ClassificationSource = "rule" if decided else "unclassified"
-    if outcome.transfer_evidence is not None:
-        source = "transfer_match"
-    if outcome.decision_id is not None:
-        source = "manual"
     return GoldTransactionLineage(
         transaction_id=silver.transaction_id,
         silver_transaction_id=silver.transaction_id,
-        classification_source=source,
+        classification_source=_source(outcome),
         rule_ids=outcome.rule_ids,
         decision_id=outcome.decision_id,
         classification_version=classification_version,
@@ -424,6 +420,20 @@ def _lineage(
         bank_category=silver.bank_category,
         adjustment_reason=outcome.adjustment_reason,
     )
+
+
+def _source(outcome: _Outcome) -> ClassificationSource:
+    """Name what decided the outcome's type.
+
+    The rules decided only when they gave the transaction a type, and no
+    applicable decision did.
+    """
+    if outcome.decision_id is not None:
+        return "manual"
+    if outcome.transfer_evidence is not None:
+        return "transfer_match"
+    decided = bool(outcome.rule_ids) and outcome.transaction_type != "unknown"
+    return "rule" if decided else "unclassified"
 
 
 def _outcome(
