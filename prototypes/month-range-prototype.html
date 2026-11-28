@@ -1,0 +1,447 @@
+<title>Month range prototype</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one narrow column like the dashboard's selection panel; variant switcher pinned to the bottom. */
+:root {
+  --ink: #1f2925;
+  --ink-soft: #59645f;
+  --canvas: #f3f1eb;
+  --surface: #fffdf8;
+  --surface-muted: #ebe8df;
+  --line: #d7d2c7;
+  --primary: #17665a;
+  --primary-strong: #0d4d44;
+  --primary-tint: #dceee9;
+  --on-primary: #ffffff;
+  --accent: #b74b2d;
+  --focus: #005fcc;
+  --bar-bg: #1f2925;
+  --bar-fg: #fffdf8;
+  --font: "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --radius: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #e6ebe8; --ink-soft: #a3aeaa; --canvas: #141917; --surface: #1c2320;
+    --surface-muted: #252e2a; --line: #36413c; --primary: #4fb3a2; --primary-strong: #7fd0c1;
+    --primary-tint: #1f3a35; --on-primary: #0c1a17; --accent: #e07a5c; --focus: #6aa8ff;
+    --bar-bg: #e6ebe8; --bar-fg: #141917; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ink: #e6ebe8; --ink-soft: #a3aeaa; --canvas: #141917; --surface: #1c2320;
+  --surface-muted: #252e2a; --line: #36413c; --primary: #4fb3a2; --primary-strong: #7fd0c1;
+  --primary-tint: #1f3a35; --on-primary: #0c1a17; --accent: #e07a5c; --focus: #6aa8ff;
+  --bar-bg: #e6ebe8; --bar-fg: #141917; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--font);
+  font-size: 1rem; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px 96px;
+}
+main { max-width: 40rem; margin: 0 auto; display: grid; gap: 16px; }
+h1 { font-size: 1.25rem; margin: 0; text-wrap: balance; }
+p { margin: 0; }
+.note { color: var(--ink-soft); font-size: 0.875rem; }
+.panel {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 16px; display: grid; gap: 12px; min-width: 0;
+}
+.panel h2 { font-size: 1rem; margin: 0; }
+.readout { font-size: 1.125rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.hint { font-size: 0.875rem; color: var(--accent); min-height: 1.3em; }
+.shortcuts { display: flex; flex-wrap: wrap; gap: 8px; }
+button { font: inherit; }
+.chipbtn {
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 999px; padding: 6px 14px; min-height: 40px; cursor: pointer;
+}
+.chipbtn:hover { border-color: var(--primary); }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.state {
+  font-family: var(--mono); font-size: 0.8125rem; background: var(--surface-muted);
+  border-radius: 6px; padding: 10px 12px; overflow-x: auto; white-space: pre;
+}
+
+/* Variant A: tap strip */
+.strip { overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 6px; -webkit-overflow-scrolling: touch; }
+.strip-inner { display: flex; gap: 0; width: max-content; }
+.year { display: grid; grid-template-rows: auto auto; }
+.year-label { font-size: 0.75rem; color: var(--ink-soft); letter-spacing: 0.04em; padding: 0 0 4px 4px; }
+.year-months { display: flex; }
+.mcell {
+  width: 52px; height: 48px; border: 1px solid var(--line); margin-left: -1px;
+  background: var(--surface); color: var(--ink); cursor: pointer; font-size: 0.9375rem;
+  scroll-snap-align: start; touch-action: manipulation;
+}
+.mcell.in { background: var(--primary-tint); border-color: var(--primary); position: relative; z-index: 1; }
+.mcell.end { background: var(--primary); color: var(--on-primary); font-weight: 600; }
+.mcell.anchor { box-shadow: inset 0 0 0 3px var(--accent); }
+
+/* Variant B: two handles */
+.slider { position: relative; height: 104px; touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; }
+.track { position: absolute; left: 14px; right: 14px; top: 40px; height: 6px; border-radius: 3px; background: var(--surface-muted); }
+.fill { position: absolute; top: 0; bottom: 0; background: var(--primary); border-radius: 3px; }
+.tick { position: absolute; top: 30px; width: 1px; height: 8px; background: var(--line); }
+.tick.jan { height: 14px; background: var(--ink-soft); }
+.ticklabel { position: absolute; top: 30px; font-size: 0.75rem; color: var(--ink-soft); transform: translateX(-50%); white-space: nowrap; }
+.handle {
+  position: absolute; top: 43px; width: 28px; height: 28px; margin: -14px 0 0 -14px;
+  border-radius: 50%; background: var(--surface); border: 3px solid var(--primary);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 20%); z-index: 2;
+}
+.handle.active { border-color: var(--accent); transform: scale(1.15); }
+.bubble {
+  position: absolute; top: 0; transform: translateX(-50%); background: var(--primary); color: var(--on-primary);
+  font-size: 0.8125rem; font-weight: 600; padding: 2px 8px; border-radius: 6px; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.bubble.hi { top: 56px; }
+
+/* Variant D: segmented line, tap and extend */
+.segs { position: absolute; left: 14px; right: 14px; top: 34px; height: 18px; display: flex; gap: 2px; }
+.seg { flex: 1 1 0; min-width: 0; border-radius: 3px; background: var(--surface-muted); }
+.seg.jan { box-shadow: inset 2px 0 0 var(--ink-soft); }
+.seg.in { background: var(--primary-tint); }
+.seg.end { background: var(--primary); }
+.seg.anchor { background: var(--accent); }
+.seg.probe { outline: 2px solid var(--accent); outline-offset: 1px; }
+.seg-slider .handle { top: 43px; }
+.seg-slider .bubble.probe { background: var(--accent); top: 0; z-index: 3; }
+
+/* Variant C: dropdowns */
+.selects { display: flex; flex-wrap: wrap; gap: 12px; }
+.selects label { display: grid; gap: 4px; font-size: 0.875rem; color: var(--ink-soft); }
+.selects select { font: inherit; min-height: 44px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+
+/* Switcher */
+.switcher {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: center; gap: 4px; background: var(--bar-bg); color: var(--bar-fg);
+  border-radius: 999px; padding: 4px; box-shadow: 0 8px 24px rgb(0 0 0 / 30%); z-index: 20;
+  max-width: calc(100vw - 32px);
+}
+.switcher button { background: transparent; color: inherit; border: 0; width: 44px; height: 44px; border-radius: 50%; cursor: pointer; font-size: 1.25rem; }
+.switcher span { padding: 0 10px; font-size: 0.875rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+</style>
+
+<main>
+  <h1>Månedsvalg: prototype</h1>
+  <p class="note">Throwaway prototype for #657. Sample data runs from jan. 2025 to okt. 2026, so November is not imported yet and a fresh visit opens on okt. 2026 (#660). Flip variants with the bar at the bottom.</p>
+
+  <section class="panel" id="variant-a" hidden>
+    <h2>A · Tidslinje: tryk og udvid</h2>
+    <p class="note">Tap a month to pick it. Tap a second month to stretch the range to it. The next tap starts over. On a desktop, shift-click also stretches.</p>
+    <div class="strip" id="strip"><div class="strip-inner" id="strip-inner"></div></div>
+    <p class="hint" id="hint-a"></p>
+  </section>
+
+  <section class="panel" id="variant-b" hidden>
+    <h2>B · Tidslinje: træk to håndtag</h2>
+    <p class="note">Drag the lower and upper handle. Tap the line to move the nearest handle there. Put both on the same month for a single month.</p>
+    <div class="slider" id="slider">
+      <div class="track" id="track"><div class="fill" id="fill"></div></div>
+    </div>
+  </section>
+
+  <section class="panel" id="variant-d" hidden>
+    <h2>D · Tidslinje: tryk og udvid på én linje</h2>
+    <p class="note">The whole history fits on one line, like B. Tap a month to pick it, then tap a second month to stretch the range, like A. The next tap starts over. Or press a month, slide, and let go: where you pressed is the start and where you let go is the end. The handles can still be dragged.</p>
+    <div class="slider seg-slider" id="slider-d">
+      <div class="segs" id="segs-d"></div>
+    </div>
+    <p class="hint" id="hint-d"></p>
+  </section>
+
+  <section class="panel" id="variant-c" hidden>
+    <h2>C · Fra og til</h2>
+    <p class="note">Baseline: two dropdowns, no script needed. This is also what A and B fall back to without JavaScript.</p>
+    <div class="selects">
+      <label for="sel-from">Fra<select id="sel-from"></select></label>
+      <label for="sel-to">Til<select id="sel-to"></select></label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <p class="readout" id="readout"></p>
+    <div class="shortcuts">
+      <button class="chipbtn" id="sc-latest" type="button">Seneste måned</button>
+      <button class="chipbtn" id="sc-ytd" type="button">År til dato</button>
+      <button class="chipbtn" id="sc-12" type="button">Seneste 12 måneder</button>
+    </div>
+    <div class="state" id="state"></div>
+  </section>
+</main>
+
+<nav class="switcher" aria-label="Prototype variant">
+  <button type="button" id="prev" aria-label="Previous variant">←</button>
+  <span id="vlabel"></span>
+  <button type="button" id="next" aria-label="Next variant">→</button>
+</nav>
+
+<script>
+"use strict";
+const NAMES = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
+const MONTHS = [];
+for (let y = 2025, m = 0; y < 2026 || m <= 9; ) {
+  MONTHS.push({ y, m });
+  m += 1; if (m === 12) { m = 0; y += 1; }
+}
+const N = MONTHS.length;
+const label = (i) => `${NAMES[MONTHS[i].m]}. ${MONTHS[i].y}`;
+const iso = (i) => `${MONTHS[i].y}-${String(MONTHS[i].m + 1).padStart(2, "0")}`;
+
+const sel = { lo: N - 1, hi: N - 1, anchor: null };
+const VARIANTS = [
+  { key: "a", name: "Tap strip" },
+  { key: "b", name: "Two handles" },
+  { key: "c", name: "Fra/Til dropdowns" },
+  { key: "d", name: "Tap strip on one line" },
+];
+let current = 0;
+
+function setRange(a, b) { sel.lo = Math.min(a, b); sel.hi = Math.max(a, b); render(); }
+
+/* ---------- A: tap strip ---------- */
+const stripInner = document.getElementById("strip-inner");
+const cells = [];
+{
+  let yearBox = null, yearMonths = null, lastYear = null;
+  MONTHS.forEach((mo, i) => {
+    if (mo.y !== lastYear) {
+      yearBox = document.createElement("div"); yearBox.className = "year";
+      const yl = document.createElement("div"); yl.className = "year-label"; yl.textContent = mo.y;
+      yearMonths = document.createElement("div"); yearMonths.className = "year-months";
+      yearBox.append(yl, yearMonths); stripInner.append(yearBox); lastYear = mo.y;
+    }
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "mcell"; b.textContent = NAMES[mo.m];
+    b.setAttribute("aria-label", label(i));
+    b.addEventListener("click", (ev) => tapMonth(i, ev.shiftKey));
+    yearMonths.append(b); cells.push(b);
+  });
+}
+function tapMonth(i, shift) {
+  if (shift) { sel.anchor = null; setRange(sel.lo, i); return; }
+  if (sel.anchor !== null) { const a = sel.anchor; sel.anchor = null; setRange(a, i); return; }
+  sel.anchor = i; setRange(i, i);
+}
+
+/* ---------- B: two handles ---------- */
+const slider = document.getElementById("slider");
+const track = document.getElementById("track");
+const fill = document.getElementById("fill");
+const hLo = document.createElement("div"), hHi = document.createElement("div");
+const bLo = document.createElement("div"), bHi = document.createElement("div");
+[hLo, hHi].forEach((h, k) => {
+  h.className = "handle"; h.tabIndex = 0; h.setAttribute("role", "slider");
+  h.setAttribute("aria-label", k === 0 ? "Fra" : "Til");
+  h.setAttribute("aria-valuemin", "0"); h.setAttribute("aria-valuemax", String(N - 1));
+  h.addEventListener("keydown", (ev) => {
+    const d = ev.key === "ArrowLeft" || ev.key === "ArrowDown" ? -1 : ev.key === "ArrowRight" || ev.key === "ArrowUp" ? 1 : 0;
+    if (!d) return;
+    ev.preventDefault(); ev.stopPropagation();
+    if (k === 0) sel.lo = Math.max(0, Math.min(sel.hi, sel.lo + d));
+    else sel.hi = Math.min(N - 1, Math.max(sel.lo, sel.hi + d));
+    render();
+  });
+});
+bLo.className = "bubble"; bHi.className = "bubble hi";
+slider.append(hLo, hHi, bLo, bHi);
+MONTHS.forEach((mo, i) => {
+  const t = document.createElement("div");
+  t.className = "tick" + (mo.m === 0 ? " jan" : "");
+  t.style.left = `calc(14px + (100% - 28px) * ${i / (N - 1)})`;
+  slider.append(t);
+  if (mo.m === 0 || mo.m === 6) {
+    const tl = document.createElement("div"); tl.className = "ticklabel";
+    tl.style.left = t.style.left; tl.style.top = "82px";
+    tl.textContent = mo.m === 0 ? String(mo.y) : "jul";
+    slider.append(tl);
+  }
+});
+const idxAt = (x) => {
+  const r = track.getBoundingClientRect();
+  return Math.round(Math.max(0, Math.min(1, (x - r.left) / r.width)) * (N - 1));
+};
+let drag = null; // { which: "lo" | "hi" | "undecided", startIdx }
+slider.addEventListener("pointerdown", (ev) => {
+  const i = idxAt(ev.clientX);
+  slider.setPointerCapture(ev.pointerId);
+  if (sel.lo === sel.hi) {
+    drag = { which: i < sel.lo ? "lo" : i > sel.hi ? "hi" : "undecided", startIdx: i };
+  } else {
+    drag = { which: Math.abs(i - sel.lo) <= Math.abs(i - sel.hi) ? "lo" : "hi", startIdx: i };
+  }
+  moveTo(i); ev.preventDefault();
+});
+slider.addEventListener("pointermove", (ev) => { if (drag) moveTo(idxAt(ev.clientX)); });
+const endDrag = () => { drag = null; render(); };
+slider.addEventListener("pointerup", endDrag);
+slider.addEventListener("pointercancel", endDrag);
+function moveTo(i) {
+  if (drag.which === "undecided") {
+    if (i === drag.startIdx) return;
+    drag.which = i < drag.startIdx ? "lo" : "hi";
+  }
+  if (drag.which === "lo") sel.lo = Math.min(i, sel.hi);
+  else sel.hi = Math.max(i, sel.lo);
+  render();
+}
+
+/* ---------- D: tap and extend on one line ---------- */
+const sliderD = document.getElementById("slider-d");
+const segsD = document.getElementById("segs-d");
+const segs = MONTHS.map((mo) => {
+  const s = document.createElement("div");
+  s.className = "seg" + (mo.m === 0 ? " jan" : "");
+  segsD.append(s);
+  return s;
+});
+MONTHS.forEach((mo, i) => {
+  if (mo.m === 0 || mo.m === 6) {
+    const tl = document.createElement("div"); tl.className = "ticklabel";
+    tl.style.left = `calc(14px + (100% - 28px) * ${(i + 0.5) / N})`; tl.style.top = "82px";
+    tl.textContent = mo.m === 0 ? String(mo.y) : "jul";
+    sliderD.append(tl);
+  }
+});
+const dLo = document.createElement("div"), dHi = document.createElement("div");
+const dbLo = document.createElement("div"), dbHi = document.createElement("div"), dProbe = document.createElement("div");
+[dLo, dHi].forEach((h) => { h.className = "handle"; });
+dbLo.className = "bubble"; dbHi.className = "bubble hi"; dProbe.className = "bubble probe";
+sliderD.append(dLo, dHi, dbLo, dbHi, dProbe);
+const segIdxAt = (x) => {
+  const r = segsD.getBoundingClientRect();
+  return Math.max(0, Math.min(N - 1, Math.floor(((x - r.left) / r.width) * N)));
+};
+const segPos = (i) => `calc(14px + (100% - 28px) * ${(i + 0.5) / N})`;
+let dPress = null; // { mode: "tap" | "lo" | "hi", probe }
+sliderD.addEventListener("pointerdown", (ev) => {
+  sliderD.setPointerCapture(ev.pointerId);
+  const i = segIdxAt(ev.clientX);
+  const onHandle = ev.target === dLo || ev.target === dHi;
+  if (onHandle && sel.lo !== sel.hi) dPress = { mode: ev.target === dLo ? "lo" : "hi", probe: null };
+  else dPress = { mode: "tap", probe: i, start: i, swept: false };
+  ev.preventDefault(); render();
+});
+sliderD.addEventListener("pointermove", (ev) => {
+  if (!dPress) return;
+  const i = segIdxAt(ev.clientX);
+  if (dPress.mode === "tap") {
+    dPress.probe = i;
+    // Sliding off the pressed month turns the press into a sweep: press = start, release = end.
+    if (i !== dPress.start) dPress.swept = true;
+    if (dPress.swept) { sel.anchor = null; sel.lo = Math.min(dPress.start, i); sel.hi = Math.max(dPress.start, i); }
+  }
+  else if (dPress.mode === "lo") { sel.anchor = null; sel.lo = Math.min(i, sel.hi); }
+  else { sel.anchor = null; sel.hi = Math.max(i, sel.lo); }
+  render();
+});
+sliderD.addEventListener("pointerup", () => {
+  if (dPress && dPress.mode === "tap") {
+    const { start, swept } = dPress; dPress = null;
+    if (swept) { sel.anchor = null; render(); } else tapMonth(start, false);
+    return;
+  }
+  dPress = null; render();
+});
+sliderD.addEventListener("pointercancel", () => { dPress = null; render(); });
+
+/* ---------- C: dropdowns ---------- */
+const sFrom = document.getElementById("sel-from"), sTo = document.getElementById("sel-to");
+MONTHS.forEach((_, i) => { sFrom.add(new Option(label(i), String(i))); sTo.add(new Option(label(i), String(i))); });
+sFrom.addEventListener("change", () => { const v = +sFrom.value; sel.lo = v; if (sel.hi < v) sel.hi = v; render(); });
+sTo.addEventListener("change", () => { const v = +sTo.value; sel.hi = v; if (sel.lo > v) sel.lo = v; render(); });
+
+/* ---------- shortcuts ---------- */
+document.getElementById("sc-latest").addEventListener("click", () => { sel.anchor = null; setRange(N - 1, N - 1); });
+document.getElementById("sc-ytd").addEventListener("click", () => {
+  sel.anchor = null;
+  const endYear = MONTHS[sel.hi].y;
+  const jan = Math.max(0, MONTHS.findIndex((mo) => mo.y === endYear));
+  setRange(jan, sel.hi);
+});
+document.getElementById("sc-12").addEventListener("click", () => { sel.anchor = null; setRange(Math.max(0, N - 12), N - 1); });
+
+/* ---------- render ---------- */
+function render() {
+  const count = sel.hi - sel.lo + 1;
+  document.getElementById("readout").textContent =
+    count === 1 ? `Valgt: ${label(sel.lo)}` : `Valgt: ${label(sel.lo)} – ${label(sel.hi)} (${count} måneder)`;
+  document.getElementById("state").textContent =
+    `variant   ${VARIANTS[current].key}\nfrom      ${iso(sel.lo)}\nto        ${iso(sel.hi)}\nmonths    ${count}\nanchor    ${sel.anchor === null ? "none" : iso(sel.anchor)}\naddress   ?from=${iso(sel.lo)}&to=${iso(sel.hi)}`;
+
+  cells.forEach((c, i) => {
+    c.classList.toggle("in", i >= sel.lo && i <= sel.hi);
+    c.classList.toggle("end", i === sel.lo || i === sel.hi);
+    c.classList.toggle("anchor", i === sel.anchor);
+    c.setAttribute("aria-pressed", String(i >= sel.lo && i <= sel.hi));
+  });
+  document.getElementById("hint-a").textContent =
+    sel.anchor !== null ? `Tryk på en anden måned for at udvide fra ${label(sel.anchor)}.` : "";
+
+  const pos = (i) => `calc(14px + (100% - 28px) * ${i / (N - 1)})`;
+  hLo.style.left = pos(sel.lo); hHi.style.left = pos(sel.hi);
+  bLo.style.left = pos(sel.lo); bHi.style.left = pos(sel.hi);
+  bLo.textContent = label(sel.lo); bHi.textContent = label(sel.hi);
+  bHi.hidden = sel.lo === sel.hi;
+  fill.style.left = `${(sel.lo / (N - 1)) * 100}%`;
+  fill.style.width = `${((sel.hi - sel.lo) / (N - 1)) * 100}%`;
+  hLo.classList.toggle("active", drag?.which === "lo");
+  hHi.classList.toggle("active", drag?.which === "hi");
+  hLo.setAttribute("aria-valuenow", String(sel.lo)); hLo.setAttribute("aria-valuetext", label(sel.lo));
+  hHi.setAttribute("aria-valuenow", String(sel.hi)); hHi.setAttribute("aria-valuetext", label(sel.hi));
+
+  sFrom.value = String(sel.lo); sTo.value = String(sel.hi);
+
+  const probe = dPress && dPress.mode === "tap" ? dPress.probe : null;
+  segs.forEach((s, i) => {
+    s.classList.toggle("in", i >= sel.lo && i <= sel.hi);
+    s.classList.toggle("end", i === sel.lo || i === sel.hi);
+    s.classList.toggle("anchor", i === sel.anchor);
+    s.classList.toggle("probe", i === probe);
+  });
+  dLo.style.left = segPos(sel.lo); dHi.style.left = segPos(sel.hi);
+  dbLo.style.left = segPos(sel.lo); dbHi.style.left = segPos(sel.hi);
+  dbLo.textContent = label(sel.lo); dbHi.textContent = label(sel.hi);
+  dbHi.hidden = sel.lo === sel.hi;
+  dHi.hidden = sel.lo === sel.hi;
+  dProbe.hidden = probe === null;
+  if (probe !== null) { dProbe.style.left = segPos(probe); dProbe.textContent = label(probe); }
+  dbLo.hidden = probe !== null;
+  dLo.classList.toggle("active", dPress?.mode === "lo");
+  dHi.classList.toggle("active", dPress?.mode === "hi");
+  document.getElementById("hint-d").textContent =
+    sel.anchor !== null ? `Tryk på en anden måned for at udvide fra ${label(sel.anchor)}.` : "";
+}
+
+/* ---------- switcher ---------- */
+function show(k) {
+  current = (k + VARIANTS.length) % VARIANTS.length;
+  VARIANTS.forEach((v, i) => { document.getElementById(`variant-${v.key}`).hidden = i !== current; });
+  document.getElementById("vlabel").textContent = `${VARIANTS[current].key.toUpperCase()} (${VARIANTS[current].name})`;
+  if (location.hash !== `#${VARIANTS[current].key}`) history.replaceState(null, "", `#${VARIANTS[current].key}`);
+  if (current === 0) { const s = document.getElementById("strip"); s.scrollLeft = s.scrollWidth; }
+  render();
+}
+document.getElementById("prev").addEventListener("click", () => show(current - 1));
+document.getElementById("next").addEventListener("click", () => show(current + 1));
+document.addEventListener("keydown", (ev) => {
+  const t = ev.target;
+  if (t instanceof HTMLElement && (t.matches("input, textarea, select, [contenteditable], [role=slider]"))) return;
+  if (ev.key === "ArrowLeft") show(current - 1);
+  if (ev.key === "ArrowRight") show(current + 1);
+});
+window.addEventListener("hashchange", () => {
+  const k = VARIANTS.findIndex((v) => `#${v.key}` === location.hash);
+  if (k >= 0 && k !== current) show(k);
+});
+show(Math.max(0, VARIANTS.findIndex((v) => `#${v.key}` === location.hash)));
+</script>
