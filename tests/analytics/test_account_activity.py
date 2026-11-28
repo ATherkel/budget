@@ -18,10 +18,12 @@ from budget.analytics import (
     ReportContext,
     ReportCoverage,
     ReportPublication,
+    RowClassification,
     account_activity,
     monthly_overview,
 )
 from budget.gold import (
+    Classification,
     GoldResult,
     GoldTransaction,
     ReportingMonth,
@@ -51,6 +53,28 @@ def _context(
         month=ReportingMonth(2026, month),
         reference_date=date(2026, 5, 14),
     )
+
+
+def test_an_activity_row_names_what_classified_it_and_its_category_and_group() -> None:
+    # February's groceries at NETTO, current-05, decided by the rule r-netto.
+    by_rule = Classification("rule", rule_ids=("r-netto",))
+    gold = GoldResult(
+        PUBLICATION,
+        replace(
+            RECORDS,
+            transactions=tuple(
+                replace(t, classification=by_rule)
+                if t.transaction_id == "current-05"
+                else t
+                for t in RECORDS.transactions
+            ),
+        ),
+    )
+
+    report = account_activity(gold, _context(2), is_current=True)
+
+    [netto] = [row for row in report.transactions if row.amount == Decimal("-640.00")]
+    assert netto.classification == RowClassification(by_rule, "Groceries", "Food")
 
 
 def test_dated_observation_and_monthly_snapshot_remain_separate_values() -> None:

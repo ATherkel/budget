@@ -286,6 +286,7 @@ class ActivityRow:
     counterpart_account_id: str | None
     counterpart_account_display_name: str | None
     counterpart_transaction_date: date | None
+    classification: RowClassification = UNCLASSIFIED_ROW
 
 
 @dataclass(frozen=True)
