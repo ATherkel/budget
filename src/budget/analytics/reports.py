@@ -13,6 +13,7 @@ from typing import Literal
 
 from budget.gold import (
     AccountType,
+    Classification,
     Coverage,
     PublicationKind,
     ReportingMonth,
@@ -105,6 +106,18 @@ type SummaryGroup = Literal["income", "expenses", "transfers", "unclassified"]
 
 
 @dataclass(frozen=True)
+class RowClassification:
+    """Why a row sits where it does: what decided it, and its Category and group."""
+
+    classified_by: Classification
+    category_name: str | None = None
+    group_name: str | None = None
+
+
+UNCLASSIFIED_ROW = RowClassification(Classification("unclassified"))
+
+
+@dataclass(frozen=True)
 class MovementRow:
     """One transaction behind a summary group: its bank amount and signed effect."""
 
@@ -114,6 +127,7 @@ class MovementRow:
     account_display_name: str
     amount: Decimal
     contribution: Decimal
+    classification: RowClassification = UNCLASSIFIED_ROW
 
 
 @dataclass(frozen=True)
@@ -204,6 +218,7 @@ class SpendingDetailRow:
     category_id: str
     category_name: str
     spending: Decimal
+    classification: RowClassification = UNCLASSIFIED_ROW
 
 
 @dataclass(frozen=True)
@@ -272,6 +287,7 @@ class ActivityRow:
     counterpart_account_id: str | None
     counterpart_account_display_name: str | None
     counterpart_transaction_date: date | None
+    classification: RowClassification = UNCLASSIFIED_ROW
 
 
 @dataclass(frozen=True)

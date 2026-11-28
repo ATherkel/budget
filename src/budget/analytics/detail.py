@@ -1,6 +1,7 @@
 # Copyright 2026 Therkel
 """The entries behind one Category's or group's overview figure."""
 
+from budget.analytics.classifications import row_classifications
 from budget.analytics.measures import ZERO
 from budget.analytics.overview import (
     every_row,
@@ -74,6 +75,9 @@ def spending_detail(
     allocations = gold.category_allocations(
         start_date=start, end_date=end, account_ids=context.account_ids
     )
+    classifications = row_classifications(
+        gold, start_date=start, end_date=end, account_ids=context.account_ids
+    )
     # Newest first: by date, then account, then booking sequence, descending.
     entries = sorted(
         (a for a in allocations if a.category_id in categories),
@@ -93,6 +97,7 @@ def spending_detail(
             category_id=a.category_id,
             category_name=categories[a.category_id].name,
             spending=-a.amount,
+            classification=classifications[a.transaction_id],
         )
         for a in entries
     )

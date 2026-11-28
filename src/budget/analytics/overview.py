@@ -8,6 +8,7 @@ never decides which publication a page reads.
 from collections.abc import Collection, Sequence
 from datetime import date
 
+from budget.analytics.classifications import row_classifications
 from budget.analytics.measures import UNKNOWN, Figures, figures
 from budget.analytics.movements import movements
 from budget.analytics.reports import (
@@ -153,7 +154,14 @@ def monthly_overview(
         unclassified=known.unclassified,
         adjustments=known.adjustments,
         movements=movements(
-            known.grouped, {a.account_id: a.display_name for a in accounts}
+            known.grouped,
+            {a.account_id: a.display_name for a in accounts},
+            row_classifications(
+                gold,
+                start_date=first_day(context.month),
+                end_date=last_day(context.month),
+                account_ids=context.account_ids,
+            ),
         ),
         coverage=judged.coverage,
         provisional=judged.provisional,

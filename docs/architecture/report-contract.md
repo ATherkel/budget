@@ -179,7 +179,16 @@ note.
 adjustments belong to no group. A `MovementRow` keeps the signed bank `amount`
 and adds `contribution`: Expenses flip the sign, so a Refund reduces them, and
 both legs of a selected Transfer add to zero. Rows are newest first by date,
-account ID and account sequence. Show Unclassified by its `flows`.
+account ID and account sequence. Show Unclassified by its `flows`. Each row
+carries a [row classification](#row-classification).
+
+### Row Classification
+
+Every row that lists a transaction (`MovementRow`, `ActivityRow`,
+`SpendingDetailRow`) carries a `RowClassification`: `classified_by`, the
+transaction's [`Classification`](gold-contract.md#goldtransaction), and the
+`category_name` and `group_name` of its allocation, both null when it has
+none. It says why the row sits where it does.
 
 ### Coverage
 
@@ -267,7 +276,7 @@ month.
 `account_display_name`, `category_id`, `category_name`, and `spending`, the
 allocation's amount with its sign flipped, so a Refund is negative. Newest
 first: by date, then `account_id`, then booking sequence, descending. A row
-carries no other identifier.
+carries no other identifier, and a [row classification](#row-classification).
 
 The rows add up to `spending`, and `spending` equals the overview: for
 `month`, the Category's row (0.00 when absent) or the sum of the group's rows;
@@ -349,7 +358,8 @@ governs what is stored and reused, not what the rendered page displays.
 selected accounts' balance evidence under the same pinned context,
 [Coverage](#coverage) and [Provisional](#provisional) rules as the overview.
 Rows preserve the published date, description, signed amount and transaction
-type, newest first by date, account ID and account sequence.
+type, and carry a [row classification](#row-classification), newest first by
+date, account ID and account sequence.
 
 A dated balance is the account month's last transaction's
 [`balance_after`](gold-contract.md#goldtransaction), ordered by
@@ -368,7 +378,7 @@ Transfers keep Gold's published classification
 outside the selected account or month; that other leg is evidence, never an
 extra activity row. A Transfer without a group is one-sided. Unknown
 descriptions stay unknown text, and an unknown transaction is never inferred
-to be a Transfer. Matching evidence and decisions remain private lineage.
+to be a Transfer. Matching evidence remains private lineage.
 
 The selected account carries [`GoldAccount.evidence_through`](gold-contract.md#goldaccount)
 directly, including null and gaps between Evidence ranges. It is not inferred

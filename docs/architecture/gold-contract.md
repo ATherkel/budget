@@ -12,7 +12,8 @@ type: architecture
 - The only normative Gold schema, version `0.3`; a break needs a new version.
 - The numbered [invariants](#invariants) hold in every publication and never
   renumber, because code and tests cite them.
-- Lineage, why a transaction got its classification, is for review tooling.
+- Lineage, where a fact came from, is for review tooling; a transaction's
+  `classification` is the part of it reports may show.
 
 | Topic | Owner |
 | --- | --- |
@@ -31,6 +32,7 @@ type: architecture
 | `CategoryDirection` | `income`, `expense` | Which measure a category reports under. |
 | `TransactionType` | `income`, `expense`, `refund`, `transfer`, `adjustment`, `unknown` | Household interpretation of a booked transaction. |
 | `BalanceCheck` | `opening`, `consistent`, `break`, `missing_balance` | Result of the balance-chain check for one transaction. |
+| `Classification` | `source`, `rule_ids`, `decision_id` | What decided one transaction's type; the fields mean what lineage's `classification_source`, `rule_ids` and `decision_id` mean. |
 | `Coverage` | `complete`, `partial`, `no_data` | Trust status of one account for one reporting month. |
 
 Monetary values are `Decimal` in the account's currency. No float enters the
@@ -104,6 +106,7 @@ the allocation fact ([ADR-008](../decisions/ADR-008-category-allocation-grain.md
 | `transfer_group_id` | string/null | No | Shared by the two legs of a paired transfer, derived from their `transaction_id`s so it is stable across rebuilds. Null for a one-sided transfer and every other type. |
 | `balance_after` | `Decimal`/null | No | Bank-stated balance from the latest admitted export covering this date (ADR-009). Null only for sources that state no balances, and for a row that states no balance in a balance-stating export admitted by *accept discrepancy* (ADR-016). Other inconsistent balance-stating exports are quarantined under ADR-010. |
 | `balance_check` | `BalanceCheck` | Yes | Result of the [balance-chain check](gold-layer.md#balance-chain-evaluation) for this transaction. |
+| `classification` | `Classification` | Yes | What decided `transaction_type`: the same `classification_source`, `rule_ids` and `decision_id` as its [lineage](#goldtransactionlineage), named `source`, `rule_ids` and `decision_id`. Rule and decision ids are household configuration, not source identifiers, so reports may show them. |
 
 ### `GoldCategoryAllocation`
 
