@@ -22,6 +22,7 @@ from types import TracebackType
 from typing import Final, Literal, Self
 
 from budget.gold.models import (
+    Classification,
     ClassificationReviewItem,
     GoldAccount,
     GoldCategory,
@@ -307,8 +308,9 @@ _INSERT_CATEGORIES: Final = (
 _INSERT_TRANSACTIONS: Final = (
     "INSERT INTO transactions (publication_id, transaction_id, account_id,"
     " transaction_date, account_sequence, amount, description,"
-    " transaction_type, transfer_group_id, balance_after, balance_check)"
-    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    " transaction_type, transfer_group_id, balance_after, balance_check,"
+    " classification_source, classification_rule_ids, classification_decision_id)"
+    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 _INSERT_ALLOCATIONS: Final = (
     "INSERT INTO category_allocations (publication_id, allocation_id,"
@@ -1400,6 +1402,9 @@ def _transaction_row(
         transaction.transfer_group_id,
         _optional_minor(transaction.balance_after, currency),
         transaction.balance_check,
+        transaction.classification.source,
+        json.dumps(transaction.classification.rule_ids),
+        transaction.classification.decision_id,
     )
 
 
@@ -1417,6 +1422,11 @@ def _transaction(row: sqlite3.Row) -> GoldTransaction:
         transfer_group_id=row["transfer_group_id"],
         balance_after=_optional_decimal(row["balance_after"], currency),
         balance_check=row["balance_check"],
+        classification=Classification(
+            row["classification_source"],
+            rule_ids=tuple(json.loads(row["classification_rule_ids"])),
+            decision_id=row["classification_decision_id"],
+        ),
     )
 
 

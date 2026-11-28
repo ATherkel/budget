@@ -9,7 +9,12 @@ from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
-from budget.gold import GoldCategoryAllocation, GoldResult, TransactionType
+from budget.gold import (
+    Classification,
+    GoldCategoryAllocation,
+    GoldResult,
+    TransactionType,
+)
 from budget.hashing import hash_parts
 from budget.inputs import (
     AssignAdjustment,
@@ -56,6 +61,15 @@ def test_1_a_rule_assigns_an_expense_its_whole_amount_in_one_category() -> None:
             amount=Decimal("-640.00"),
         )
     ]
+
+
+def test_a_rule_classified_transaction_names_the_rule_that_decided_it() -> None:
+    result = classified(
+        booked("netto", CURRENT, date(2026, 2, 2), "-640.00", "NETTO 0412")
+    )
+
+    [netto] = result.transactions(start_date=date.min, end_date=date.max)
+    assert netto.classification == Classification("rule", rule_ids=("r-netto",))
 
 
 def test_2_a_positive_amount_in_an_expense_category_is_a_refund_netting_it() -> None:
