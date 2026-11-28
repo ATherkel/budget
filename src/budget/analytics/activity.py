@@ -3,6 +3,7 @@
 
 from datetime import date, timedelta
 
+from budget.analytics.classifications import row_classifications
 from budget.analytics.measures import money_in_out
 from budget.analytics.overview import (
     every_row,
@@ -112,6 +113,12 @@ def _activity_rows(
         if transaction.transfer_group_id is not None:
             groups.setdefault(transaction.transfer_group_id, []).append(transaction)
     names = {account.account_id: account.display_name for account in gold.accounts()}
+    classifications = row_classifications(
+        gold,
+        start_date=month_start,
+        end_date=month_end,
+        account_ids=context.account_ids,
+    )
     ordered = sorted(
         selected,
         key=lambda transaction: (
@@ -141,6 +148,7 @@ def _activity_rows(
             counterpart_transaction_date=(
                 None if counterpart is None else counterpart.transaction_date
             ),
+            classification=classifications[transaction.transaction_id],
         )
 
     return tuple(row(transaction) for transaction in ordered)
