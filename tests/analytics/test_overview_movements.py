@@ -71,6 +71,9 @@ def test_an_income_row_carries_its_bank_amount_and_contribution() -> None:
                 account_display_name="Joint current",
                 amount=Decimal("25000.00"),
                 contribution=Decimal("25000.00"),
+                classification=RowClassification(
+                    Classification("unclassified"), "Salary", "Income"
+                ),
             ),
         ),
         total=Decimal("25000.00"),
